@@ -26,20 +26,16 @@ import type { Scene, SessionFlags } from '@pixsim7/shared.types';
 import { ScenePlayer } from '@pixsim7/game.components';
 import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
-import { useGameStateStore } from '../stores/gameStateStore';
 import {
   listGameLocations,
   getGameLocation,
   getGameScene,
   getNpcExpressions,
-  getNpcPresence,
   createGameSession,
   getGameSession,
   updateGameSession,
   listGameWorlds,
   createGameWorld,
-  getGameWorld,
-  advanceGameWorldTime,
   getNpcSlots,
   getWorldNpcRoles,
   attemptPickpocket,
@@ -48,9 +44,7 @@ import {
   type GameHotspotDTO,
   type NpcExpressionDTO,
   type NpcPresenceDTO,
-  type GameSessionDTO,
   type GameWorldSummary,
-  type GameWorldDetail,
   type NpcSlot2d,
 } from '../lib/api/game';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
@@ -60,15 +54,21 @@ import {
   deriveScenePlaybackPhase,
   getNpcRelationshipState,
   getTurnDeltaLabel,
-  parseWorldTime,
-  composeWorldTime,
-  addWorldTime,
-  getManifestTurnDelta,
   type NpcSlotAssignment,
   type HotspotAction,
   type ScenePlaybackPhase,
 } from '@pixsim7/game.engine';
-import { loadWorldSession, saveWorldSession } from '../lib/game/session';
+import { saveWorldSession } from '../lib/game/session';
+import {
+  useGameRuntime,
+  useActorPresence,
+  isTurnBasedMode,
+  getTurnDelta,
+  worldTimeToSeconds,
+  gameHooksRegistry,
+  registerBuiltinGamePlugins,
+  unregisterBuiltinGamePlugins,
+} from '../lib/game/runtime';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
@@ -89,93 +89,77 @@ import { worldToolRegistry } from '../lib/worldTools/registry';
 import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
 import { applyPlayerPreferences, getEffectiveViewMode } from '../lib/worldTools/playerHudPreferences';
 
+// WorldTime type for display (kept for backward compatibility with UI components)
 interface WorldTime {
   day: number;
   hour: number;
 }
 
-/**
- * Convert Game2D WorldTime (1-indexed days) to world_time seconds
- */
-function worldTimeToSeconds(wt: WorldTime): number {
-  return composeWorldTime({ dayOfWeek: wt.day - 1, hour: wt.hour, minute: 0, second: 0 });
-}
-
-/**
- * Convert world_time seconds to Game2D WorldTime (1-indexed days)
- */
-function secondsToWorldTime(seconds: number): WorldTime {
-  const { dayOfWeek, hour } = parseWorldTime(seconds);
-  return { day: dayOfWeek + 1, hour };
-}
-
-/**
- * Helper to check if session is in turn-based world mode
- * Task 23: Also checks GameProfile.simulationMode if present
- */
-function isTurnBasedMode(
-  sessionFlags?: Record<string, unknown>,
-  world?: GameWorldDetail | null
-): boolean {
-  if (!sessionFlags) return false;
-  const flags = sessionFlags as SessionFlags;
-
-  // Check session flags first (allows session-level override)
-  if (flags.sessionKind === 'world' && flags.world?.mode === 'turn_based') {
-    return true;
-  }
-
-  // Task 23: Check GameProfile.simulationMode from world meta
-  if (world?.meta && typeof world.meta === 'object' && 'gameProfile' in world.meta) {
-    const gameProfile = (world.meta as any).gameProfile;
-    if (gameProfile?.simulationMode === 'turn_based') {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Get configured turn delta in seconds
- * Task 23: Priority updated to include GameProfile.turnConfig
- * Priority: session flags > GameProfile.turnConfig > world manifest > default (3600 = 1 hour)
- */
-function getTurnDelta(
-  sessionFlags?: Record<string, unknown>,
-  world?: GameWorldDetail | null
-): number {
-  // First, check session flags for an override
-  if (sessionFlags) {
-    const flags = sessionFlags as SessionFlags;
-    if (flags.world?.turnDeltaSeconds != null) {
-      return flags.world.turnDeltaSeconds;
-    }
-  }
-
-  // Task 23: Second, check GameProfile.turnConfig
-  if (world?.meta && typeof world.meta === 'object' && 'gameProfile' in world.meta) {
-    const gameProfile = (world.meta as any).gameProfile;
-    if (gameProfile?.turnConfig?.turnDeltaSeconds != null) {
-      return gameProfile.turnConfig.turnDeltaSeconds;
-    }
-  }
-
-  // Third, check world manifest for default turn preset
-  if (world) {
-    return getManifestTurnDelta(world);
-  }
-
-  // Final fallback: 1 hour
-  return 3600;
-}
-
 export function Game2D() {
   const [searchParams] = useSearchParams();
+
+  // ========================================
+  // Game Runtime (unified world/session/time management)
+  // ========================================
+  const runtime = useGameRuntime();
+  const {
+    state: runtimeState,
+    world: runtimeWorld,
+    session: runtimeSession,
+    worldTime: runtimeWorldTime,
+    ensureSession,
+    advanceTurn,
+    enterRoom: runtimeEnterRoom,
+    enterScene: runtimeEnterScene,
+    enterConversation: runtimeEnterConversation,
+    exitToRoom,
+    error: runtimeError,
+  } = runtime;
+
+  // Derive worldTime in old format for backward compatibility
+  const worldTime: WorldTime = runtimeWorldTime;
+  const selectedWorldId = runtimeState.worldId;
+
+  // ========================================
+  // Session/World state with local overrides for callbacks
+  // These allow legacy code to call setGameSession/setWorldDetail
+  // while runtime remains the primary source of truth
+  // ========================================
+  const [sessionOverride, setSessionOverride] = useState<typeof runtimeSession | null>(null);
+  const [worldOverride, setWorldOverride] = useState<typeof runtimeWorld | null>(null);
+
+  // Use runtime values unless overridden by callbacks
+  const gameSession = sessionOverride ?? runtimeSession;
+  const worldDetail = worldOverride ?? runtimeWorld;
+
+  // Sync overrides back to null when runtime updates (runtime takes precedence)
+  useEffect(() => {
+    if (runtimeSession) {
+      setSessionOverride(null);
+    }
+  }, [runtimeSession?.id, runtimeSession?.version]);
+
+  useEffect(() => {
+    if (runtimeWorld) {
+      setWorldOverride(null);
+    }
+  }, [runtimeWorld?.id, runtimeWorld?.world_time]);
+
+  // Legacy setters for backward compatibility
+  const setGameSession = (session: typeof runtimeSession) => setSessionOverride(session);
+  const setWorldDetail = (world: typeof runtimeWorld) => setWorldOverride(world);
+
+  // Aliases for runtime mode transitions (used by legacy code)
+  const enterRoom = runtimeEnterRoom;
+  const enterScene = runtimeEnterScene;
+  const enterConversation = runtimeEnterConversation;
+
+  // ========================================
+  // Local UI state (location, scene, NPC details)
+  // ========================================
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [locationDetail, setLocationDetail] = useState<GameLocationDetail | null>(null);
-  const [worldTime, setWorldTime] = useState<WorldTime>({ day: 1, hour: 8 });
   const [currentScene, setCurrentScene] = useState<Scene | null>(null);
   const [isSceneOpen, setIsSceneOpen] = useState(false);
   const [scenePhase, setScenePhase] = useState<ScenePlaybackPhase | null>(null);
@@ -187,11 +171,21 @@ export function Game2D() {
   const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
   const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetResponse | null>(null);
   const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
-  const [locationNpcs, setLocationNpcs] = useState<NpcPresenceDTO[]>([]);
-  const [gameSession, setGameSession] = useState<GameSessionDTO | null>(null);
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
-  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
-  const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
+
+  // Actor presence via unified hook (NPCs, players, agents at location)
+  const {
+    npcs: locationActors,
+    npcPresenceDTOs: locationNpcs,  // Legacy format for assignNpcsToSlots etc.
+    players: locationPlayers,
+  } = useActorPresence({
+    worldId: selectedWorldId,
+    locationId: selectedLocationId,
+    worldTimeSeconds: runtimeState.worldTimeSeconds,
+    actorTypes: ['npc', 'player'],
+    session: gameSession,
+    enabled: !!selectedLocationId,
+  });
   const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
@@ -204,12 +198,8 @@ export function Game2D() {
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
-  // Game state store (Task 22)
-  const enterRoom = useGameStateStore((s) => s.enterRoom);
-  const enterScene = useGameStateStore((s) => s.enterScene);
-  const enterConversation = useGameStateStore((s) => s.enterConversation);
-  const updateContext = useGameStateStore((s) => s.updateContext);
-  const clearContext = useGameStateStore((s) => s.clearContext);
+  // Combine runtime error with local error
+  const displayError = error || runtimeError;
 
   // Apply per-world theme when world changes
   useWorldTheme(worldDetail);
@@ -232,17 +222,22 @@ export function Game2D() {
     pluginManager.updateGameState(pluginGameState);
   }, [gameSession, worldDetail, worldTime, locationDetail, locationNpcs]);
 
-  // Update game context when entering a room (Task 22)
+  // Register game hooks plugins on mount
+  useEffect(() => {
+    registerBuiltinGamePlugins();
+    return () => {
+      unregisterBuiltinGamePlugins();
+    };
+  }, []);
+
+  // Update game context when entering a room (now handled by runtime, but sync location)
   useEffect(() => {
     if (selectedWorldId && gameSession && selectedLocationId && locationDetail) {
-      const locationIdStr = `location:${selectedLocationId}`;
-      enterRoom(selectedWorldId, gameSession.id, locationIdStr);
-    } else if (!selectedLocationId || !locationDetail) {
-      // Clear context when leaving a location
-      clearContext();
+      runtimeEnterRoom(selectedLocationId);
     }
-  }, [selectedWorldId, gameSession, selectedLocationId, locationDetail, enterRoom, clearContext]);
+  }, [selectedWorldId, gameSession, selectedLocationId, locationDetail, runtimeEnterRoom]);
 
+  // Load locations and worlds on mount
   useEffect(() => {
     (async () => {
       try {
@@ -255,75 +250,41 @@ export function Game2D() {
         } else if (!selectedLocationId && locs.length > 0) {
           setSelectedLocationId(locs[0].id);
         }
-      } catch (e: any) {
-        setError(String(e?.message ?? e));
+      } catch (e: unknown) {
+        setError(String((e as Error)?.message ?? e));
       }
     })();
 
-    // Load worlds and restore persisted world/session state.
+    // Load worlds list (runtime handles session restoration)
     (async () => {
       try {
         const ws = await listGameWorlds();
         setWorlds(ws);
-        // Prefer worldId from URL, then stored world, then first world
-        const worldIdParam = searchParams.get('worldId');
-        const stored = loadWorldSession();
-        let effectiveWorldId: number | null = null;
 
-        if (worldIdParam) {
-          const wId = Number(worldIdParam);
-          if (Number.isFinite(wId)) {
-            effectiveWorldId = wId;
+        // If runtime hasn't loaded a world yet, initialize from URL or first world
+        if (!selectedWorldId) {
+          const worldIdParam = searchParams.get('worldId');
+          let effectiveWorldId: number | null = null;
+
+          if (worldIdParam) {
+            const wId = Number(worldIdParam);
+            if (Number.isFinite(wId)) {
+              effectiveWorldId = wId;
+            }
+          } else if (ws.length > 0) {
+            effectiveWorldId = ws[0].id;
           }
-        } else if (stored?.worldId) {
-          effectiveWorldId = stored.worldId;
-        } else if (!selectedWorldId && ws.length > 0) {
-          effectiveWorldId = ws[0].id;
-        }
 
-        if (effectiveWorldId != null) {
-          setSelectedWorldId(effectiveWorldId);
-          try {
-            const wd = await getGameWorld(effectiveWorldId);
-            setWorldDetail(wd);
-            setWorldTime(secondsToWorldTime(wd.world_time));
-          } catch (e) {
-            console.error('Failed to restore GameWorld for Game2D', e);
+          if (effectiveWorldId != null) {
+            // Use runtime to ensure session for this world
+            ensureSession(effectiveWorldId).catch((e) => {
+              console.error('Failed to initialize world session', e);
+            });
           }
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error('Failed to list game worlds', e);
       }
-
-      const stored = loadWorldSession();
-      if (!stored) return;
-
-      // If we have a backing GameSession, prefer its world_time.
-      if (stored.gameSessionId) {
-        try {
-          const session = await getGameSession(stored.gameSessionId);
-          setGameSession(session);
-          setWorldTime(secondsToWorldTime(session.world_time));
-          return;
-        } catch (e) {
-          console.error('Failed to restore GameSession for Game2D', e);
-        }
-      }
-
-      if (stored.worldId) {
-        setSelectedWorldId(stored.worldId);
-        try {
-          const wd = await getGameWorld(stored.worldId);
-          setWorldDetail(wd);
-          setWorldTime(secondsToWorldTime(wd.world_time));
-          return;
-        } catch (e) {
-          console.error('Failed to restore GameWorld for Game2D', e);
-        }
-      }
-
-      // Fallback to local worldTimeSeconds if no valid GameSession or World.
-      setWorldTime(secondsToWorldTime(stored.worldTimeSeconds));
     })();
   }, []);
 
@@ -339,7 +300,6 @@ export function Game2D() {
     if (worldIdParam) {
       const wId = Number(worldIdParam);
       if (Number.isFinite(wId) && wId !== selectedWorldId) {
-        setSelectedWorldId(wId);
         handleSelectWorld(wId);
       }
     }
@@ -359,14 +319,10 @@ export function Game2D() {
       setIsLoadingScene(true);
       setError(null);
       try {
-        // Lazily create a backing GameSession
-        if (!gameSession) {
+        // Ensure session exists via runtime (if world is selected)
+        if (!gameSession && selectedWorldId) {
           try {
-            const created = await createGameSession(sceneId);
-            setGameSession(created);
-            const worldTimeSeconds = worldTimeToSeconds(worldTime);
-            saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
-            updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+            await ensureSession(selectedWorldId);
           } catch (err) {
             console.error('Failed to create GameSession for auto-play', err);
           }
@@ -376,34 +332,26 @@ export function Game2D() {
         setCurrentScene(scene);
         setIsSceneOpen(true);
         setScenePhase('playing');
+        runtimeEnterScene(sceneId);
         console.info('Auto-playing scene from URL params', { sceneId, worldId: selectedWorldId, locationId: selectedLocationId });
-      } catch (e: any) {
-        setError(`Failed to load scene: ${String(e?.message ?? e)}`);
+      } catch (e: unknown) {
+        setError(`Failed to load scene: ${String((e as Error)?.message ?? e)}`);
       } finally {
         setIsLoadingScene(false);
       }
     }, 500); // Small delay to ensure state has settled
 
     return () => clearTimeout(timer);
-  }, [searchParams, gameSession, worldTime, selectedWorldId, selectedLocationId]); // include state used in effect
+  }, [searchParams, gameSession, selectedWorldId, selectedLocationId, ensureSession, handleSelectWorld, runtimeEnterScene]);
 
   const handleSelectWorld = async (worldId: number | null) => {
-    setSelectedWorldId(worldId);
     if (!worldId) {
-      setWorldDetail(null);
+      runtime.detachSession();
       return;
     }
     try {
-      const wd = await getGameWorld(worldId);
-      setWorldDetail(wd);
-      setWorldTime(secondsToWorldTime(wd.world_time));
-      const state = loadWorldSession();
-      const worldTimeSeconds = wd.world_time;
-      saveWorldSession({
-        worldTimeSeconds,
-        gameSessionId: state?.gameSessionId,
-        worldId: worldId,
-      });
+      // Use runtime to ensure session for the selected world
+      await ensureSession(worldId);
     } catch (e) {
       console.error('Failed to select GameWorld for Game2D', e);
     }
@@ -479,30 +427,13 @@ export function Game2D() {
     })();
   }, [activeNpcId]);
 
-  // Fetch NPC presence for the current location and world time.
+  // Set active NPC when presence changes
   useEffect(() => {
-    if (!selectedLocationId) {
-      setLocationNpcs([]);
-      return;
+    if (locationNpcs.length > 0) {
+      // Prefer the first present NPC over the static primary_npc_id.
+      setActiveNpcId(locationNpcs[0].npc_id);
     }
-    const worldTimeSeconds = worldTimeToSeconds(worldTime);
-    (async () => {
-      try {
-        const presences = await getNpcPresence({
-          world_time: worldTimeSeconds,
-          world_id: selectedWorldId ?? undefined,
-          location_id: selectedLocationId,
-        });
-        setLocationNpcs(presences);
-        if (presences.length > 0) {
-          // Prefer the first present NPC over the static primary_npc_id.
-          setActiveNpcId(presences[0].npc_id);
-        }
-      } catch (e: any) {
-        console.error('Failed to load NPC presence', e);
-      }
-    })();
-  }, [selectedLocationId, worldTime]);
+  }, [locationNpcs]);
 
   // Assign NPCs to slots when location, NPCs, or world changes.
   useEffect(() => {
@@ -522,97 +453,11 @@ export function Game2D() {
     setNpcSlotAssignments(assignments);
   }, [locationDetail, locationNpcs, worldDetail]);
 
+  // Advance time using the runtime (handles turn-based and real-time modes)
   const advanceTime = () => {
-    // Get turn delta from session flags or world manifest
-    const deltaSeconds = getTurnDelta(gameSession?.flags, worldDetail);
-    const isTurnBased = isTurnBasedMode(gameSession?.flags, worldDetail);
-
-    if (selectedWorldId) {
-      (async () => {
-        try {
-          const updated = await advanceGameWorldTime(selectedWorldId, deltaSeconds);
-          setWorldDetail(updated);
-          setWorldTime(secondsToWorldTime(updated.world_time));
-          const worldTimeSeconds = updated.world_time;
-          const sessionId = gameSession?.id;
-          saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId, worldId: selectedWorldId });
-
-          // Update turn counter in turn-based mode
-          if (sessionId && isTurnBased && gameSession) {
-            const flags = gameSession.flags as SessionFlags;
-            const currentTurnNumber = flags.world?.turnNumber ?? 0;
-            const newTurnNumber = currentTurnNumber + 1;
-
-            // Update flags with incremented turn number and history
-            const updatedFlags: SessionFlags = {
-              ...flags,
-              world: {
-                ...flags.world,
-                turnNumber: newTurnNumber,
-                turnHistory: [
-                  ...(flags.world?.turnHistory || []).slice(-9), // Keep last 10 turns
-                  {
-                    turnNumber: newTurnNumber,
-                    worldTime: worldTimeSeconds,
-                    timestamp: Date.now(),
-                    locationId: selectedLocationId ?? undefined,
-                  },
-                ],
-              },
-            };
-
-            updateGameSession(sessionId, { world_time: worldTimeSeconds, flags: updatedFlags })
-              .then((updated) => setGameSession(updated))
-              .catch(() => {});
-          } else if (sessionId) {
-            updateGameSession(sessionId, { world_time: worldTimeSeconds }).catch(() => {});
-          }
-        } catch (e: any) {
-          console.error('Failed to advance GameWorld time', e);
-        }
-      })();
-    } else {
-      setWorldTime((prev) => {
-        const currentSeconds = worldTimeToSeconds(prev);
-        const newSeconds = addWorldTime(currentSeconds, deltaSeconds);
-        const next = secondsToWorldTime(newSeconds);
-        const worldTimeSeconds = newSeconds;
-        const sessionId = gameSession?.id;
-        saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId });
-
-        // Update turn counter in turn-based mode
-        if (sessionId && isTurnBased && gameSession) {
-          const flags = gameSession.flags as SessionFlags;
-          const currentTurnNumber = flags.world?.turnNumber ?? 0;
-          const newTurnNumber = currentTurnNumber + 1;
-
-          const updatedFlags: SessionFlags = {
-            ...flags,
-            world: {
-              ...flags.world,
-              turnNumber: newTurnNumber,
-              turnHistory: [
-                ...(flags.world?.turnHistory || []).slice(-9),
-                {
-                  turnNumber: newTurnNumber,
-                  worldTime: worldTimeSeconds,
-                  timestamp: Date.now(),
-                  locationId: selectedLocationId ?? undefined,
-                },
-              ],
-            },
-          };
-
-          updateGameSession(sessionId, { world_time: worldTimeSeconds, flags: updatedFlags })
-            .then((updated) => setGameSession(updated))
-            .catch(() => {});
-        } else if (sessionId) {
-          updateGameSession(sessionId, { world_time: worldTimeSeconds }).catch(() => {});
-        }
-
-        return next;
-      });
-    }
+    advanceTurn().catch((e) => {
+      console.error('Failed to advance time', e);
+    });
   };
 
   const addNotification = (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string, duration?: number) => {
@@ -724,9 +569,7 @@ export function Game2D() {
           setActiveNpcId(npcId);
 
           // Update game context to scene mode (Task 22)
-          if (selectedWorldId && gameSession) {
-            enterScene(selectedWorldId, gameSession.id, sceneId, npcId);
-          }
+          enterScene(sceneId, npcId);
         } finally {
           setIsLoadingScene(false);
         }
@@ -743,9 +586,7 @@ export function Game2D() {
         setShowDialogue(true);
 
         // Update game context to conversation mode (Task 22)
-        if (selectedWorldId && gameSession) {
-          enterConversation(selectedWorldId, gameSession.id, npcId);
-        }
+        enterConversation(npcId);
       },
       onNotification: (type, title, message) => {
         addNotification(type, title, message);
@@ -1197,9 +1038,8 @@ export function Game2D() {
               setScenePhase(null);
 
               // Return to room mode when closing scene (Task 22)
-              if (selectedWorldId && gameSession && selectedLocationId) {
-                const locationIdStr = `location:${selectedLocationId}`;
-                enterRoom(selectedWorldId, gameSession.id, locationIdStr);
+              if (selectedLocationId) {
+                enterRoom(selectedLocationId);
               }
             }}>
               Close
@@ -1248,9 +1088,8 @@ export function Game2D() {
               setShowDialogue(false);
 
               // Return to room mode when closing dialogue (Task 22)
-              if (selectedWorldId && gameSession && selectedLocationId) {
-                const locationIdStr = `location:${selectedLocationId}`;
-                enterRoom(selectedWorldId, gameSession.id, locationIdStr);
+              if (selectedLocationId) {
+                enterRoom(selectedLocationId);
               }
             }}
           />

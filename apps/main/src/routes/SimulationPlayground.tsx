@@ -10,29 +10,21 @@ import { Panel, Button, Select, Input } from '@pixsim7/shared.ui';
 import { usePixSim7Core } from '../lib/game/usePixSim7Core';
 import {
   listGameWorlds,
-  getGameWorld,
   listGameNpcs,
   listGameLocations,
-  getNpcPresence,
-  createGameSession,
-  getGameSession,
   updateGameSession,
-  advanceGameWorldTime,
   type GameWorldSummary,
-  type GameWorldDetail,
   type GameNpcSummary,
-  type GameSessionDTO,
   type GameLocationSummary,
   type NpcPresenceDTO,
 } from '../lib/api/game';
 import {
   parseWorldTime,
-  composeWorldTime,
-  addWorldTime,
   formatWorldTime,
   SECONDS_PER_HOUR,
   SECONDS_PER_DAY,
 } from '@pixsim7/game.engine';
+import { useGameRuntime, useActorPresence } from '../lib/game/runtime';
 import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
 import { BrainToolsPanel } from '../components/brain/BrainToolsPanel';
 import { worldToolRegistry } from '../lib/worldTools/registry';
@@ -47,11 +39,18 @@ import {
   type SimulationScenario,
 } from '../lib/simulation/scenarios';
 import {
+  gameHooksRegistry,
+  registerBuiltinGamePlugins,
+  unregisterBuiltinGamePlugins,
+  type GameEvent,
+} from '../lib/game/runtime';
+// Legacy simulation hooks - kept for backward compatibility with existing plugins
+import {
   simulationHooksRegistry,
   registerBuiltinHooks,
   unregisterBuiltinHooks,
-  type SimulationEvent,
-  type SimulationTickContext,
+  registerExamplePlugins as registerLegacyExamplePlugins,
+  unregisterExamplePlugins as unregisterLegacyExamplePlugins,
 } from '../lib/simulation/hooks';
 import {
   createHistory,
@@ -79,22 +78,46 @@ import {
   type SavedSimulationRun,
 } from '../lib/simulation/multiRunStorage';
 import type { ConstraintEvaluationContext } from '../lib/simulation/constraints';
-import { registerExamplePlugins, unregisterExamplePlugins } from '../lib/simulation/hooks';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
 
-  // World and NPC data
+  // ========================================
+  // Game Runtime (unified world/session/time management)
+  // ========================================
+  const runtime = useGameRuntime();
+  const {
+    state: runtimeState,
+    world: worldDetail,
+    session: gameSession,
+    ensureSession,
+    advanceTime: runtimeAdvanceTime,
+    isLoading: runtimeLoading,
+    error: runtimeError,
+  } = runtime;
+
+  // Derive values from runtime for backward compatibility
+  const selectedWorldId = runtimeState.worldId;
+  const worldTime = runtimeState.worldTimeSeconds;
+
+  // ========================================
+  // List data (worlds, NPCs, locations)
+  // ========================================
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const [npcs, setNpcs] = useState<GameNpcSummary[]>([]);
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
-  const [npcPresences, setNpcPresences] = useState<NpcPresenceDTO[]>([]);
 
-  // Current simulation state
-  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
-  const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
-  const [worldTime, setWorldTime] = useState<number>(0);
-  const [gameSession, setGameSession] = useState<GameSessionDTO | null>(null);
+  // Actor presence via unified hook (world-wide, no location filter)
+  const { npcPresenceDTOs: npcPresences } = useActorPresence({
+    worldId: selectedWorldId,
+    worldTimeSeconds: worldTime,
+    actorTypes: 'npc',
+    enabled: !!selectedWorldId,
+  });
+
+  // ========================================
+  // Simulation-specific state
+  // ========================================
   const [selectedNpcIds, setSelectedNpcIds] = useState<number[]>([]);
   const [activeNpcId, setActiveNpcId] = useState<number | null>(null);
 
@@ -105,13 +128,17 @@ export function SimulationPlayground() {
   const [newScenarioName, setNewScenarioName] = useState('');
 
   // UI state
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
   const [tickSize, setTickSize] = useState<number>(SECONDS_PER_HOUR);
+
+  // Combine runtime and local loading/error states
+  const isLoading = runtimeLoading || localLoading;
+  const error = runtimeError || localError;
 
   // Phase 2: Simulation hooks and history
   const [simulationHistory, setSimulationHistory] = useState<SimulationHistory | null>(null);
-  const [simulationEvents, setSimulationEvents] = useState<SimulationEvent[]>([]);
+  const [simulationEvents, setSimulationEvents] = useState<GameEvent[]>([]);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [autoPlayInterval, setAutoPlayInterval] = useState<number>(2000); // ms between ticks
   const [showEventsLog, setShowEventsLog] = useState(false);
@@ -146,8 +173,12 @@ export function SimulationPlayground() {
 
   // Register simulation hooks on mount
   useEffect(() => {
+    // Register unified game hooks (new system)
+    registerBuiltinGamePlugins();
+
+    // Register legacy simulation hooks (backward compatibility)
     registerBuiltinHooks();
-    registerExamplePlugins(); // Phase 8: Register example plugins
+    registerLegacyExamplePlugins();
 
     // Load or create simulation history
     const savedHistory = loadHistory();
@@ -157,12 +188,16 @@ export function SimulationPlayground() {
       setSimulationHistory(createHistory(null, null));
     }
 
-    // Phase 8: Load initial plugins
-    setPlugins(simulationHooksRegistry.getPlugins());
+    // Load initial plugins from both registries
+    setPlugins([
+      ...gameHooksRegistry.getPlugins(),
+      ...simulationHooksRegistry.getPlugins(),
+    ]);
 
     return () => {
+      unregisterBuiltinGamePlugins();
       unregisterBuiltinHooks();
-      unregisterExamplePlugins(); // Phase 8: Cleanup
+      unregisterLegacyExamplePlugins();
     };
   }, []);
 
@@ -181,100 +216,53 @@ export function SimulationPlayground() {
         setScenarios(loadScenarios());
         setSavedRuns(loadSavedRuns());
 
-        // Auto-select first world if available
+        // Auto-select first world if available (runtime handles session creation)
         if (worldList.length > 0 && !selectedWorldId) {
           await handleSelectWorld(worldList[0].id);
         }
-      } catch (e: any) {
-        setError(String(e?.message ?? e));
+      } catch (e: unknown) {
+        setLocalError(String((e as Error)?.message ?? e));
       }
     })();
   }, []);
 
-  // Fetch NPC presence when world time changes
-  useEffect(() => {
-    if (!selectedWorldId) {
-      setNpcPresences([]);
-      return;
-    }
-
-    (async () => {
-      try {
-        const presences = await getNpcPresence({
-          world_time: worldTime,
-          world_id: selectedWorldId,
-        });
-        setNpcPresences(presences);
-      } catch (e: any) {
-        console.error('Failed to fetch NPC presence', e);
-        setNpcPresences([]);
-      }
-    })();
-  }, [selectedWorldId, worldTime]);
 
   const handleSelectWorld = async (worldId: number) => {
-    setIsLoading(true);
-    setError(null);
+    setLocalError(null);
     try {
-      const world = await getGameWorld(worldId);
-      setSelectedWorldId(worldId);
-      setWorldDetail(world);
-      setWorldTime(world.world_time);
-
-      // Create or load a session for this world
-      if (!gameSession || gameSession.world_time !== world.world_time) {
-        // For now, we'll create a minimal session or use existing one
-        // The task says no backend changes needed, so we'll work with local state
-      }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
-    } finally {
-      setIsLoading(false);
+      // Use runtime to ensure session for simulation
+      await ensureSession(worldId, { sessionKind: 'simulation' });
+    } catch (e: unknown) {
+      setLocalError(String((e as Error)?.message ?? e));
     }
   };
 
   const handleAdvanceTime = async (deltaSeconds: number) => {
     if (!selectedWorldId || !worldDetail) {
-      setError('No world selected');
+      setLocalError('No world selected');
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    setLocalLoading(true);
+    setLocalError(null);
     try {
-      // Advance world time via API
-      const updatedWorld = await advanceGameWorldTime(selectedWorldId, deltaSeconds);
-      setWorldDetail(updatedWorld);
-      setWorldTime(updatedWorld.world_time);
+      // Use runtime to advance world time - hooks run automatically and return events
+      const events = await runtimeAdvanceTime(deltaSeconds, {
+        origin: 'simulation',
+        simulationContext: { selectedNpcIds },
+      });
 
-      // Update session if it exists
-      if (gameSession) {
-        const updated = await updateGameSession(gameSession.id, {
-          world_time: updatedWorld.world_time,
-        });
-        if (updated.session) {
-          setGameSession(updated.session);
-        }
-      }
+      // Get updated world time from runtime state
+      const newWorldTime = runtimeState.worldTimeSeconds + deltaSeconds;
 
-      // Phase 2: Run simulation hooks
-      const tickContext: SimulationTickContext = {
-        worldId: selectedWorldId,
-        worldDetail: updatedWorld,
-        worldTime: updatedWorld.world_time,
-        deltaSeconds,
-        session: gameSession,
-        selectedNpcIds,
-      };
-
-      const events = await simulationHooksRegistry.runAll(tickContext);
+      // Update events display
       setSimulationEvents((prev) => [...prev, ...events].slice(-100)); // Keep last 100 events
 
-      // Phase 2: Add snapshot to history
+      // Add snapshot to history
       if (simulationHistory) {
         const newHistory = addSnapshot(simulationHistory, {
           timestamp: Date.now(),
-          worldTime: updatedWorld.world_time,
+          worldTime: newWorldTime,
           worldId: selectedWorldId,
           sessionSnapshot: {
             flags: gameSession?.flags || {},
@@ -285,10 +273,10 @@ export function SimulationPlayground() {
         setSimulationHistory(newHistory);
         saveHistory(newHistory);
       }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+    } catch (e: unknown) {
+      setLocalError(String((e as Error)?.message ?? e));
     } finally {
-      setIsLoading(false);
+      setLocalLoading(false);
     }
   };
 
@@ -339,7 +327,7 @@ export function SimulationPlayground() {
 
   const handleCreateScenario = () => {
     if (!selectedWorldId || !worldDetail) {
-      setError('No world selected');
+      setLocalError('No world selected');
       return;
     }
 
@@ -361,33 +349,32 @@ export function SimulationPlayground() {
   const handleLoadScenario = async (scenarioId: string) => {
     const scenario = scenarios.find((s) => s.id === scenarioId);
     if (!scenario) {
-      setError('Scenario not found');
+      setLocalError('Scenario not found');
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    setLocalLoading(true);
+    setLocalError(null);
     try {
+      // Load world via runtime
       await handleSelectWorld(scenario.worldId);
-      setWorldTime(scenario.initialWorldTime);
       setSelectedNpcIds(scenario.npcIds);
       setSelectedScenarioId(scenarioId);
 
-      // If we have a session, update it with scenario data
+      // Update session with scenario data (runtime will pick up changes)
       if (gameSession) {
-        const updated = await updateGameSession(gameSession.id, {
+        await updateGameSession(gameSession.id, {
           world_time: scenario.initialWorldTime,
           flags: scenario.initialSessionFlags,
           relationships: scenario.initialRelationships,
         });
-        if (updated.session) {
-          setGameSession(updated.session);
-        }
+        // Reload session to get updated state
+        await runtime.attachSession(gameSession.id);
       }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+    } catch (e: unknown) {
+      setLocalError(String((e as Error)?.message ?? e));
     } finally {
-      setIsLoading(false);
+      setLocalLoading(false);
     }
   };
 
@@ -408,20 +395,17 @@ export function SimulationPlayground() {
 
     setSelectedNpcIds(newSelectedIds);
 
-    // If we don't have a session yet and we're adding the first NPC, create one
-    if (!gameSession && newSelectedIds.length > 0 && !selectedNpcIds.includes(npcId)) {
+    // If we don't have a session yet and we're adding the first NPC, ensure one exists
+    if (!gameSession && newSelectedIds.length > 0 && !selectedNpcIds.includes(npcId) && selectedWorldId) {
       try {
-        // Create a minimal session (scene_id can be 1 or any valid scene)
-        // The task spec says we can work with local state, so this is just for brain state
-        const session = await createGameSession(1, {
-          sessionKind: 'simulation',
-          world: { mode: 'simulation' },
-        });
-        setGameSession(session);
+        // Runtime will create session if needed
+        await ensureSession(selectedWorldId, { sessionKind: 'simulation' });
 
-        // Load the session into PixSim7Core
-        await loadSession(session.id);
-      } catch (e: any) {
+        // Load the session into PixSim7Core for brain state
+        if (gameSession) {
+          await loadSession(gameSession.id);
+        }
+      } catch (e: unknown) {
         console.error('Failed to create simulation session', e);
       }
     }
@@ -430,12 +414,12 @@ export function SimulationPlayground() {
   // Phase 6: Save current simulation as a run
   const handleSaveSimulationRun = () => {
     if (!simulationHistory || !selectedWorldId || !worldDetail) {
-      setError('No simulation history to save');
+      setLocalError('No simulation history to save');
       return;
     }
 
     if (simulationHistory.snapshots.length === 0) {
-      setError('No snapshots in history. Run some simulation ticks first.');
+      setLocalError('No snapshots in history. Run some simulation ticks first.');
       return;
     }
 
@@ -477,8 +461,13 @@ export function SimulationPlayground() {
 
   // Phase 8: Toggle plugin enabled/disabled
   const handleTogglePlugin = (pluginId: string, enabled: boolean) => {
+    // Try both registries (unified game hooks + legacy simulation hooks)
+    gameHooksRegistry.setPluginEnabled(pluginId, enabled);
     simulationHooksRegistry.setPluginEnabled(pluginId, enabled);
-    setPlugins(simulationHooksRegistry.getPlugins());
+    setPlugins([
+      ...gameHooksRegistry.getPlugins(),
+      ...simulationHooksRegistry.getPlugins(),
+    ]);
   };
 
   // Phase 9: Handle import complete
