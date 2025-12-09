@@ -6,7 +6,7 @@
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { getDerived, hasDerived } from '@pixsim7/shared.types';
+import { getLogicStrategies, hasDerived } from '@pixsim7/shared.types';
 
 export const logicTool: BrainToolPlugin = {
   id: 'npc-logic',
@@ -28,11 +28,7 @@ export const logicTool: BrainToolPlugin = {
       );
     }
 
-    const strategies = getDerived<string[]>(
-      ctx.brainState,
-      'logic_strategies',
-      []
-    );
+    const strategies = getLogicStrategies(ctx.brainState);
 
     return (
       <div className="space-y-3">

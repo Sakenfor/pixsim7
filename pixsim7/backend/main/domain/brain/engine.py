@@ -29,7 +29,8 @@ from pixsim7.backend.main.domain.stats import (
     get_derivation_engine,
 )
 from pixsim7.backend.main.domain.game.models import GameSession, GameWorld, GameNPC
-from .types import BrainState, BrainStatSnapshot
+from .types import BrainState, BrainStatSnapshot, DerivationContext
+from .derivation_registry import derivation_registry
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,19 @@ class BrainEngine:
                     **transformed_values,
                 }
 
+        # Run brain derivation plugins (logic_strategies, instincts, memories)
+        plugin_derived = self._compute_plugin_derivations(
+            stat_snapshots=stat_snapshots,
+            derived=derived,
+            npc_id=npc_id,
+            world=world,
+            session=session,
+            brain_cfg=brain_cfg,
+        )
+
+        # Merge plugin results into derived
+        derived.update(plugin_derived)
+
         return BrainState(
             npc_id=npc_id,
             world_id=world.id,
@@ -169,6 +183,82 @@ class BrainEngine:
             excluded_derivation_ids=excluded_derivation_ids,
             already_computed=set(stat_values.keys()),
         )
+
+    def _compute_plugin_derivations(
+        self,
+        stat_snapshots: Dict[str, BrainStatSnapshot],
+        derived: Dict[str, Any],
+        npc_id: int,
+        world: GameWorld,
+        session: Optional[GameSession],
+        brain_cfg: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Compute derivations using brain derivation plugins.
+
+        These plugins compute higher-level derived values like:
+        - logic_strategies: decision-making tendencies from personality
+        - instincts: base drives from personality and resources
+        - memories: episodic memory from session flags
+
+        Args:
+            stat_snapshots: Computed stat snapshots
+            derived: Already computed derived values (from semantic derivations)
+            npc_id: NPC ID
+            world: World with configuration
+            session: Session with flags
+            brain_cfg: Brain configuration from world meta
+
+        Returns:
+            Dict of plugin-derived values to merge into brain.derived
+        """
+        # Get allowed plugin IDs from config (if specified)
+        allowed_plugins = brain_cfg.get("allowed_plugins")
+        if allowed_plugins is not None:
+            allowed_plugins = set(allowed_plugins)
+
+        # Get disabled plugins
+        disabled_plugins = brain_cfg.get("disabled_plugins", [])
+
+        # Build context for plugins
+        world_meta = world.meta or {}
+        session_flags = session.flags if session and session.flags else {}
+
+        context = DerivationContext(
+            stats=stat_snapshots,
+            derived=dict(derived),  # Copy to avoid mutation
+            npc_id=npc_id,
+            world_id=world.id,
+            world_meta=world_meta,
+            session_flags=session_flags,
+        )
+
+        # Get applicable plugins
+        available_stats = set(stat_snapshots.keys())
+        applicable = derivation_registry.get_applicable_plugins(
+            available_stats=available_stats,
+            allowed_plugin_ids=allowed_plugins,
+        )
+
+        # Run plugins
+        plugin_results: Dict[str, Any] = {}
+
+        for plugin in applicable:
+            # Skip disabled plugins
+            if plugin.id in disabled_plugins:
+                continue
+
+            try:
+                result = plugin.compute(context)
+                if result is not None:
+                    plugin_results[result.key] = result.value
+                    # Update context for next plugins (enables chaining)
+                    context.derived[result.key] = result.value
+                    logger.debug(f"Brain plugin {plugin.id} produced: {result.key}")
+            except Exception as e:
+                logger.error(f"Brain derivation plugin {plugin.id} failed: {e}", exc_info=True)
+
+        return plugin_results
 
     def _get_disabled_derivations(self, brain_cfg: Dict[str, Any]) -> Optional[Set[str]]:
         """Get set of disabled derivation IDs from config."""

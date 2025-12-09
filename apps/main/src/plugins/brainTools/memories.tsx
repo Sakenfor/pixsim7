@@ -6,7 +6,7 @@
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { getDerived, hasDerived } from '@pixsim7/shared.types';
+import { getMemories, hasDerived, type BrainMemory } from '@pixsim7/shared.types';
 
 export const memoriesTool: BrainToolPlugin = {
   id: 'npc-memories',
@@ -28,7 +28,7 @@ export const memoriesTool: BrainToolPlugin = {
       );
     }
 
-    const memories = getDerived<any[]>(ctx.brainState, 'memories', []);
+    const memories: BrainMemory[] = getMemories(ctx.brainState);
 
     return (
       <div className="space-y-3">

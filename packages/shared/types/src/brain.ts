@@ -72,6 +72,25 @@ export interface DerivedBehaviorUrgency {
   [key: string]: number | undefined;
 }
 
+/**
+ * Brain memory entry.
+ *
+ * Represents a single episodic memory for an NPC.
+ * Memories are typically sourced from session flags or events.
+ */
+export interface BrainMemory {
+  /** Unique memory ID */
+  id: string;
+  /** ISO timestamp when memory was created */
+  timestamp: string;
+  /** Human-readable summary of the memory */
+  summary: string;
+  /** Tags for categorization/filtering */
+  tags: string[];
+  /** Source of the memory */
+  source?: 'scene' | 'event' | 'flag' | string;
+}
+
 // ===================
 // Helper Functions
 // ===================
@@ -236,4 +255,52 @@ export function isInCriticalState(brain: BrainState): boolean {
   return Object.values(resources.tiers).some((tier) =>
     criticalTiers.includes(tier)
   );
+}
+
+// ==========================
+// High-Level Derived Helpers
+// ==========================
+
+/**
+ * Get NPC logic strategies from brain state.
+ *
+ * Logic strategies represent decision-making tendencies derived from
+ * personality traits and other factors.
+ *
+ * @example
+ * const strategies = getLogicStrategies(brain);
+ * // Returns: ["cautious", "analytical"] or []
+ */
+export function getLogicStrategies(brain: BrainState): string[] {
+  return getDerived<string[]>(brain, 'logic_strategies', []);
+}
+
+/**
+ * Get NPC instincts from brain state.
+ *
+ * Instincts represent base drives and archetypes derived from
+ * personality and resource states.
+ *
+ * @example
+ * const instincts = getInstincts(brain);
+ * // Returns: ["survive", "socialize", "explore"] or []
+ */
+export function getInstincts(brain: BrainState): string[] {
+  return getDerived<string[]>(brain, 'instincts', []);
+}
+
+/**
+ * Get NPC memories from brain state.
+ *
+ * Memories represent recent episodic history from session flags,
+ * events, or scenes.
+ *
+ * @example
+ * const memories = getMemories(brain);
+ * for (const memory of memories) {
+ *   console.log(`${memory.timestamp}: ${memory.summary}`);
+ * }
+ */
+export function getMemories(brain: BrainState): BrainMemory[] {
+  return getDerived<BrainMemory[]>(brain, 'memories', []);
 }

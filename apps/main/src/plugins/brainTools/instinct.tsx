@@ -6,7 +6,7 @@
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { getDerived, hasDerived } from '@pixsim7/shared.types';
+import { getInstincts, hasDerived } from '@pixsim7/shared.types';
 
 export const instinctTool: BrainToolPlugin = {
   id: 'npc-instinct',
@@ -28,7 +28,7 @@ export const instinctTool: BrainToolPlugin = {
       );
     }
 
-    const instincts = getDerived<string[]>(ctx.brainState, 'instincts', []);
+    const instincts = getInstincts(ctx.brainState);
 
     return (
       <div className="space-y-3">

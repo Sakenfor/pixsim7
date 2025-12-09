@@ -5,8 +5,9 @@ Provides generic, data-driven brain state that adapts to whatever
 stat packages a world uses. No hardcoded stat names or structures.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from pydantic import BaseModel, Field
+from dataclasses import dataclass, field
 
 
 class BrainStatSnapshot(BaseModel):
@@ -68,3 +69,57 @@ class BrainState(BaseModel):
     # Metadata
     computed_at: float = 0.0  # Timestamp
     source_packages: List[str] = Field(default_factory=list)  # Which packages contributed
+
+
+class BrainMemory(BaseModel):
+    """
+    Brain memory entry for NPC episodic memory.
+
+    Represents a single memory from session flags, events, or scenes.
+    Used by the memories derivation plugin to populate brain.derived['memories'].
+    """
+    id: str
+    timestamp: str  # ISO timestamp
+    summary: str
+    tags: List[str] = Field(default_factory=list)
+    source: Optional[str] = None  # 'scene', 'event', 'flag', or custom
+
+
+@dataclass
+class DerivationContext:
+    """
+    Context passed to derivation plugins during computation.
+
+    Contains available stat snapshots, already-computed derived values,
+    and access to world-level plugin configuration.
+    """
+    stats: Dict[str, BrainStatSnapshot]
+    derived: Dict[str, Any]
+    npc_id: int = 0
+    world_id: int = 0
+    world_meta: Dict[str, Any] = field(default_factory=dict)
+    session_flags: Dict[str, Any] = field(default_factory=dict)
+
+    def get_plugin_config(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        Get plugin-specific configuration from world meta.
+
+        Looks for config at world.meta.brain_config.plugins.<plugin_id>
+        """
+        brain_cfg = self.world_meta.get("brain_config", {})
+        plugins_cfg = brain_cfg.get("plugins", {})
+        return plugins_cfg.get(plugin_id, {})
+
+
+@dataclass
+class DerivationResult:
+    """
+    Result returned by a derivation plugin.
+
+    key: The derived value key (e.g., 'mood', 'instincts', 'logic_strategies')
+    value: The derived value (can be dict, list, or scalar)
+    metadata: Optional metadata about the derivation (for debugging/logging)
+    """
+    key: str
+    value: Any
+    metadata: Dict[str, Any] = field(default_factory=dict)
