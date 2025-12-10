@@ -1032,3 +1032,425 @@ export function createBlockGenerationHooks(config: {
     },
   };
 }
+
+// =============================================================================
+// Image Pool System for Fusion Generation
+// =============================================================================
+
+/**
+ * Image variation categories for pool organization.
+ */
+export type ImageVariationCategory =
+  | 'character_pose'      // Character in different poses (sitting, standing, etc.)
+  | 'character_expression' // Same pose, different expressions
+  | 'character_angle'      // Same pose, different camera angles
+  | 'environment'          // Environment/background variations
+  | 'prop'                 // Props and objects (bench, table, etc.)
+  | 'composite';           // Pre-composed character + environment
+
+/**
+ * Single image asset in the pool.
+ */
+export interface ImagePoolAsset {
+  /** Unique asset ID */
+  id: string;
+
+  /** URL to the image */
+  url: string;
+
+  /** Thumbnail URL (optional) */
+  thumbnailUrl?: string;
+
+  /** Image dimensions */
+  width?: number;
+  height?: number;
+
+  /** Variation category */
+  category: ImageVariationCategory;
+
+  /** Associated character ID (e.g., 'npc:alex', 'char:protagonist') */
+  characterId?: string;
+
+  /** Associated location ID (e.g., 'loc:city_bench', 'loc:park') */
+  locationId?: string;
+
+  /** Pose identifier (e.g., 'sitting', 'standing', 'leaning') */
+  pose?: string;
+
+  /** Expression (e.g., 'happy', 'thoughtful', 'surprised') */
+  expression?: string;
+
+  /** Camera angle (e.g., 'front', 'side', 'three_quarter') */
+  angle?: string;
+
+  /** Prop identifier for prop category */
+  propId?: string;
+
+  /** Tags for additional filtering */
+  tags?: string[];
+
+  /** Quality score (0-1) */
+  quality?: number;
+
+  /** Source information */
+  source?: {
+    type: 'generated' | 'uploaded' | 'extracted';
+    generationJobId?: string;
+    uploadedAt?: string;
+  };
+
+  /** Custom metadata */
+  meta?: Record<string, any>;
+}
+
+/**
+ * Query criteria for image pool.
+ */
+export interface ImagePoolQuery {
+  /** Filter by category */
+  category?: ImageVariationCategory | ImageVariationCategory[];
+
+  /** Filter by character */
+  characterId?: string;
+
+  /** Filter by location */
+  locationId?: string;
+
+  /** Filter by pose */
+  pose?: string | string[];
+
+  /** Filter by expression */
+  expression?: string | string[];
+
+  /** Filter by angle */
+  angle?: string | string[];
+
+  /** Filter by prop */
+  propId?: string;
+
+  /** Required tags */
+  tags?: string[];
+
+  /** Excluded tags */
+  excludeTags?: string[];
+
+  /** Minimum quality */
+  minQuality?: number;
+
+  /** Maximum results */
+  limit?: number;
+
+  /** Random selection from matches */
+  randomize?: boolean;
+}
+
+/**
+ * Image pool provider interface.
+ * Implement this to provide character/environment image variations.
+ */
+export interface ImagePoolProvider {
+  /**
+   * Find images matching query criteria.
+   */
+  find(query: ImagePoolQuery): Promise<ImagePoolAsset[]>;
+
+  /**
+   * Get a specific image by ID.
+   */
+  get(id: string): Promise<ImagePoolAsset | undefined>;
+
+  /**
+   * Get all variations for a character.
+   */
+  getCharacterVariations(
+    characterId: string,
+    options?: {
+      pose?: string;
+      limit?: number;
+    }
+  ): Promise<ImagePoolAsset[]>;
+
+  /**
+   * Get all variations for a location/environment.
+   */
+  getEnvironmentVariations(
+    locationId: string,
+    options?: {
+      limit?: number;
+    }
+  ): Promise<ImagePoolAsset[]>;
+
+  /**
+   * Get prop variations.
+   */
+  getPropVariations(
+    propId: string,
+    options?: {
+      limit?: number;
+    }
+  ): Promise<ImagePoolAsset[]>;
+
+  /**
+   * Check if pool has images for given character + pose.
+   */
+  hasCharacterPose(characterId: string, pose: string): Promise<boolean>;
+}
+
+// =============================================================================
+// Fusion Asset Resolution
+// =============================================================================
+
+/**
+ * Fusion request specifying what images to combine.
+ */
+export interface FusionAssetRequest {
+  /** Character image requirements */
+  character?: {
+    characterId: string;
+    pose?: string;
+    expression?: string;
+    angle?: string;
+  };
+
+  /** Second character (for two-character scenes) */
+  secondCharacter?: {
+    characterId: string;
+    pose?: string;
+    expression?: string;
+    angle?: string;
+  };
+
+  /** Environment/background requirements */
+  environment?: {
+    locationId: string;
+  };
+
+  /** Prop requirements */
+  props?: Array<{
+    propId: string;
+  }>;
+
+  /** Selection strategy */
+  strategy?: 'best_match' | 'random' | 'weighted_random';
+
+  /** Fallback behavior if exact match not found */
+  fallback?: 'similar' | 'any' | 'none';
+}
+
+/**
+ * Resolved fusion assets ready for generation.
+ */
+export interface ResolvedFusionAssets {
+  /** Character image(s) */
+  characterAssets: ImagePoolAsset[];
+
+  /** Environment/background image */
+  environmentAsset?: ImagePoolAsset;
+
+  /** Prop images */
+  propAssets: ImagePoolAsset[];
+
+  /** All assets as URLs (for PixVerse fusion_assets param) */
+  fusionUrls: string[];
+
+  /** Resolution metadata */
+  metadata: {
+    /** Whether exact matches were found */
+    hadExactCharacterMatch: boolean;
+    hadExactEnvironmentMatch: boolean;
+
+    /** Fallback info */
+    usedFallback: boolean;
+    fallbackReason?: string;
+  };
+}
+
+/**
+ * Fusion asset resolver service.
+ * Bridges narrative action blocks with image pools for fusion generation.
+ */
+export interface FusionAssetResolver {
+  /**
+   * Resolve fusion assets from a request.
+   */
+  resolve(request: FusionAssetRequest): Promise<ResolvedFusionAssets>;
+
+  /**
+   * Resolve fusion assets from an ActionBlockNode.
+   * Extracts character/location from node query and resolves images.
+   */
+  resolveFromActionBlock(
+    node: ActionBlockNode,
+    context: {
+      npcId: number;
+      session: GameSessionDTO;
+    }
+  ): Promise<ResolvedFusionAssets>;
+}
+
+/**
+ * Extended generation config for fusion operations.
+ */
+export interface FusionGenerationConfig extends NarrativeGenerationConfig {
+  /** Use fusion generation (multi-image input) */
+  useFusion?: boolean;
+
+  /** Fusion asset requirements */
+  fusionRequest?: FusionAssetRequest;
+
+  /** Whether to cache fusion results */
+  cacheFusionResult?: boolean;
+}
+
+/**
+ * Create hooks for fusion-based generation.
+ *
+ * @example
+ * ```ts
+ * const hooks = createFusionGenerationHooks({
+ *   imagePool: myImagePool,
+ *   fusionResolver: myFusionResolver,
+ *   generationService: myGenerationService,
+ * });
+ *
+ * executor.addHooks(hooks);
+ * ```
+ */
+export function createFusionGenerationHooks(config: {
+  imagePool: ImagePoolProvider;
+  fusionResolver: FusionAssetResolver;
+  generationService: GenerationService;
+  blockResolver?: BlockResolverService;
+  worldConfig?: WorldGenerationOverrides;
+  playerPrefs?: PlayerGenerationPrefs;
+}): GenerationHooks {
+  const {
+    imagePool,
+    fusionResolver,
+    generationService,
+    blockResolver,
+    worldConfig,
+    playerPrefs,
+  } = config;
+
+  return {
+    resolveContent: async (context) => {
+      if (context.node.type !== 'action_block') {
+        return { handled: false };
+      }
+
+      const actionBlock = context.node as ActionBlockNode;
+
+      // Check if fusion is enabled for this node
+      const fusionConfig = (actionBlock as any).fusionConfig as FusionGenerationConfig | undefined;
+      const useFusion = fusionConfig?.useFusion ?? shouldUseFusion(actionBlock, worldConfig);
+
+      if (!useFusion) {
+        // Fall back to standard block generation
+        if (blockResolver) {
+          const resolved = await blockResolver.resolve(actionBlock, {
+            npcId: context.npcId,
+            session: context.session,
+            socialContext: context.socialContext,
+          });
+          return {
+            content: {
+              type: 'video',
+              metadata: {
+                prompts: resolved.prompts,
+                needsGeneration: true,
+              },
+            },
+            handled: true,
+          };
+        }
+        return { handled: false };
+      }
+
+      // Resolve fusion assets from the action block
+      const fusionAssets = await fusionResolver.resolveFromActionBlock(actionBlock, {
+        npcId: context.npcId,
+        session: context.session,
+      });
+
+      if (fusionAssets.fusionUrls.length === 0) {
+        return { error: 'No fusion assets resolved', handled: false };
+      }
+
+      // Build prompt from block resolver if available
+      let prompt = '';
+      if (blockResolver) {
+        const resolved = await blockResolver.resolve(actionBlock, {
+          npcId: context.npcId,
+          session: context.session,
+          socialContext: context.socialContext,
+        });
+        prompt = resolved.prompts.join(' ');
+      }
+
+      // Generate fusion video
+      const request: GenerateContentRequest = {
+        type: 'transition', // Will be routed to fusion
+        strategy: 'per_playthrough',
+        social_context: context.socialContext,
+        style: worldConfig?.defaultStyle,
+        constraints: worldConfig?.defaultConstraints,
+      };
+
+      // Add fusion-specific params (these get mapped to fusion_assets in backend)
+      (request as any).fusion_assets = fusionAssets.fusionUrls;
+      (request as any).prompt = prompt;
+
+      try {
+        const response = await generationService.generate(request);
+        if (response.status === 'complete' && response.content) {
+          return {
+            content: response.content,
+            handled: true,
+          };
+        }
+        if (response.job_id) {
+          return {
+            jobId: response.job_id,
+            handled: false,
+          };
+        }
+      } catch (e) {
+        // Return asset info for client-side handling
+      }
+
+      return {
+        content: {
+          type: 'video',
+          metadata: {
+            fusionAssets: fusionAssets,
+            prompt,
+            needsGeneration: true,
+          },
+        },
+        handled: true,
+      };
+    },
+  };
+}
+
+/**
+ * Determine if fusion should be used based on node and world config.
+ */
+function shouldUseFusion(
+  node: ActionBlockNode,
+  worldConfig?: WorldGenerationOverrides
+): boolean {
+  // Check node query for character + location combo
+  if (node.query) {
+    const hasCharacter = !!node.query.pose || !!node.query.intimacy_level;
+    const hasLocation = !!node.query.location;
+    // Fusion is useful when we have both character context and environment
+    if (hasCharacter && hasLocation) {
+      return true;
+    }
+  }
+
+  // Could also check world config for default fusion preference
+  return false;
+}

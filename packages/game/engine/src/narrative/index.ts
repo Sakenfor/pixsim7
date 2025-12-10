@@ -107,6 +107,7 @@ export {
   extractGenerationConfig,
   buildSocialContext,
   createBlockGenerationHooks,
+  createFusionGenerationHooks,
   // Types
   type NarrativeGenerationStrategy,
   type NarrativeGenerationConfig,
@@ -127,4 +128,13 @@ export {
   type ResolvedBlockSequence,
   type BlockResolverService,
   type GenerationBridgeWithBlocksConfig,
+  // Image pool for fusion generation
+  type ImageVariationCategory,
+  type ImagePoolAsset,
+  type ImagePoolQuery,
+  type ImagePoolProvider,
+  type FusionAssetRequest,
+  type ResolvedFusionAssets,
+  type FusionAssetResolver,
+  type FusionGenerationConfig,
 } from './generationIntegration';
