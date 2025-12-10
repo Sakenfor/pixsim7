@@ -51,12 +51,6 @@ export function useAssetsController() {
     },
   });
 
-  // Scope state (All, Favorites, Mine, Recent)
-  const [scope, setScope] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('scope') || 'all';
-  });
-
   // Data loading
   const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
 
@@ -75,25 +69,6 @@ export function useAssetsController() {
 
   // Multi-select state
   const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, isSelected } = useSelection();
-
-  // Sync scope to URL when it changes
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (scope === 'all') {
-      params.delete('scope');
-    } else {
-      params.set('scope', scope);
-    }
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-  }, [scope]);
-
-  // Handle scope change
-  const handleScopeChange = useCallback((newScope: string) => {
-    setScope(newScope);
-  }, []);
 
   // Handle asset selection for picker mode
   const handleSelectAsset = useCallback((asset: AssetSummary) => {
@@ -258,10 +233,6 @@ export function useAssetsController() {
     // Filters
     filters,
     setFilters,
-
-    // Scope
-    scope,
-    setScope: handleScopeChange,
 
     // Data
     assets: items,

@@ -13,6 +13,7 @@ import {
 } from '@/stores/assetViewerStore';
 import { Icon } from '@/lib/icons';
 import { Button } from '@pixsim7/shared.ui';
+import { ViewerQuickGenerate } from './ViewerQuickGenerate';
 
 export function AssetViewerPanel() {
   const currentAsset = useAssetViewerStore((s) => s.currentAsset);
@@ -202,10 +203,10 @@ export function AssetViewerPanel() {
           {renderMedia()}
         </div>
 
-        {/* Navigation + metadata */}
-        <div className="flex-shrink-0 p-3 border-t border-neutral-200 dark:border-neutral-700">
+        {/* Navigation + Quick Generate + metadata */}
+        <div className="flex-shrink-0 p-3 border-t border-neutral-200 dark:border-neutral-700 space-y-3">
           {/* Navigation */}
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between">
             <button
               onClick={navigatePrev}
               disabled={!canNavigatePrev}
@@ -226,6 +227,11 @@ export function AssetViewerPanel() {
               <Icon name="chevronRight" size={20} />
             </button>
           </div>
+
+          {/* Quick Generate (only for gallery assets) */}
+          {currentAsset.source === 'gallery' && (
+            <ViewerQuickGenerate asset={currentAsset} />
+          )}
 
           {/* Metadata (collapsible) */}
           {renderMetadata()}

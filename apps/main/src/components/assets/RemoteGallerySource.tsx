@@ -11,12 +11,6 @@ import { ThemedIcon } from '@/lib/icons';
 import type { GalleryToolContext, GalleryAsset } from '@/lib/gallery/types';
 import { getMediaCardPreset } from '@/lib/overlay';
 
-const SCOPE_TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'favorites', label: 'Favorites' },
-  { id: 'mine', label: 'Mine' },
-  { id: 'recent', label: 'Recent' },
-];
 
 interface RemoteGallerySourceProps {
   layout: 'masonry' | 'grid';
@@ -246,77 +240,75 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
           <h2 className="text-lg font-semibold">Remote Gallery</h2>
         </div>
 
-        <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
-          <div className="flex flex-wrap gap-2 items-center">
-            {/* Scope tabs */}
-            <div className="flex gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2">
-              {SCOPE_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  className={`px-3 py-1 text-xs rounded transition-colors ${
-                    controller.scope === tab.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600'
-                  }`}
-                  onClick={() => controller.setScope(tab.id as any)}
-                >
-                  {tab.label}
-                </button>
-              ))}
+        <div className="bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search */}
+            <div className="flex-1 min-w-[200px] max-w-[300px]">
+              <input
+                placeholder="Search tags, description..."
+                className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={controller.filters.q}
+                onChange={(e) => controller.setFilters({ q: e.target.value })}
+              />
             </div>
 
-            <input
-              placeholder="Search..."
-              className="px-2 py-1 text-sm border rounded"
-              value={controller.filters.q}
-              onChange={(e) => controller.setFilters({ q: e.target.value })}
-            />
+            {/* Divider */}
+            <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
+
+            {/* Filter dropdowns */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={controller.filters.media_type || ''}
+                onChange={(e) =>
+                  controller.setFilters({
+                    media_type: (e.target.value || undefined) as any,
+                  })
+                }
+              >
+                <option value="">All Media</option>
+                <option value="image">Images</option>
+                <option value="video">Videos</option>
+                <option value="audio">Audio</option>
+                <option value="3d_model">3D Models</option>
+              </select>
+              <select
+                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={controller.filters.provider_id || ''}
+                onChange={(e) => controller.setFilters({ provider_id: e.target.value || undefined })}
+              >
+                <option value="">All Providers</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={controller.filters.provider_status || ''}
+                onChange={(e) => controller.setFilters({ provider_status: (e.target.value || undefined) as any })}
+              >
+                <option value="">All Status</option>
+                <option value="ok">Provider OK</option>
+                <option value="local_only">Local Only</option>
+                <option value="flagged">Flagged</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+
+            {/* Divider */}
+            <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
+
+            {/* Sort */}
             <select
-              className="px-2 py-1 text-sm border rounded"
-              value={controller.filters.provider_id || ''}
-              onChange={(e) => controller.setFilters({ provider_id: e.target.value || undefined })}
-            >
-              <option value="">All Providers</option>
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="px-2 py-1 text-sm border rounded"
-              value={controller.filters.media_type || ''}
-              onChange={(e) =>
-                controller.setFilters({
-                  media_type: (e.target.value || undefined) as any,
-                })
-              }
-            >
-              <option value="">All Media</option>
-              <option value="image">Images</option>
-              <option value="video">Videos</option>
-              <option value="audio">Audio</option>
-              <option value="3d_model">3D Models</option>
-            </select>
-            <select
-              className="px-2 py-1 text-sm border rounded"
+              className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={controller.filters.sort}
               onChange={(e) => controller.setFilters({ sort: e.target.value as any })}
             >
-              <option value="new">Newest</option>
-              <option value="old">Oldest</option>
+              <option value="new">Newest First</option>
+              <option value="old">Oldest First</option>
               <option value="alpha">A–Z</option>
-            </select>
-            <select
-              className="px-2 py-1 text-sm border rounded"
-              value={controller.filters.provider_status || ''}
-              onChange={(e) => controller.setFilters({ provider_status: (e.target.value || undefined) as any })}
-            >
-              <option value="">All Status</option>
-              <option value="ok">Provider OK</option>
-              <option value="local_only">Local Only</option>
-              <option value="flagged">Flagged</option>
-              <option value="unknown">Unknown</option>
             </select>
           </div>
         </div>

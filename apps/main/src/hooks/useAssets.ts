@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient } from '../lib/api/client';
 
 export interface AssetSummary {
@@ -56,29 +56,40 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     provider_status: filters.provider_status || undefined,
   }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type, filters.provider_status]);
 
-  async function loadMore() {
+  // Use ref to always access current filterParams in loadMore without stale closures
+  const filterParamsRef = useRef(filterParams);
+  filterParamsRef.current = filterParams;
+
+  // Use ref for cursor to avoid stale closure issues
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+
+  const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
     setLoading(true);
     setError(null);
     try {
+      const currentFilters = filterParamsRef.current;
+      const currentCursor = cursorRef.current;
+
       const params = new URLSearchParams();
       params.set('limit', String(limit));
-      if (cursor) params.set('cursor', cursor);
-      if (filterParams.q) params.set('q', filterParams.q);
-      if (filterParams.tag) params.set('tag', filterParams.tag);
-      if (filterParams.provider_id) params.set('provider_id', String(filterParams.provider_id));
+      if (currentCursor) params.set('cursor', currentCursor);
+      if (currentFilters.q) params.set('q', currentFilters.q);
+      if (currentFilters.tag) params.set('tag', currentFilters.tag);
+      if (currentFilters.provider_id) params.set('provider_id', String(currentFilters.provider_id));
       // 'sort' may be ignored by backend; included for future compatibility
-      if (filterParams.sort) params.set('sort', filterParams.sort);
-      if (filterParams.media_type) params.set('media_type', filterParams.media_type);
+      if (currentFilters.sort) params.set('sort', currentFilters.sort);
+      if (currentFilters.media_type) params.set('media_type', currentFilters.media_type);
 
       const res = await apiClient.get<AssetsResponse>(`/assets?${params.toString()}`);
       let data = res.data;
 
       // Client-side filter for provider_status (backend doesn't support this yet)
-      if (filterParams.provider_status) {
+      if (currentFilters.provider_status) {
         data = {
           ...data,
-          assets: data.assets.filter(a => a.provider_status === filterParams.provider_status),
+          assets: data.assets.filter(a => a.provider_status === currentFilters.provider_status),
         };
       }
 
@@ -101,33 +112,29 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     } finally {
       setLoading(false);
     }
-  }
+  }, [loading, hasMore, limit]);
 
-  function reset() {
+  const reset = useCallback(() => {
     setItems([]);
     setCursor(null);
     setHasMore(true);
     setError(null);
     initialLoadRequestedRef.current = false;
-  }
+  }, []);
 
-  // Reset and load when filters change
+  // Reset when filters change
   useEffect(() => {
     reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit]);
+  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit, reset]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
-  // NOTE: Only depends on items.length and loading to avoid double-loading
-  // Filter changes are handled by the reset effect above
   useEffect(() => {
     if (items.length === 0 && !loading && !initialLoadRequestedRef.current) {
       // initial or after reset (guarded so StrictMode doesn't double-load)
       initialLoadRequestedRef.current = true;
       loadMore();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, loading]);
+  }, [items.length, loading, loadMore]);
 
   return { items, loadMore, loading, error, hasMore, reset };
 }

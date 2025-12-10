@@ -12,4 +12,5 @@ import './PanelsSettings';
 import './PromptsSettings';
 import './ProfilesSettings';
 import './MediaSettings';
+import './GenerationSettings';
 import './DebugSettings';

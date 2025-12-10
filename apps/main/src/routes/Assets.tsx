@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
+import { useControlCenterLayout } from '../hooks/useControlCenterLayout';
 import { Modal } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
@@ -25,6 +26,7 @@ export function AssetsRoute() {
   const location = useLocation();
   const controller = useAssetsController();
   const { isConnected: generationWsConnected } = useGenerationWebSocket();
+  const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Shared layout state for all sources
@@ -108,7 +110,7 @@ export function AssetsRoute() {
   }, [allSources, handleSourceChange]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden" style={layoutStyle}>
       {/* Fixed header section */}
       <div className="flex-shrink-0 p-6 space-y-4 overflow-visible">
         {/* Selection Mode Banner */}

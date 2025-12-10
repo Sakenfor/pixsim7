@@ -8,6 +8,7 @@ import type { OperationType } from '../types/operations';
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
 export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
+export type LayoutBehavior = 'overlay' | 'push';
 
 export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
 export type AssetSourceType = 'url' | 'asset' | 'paused_frame';
@@ -33,6 +34,7 @@ export type TimelineAsset = {
 export interface ControlCenterState {
   mode: ControlCenterMode;  // 'dock' or 'cubes' mode
   dockPosition: DockPosition; // where the dock is positioned
+  layoutBehavior: LayoutBehavior; // 'overlay' (float over content) or 'push' (resize content)
   open: boolean;            // whether dock is expanded
   pinned: boolean;          // if true, stays open
   height: number;           // height/width in px when expanded (used for vertical/horizontal sizing)
@@ -53,6 +55,7 @@ export interface ControlCenterActions {
   setMode: (mode: ControlCenterMode) => void;
   toggleMode: () => void;
   setDockPosition: (position: DockPosition) => void;
+  setLayoutBehavior: (behavior: LayoutBehavior) => void;
   toggleOpen: () => void;
   setOpen: (v: boolean) => void;
   setPinned: (v: boolean) => void;
@@ -80,6 +83,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       return {
         mode: 'dock',
         dockPosition: 'bottom',
+        layoutBehavior: 'overlay',
         open: false,
         pinned: false,
         height: 300, // Increased from 180px
@@ -99,6 +103,10 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         set({ mode });
       },
       toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
+      setLayoutBehavior: (behavior) => {
+        if (get().layoutBehavior === behavior) return;
+        set({ layoutBehavior: behavior });
+      },
       setDockPosition: (position) => {
         if (get().dockPosition === position) return;
         const currentPosition = get().dockPosition;
@@ -178,6 +186,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       reset: () => set({
         mode: 'dock',
         dockPosition: 'bottom',
+        layoutBehavior: 'overlay',
         open: false,
         pinned: false,
         height: 300,
@@ -202,6 +211,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       partialize: (s) => ({
         mode: s.mode,
         dockPosition: s.dockPosition,
+        layoutBehavior: s.layoutBehavior,
         open: s.open,
         pinned: s.pinned,
         height: s.height,
@@ -216,7 +226,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         presetParams: s.presetParams,
         assets: s.assets,
       }),
-      version: 6,
+      version: 7,
       migrate: (persistedState: any, version: number) => {
         let migrated = { ...persistedState };
 
@@ -246,6 +256,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           if (migrated.floatingSize?.height === 500) {
             migrated.floatingSize.height = 600;
           }
+        }
+
+        // Migrate from version 6 to 7: add layoutBehavior
+        if (version < 7) {
+          migrated.layoutBehavior = migrated.layoutBehavior || 'overlay';
         }
 
         return migrated;
