@@ -698,6 +698,193 @@
 }
 
 /* ============================================================================
+   Banana Tool - Curved fruit with squish physics
+   ============================================================================ */
+
+.banana-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  --banana-yellow: rgb(255, 225, 53);
+  --banana-yellow-dark: rgb(220, 180, 30);
+  --banana-yellow-light: rgb(255, 245, 150);
+  --banana-brown: rgb(139, 90, 43);
+}
+
+.banana-body {
+  position: absolute;
+  width: 20px;
+  height: 55px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-20deg);
+  transform-style: preserve-3d;
+}
+
+/* Banana segments - curved shape */
+.banana-segment {
+  position: absolute;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--banana-yellow-dark),
+    var(--banana-yellow) 30%,
+    var(--banana-yellow-light) 50%,
+    var(--banana-yellow) 70%,
+    var(--banana-yellow-dark)
+  );
+  border-radius: 50% / 30%;
+  transform-origin: center;
+  transition: transform 0.15s ease-out;
+}
+
+.banana-segment.segment-top {
+  height: 18px;
+  top: 0;
+  border-radius: 50% 50% 30% 30%;
+  transform: rotate(calc(var(--bend-angle, 0deg) * 0.5)) scaleY(var(--squish-scale, 1));
+}
+
+.banana-segment.segment-middle {
+  height: 22px;
+  top: 16px;
+  transform: scaleY(var(--squish-scale, 1));
+}
+
+.banana-segment.segment-bottom {
+  height: 18px;
+  top: 36px;
+  border-radius: 30% 30% 50% 50%;
+  transform: rotate(calc(var(--bend-angle, 0deg) * -0.5)) scaleY(var(--squish-scale, 1));
+}
+
+/* Ridges that run along the banana */
+.banana-ridge {
+  position: absolute;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--banana-yellow-dark) 20%,
+    var(--banana-yellow-dark) 80%,
+    transparent
+  );
+  opacity: 0.4;
+}
+
+.banana-ridge.ridge-1 {
+  left: 25%;
+}
+
+.banana-ridge.ridge-2 {
+  left: 50%;
+  opacity: 0.3;
+}
+
+.banana-ridge.ridge-3 {
+  left: 75%;
+}
+
+/* Banana tip */
+.banana-tip {
+  position: absolute;
+  width: 8px;
+  height: 10px;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    var(--banana-yellow-dark),
+    var(--banana-brown)
+  );
+  border-radius: 30% 30% 50% 50%;
+}
+
+/* Banana stem */
+.banana-stem {
+  position: absolute;
+  width: 6px;
+  height: 12px;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(10deg);
+  background: linear-gradient(
+    to top,
+    var(--banana-yellow-dark),
+    var(--banana-brown) 60%,
+    rgb(80, 50, 20)
+  );
+  border-radius: 3px 3px 0 0;
+}
+
+/* Shadow under banana */
+.banana-shadow {
+  position: absolute;
+  width: 30px;
+  height: 8px;
+  bottom: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse,
+    rgba(0, 0, 0, 0.3),
+    transparent 70%
+  );
+  filter: blur(2px);
+  transition: scale 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+/* Impact waves when pressure is high */
+.impact-waves {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.impact-wave {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--banana-yellow);
+  border-radius: 50%;
+  animation: banana-impact 0.5s ease-out forwards;
+}
+
+.impact-wave.wave-1 {
+  animation-delay: 0s;
+}
+
+.impact-wave.wave-2 {
+  animation-delay: 0.15s;
+}
+
+@keyframes banana-impact {
+  0% {
+    scale: 0.3;
+    opacity: 0.8;
+  }
+  100% {
+    scale: 1.5;
+    opacity: 0;
+  }
+}
+
+/* Squish animation when pressure applied */
+.banana-visual .banana-body {
+  transform: translate(-50%, -50%) rotate(-20deg) scaleY(calc(1 - var(--pressure, 0) * 0.2));
+  transition: transform 0.1s ease-out;
+}
+
+/* ============================================================================
    Ice Crystal
    ============================================================================ */
 
