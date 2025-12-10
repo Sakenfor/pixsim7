@@ -138,6 +138,15 @@ export {
   type ResolvedFusionAssets,
   type FusionAssetResolver,
   type FusionGenerationConfig,
+  // Backend enum reference types (from types_v2.py)
+  type CameraMovementType,
+  type CameraSpeed,
+  type CameraPath,
+  type ContentRating,
+  type IntensityPattern,
+  type BlockKind,
+  type CameraMovement,
+  type ConsistencyFlags,
   // Ontology reference types (from pose_taxonomy.py, core_surfaces.py, ontology.yaml)
   type PoseId,
   type PoseCategory,

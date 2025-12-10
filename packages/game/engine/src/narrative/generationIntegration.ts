@@ -804,6 +804,75 @@ export function buildSocialContext(
 // Prompt Fragment / Block System Integration
 // =============================================================================
 
+// =============================================================================
+// Backend Enum Reference Types
+// =============================================================================
+// These reference canonical enums defined in:
+// - pixsim7/backend/main/domain/narrative/action_blocks/types_v2.py
+
+/**
+ * Camera movement type from backend CameraMovementType enum.
+ * Values: 'static', 'rotation', 'dolly', 'tracking', 'handheld'
+ * @see types_v2.py CameraMovementType
+ */
+export type CameraMovementType = string;
+
+/**
+ * Camera speed from backend CameraSpeed enum.
+ * Values: 'slow', 'medium', 'fast'
+ * @see types_v2.py CameraSpeed
+ */
+export type CameraSpeed = string;
+
+/**
+ * Camera path from backend CameraPath enum.
+ * Values: 'circular', 'arc', 'linear'
+ * @see types_v2.py CameraPath
+ */
+export type CameraPath = string;
+
+/**
+ * Content rating from backend ContentRating enum.
+ * Values: 'general', 'suggestive', 'intimate', 'explicit'
+ * @see types_v2.py ContentRating
+ */
+export type ContentRating = string;
+
+/**
+ * Intensity pattern from backend IntensityPattern enum.
+ * Values: 'steady', 'building', 'pulsing', 'declining'
+ * @see types_v2.py IntensityPattern
+ */
+export type IntensityPattern = string;
+
+/**
+ * Block kind - structural distinction between single-state and transition blocks.
+ * This is a structural type (system behavior), not semantic content.
+ */
+export type BlockKind = 'single_state' | 'transition';
+
+/**
+ * Camera movement specification matching backend CameraMovement model.
+ * @see types_v2.py CameraMovement
+ */
+export interface CameraMovement {
+  type: CameraMovementType;
+  speed?: CameraSpeed;
+  path?: CameraPath;
+  focus?: string;
+}
+
+/**
+ * Consistency flags matching backend ConsistencyFlags model.
+ * @see types_v2.py ConsistencyFlags
+ */
+export interface ConsistencyFlags {
+  maintainPose?: boolean;
+  preserveLighting?: boolean;
+  preserveClothing?: boolean;
+  preservePosition?: boolean;
+}
+
 /**
  * Resolved action block sequence from the backend.
  * This is the output of the ActionBlockResolver.
@@ -812,21 +881,12 @@ export interface ResolvedBlockSequence {
   /** Individual block data */
   blocks: Array<{
     blockId: string;
-    kind: 'single_state' | 'transition';
+    kind: BlockKind;
     prompt: string;
     durationSec: number;
     tags?: string[];
-    camera?: {
-      type: 'static' | 'rotation' | 'dolly' | 'tracking' | 'handheld';
-      speed?: 'slow' | 'medium' | 'fast';
-      focus?: string;
-    };
-    consistency?: {
-      maintainPose?: boolean;
-      preserveLighting?: boolean;
-      preserveClothing?: boolean;
-      preservePosition?: boolean;
-    };
+    camera?: CameraMovement;
+    consistency?: ConsistencyFlags;
   }>;
 
   /** Combined prompts ready for generation */
@@ -1068,9 +1128,11 @@ export type PoseId = string;
 
 /**
  * Pose category from PoseTaxonomy.
- * @see pose_taxonomy.py
+ * Values loaded from backend pose_taxonomy.py, not hardcoded here.
+ * Common categories: 'standing', 'sitting', 'lying', 'kneeling', 'action'
+ * @see pose_taxonomy.py for canonical list
  */
-export type PoseCategory = 'standing' | 'sitting' | 'lying' | 'kneeling' | 'action' | string;
+export type PoseCategory = string;
 
 /**
  * Expression/mood ID from NPC surfaces or ontology.
