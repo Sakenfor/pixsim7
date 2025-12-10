@@ -7,6 +7,7 @@
  * - ConditionEvaluator: Parses and evaluates condition expressions
  * - EffectApplicator: Applies StateEffects to game session
  * - NarrativeExecutor: Main runtime engine for executing narrative programs
+ * - NodeHandlerRegistry: Dynamic, pluggable node type handling
  * - ECS Helpers: State management for narrative runtime
  *
  * The runtime is fully data-driven - NarrativeProgram JSON defines all story
@@ -17,19 +18,24 @@
  * import {
  *   NarrativeExecutor,
  *   createProgramProvider,
- *   evaluateCondition,
- *   applyEffects,
+ *   createNodeHandlerRegistry,
  * } from '@pixsim7/game-core/narrative';
  *
- * // Create executor with program provider
+ * // Basic usage with default handlers
  * const provider = createProgramProvider([myProgram]);
  * const executor = new NarrativeExecutor(provider);
- *
- * // Start a narrative
  * const result = executor.start(session, npcId, 'my_program_id');
  *
- * // Step through with player input
- * const nextResult = executor.step(session, npcId, { choiceId: 'accept' });
+ * // With custom node type
+ * const registry = createNodeHandlerRegistry();
+ * registry.register('my_custom_node', {
+ *   execute: (context) => ({
+ *     session: context.session,
+ *     awaitInput: false,
+ *     skipEdgeTraversal: false,
+ *   })
+ * });
+ * const customExecutor = new NarrativeExecutor(provider, registry);
  * ```
  */
 
@@ -51,6 +57,28 @@ export {
   mergeEffects,
   type ApplyEffectsResult,
 } from './effectApplicator';
+
+// Node handler registry (dynamic node type handling)
+export {
+  NodeHandlerRegistry,
+  nodeHandlerRegistry,
+  createNodeHandlerRegistry,
+  // Built-in handlers (can be used as reference or overridden)
+  dialogueHandler,
+  choiceHandler,
+  actionHandler,
+  actionBlockHandler,
+  sceneHandler,
+  branchHandler,
+  waitHandler,
+  externalCallHandler,
+  commentHandler,
+  // Types
+  type NodeHandler,
+  type SimpleNodeHandler,
+  type NodeExecutionContext,
+  type NodeHandlerResult,
+} from './nodeHandlers';
 
 // Main executor
 export {

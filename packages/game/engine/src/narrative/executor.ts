@@ -4,14 +4,22 @@
  * Executes NarrativeProgram graphs step-by-step.
  * Handles node execution, edge traversal, effect application, and state management.
  *
- * The executor is data-driven - it interprets NarrativeProgram JSON without
- * containing any story logic itself.
+ * The executor is fully data-driven:
+ * - NarrativeProgram JSON defines story structure
+ * - NodeHandlerRegistry enables dynamic node type handling
+ * - No hardcoded story logic
  *
  * @example
+ * ```ts
+ * // Basic usage with default handlers
  * const executor = new NarrativeExecutor(programProvider);
- * const result = await executor.step(session, npcId, { choiceId: "accept" });
- * // result.display contains what to show
- * // result.session is the updated session
+ * const result = executor.start(session, npcId, 'my_program');
+ *
+ * // With custom node type
+ * const registry = createNodeHandlerRegistry();
+ * registry.register('my_custom_node', myHandler);
+ * const executor = new NarrativeExecutor(programProvider, registry);
+ * ```
  */
 
 import type {
@@ -22,22 +30,12 @@ import type {
   NarrativeRuntimeState,
   NarrativeStepResult,
   StateEffects,
-  DialogueNode,
   ChoiceNode,
-  ActionNode,
-  ActionBlockNode,
-  SceneNode,
-  BranchNode,
-  WaitNode,
-  ExternalCallNode,
-  CommentNode,
   NodeId,
-  ConditionExpression,
 } from '@pixsim7/shared.types';
 
 import {
   getNarrativeState,
-  setNarrativeState,
   startProgram,
   finishProgram,
   advanceToNode,
@@ -46,14 +44,19 @@ import {
 import {
   ConditionEvaluator,
   buildEvalContext,
-  type EvalContext,
 } from './conditionEvaluator';
 
 import {
   applyEffects,
   mergeEffects,
-  type ApplyEffectsResult,
 } from './effectApplicator';
+
+import {
+  nodeHandlerRegistry,
+  type NodeHandlerRegistry,
+  type NodeExecutionContext,
+  type NodeHandlerResult,
+} from './nodeHandlers';
 
 /**
  * Provider interface for loading narrative programs.
@@ -100,53 +103,28 @@ export interface ExecutorStepResult {
 }
 
 /**
- * Context passed to node handlers.
- */
-interface NodeExecutionContext {
-  node: NarrativeNode;
-  program: NarrativeProgram;
-  session: GameSessionDTO;
-  state: NarrativeRuntimeState;
-  npcId: number;
-  input?: StepInput;
-  evalContext: EvalContext;
-}
-
-/**
- * Result from a node handler.
- */
-interface NodeHandlerResult {
-  /** Updated session */
-  session: GameSessionDTO;
-  /** Display content */
-  display?: ExecutorStepResult['display'];
-  /** Choices to present */
-  choices?: ExecutorStepResult['choices'];
-  /** Scene transition */
-  sceneTransition?: ExecutorStepResult['sceneTransition'];
-  /** Effects applied by this node */
-  appliedEffects?: StateEffects;
-  /** Next node to advance to (if determined by node itself) */
-  nextNodeId?: NodeId;
-  /** Whether to wait for input before advancing */
-  awaitInput: boolean;
-  /** Whether to skip edge traversal (node handles it) */
-  skipEdgeTraversal: boolean;
-  /** Whether this node terminates the program */
-  terminatesProgram?: boolean;
-}
-
-/**
  * Narrative Executor
  *
  * Main runtime engine for executing narrative programs.
+ * Uses a pluggable node handler registry for dynamic node type support.
  */
 export class NarrativeExecutor {
   private programProvider: NarrativeProgramProvider;
+  private handlerRegistry: NodeHandlerRegistry;
   private conditionEvaluator: ConditionEvaluator;
 
-  constructor(programProvider: NarrativeProgramProvider) {
+  /**
+   * Create a new NarrativeExecutor.
+   *
+   * @param programProvider - Provider for loading narrative programs
+   * @param handlerRegistry - Optional custom handler registry (uses default if not provided)
+   */
+  constructor(
+    programProvider: NarrativeProgramProvider,
+    handlerRegistry?: NodeHandlerRegistry
+  ) {
     this.programProvider = programProvider;
+    this.handlerRegistry = handlerRegistry || nodeHandlerRegistry;
     this.conditionEvaluator = new ConditionEvaluator();
   }
 
@@ -171,7 +149,7 @@ export class NarrativeExecutor {
     }
 
     // Clone session for mutation
-    let newSession = this.cloneSession(session);
+    const newSession = this.cloneSession(session);
 
     // Start the program (updates ECS state)
     const state = startProgram(newSession, npcId, programId, program.entryNodeId, initialVariables);
@@ -210,7 +188,7 @@ export class NarrativeExecutor {
     }
 
     // Clone session for mutation
-    let newSession = this.cloneSession(session);
+    const newSession = this.cloneSession(session);
 
     // Handle input for choice nodes
     if (currentNode.type === 'choice' && input?.choiceId) {
@@ -220,6 +198,17 @@ export class NarrativeExecutor {
     // For other nodes, advance to the next node
     return this.advanceFromNode(newSession, npcId, state, program, currentNode);
   }
+
+  /**
+   * Get the handler registry (for registration of custom handlers).
+   */
+  getHandlerRegistry(): NodeHandlerRegistry {
+    return this.handlerRegistry;
+  }
+
+  // ==========================================================================
+  // Private Methods
+  // ==========================================================================
 
   /**
    * Execute the current node and return display content.
@@ -248,10 +237,8 @@ export class NarrativeExecutor {
       return this.errorResult(session, npcId, `Node not found: ${state.activeNodeId}`);
     }
 
-    // Build evaluation context
+    // Build execution context
     const evalContext = buildEvalContext(session, npcId, state.variables);
-
-    // Execute the node handler
     const context: NodeExecutionContext = {
       node,
       program,
@@ -259,9 +246,19 @@ export class NarrativeExecutor {
       state,
       npcId,
       evalContext,
+      conditionEvaluator: this.conditionEvaluator,
+      interpolate: (template: string) => this.interpolateTemplate(template, state, evalContext),
     };
 
-    const handlerResult = this.executeNodeHandler(context);
+    // Look up handler from registry
+    const handler = this.handlerRegistry.get(node.type);
+    if (!handler) {
+      console.warn(`[NarrativeExecutor] No handler registered for node type: ${node.type}`);
+      return this.advanceFromNode(session, npcId, state, program, node);
+    }
+
+    // Execute the handler
+    const handlerResult = handler.execute(context);
 
     // Apply onEnter effects
     let newSession = handlerResult.session;
@@ -421,282 +418,6 @@ export class NarrativeExecutor {
     return this.executeCurrentNode(newSession, npcId, newState);
   }
 
-  /**
-   * Execute the appropriate handler for a node type.
-   */
-  private executeNodeHandler(context: NodeExecutionContext): NodeHandlerResult {
-    const { node } = context;
-
-    switch (node.type) {
-      case 'dialogue':
-        return this.handleDialogueNode(context, node as DialogueNode);
-      case 'choice':
-        return this.handleChoiceNode(context, node as ChoiceNode);
-      case 'action':
-        return this.handleActionNode(context, node as ActionNode);
-      case 'action_block':
-        return this.handleActionBlockNode(context, node as ActionBlockNode);
-      case 'scene':
-        return this.handleSceneNode(context, node as SceneNode);
-      case 'branch':
-        return this.handleBranchNode(context, node as BranchNode);
-      case 'wait':
-        return this.handleWaitNode(context, node as WaitNode);
-      case 'external_call':
-        return this.handleExternalCallNode(context, node as ExternalCallNode);
-      case 'comment':
-        return this.handleCommentNode(context, node as CommentNode);
-      default:
-        console.warn(`Unknown node type: ${(node as any).type}`);
-        return {
-          session: context.session,
-          awaitInput: false,
-          skipEdgeTraversal: false,
-        };
-    }
-  }
-
-  // ==========================================================================
-  // Node Handlers
-  // ==========================================================================
-
-  private handleDialogueNode(context: NodeExecutionContext, node: DialogueNode): NodeHandlerResult {
-    let text = '';
-
-    switch (node.mode) {
-      case 'static':
-        text = node.text || '';
-        break;
-      case 'template':
-        text = this.interpolateTemplate(node.template || '', context);
-        break;
-      case 'llm_program':
-        // LLM generation would be handled externally
-        text = `[LLM Program: ${node.programId}]`;
-        break;
-    }
-
-    return {
-      session: context.session,
-      display: {
-        type: 'dialogue',
-        data: {
-          text,
-          speaker: node.speaker,
-          emotion: node.emotion,
-          autoAdvance: node.autoAdvance,
-          advanceDelay: node.advanceDelay,
-        },
-      },
-      awaitInput: !node.autoAdvance,
-      skipEdgeTraversal: false,
-    };
-  }
-
-  private handleChoiceNode(context: NodeExecutionContext, node: ChoiceNode): NodeHandlerResult {
-    // Evaluate conditions for each choice
-    const choices = node.choices.map((choice: ChoiceNode['choices'][number]) => {
-      let available = true;
-      if (choice.condition) {
-        available = this.conditionEvaluator.evaluate(choice.condition.expression, context.evalContext);
-      }
-      return {
-        id: choice.id,
-        text: this.interpolateTemplate(choice.text, context),
-        available,
-        hints: choice.hints,
-      };
-    });
-
-    return {
-      session: context.session,
-      display: {
-        type: 'choice',
-        data: {
-          prompt: node.prompt ? this.interpolateTemplate(node.prompt, context) : undefined,
-        },
-      },
-      choices,
-      awaitInput: true,
-      skipEdgeTraversal: true, // Choice handling is done in handleChoiceInput
-    };
-  }
-
-  private handleActionNode(context: NodeExecutionContext, node: ActionNode): NodeHandlerResult {
-    // Apply effects
-    const effectResult = applyEffects(node.effects, context.session, context.npcId);
-
-    return {
-      session: effectResult.session,
-      appliedEffects: node.effects,
-      awaitInput: false,
-      skipEdgeTraversal: false,
-    };
-  }
-
-  private handleActionBlockNode(context: NodeExecutionContext, node: ActionBlockNode): NodeHandlerResult {
-    // Action blocks trigger visual generation
-    // The actual generation is handled externally; we just signal what to generate
-
-    return {
-      session: context.session,
-      display: {
-        type: 'action_block',
-        data: {
-          mode: node.mode,
-          blockIds: node.blockIds,
-          query: node.query,
-          composition: node.composition,
-          launchMode: node.launchMode,
-          generationConfig: node.generationConfig,
-        },
-      },
-      awaitInput: node.launchMode === 'pending',
-      skipEdgeTraversal: false,
-    };
-  }
-
-  private handleSceneNode(context: NodeExecutionContext, node: SceneNode): NodeHandlerResult {
-    if (node.mode === 'transition' && node.sceneId !== undefined) {
-      return {
-        session: context.session,
-        sceneTransition: {
-          sceneId: node.sceneId,
-          nodeId: node.nodeId,
-        },
-        awaitInput: false,
-        skipEdgeTraversal: false,
-        terminatesProgram: true, // Scene transition ends the narrative program
-      };
-    }
-
-    // Intent mode - just sets an intent flag
-    if (node.mode === 'intent' && node.intent) {
-      const flags = context.session.flags as Record<string, any>;
-      flags.sceneIntent = node.intent;
-    }
-
-    return {
-      session: context.session,
-      awaitInput: false,
-      skipEdgeTraversal: false,
-    };
-  }
-
-  private handleBranchNode(context: NodeExecutionContext, node: BranchNode): NodeHandlerResult {
-    // Evaluate branches in order
-    for (const branch of node.branches) {
-      const conditionMet = this.conditionEvaluator.evaluate(branch.condition.expression, context.evalContext);
-      if (conditionMet) {
-        // Apply branch effects if any
-        let session = context.session;
-        if (branch.effects) {
-          const effectResult = applyEffects(branch.effects, session, context.npcId);
-          session = effectResult.session;
-        }
-
-        return {
-          session,
-          appliedEffects: branch.effects,
-          nextNodeId: branch.targetNodeId,
-          awaitInput: false,
-          skipEdgeTraversal: true,
-        };
-      }
-    }
-
-    // No branch matched - use default or continue via edges
-    if (node.defaultTargetNodeId) {
-      return {
-        session: context.session,
-        nextNodeId: node.defaultTargetNodeId,
-        awaitInput: false,
-        skipEdgeTraversal: true,
-      };
-    }
-
-    return {
-      session: context.session,
-      awaitInput: false,
-      skipEdgeTraversal: false,
-    };
-  }
-
-  private handleWaitNode(context: NodeExecutionContext, node: WaitNode): NodeHandlerResult {
-    switch (node.mode) {
-      case 'duration':
-        // In a real implementation, this would schedule a delayed advance
-        // For now, we just pass through
-        return {
-          session: context.session,
-          display: {
-            type: 'dialogue',
-            data: {
-              text: '',
-              autoAdvance: true,
-              advanceDelay: node.duration,
-            },
-          },
-          awaitInput: false,
-          skipEdgeTraversal: false,
-        };
-
-      case 'condition':
-        // Check if condition is already met
-        if (node.condition) {
-          const met = this.conditionEvaluator.evaluate(node.condition.expression, context.evalContext);
-          if (met) {
-            return {
-              session: context.session,
-              awaitInput: false,
-              skipEdgeTraversal: false,
-            };
-          }
-        }
-        // Still waiting
-        return {
-          session: context.session,
-          awaitInput: true,
-          skipEdgeTraversal: false,
-        };
-
-      case 'player_input':
-        return {
-          session: context.session,
-          awaitInput: true,
-          skipEdgeTraversal: false,
-        };
-
-      default:
-        return {
-          session: context.session,
-          awaitInput: false,
-          skipEdgeTraversal: false,
-        };
-    }
-  }
-
-  private handleExternalCallNode(context: NodeExecutionContext, node: ExternalCallNode): NodeHandlerResult {
-    // External calls are handled by external systems
-    // We just signal what needs to be called
-    console.log(`[NarrativeExecutor] External call: ${node.system}.${node.method}`, node.parameters);
-
-    return {
-      session: context.session,
-      awaitInput: !node.async,
-      skipEdgeTraversal: false,
-    };
-  }
-
-  private handleCommentNode(context: NodeExecutionContext, _node: CommentNode): NodeHandlerResult {
-    // Comment nodes are skipped
-    return {
-      session: context.session,
-      awaitInput: false,
-      skipEdgeTraversal: false,
-    };
-  }
-
   // ==========================================================================
   // Utility Methods
   // ==========================================================================
@@ -710,15 +431,18 @@ export class NarrativeExecutor {
     return program.exitNodeIds.includes(nodeId);
   }
 
-  private interpolateTemplate(template: string, context: NodeExecutionContext): string {
-    // Simple template interpolation: {{variable}}
+  private interpolateTemplate(
+    template: string,
+    state: NarrativeRuntimeState,
+    evalContext: any
+  ): string {
     return template.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (match, path) => {
       const parts = path.split('.');
-      let value: any = context.evalContext;
+      let value: any = evalContext;
 
       // Check program variables first
       if (parts[0] === 'var' || parts[0] === 'variables') {
-        value = context.state.variables;
+        value = state.variables;
         parts.shift();
       }
 
