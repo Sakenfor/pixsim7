@@ -10,6 +10,7 @@ import { devToolRegistry } from '@/lib/devtools/devToolRegistry';
 import type { DevToolDefinition, DevToolCategory } from '@/lib/devtools/types';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useDevToolContext } from '@/lib/devtools/devToolContext';
+import { Icon, IconBadge, type IconName } from '@/lib/icons';
 
 const CATEGORY_LABELS: Record<DevToolCategory, string> = {
   session: 'Session & World',
@@ -98,7 +99,8 @@ export function DevToolsPanel() {
       {/* Header */}
       <div className="p-4 border-b border-gray-700">
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-          🧰 Dev Tools
+          <IconBadge name="wrench" size={18} variant="primary" />
+          Dev Tools
         </h2>
 
         {/* Search */}
@@ -205,8 +207,21 @@ interface DevToolCardProps {
   onOpen: (tool: DevToolDefinition) => void;
 }
 
+/** Map category to icon variant for visual distinction */
+const CATEGORY_VARIANTS: Record<DevToolCategory | 'misc', 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'error'> = {
+  session: 'info',
+  generation: 'success',
+  plugins: 'secondary',
+  graph: 'primary',
+  world: 'warning',
+  debug: 'error',
+  prompts: 'success',
+  misc: 'muted' as any,
+};
+
 function DevToolCard({ tool, onOpen }: DevToolCardProps) {
   const hasAction = !!(tool.routePath || tool.panelComponent);
+  const variant = CATEGORY_VARIANTS[tool.category ?? 'misc'] ?? 'primary';
 
   return (
     <button
@@ -214,23 +229,26 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
       disabled={!hasAction}
       className={`
         w-full text-left p-3 rounded-lg border border-gray-700 bg-gray-800
-        transition-all
-        ${hasAction ? 'hover:bg-gray-750 hover:border-gray-600 cursor-pointer' : 'opacity-50 cursor-not-allowed'}
+        transition-all group
+        ${hasAction ? 'hover:bg-gray-700/50 hover:border-gray-600 cursor-pointer' : 'opacity-50 cursor-not-allowed'}
       `}
     >
       <div className="flex items-start gap-3">
-        {/* Icon */}
+        {/* Icon with badge */}
         {tool.icon && (
-          <div className="text-2xl flex-shrink-0" aria-label={tool.label}>
-            {tool.icon}
-          </div>
+          <IconBadge
+            name={tool.icon as IconName}
+            size={18}
+            variant={variant}
+            className="flex-shrink-0"
+          />
         )}
 
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm text-gray-100">{tool.label}</div>
           {tool.description && (
-            <div className="text-xs text-gray-400 mt-1">{tool.description}</div>
+            <div className="text-xs text-gray-400 mt-1 line-clamp-2">{tool.description}</div>
           )}
 
           {/* Tags */}
@@ -239,7 +257,7 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
               {tool.tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-0.5 bg-gray-700 text-gray-300 rounded text-xs"
+                  className="px-1.5 py-0.5 bg-gray-700/50 text-gray-400 rounded text-[10px]"
                 >
                   {tag}
                 </span>
@@ -250,8 +268,8 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
 
         {/* Action indicator */}
         {hasAction && (
-          <div className="flex-shrink-0 text-gray-500">
-            {tool.routePath ? '→' : '⤢'}
+          <div className="flex-shrink-0 text-gray-600 group-hover:text-gray-400 transition-colors">
+            <Icon name={tool.routePath ? 'chevronRight' : 'externalLink'} size={16} />
           </div>
         )}
       </div>
