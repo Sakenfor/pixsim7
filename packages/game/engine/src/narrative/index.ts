@@ -106,6 +106,7 @@ export {
   createGenerationBridge,
   extractGenerationConfig,
   buildSocialContext,
+  createBlockGenerationHooks,
   // Types
   type NarrativeGenerationStrategy,
   type NarrativeGenerationConfig,
@@ -122,4 +123,8 @@ export {
   type GenerationBridgeConfig,
   type DynamicStrategyContext,
   type DynamicStrategyEvaluator,
+  // Block/Prompt system integration
+  type ResolvedBlockSequence,
+  type BlockResolverService,
+  type GenerationBridgeWithBlocksConfig,
 } from './generationIntegration';
