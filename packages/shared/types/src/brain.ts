@@ -181,6 +181,9 @@ export function getMood(brain: BrainState): DerivedMood | undefined {
 /**
  * Get behavior urgency scores from brain state.
  *
+ * Returns a DerivedBehaviorUrgency object with 0-100 values per behavior key.
+ * Values represent how strongly the NPC is inclined toward that behavior.
+ *
  * @example
  * const urgency = getBehaviorUrgency(brain);
  * if (urgency.rest && urgency.rest > 70) {
@@ -191,6 +194,59 @@ export function getBehaviorUrgency(
   brain: BrainState
 ): DerivedBehaviorUrgency {
   return getDerived<DerivedBehaviorUrgency>(brain, 'behavior_urgency', {});
+}
+
+/**
+ * A single behavior urge entry with its key and value.
+ */
+export interface BehaviorUrge {
+  /** The behavior key (e.g., "rest", "socialize", "explore") */
+  key: string;
+  /** The urgency value (0-100) */
+  value: number;
+}
+
+/**
+ * Get the top N behavior urges from brain state, sorted by urgency.
+ *
+ * This is a convenience helper for displaying the most pressing needs.
+ *
+ * @param brain - The brain state to analyze
+ * @param n - Maximum number of urges to return (default: 2)
+ * @returns Array of behavior urges sorted by value (highest first)
+ *
+ * @example
+ * const topUrges = getTopBehaviorUrges(brain, 2);
+ * // Returns: [{ key: "socialize", value: 82 }, { key: "explore", value: 68 }]
+ */
+export function getTopBehaviorUrges(
+  brain: BrainState,
+  n: number = 2
+): BehaviorUrge[] {
+  const urgency = getBehaviorUrgency(brain);
+
+  // Convert to array of {key, value} entries, filtering out undefined values
+  const entries: BehaviorUrge[] = Object.entries(urgency)
+    .filter(([_, value]) => value !== undefined && value > 0)
+    .map(([key, value]) => ({ key, value: value as number }));
+
+  // Sort by value descending and take top N
+  return entries
+    .sort((a, b) => b.value - a.value)
+    .slice(0, n);
+}
+
+/**
+ * Check if brain has any behavior urgency data.
+ *
+ * @example
+ * if (hasBehaviorUrgency(brain)) {
+ *   const urgency = getBehaviorUrgency(brain);
+ * }
+ */
+export function hasBehaviorUrgency(brain: BrainState): boolean {
+  const urgency = getBehaviorUrgency(brain);
+  return Object.keys(urgency).length > 0;
 }
 
 /**

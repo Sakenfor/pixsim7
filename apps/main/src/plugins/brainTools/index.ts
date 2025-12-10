@@ -7,6 +7,7 @@
 
 import { traitsTool } from './traits';
 import { moodTool } from './mood';
+import { behaviorTool } from './behavior';
 import { socialTool } from './social';
 import { memoriesTool } from './memories';
 import { logicTool } from './logic';
@@ -16,6 +17,7 @@ import { instinctTool } from './instinct';
 export {
   traitsTool,
   moodTool,
+  behaviorTool,
   socialTool,
   memoriesTool,
   logicTool,
@@ -26,6 +28,7 @@ export {
 export const builtInBrainTools = [
   traitsTool,
   moodTool,
+  behaviorTool,
   socialTool,
   memoriesTool,
   logicTool,

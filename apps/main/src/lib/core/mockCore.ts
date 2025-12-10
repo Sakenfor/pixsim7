@@ -9,7 +9,7 @@ import {
   NpcRelationshipState,
   CoreEventMap,
 } from './types';
-import type { BrainState, BrainStatSnapshot } from '@pixsim7/shared.types';
+import type { BrainState, BrainStatSnapshot, DerivedBehaviorUrgency } from '@pixsim7/shared.types';
 
 type EventHandler<K extends keyof CoreEventMap> = (
   payload: CoreEventMap[K]
@@ -229,13 +229,17 @@ export class MockPixSim7Core implements PixSim7Core {
       derived['memories'] = memories;
     }
 
+    // Behavior urgency (derived from mood, relationship, and personality)
+    const behaviorUrgency = this.deriveBehaviorUrgency(mood, relationship, rawTraits);
+    derived['behavior_urgency'] = behaviorUrgency;
+
     return {
       npcId,
       worldId: 1,
       stats,
       derived,
       computedAt: Date.now(),
-      sourcePackages: ['mock.personality', 'mock.relationships', 'mock.mood'],
+      sourcePackages: ['mock.personality', 'mock.relationships', 'mock.mood', 'mock.behavior_urgency'],
     };
   }
 
@@ -366,6 +370,64 @@ export class MockPixSim7Core implements PixSim7Core {
     };
 
     return memoryMap[flag] || `Event: ${flag}`;
+  }
+
+  /**
+   * Derive behavior urgency from mood, relationships, and personality.
+   *
+   * This produces plausible mock data for demo purposes:
+   * - High tension, low energy → high rest / relax
+   * - High chemistry + positive mood → higher socialize
+   * - High openness → higher explore
+   * - Low affinity → higher mood_boost need
+   */
+  private deriveBehaviorUrgency(
+    mood: { valence: number; arousal: number; label?: string },
+    relationship: NpcRelationshipState | null,
+    traits: Record<string, number>
+  ): DerivedBehaviorUrgency {
+    const urgency: DerivedBehaviorUrgency = {};
+
+    // Base urgency values (simulating needs over time)
+    // In a real system these would come from resource stats
+
+    // Rest urgency: increases with low arousal (tired) and high tension
+    const tiredness = Math.max(0, 50 - mood.arousal); // Low arousal = more tired
+    const tensionFactor = relationship?.tension ?? 30;
+    urgency.rest = Math.min(100, Math.round(tiredness * 0.8 + tensionFactor * 0.4));
+
+    // Eat urgency: pseudo-random based on time, simulating hunger
+    // In a real system this would track actual hunger stat
+    urgency.eat = Math.round(25 + Math.random() * 30);
+
+    // Relax urgency: high when stressed (high tension, low valence)
+    const stressFactor = Math.max(0, 50 - mood.valence) + (tensionFactor * 0.5);
+    urgency.relax = Math.min(100, Math.round(stressFactor));
+
+    // Socialize urgency: higher when chemistry is high and mood is positive
+    const chemistry = relationship?.chemistry ?? 40;
+    const affinity = relationship?.affinity ?? 50;
+    const socialBase = (chemistry * 0.6 + affinity * 0.4);
+    // Boost when mood is positive
+    const socialBoost = mood.valence >= 50 ? 20 : 0;
+    urgency.socialize = Math.min(100, Math.round(socialBase + socialBoost));
+
+    // Explore urgency: higher with openness trait and positive arousal
+    const openness = (traits.openness ?? 0.5) * 100;
+    const curiosityBoost = mood.arousal >= 50 ? 15 : 0;
+    urgency.explore = Math.min(100, Math.round(openness * 0.6 + curiosityBoost + 10));
+
+    // Achieve urgency: higher with boldness and when basic needs are met
+    const boldness = (traits.boldness ?? 0.5) * 100;
+    const needsSatisfied = (urgency.rest ?? 0) < 40 && (urgency.eat ?? 0) < 40;
+    const achieveBase = boldness * 0.5;
+    urgency.achieve = Math.min(100, Math.round(achieveBase + (needsSatisfied ? 25 : 0)));
+
+    // Mood boost urgency: higher when mood is low
+    const moodDeficit = Math.max(0, 60 - mood.valence);
+    urgency.mood_boost = Math.min(100, Math.round(moodDeficit * 1.2));
+
+    return urgency;
   }
 }
 

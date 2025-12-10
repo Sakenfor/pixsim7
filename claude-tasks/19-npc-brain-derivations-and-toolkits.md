@@ -212,3 +212,53 @@ Make sure the new derivation work is visible and consistent across the existing 
 
 Deliverable: A consistent story in docs and task files about how NPC brain projections are computed and consumed post-BrainState migration.
 
+---
+
+## Appendix: Behavior Urgency Layer
+
+### Overview
+
+The behavior urgency system provides a derived summary of "what the NPC feels like doing" on top of BrainState. It's intentionally **descriptive** (what the NPC is inclined to do) rather than a hard behavior planner.
+
+### API Surface
+
+Tools should use the following helpers from `@pixsim7/shared.types`:
+
+```typescript
+// Get all behavior urgency scores (0-100 per behavior)
+getBehaviorUrgency(brain: BrainState): DerivedBehaviorUrgency
+
+// Get top N urges sorted by value (highest first)
+getTopBehaviorUrges(brain: BrainState, n?: number): BehaviorUrge[]
+
+// Check if brain has any behavior urgency data
+hasBehaviorUrgency(brain: BrainState): boolean
+```
+
+**Never access `brain.derived['behavior_urgency']` directly** - always use the helpers.
+
+### Available Behavior Keys
+
+| Key | Description |
+|-----|-------------|
+| `rest` | Urgency to rest/sleep (0=rested, 100=exhausted) |
+| `eat` | Urgency to eat (0=full, 100=starving) |
+| `relax` | Urgency to de-stress (0=calm, 100=overwhelmed) |
+| `socialize` | Urgency to socialize (0=connected, 100=lonely) |
+| `explore` | Urgency to explore/seek novelty (0=stimulated, 100=bored) |
+| `achieve` | Urgency to accomplish (0=fulfilled, 100=stagnating) |
+| `mood_boost` | Urgency for emotional uplift (0=happy, 100=needs boost) |
+
+### Backend Derivation
+
+The backend derivation is defined in `pixsim7/backend/main/domain/stats/behavior_urgency_package.py`:
+
+- **From Resources**: `rest_urgency = 100 - energy`, `eat_urgency = 100 - satiation`, `relax_urgency = stress`
+- **From Drives**: Direct mapping of social, novelty, achievement drives to urgency scores
+
+### Frontend Tools
+
+- **Behavior Brain Tool** (`apps/main/src/plugins/brainTools/behavior.tsx`): Shows ranked behavior urges with bar charts and plain-language summary
+- **SimulationPlayground**: Shows "Current Behavior" indicator near Brain Inspector when behavior data is available
+- **Mock Core**: Generates plausible behavior_urgency based on mood/relationships/personality for demo purposes
+

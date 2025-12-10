@@ -78,6 +78,10 @@ import {
   type SavedSimulationRun,
 } from '../lib/simulation/multiRunStorage';
 import type { ConstraintEvaluationContext } from '../lib/simulation/constraints';
+import {
+  getTopBehaviorUrges,
+  hasBehaviorUrgency,
+} from '@pixsim7/shared.types';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -1263,6 +1267,39 @@ export function SimulationPlayground() {
               ))}
             </Select>
           </div>
+
+          {/* Current Behavior Indicator */}
+          {brainToolContext?.brainState && hasBehaviorUrgency(brainToolContext.brainState) && (
+            <div className="p-2 rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">
+                Current Behavior
+              </div>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const topUrges = getTopBehaviorUrges(brainToolContext.brainState!, 2);
+                  if (topUrges.length === 0) {
+                    return <span className="text-sm text-neutral-500">No active urges</span>;
+                  }
+                  const behaviorIcons: Record<string, string> = {
+                    rest: '😴', eat: '🍽️', relax: '🧘', socialize: '💬',
+                    explore: '🧭', achieve: '🏆', mood_boost: '✨',
+                  };
+                  return topUrges.map((urge, i) => (
+                    <span
+                      key={urge.key}
+                      className={`px-2 py-1 rounded text-xs ${
+                        urge.value >= 60
+                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      }`}
+                    >
+                      {behaviorIcons[urge.key] || '•'} {urge.key} ({Math.round(urge.value)})
+                    </span>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
 
           {brainToolContext && (
             <BrainToolsPanel context={brainToolContext} tools={visibleBrainTools} />
