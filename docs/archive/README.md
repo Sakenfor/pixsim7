@@ -24,10 +24,25 @@ Since these documents were written, several architectural changes have occurred:
 
 ## What's in Here
 
-- `old-status/` - Status documents from various development phases
+- `actions/` - Action system development history
+- `architecture/` - Superseded architecture documents
+- `completed/` - Completed phase and feature implementation docs
 - `completed-refactoring/` - Documentation of completed refactoring efforts
+- `generation/` - Generation system evolution docs
 - `launcher/` - Launcher architecture evolution docs
+- `meta/` - Documentation about documentation
+- `old-status/` - Status documents from various development phases
 - `plugins/` - Plugin system development history
+- `task-summaries/` - Completed task implementation summaries
+
+## Recently Archived (2025-12-10)
+
+| File | Location | Reason |
+|------|----------|--------|
+| MULTI_UI_LAUNCHER_COMPLETE.md | launcher/ | Historical achievement doc - launcher refactor completed |
+| PHASE_6_LOG_INGESTION.md | completed/ | Implementation complete |
+| LOG_FILTERING_APPLIED.md | completed/ | Implementation notes for completed feature |
+| PHASE_3_INSPECTOR_TESTING.md | completed/ | Testing guide for completed phase |
 
 ## Using These Documents
 
