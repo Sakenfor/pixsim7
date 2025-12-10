@@ -363,4 +363,27 @@ When `activeProvider === 'pixverse'`:
   - An “Import Missing Assets” button that imports videos/images and reflects updated stats.
   - A “Rebuild Lineage” button that calls the lineage refresh API and reports a concise summary.
 - All new endpoints enforce proper ownership checks (current user must own the ProviderAccount and Assets they operate on).
-*** End Patch***!*\
+
+---
+
+## Implementation Summary ✅
+
+**Status**: Complete
+
+**Deliverables implemented**:
+
+1. **Backend Pixverse sync API** - `pixsim7/backend/main/api/v1/pixverse_sync.py`
+   - `GET /providers/pixverse/accounts/{id}/sync-dry-run` - Library scan
+   - `POST /providers/pixverse/accounts/{id}/sync-assets` - Import missing assets
+2. **Lineage refresh service** - `pixsim7/backend/main/services/asset/lineage_refresh_service.py`
+   - `refresh_asset_lineage()` and `refresh_for_assets()` methods
+3. **Lineage refresh API** - Exposed via asset routes
+4. **Frontend Provider Settings** - `apps/main/src/components/provider/ProviderSettingsPanel.tsx`
+   - Pixverse sync controls with scan/import/refresh buttons
+   - API helpers in `apps/main/src/lib/api/pixverseSync.ts`
+
+**Key files**:
+- `pixsim7/backend/main/api/v1/pixverse_sync.py`
+- `pixsim7/backend/main/services/asset/lineage_refresh_service.py`
+- `apps/main/src/components/provider/ProviderSettingsPanel.tsx`
+- `apps/main/src/lib/api/pixverseSync.ts`

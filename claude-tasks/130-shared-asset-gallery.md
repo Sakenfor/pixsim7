@@ -29,3 +29,29 @@ Refactor the current MediaCard + LocalFoldersPanel preview plumbing into a reusa
 - Support selection state out of the box (multi-select checkboxes, keyboard navigation).
 - Hook in upload status badges (e.g., `UploadState` overlay) so consumers only pass status data.
 - Provide Storybook stories or screenshot tests for the gallery in various states (loading, error, video).
+
+---
+
+## Implementation Summary ✅
+
+**Status**: Complete
+
+**Deliverables implemented**:
+
+1. **AssetGallery component** - `apps/main/src/components/media/AssetGallery.tsx`
+   - Lazy preview loading via IntersectionObserver
+   - Masonry and grid layout options
+   - Pagination with "Load More"
+   - Upload status badges and progress
+   - Grouping support
+2. **useLazyPreview hook** - `apps/main/src/hooks/useLazyPreview.ts`
+   - IntersectionObserver-based lazy loading
+   - Caching and "already loading" guards
+   - Silent refresh vs spinner options
+3. **MediaCard refactor** - Focused on rendering with consistent placeholders
+4. **Adoption** - LocalFoldersPanel and other surfaces use shared components
+
+**Key files**:
+- `apps/main/src/components/media/AssetGallery.tsx`
+- `apps/main/src/hooks/useLazyPreview.ts`
+- `apps/main/src/components/media/MediaCard.tsx`

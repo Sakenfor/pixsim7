@@ -232,5 +232,26 @@ When this task is complete, we should have:
 3. **Enhanced introspection** from `list_generation_operation_metadata()`
    (and optionally an API) that exposes alias → op → owner relationships.
 4. **Lightweight documentation** explaining the alias pattern so future
-   changes don’t re‑introduce drift or anonymous strings in core mapping.
+   changes don't re‑introduce drift or anonymous strings in core mapping.
+
+---
+
+## Implementation Summary ✅
+
+**Status**: Complete
+
+**Deliverables implemented**:
+
+1. **Alias classification** - `operation_mapping.py` documents canonical vs semantic aliases
+2. **Plugin ownership** - `game_dialogue` plugin registers aliases via `register_generation_alias()`:
+   - `npc_response` → `IMAGE_TO_VIDEO`
+   - `dialogue` → `TEXT_TO_VIDEO`
+   - `environment` → `TEXT_TO_VIDEO`
+3. **Enhanced introspection** - `list_generation_operation_metadata()` includes owner info
+4. **Documentation** - `docs/systems/generation/GENERATION_ALIAS_CONVENTIONS.md` created
+
+**Key files**:
+- `pixsim7/backend/main/shared/operation_mapping.py`
+- `pixsim7/backend/main/plugins/game_dialogue/manifest.py`
+- `docs/systems/generation/GENERATION_ALIAS_CONVENTIONS.md`
 

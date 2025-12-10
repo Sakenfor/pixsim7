@@ -173,3 +173,25 @@ High-level design intent:
   3. Update `pixsim7`’s `video_field_specs` mapping to include a matching `ParamSpec` entry.
 - For non-Pixverse providers (Sora, Runway, Pika), keep generation specs parallel in spirit, but do not force them into the Pixverse model structure; they can have their own metadata helpers.
 
+---
+
+## Implementation Summary ✅
+
+**Status**: Complete
+
+**Deliverables implemented**:
+
+1. **SDK UI metadata** - `pixverse-py` exports `get_video_operation_fields()` for per-operation field lists
+2. **Backend adapter alignment** - `pixverse.py` uses SDK metadata via `get_operation_parameter_spec()`
+3. **GenerationSettingsBar component** - Reusable settings bar at `apps/main/src/components/control/GenerationSettingsBar.tsx`
+   - Provider dropdown, primary param selects, advanced popover
+   - Cost hints integration via `useCostHints`
+   - Fully documented with JSDoc and usage examples
+4. **QuickGenerateModule integration** - Uses GenerationSettingsBar internally
+5. **Validation** - Pixverse video operations respect SDK field mappings (no aspect_ratio for image_to_video, etc.)
+
+**Key files**:
+- `apps/main/src/components/control/GenerationSettingsBar.tsx`
+- `apps/main/src/components/control/GenerationSettingsBar.md` (documentation)
+- `pixsim7/backend/main/services/provider/adapters/pixverse.py`
+
