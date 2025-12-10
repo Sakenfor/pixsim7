@@ -1,17 +1,13 @@
 /**
  * Body Map Gizmo - Interactive body zones for romance/sensual interactions
  *
- * Now properly integrated with zoneUtils for accurate zone detection,
- * effectiveness calculation, and NPC feedback.
+ * Now with dynamic stats system - tools contribute to different stats
+ * (pleasure, tickle, arousal, etc.) based on tool type and zone properties.
  *
  * Visual improvements TODO [OPUS]:
  * 1. Create elegant body silhouette (SVG or 3D model)
  * 2. Implement animated zone highlights
  * 3. Add particle effects for each zone
- * 4. Create smooth transitions between zones
- * 5. Add visual feedback for touch intensity
- * 6. Implement pleasure meter UI
- * 7. Style with romantic/sensual theme
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
@@ -25,6 +21,17 @@ import {
   getZoneEffectivenessDescription,
 } from '@pixsim7/scene.gizmos';
 import type { NpcBodyZone, ZoneInteractionContext } from '@pixsim7/shared.types';
+import {
+  useInteractionStatsStore,
+  startStatDecay,
+  stopStatDecay,
+} from '@/stores/interactionStatsStore';
+import {
+  calculateStatChanges,
+  DEFAULT_STAT_CONFIGS,
+  getActiveStats,
+  getDominantStat,
+} from '@/lib/gizmos/interactionStats';
 import './BodyMapGizmo.css';
 
 /** Extended props for BodyMapGizmo with tool and feedback support */
@@ -38,8 +45,12 @@ interface BodyMapGizmoProps extends GizmoComponentProps {
     zoneId: string;
     intensity: number;
     effectiveness: number;
+    stats: Record<string, number>;
+    dominantStat: string | null;
     reaction: 'negative' | 'neutral' | 'positive' | 'ecstatic';
   }) => void;
+  /** Maximum number of stat bars to display */
+  maxDisplayedStats?: number;
 }
 
 /** Default zones if none provided in config */
@@ -145,22 +156,42 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   activeToolId = 'touch',
   onZoneInteraction,
   onNpcFeedback,
+  maxDisplayedStats = 4,
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [activeZone, setActiveZone] = useState<NpcBodyZone | null>(null);
   const [hoveredZone, setHoveredZone] = useState<NpcBodyZone | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [touchIntensity, setTouchIntensity] = useState(0);
-  const [pleasureMeter, setPleasureMeter] = useState(0);
   const [effectiveIntensity, setEffectiveIntensity] = useState(0);
+  const lastUpdateRef = useRef<number>(Date.now());
+
+  // Dynamic stats from store
+  const stats = useInteractionStatsStore((s) => s.stats);
+  const updateStats = useInteractionStatsStore((s) => s.updateStats);
+  const setStatsActive = useInteractionStatsStore((s) => s.setActive);
+  const getToolStats = useInteractionStatsStore((s) => s.getToolStats);
+
+  // Start/stop decay timer
+  useEffect(() => {
+    startStatDecay(100);
+    return () => stopStatDecay();
+  }, []);
+
+  // Get active stats for display (sorted by value, limited)
+  const displayedStats = useMemo(() => {
+    const active = getActiveStats(stats, 0.05);
+    return active.slice(0, maxDisplayedStats);
+  }, [stats, maxDisplayedStats]);
+
+  // Get dominant stat for particle color
+  const dominantStat = useMemo(() => getDominantStat(stats), [stats]);
 
   // Get zones from config or use defaults
   const zones = useMemo<NpcBodyZone[]>(() => {
     if (config.zones && Array.isArray(config.zones) && config.zones.length > 0) {
-      // Convert legacy GizmoZone format to NpcBodyZone if needed
       return config.zones.map((zone: any) => {
         if (zone.coords) return zone as NpcBodyZone;
-        // Legacy format conversion
         return {
           id: zone.id,
           label: zone.label || zone.id,
@@ -182,7 +213,7 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
     return DEFAULT_ZONES;
   }, [config.zones]);
 
-  // Handle mouse/touch movement - use proper zone detection
+  // Handle mouse/touch movement
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!canvasRef.current) return;
 
@@ -192,7 +223,6 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
 
     setCursorPosition({ x, y });
 
-    // Use proper zone detection from zoneUtils
     const foundZone = findZoneAtPoint(x, y, zones);
     setHoveredZone(foundZone);
 
@@ -200,17 +230,14 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
       setActiveZone(foundZone);
       onStateChange({ activeZone: foundZone.id });
 
-      // Build zone context and calculate effectiveness
       const context = buildZoneContext(foundZone, activeToolId);
       const effective = calculateEffectiveIntensity(touchIntensity, foundZone, activeToolId);
       setEffectiveIntensity(effective);
 
-      // Emit zone interaction
       if (onZoneInteraction) {
         onZoneInteraction(context, effective);
       }
 
-      // Trigger segment action if zone has associated segment
       if ((foundZone as any).segmentId) {
         onAction({
           type: 'segment',
@@ -224,16 +251,18 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   // Handle touch pressure/intensity
   const handlePointerDown = useCallback(() => {
     setTouchIntensity(0.5);
+    setStatsActive(true);
     if (hoveredZone) {
       setActiveZone(hoveredZone);
     }
-  }, [hoveredZone]);
+  }, [hoveredZone, setStatsActive]);
 
   const handlePointerUp = useCallback(() => {
     setTouchIntensity(0);
     setActiveZone(null);
     setEffectiveIntensity(0);
-  }, []);
+    setStatsActive(false);
+  }, [setStatsActive]);
 
   // Handle scroll for intensity adjustment
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -243,12 +272,10 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
     setTouchIntensity(prev => {
       const newIntensity = Math.max(0, Math.min(1, prev + delta));
 
-      // Recalculate effective intensity if we have an active zone
       if (activeZone) {
         const effective = calculateEffectiveIntensity(newIntensity, activeZone, activeToolId);
         setEffectiveIntensity(effective);
 
-        // Emit updated interaction
         if (onZoneInteraction) {
           const context = buildZoneContext(activeZone, activeToolId);
           onZoneInteraction(context, effective);
@@ -265,44 +292,62 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
     });
   }, [activeZone, activeToolId, onAction, onZoneInteraction]);
 
-  // Build up pleasure meter based on effective intensity
+  // Calculate and apply stat changes on interaction tick
   useEffect(() => {
     if (effectiveIntensity > 0 && activeZone) {
       const interval = setInterval(() => {
-        setPleasureMeter(prev => {
-          const increase = effectiveIntensity * 0.02 * (activeZone.pleasure || 0.5);
-          const newValue = Math.min(1, prev + increase);
+        const now = Date.now();
+        const deltaTime = (now - lastUpdateRef.current) / 1000;
+        lastUpdateRef.current = now;
 
-          // Emit NPC feedback at thresholds
-          if (onNpcFeedback && Math.floor(newValue * 10) > Math.floor(prev * 10)) {
-            const reaction =
-              newValue > 0.8 ? 'ecstatic' :
-              newValue > 0.5 ? 'positive' :
-              newValue > 0.2 ? 'neutral' : 'negative';
-
-            onNpcFeedback({
-              zoneId: activeZone.id,
-              intensity: effectiveIntensity,
-              effectiveness: activeZone.toolModifiers?.[activeToolId] || 1,
-              reaction,
-            });
-          }
-
-          return newValue;
+        // Calculate stat changes using tool's stat contributions
+        const toolStats = getToolStats(activeToolId);
+        const result = calculateStatChanges({
+          toolId: activeToolId,
+          zone: activeZone,
+          pressure: touchIntensity,
+          speed: 0.5, // TODO: track actual movement speed
+          deltaTime,
+          customToolStats: toolStats.length > 0 ? toolStats : undefined,
         });
+
+        // Apply the changes
+        if (Object.keys(result.changes).length > 0) {
+          updateStats(result.changes);
+        }
+
+        // Emit NPC feedback periodically
+        if (onNpcFeedback) {
+          const dominant = getDominantStat(stats);
+          const maxStat = Object.values(stats).reduce((max, v) => Math.max(max, v), 0);
+
+          const reaction =
+            maxStat > 0.8 ? 'ecstatic' :
+            maxStat > 0.5 ? 'positive' :
+            maxStat > 0.2 ? 'neutral' : 'negative';
+
+          onNpcFeedback({
+            zoneId: activeZone.id,
+            intensity: effectiveIntensity,
+            effectiveness: activeZone.toolModifiers?.[activeToolId] || 1,
+            stats: { ...stats },
+            dominantStat: dominant?.stat || null,
+            reaction,
+          });
+        }
       }, 100);
+
       return () => clearInterval(interval);
     }
-  }, [effectiveIntensity, activeZone, activeToolId, onNpcFeedback]);
+  }, [effectiveIntensity, activeZone, activeToolId, touchIntensity, stats, updateStats, getToolStats, onNpcFeedback]);
 
-  // Render zone overlay using proper CSS from zoneUtils
+  // Render zone overlay
   const renderZoneOverlay = (zone: NpcBodyZone) => {
     const isHovered = hoveredZone?.id === zone.id;
-    const isActive = activeZone?.id === zone.id;
+    const isZoneActive = activeZone?.id === zone.id;
     const color = getZoneColorByEffectiveness(zone, activeToolId);
-    const style = getZoneShapeCSS(zone, isHovered || isActive, isActive ? 0.4 : 0.15);
+    const style = getZoneShapeCSS(zone, isHovered || isZoneActive, isZoneActive ? 0.4 : 0.15);
 
-    // Handle polygon zones with SVG
     if (zone.coords.type === 'polygon') {
       const points = zone.coords.points.map(p => `${p.x}%,${p.y}%`).join(' ');
       return (
@@ -314,9 +359,9 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
           <polygon
             points={points}
             fill={color}
-            opacity={isActive ? 0.5 : isHovered ? 0.3 : 0.15}
-            stroke={isHovered || isActive ? color : 'none'}
-            strokeWidth={isActive ? 3 : 2}
+            opacity={isZoneActive ? 0.5 : isHovered ? 0.3 : 0.15}
+            stroke={isHovered || isZoneActive ? color : 'none'}
+            strokeWidth={isZoneActive ? 3 : 2}
           />
         </svg>
       );
@@ -325,15 +370,20 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
     return (
       <div
         key={zone.id}
-        className={`zone-overlay ${isHovered ? 'hovered' : ''} ${isActive ? 'active' : ''}`}
+        className={`zone-overlay ${isHovered ? 'hovered' : ''} ${isZoneActive ? 'active' : ''}`}
         style={{
           ...style,
           backgroundColor: color,
-          boxShadow: isActive ? `0 0 20px ${color}` : undefined,
+          boxShadow: isZoneActive ? `0 0 20px ${color}` : undefined,
         }}
       />
     );
   };
+
+  // Get particle color based on dominant stat
+  const particleColor = dominantStat
+    ? DEFAULT_STAT_CONFIGS[dominantStat.stat]?.color || '#FF69B4'
+    : activeZone?.highlightColor || '#FF69B4';
 
   return (
     <div
@@ -345,15 +395,14 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
       onPointerLeave={handlePointerUp}
       onWheel={handleWheel}
     >
-      {/* Zone overlays - rendered using zoneUtils CSS helpers */}
+      {/* Zone overlays */}
       <div className="zones-container">
         {zones.map(renderZoneOverlay)}
       </div>
 
-      {/* Body silhouette - TODO [OPUS]: Replace with elegant SVG */}
+      {/* Body silhouette */}
       <div className="body-silhouette">
         <svg viewBox="0 0 100 100" className="body-outline" preserveAspectRatio="xMidYMid meet">
-          {/* Simple body outline - replace with artistic SVG */}
           <ellipse cx="50" cy="12" rx="8" ry="10" className="body-part head" />
           <rect x="46" y="20" width="8" height="6" rx="2" className="body-part neck" />
           <ellipse cx="50" cy="42" rx="18" ry="20" className="body-part torso" />
@@ -364,7 +413,7 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
         </svg>
       </div>
 
-      {/* Touch cursor following mouse */}
+      {/* Touch cursor */}
       <div
         className="touch-cursor"
         style={{
@@ -374,11 +423,11 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
           opacity: touchIntensity > 0 ? 1 : 0.5,
         }}
       >
-        <div className="cursor-ring" />
-        {touchIntensity > 0 && <div className="cursor-pulse" />}
+        <div className="cursor-ring" style={{ borderColor: particleColor }} />
+        {touchIntensity > 0 && <div className="cursor-pulse" style={{ borderColor: particleColor }} />}
       </div>
 
-      {/* Particle effects when interacting */}
+      {/* Particles - color based on dominant stat */}
       {touchIntensity > 0 && activeZone && (
         <div className="particle-container">
           {[...Array(Math.floor(effectiveIntensity * 8))].map((_, i) => (
@@ -390,14 +439,14 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
                 top: `${cursorPosition.y}%`,
                 '--delay': `${i * 0.1}s`,
                 '--angle': `${(i / 8) * 360}deg`,
-                '--color': activeZone.highlightColor || '#FF69B4',
+                '--color': particleColor,
               } as React.CSSProperties}
             />
           ))}
         </div>
       )}
 
-      {/* Zone information display */}
+      {/* Zone info */}
       {(hoveredZone || activeZone) && (
         <div className="zone-info">
           <div className="zone-name">
@@ -419,23 +468,40 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
         </div>
       )}
 
-      {/* Pleasure meter */}
-      <div className="pleasure-meter-container">
-        <div className="meter-label">Pleasure</div>
-        <div className="meter-bar">
-          <div
-            className="meter-fill"
-            style={{
-              width: `${pleasureMeter * 100}%`,
-              background: `linear-gradient(90deg,
-                rgba(255, 150, 200, 0.6) 0%,
-                rgba(255, 100, 150, 0.8) 50%,
-                rgba(255, 50, 100, 1.0) 100%)`,
-            }}
-          />
-          {pleasureMeter > 0.7 && <div className="meter-glow" />}
-        </div>
-        <div className="meter-value">{Math.round(pleasureMeter * 100)}%</div>
+      {/* Dynamic stats display */}
+      <div className="stats-container">
+        <div className="stats-header">Stats</div>
+        {displayedStats.length === 0 ? (
+          <div className="stats-empty">No active stats</div>
+        ) : (
+          displayedStats.map((statId) => {
+            const config = DEFAULT_STAT_CONFIGS[statId];
+            const value = stats[statId] || 0;
+            const isDominant = dominantStat?.stat === statId;
+
+            return (
+              <div key={statId} className={`stat-bar ${isDominant ? 'dominant' : ''}`}>
+                <div className="stat-label">
+                  <span className="stat-icon">{config?.icon || '●'}</span>
+                  <span className="stat-name">{config?.name || statId}</span>
+                </div>
+                <div className="stat-meter">
+                  <div
+                    className="stat-fill"
+                    style={{
+                      width: `${value * 100}%`,
+                      backgroundColor: config?.color || '#888',
+                    }}
+                  />
+                  {value > 0.7 && <div className="stat-glow" style={{ backgroundColor: config?.color }} />}
+                </div>
+                <div className="stat-value" style={{ color: config?.color }}>
+                  {Math.round(value * 100)}%
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Control hints */}

@@ -28,11 +28,13 @@ export type { ConsoleEntry, ConsoleState, ConsoleActions } from './consoleStore'
 export { registerCoreStores } from './registerCoreStores';
 export { registerCoreOps } from './registerCoreOps';
 export { registerToolOps } from './registerToolOps';
+export { registerStatsOps } from './registerStatsOps';
 
 import { createPixsimNamespace, initializeNamespace } from './namespace';
 import { registerCoreStores } from './registerCoreStores';
 import { registerCoreOps } from './registerCoreOps';
 import { registerToolOps } from './registerToolOps';
+import { registerStatsOps } from './registerStatsOps';
 import { getEditorContextSnapshot } from './getEditorContextSnapshot';
 
 /** Global pixsim namespace instance */
@@ -63,6 +65,7 @@ export function initializeConsole(): void {
   registerCoreStores();
   registerCoreOps();
   registerToolOps();
+  registerStatsOps();
 
   initialized = true;
 

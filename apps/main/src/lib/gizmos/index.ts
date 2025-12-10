@@ -60,3 +60,23 @@ export {
   type ToolConsoleOp,
   type ToolOpContext,
 } from './toolConsoleOps';
+
+// Dynamic interaction stats system
+export {
+  DEFAULT_STAT_CONFIGS,
+  DEFAULT_TOOL_STATS,
+  calculateStatChanges,
+  applyStatDecay,
+  getZoneStatModifiers,
+  getDominantStat,
+  getActiveStats,
+  getStatReactionLevel,
+  type StatType,
+  type StatContribution,
+  type StatConfig,
+  type StatValues,
+  type ZoneStatModifiers,
+  type ZoneWithStats,
+  type StatCalculationInput,
+  type StatCalculationResult,
+} from './interactionStats';

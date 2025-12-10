@@ -20,6 +20,7 @@ import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useGraphStore } from '@/stores/graphStore';
 import { useToolConfigStore } from '@/stores/toolConfigStore';
+import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
 
 /**
  * Register all core stores
@@ -148,6 +149,21 @@ export function registerCoreStores(): void {
       'overrides',
       'presets',
       'activeToolId',
+      'history',
+    ],
+  });
+
+  // Interaction Stats
+  dataRegistry.register({
+    id: 'interactionStats',
+    name: 'Interaction Stats',
+    description: 'Dynamic stats for NPC interactions (pleasure, tickle, arousal, etc.)',
+    store: useInteractionStatsStore,
+    readableKeys: [
+      'stats',
+      'configs',
+      'customToolStats',
+      'isActive',
       'history',
     ],
   });
