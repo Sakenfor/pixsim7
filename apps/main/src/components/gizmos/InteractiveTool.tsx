@@ -278,6 +278,8 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
         return <WaterVisual pressure={pressure} />;
       case 'banana':
         return <BananaVisual pressure={pressure} />;
+      case 'silk':
+        return <SilkVisual pressure={pressure} />;
       case 'ice':
         return <IceVisual temperature={temperature} />;
       case 'flame':
@@ -365,18 +367,59 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
 // Tool Visual Components
 // ============================================================================
 
-const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => (
-  <div className="hand-visual">
-    <div className="palm">
-      <div className="finger finger-1" />
-      <div className="finger finger-2" />
-      <div className="finger finger-3" />
-      <div className="finger finger-4" />
-      <div className="thumb" />
+const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
+  // Fingers curl inward as pressure increases (0 = open, 1 = closed fist)
+  const fingerCurl = pressure * 45; // Max 45 degrees curl
+  const thumbCurl = pressure * 30; // Thumb curls less
+  const palmScale = 1 - pressure * 0.1; // Palm slightly compresses
+
+  return (
+    <div
+      className="hand-visual"
+      style={
+        {
+          '--pressure': pressure,
+          '--finger-curl': `${fingerCurl}deg`,
+          '--thumb-curl': `${thumbCurl}deg`,
+          '--palm-scale': palmScale,
+        } as React.CSSProperties
+      }
+    >
+      <div className="palm">
+        <div className="palm-lines" />
+        <div className="finger finger-1">
+          <div className="finger-segment segment-1" />
+          <div className="finger-segment segment-2" />
+          <div className="fingertip" />
+        </div>
+        <div className="finger finger-2">
+          <div className="finger-segment segment-1" />
+          <div className="finger-segment segment-2" />
+          <div className="fingertip" />
+        </div>
+        <div className="finger finger-3">
+          <div className="finger-segment segment-1" />
+          <div className="finger-segment segment-2" />
+          <div className="fingertip" />
+        </div>
+        <div className="finger finger-4">
+          <div className="finger-segment segment-1" />
+          <div className="finger-segment segment-2" />
+          <div className="fingertip" />
+        </div>
+        <div className="thumb">
+          <div className="thumb-segment" />
+          <div className="thumbtip" />
+        </div>
+      </div>
+      <div className="energy-aura" />
+      {/* Touch ripple effect when pressing */}
+      {pressure > 0.3 && (
+        <div className="touch-ripple" style={{ scale: `${0.5 + pressure * 1.5}` }} />
+      )}
     </div>
-    <div className="energy-aura" style={{ opacity: pressure }} />
-  </div>
-);
+  );
+};
 
 const FeatherVisual: React.FC = () => {
   const [movement, setMovement] = useState({ x: 0, y: 0 });
@@ -565,6 +608,45 @@ const BananaVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
           <div className="impact-wave wave-2" />
         </div>
       )}
+    </div>
+  );
+};
+
+const SilkVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
+  const [waveOffset, setWaveOffset] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWaveOffset(prev => (prev + 0.1) % (Math.PI * 2));
+    }, 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div
+      className="silk-visual"
+      style={
+        {
+          '--pressure': pressure,
+          '--wave-offset': waveOffset,
+        } as React.CSSProperties
+      }
+    >
+      <div className="silk-fabric">
+        {/* Multiple flowing layers for depth */}
+        <div className="silk-layer layer-1" />
+        <div className="silk-layer layer-2" />
+        <div className="silk-layer layer-3" />
+      </div>
+      <div className="silk-shimmer" />
+      <div className="silk-fold fold-1" />
+      <div className="silk-fold fold-2" />
+      {/* Floating thread particles */}
+      <div className="silk-threads">
+        <div className="thread thread-1" />
+        <div className="thread thread-2" />
+        <div className="thread thread-3" />
+      </div>
     </div>
   );
 };
