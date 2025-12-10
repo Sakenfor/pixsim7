@@ -47,7 +47,7 @@ export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeDa
   return (
     <div
       className={`
-        relative w-full h-full rounded-xl border-2 shadow-xl transition-all duration-200
+        relative w-full h-full rounded-xl border-2 shadow-xl transition-[box-shadow] duration-200
         ${selected ? 'ring-4 ring-blue-300 dark:ring-blue-700' : ''}
         ${isHovered ? 'shadow-2xl' : ''}
       `}

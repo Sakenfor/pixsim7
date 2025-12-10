@@ -37,7 +37,7 @@ export interface LayoutBranch<T> {
 }
 
 export interface FloatingPanelState {
-  id: PanelId;
+  id: PanelId | `dev-tool:${string}`;
   x: number;
   y: number;
   width: number;
@@ -85,13 +85,13 @@ export interface WorkspaceActions {
   // Update preset-specific metadata (currently used for graph editor selection)
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
   reset: () => void;
-  openFloatingPanel: (panelId: PanelId, options?: { x?: number; y?: number; width?: number; height?: number; context?: Record<string, any> }) => void;
-  closeFloatingPanel: (panelId: PanelId) => void;
-  minimizeFloatingPanel: (panelId: PanelId) => void;
+  openFloatingPanel: (panelId: PanelId | `dev-tool:${string}`, options?: { x?: number; y?: number; width?: number; height?: number; context?: Record<string, any> }) => void;
+  closeFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => void;
+  minimizeFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => void;
   restoreFloatingPanel: (panelState: FloatingPanelState) => void;
-  updateFloatingPanelPosition: (panelId: PanelId, x: number, y: number) => void;
-  updateFloatingPanelSize: (panelId: PanelId, width: number, height: number) => void;
-  bringFloatingPanelToFront: (panelId: PanelId) => void;
+  updateFloatingPanelPosition: (panelId: PanelId | `dev-tool:${string}`, x: number, y: number) => void;
+  updateFloatingPanelSize: (panelId: PanelId | `dev-tool:${string}`, width: number, height: number) => void;
+  bringFloatingPanelToFront: (panelId: PanelId | `dev-tool:${string}`) => void;
 }
 
 // Default presets
@@ -534,6 +534,16 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       name: STORAGE_KEY,
       storage: createBackendStorage('workspace'),
       version: 1,
+      partialize: (state) => ({
+        currentLayout: state.currentLayout,
+        dockviewLayout: state.dockviewLayout,
+        closedPanels: state.closedPanels,
+        isLocked: state.isLocked,
+        presets: state.presets,
+        fullscreenPanel: state.fullscreenPanel,
+        floatingPanels: state.floatingPanels,
+        activePresetId: state.activePresetId,
+      }),
       onRehydrateStorage: () => (state) => {
         // Validate and fix the layout after loading from storage
         if (state?.currentLayout) {
@@ -545,6 +555,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
             ...preset,
             layout: validateAndFixLayout(preset.layout),
           }));
+        }
+        // Ensure floatingPanels is an array (defensive)
+        if (state && !Array.isArray(state.floatingPanels)) {
+          state.floatingPanels = [];
         }
       },
     }
