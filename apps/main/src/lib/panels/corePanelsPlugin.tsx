@@ -28,6 +28,7 @@ import { GameViewPanel } from '@/components/game/panels/GameViewPanel';
 import { WorldContextPanel } from '@/components/game/panels/WorldContextPanel';
 import { EdgeEffectsPanel } from '@/components/panels/tools/EdgeEffectsPanel';
 import { ConsolePanel } from '@/components/panels/console/ConsolePanel';
+import { ModelInspectorPanel } from '@/components/panels/tools/ModelInspectorPanel';
 
 export const corePanelsPlugin: PanelPlugin = {
   id: 'core-panels',
@@ -291,6 +292,17 @@ export const corePanelsPlugin: PanelPlugin = {
       description: 'Interactive command console for the pixsim namespace (Blender-style)',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
+    },
+    {
+      id: 'model-inspector',
+      title: 'Model Inspector',
+      component: ModelInspectorPanel,
+      category: 'tools',
+      tags: ['3d', 'model', 'gltf', 'zones', 'tools', 'animation'],
+      icon: '📦',
+      description: 'View 3D models, animations, and configure contact zones',
+      supportsCompactMode: false,
+      supportsMultipleInstances: true,
     },
   ],
 

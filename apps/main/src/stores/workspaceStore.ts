@@ -24,7 +24,8 @@ export type PanelId =
   | 'surface-workbench'
   | 'world-context'
   | 'edge-effects'
-  | 'console';
+  | 'console'
+  | 'model-inspector';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;
