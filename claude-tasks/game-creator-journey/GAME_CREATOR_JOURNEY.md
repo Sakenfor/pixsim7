@@ -39,13 +39,45 @@ The `EditorContext` tracks the current editing context:
 - **`editor.primaryView`:** Which core editor is active (`'game'`, `'flow'`, `'world'`, or `'none'`)
 - **`editor.mode`:** Current high-level mode (`'play'`, `'edit-flow'`, `'layout'`, `'debug'`, or `null`)
 
-Workspace presets center different core editors:
+**Implementation:**
+- `apps/main/src/lib/context/editorContext.ts` — Exports `useEditorContext()` hook with editor state
+- `apps/main/src/lib/context/deriveEditorState.ts` — Derivation logic for primaryView and mode
+- Automatically derived from:
+  - Active runtime mode (play/scene/conversation)
+  - Active workspace preset
+  - Visible panels in the workspace
+  - Current panel focus
 
-- **World & Locations** — World editor-centric
-- **Narrative & Flow** — Flow View-centric
-- **Playtest & Tuning** — Game View-centric
+**Workspace Presets:**
 
-See `CORE_EDITORS_AND_WORKSPACES_TASK.md` for implementation details.
+Workspace presets center different core editors and automatically set appropriate editor context:
+
+- **World & Locations** (`world-locations`) — World editor-centric, layout mode
+  - Primary: world editor, world tools, visual roles
+  - Secondary: Game View preview, theming
+
+- **Narrative & Flow** (`narrative-flow`) — Flow View-centric, edit-flow mode
+  - Primary: Graph editor (scene/flow graph)
+  - Secondary: Scene Builder, Inspector, Scene Management, Health/Validation
+
+- **Playtest & Tuning** (`playtest-tuning`) — Game View-centric, play/debug mode
+  - Primary: Game View (Game2D) with runtime
+  - Secondary: Game Tools, HUD Designer, Dev Tools
+
+**Panel Headers:**
+
+Core editors display enhanced context labels that include the current mode:
+- Flow View: `"Edit Flow • Scene: intro"`
+- Game View: `"Play • Session #1"`
+
+**GameToolsPanel Integration:**
+
+The Game Tools panel adapts to the current editor context:
+- Suggests filters based on `primaryView` (flow tools for Flow View, world tools for World View, etc.)
+- Reorders sections to prioritize relevant tools for the current `mode`
+- Shows context indicator displaying current mode and view
+
+See `CORE_EDITORS_AND_WORKSPACES_V2_TASK.md` for full implementation details.
 
 ---
 

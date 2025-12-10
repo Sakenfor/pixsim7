@@ -52,6 +52,10 @@ Already in place (initial pass):
     - `selectedNodeIds` from `useSelectionStore`
     - `context` (session/mode) from `useGameStateStore`
     - `activePresetId`, `dockviewLayout` from `useWorkspaceStore`
+    - **`editor.primaryView`** and **`editor.mode`** derived via `deriveEditorState.ts`:
+      - `primaryView`: Which core editor is focused (`'game'`, `'flow'`, `'world'`, or `'none'`)
+      - `mode`: Current editing mode (`'play'`, `'edit-flow'`, `'layout'`, `'debug'`, or `null`)
+      - Automatically derived from active panels, presets, and runtime state
 
 - `apps/main/src/components/panels/shared/PanelHeader.tsx`
   - Shared header component with:
@@ -66,11 +70,20 @@ Already in place (initial pass):
     - Looks up panel defs from `panelRegistry`
     - Calls `useEditorContext()`
     - Wraps every panel component with `PanelHeader` + a content container
-    - Derives a simple `contextLabel` for special cases (`graph`, `scene-management`, `game`, `health`)
+    - Derives context labels using `resolveContextLabel()` based on panel's `contextLabel` strategy
+    - **For core editors** (panels with `coreEditorRole`), enhances labels with mode info:
+      - Flow View: `"Edit Flow • Scene: intro"`
+      - Game View: `"Play • Session #1"`
+    - Uses `getModeLabel()` to convert editor mode to human-readable labels
 
 - `apps/main/src/components/panels/tools/GameToolsPanel.tsx`
-  - Uses the shared wrapper header (no custom header inside); renders a catalog of:
-    - World tools, flow/graph panels, interaction plugins, HUD widgets, other panels, and dev plugins.
+  - Uses the shared wrapper header (no custom header inside)
+  - **Mode-aware tool catalog** that adapts to editor context:
+    - Reads `editor.primaryView` and `editor.mode` via `useEditorContext()`
+    - Suggests default filters based on `primaryView` (flow tools for Flow View, world tools for World View, etc.)
+    - Reorders sections to prioritize tools relevant to current `mode` (e.g., interactions/HUD in play mode)
+    - Shows context indicator displaying current mode and view
+  - Renders a catalog of: World tools, flow/graph panels, interaction plugins, HUD widgets, other panels, and dev plugins
 
 This task formalizes and extends this work, and sets clear next steps and acceptance criteria.
 

@@ -1,15 +1,29 @@
 # Task: Core Editors & Workspace Modes (Reimplementation on Current Main)
 
-**Status:** planned  
-**Area:** Frontend – Workspace presets, editor identity, UX structure  
-**Related docs:**  
-- `claude-tasks/game-creator-journey/GAME_CREATOR_JOURNEY.md`  
-- `claude-tasks/game-creator-journey/EDITOR_CONTEXT_AND_PANEL_HEADER_TASK.md`  
-- `claude-tasks/game-creator-journey/CORE_EDITORS_AND_WORKSPACES_TASK.md` (original implementation)  
-- `apps/main/src/components/layout/DockviewWorkspace.tsx`  
-- `apps/main/src/stores/workspaceStore.ts`  
-- `apps/main/src/routes/Game2D.tsx`  
-- Graph editor host / registration (`apps/main/src/lib/graph/*`)  
+**Status:** ✅ **COMPLETE** (2025-12-09)
+**Area:** Frontend – Workspace presets, editor identity, UX structure
+**Related docs:**
+- `claude-tasks/game-creator-journey/GAME_CREATOR_JOURNEY.md`
+- `claude-tasks/game-creator-journey/EDITOR_CONTEXT_AND_PANEL_HEADER_TASK.md`
+- `claude-tasks/game-creator-journey/CORE_EDITORS_AND_WORKSPACES_TASK.md` (original implementation)
+- `apps/main/src/components/layout/DockviewWorkspace.tsx`
+- `apps/main/src/stores/workspaceStore.ts`
+- `apps/main/src/routes/Game2D.tsx`
+- Graph editor host / registration (`apps/main/src/lib/graph/*`)
+
+---
+
+## Implementation Status
+
+**This task has been successfully completed.** All phases (1-5) have been implemented on the current `main` branch:
+
+- ✅ **Phase 1** - EditorContext extended with `editor.primaryView` and `editor.mode`
+- ✅ **Phase 2** - Core editors annotated with `coreEditorRole` metadata
+- ✅ **Phase 3** - Workspace presets defined (World & Locations, Narrative & Flow, Playtest & Tuning)
+- ✅ **Phase 4** - Panel headers and GameToolsPanel integrated with editor context
+- ✅ **Phase 5** - Documentation updated in GAME_CREATOR_JOURNEY.md and EDITOR_CONTEXT_AND_PANEL_HEADER_TASK.md
+
+**This implementation supersedes the earlier branch** `claude/core-editors-workspaces-01J5LDgxkGeAuGw4W3JzQch2` and achieves the same design goals without requiring any backend removals or breaking changes.
 
 ---
 
@@ -17,7 +31,7 @@
 
 An earlier branch (`claude/core-editors-workspaces-01J5LDgxkGeAuGw4W3JzQch2`) implemented **core editors** and **workspace modes**, but it was coupled to large backend removals (brain/stat/analysis systems) and is no longer safe to merge directly.
 
-The design intent from that branch is still valid:
+The design intent from that branch has been successfully reimplemented on current `main`:
 
 - Clearly name and elevate two **core editors**:
   - **Game View** – the primary runtime/play viewport (currently `Game2D`).
@@ -193,13 +207,59 @@ Potential follow-ups (separate tasks):
 
 ## Acceptance Criteria
 
-- `EditorContext` exposes `editor.primaryView` and `editor.mode`, with reasonable heuristics.
-- Game2D and the scene/flow graph editor are clearly marked as core editors (Game View and Flow View).
-- Workspace presets exist for:
-  - World & Locations
-  - Narrative & Flow
-  - Playtest & Tuning
-- Panel headers for these core editors include the current mode in their context labels.
-- GameToolsPanel can see `editor.primaryView`/`mode` and at least uses them for ordering/highlighting.
-- No existing brain/stat/runtime or backend systems need to be removed to support this; the implementation is additive over current `main`.
+All acceptance criteria have been met:
+
+- ✅ `EditorContext` exposes `editor.primaryView` and `editor.mode`, with reasonable heuristics.
+- ✅ Game2D and the scene/flow graph editor are clearly marked as core editors (Game View and Flow View).
+- ✅ Workspace presets exist for:
+  - World & Locations (`world-locations`)
+  - Narrative & Flow (`narrative-flow`)
+  - Playtest & Tuning (`playtest-tuning`)
+- ✅ Panel headers for these core editors include the current mode in their context labels.
+- ✅ GameToolsPanel can see `editor.primaryView`/`mode` and uses them for ordering/highlighting.
+- ✅ No existing brain/stat/runtime or backend systems need to be removed to support this; the implementation is additive over current `main`.
+
+---
+
+## Implementation Summary
+
+### Key Files Modified/Created:
+
+**Phase 1 - EditorContext:**
+- `apps/main/src/lib/context/editorContext.ts` - Extended with `editor.primaryView` and `editor.mode`
+- `apps/main/src/lib/context/deriveEditorState.ts` - Derivation logic for editor state
+
+**Phase 2 - Core Editor Annotations:**
+- `apps/main/src/lib/panels/panelRegistry.ts` - Added `CoreEditorRole` type
+- `apps/main/src/lib/panels/corePanelsPlugin.tsx` - Annotated graph and game panels
+- `apps/main/src/routes/Game2D.tsx` - Added JSDoc comments
+
+**Phase 3 - Workspace Presets:**
+- `apps/main/src/stores/workspaceStore.ts` - Added three core workspace presets
+
+**Phase 4 - Panel Headers & Tools:**
+- `apps/main/src/components/layout/DockviewWorkspace.tsx` - Enhanced `resolveContextLabel()` and `getModeLabel()`
+- `apps/main/src/components/panels/tools/GameToolsPanel.tsx` - Made mode-aware with section reordering
+
+**Phase 5 - Documentation:**
+- `claude-tasks/game-creator-journey/GAME_CREATOR_JOURNEY.md` - Added implementation details
+- `claude-tasks/game-creator-journey/EDITOR_CONTEXT_AND_PANEL_HEADER_TASK.md` - Updated with editor state info
+- `claude-tasks/game-creator-journey/CORE_EDITORS_AND_WORKSPACES_V2_TASK.md` - Marked as complete
+
+### How It Works:
+
+1. **Editor State Derivation**: The system automatically derives `primaryView` and `mode` from:
+   - Active workspace preset (e.g., `narrative-flow` → `primaryView: 'flow'`)
+   - Active panels in the workspace (e.g., graph panel → `primaryView: 'flow'`)
+   - Runtime mode (e.g., playing a scene → `mode: 'play'`)
+
+2. **Panel Headers**: Core editors get enhanced labels:
+   - Without mode: "Graph" or "Game"
+   - With mode: "Edit Flow • Scene: intro" or "Play • Session #1"
+
+3. **Tool Adaptation**: GameToolsPanel adapts its UI:
+   - In Flow View → defaults to showing flow/graph tools
+   - In Game View → defaults to showing interactions and HUD widgets
+   - In Play mode → prioritizes interaction and HUD sections
+   - In Debug mode → prioritizes dev tools and debug sections
 
