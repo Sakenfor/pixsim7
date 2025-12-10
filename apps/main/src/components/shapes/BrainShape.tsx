@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import type { BrainState } from '@pixsim7/shared.types';
+import { getLogicStrategies, getInstincts, getMemories } from '@pixsim7/shared.types';
 import { BrainFace, brainShape } from '@pixsim7/scene.shapes';
 import './BrainShape.css';
 
@@ -38,9 +39,9 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
   const personalityStats = brainState.stats['personality'];
   const relationshipsStats = brainState.stats['relationships'];
   const moodStats = brainState.stats['mood'];
-  const logicStrategies = (brainState.derived['logic_strategies'] as string[] | undefined) ?? [];
-  const instincts = (brainState.derived['instincts'] as string[] | undefined) ?? [];
-  const memories = (brainState.derived['memories'] as any[] | undefined) ?? [];
+  const logicStrategies = getLogicStrategies(brainState);
+  const instincts = getInstincts(brainState);
+  const memories = getMemories(brainState);
 
   // Update visual behaviors based on state
   useEffect(() => {

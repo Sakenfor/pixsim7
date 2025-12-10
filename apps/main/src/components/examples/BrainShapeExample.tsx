@@ -7,7 +7,15 @@ import { useState, useEffect } from 'react';
 import { BrainShape } from '../shapes/BrainShape';
 import { mockCore } from '@/lib/core/mockCore';
 import type { BrainState } from '@pixsim7/shared.types';
-import { getMood, getDerived } from '@pixsim7/shared.types';
+import {
+  getMood,
+  getLogicStrategies,
+  getInstincts,
+  getMemories,
+  getPersonaTags,
+  getIntimacyLevel,
+  getRelationshipFlags,
+} from '@pixsim7/shared.types';
 import { BrainFace } from '@pixsim7/scene.shapes';
 import { sciFiTheme } from '@/lib/theme/scifi-tokens';
 import './BrainShapeExample.css';
@@ -222,7 +230,7 @@ const PersonalityInspector: React.FC<{
 }> = ({ brain }) => {
   const personality = brain.stats['personality'];
   const traits = personality?.axes ?? {};
-  const tags = getDerived<string[]>(brain, 'persona_tags', []);
+  const tags = getPersonaTags(brain);
 
   return (
   <div className="inspector-section">
@@ -253,7 +261,7 @@ const PersonalityInspector: React.FC<{
 const MemoryInspector: React.FC<{
   brain: BrainState;
 }> = ({ brain }) => {
-  const memories = getDerived<any[]>(brain, 'memories', []);
+  const memories = getMemories(brain);
 
   return (
   <div className="inspector-section">
@@ -335,11 +343,7 @@ const MoodInspector: React.FC<{
 const LogicInspector: React.FC<{
   brain: BrainState;
 }> = ({ brain }) => {
-  const strategies = getDerived<string[]>(
-    brain,
-    'logic_strategies',
-    []
-  );
+  const strategies = getLogicStrategies(brain);
 
   return (
   <div className="inspector-section">
@@ -359,7 +363,7 @@ const LogicInspector: React.FC<{
 const InstinctInspector: React.FC<{
   brain: BrainState;
 }> = ({ brain }) => {
-  const instincts = getDerived<string[]>(brain, 'instincts', []);
+  const instincts = getInstincts(brain);
 
   return (
   <div className="inspector-section">
@@ -381,8 +385,8 @@ const SocialInspector: React.FC<{
   onUpdate: (updates: any) => void;
 }> = ({ brain, onUpdate }) => {
   const rel = brain.stats['relationships'];
-  const flags = getDerived<string[]>(brain, 'relationship_flags', []);
-  const intimacy = getDerived<string | null>(brain, 'intimacy_level', null);
+  const flags = getRelationshipFlags(brain);
+  const intimacy = getIntimacyLevel(brain);
 
   if (!rel) {
     return (
@@ -404,11 +408,13 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={rel.axes.affinity}
+          value={rel.axes.affinity ?? 0}
           onChange={(e) => onUpdate({ affinity: Number(e.target.value) })}
           className="metric-slider affinity"
         />
-        <span className="metric-value">{social.affinity}</span>
+        <span className="metric-value">
+          {(rel.axes.affinity ?? 0).toFixed(0)}
+        </span>
       </div>
 
       <div className="metric">
@@ -417,11 +423,13 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={rel.axes.trust}
+          value={rel.axes.trust ?? 0}
           onChange={(e) => onUpdate({ trust: Number(e.target.value) })}
           className="metric-slider trust"
         />
-        <span className="metric-value">{social.trust}</span>
+        <span className="metric-value">
+          {(rel.axes.trust ?? 0).toFixed(0)}
+        </span>
       </div>
 
       <div className="metric">
@@ -430,11 +438,13 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={rel.axes.chemistry}
+          value={rel.axes.chemistry ?? 0}
           onChange={(e) => onUpdate({ chemistry: Number(e.target.value) })}
           className="metric-slider chemistry"
         />
-        <span className="metric-value">{social.chemistry}</span>
+        <span className="metric-value">
+          {(rel.axes.chemistry ?? 0).toFixed(0)}
+        </span>
       </div>
 
       <div className="metric">
@@ -443,11 +453,13 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={rel.axes.tension}
+          value={rel.axes.tension ?? 0}
           onChange={(e) => onUpdate({ tension: Number(e.target.value) })}
           className="metric-slider tension"
         />
-        <span className="metric-value">{social.tension}</span>
+        <span className="metric-value">
+          {(rel.axes.tension ?? 0).toFixed(0)}
+        </span>
       </div>
     </div>
 

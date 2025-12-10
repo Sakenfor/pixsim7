@@ -304,3 +304,44 @@ export function getInstincts(brain: BrainState): string[] {
 export function getMemories(brain: BrainState): BrainMemory[] {
   return getDerived<BrainMemory[]>(brain, 'memories', []);
 }
+
+/**
+ * Get NPC persona tags from brain state.
+ *
+ * Persona tags are descriptive labels derived from personality traits
+ * (e.g., "curious", "friendly", "optimistic").
+ *
+ * @example
+ * const tags = getPersonaTags(brain);
+ * // Returns: ["curious", "friendly"] or []
+ */
+export function getPersonaTags(brain: BrainState): string[] {
+  return getDerived<string[]>(brain, 'persona_tags', []);
+}
+
+/**
+ * Get NPC intimacy level from brain state.
+ *
+ * Intimacy level represents the romantic/intimate stage of a relationship.
+ *
+ * @example
+ * const intimacy = getIntimacyLevel(brain);
+ * // Returns: "light_flirt", "dating", etc. or null
+ */
+export function getIntimacyLevel(brain: BrainState): string | null {
+  return getDerived<string | null>(brain, 'intimacy_level', null);
+}
+
+/**
+ * Get NPC relationship flags from brain state.
+ *
+ * Relationship flags are event markers that track significant
+ * relationship milestones (e.g., "first_meeting", "helped_with_task").
+ *
+ * @example
+ * const flags = getRelationshipFlags(brain);
+ * // Returns: ["first_meeting", "helped_with_task"] or []
+ */
+export function getRelationshipFlags(brain: BrainState): string[] {
+  return getDerived<string[]>(brain, 'relationship_flags', []);
+}

@@ -10,7 +10,12 @@ import type { WorldToolPlugin } from '../../lib/worldTools/types';
 import { Badge, ProgressBar } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
 import type { BrainState, BrainStatSnapshot } from '@pixsim7/shared.types';
-import { getMood, getDerived, getConversationStyle } from '@pixsim7/shared.types';
+import {
+  getMood,
+  getConversationStyle,
+  getPersonaTags,
+  getIntimacyLevel,
+} from '@pixsim7/shared.types';
 
 /**
  * Build a simple BrainState from session data for the debug view
@@ -138,11 +143,11 @@ interface NpcBrainCardProps {
 function NpcBrainCard({ npcId, brain }: NpcBrainCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Get mood using helper
+  // Get values using helpers
   const mood = getMood(brain);
   const conversationStyle = getConversationStyle(brain);
-  const personaTags = getDerived<string[]>(brain, 'persona_tags', []);
-  const intimacyLevel = getDerived<string | null>(brain, 'intimacy_level', null);
+  const personaTags = getPersonaTags(brain);
+  const intimacyLevel = getIntimacyLevel(brain);
 
   // Get relationship stats
   const relStats = brain.stats['relationships'];
