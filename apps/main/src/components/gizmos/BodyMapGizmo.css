@@ -1,13 +1,12 @@
 /**
  * Body Map Gizmo Styles
  *
- * TODO [OPUS]: Enhance these styles with:
- * 1. Smooth animations
- * 2. Beautiful gradients
- * 3. Particle effect animations
- * 4. Zone hover/active states
- * 5. Responsive design
- * 6. Romantic/sensual color palette
+ * Now integrated with zoneUtils for proper zone rendering.
+ *
+ * Visual improvements TODO [OPUS]:
+ * 1. Elegant body silhouette SVG/3D
+ * 2. Advanced particle effects
+ * 3. Ambient atmospheric effects
  */
 
 .body-map-gizmo {
@@ -18,7 +17,7 @@
   background: linear-gradient(135deg, #1a0a1a 0%, #2a1a2a 100%);
   border-radius: 12px;
   overflow: hidden;
-  cursor: none; /* Hide default cursor, we'll use custom */
+  cursor: none;
   user-select: none;
 }
 
@@ -26,15 +25,61 @@
   box-shadow: 0 0 30px rgba(255, 100, 150, 0.3);
 }
 
-/* TODO [OPUS]: Replace with actual body visualization */
-.body-silhouette-placeholder {
+/* ============================================================================
+   Zone Overlays - Using zoneUtils CSS
+   ============================================================================ */
+
+.zones-container {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.zone-overlay {
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.zone-overlay.hovered {
+  filter: brightness(1.2);
+}
+
+.zone-overlay.active {
+  animation: zone-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes zone-pulse {
+  0%, 100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.3);
+    transform: scale(1.02);
+  }
+}
+
+.zone-polygon-svg {
+  z-index: 10;
+}
+
+/* ============================================================================
+   Body Silhouette
+   ============================================================================ */
+
+.body-silhouette {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 300px;
-  height: 600px;
-  opacity: 0.8;
+  width: 60%;
+  max-width: 300px;
+  height: 90%;
+  max-height: 500px;
+  opacity: 0.6;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .body-outline {
@@ -43,189 +88,217 @@
   filter: drop-shadow(0 0 10px rgba(255, 100, 150, 0.3));
 }
 
-/* TODO [OPUS]: Style body parts with gradients and animations */
 .body-part {
-  fill: rgba(255, 180, 200, 0.2);
-  stroke: rgba(255, 150, 200, 0.5);
-  stroke-width: 2;
+  fill: rgba(255, 180, 200, 0.15);
+  stroke: rgba(255, 150, 200, 0.4);
+  stroke-width: 1;
   transition: all 0.3s ease;
 }
 
-.body-part:hover {
-  fill: rgba(255, 150, 200, 0.4);
-  stroke: rgba(255, 100, 150, 0.8);
-}
+/* ============================================================================
+   Touch Cursor
+   ============================================================================ */
 
-/* Zone indicators */
-.zone-indicator {
-  transition: all 0.3s ease;
-  cursor: pointer;
-}
-
-.zone-indicator:hover {
-  filter: drop-shadow(0 0 5px currentColor);
-}
-
-.zone-indicator.active {
-  filter: drop-shadow(0 0 15px currentColor);
-  animation: pulse-zone 1s infinite;
-}
-
-@keyframes pulse-zone {
-  0%, 100% {
-    opacity: 0.8;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
-}
-
-/* TODO [OPUS]: Create beautiful animated cursor/hand */
-.touch-cursor-placeholder {
+.touch-cursor {
   position: absolute;
   pointer-events: none;
-  transition: transform 0.1s ease;
   z-index: 100;
+  width: 40px;
+  height: 40px;
+  transition: opacity 0.2s ease;
 }
 
-.cursor-icon {
-  font-size: 32px;
-  filter: drop-shadow(0 0 8px rgba(255, 100, 150, 0.8));
-  animation: float 2s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-}
-
-/* TODO [OPUS]: Implement advanced particle system */
-.particle-system-placeholder {
+.cursor-ring {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
+  border: 2px solid rgba(255, 100, 150, 0.8);
+  border-radius: 50%;
+  animation: cursor-rotate 3s linear infinite;
+}
+
+@keyframes cursor-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.cursor-pulse {
+  position: absolute;
+  inset: -5px;
+  border: 1px solid rgba(255, 100, 150, 0.5);
+  border-radius: 50%;
+  animation: cursor-pulse-anim 1s ease-out infinite;
+}
+
+@keyframes cursor-pulse-anim {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* ============================================================================
+   Particle System
+   ============================================================================ */
+
+.particle-container {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
   z-index: 50;
 }
 
 .particle {
   position: absolute;
-  font-size: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color, #FF69B4);
   opacity: 0;
-  animation: particle-rise 1.5s ease-out forwards;
-  animation-delay: var(--delay);
+  animation: particle-burst 1s ease-out forwards;
+  animation-delay: var(--delay, 0s);
+  box-shadow: 0 0 6px var(--color, #FF69B4);
 }
 
-@keyframes particle-rise {
+@keyframes particle-burst {
   0% {
     opacity: 1;
-    transform: translate(0, 0) rotate(0deg);
+    transform: translate(-50%, -50%) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(
-      calc(cos(var(--angle)) * 50px),
-      calc(sin(var(--angle)) * 50px - 30px)
-    ) rotate(180deg);
+    transform:
+      translate(
+        calc(-50% + cos(var(--angle, 0deg)) * 60px),
+        calc(-50% + sin(var(--angle, 0deg)) * 60px - 20px)
+      )
+      scale(0.3);
   }
 }
 
-/* Zone information display */
+/* ============================================================================
+   Zone Information Display
+   ============================================================================ */
+
 .zone-info {
   position: absolute;
   top: 20px;
   left: 20px;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.75);
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid rgba(255, 100, 150, 0.5);
   backdrop-filter: blur(10px);
+  z-index: 200;
+  min-width: 150px;
 }
 
 .zone-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #FF69B4;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
-.zone-intensity {
+.zone-intensity,
+.zone-effective {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 2px;
 }
 
-/* TODO [OPUS]: Design beautiful pleasure meter */
+.zone-effective {
+  color: rgba(255, 200, 100, 0.9);
+}
+
+.zone-ticklish {
+  font-size: 11px;
+  color: #FFD43B;
+  margin-top: 6px;
+  padding: 2px 6px;
+  background: rgba(255, 212, 59, 0.2);
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* ============================================================================
+   Pleasure Meter
+   ============================================================================ */
+
 .pleasure-meter-container {
   position: absolute;
   bottom: 30px;
   left: 50%;
   transform: translateX(-50%);
-  width: 300px;
-  background: rgba(0, 0, 0, 0.7);
+  width: 280px;
+  background: rgba(0, 0, 0, 0.75);
   padding: 12px 16px;
   border-radius: 12px;
   border: 1px solid rgba(255, 100, 150, 0.5);
   backdrop-filter: blur(10px);
+  z-index: 200;
 }
 
 .meter-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 .meter-bar {
+  position: relative;
   width: 100%;
-  height: 20px;
+  height: 16px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   margin-bottom: 4px;
 }
 
 .meter-fill {
   height: 100%;
-  border-radius: 10px;
-  transition: width 0.3s ease;
-  animation: meter-pulse 1s infinite;
+  border-radius: 8px;
+  transition: width 0.15s ease;
 }
 
-@keyframes meter-pulse {
-  0%, 100% {
-    filter: brightness(1);
-  }
-  50% {
-    filter: brightness(1.2);
-  }
+.meter-glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 100, 150, 0.3) 100%);
+  animation: meter-glow-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes meter-glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 .meter-value {
-  font-size: 14px;
+  font-size: 13px;
   color: #FF69B4;
   text-align: right;
   font-weight: 600;
 }
 
-/* Control hints */
+/* ============================================================================
+   Control Hints
+   ============================================================================ */
+
 .control-hints {
   position: absolute;
   bottom: 20px;
   right: 20px;
   text-align: right;
+  z-index: 200;
 }
 
 .hint {
-  font-size: 11px;
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.5);
   margin-bottom: 4px;
   padding: 4px 8px;
@@ -234,35 +307,40 @@
   backdrop-filter: blur(5px);
 }
 
-/* TODO [OPUS]: Add ambient effects layer */
-.ambient-effects-placeholder {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-  /* Add ambient particles, glow effects, etc. */
+.hint.tool-hint {
+  color: rgba(255, 150, 200, 0.8);
+  border: 1px solid rgba(255, 100, 150, 0.3);
 }
 
-/* Responsive adjustments */
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
 @media (max-width: 768px) {
-  .body-silhouette-placeholder {
-    width: 200px;
-    height: 400px;
+  .body-silhouette {
+    width: 50%;
+    max-width: 200px;
   }
 
   .pleasure-meter-container {
-    width: 250px;
+    width: 220px;
+    padding: 10px 12px;
   }
 
   .zone-info {
-    font-size: 14px;
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .control-hints {
+    display: none; /* Hide on mobile, use touch gestures */
   }
 }
 
-/* Accessibility */
+/* ============================================================================
+   Accessibility
+   ============================================================================ */
+
 @media (prefers-reduced-motion: reduce) {
   .body-map-gizmo *,
   .body-map-gizmo *::before,

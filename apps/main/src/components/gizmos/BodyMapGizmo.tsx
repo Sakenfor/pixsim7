@@ -1,10 +1,10 @@
 /**
  * Body Map Gizmo - Interactive body zones for romance/sensual interactions
  *
- * TODO [OPUS]: Implement visual representation of the body map
- * This is a stub implementation with core logic but placeholder visuals.
+ * Now properly integrated with zoneUtils for accurate zone detection,
+ * effectiveness calculation, and NPC feedback.
  *
- * Visual tasks for Opus AI:
+ * Visual improvements TODO [OPUS]:
  * 1. Create elegant body silhouette (SVG or 3D model)
  * 2. Implement animated zone highlights
  * 3. Add particle effects for each zone
@@ -14,50 +14,176 @@
  * 7. Style with romantic/sensual theme
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { GizmoComponentProps, Vector3D, GizmoZone } from '@pixsim7/scene.gizmos';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import {
+  GizmoComponentProps,
+  findZoneAtPoint,
+  getZoneShapeCSS,
+  calculateEffectiveIntensity,
+  buildZoneContext,
+  getZoneColorByEffectiveness,
+  getZoneEffectivenessDescription,
+} from '@pixsim7/scene.gizmos';
+import type { NpcBodyZone, ZoneInteractionContext } from '@pixsim7/shared.types';
 import './BodyMapGizmo.css';
 
-export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
+/** Extended props for BodyMapGizmo with tool and feedback support */
+interface BodyMapGizmoProps extends GizmoComponentProps {
+  /** Currently active tool ID */
+  activeToolId?: string;
+  /** Callback when zone interaction occurs */
+  onZoneInteraction?: (context: ZoneInteractionContext, intensity: number) => void;
+  /** Callback for NPC feedback events */
+  onNpcFeedback?: (feedback: {
+    zoneId: string;
+    intensity: number;
+    effectiveness: number;
+    reaction: 'negative' | 'neutral' | 'positive' | 'ecstatic';
+  }) => void;
+}
+
+/** Default zones if none provided in config */
+const DEFAULT_ZONES: NpcBodyZone[] = [
+  {
+    id: 'head',
+    label: 'Head',
+    shape: 'circle',
+    coords: { type: 'circle', cx: 50, cy: 12, radius: 10 },
+    sensitivity: 0.6,
+    ticklishness: 0.3,
+    highlightColor: '#FF69B4',
+  },
+  {
+    id: 'neck',
+    label: 'Neck',
+    shape: 'rect',
+    coords: { type: 'rect', x: 42, y: 20, width: 16, height: 8 },
+    sensitivity: 0.8,
+    ticklishness: 0.6,
+    pleasure: 0.7,
+    highlightColor: '#FF6B9D',
+  },
+  {
+    id: 'shoulders',
+    label: 'Shoulders',
+    shape: 'rect',
+    coords: { type: 'rect', x: 25, y: 26, width: 50, height: 10 },
+    sensitivity: 0.5,
+    highlightColor: '#4DABF7',
+  },
+  {
+    id: 'chest',
+    label: 'Chest',
+    shape: 'rect',
+    coords: { type: 'rect', x: 35, y: 36, width: 30, height: 18 },
+    sensitivity: 0.7,
+    pleasure: 0.6,
+    highlightColor: '#FF8787',
+  },
+  {
+    id: 'stomach',
+    label: 'Stomach',
+    shape: 'rect',
+    coords: { type: 'rect', x: 38, y: 54, width: 24, height: 14 },
+    sensitivity: 0.6,
+    ticklishness: 0.8,
+    highlightColor: '#FFD43B',
+  },
+  {
+    id: 'hips',
+    label: 'Hips',
+    shape: 'rect',
+    coords: { type: 'rect', x: 32, y: 68, width: 36, height: 10 },
+    sensitivity: 0.8,
+    pleasure: 0.7,
+    highlightColor: '#FF6B6B',
+  },
+  {
+    id: 'left_arm',
+    label: 'Left Arm',
+    shape: 'rect',
+    coords: { type: 'rect', x: 15, y: 30, width: 12, height: 35 },
+    sensitivity: 0.4,
+    ticklishness: 0.5,
+    highlightColor: '#69DB7C',
+  },
+  {
+    id: 'right_arm',
+    label: 'Right Arm',
+    shape: 'rect',
+    coords: { type: 'rect', x: 73, y: 30, width: 12, height: 35 },
+    sensitivity: 0.4,
+    ticklishness: 0.5,
+    highlightColor: '#69DB7C',
+  },
+  {
+    id: 'left_leg',
+    label: 'Left Leg',
+    shape: 'rect',
+    coords: { type: 'rect', x: 35, y: 78, width: 12, height: 20 },
+    sensitivity: 0.5,
+    ticklishness: 0.4,
+    highlightColor: '#748FFC',
+  },
+  {
+    id: 'right_leg',
+    label: 'Right Leg',
+    shape: 'rect',
+    coords: { type: 'rect', x: 53, y: 78, width: 12, height: 20 },
+    sensitivity: 0.5,
+    ticklishness: 0.4,
+    highlightColor: '#748FFC',
+  },
+];
+
+export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   config,
   state,
   onStateChange,
   onAction,
   isActive,
+  activeToolId = 'touch',
+  onZoneInteraction,
+  onNpcFeedback,
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [activeZone, setActiveZone] = useState<GizmoZone | null>(null);
+  const [activeZone, setActiveZone] = useState<NpcBodyZone | null>(null);
+  const [hoveredZone, setHoveredZone] = useState<NpcBodyZone | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [touchIntensity, setTouchIntensity] = useState(0);
   const [pleasureMeter, setPleasureMeter] = useState(0);
+  const [effectiveIntensity, setEffectiveIntensity] = useState(0);
 
-  // TODO [OPUS]: Replace with actual body model rendering
-  // For now, we'll use simple zones
-  const bodyZones = useMemo(() => {
-    const zones = Array.isArray(config.zones) && config.zones.length > 0
-      ? config.zones
-      : [
-          {
-            id: 'center',
-            position: { x: 0, y: 0, z: 0 },
-            radius: 40,
-            label: 'Center',
-            color: '#FF69B4',
-          } as GizmoZone,
-        ];
-
-    return zones.map((zone, index) => ({
-      ...zone,
-      // These positions are placeholders - should map to actual body parts
-      renderPosition: {
-        x: 50 + (index % 3) * 30,
-        y: 20 + Math.floor(index / 3) * 25,
-      },
-    }));
+  // Get zones from config or use defaults
+  const zones = useMemo<NpcBodyZone[]>(() => {
+    if (config.zones && Array.isArray(config.zones) && config.zones.length > 0) {
+      // Convert legacy GizmoZone format to NpcBodyZone if needed
+      return config.zones.map((zone: any) => {
+        if (zone.coords) return zone as NpcBodyZone;
+        // Legacy format conversion
+        return {
+          id: zone.id,
+          label: zone.label || zone.id,
+          shape: 'circle' as const,
+          coords: {
+            type: 'circle' as const,
+            cx: zone.position?.x ?? 50,
+            cy: zone.position?.y ?? 50,
+            radius: zone.radius ?? 10,
+          },
+          sensitivity: zone.sensitivity ?? 0.5,
+          ticklishness: zone.ticklishness,
+          pleasure: zone.pleasure,
+          highlightColor: zone.color,
+          toolModifiers: zone.toolModifiers,
+        };
+      });
+    }
+    return DEFAULT_ZONES;
   }, [config.zones]);
 
-  // Handle mouse/touch movement
-  const handlePointerMove = (e: React.PointerEvent) => {
+  // Handle mouse/touch movement - use proper zone detection
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!canvasRef.current) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
@@ -66,60 +192,148 @@ export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
 
     setCursorPosition({ x, y });
 
-    // Check which zone the cursor is over
-    const hoveredZone = bodyZones.find(zone => {
-      const dx = x - zone.renderPosition.x;
-      const dy = y - zone.renderPosition.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      return distance < (zone.radius / 10); // Scale radius
-    });
+    // Use proper zone detection from zoneUtils
+    const foundZone = findZoneAtPoint(x, y, zones);
+    setHoveredZone(foundZone);
 
-    if (hoveredZone && hoveredZone.id !== activeZone?.id) {
-      setActiveZone(hoveredZone);
-      onStateChange({ activeZone: hoveredZone.id });
+    if (foundZone && foundZone.id !== activeZone?.id && touchIntensity > 0) {
+      setActiveZone(foundZone);
+      onStateChange({ activeZone: foundZone.id });
 
-      if (hoveredZone.segmentId) {
+      // Build zone context and calculate effectiveness
+      const context = buildZoneContext(foundZone, activeToolId);
+      const effective = calculateEffectiveIntensity(touchIntensity, foundZone, activeToolId);
+      setEffectiveIntensity(effective);
+
+      // Emit zone interaction
+      if (onZoneInteraction) {
+        onZoneInteraction(context, effective);
+      }
+
+      // Trigger segment action if zone has associated segment
+      if ((foundZone as any).segmentId) {
         onAction({
           type: 'segment',
-          value: hoveredZone.segmentId,
+          value: (foundZone as any).segmentId,
           transition: 'smooth',
         });
       }
     }
-  };
+  }, [zones, activeZone, touchIntensity, activeToolId, onStateChange, onAction, onZoneInteraction]);
 
   // Handle touch pressure/intensity
-  const handlePointerDown = () => {
-    setTouchIntensity(1);
-  };
+  const handlePointerDown = useCallback(() => {
+    setTouchIntensity(0.5);
+    if (hoveredZone) {
+      setActiveZone(hoveredZone);
+    }
+  }, [hoveredZone]);
 
-  const handlePointerUp = () => {
+  const handlePointerUp = useCallback(() => {
     setTouchIntensity(0);
-  };
+    setActiveZone(null);
+    setEffectiveIntensity(0);
+  }, []);
 
-  // Handle scroll for intensity
-  const handleWheel = (e: React.WheelEvent) => {
+  // Handle scroll for intensity adjustment
+  const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.05 : 0.05;
-    const newIntensity = Math.max(0, Math.min(1, touchIntensity + delta));
-    setTouchIntensity(newIntensity);
 
-    onAction({
-      type: 'intensity',
-      value: newIntensity,
-      transition: 'smooth',
+    setTouchIntensity(prev => {
+      const newIntensity = Math.max(0, Math.min(1, prev + delta));
+
+      // Recalculate effective intensity if we have an active zone
+      if (activeZone) {
+        const effective = calculateEffectiveIntensity(newIntensity, activeZone, activeToolId);
+        setEffectiveIntensity(effective);
+
+        // Emit updated interaction
+        if (onZoneInteraction) {
+          const context = buildZoneContext(activeZone, activeToolId);
+          onZoneInteraction(context, effective);
+        }
+      }
+
+      onAction({
+        type: 'intensity',
+        value: newIntensity,
+        transition: 'smooth',
+      });
+
+      return newIntensity;
     });
-  };
+  }, [activeZone, activeToolId, onAction, onZoneInteraction]);
 
-  // Simulate pleasure meter building
+  // Build up pleasure meter based on effective intensity
   useEffect(() => {
-    if (touchIntensity > 0 && activeZone) {
+    if (effectiveIntensity > 0 && activeZone) {
       const interval = setInterval(() => {
-        setPleasureMeter(prev => Math.min(1, prev + 0.01));
+        setPleasureMeter(prev => {
+          const increase = effectiveIntensity * 0.02 * (activeZone.pleasure || 0.5);
+          const newValue = Math.min(1, prev + increase);
+
+          // Emit NPC feedback at thresholds
+          if (onNpcFeedback && Math.floor(newValue * 10) > Math.floor(prev * 10)) {
+            const reaction =
+              newValue > 0.8 ? 'ecstatic' :
+              newValue > 0.5 ? 'positive' :
+              newValue > 0.2 ? 'neutral' : 'negative';
+
+            onNpcFeedback({
+              zoneId: activeZone.id,
+              intensity: effectiveIntensity,
+              effectiveness: activeZone.toolModifiers?.[activeToolId] || 1,
+              reaction,
+            });
+          }
+
+          return newValue;
+        });
       }, 100);
       return () => clearInterval(interval);
     }
-  }, [touchIntensity, activeZone]);
+  }, [effectiveIntensity, activeZone, activeToolId, onNpcFeedback]);
+
+  // Render zone overlay using proper CSS from zoneUtils
+  const renderZoneOverlay = (zone: NpcBodyZone) => {
+    const isHovered = hoveredZone?.id === zone.id;
+    const isActive = activeZone?.id === zone.id;
+    const color = getZoneColorByEffectiveness(zone, activeToolId);
+    const style = getZoneShapeCSS(zone, isHovered || isActive, isActive ? 0.4 : 0.15);
+
+    // Handle polygon zones with SVG
+    if (zone.coords.type === 'polygon') {
+      const points = zone.coords.points.map(p => `${p.x}%,${p.y}%`).join(' ');
+      return (
+        <svg
+          key={zone.id}
+          className="zone-polygon-svg"
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+        >
+          <polygon
+            points={points}
+            fill={color}
+            opacity={isActive ? 0.5 : isHovered ? 0.3 : 0.15}
+            stroke={isHovered || isActive ? color : 'none'}
+            strokeWidth={isActive ? 3 : 2}
+          />
+        </svg>
+      );
+    }
+
+    return (
+      <div
+        key={zone.id}
+        className={`zone-overlay ${isHovered ? 'hovered' : ''} ${isActive ? 'active' : ''}`}
+        style={{
+          ...style,
+          backgroundColor: color,
+          boxShadow: isActive ? `0 0 20px ${color}` : undefined,
+        }}
+      />
+    );
+  };
 
   return (
     <div
@@ -131,69 +345,43 @@ export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
       onPointerLeave={handlePointerUp}
       onWheel={handleWheel}
     >
-      {/* TODO [OPUS]: Replace this section with actual body visualization */}
-      {/* Task: Create elegant SVG or 3D model of a body silhouette */}
-      {/* Requirements:
-          - Artistic, tasteful representation
-          - Smooth curves and aesthetic appeal
-          - Responsive to window size
-          - Supports highlighting zones
-          - Can show touch points with effects
-      */}
-      <div className="body-silhouette-placeholder">
-        <svg viewBox="0 0 200 400" className="body-outline">
-          {/* PLACEHOLDER: Replace with actual body SVG */}
-          <ellipse cx="100" cy="80" rx="40" ry="50" className="body-part head" />
-          <rect x="75" y="120" width="50" height="80" rx="10" className="body-part torso" />
-          <rect x="65" y="200" width="70" height="100" rx="15" className="body-part lower" />
+      {/* Zone overlays - rendered using zoneUtils CSS helpers */}
+      <div className="zones-container">
+        {zones.map(renderZoneOverlay)}
+      </div>
 
-          {/* Zone indicators - TODO [OPUS]: Make these more elegant */}
-          {bodyZones.map(zone => (
-            <circle
-              key={zone.id}
-              cx={zone.renderPosition.x * 2}
-              cy={zone.renderPosition.y * 2}
-              r={zone.radius / 5}
-              className={`zone-indicator ${zone.id === activeZone?.id ? 'active' : ''}`}
-              style={{
-                fill: zone.color || '#FF69B4',
-                opacity: zone.id === activeZone?.id ? 0.8 : 0.3,
-              }}
-            />
-          ))}
+      {/* Body silhouette - TODO [OPUS]: Replace with elegant SVG */}
+      <div className="body-silhouette">
+        <svg viewBox="0 0 100 100" className="body-outline" preserveAspectRatio="xMidYMid meet">
+          {/* Simple body outline - replace with artistic SVG */}
+          <ellipse cx="50" cy="12" rx="8" ry="10" className="body-part head" />
+          <rect x="46" y="20" width="8" height="6" rx="2" className="body-part neck" />
+          <ellipse cx="50" cy="42" rx="18" ry="20" className="body-part torso" />
+          <rect x="25" y="28" width="8" height="30" rx="3" className="body-part arm left" />
+          <rect x="67" y="28" width="8" height="30" rx="3" className="body-part arm right" />
+          <rect x="38" y="62" width="10" height="35" rx="4" className="body-part leg left" />
+          <rect x="52" y="62" width="10" height="35" rx="4" className="body-part leg right" />
         </svg>
       </div>
 
-      {/* TODO [OPUS]: Implement animated cursor/hand following mouse */}
-      {/* Task: Create smooth animated hand/cursor that follows mouse
-          - Should show current tool (hand, feather, etc.)
-          - Animate touch pressure (hand closing/opening)
-          - Add particle trails
-          - Show glow effects on active zones
-      */}
+      {/* Touch cursor following mouse */}
       <div
-        className="touch-cursor-placeholder"
+        className="touch-cursor"
         style={{
           left: `${cursorPosition.x}%`,
           top: `${cursorPosition.y}%`,
-          transform: `scale(${0.8 + touchIntensity * 0.4})`,
+          transform: `translate(-50%, -50%) scale(${0.8 + touchIntensity * 0.4})`,
+          opacity: touchIntensity > 0 ? 1 : 0.5,
         }}
       >
-        {/* PLACEHOLDER: Replace with actual tool visual */}
-        <div className="cursor-icon">✋</div>
+        <div className="cursor-ring" />
+        {touchIntensity > 0 && <div className="cursor-pulse" />}
       </div>
 
-      {/* TODO [OPUS]: Enhance particle effects */}
-      {/* Task: Create beautiful particle system
-          - Hearts, sparkles, or custom particles
-          - Follow touch path
-          - Intensity-based emission
-          - Color based on zone/pleasure level
-          - Smooth animation and fade-out
-      */}
+      {/* Particle effects when interacting */}
       {touchIntensity > 0 && activeZone && (
-        <div className="particle-system-placeholder">
-          {[...Array(Math.floor(touchIntensity * 10))].map((_, i) => (
+        <div className="particle-container">
+          {[...Array(Math.floor(effectiveIntensity * 8))].map((_, i) => (
             <div
               key={i}
               className="particle"
@@ -201,33 +389,37 @@ export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
                 left: `${cursorPosition.x}%`,
                 top: `${cursorPosition.y}%`,
                 '--delay': `${i * 0.1}s`,
-                '--angle': `${(i / 10) * 360}deg`,
-              } as any}
-            >
-              💕
-            </div>
+                '--angle': `${(i / 8) * 360}deg`,
+                '--color': activeZone.highlightColor || '#FF69B4',
+              } as React.CSSProperties}
+            />
           ))}
         </div>
       )}
 
       {/* Zone information display */}
-      {activeZone && (
+      {(hoveredZone || activeZone) && (
         <div className="zone-info">
-          <div className="zone-name">{activeZone.label || activeZone.id}</div>
-          <div className="zone-intensity">
-            Intensity: {Math.round(touchIntensity * 100)}%
+          <div className="zone-name">
+            {getZoneEffectivenessDescription(hoveredZone || activeZone!, activeToolId)}
           </div>
+          {activeZone && (
+            <>
+              <div className="zone-intensity">
+                Intensity: {Math.round(touchIntensity * 100)}%
+              </div>
+              <div className="zone-effective">
+                Effective: {Math.round(effectiveIntensity * 100)}%
+              </div>
+              {activeZone.ticklishness && activeZone.ticklishness > 0.5 && (
+                <div className="zone-ticklish">Ticklish!</div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {/* TODO [OPUS]: Create beautiful pleasure meter UI */}
-      {/* Task: Design elegant pleasure/arousal meter
-          - Gradient fill (cool to hot colors)
-          - Pulse animation when high
-          - Smooth transitions
-          - Particle effects at high levels
-          - Maybe heart-shaped or other romantic icon
-      */}
+      {/* Pleasure meter */}
       <div className="pleasure-meter-container">
         <div className="meter-label">Pleasure</div>
         <div className="meter-bar">
@@ -236,11 +428,12 @@ export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
             style={{
               width: `${pleasureMeter * 100}%`,
               background: `linear-gradient(90deg,
-                rgba(255, 150, 200, 0.5) 0%,
+                rgba(255, 150, 200, 0.6) 0%,
                 rgba(255, 100, 150, 0.8) 50%,
                 rgba(255, 50, 100, 1.0) 100%)`,
             }}
           />
+          {pleasureMeter > 0.7 && <div className="meter-glow" />}
         </div>
         <div className="meter-value">{Math.round(pleasureMeter * 100)}%</div>
       </div>
@@ -248,20 +441,9 @@ export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
       {/* Control hints */}
       <div className="control-hints">
         <div className="hint">Move cursor to explore zones</div>
-        <div className="hint">Click and hold for intensity</div>
+        <div className="hint">Click and hold to interact</div>
         <div className="hint">Scroll to adjust pressure</div>
-      </div>
-
-      {/* TODO [OPUS]: Add ambient effects */}
-      {/* Task: Create atmospheric background effects
-          - Subtle gradient background
-          - Pulsing glow around active zones
-          - Ambient particles floating
-          - Screen-space distortions (heat waves, etc.)
-          - Responsive to pleasure meter level
-      */}
-      <div className="ambient-effects-placeholder">
-        {/* Placeholder for ambient effects */}
+        {activeToolId && <div className="hint tool-hint">Tool: {activeToolId}</div>}
       </div>
     </div>
   );
