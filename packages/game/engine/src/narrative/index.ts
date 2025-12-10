@@ -134,7 +134,16 @@ export {
   type ImagePoolQuery,
   type ImagePoolProvider,
   type FusionAssetRequest,
+  type FusionCharacterRequirements,
   type ResolvedFusionAssets,
   type FusionAssetResolver,
   type FusionGenerationConfig,
+  // Ontology reference types (from pose_taxonomy.py, core_surfaces.py, ontology.yaml)
+  type PoseId,
+  type PoseCategory,
+  type ExpressionId,
+  type CameraViewId,
+  type CameraFramingId,
+  type SurfaceTypeId,
+  type OntologyProvider,
 } from './generationIntegration';

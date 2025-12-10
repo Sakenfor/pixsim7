@@ -1048,8 +1048,96 @@ export type ImageVariationCategory =
   | 'prop'                 // Props and objects (bench, table, etc.)
   | 'composite';           // Pre-composed character + environment
 
+// =============================================================================
+// Ontology Reference Types
+// =============================================================================
+// These types reference the canonical ontology defined in:
+// - pixsim7/backend/main/shared/ontology.yaml
+// - pixsim7/backend/main/domain/narrative/action_blocks/pose_taxonomy.py
+// - pixsim7/backend/main/domain/npc_surfaces/core_surfaces.py
+//
+// Instead of hardcoding values, implementations should load these from the
+// backend ontology service or use OntologyProvider interface.
+
+/**
+ * Pose ID from PoseTaxonomy.
+ * Examples: 'standing_neutral', 'sitting_close', 'lying_embrace'
+ * @see pose_taxonomy.py for full list
+ */
+export type PoseId = string;
+
+/**
+ * Pose category from PoseTaxonomy.
+ * @see pose_taxonomy.py
+ */
+export type PoseCategory = 'standing' | 'sitting' | 'lying' | 'kneeling' | 'action' | string;
+
+/**
+ * Expression/mood ID from NPC surfaces or ontology.
+ * Core moods: 'mood_happy', 'mood_sad', 'mood_angry', 'mood_surprised', 'mood_thinking', 'mood_bored'
+ * Domain moods: 'mood:confident', 'mood:nervous', 'mood:intimidated', 'mood:eager', 'mood:playful'
+ * @see core_surfaces.py, ontology.yaml
+ */
+export type ExpressionId = string;
+
+/**
+ * Camera view ID from ontology.
+ * Examples: 'cam:pov', 'cam:from_behind', 'cam:upper_body_focus'
+ * @see ontology.yaml camera_views
+ */
+export type CameraViewId = string;
+
+/**
+ * Camera framing ID from ontology.
+ * Examples: 'cam:centered', 'cam:bottom_of_frame', 'cam:entering_frame'
+ * @see ontology.yaml camera_framing
+ */
+export type CameraFramingId = string;
+
+/**
+ * NPC surface type ID.
+ * Examples: 'portrait', 'dialogue', 'reaction_clip'
+ * @see core_surfaces.py
+ */
+export type SurfaceTypeId = string;
+
+/**
+ * Provider interface for loading ontology data.
+ * Implement to connect to backend ontology service.
+ */
+export interface OntologyProvider {
+  /** Get all valid pose IDs */
+  getPoseIds(): Promise<PoseId[]>;
+
+  /** Get poses by category */
+  getPosesByCategory(category: PoseCategory): Promise<PoseId[]>;
+
+  /** Get all valid expression IDs */
+  getExpressionIds(): Promise<ExpressionId[]>;
+
+  /** Get all valid camera view IDs */
+  getCameraViewIds(): Promise<CameraViewId[]>;
+
+  /** Check if a pose ID is valid */
+  isValidPose(poseId: PoseId): Promise<boolean>;
+
+  /** Check if an expression ID is valid */
+  isValidExpression(expressionId: ExpressionId): Promise<boolean>;
+
+  /** Get pose definition with metadata */
+  getPoseDefinition(poseId: PoseId): Promise<{
+    id: PoseId;
+    label: string;
+    category: PoseCategory;
+    intimacyMin?: number;
+    parentPose?: PoseId;
+    tags?: string[];
+  } | undefined>;
+}
+
 /**
  * Single image asset in the pool.
+ * Uses ontology reference types for pose, expression, and camera fields.
  */
 export interface ImagePoolAsset {
   /** Unique asset ID */
@@ -1074,23 +1162,58 @@ export interface ImagePoolAsset {
   /** Associated location ID (e.g., 'loc:city_bench', 'loc:park') */
   locationId?: string;
 
-  /** Pose identifier (e.g., 'sitting', 'standing', 'leaning') */
-  pose?: string;
+  /**
+   * Pose ID from PoseTaxonomy.
+   * @example 'sitting_neutral', 'standing_embrace', 'lying_side'
+   * @see PoseTaxonomy in pose_taxonomy.py
+   */
+  poseId?: PoseId;
 
-  /** Expression (e.g., 'happy', 'thoughtful', 'surprised') */
-  expression?: string;
+  /**
+   * Pose category for broader matching.
+   * @example 'sitting', 'standing', 'lying'
+   */
+  poseCategory?: PoseCategory;
 
-  /** Camera angle (e.g., 'front', 'side', 'three_quarter') */
-  angle?: string;
+  /**
+   * Expression/mood ID from NPC surfaces or ontology.
+   * @example 'mood_happy', 'mood:confident', 'portrait'
+   * @see NpcSurfacePackage in core_surfaces.py
+   */
+  expressionId?: ExpressionId;
+
+  /**
+   * Camera view ID from ontology.
+   * @example 'cam:pov', 'cam:from_behind', 'cam:upper_body_focus'
+   */
+  cameraViewId?: CameraViewId;
+
+  /**
+   * Camera framing ID from ontology.
+   * @example 'cam:centered', 'cam:bottom_of_frame'
+   */
+  cameraFramingId?: CameraFramingId;
+
+  /**
+   * NPC surface type this asset is suitable for.
+   * @example 'portrait', 'dialogue', 'reaction_clip'
+   */
+  surfaceType?: SurfaceTypeId;
 
   /** Prop identifier for prop category */
   propId?: string;
 
-  /** Tags for additional filtering */
+  /** Tags for additional filtering (can include ontology IDs) */
   tags?: string[];
 
   /** Quality score (0-1) */
   quality?: number;
+
+  /**
+   * Minimum intimacy level required (from pose taxonomy).
+   * 1-10 scale matching PoseDefinition.intimacy_min
+   */
+  intimacyMin?: number;
 
   /** Source information */
   source?: {
@@ -1105,6 +1228,7 @@ export interface ImagePoolAsset {
 
 /**
  * Query criteria for image pool.
+ * Uses ontology reference types for type-safe filtering.
  */
 export interface ImagePoolQuery {
   /** Filter by category */
@@ -1116,19 +1240,45 @@ export interface ImagePoolQuery {
   /** Filter by location */
   locationId?: string;
 
-  /** Filter by pose */
-  pose?: string | string[];
+  /**
+   * Filter by pose ID(s) from PoseTaxonomy.
+   * @example 'sitting_close' or ['sitting_neutral', 'sitting_close']
+   */
+  poseId?: PoseId | PoseId[];
 
-  /** Filter by expression */
-  expression?: string | string[];
+  /**
+   * Filter by pose category (broader than specific pose).
+   * @example 'sitting' matches all sitting poses
+   */
+  poseCategory?: PoseCategory;
 
-  /** Filter by angle */
-  angle?: string | string[];
+  /**
+   * Filter by expression/mood ID(s).
+   * @example 'mood_happy' or ['mood_happy', 'mood:eager']
+   */
+  expressionId?: ExpressionId | ExpressionId[];
+
+  /**
+   * Filter by camera view ID(s).
+   * @example 'cam:pov' or ['cam:pov', 'cam:from_behind']
+   */
+  cameraViewId?: CameraViewId | CameraViewId[];
+
+  /**
+   * Filter by camera framing ID.
+   */
+  cameraFramingId?: CameraFramingId;
+
+  /**
+   * Filter by NPC surface type.
+   * @example 'portrait' or 'dialogue'
+   */
+  surfaceType?: SurfaceTypeId;
 
   /** Filter by prop */
   propId?: string;
 
-  /** Required tags */
+  /** Required tags (can include ontology IDs) */
   tags?: string[];
 
   /** Excluded tags */
@@ -1136,6 +1286,12 @@ export interface ImagePoolQuery {
 
   /** Minimum quality */
   minQuality?: number;
+
+  /**
+   * Maximum intimacy level to include.
+   * Filters out assets with intimacyMin > this value.
+   */
+  maxIntimacy?: number;
 
   /** Maximum results */
   limit?: number;
@@ -1201,33 +1357,73 @@ export interface ImagePoolProvider {
 // =============================================================================
 
 /**
+ * Character image requirements for fusion.
+ * Uses ontology reference types for pose/expression/camera.
+ */
+export interface FusionCharacterRequirements {
+  /** Character ID (e.g., 'npc:alex') */
+  characterId: string;
+
+  /**
+   * Pose ID from PoseTaxonomy.
+   * @example 'sitting_close', 'standing_embrace'
+   */
+  poseId?: PoseId;
+
+  /**
+   * Pose category for broader matching.
+   * @example 'sitting' matches any sitting pose
+   */
+  poseCategory?: PoseCategory;
+
+  /**
+   * Expression/mood ID.
+   * @example 'mood_happy', 'mood:confident'
+   */
+  expressionId?: ExpressionId;
+
+  /**
+   * Camera view ID.
+   * @example 'cam:pov', 'cam:from_behind'
+   */
+  cameraViewId?: CameraViewId;
+
+  /**
+   * NPC surface type preference.
+   * @example 'portrait', 'dialogue'
+   */
+  surfaceType?: SurfaceTypeId;
+
+  /**
+   * Maximum intimacy level for this request.
+   * Filters out poses/assets above this level.
+   */
+  maxIntimacy?: number;
+}
+
+/**
  * Fusion request specifying what images to combine.
+ * Uses ontology reference types for type-safe configuration.
  */
 export interface FusionAssetRequest {
   /** Character image requirements */
-  character?: {
-    characterId: string;
-    pose?: string;
-    expression?: string;
-    angle?: string;
-  };
+  character?: FusionCharacterRequirements;
 
   /** Second character (for two-character scenes) */
-  secondCharacter?: {
-    characterId: string;
-    pose?: string;
-    expression?: string;
-    angle?: string;
-  };
+  secondCharacter?: FusionCharacterRequirements;
 
   /** Environment/background requirements */
   environment?: {
     locationId: string;
+    /** Tags for environment filtering */
+    tags?: string[];
   };
 
   /** Prop requirements */
   props?: Array<{
     propId: string;
+    /** Tags for prop filtering */
+    tags?: string[];
   }>;
 
   /** Selection strategy */
@@ -1235,6 +1431,13 @@ export interface FusionAssetRequest {
 
   /** Fallback behavior if exact match not found */
   fallback?: 'similar' | 'any' | 'none';
+
+  /**
+   * Use parent poses as fallback.
+   * If true and 'sitting_close' not found, tries 'sitting_neutral'.
+   * Requires OntologyProvider to resolve parent poses.
+   */
+  useParentPoseFallback?: boolean;
 }
 
 /**
