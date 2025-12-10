@@ -19,6 +19,7 @@ import { useAssetSelectionStore } from '@/stores/assetSelectionStore';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useGraphStore } from '@/stores/graphStore';
+import { useToolConfigStore } from '@/stores/toolConfigStore';
 
 /**
  * Register all core stores
@@ -134,6 +135,20 @@ export function registerCoreStores(): void {
       'currentSceneId',
       'sceneMetadata',
       'navigationStack',
+    ],
+  });
+
+  // Tool Configuration
+  dataRegistry.register({
+    id: 'toolConfig',
+    name: 'Tool Configuration',
+    description: 'Runtime tool parameter overrides for testing/dev/cheats',
+    store: useToolConfigStore,
+    readableKeys: [
+      'overrides',
+      'presets',
+      'activeToolId',
+      'history',
     ],
   });
 }

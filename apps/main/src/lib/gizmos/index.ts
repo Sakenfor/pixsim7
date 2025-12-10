@@ -37,3 +37,14 @@ export * from './registry-romance';
 export * from './registry-water-banana';
 export * from './renderers';
 export * from './loadDefaultPacks';
+
+// Tool override utilities for console integration
+export {
+  applyToolOverrides,
+  getToolWithOverrides,
+  createToolInstanceWithOverrides,
+  useToolWithOverrides,
+  useToolInstanceWithOverrides,
+  useToolHasOverrides,
+  useAllToolsWithOverrides,
+} from './useToolWithOverrides';
