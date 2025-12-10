@@ -48,3 +48,15 @@ export {
   useToolHasOverrides,
   useAllToolsWithOverrides,
 } from './useToolWithOverrides';
+
+// Tool console operations extension
+export {
+  registerToolConsoleOps,
+  unregisterToolConsoleOps,
+  getToolsWithConsoleOps,
+  hasToolConsoleOps,
+  commonToolOps,
+  type InteractiveToolWithOps,
+  type ToolConsoleOp,
+  type ToolOpContext,
+} from './toolConsoleOps';

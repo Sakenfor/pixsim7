@@ -11,6 +11,11 @@ import {
 } from '@pixsim7/scene.gizmos';
 import { OrbGizmo } from '../../components/gizmos/OrbGizmo';
 import { ConstellationGizmo } from '../../components/gizmos/ConstellationGizmo';
+import {
+  type InteractiveToolWithOps,
+  registerToolConsoleOps,
+  commonToolOps,
+} from './toolConsoleOps';
 
 // ============================================================================
 // Gizmo Definitions
@@ -68,7 +73,7 @@ export const constellationGizmo: GizmoDefinition = {
 // Interactive Tools
 // ============================================================================
 
-export const touchTool: InteractiveTool = {
+export const touchTool: InteractiveToolWithOps = {
   id: 'touch',
   type: 'touch',
 
@@ -104,9 +109,36 @@ export const touchTool: InteractiveTool = {
       intensity: 0.5,
     },
   },
+
+  // Console operations for touch tool
+  consoleOps: {
+    ...commonToolOps.pressure({ gentle: 0.2, firm: 0.6, deep: 0.9 }),
+    ...commonToolOps.speed({ slow: 0.2, medium: 0.5, fast: 0.8 }),
+    ...commonToolOps.patterns(),
+    ...commonToolOps.glow(),
+    moreHearts: {
+      name: 'More Hearts',
+      description: 'Increase heart particle density',
+      execute: (ctx) => {
+        ctx.setParam('visual.particles.density', 1);
+        return 'Heart particles at maximum!';
+      },
+    },
+    romantic: {
+      name: 'Romantic Mode',
+      description: 'Soft, slow, lots of hearts',
+      execute: (ctx) => {
+        ctx.setParam('physics.pressure', 0.3);
+        ctx.setParam('physics.speed', 0.2);
+        ctx.setParam('visual.particles.density', 1);
+        ctx.setParam('visual.glow', true);
+        return 'Romantic mode activated';
+      },
+    },
+  },
 };
 
-export const temperatureTool: InteractiveTool = {
+export const temperatureTool: InteractiveToolWithOps = {
   id: 'temperature',
   type: 'temperature',
 
@@ -142,9 +174,45 @@ export const temperatureTool: InteractiveTool = {
       lifetime: 3000,
     },
   },
+
+  // Console operations for temperature tool
+  consoleOps: {
+    ...commonToolOps.temperature(),
+    ...commonToolOps.pressure(),
+    iceCube: {
+      name: 'Ice Cube Mode',
+      description: 'Freezing cold with high particle density',
+      execute: (ctx) => {
+        ctx.setParam('physics.temperature', 0);
+        ctx.setParam('visual.particles.density', 1);
+        ctx.setParam('visual.particles.type', 'frost');
+        return 'Ice cube mode - brrrr!';
+      },
+    },
+    fireMode: {
+      name: 'Fire Mode',
+      description: 'Maximum heat with flame particles',
+      execute: (ctx) => {
+        ctx.setParam('physics.temperature', 1);
+        ctx.setParam('visual.particles.type', 'steam');
+        ctx.setParam('visual.distortion', true);
+        return 'Fire mode - HOT HOT HOT!';
+      },
+    },
+    contrast: {
+      name: 'Hot/Cold Contrast',
+      description: 'Toggle between extremes',
+      execute: (ctx) => {
+        const current = ctx.getParam('physics.temperature') as number || 0.5;
+        const newTemp = current > 0.5 ? 0 : 1;
+        ctx.setParam('physics.temperature', newTemp);
+        return newTemp === 0 ? 'Switched to COLD' : 'Switched to HOT';
+      },
+    },
+  },
 };
 
-export const energyTool: InteractiveTool = {
+export const energyTool: InteractiveToolWithOps = {
   id: 'energy',
   type: 'energy',
 
@@ -188,6 +256,55 @@ export const energyTool: InteractiveTool = {
       intensity: 0.7,
     },
   },
+
+  // Console operations for energy tool
+  consoleOps: {
+    ...commonToolOps.vibration(),
+    ...commonToolOps.speed(),
+    ...commonToolOps.glow(),
+    spark: {
+      name: 'Spark Mode',
+      description: 'Quick light sparks',
+      execute: (ctx) => {
+        ctx.setParam('physics.vibration', 0.3);
+        ctx.setParam('physics.speed', 0.9);
+        ctx.setParam('visual.particles.density', 0.5);
+        return 'Spark mode - light and quick';
+      },
+    },
+    lightning: {
+      name: 'Lightning Mode',
+      description: 'Full power electric storm',
+      execute: (ctx) => {
+        ctx.setParam('physics.vibration', 1);
+        ctx.setParam('physics.pressure', 1);
+        ctx.setParam('physics.speed', 1);
+        ctx.setParam('visual.particles.density', 1);
+        ctx.setParam('visual.glow', true);
+        ctx.setParam('visual.distortion', true);
+        return 'LIGHTNING MODE ACTIVATED!';
+      },
+    },
+    tingle: {
+      name: 'Tingle Mode',
+      description: 'Gentle tingling sensation',
+      execute: (ctx) => {
+        ctx.setParam('physics.vibration', 0.2);
+        ctx.setParam('physics.pressure', 0.2);
+        ctx.setParam('physics.speed', 0.4);
+        return 'Gentle tingle mode';
+      },
+    },
+    pulse: {
+      name: 'Pulse Mode',
+      description: 'Rhythmic pulsing energy',
+      execute: (ctx) => {
+        ctx.setParam('physics.pattern', 'pulse');
+        ctx.setParam('physics.vibration', 0.6);
+        return 'Pulse mode activated';
+      },
+    },
+  },
 };
 
 // ============================================================================
@@ -197,9 +314,15 @@ export const energyTool: InteractiveTool = {
 registerGizmo(orbGizmo);
 registerGizmo(constellationGizmo);
 
+// Register tools and their console operations
 registerTool(touchTool);
+registerToolConsoleOps(touchTool);
+
 registerTool(temperatureTool);
+registerToolConsoleOps(temperatureTool);
+
 registerTool(energyTool);
+registerToolConsoleOps(energyTool);
 
 // ============================================================================
 // Helper exports
