@@ -38,6 +38,9 @@ export * from './registry-water-banana';
 export * from './renderers';
 export * from './loadDefaultPacks';
 
+// Console integration - exports for external use
+export { useToolConsoleStore, registerGizmoConsoleSync } from './console';
+
 // Tool override utilities for console integration
 export {
   applyToolOverrides,

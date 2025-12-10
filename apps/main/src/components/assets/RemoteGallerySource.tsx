@@ -236,10 +236,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
       <div className="flex-shrink-0 space-y-4">
         {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
 
-        <div>
-          <h2 className="text-lg font-semibold">Remote Gallery</h2>
-        </div>
-
         <div className="bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
           <div className="flex flex-wrap items-center gap-3">
             {/* Search */}

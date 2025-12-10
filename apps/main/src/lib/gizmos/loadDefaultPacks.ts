@@ -22,6 +22,7 @@ import './registry-enhanced';         // Enhanced pack
 import './registry-water-banana';     // Water & Banana pack
 import './registry-rings';            // Rings pack
 import './registry-romance';          // Romance pack
+import './console';                   // Console integration (self-registers)
 
 // Re-export registry functions for convenience
 export {

@@ -1,22 +1,15 @@
 /**
- * Register Core Operations
+ * Workspace Console Module
  *
- * Registers core operations with the ops registry
- * so they're accessible via pixsim.ops.*
+ * Registers workspace and selection operations.
  */
 
-import { opsRegistry } from './opsRegistry';
+import type { ConsoleModule } from '../moduleRegistry';
+import { opsRegistry } from '../opsRegistry';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useSelectionStore } from '@/stores/selectionStore';
-import { useConsoleStore } from './consoleStore';
 
-/**
- * Register all core operations
- */
-export function registerCoreOps(): void {
-  // ─────────────────────────────────────────────────────────────
-  // Workspace Operations
-  // ─────────────────────────────────────────────────────────────
+function registerWorkspaceOps(): void {
   opsRegistry.registerCategory('workspace', 'Workspace', 'Workspace layout and preset operations');
 
   opsRegistry.register('workspace', {
@@ -73,10 +66,9 @@ export function registerCoreOps(): void {
       return 'Workspace reset to default';
     },
   });
+}
 
-  // ─────────────────────────────────────────────────────────────
-  // Selection Operations
-  // ─────────────────────────────────────────────────────────────
+function registerSelectionOps(): void {
   opsRegistry.registerCategory('selection', 'Selection', 'Node selection operations');
 
   opsRegistry.register('selection', {
@@ -109,49 +101,15 @@ export function registerCoreOps(): void {
       return useSelectionStore.getState().selectedNodeIds;
     },
   });
-
-  // ─────────────────────────────────────────────────────────────
-  // Console Operations
-  // ─────────────────────────────────────────────────────────────
-  opsRegistry.registerCategory('console', 'Console', 'Console operations');
-
-  opsRegistry.register('console', {
-    id: 'clear',
-    name: 'Clear Console',
-    description: 'Clear console history',
-    execute: () => {
-      useConsoleStore.getState().clear();
-      return undefined; // clear() adds its own message
-    },
-  });
-
-  opsRegistry.register('console', {
-    id: 'help',
-    name: 'Help',
-    description: 'Show console help',
-    execute: () => {
-      return `
-Available namespaces:
-  pixsim.context  - Current editor state
-  pixsim.data     - All data stores
-  pixsim.ops      - Operations
-
-Use .__keys__ to list available items
-Use .__help__ for detailed info
-
-Examples:
-  pixsim.data.__keys__
-  pixsim.ops.workspace.listPresets()
-  pixsim.context.scene
-
-Tool Commands:
-  pixsim.ops.tools.list()           - List all tools
-  pixsim.ops.tools.select('feather') - Select a tool
-  pixsim.ops.tools.setPressure(0.8) - Override pressure
-  pixsim.ops.tools.setSpeed(0.5)    - Override speed
-  pixsim.ops.tools.unlockAll()      - [CHEAT] Unlock all
-  pixsim.ops.gizmos.list()          - List all gizmos
-      `.trim();
-    },
-  });
 }
+
+export const workspaceModule: ConsoleModule = {
+  id: 'workspace',
+  name: 'Workspace',
+  description: 'Workspace layout and selection operations',
+  dependencies: ['core'],
+  register: () => {
+    registerWorkspaceOps();
+    registerSelectionOps();
+  },
+};

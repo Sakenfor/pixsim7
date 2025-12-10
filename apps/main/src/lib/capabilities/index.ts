@@ -419,11 +419,17 @@ export function useStates() {
 }
 
 /**
- * Hook to get a specific state by ID
+ * Hook to get a specific state capability by ID
+ * Named useCapabilityState to avoid conflict with React's useState
  */
-export function useState(id: string) {
+export function useCapabilityState(id: string) {
   return useCapabilityStore((s) => s.getState(id));
 }
+
+/**
+ * @deprecated Use useCapabilityState instead to avoid confusion with React's useState
+ */
+export const useState = useCapabilityState;
 
 /**
  * Hook to reactively get a state's value

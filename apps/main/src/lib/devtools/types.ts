@@ -33,7 +33,7 @@ export interface DevToolDefinition {
   /** Optional description of what this tool does */
   description?: string;
 
-  /** Optional icon (emoji or icon name) */
+  /** Optional icon name from the Icon system (e.g., 'wrench', 'globe', 'code') */
   icon?: string;
 
   /** Category for grouping and filtering */

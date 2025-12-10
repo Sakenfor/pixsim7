@@ -56,7 +56,7 @@ export const ArcNode = memo(({ id, data, selected }: NodeProps<ArcNodeData>) => 
     <div
       className={`
         relative w-[220px] rounded-lg border-2 shadow-lg bg-white dark:bg-neutral-800
-        transition-all duration-200
+        transition-[border-color,box-shadow] duration-200
         ${selected ? 'border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700' : 'border-neutral-300 dark:border-neutral-600'}
       `}
     >

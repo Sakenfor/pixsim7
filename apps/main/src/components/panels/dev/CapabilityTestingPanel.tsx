@@ -34,13 +34,13 @@ export function CapabilityTestingPanel({
     navigate(path);
   };
 
-  const handleInvokeAction = (action: ActionCapability) => {
+  const handleInvokeAction = async (action: ActionCapability) => {
     try {
-      if (action.handler) {
-        action.handler();
+      if (action.execute) {
+        await action.execute();
         console.log(`✅ Action invoked: ${action.id}`);
       } else {
-        console.warn(`⚠️ Action ${action.id} has no handler`);
+        console.warn(`⚠️ Action ${action.id} has no execute method`);
       }
     } catch (error) {
       console.error(`❌ Error invoking action ${action.id}:`, error);
@@ -121,7 +121,7 @@ function RouteTester({ routes, onNavigate }: RouteTesterProps) {
     return (
       route.path.toLowerCase().includes(query) ||
       route.name.toLowerCase().includes(query) ||
-      route.featureId.toLowerCase().includes(query)
+      (route.featureId?.toLowerCase().includes(query) ?? false)
     );
   });
 
@@ -168,9 +168,11 @@ function RouteTester({ routes, onNavigate }: RouteTesterProps) {
               </p>
             )}
             <div className="flex gap-2 text-xs">
-              <span className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded">
-                {route.featureId}
-              </span>
+              {route.featureId && (
+                <span className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded">
+                  {route.featureId}
+                </span>
+              )}
               {route.protected && (
                 <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded">
                   protected
@@ -255,14 +257,14 @@ function ActionTester({ actions, onInvokeAction }: ActionTesterProps) {
                 )}
                 <button
                   onClick={() => onInvokeAction(action)}
-                  disabled={!action.handler}
+                  disabled={!action.execute}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    action.handler
+                    action.execute
                       ? 'bg-green-500 hover:bg-green-600 text-white'
                       : 'bg-neutral-300 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-not-allowed'
                   }`}
                 >
-                  {action.handler ? 'Invoke ⚡' : 'No handler'}
+                  {action.execute ? 'Invoke ⚡' : 'No handler'}
                 </button>
               </div>
             </div>
@@ -298,8 +300,8 @@ interface StateInspectorProps {
 }
 
 function StateInspector({ store }: StateInspectorProps) {
-  const stateValues = store.getState().state;
-  const stateEntries = Object.entries(stateValues);
+  const states = store.getAllStates();
+  const stateEntries = states.map(s => [s.id, s.getValue()] as const);
 
   return (
     <div className="space-y-4">

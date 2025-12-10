@@ -75,7 +75,7 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
     <div
       className={`
         relative w-[200px] rounded-lg border-2 shadow-lg bg-white dark:bg-neutral-800
-        transition-all duration-200
+        transition-[border-color,box-shadow] duration-200
         ${selected ? 'border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700' : 'border-neutral-300 dark:border-neutral-600'}
       `}
     >

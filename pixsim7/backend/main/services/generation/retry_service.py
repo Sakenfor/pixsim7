@@ -3,10 +3,11 @@ GenerationRetryService - Generation retry logic
 
 Handles retry logic for failed generations.
 """
-import logging
 from typing import TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from pixsim_logging import get_logger
 
 from pixsim7.backend.main.domain import (
     Generation,
@@ -21,7 +22,7 @@ from pixsim7.backend.main.shared.errors import (
 if TYPE_CHECKING:
     from .creation_service import GenerationCreationService
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 class GenerationRetryService:
@@ -165,6 +166,13 @@ class GenerationRetryService:
             "nsfw",
             "adult content",
             "explicit content",
+            # Phrases used when marking provider-filtered jobs (from status_poller)
+            "terminal status: filtered",
+            "terminal status: failed",
+            "provider reported terminal status",
+            # Pixverse-specific error codes (mapped in pixverse adapter)
+            "safety or policy reasons",
+            "content moderation failed",
         ]
 
         # Temporary error indicators
@@ -183,6 +191,11 @@ class GenerationRetryService:
                 logger.info(f"Generation {generation.id} should auto-retry: '{keyword}' detected in error")
                 return True
 
+        # Log why we're not retrying for debugging
+        logger.debug(
+            f"Generation {generation.id} will NOT auto-retry: no matching keywords found. "
+            f"Error: {error_msg[:200]}"
+        )
         return False
 
     # ===== PRIVATE HELPERS =====

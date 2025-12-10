@@ -13,11 +13,12 @@ from sqlalchemy import select
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation, ProviderSubmission, ProviderAccount
-from pixsim7.backend.main.domain.enums import GenerationStatus, VideoStatus
+from pixsim7.backend.main.domain.enums import GenerationStatus, VideoStatus, OperationType
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.provider import ProviderService
+from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.infrastructure.database.session import get_db
@@ -73,6 +74,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
             user_service = UserService(db)
             generation_service = GenerationService(db, user_service)
             provider_service = ProviderService(db)
+            account_service = AccountService(db)
             asset_service = AssetService(db, user_service)
 
             result = await db.execute(
@@ -98,8 +100,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         select(ProviderSubmission)
                         .where(ProviderSubmission.generation_id == generation.id)
                         .order_by(ProviderSubmission.submitted_at.desc())
+                        .limit(1)
                     )
-                    submission = submission_result.scalar_one_or_none()
+                    submission = submission_result.scalars().first()
 
                     if not submission:
                         logger.warning("no_submission", generation_id=generation.id)
@@ -135,12 +138,25 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             operation_type=generation.operation_type,
                         )
 
-                        logger.debug("generation_status", generation_id=generation.id, status=str(status_result.status), progress=status_result.progress)
+                        # Include provider's raw status/metadata for debugging
+                        provider_status = None
+                        if status_result.metadata and isinstance(status_result.metadata, dict):
+                            provider_status = status_result.metadata.get("provider_status")
+
+                        # Use info level so status is visible even when debug is filtered
+                        logger.info(
+                            "generation_status",
+                            generation_id=generation.id,
+                            status=str(status_result.status),
+                            progress=status_result.progress,
+                            provider_status=str(provider_status) if provider_status is not None else None,
+                        )
                         worker_debug.provider(
                             "generation_status",
                             generation_id=generation.id,
                             status=str(status_result.status),
                             progress=status_result.progress,
+                            provider_status=str(provider_status) if provider_status is not None else None,
                         )
 
                         # Handle status
@@ -162,17 +178,93 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # Mark generation as completed
                             await generation_service.mark_completed(generation.id, asset.id)
 
+                            # Best-effort local credit deduction for Pixverse video completions.
+                            # Videos are only charged when they successfully complete; failed
+                            # videos are refunded by the provider.
+                            try:
+                                from pixsim7.backend.main.services.generation.pixverse_pricing import (
+                                    estimate_video_credit_change,
+                                )
+
+                                if (
+                                    generation.provider_id == "pixverse"
+                                    and generation.operation_type
+                                    in {
+                                        OperationType.TEXT_TO_VIDEO,
+                                        OperationType.IMAGE_TO_VIDEO,
+                                        OperationType.VIDEO_EXTEND,
+                                        OperationType.VIDEO_TRANSITION,
+                                        OperationType.FUSION,
+                                    }
+                                ):
+                                    params = generation.canonical_params or generation.raw_params or {}
+                                    model = params.get("model") or "v5"
+                                    quality = params.get("quality") or "360p"
+                                    duration = status_result.duration_sec or params.get("duration")
+                                    if isinstance(duration, (int, float)) and duration > 0:
+                                        motion_mode = params.get("motion_mode")
+                                        multi_shot = bool(params.get("multi_shot"))
+                                        audio = bool(params.get("audio"))
+                                        credits = estimate_video_credit_change(
+                                            quality=str(quality),
+                                            duration=int(duration),
+                                            model=str(model),
+                                            motion_mode=motion_mode,
+                                            multi_shot=multi_shot,
+                                            audio=audio,
+                                        )
+                                        if credits and credits > 0:
+                                            try:
+                                                await account_service.deduct_credit(
+                                                    account.id,
+                                                    "webapi",
+                                                    credits,
+                                                )
+                                                logger.info(
+                                                    "account_credit_deducted_video",
+                                                    account_id=account.id,
+                                                    provider_id=generation.provider_id,
+                                                    credits=credits,
+                                                    operation_type=generation.operation_type.value,
+                                                )
+                                            except Exception as credit_err:
+                                                logger.warning(
+                                                    "account_credit_deduct_failed_video",
+                                                    account_id=account.id,
+                                                    provider_id=generation.provider_id,
+                                                    error=str(credit_err),
+                                                )
+                            except Exception as credit_calc_err:
+                                logger.debug(
+                                    "account_credit_estimate_failed_video",
+                                    error=str(credit_calc_err),
+                                )
+
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:
                                 account.current_processing_jobs -= 1
 
                             completed += 1
 
-                        elif status_result.status == VideoStatus.FAILED:
-                            logger.warning("generation_failed_provider", generation_id=generation.id, error=status_result.error_message)
-                            await generation_service.mark_failed(
+                        elif status_result.status in {
+                            VideoStatus.FAILED,
+                            VideoStatus.FILTERED,
+                            VideoStatus.CANCELLED,
+                        }:
+                            # Mark this attempt as failed
+                            logger.warning(
+                                "generation_failed_provider",
+                                generation_id=generation.id,
+                                status=str(status_result.status),
+                                error=status_result.error_message,
+                            )
+                            error_text = (
+                                status_result.error_message
+                                or f"Provider reported terminal status: {status_result.status.value}"
+                            )
+                            generation = await generation_service.mark_failed(
                                 generation.id,
-                                status_result.error_message or "Provider reported failure"
+                                error_text,
                             )
 
                             # Decrement account's concurrent job count
@@ -180,6 +272,57 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 account.current_processing_jobs -= 1
 
                             failed += 1
+
+                            # ===== AUTO-RETRY (worker-side) =====
+                            # For content-filter / transient errors, optionally auto-retry
+                            try:
+                                from pixsim7.backend.main.shared.config import settings
+
+                                # Check if auto-retry should happen
+                                should_retry = await generation_service.should_auto_retry(generation)
+                                logger.debug(
+                                    "auto_retry_check",
+                                    generation_id=generation.id,
+                                    enabled=settings.auto_retry_enabled,
+                                    should_retry=should_retry,
+                                    retry_count=generation.retry_count,
+                                    error_message=generation.error_message[:100] if generation.error_message else None,
+                                )
+
+                                # Respect global toggle
+                                if settings.auto_retry_enabled and should_retry:
+                                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                                    from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+                                    # Increment retry_count and reset lifecycle
+                                    generation = await generation_service.increment_retry(generation.id)
+                                    generation.status = GenStatus.PENDING
+                                    generation.started_at = None
+                                    generation.completed_at = None
+
+                                    await db.commit()
+                                    await db.refresh(generation)
+
+                                    # Re-enqueue the same generation
+                                    arq_pool = await get_arq_pool()
+                                    await arq_pool.enqueue_job(
+                                        "process_generation",
+                                        generation_id=generation.id,
+                                    )
+
+                                    logger.info(
+                                        "auto_retry_requeued_worker",
+                                        generation_id=generation.id,
+                                        retry_attempt=generation.retry_count,
+                                        max_attempts=settings.auto_retry_max_attempts,
+                                    )
+                            except Exception as auto_retry_err:
+                                logger.error(
+                                    "auto_retry_worker_error",
+                                    generation_id=generation.id,
+                                    error=str(auto_retry_err),
+                                    exc_info=True,
+                                )
 
                         elif status_result.status == VideoStatus.PROCESSING:
                             still_processing += 1
@@ -226,8 +369,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         select(ProviderSubmission)
                         .where(ProviderSubmission.analysis_id == analysis.id)
                         .order_by(ProviderSubmission.submitted_at.desc())
+                        .limit(1)
                     )
-                    submission = submission_result.scalar_one_or_none()
+                    submission = submission_result.scalars().first()
 
                     if not submission:
                         logger.warning("no_analysis_submission", analysis_id=analysis.id)
@@ -291,15 +435,21 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                             analyses_completed += 1
 
-                        elif status_result.status == VideoStatus.FAILED:
+                        elif status_result.status in {
+                            VideoStatus.FAILED,
+                            VideoStatus.FILTERED,
+                            VideoStatus.CANCELLED,
+                        }:
                             logger.warning(
                                 "analysis_failed_provider",
                                 analysis_id=analysis.id,
-                                error=status_result.error_message
+                                status=str(status_result.status),
+                                error=status_result.error_message,
                             )
                             await analysis_service.mark_failed(
                                 analysis.id,
-                                status_result.error_message or "Provider reported failure"
+                                status_result.error_message
+                                or f"Provider reported terminal status: {status_result.status.value}",
                             )
 
                             # Decrement account's concurrent job count

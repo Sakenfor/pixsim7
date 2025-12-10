@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
   useFeatures,
   useFeatureRoutes,
@@ -23,6 +23,57 @@ import {
 import { DependencyGraphPanel } from './DependencyGraphPanel';
 import { CapabilityTestingPanel } from './CapabilityTestingPanel';
 import { BackendArchitecturePanel } from './BackendArchitecturePanel';
+
+// Error boundary to catch and display render errors
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+}
+
+class AppMapErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('AppMapPanel crashed:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+          <h2 className="font-bold mb-2">AppMapPanel Crashed</h2>
+          <pre className="text-xs overflow-auto whitespace-pre-wrap mb-2">
+            {this.state.error?.message}
+          </pre>
+          <pre className="text-xs overflow-auto whitespace-pre-wrap opacity-70">
+            {this.state.error?.stack}
+          </pre>
+          {this.state.errorInfo && (
+            <pre className="text-xs overflow-auto whitespace-pre-wrap mt-2 opacity-50">
+              {this.state.errorInfo.componentStack}
+            </pre>
+          )}
+          <button
+            onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+            className="mt-4 px-3 py-1 bg-red-600 text-white rounded"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * AppMapPanel - Live visualization of app architecture, features, and plugins
@@ -155,6 +206,7 @@ export function AppMapPanel() {
   };
 
   return (
+    <AppMapErrorBoundary>
     <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
       {/* Header */}
       <div className="border-b border-neutral-200 dark:border-neutral-700 p-4">
@@ -300,6 +352,7 @@ export function AppMapPanel() {
         )}
       </div>
     </div>
+    </AppMapErrorBoundary>
   );
 }
 

@@ -8,6 +8,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from pixsim_logging import get_logger
+
 from pixsim7.backend.main.domain import ProviderAccount, ProviderCredit, AccountStatus
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import (
@@ -15,6 +17,8 @@ from pixsim7.backend.main.shared.errors import (
     AccountExhaustedError,
     ResourceNotFoundError,
 )
+
+logger = get_logger()
 
 
 class AccountService:
@@ -205,7 +209,47 @@ class AccountService:
         account = result.scalar_one_or_none()
 
         if not account:
+            # Log why we couldn't find an account for debugging
+            all_accounts_query = select(ProviderAccount).where(
+                ProviderAccount.provider_id == provider_id,
+            )
+            if user_id:
+                all_accounts_query = all_accounts_query.where(
+                    (ProviderAccount.user_id == user_id) | (ProviderAccount.is_private == False)
+                )
+            else:
+                all_accounts_query = all_accounts_query.where(ProviderAccount.is_private == False)
+
+            all_result = await self.db.execute(all_accounts_query)
+            all_accounts = list(all_result.scalars().all())
+
+            account_statuses = [
+                {
+                    "id": a.id,
+                    "email": a.email,
+                    "status": a.status.value if a.status else None,
+                    "current_jobs": a.current_processing_jobs,
+                    "max_jobs": a.max_concurrent_jobs,
+                    "cooldown_until": str(a.cooldown_until) if a.cooldown_until else None,
+                }
+                for a in all_accounts
+            ]
+            logger.warning(
+                "no_account_available_debug",
+                provider_id=provider_id,
+                user_id=user_id,
+                total_accounts=len(all_accounts),
+                account_statuses=account_statuses,
+            )
             raise NoAccountAvailableError(provider_id)
+
+        logger.debug(
+            "account_selected",
+            account_id=account.id,
+            email=account.email,
+            provider_id=provider_id,
+            status=account.status.value if account.status else None,
+        )
 
         # Reserve the account
         account.current_processing_jobs += 1
@@ -274,7 +318,16 @@ class AccountService:
         if not account:
             raise ResourceNotFoundError("ProviderAccount", account_id)
 
+        previous_status = account.status
         account.status = AccountStatus.EXHAUSTED
+
+        logger.info(
+            "account_marked_exhausted",
+            account_id=account_id,
+            email=account.email,
+            provider_id=account.provider_id,
+            previous_status=previous_status.value if previous_status else None,
+        )
 
         await self.db.commit()
         await self.db.refresh(account)
