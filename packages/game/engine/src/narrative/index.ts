@@ -8,6 +8,7 @@
  * - EffectApplicator: Applies StateEffects to game session
  * - NarrativeExecutor: Main runtime engine for executing narrative programs
  * - NodeHandlerRegistry: Dynamic, pluggable node type handling
+ * - GenerationBridge: Integration with video/content generation system
  * - ECS Helpers: State management for narrative runtime
  *
  * The runtime is fully data-driven - NarrativeProgram JSON defines all story
@@ -19,6 +20,7 @@
  *   NarrativeExecutor,
  *   createProgramProvider,
  *   createNodeHandlerRegistry,
+ *   createGenerationBridge,
  * } from '@pixsim7/game-core/narrative';
  *
  * // Basic usage with default handlers
@@ -36,6 +38,14 @@
  *   })
  * });
  * const customExecutor = new NarrativeExecutor(provider, registry);
+ *
+ * // With generation integration
+ * const bridge = createGenerationBridge({
+ *   service: myGenerationService,
+ *   pool: myContentPool,
+ * });
+ * executor.addHooks(bridge.getHooks());
+ * const result = await executor.startAsync(session, npcId, 'my_program_id');
  * ```
  */
 
@@ -87,4 +97,29 @@ export {
   type NarrativeProgramProvider,
   type StepInput,
   type ExecutorStepResult,
+  type ExecutorHooks,
 } from './executor';
+
+// Generation integration
+export {
+  GenerationBridge,
+  createGenerationBridge,
+  extractGenerationConfig,
+  buildSocialContext,
+  // Types
+  type NarrativeGenerationStrategy,
+  type NarrativeGenerationConfig,
+  type PoolSelectionCriteria,
+  type WorldGenerationOverrides,
+  type PlayerGenerationPrefs,
+  type GenerationService,
+  type ContentPoolProvider,
+  type PoolContent,
+  type GenerationJob,
+  type GenerationHooks,
+  type GenerationHookContext,
+  type GenerationHookResult,
+  type GenerationBridgeConfig,
+  type DynamicStrategyContext,
+  type DynamicStrategyEvaluator,
+} from './generationIntegration';

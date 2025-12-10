@@ -103,15 +103,66 @@ export interface ExecutorStepResult {
 }
 
 /**
+ * Hooks for executor lifecycle events.
+ * Register hooks to intercept and customize execution behavior.
+ */
+export interface ExecutorHooks {
+  /** Called before a node is executed */
+  beforeNodeExecute?: (context: {
+    node: NarrativeNode;
+    program: NarrativeProgram;
+    session: GameSessionDTO;
+    state: NarrativeRuntimeState;
+    npcId: number;
+  }) => Promise<{ skip?: boolean; session?: GameSessionDTO } | void>;
+
+  /** Called after a node is executed */
+  afterNodeExecute?: (context: {
+    node: NarrativeNode;
+    program: NarrativeProgram;
+    session: GameSessionDTO;
+    state: NarrativeRuntimeState;
+    npcId: number;
+    result: NodeHandlerResult;
+  }) => Promise<{ result?: NodeHandlerResult } | void>;
+
+  /** Called before an edge is traversed */
+  beforeEdgeTraverse?: (context: {
+    edge: NarrativeEdge;
+    program: NarrativeProgram;
+    session: GameSessionDTO;
+    state: NarrativeRuntimeState;
+    npcId: number;
+  }) => Promise<{ skip?: boolean; session?: GameSessionDTO } | void>;
+
+  /** Called when a program starts */
+  onProgramStart?: (context: {
+    program: NarrativeProgram;
+    session: GameSessionDTO;
+    npcId: number;
+  }) => Promise<{ session?: GameSessionDTO } | void>;
+
+  /** Called when a program ends */
+  onProgramEnd?: (context: {
+    program: NarrativeProgram;
+    session: GameSessionDTO;
+    npcId: number;
+    reason: 'completed' | 'error' | 'cancelled';
+  }) => Promise<void>;
+}
+
+/**
  * Narrative Executor
  *
  * Main runtime engine for executing narrative programs.
  * Uses a pluggable node handler registry for dynamic node type support.
+ * Supports hooks for lifecycle customization (e.g., generation integration).
  */
 export class NarrativeExecutor {
   private programProvider: NarrativeProgramProvider;
   private handlerRegistry: NodeHandlerRegistry;
   private conditionEvaluator: ConditionEvaluator;
+  private hooks: ExecutorHooks[];
 
   /**
    * Create a new NarrativeExecutor.
@@ -126,6 +177,36 @@ export class NarrativeExecutor {
     this.programProvider = programProvider;
     this.handlerRegistry = handlerRegistry || nodeHandlerRegistry;
     this.conditionEvaluator = new ConditionEvaluator();
+    this.hooks = [];
+  }
+
+  /**
+   * Add hooks to the executor.
+   * Multiple hook sets can be added and will be called in order.
+   *
+   * @param hooks - Hook implementations
+   */
+  addHooks(hooks: ExecutorHooks): void {
+    this.hooks.push(hooks);
+  }
+
+  /**
+   * Remove hooks from the executor.
+   *
+   * @param hooks - Hook implementation to remove
+   */
+  removeHooks(hooks: ExecutorHooks): void {
+    const index = this.hooks.indexOf(hooks);
+    if (index !== -1) {
+      this.hooks.splice(index, 1);
+    }
+  }
+
+  /**
+   * Clear all hooks.
+   */
+  clearHooks(): void {
+    this.hooks = [];
   }
 
   /**
@@ -472,6 +553,393 @@ export class NarrativeExecutor {
       awaitingInput: false,
       error,
     };
+  }
+
+  // ==========================================================================
+  // Async Methods (with hook support)
+  // ==========================================================================
+
+  /**
+   * Start a narrative program asynchronously with full hook support.
+   *
+   * @param session - Current game session
+   * @param npcId - NPC to run the program for
+   * @param programId - Program ID to start
+   * @param initialVariables - Optional initial program variables
+   * @returns Step result with initial node content
+   */
+  async startAsync(
+    session: GameSessionDTO,
+    npcId: number,
+    programId: string,
+    initialVariables?: Record<string, any>
+  ): Promise<ExecutorStepResult> {
+    const program = this.programProvider.getProgram(programId);
+    if (!program) {
+      return this.errorResult(session, npcId, `Program not found: ${programId}`);
+    }
+
+    // Clone session for mutation
+    let newSession = this.cloneSession(session);
+
+    // Invoke onProgramStart hooks
+    for (const hooks of this.hooks) {
+      if (hooks.onProgramStart) {
+        const hookResult = await hooks.onProgramStart({
+          program,
+          session: newSession,
+          npcId,
+        });
+        if (hookResult?.session) {
+          newSession = hookResult.session;
+        }
+      }
+    }
+
+    // Start the program (updates ECS state)
+    const state = startProgram(newSession, npcId, programId, program.entryNodeId, initialVariables);
+
+    // Execute the entry node
+    return this.executeCurrentNodeAsync(newSession, npcId, state);
+  }
+
+  /**
+   * Step through the narrative program asynchronously with full hook support.
+   *
+   * @param session - Current game session
+   * @param npcId - NPC running the program
+   * @param input - Optional input (choice, text, etc.)
+   * @returns Step result with next node content
+   */
+  async stepAsync(
+    session: GameSessionDTO,
+    npcId: number,
+    input?: StepInput
+  ): Promise<ExecutorStepResult> {
+    const state = getNarrativeState(session, npcId);
+
+    if (!state.activeProgramId || !state.activeNodeId) {
+      return this.errorResult(session, npcId, 'No active narrative program');
+    }
+
+    const program = this.programProvider.getProgram(state.activeProgramId);
+    if (!program) {
+      return this.errorResult(session, npcId, `Program not found: ${state.activeProgramId}`);
+    }
+
+    const currentNode = this.findNode(program, state.activeNodeId);
+    if (!currentNode) {
+      return this.errorResult(session, npcId, `Node not found: ${state.activeNodeId}`);
+    }
+
+    // Clone session for mutation
+    const newSession = this.cloneSession(session);
+
+    // Handle input for choice nodes
+    if (currentNode.type === 'choice' && input?.choiceId) {
+      return this.handleChoiceInputAsync(newSession, npcId, state, program, currentNode as ChoiceNode, input.choiceId);
+    }
+
+    // For other nodes, advance to the next node
+    return this.advanceFromNodeAsync(newSession, npcId, state, program, currentNode);
+  }
+
+  /**
+   * Execute the current node asynchronously with hooks.
+   */
+  private async executeCurrentNodeAsync(
+    session: GameSessionDTO,
+    npcId: number,
+    state: NarrativeRuntimeState
+  ): Promise<ExecutorStepResult> {
+    if (!state.activeProgramId || !state.activeNodeId) {
+      return {
+        session,
+        state,
+        finished: true,
+        awaitingInput: false,
+      };
+    }
+
+    const program = this.programProvider.getProgram(state.activeProgramId);
+    if (!program) {
+      return this.errorResult(session, npcId, `Program not found: ${state.activeProgramId}`);
+    }
+
+    const node = this.findNode(program, state.activeNodeId);
+    if (!node) {
+      return this.errorResult(session, npcId, `Node not found: ${state.activeNodeId}`);
+    }
+
+    let currentSession = session;
+
+    // Invoke beforeNodeExecute hooks
+    for (const hooks of this.hooks) {
+      if (hooks.beforeNodeExecute) {
+        const hookResult = await hooks.beforeNodeExecute({
+          node,
+          program,
+          session: currentSession,
+          state,
+          npcId,
+        });
+        if (hookResult?.skip) {
+          // Skip this node, advance to next
+          return this.advanceFromNodeAsync(currentSession, npcId, state, program, node);
+        }
+        if (hookResult?.session) {
+          currentSession = hookResult.session;
+        }
+      }
+    }
+
+    // Build execution context
+    const evalContext = buildEvalContext(currentSession, npcId, state.variables);
+    const context: NodeExecutionContext = {
+      node,
+      program,
+      session: currentSession,
+      state,
+      npcId,
+      evalContext,
+      conditionEvaluator: this.conditionEvaluator,
+      interpolate: (template: string) => this.interpolateTemplate(template, state, evalContext),
+    };
+
+    // Look up handler from registry
+    const handler = this.handlerRegistry.get(node.type);
+    if (!handler) {
+      console.warn(`[NarrativeExecutor] No handler registered for node type: ${node.type}`);
+      return this.advanceFromNodeAsync(currentSession, npcId, state, program, node);
+    }
+
+    // Execute the handler
+    let handlerResult = handler.execute(context);
+
+    // Invoke afterNodeExecute hooks
+    for (const hooks of this.hooks) {
+      if (hooks.afterNodeExecute) {
+        const hookResult = await hooks.afterNodeExecute({
+          node,
+          program,
+          session: handlerResult.session,
+          state,
+          npcId,
+          result: handlerResult,
+        });
+        if (hookResult?.result) {
+          handlerResult = hookResult.result;
+        }
+      }
+    }
+
+    // Apply onEnter effects
+    let newSession = handlerResult.session;
+    let allEffects = handlerResult.appliedEffects;
+
+    if (node.onEnter) {
+      const enterResult = applyEffects(node.onEnter, newSession, npcId);
+      newSession = enterResult.session;
+      allEffects = mergeEffects(allEffects, node.onEnter);
+    }
+
+    // Check if program should terminate
+    if (handlerResult.terminatesProgram || this.isExitNode(program, node.id)) {
+      const finalState = finishProgram(newSession, npcId);
+
+      // Invoke onProgramEnd hooks
+      for (const hooks of this.hooks) {
+        if (hooks.onProgramEnd) {
+          await hooks.onProgramEnd({
+            program,
+            session: newSession,
+            npcId,
+            reason: 'completed',
+          });
+        }
+      }
+
+      return {
+        session: newSession,
+        state: finalState || getNarrativeState(newSession, npcId),
+        display: handlerResult.display,
+        choices: handlerResult.choices,
+        sceneTransition: handlerResult.sceneTransition,
+        finished: true,
+        appliedEffects: allEffects,
+        awaitingInput: false,
+      };
+    }
+
+    // If waiting for input, return current state
+    if (handlerResult.awaitInput) {
+      return {
+        session: newSession,
+        state,
+        display: handlerResult.display,
+        choices: handlerResult.choices,
+        sceneTransition: handlerResult.sceneTransition,
+        finished: false,
+        appliedEffects: allEffects,
+        awaitingInput: true,
+      };
+    }
+
+    // If node determined next node, advance to it
+    if (handlerResult.nextNodeId && handlerResult.skipEdgeTraversal) {
+      const newState = advanceToNode(newSession, npcId, handlerResult.nextNodeId);
+      return this.executeCurrentNodeAsync(newSession, npcId, newState);
+    }
+
+    // Otherwise, traverse edges to find next node
+    return this.advanceFromNodeAsync(newSession, npcId, state, program, node, handlerResult);
+  }
+
+  /**
+   * Handle choice input asynchronously.
+   */
+  private async handleChoiceInputAsync(
+    session: GameSessionDTO,
+    npcId: number,
+    state: NarrativeRuntimeState,
+    program: NarrativeProgram,
+    choiceNode: ChoiceNode,
+    choiceId: string
+  ): Promise<ExecutorStepResult> {
+    // Find the selected choice
+    const choice = choiceNode.choices.find((c: { id: string }) => c.id === choiceId);
+    if (!choice) {
+      return this.errorResult(session, npcId, `Invalid choice: ${choiceId}`);
+    }
+
+    // Check condition
+    const evalContext = buildEvalContext(session, npcId, state.variables);
+    if (choice.condition) {
+      const conditionMet = this.conditionEvaluator.evaluate(choice.condition.expression, evalContext);
+      if (!conditionMet) {
+        return this.errorResult(session, npcId, `Choice condition not met: ${choiceId}`);
+      }
+    }
+
+    // Apply choice effects
+    let newSession = session;
+    if (choice.effects) {
+      const effectResult = applyEffects(choice.effects, newSession, npcId);
+      newSession = effectResult.session;
+    }
+
+    // Apply onExit effects from current node
+    if (choiceNode.onExit) {
+      const exitResult = applyEffects(choiceNode.onExit, newSession, npcId);
+      newSession = exitResult.session;
+    }
+
+    // Advance to target node
+    const newState = advanceToNode(newSession, npcId, choice.targetNodeId, choiceId);
+
+    // Execute the new node
+    return this.executeCurrentNodeAsync(newSession, npcId, newState);
+  }
+
+  /**
+   * Advance from current node by traversing edges asynchronously.
+   */
+  private async advanceFromNodeAsync(
+    session: GameSessionDTO,
+    npcId: number,
+    state: NarrativeRuntimeState,
+    program: NarrativeProgram,
+    currentNode: NarrativeNode,
+    handlerResult?: NodeHandlerResult
+  ): Promise<ExecutorStepResult> {
+    // Build evaluation context
+    const evalContext = buildEvalContext(session, npcId, state.variables);
+
+    // Find outgoing edges
+    const outgoingEdges = program.edges.filter((e: NarrativeEdge) => e.from === currentNode.id);
+
+    // Find first edge with passing condition
+    let selectedEdge: NarrativeEdge | undefined;
+    for (const edge of outgoingEdges) {
+      // Invoke beforeEdgeTraverse hooks
+      let shouldSkip = false;
+      let edgeSession = session;
+
+      for (const hooks of this.hooks) {
+        if (hooks.beforeEdgeTraverse) {
+          const hookResult = await hooks.beforeEdgeTraverse({
+            edge,
+            program,
+            session: edgeSession,
+            state,
+            npcId,
+          });
+          if (hookResult?.skip) {
+            shouldSkip = true;
+            break;
+          }
+          if (hookResult?.session) {
+            edgeSession = hookResult.session;
+          }
+        }
+      }
+
+      if (shouldSkip) continue;
+
+      if (!edge.condition) {
+        selectedEdge = edge;
+        break;
+      }
+      if (this.conditionEvaluator.evaluate(edge.condition.expression, evalContext)) {
+        selectedEdge = edge;
+        break;
+      }
+    }
+
+    // No valid edge - program ends
+    if (!selectedEdge) {
+      const finalState = finishProgram(session, npcId);
+
+      // Invoke onProgramEnd hooks
+      for (const hooks of this.hooks) {
+        if (hooks.onProgramEnd) {
+          await hooks.onProgramEnd({
+            program,
+            session,
+            npcId,
+            reason: 'completed',
+          });
+        }
+      }
+
+      return {
+        session,
+        state: finalState || getNarrativeState(session, npcId),
+        display: handlerResult?.display,
+        finished: true,
+        appliedEffects: handlerResult?.appliedEffects,
+        awaitingInput: false,
+      };
+    }
+
+    // Apply onExit effects from current node
+    let newSession = session;
+    if (currentNode.onExit) {
+      const exitResult = applyEffects(currentNode.onExit, newSession, npcId);
+      newSession = exitResult.session;
+    }
+
+    // Apply edge effects
+    if (selectedEdge.effects) {
+      const edgeResult = applyEffects(selectedEdge.effects, newSession, npcId);
+      newSession = edgeResult.session;
+    }
+
+    // Advance to next node
+    const newState = advanceToNode(newSession, npcId, selectedEdge.to, undefined, selectedEdge.id);
+
+    // Execute the new node
+    return this.executeCurrentNodeAsync(newSession, npcId, newState);
   }
 }
 
