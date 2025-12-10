@@ -1,0 +1,41 @@
+/**
+ * Console Modules Index
+ *
+ * Exports all default console modules.
+ * Import and register these in your app initialization.
+ *
+ * @example
+ * ```ts
+ * import { moduleRegistry } from '@/lib/console';
+ * import { defaultModules } from '@/lib/console/modules';
+ *
+ * // Register all default modules
+ * moduleRegistry.registerAll(defaultModules);
+ *
+ * // Or register individually
+ * import { toolsModule } from '@/lib/console/modules';
+ * moduleRegistry.register(toolsModule);
+ * ```
+ */
+
+export { coreModule } from './core';
+export { workspaceModule } from './workspace';
+export { toolsModule, useToolConsoleStore } from './tools';
+
+// Re-export module type
+export type { ConsoleModule } from '../moduleRegistry';
+
+// Default modules in dependency order
+import { coreModule } from './core';
+import { workspaceModule } from './workspace';
+import { toolsModule } from './tools';
+
+/**
+ * Default modules to register, in dependency order.
+ * Core must be first as other modules depend on it.
+ */
+export const defaultModules = [
+  coreModule,
+  workspaceModule,
+  toolsModule,
+];
