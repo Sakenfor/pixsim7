@@ -179,6 +179,42 @@ Use this index to jump into the right task file for the area you’re touching, 
 
 ---
 
+## Tasks 115-131 Status Summary (Audit: 2025-12-10)
+
+**Completion Rate:** 100% (all tasks completed)
+
+### ✅ Completed Tasks (115-131)
+
+**Generation Pipeline & Pixverse (115-119, 128)** – **FULLY IMPLEMENTED**
+- 115: Pixverse Generation Settings & Control Center Integration
+  - `GenerationSettingsBar.tsx` reusable component
+  - SDK-driven parameter specs
+- 116: Generation Pipeline Drift Audit (read-only analysis task)
+  - Led to Tasks 117-118 fixes
+- 118: Plugin-Owned Generation Aliases
+  - `GENERATION_ALIAS_CONVENTIONS.md` documentation
+  - Plugin `register_generation_alias()` pattern
+- 119: Pixverse Asset Sync & Lineage Refresh
+  - `pixverse_sync.py` API endpoints
+  - `lineage_refresh_service.py` for manual rebuilds
+  - Provider Settings UI with sync controls
+- 128: Drop Legacy Generation Payloads
+  - Backend now rejects flat payloads
+  - All callers emit structured `generation_config`
+
+**Shared Components (129-131)** – **FULLY IMPLEMENTED**
+- 129: Shared Generation Workbench
+  - `GenerationWorkbench.tsx` with render props
+  - `useGenerationWorkbench.ts` hook
+- 130: Shared Asset Gallery
+  - `AssetGallery.tsx` with lazy loading, masonry layout
+  - `useLazyPreview.ts` hook
+- 131: Generation Status Surface
+  - `GenerationsPanel.tsx` with filtering, retry actions
+  - MediaCard status badges
+
+---
+
 ## How to Evolve Tasks
 
 - Prefer **adding Phase 6–10** sections over rewriting 1–5 once something is shipped.
