@@ -53,6 +53,9 @@ export function FloatingPanelsManager() {
         let Component: React.ComponentType<any>;
         let title: string;
 
+        // For dev-tool panels, extract toolId from panel ID and ensure it's in context
+        let panelContext = panel.context || {};
+
         if (isDevToolPanel) {
           // Extract tool ID from panel ID
           const toolId = panel.id.slice('dev-tool:'.length);
@@ -60,6 +63,9 @@ export function FloatingPanelsManager() {
 
           Component = DevToolDynamicPanel;
           title = devTool?.label || toolId;
+
+          // Ensure toolId is in context (critical for persistence/restore)
+          panelContext = { ...panelContext, toolId };
         } else {
           // Regular panel from registry
           const panelDef = panelRegistry.get(panel.id);
@@ -160,7 +166,11 @@ export function FloatingPanelsManager() {
 
               {/* Content */}
               <div className="flex-1 overflow-auto">
-                <Component {...(panel.context || {})} />
+                {isDevToolPanel ? (
+                  <Component context={panelContext} />
+                ) : (
+                  <Component {...panelContext} />
+                )}
               </div>
             </div>
           </Rnd>

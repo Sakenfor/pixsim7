@@ -19,6 +19,7 @@ from pixsim7.backend.main.shared.errors import (
     AccountCooldownError,
     AccountExhaustedError,
     ProviderError,
+    ProviderQuotaExceededError,
 )
 from pixsim7.backend.main.shared.debug import (
     DebugLogger,
@@ -225,6 +226,49 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     account_id=account.id,
                 )
 
+                # Best-effort local credit tracking for Pixverse images.
+                # For image operations we deduct credits on attempt (submission),
+                # while video credits are handled on successful completion in the
+                # status poller (provider refunds failed videos).
+                try:
+                    from pixsim7.backend.main.domain.enums import OperationType as OpType
+                    from pixsim7.backend.main.services.generation.pixverse_pricing import (
+                        get_image_credit_change,
+                    )
+
+                    if generation.provider_id == "pixverse":
+                        params = generation.canonical_params or generation.raw_params or {}
+                        model = params.get("model") or "v5"
+                        quality = params.get("quality") or "360p"
+                        credits: int | None = None
+
+                        # Image operations: static table, deduct on attempt
+                        if generation.operation_type in {OpType.TEXT_TO_IMAGE, OpType.IMAGE_TO_IMAGE}:
+                            credits = get_image_credit_change(str(model), str(quality)) or None
+
+                        if credits and credits > 0:
+                            try:
+                                await account_service.deduct_credit(account.id, "webapi", credits)
+                                gen_logger.info(
+                                    "account_credit_deducted",
+                                    account_id=account.id,
+                                    provider_id=generation.provider_id,
+                                    credits=credits,
+                                    operation_type=generation.operation_type.value,
+                                )
+                            except Exception as credit_err:
+                                gen_logger.warning(
+                                    "account_credit_deduct_failed",
+                                    account_id=account.id,
+                                    provider_id=generation.provider_id,
+                                    error=str(credit_err),
+                                )
+                except Exception as credit_calc_err:
+                    gen_logger.debug(
+                        "account_credit_estimate_failed",
+                        error=str(credit_calc_err),
+                    )
+
                 # Note: Credits refreshed before submission; status_poller refreshes on completion
 
                 # Track successful generation
@@ -244,6 +288,66 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     error_type=e.__class__.__name__,
                     generation_id=generation_id,
                 )
+
+                # If provider reports quota exhaustion for this account,
+                # mark the account as exhausted and retry with a different account.
+                if isinstance(e, ProviderQuotaExceededError):
+                    try:
+                        await account_service.mark_exhausted(account.id)
+                        gen_logger.warning(
+                            "account_marked_exhausted_due_to_provider_quota",
+                            account_id=account.id,
+                            provider_id=generation.provider_id,
+                        )
+                    except Exception as mark_err:
+                        gen_logger.warning(
+                            "account_mark_exhausted_failed",
+                            account_id=account.id,
+                            error=str(mark_err),
+                        )
+
+                    # Release account reservation
+                    try:
+                        await account_service.release_account(account.id)
+                    except Exception as release_err:
+                        gen_logger.warning("account_release_failed", error=str(release_err))
+
+                    # Reset generation to PENDING and re-enqueue so it picks a different account
+                    # Don't mark as failed - we want to try again with another account
+                    try:
+                        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+                        generation.status = GenStatus.PENDING
+                        generation.started_at = None
+                        await db.commit()
+                        await db.refresh(generation)
+
+                        arq_pool = await get_arq_pool()
+                        await arq_pool.enqueue_job(
+                            "process_generation",
+                            generation_id=generation.id,
+                        )
+
+                        gen_logger.info(
+                            "generation_requeued_for_different_account",
+                            generation_id=generation.id,
+                            exhausted_account_id=account.id,
+                        )
+
+                        return {
+                            "status": "requeued",
+                            "reason": "account_quota_exhausted",
+                            "generation_id": generation_id,
+                        }
+                    except Exception as requeue_err:
+                        gen_logger.error(
+                            "generation_requeue_failed",
+                            error=str(requeue_err),
+                            generation_id=generation.id,
+                        )
+                        # Fall through to mark as failed if requeue fails
+
                 await generation_service.mark_failed(generation_id, str(e))
 
                 # Release account reservation on failure
