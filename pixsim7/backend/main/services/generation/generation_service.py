@@ -76,6 +76,7 @@ class GenerationService:
         parent_generation_id: Optional[int] = None,
         prompt_version_id: Optional[UUID] = None,
         force_new: bool = False,
+        analyzer_id: Optional[str] = None,
     ) -> Generation:
         """Delegate to creation service"""
         return await self._creation.create_generation(
@@ -91,6 +92,7 @@ class GenerationService:
             parent_generation_id=parent_generation_id,
             prompt_version_id=prompt_version_id,
             force_new=force_new,
+            analyzer_id=analyzer_id,
         )
 
     # ===== LIFECYCLE METHODS =====
