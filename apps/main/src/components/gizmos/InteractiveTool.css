@@ -93,7 +93,7 @@
 }
 
 /* ============================================================================
-   Hand Tool
+   Hand Tool - Pressure-responsive articulated hand
    ============================================================================ */
 
 .hand-visual {
@@ -101,61 +101,199 @@
   width: 100%;
   height: 100%;
   transform: rotate(-45deg);
+  --skin-color: rgba(255, 210, 180, 0.9);
+  --skin-shadow: rgba(220, 160, 130, 0.6);
+  --skin-highlight: rgba(255, 240, 230, 0.8);
 }
 
 .palm {
   position: absolute;
-  width: 30px;
-  height: 35px;
+  width: 32px;
+  height: 38px;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(var(--palm-scale, 1));
   background: linear-gradient(
     135deg,
-    rgba(255, 200, 150, 0.3),
-    rgba(255, 150, 200, 0.2)
+    var(--skin-highlight),
+    var(--skin-color) 40%,
+    var(--skin-shadow)
   );
-  border-radius: 50% 50% 40% 40%;
-  filter: blur(1px);
+  border-radius: 45% 45% 40% 40%;
+  box-shadow:
+    inset 2px 2px 4px rgba(255, 255, 255, 0.3),
+    inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease-out;
 }
 
+/* Subtle palm lines */
+.palm-lines {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0.15;
+  background:
+    linear-gradient(160deg, transparent 40%, rgba(180, 130, 100, 0.5) 41%, transparent 42%),
+    linear-gradient(130deg, transparent 55%, rgba(180, 130, 100, 0.4) 56%, transparent 57%),
+    linear-gradient(170deg, transparent 65%, rgba(180, 130, 100, 0.3) 66%, transparent 67%);
+}
+
+/* Articulated fingers with segments */
 .finger {
   position: absolute;
-  width: 8px;
-  height: 20px;
-  background: inherit;
-  border-radius: 50% 50% 30% 30%;
+  width: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: bottom center;
+  transition: transform 0.15s ease-out;
 }
 
-.finger-1 { top: -15px; left: 2px; }
-.finger-2 { top: -18px; left: 10px; }
-.finger-3 { top: -18px; left: 18px; }
-.finger-4 { top: -15px; left: 26px; }
+.finger-segment {
+  width: 100%;
+  height: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--skin-shadow),
+    var(--skin-color) 30%,
+    var(--skin-highlight) 70%,
+    var(--skin-shadow)
+  );
+  border-radius: 3px;
+  margin-bottom: 1px;
+  transform-origin: bottom center;
+  transition: transform 0.15s ease-out;
+}
 
+.finger .segment-1 {
+  transform: rotateX(calc(var(--finger-curl, 0deg) * 0.5));
+}
+
+.finger .segment-2 {
+  transform: rotateX(calc(var(--finger-curl, 0deg) * 0.8));
+}
+
+.fingertip {
+  width: 8px;
+  height: 6px;
+  background: linear-gradient(
+    180deg,
+    var(--skin-color),
+    var(--skin-shadow)
+  );
+  border-radius: 50% 50% 40% 40%;
+  transform: rotateX(var(--finger-curl, 0deg));
+  transition: transform 0.15s ease-out;
+}
+
+/* Finger positions - arranged in an arc */
+.finger-1 {
+  top: -22px;
+  left: 1px;
+  transform: rotate(-15deg) rotateX(calc(var(--finger-curl, 0deg) * 0.6));
+}
+
+.finger-2 {
+  top: -26px;
+  left: 9px;
+  transform: rotate(-5deg) rotateX(calc(var(--finger-curl, 0deg) * 0.8));
+}
+
+.finger-3 {
+  top: -26px;
+  left: 17px;
+  transform: rotate(5deg) rotateX(calc(var(--finger-curl, 0deg) * 0.8));
+}
+
+.finger-4 {
+  top: -22px;
+  left: 25px;
+  transform: rotate(15deg) rotateX(calc(var(--finger-curl, 0deg) * 0.6));
+}
+
+/* Thumb with articulation */
 .thumb {
   position: absolute;
-  width: 10px;
-  height: 15px;
-  top: 10px;
-  left: -5px;
-  background: inherit;
-  border-radius: 50%;
-  transform: rotate(30deg);
+  width: 11px;
+  top: 8px;
+  left: -8px;
+  transform: rotate(40deg) rotateX(calc(var(--thumb-curl, 0deg) * 0.5));
+  transform-origin: bottom right;
+  transition: transform 0.15s ease-out;
 }
 
-.energy-aura {
+.thumb-segment {
+  width: 100%;
+  height: 10px;
+  background: linear-gradient(
+    90deg,
+    var(--skin-shadow),
+    var(--skin-color) 40%,
+    var(--skin-highlight) 80%,
+    var(--skin-shadow)
+  );
+  border-radius: 4px;
+  margin-bottom: 1px;
+}
+
+.thumbtip {
+  width: 10px;
+  height: 8px;
+  background: linear-gradient(
+    180deg,
+    var(--skin-color),
+    var(--skin-shadow)
+  );
+  border-radius: 50% 50% 40% 40%;
+  transform: rotateX(calc(var(--thumb-curl, 0deg) * 0.8));
+  transition: transform 0.15s ease-out;
+}
+
+/* Energy aura - responds to pressure */
+.hand-visual .energy-aura {
   position: absolute;
-  width: 150%;
-  height: 150%;
+  width: 180%;
+  height: 180%;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   background: radial-gradient(
     circle,
-    var(--tool-active-color, rgba(255, 100, 200, 0.6)),
-    transparent 60%
+    var(--tool-active-color, rgba(255, 100, 200, 0.6)) 0%,
+    rgba(255, 150, 200, 0.3) 40%,
+    transparent 70%
   );
-  filter: blur(15px);
+  filter: blur(12px);
+  opacity: calc(0.3 + var(--pressure, 0) * 0.7);
+  scale: calc(0.8 + var(--pressure, 0) * 0.4);
+  transition: opacity 0.2s ease, scale 0.2s ease;
+}
+
+/* Touch ripple effect */
+.touch-ripple {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--tool-active-color, rgba(255, 100, 200, 0.8));
+  border-radius: 50%;
+  opacity: 0;
+  animation: touch-ripple-anim 0.6s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes touch-ripple-anim {
+  0% {
+    scale: 0.5;
+    opacity: 0.8;
+  }
+  100% {
+    scale: 2;
+    opacity: 0;
+  }
 }
 
 /* ============================================================================
@@ -166,46 +304,584 @@
   position: relative;
   width: 100%;
   height: 100%;
-  transform: rotate(-30deg);
+  transform: rotate(-30deg) rotateX(var(--flutter-y, 0deg)) rotateY(var(--flutter-x, 0deg));
+  transition: transform 0.1s ease-out;
+  transform-style: preserve-3d;
 }
 
 .feather-shaft {
   position: absolute;
-  width: 2px;
-  height: 50px;
+  width: 3px;
+  height: 55px;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   background: linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.8),
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 240, 245, 0.7),
+    rgba(255, 220, 235, 0.4)
+  );
+  border-radius: 1.5px;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+}
+
+.shaft-highlight {
+  position: absolute;
+  width: 1px;
+  height: 100%;
+  left: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 1),
     rgba(255, 255, 255, 0.3)
   );
 }
 
 .feather-vane {
   position: absolute;
-  width: 20px;
-  height: 35px;
+  width: 22px;
+  height: 40px;
   top: 50%;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 255, 255, 0.4),
-    rgba(255, 200, 255, 0.1)
-  );
-  filter: blur(0.5px);
+  overflow: visible;
 }
 
 .feather-vane-left {
   left: 50%;
-  transform: translate(-100%, -50%) skewY(-20deg);
-  border-radius: 50% 0 0 50%;
+  transform: translate(-100%, -50%);
 }
 
 .feather-vane-right {
   right: 50%;
-  transform: translate(100%, -50%) skewY(20deg);
-  border-radius: 0 50% 50% 0;
+  transform: translate(100%, -50%);
+}
+
+/* Individual feather barbs - creates realistic feather texture */
+.feather-barb {
+  position: absolute;
+  width: 18px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 220, 240, 0.6),
+    rgba(255, 200, 230, 0.2)
+  );
+  border-radius: 0 2px 2px 0;
+  transform-origin: left center;
+  animation: barb-flutter 2s ease-in-out infinite;
+  animation-delay: var(--barb-delay, 0s);
+}
+
+.feather-vane-left .feather-barb {
+  right: 0;
+  transform-origin: right center;
+  transform: rotate(calc(-15deg + var(--barb-index) * 2deg)) translateX(-2px);
+  background: linear-gradient(
+    -90deg,
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 220, 240, 0.6),
+    rgba(255, 200, 230, 0.2)
+  );
+  border-radius: 2px 0 0 2px;
+}
+
+.feather-vane-right .feather-barb {
+  left: 0;
+  transform: rotate(calc(15deg - var(--barb-index) * 2deg)) translateX(2px);
+}
+
+/* Position barbs along the vane */
+.feather-barb:nth-child(1) { top: 5%; }
+.feather-barb:nth-child(2) { top: 12%; }
+.feather-barb:nth-child(3) { top: 19%; }
+.feather-barb:nth-child(4) { top: 26%; }
+.feather-barb:nth-child(5) { top: 33%; }
+.feather-barb:nth-child(6) { top: 40%; }
+.feather-barb:nth-child(7) { top: 47%; }
+.feather-barb:nth-child(8) { top: 54%; }
+.feather-barb:nth-child(9) { top: 61%; }
+.feather-barb:nth-child(10) { top: 68%; }
+.feather-barb:nth-child(11) { top: 75%; }
+.feather-barb:nth-child(12) { top: 82%; }
+
+@keyframes barb-flutter {
+  0%, 100% {
+    opacity: 0.9;
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 1;
+    filter: blur(0.3px);
+  }
+}
+
+.feather-tip {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 50%);
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.7),
+    rgba(255, 220, 240, 0.3)
+  );
+  clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+/* Floating petal particles */
+.feather-particles {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.petal {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 200, 230, 0.8),
+    rgba(255, 180, 220, 0.3)
+  );
+  border-radius: 50% 0 50% 0;
+  animation: petal-float 3s ease-in-out infinite;
+  opacity: 0;
+}
+
+.petal-1 {
+  top: 20%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.petal-2 {
+  top: 50%;
+  right: 5%;
+  animation-delay: 1s;
+}
+
+.petal-3 {
+  bottom: 20%;
+  left: 15%;
+  animation-delay: 2s;
+}
+
+@keyframes petal-float {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+    transform: translate(-5px, -10px) rotate(45deg) scale(1);
+  }
+  80% {
+    opacity: 0.6;
+    transform: translate(-15px, -30px) rotate(180deg) scale(0.8);
+  }
+  100% {
+    transform: translate(-20px, -40px) rotate(270deg) scale(0);
+    opacity: 0;
+  }
+}
+
+/* ============================================================================
+   Silk Tool - Flowing, luxurious fabric
+   ============================================================================ */
+
+.silk-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  --silk-primary: rgba(200, 150, 255, 0.8);
+  --silk-secondary: rgba(255, 180, 220, 0.6);
+  --silk-shimmer: rgba(255, 255, 255, 0.9);
+}
+
+.silk-fabric {
+  position: absolute;
+  width: 50px;
+  height: 60px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+}
+
+/* Multiple translucent layers create depth */
+.silk-layer {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  animation: silk-wave 3s ease-in-out infinite;
+}
+
+.silk-layer.layer-1 {
+  background: linear-gradient(
+    135deg,
+    var(--silk-primary),
+    var(--silk-secondary),
+    var(--silk-primary)
+  );
+  filter: blur(1px);
+  animation-delay: 0s;
+}
+
+.silk-layer.layer-2 {
+  background: linear-gradient(
+    -45deg,
+    var(--silk-secondary),
+    transparent 50%,
+    var(--silk-primary)
+  );
+  opacity: 0.7;
+  transform: scale(0.9) rotate(5deg);
+  animation-delay: 0.5s;
+}
+
+.silk-layer.layer-3 {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--silk-shimmer) 50%,
+    transparent
+  );
+  opacity: 0.5;
+  transform: scale(0.8) rotate(-5deg);
+  animation-delay: 1s;
+}
+
+@keyframes silk-wave {
+  0%, 100% {
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    border-radius: 50% 50% 60% 40% / 40% 50% 50% 60%;
+  }
+  50% {
+    border-radius: 70% 30% 30% 70% / 70% 70% 30% 30%;
+    transform: translateY(-3px) rotate(2deg);
+  }
+  75% {
+    border-radius: 40% 60% 50% 50% / 60% 40% 60% 40%;
+  }
+}
+
+/* Shimmer highlight */
+.silk-shimmer {
+  position: absolute;
+  width: 60px;
+  height: 70px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 40%,
+    var(--silk-shimmer) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 200% 200%;
+  animation: silk-shimmer-move 2s linear infinite;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+@keyframes silk-shimmer-move {
+  0% {
+    background-position: 200% 200%;
+  }
+  100% {
+    background-position: -200% -200%;
+  }
+}
+
+/* Fabric folds */
+.silk-fold {
+  position: absolute;
+  width: 40px;
+  height: 4px;
+  top: 50%;
+  left: 50%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(100, 50, 150, 0.3),
+    transparent
+  );
+  border-radius: 50%;
+  filter: blur(1px);
+}
+
+.silk-fold.fold-1 {
+  transform: translate(-50%, -8px) rotate(-10deg);
+}
+
+.silk-fold.fold-2 {
+  transform: translate(-50%, 8px) rotate(10deg);
+}
+
+/* Floating silk threads */
+.silk-threads {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.thread {
+  position: absolute;
+  width: 20px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--silk-primary),
+    transparent
+  );
+  animation: thread-float 4s ease-in-out infinite;
+  opacity: 0;
+}
+
+.thread-1 {
+  top: 20%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.thread-2 {
+  top: 60%;
+  right: 10%;
+  animation-delay: 1.3s;
+}
+
+.thread-3 {
+  bottom: 20%;
+  left: 30%;
+  animation-delay: 2.6s;
+}
+
+@keyframes thread-float {
+  0% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateX(-10px) rotate(180deg);
+    opacity: 0.4;
+  }
+  80% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateX(-20px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Pressure response - fabric compresses */
+.silk-visual .silk-fabric {
+  scale: calc(1 - var(--pressure, 0) * 0.15);
+  transition: scale 0.2s ease-out;
+}
+
+/* ============================================================================
+   Banana Tool - Curved fruit with squish physics
+   ============================================================================ */
+
+.banana-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  --banana-yellow: rgb(255, 225, 53);
+  --banana-yellow-dark: rgb(220, 180, 30);
+  --banana-yellow-light: rgb(255, 245, 150);
+  --banana-brown: rgb(139, 90, 43);
+}
+
+.banana-body {
+  position: absolute;
+  width: 20px;
+  height: 55px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-20deg);
+  transform-style: preserve-3d;
+}
+
+/* Banana segments - curved shape */
+.banana-segment {
+  position: absolute;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--banana-yellow-dark),
+    var(--banana-yellow) 30%,
+    var(--banana-yellow-light) 50%,
+    var(--banana-yellow) 70%,
+    var(--banana-yellow-dark)
+  );
+  border-radius: 50% / 30%;
+  transform-origin: center;
+  transition: transform 0.15s ease-out;
+}
+
+.banana-segment.segment-top {
+  height: 18px;
+  top: 0;
+  border-radius: 50% 50% 30% 30%;
+  transform: rotate(calc(var(--bend-angle, 0deg) * 0.5)) scaleY(var(--squish-scale, 1));
+}
+
+.banana-segment.segment-middle {
+  height: 22px;
+  top: 16px;
+  transform: scaleY(var(--squish-scale, 1));
+}
+
+.banana-segment.segment-bottom {
+  height: 18px;
+  top: 36px;
+  border-radius: 30% 30% 50% 50%;
+  transform: rotate(calc(var(--bend-angle, 0deg) * -0.5)) scaleY(var(--squish-scale, 1));
+}
+
+/* Ridges that run along the banana */
+.banana-ridge {
+  position: absolute;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--banana-yellow-dark) 20%,
+    var(--banana-yellow-dark) 80%,
+    transparent
+  );
+  opacity: 0.4;
+}
+
+.banana-ridge.ridge-1 {
+  left: 25%;
+}
+
+.banana-ridge.ridge-2 {
+  left: 50%;
+  opacity: 0.3;
+}
+
+.banana-ridge.ridge-3 {
+  left: 75%;
+}
+
+/* Banana tip */
+.banana-tip {
+  position: absolute;
+  width: 8px;
+  height: 10px;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    var(--banana-yellow-dark),
+    var(--banana-brown)
+  );
+  border-radius: 30% 30% 50% 50%;
+}
+
+/* Banana stem */
+.banana-stem {
+  position: absolute;
+  width: 6px;
+  height: 12px;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(10deg);
+  background: linear-gradient(
+    to top,
+    var(--banana-yellow-dark),
+    var(--banana-brown) 60%,
+    rgb(80, 50, 20)
+  );
+  border-radius: 3px 3px 0 0;
+}
+
+/* Shadow under banana */
+.banana-shadow {
+  position: absolute;
+  width: 30px;
+  height: 8px;
+  bottom: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse,
+    rgba(0, 0, 0, 0.3),
+    transparent 70%
+  );
+  filter: blur(2px);
+  transition: scale 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+/* Impact waves when pressure is high */
+.impact-waves {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.impact-wave {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--banana-yellow);
+  border-radius: 50%;
+  animation: banana-impact 0.5s ease-out forwards;
+}
+
+.impact-wave.wave-1 {
+  animation-delay: 0s;
+}
+
+.impact-wave.wave-2 {
+  animation-delay: 0.15s;
+}
+
+@keyframes banana-impact {
+  0% {
+    scale: 0.3;
+    opacity: 0.8;
+  }
+  100% {
+    scale: 1.5;
+    opacity: 0;
+  }
+}
+
+/* Squish animation when pressure applied */
+.banana-visual .banana-body {
+  transform: translate(-50%, -50%) rotate(-20deg) scaleY(calc(1 - var(--pressure, 0) * 0.2));
+  transition: transform 0.1s ease-out;
 }
 
 /* ============================================================================

@@ -1,6 +1,9 @@
 /**
  * Rings Gizmo Pack
  * Adds the Rings gizmo for multi-layered parameter control
+ *
+ * This pack is standalone and does not bundle other tools.
+ * Import water, banana, or other tools from their individual registries.
  */
 
 import {
@@ -8,9 +11,6 @@ import {
   type GizmoDefinition,
 } from '@pixsim7/scene.gizmos';
 import { lazy } from 'react';
-
-// Re-export all previous packs
-export * from './registry-water-banana';
 
 // ============================================================================
 // Rings Gizmo

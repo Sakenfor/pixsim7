@@ -20,6 +20,32 @@ This guide helps AI assistants understand what's already implemented, where thin
 
 ---
 
+## 🔍 Quick Topic Lookup
+
+**Find docs fast by topic:**
+
+| Topic | Primary Doc | Also See |
+|-------|-------------|----------|
+| **Getting started** | `DEVELOPMENT_GUIDE.md` | `docs/INDEX.md` |
+| **System architecture** | `ARCHITECTURE.md` | `docs/architecture/README.md` |
+| **Building plugins** | `docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md` | `docs/EXTENSION_ARCHITECTURE.md` |
+| **Generation system** | `docs/systems/generation/GENERATION_SYSTEM.md` | `docs/systems/generation/README.md` |
+| **Backend services** | `docs/backend/SERVICES.md` | `docs/BACKEND_MODERNIZATION.md` |
+| **Frontend components** | `docs/frontend/COMPONENTS.md` | `apps/main/src/components/README.md` |
+| **Game/NPC systems** | `docs/GAMEPLAY_SYSTEMS.md` | `docs/architecture/subsystems/npc-architecture.md` |
+| **Graph/scene editor** | `docs/GRAPH_SYSTEM.md` | `docs/NODE_EDITOR_DEVELOPMENT.md` |
+| **Assets & gallery** | `docs/CROSS_PROVIDER_ASSETS.md` | `apps/main/src/lib/gallery/README.md` |
+| **Overlays & HUD** | `docs/OVERLAY_DATA_BINDING.md` | `docs/HUD_LAYOUT_DESIGNER.md` |
+| **Relationships** | `docs/RELATIONSHIPS_AND_ARCS.md` | `docs/ABSTRACT_STAT_SYSTEM.md` |
+| **Chrome extension** | `chrome-extension/README.md` | `chrome-extension/QUICK_START.md` |
+| **Launcher** | `docs/LAUNCHER.md` | `launcher/README.md` |
+| **Logging** | `docs/LOGGING_STRUCTURE.md` | `docs/LOG_FILTERING_AND_SETTINGS.md` |
+| **ADRs (why decisions)** | `docs/decisions/README.md` | Individual ADRs in `docs/decisions/` |
+| **Task tracking** | `claude-tasks/README.md` | `docs/TASK_TRACKING_OVERVIEW.md` |
+| **Full doc index** | `docs/INDEX.md` | — |
+
+---
+
 ## 📁 Repository Structure
 
 ```
@@ -571,5 +597,5 @@ Is this a pattern AI assistants should know?
 
 ---
 
-**Last Updated:** 2025-11-21
-**Version:** 1.1.0
+**Last Updated:** 2025-12-10
+**Version:** 1.2.0
