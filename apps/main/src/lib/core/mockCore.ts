@@ -250,11 +250,6 @@ export class MockPixSim7Core implements PixSim7Core {
       }
     });
   }
-    const brain = this.getNpcBrainState(npcId);
-    if (brain) {
-      this.emit('npcBrainChanged', { npcId, brain });
-    }
-  }
 
   on<K extends keyof CoreEventMap>(
     event: K,

@@ -39,15 +39,28 @@ export class BaseRegistry<T extends Identifiable> {
 
   /**
    * Register an item in the registry
-   * If an item with the same ID already exists, it will be overwritten with a warning.
+   * If an item with the same ID already exists, it will be skipped.
+   * Use forceRegister() to overwrite existing items.
+   *
+   * @param item - The item to register
+   * @returns true if registered, false if already existed
+   */
+  register(item: T): boolean {
+    if (this.items.has(item.id)) {
+      return false;
+    }
+    this.items.set(item.id, item);
+    this.notifyListeners();
+    return true;
+  }
+
+  /**
+   * Register an item, overwriting if it already exists.
+   * Use this for intentional updates/reloads.
    *
    * @param item - The item to register
    */
-  register(item: T): void {
-    if (this.items.has(item.id)) {
-      console.warn(`[${this.constructor.name}] Item with id "${item.id}" is already registered. Overwriting.`);
-    }
-
+  forceRegister(item: T): void {
     this.items.set(item.id, item);
     this.notifyListeners();
   }
