@@ -156,3 +156,43 @@ export {
   type SurfaceTypeId,
   type OntologyProvider,
 } from './generationIntegration';
+
+// Runtime integration (bridges narrative with GameRuntime)
+export {
+  NarrativeController,
+  createNarrativeController,
+  setupNarrativeIntegration,
+  buildNarrativeResponse,
+  // Program resolvers
+  DefaultProgramResolver,
+  ConditionBasedResolver,
+  // Session adapter
+  DefaultSessionStateAdapter,
+  // Types
+  type NarrativeProgramResolver,
+  type ProgramResolutionContext,
+  type ProgramTrigger,
+  type SessionStateAdapter,
+  type NarrativeControllerConfig,
+  type NarrativeControllerEvents,
+} from './runtimeIntegration';
+
+// Scene integration (bridges narrative with scene runtime)
+export {
+  ScenePlaybackController,
+  SceneNarrativeTriggerer,
+  RuleBasedMediaCoordinator,
+  createSceneProvider,
+  createSceneIntegrationHooks,
+  // Types
+  type SceneProvider,
+  type ActiveScenePlayback,
+  type ScenePlaybackResult,
+  type SceneIntegrationConfig,
+  type SceneEvent,
+  type SceneNarrativeTriggerConfig,
+  type SceneNarrativeTrigger,
+  type SceneMediaCoordinator,
+  type MediaOverrides,
+  type MediaOverrideRule,
+} from './sceneIntegration';
