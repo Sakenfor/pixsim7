@@ -14,6 +14,8 @@
  * pixsim.context.scene.id
  * pixsim.data.workspace.activePresetId
  * pixsim.ops.workspace.loadPreset('minimal')
+ * pixsim.ops.tools.list()
+ * pixsim.ops.tools.setPressure(0.8)
  * ```
  */
 
@@ -27,10 +29,12 @@ export type { ConsoleEntry, ConsoleState, ConsoleActions } from './consoleStore'
 
 export { registerCoreStores } from './registerCoreStores';
 export { registerCoreOps } from './registerCoreOps';
+export { registerToolOps, useToolConsoleStore } from './registerToolOps';
 
 import { createPixsimNamespace, initializeNamespace } from './namespace';
 import { registerCoreStores } from './registerCoreStores';
 import { registerCoreOps } from './registerCoreOps';
+import { registerToolOps } from './registerToolOps';
 import { getEditorContextSnapshot } from './getEditorContextSnapshot';
 
 /** Global pixsim namespace instance */
@@ -60,6 +64,7 @@ export function initializeConsole(): void {
   // Register core stores and ops
   registerCoreStores();
   registerCoreOps();
+  registerToolOps();
 
   initialized = true;
 

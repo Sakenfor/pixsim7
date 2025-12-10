@@ -143,6 +143,14 @@ Examples:
   pixsim.data.__keys__
   pixsim.ops.workspace.listPresets()
   pixsim.context.scene
+
+Tool Commands:
+  pixsim.ops.tools.list()           - List all tools
+  pixsim.ops.tools.select('feather') - Select a tool
+  pixsim.ops.tools.setPressure(0.8) - Override pressure
+  pixsim.ops.tools.setSpeed(0.5)    - Override speed
+  pixsim.ops.tools.unlockAll()      - [CHEAT] Unlock all
+  pixsim.ops.gizmos.list()          - List all gizmos
       `.trim();
     },
   });
