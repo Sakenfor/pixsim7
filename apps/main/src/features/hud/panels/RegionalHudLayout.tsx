@@ -7,9 +7,9 @@
 
 import { useMemo, useState } from 'react';
 import type { GameWorldDetail } from '@/lib/api/game';
-import type { WorldToolContext, WorldToolPlugin, HudToolPlacement, HudToolSize } from '@/lib/worldTools/types';
-import { buildHudLayout, getToolsForRegion, type HudLayout } from '@/lib/worldTools/hudLayout';
-import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
+import type { WorldToolContext, WorldToolPlugin, HudToolPlacement, HudToolSize } from '@features/worldTools/lib/types';
+import { buildHudLayout, getToolsForRegion, type HudLayout } from '@features/worldTools/lib/hudLayout';
+import { WorldToolsPanel } from '@features/worldTools/components/WorldToolsPanel';
 import { Button } from '@pixsim7/shared.ui';
 
 interface RegionalHudLayoutProps {

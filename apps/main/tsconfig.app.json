@@ -20,6 +20,8 @@
       "@/*": ["./src/*"],
       "@features/hud/*": ["./src/features/hud/*"],
       "@features/hud": ["./src/features/hud/index.ts"],
+      "@features/worldTools/*": ["./src/features/worldTools/*"],
+      "@features/worldTools": ["./src/features/worldTools/index.ts"],
       "@pixsim7/types": ["../packages/types/dist"]
     },
 

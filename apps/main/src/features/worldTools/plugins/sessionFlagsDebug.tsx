@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
 
 export const sessionFlagsDebugTool: WorldToolPlugin = {

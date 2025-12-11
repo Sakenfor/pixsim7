@@ -6,7 +6,7 @@
  */
 
 import { worldToolRegistry } from './types';
-import { builtInWorldTools } from '../../plugins/worldTools';
+import { builtInWorldTools } from '../plugins';
 
 // Export the singleton registry
 export { worldToolRegistry };

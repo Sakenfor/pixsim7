@@ -4,7 +4,7 @@
  * Displays active quests and objectives.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { QuestLog } from '../../components/game/QuestLog';
 
 export const questLogTool: WorldToolPlugin = {

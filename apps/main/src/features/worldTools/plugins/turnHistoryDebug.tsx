@@ -4,7 +4,7 @@
  * Displays turn history for turn-based game sessions.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import type { TurnRecord, SessionFlags } from '@/types';
 import { Badge } from '@pixsim7/shared.ui';
 

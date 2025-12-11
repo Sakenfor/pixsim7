@@ -4,7 +4,7 @@
  * Displays current world state and debug information.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { Panel } from '@pixsim7/shared.ui';
 
 export const worldInfoTool: WorldToolPlugin = {

@@ -74,7 +74,7 @@ import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
-import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
+import { WorldToolsPanel } from '@features/worldTools';
 import {
   RegionalHudLayout,
   HudLayoutEditor,
