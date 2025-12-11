@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { getNodePorts, getPortPosition } from '@/modules/scene-builder/portConfig';
 import { validateScene } from '@/modules/scene-builder/validation';
 import { nodeRendererRegistry } from '@/lib/graph/nodeRendererRegistry';

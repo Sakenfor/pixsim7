@@ -3,7 +3,7 @@ import { Button } from '@pixsim7/shared.ui';
 import type { DraftSceneNode } from '@/modules/scene-builder';
 import type { SceneRef } from '@/types';
 import { useToast } from '@pixsim7/shared.ui';
-import { useGraphStore } from '@/stores/graphStore';
+import { useGraphStore } from '@features/graph';
 import { getValidationSummary } from '@pixsim7/game.engine';
 import { createGeneration, type GenerationResponse } from '@/lib/api/generations';
 import { useGenerationNodeForm } from './useGenerationNodeForm';

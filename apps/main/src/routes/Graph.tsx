@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { useLineageGraph } from '../hooks/useLineageGraph';
+import { useLineageGraph } from '@features/graph';
 
 export function GraphRoute() {
   const { id } = useParams();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '@features/graph';
 import { validateScene, type ValidationResult } from '@/modules/scene-builder/validation';
 import type { ExpansionComponentProps } from '@/lib/cubeExpansionRegistry';
 

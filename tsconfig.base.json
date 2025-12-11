@@ -43,7 +43,9 @@
       "@features/simulation/*": ["apps/main/src/features/simulation/*"],
       "@features/simulation": ["apps/main/src/features/simulation/index.ts"],
       "@features/generation/*": ["apps/main/src/features/generation/*"],
-      "@features/generation": ["apps/main/src/features/generation/index.ts"]
+      "@features/generation": ["apps/main/src/features/generation/index.ts"],
+      "@features/graph/*": ["apps/main/src/features/graph/*"],
+      "@features/graph": ["apps/main/src/features/graph/index.ts"]
     }
   }
 }

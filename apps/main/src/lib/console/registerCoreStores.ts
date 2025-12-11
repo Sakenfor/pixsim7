@@ -17,7 +17,7 @@ import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { useAssetSelectionStore } from '@/stores/assetSelectionStore';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useGraphStore } from '@/stores/graphStore';
+import { useGraphStore } from '@features/graph';
 import { useToolConfigStore } from '@/stores/toolConfigStore';
 import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
 

@@ -1,5 +1,5 @@
 import { ReactFlowProvider } from 'reactflow';
-import { ArcGraphPanel } from '../components/arc-graph/ArcGraphPanel';
+import { ArcGraphPanel } from '@features/graph';
 
 /**
  * Arc Graph Route

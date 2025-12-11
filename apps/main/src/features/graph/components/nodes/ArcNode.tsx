@@ -1,6 +1,6 @@
 import { memo, useState, useCallback } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { useArcGraphStore, type ArcGraphState } from '@/stores/arcGraphStore';
+import { useArcGraphStore, type ArcGraphState } from '../../stores/arcGraphStore';
 import { nodeRendererRegistry } from '@/lib/graph/nodeRendererRegistry';
 import type { ArcGraphNode } from '@/modules/arc-graph';
 

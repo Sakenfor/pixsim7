@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '@features/graph';
 import type { DraftEdge } from '@/modules/scene-builder';
 import { Button, useToast } from '@pixsim7/shared.ui';
 import {

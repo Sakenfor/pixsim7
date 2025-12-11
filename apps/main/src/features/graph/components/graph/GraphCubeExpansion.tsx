@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import type { ExpansionComponentProps } from '@/lib/cubeExpansionRegistry';
 
 /**

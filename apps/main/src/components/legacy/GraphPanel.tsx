@@ -14,7 +14,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button, useToast } from '@pixsim7/shared.ui';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '@features/graph';
 import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@/modules/scene-builder/graphSync';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { logEvent } from '@/lib/logging';

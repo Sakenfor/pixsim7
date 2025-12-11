@@ -9,7 +9,7 @@ import type { EditorContext } from '../context/editorContext';
 import { derivePrimaryView, deriveEditorMode } from '../context/deriveEditorState';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useWorldContextStore } from '@/stores/worldContextStore';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
 

@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
-import { ActionBlockGraphSurface } from '../components/graph/ActionBlockGraphSurface';
+import { ActionBlockGraphSurface } from '@features/graph';
 import { useApi } from '../hooks/useApi';
 import type { ActionBlock } from '../types/promptGraphs';
 

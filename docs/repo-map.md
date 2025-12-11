@@ -84,6 +84,15 @@ features/
 │   ├── hooks/          # useGenerationWebSocket, useRecentGenerations, useMediaCardGenerationStatus, etc.
 │   ├── stores/         # generationsStore, generationQueueStore, generationSettingsStore
 │   └── index.ts        # Barrel export
+├── graph/              # Scene graph editing, arc/quest graphs, character graphs
+│   ├── components/     # GraphEditorHost, node renderers, graph surfaces, templates
+│   │   ├── graph/      # Main graph editor (ActionBlockGraphSurface, node renderers, templates)
+│   │   ├── arc-graph/  # ArcGraphPanel (arc/quest level graphs)
+│   │   ├── character-graph/ # CharacterGraphBrowser, SceneCharacterViewer
+│   │   └── nodes/      # ArcNode, NodeGroup, NodePalette, SceneNode
+│   ├── stores/         # graphStore (scene graphs), arcGraphStore (arc/quest graphs)
+│   ├── hooks/          # useLineageGraph
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 

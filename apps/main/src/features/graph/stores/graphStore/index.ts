@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, devtools } from 'zustand/middleware';
 import type { GraphState } from './types';
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import type { DraftSceneNode } from '@/modules/scene-builder';
 import { createSceneSlice } from './sceneSlice';
 import { createSignatureSlice } from './signatureSlice';
 import { createNodeSlice } from './nodeSlice';
@@ -9,9 +9,9 @@ import { createNodeGroupSlice } from './nodeGroupSlice';
 import { createNavigationSlice } from './navigationSlice';
 import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
-import { logEvent } from '../../lib/logging';
-import { createBackendStorage } from '../../lib/backendStorage';
-import { createTemporalStore, graphStorePartialize } from '../_shared/temporal';
+import { logEvent } from '@/lib/logging';
+import { createBackendStorage } from '@/lib/backendStorage';
+import { createTemporalStore, graphStorePartialize } from '@/stores/_shared/temporal';
 
 /**
  * Graph Store - Multi-Scene Architecture (Modular)

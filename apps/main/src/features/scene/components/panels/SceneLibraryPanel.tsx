@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useGraphStore, type GraphState } from '@features/graph';
 import { Button } from '@pixsim7/shared.ui';
 import type { DraftScene } from '@/modules/scene-builder';
 

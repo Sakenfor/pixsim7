@@ -11,7 +11,7 @@ import { useState, useMemo } from 'react';
 import { SceneLibraryPanel } from './SceneLibraryPanel';
 import { SceneCollectionPanel } from './SceneCollectionPanel';
 import { ScenePlaybackPanel } from './ScenePlaybackPanel';
-import { useGraphStore } from '@/stores/graphStore';
+import { useGraphStore } from '@features/graph';
 
 type TabId = 'library' | 'collections' | 'playback';
 
