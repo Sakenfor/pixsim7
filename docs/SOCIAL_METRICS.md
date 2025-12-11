@@ -118,7 +118,7 @@ arousal = chemistry * 0.5 + tension * 0.5
 
 **Game-Core Helper**: `previewNpcMood(args)`
 
-**Client-Side Computation**: `buildNpcBrainState()` from `@pixsim7/game.engine`
+**Client-Side Computation**: `getNpcBrainState()` from `@pixsim7/game.engine`
 
 ---
 
@@ -250,7 +250,7 @@ else:
 
 **Game-Core Helper**: `previewUnifiedMood(args)` from `@pixsim7/game.engine`
 
-**NPC Brain Integration**: `buildNpcBrainState({ unifiedMood })` accepts optional unified mood parameter
+**NPC Brain Integration**: `getNpcBrainState({ unifiedMood })` accepts optional unified mood parameter
 
 **Mood Debug Tool**: `apps/main/src/plugins/worldTools/moodDebug.tsx` displays unified mood when available
 
@@ -375,7 +375,7 @@ All endpoints:
 - `previewReputationBand(args)`: Calls reputation preview API
 - `previewRelationshipTier(args)`: Calls tier preview API
 - `previewIntimacyLevel(args)`: Calls intimacy preview API
-- `buildNpcBrainState(params)`: Client-side mood computation (no API call)
+- `getNpcBrainState(params)`: Client-side mood computation (no API call)
 
 **Configuration**:
 ```typescript
@@ -595,7 +595,7 @@ Metrics read from `GameSession` for runtime data.
 - ✅ World schema editors testing threshold changes
 - ✅ Dialogue/action composition showing outcomes
 
-**Use Client-Side** (`buildNpcBrainState`):
+**Use Client-Side** (`getNpcBrainState`):
 - ✅ Runtime display of current mood (like moodDebug tool)
 - ✅ Real-time updates during gameplay
 - ✅ Performance-critical UI (avoid API roundtrips)
@@ -651,12 +651,12 @@ const previewChoiceOutcome = async (choice: DialogueChoice) => {
 ### Example: Live Mood Display
 
 ```typescript
-import { buildNpcBrainState, getNpcRelationshipState } from '@pixsim7/game.engine';
+import { getNpcBrainState, getNpcRelationshipState } from '@pixsim7/game.engine';
 
 // Runtime mood display (no API call)
 const DisplayNpcMood = ({ npcId, session }) => {
   const relState = getNpcRelationshipState(session, npcId);
-  const brainState = buildNpcBrainState({
+  const brainState = getNpcBrainState({
     npcId,
     session,
     relationship: relState
@@ -756,7 +756,7 @@ Future validation features:
 - `packages/game/engine/src/npcs/brain.ts`
 - `docs/architecture/subsystems/npc-architecture.md`
 
-**Integration**: `buildNpcBrainState()` includes mood computation, can optionally call preview API
+**Integration**: `getNpcBrainState()` includes mood computation, can optionally call preview API
 
 ### Emotional State System
 
@@ -778,7 +778,7 @@ Future validation features:
 
 **File**: `apps/main/src/plugins/worldTools/moodDebug.tsx`
 
-**Integration**: Uses `buildNpcBrainState()` for live mood display
+**Integration**: Uses `getNpcBrainState()` for live mood display
 
 ---
 
@@ -902,7 +902,7 @@ Test scenarios:
 
 ### Client-Side Optimization
 
-**Current**: `buildNpcBrainState()` is synchronous and fast
+**Current**: `getNpcBrainState()` is synchronous and fast
 
 **Recommendation**: Use client-side for runtime display, API for planning
 

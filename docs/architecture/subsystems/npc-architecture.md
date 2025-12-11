@@ -164,12 +164,12 @@ core.on('persona:invalidated', ({ npcId }) => {
 
 ## Implementation Details
 
-### buildNpcBrainState Function
+### BrainState Projection Function
 
 The `buildNpcBrainState` function (in `packages/game/engine/src/npcs/brain.ts`) handles merging:
 
 ```typescript
-export function buildNpcBrainState(params: {
+// Legacy example removed; BrainState is now constructed via PixSim7Core and backend BrainEngine
   npcId: number;
   session: GameSessionDTO;
   relationship: NpcRelationshipState;
@@ -261,7 +261,7 @@ const updatedPreferences = { ...preferences, sensitivity: { overall: 2.0 } };
 
 // Build preview brain state with updated preferences
 const mockSession = createMockSession(npc, updatedPreferences);
-const previewBrain = buildNpcBrainState({
+const previewBrain = core.getNpcBrainState(12);
   npcId: npc.id,
   session: mockSession,
   relationship: mockRelationshipState,
