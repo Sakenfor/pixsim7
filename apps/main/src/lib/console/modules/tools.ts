@@ -10,7 +10,7 @@ import { opsRegistry } from '../opsRegistry';
 import { dataRegistry } from '../dataRegistry';
 
 // Re-export the store for backwards compatibility
-export { useToolConsoleStore } from '@/lib/gizmos/console';
+export { useToolConsoleStore } from '@/gizmos/console';
 
 export const toolsModule: ConsoleModule = {
   id: 'tools',

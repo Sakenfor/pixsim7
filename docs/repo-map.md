@@ -18,47 +18,171 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 
 ## Front-End (`apps/main/src`)
 
-- `components/` – Shared UI components and feature-specific UIs (simulation dashboards, gizmos, etc.).
-- `components/panels/` – Dockview panels (Model inspector, console, world tools). Upcoming 3D panel work lives here.
-- `lib/` – Front-end libraries (console namespace, gizmo registries, interaction stats logic).
-- `stores/` – Zustand stores for editor/runtime state (tool configs, interaction stats, workspace layout).
-- `routes/` – Top-level React routes (Simulation Playground, NPC labs, etc.).
-- `plugins/` – Feature bundles that plug into the editor (world tools, ops panels).
+- `components/` â€” Shared UI components and feature-specific UIs (simulation dashboards, gizmos, etc.).
+- `components/panels/` â€” Dockview panels (Model inspector, console, world tools). Upcoming 3D panel work lives here.
+- `lib/` â€” Front-end libraries (console namespace, gizmo registries, interaction stats logic).
+- `stores/` â€” Zustand stores for editor/runtime state (tool configs, interaction stats, workspace layout).
+- `routes/` â€” Top-level React routes (Simulation Playground, NPC labs, etc.).
+- `plugins/` â€” Feature bundles that plug into the editor (world tools, ops panels).
 
 ## Game Engine (`packages/game/engine/src`)
 
-- `narrative/` – Narrative runtime (ConditionEvaluator, EffectApplicator, executor, integration hooks, scene bridge).
-- `world/` – Runtime plugins, game profile definitions, runtime types.
-- `scenarios/` – Scenario scripts/tests for engine behaviors.
-- `runtime/` – Game runtime typings/hooks used by front-end runtime integration.
+- `narrative/` â€” Narrative runtime (ConditionEvaluator, EffectApplicator, executor, integration hooks, scene bridge).
+- `world/` â€” Runtime plugins, game profile definitions, runtime types.
+- `scenarios/` â€” Scenario scripts/tests for engine behaviors.
+- `runtime/` â€” Game runtime typings/hooks used by front-end runtime integration.
 
 ## Shared Packages
 
-- `packages/shared/types/` – Canonical DTOs (GameSession, NPC zones, graph schemas) referenced by both front-end and backend.
-- `packages/scene/` – Gizmo + scene utilities (zoneUtils, tool registries) used by both UI and engine layers.
+- `packages/shared/types/` â€” Canonical DTOs (GameSession, NPC zones, graph schemas) referenced by both front-end and backend.
+- `packages/scene/` â€” Gizmo + scene utilities (zoneUtils, tool registries) used by both UI and engine layers.
 
 ## Backend (`pixsim7/backend`)
 
-- `main/api/` – FastAPI routes for game worlds, assets, automation.
-- `main/services/simulation/` – World scheduler, context, automation loop (tick-based backend simulation).
-- `main/services/automation/`, `main/domain/` – Automation loops, scenario runners, shared domain models.
-- `main/services/scenarios/` – Scenario runner used for deterministic tests.
+- `main/api/` â€” FastAPI routes for game worlds, assets, automation.
+- `main/services/simulation/` â€” World scheduler, context, automation loop (tick-based backend simulation).
+- `main/services/automation/`, `main/domain/` â€” Automation loops, scenario runners, shared domain models.
+- `main/services/scenarios/` â€” Scenario runner used for deterministic tests.
 
 ## Documentation
 
-- `docs/` – Current specs (architecture, engine layering, subsystem plans). Use `docs/README.md` or this map to locate topics.
-- `docs/archive/` – Completed plans and historical references. Subfolders grouped by theme (meta, launcher, completed, etc.).
-- `claude-tasks/` – Task briefs and AI planning notes. Active work (e.g., Model Inspector plan, path alias refactor) lives here until completed.
+- `docs/` â€” Current specs (architecture, engine layering, subsystem plans). Use `docs/README.md` or this map to locate topics.
+- `docs/archive/` â€” Completed plans and historical references. Subfolders grouped by theme (meta, launcher, completed, etc.).
+- `claude-tasks/` â€” Task briefs and AI planning notes. Active work (e.g., Model Inspector plan, path alias refactor) lives here until completed.
 
 ## How to Explore
 
-1. **Features** – Start in `apps/main/src/components/panels/...` or `apps/main/src/features/...` for UI; jump to matching engine modules under `packages/game/engine/src/...`.
-2. **Narrative/Scene** – `packages/game/engine/src/narrative/` for logic, `apps/main/src/lib/console/modules/tools.ts` + `apps/main/src/lib/gizmos/` for UI integration.
-3. **Scheduler/Simulation** – Look under `pixsim7/backend/main/services/simulation/` and `docs/behavior_system/`.
-4. **Docs** – Use `/docs` for current specs, `/docs/archive` for historical context. Active tasks live in `claude-tasks/`.
+1. **Features** â€” Start in `apps/main/src/components/panels/...` or `apps/main/src/features/...` for UI; jump to matching engine modules under `packages/game/engine/src/...`.
+2. **Narrative/Scene** â€” `packages/game/engine/src/narrative/` for logic, `apps/main/src/lib/console/modules/tools.ts` + `apps/main/src/lib/gizmos/` for UI integration.
+3. **Scheduler/Simulation** â€” Look under `pixsim7/backend/main/services/simulation/` and `docs/behavior_system/`.
+4. **Docs** â€” Use `/docs` for current specs, `/docs/archive` for historical context. Active tasks live in `claude-tasks/`.
+
+---
+
+## Path Aliases
+
+The repository uses TypeScript path aliases to simplify imports and reduce coupling to physical file locations. This allows you to import from logical domains rather than using deep relative paths.
+
+### Available Aliases
+
+| Alias | Maps To | Purpose |
+|-------|---------|---------|
+| `@/narrative/*` | `packages/game/engine/src/narrative/*` | Narrative runtime engine, executor, node handlers, logging |
+| `@/narrative` | `packages/game/engine/src/narrative/index.ts` | Main narrative barrel export |
+| `@/scene/*` | `packages/game/engine/src/narrative/*` | Scene integration (playback, triggers, media coordination) |
+| `@/scene` | `packages/game/engine/src/narrative/index.ts` | Scene-related exports from narrative |
+| `@/gizmos/*` | `apps/main/src/lib/gizmos/*` | Gizmo surfaces, console integration, interaction stats |
+| `@/gizmos` | `apps/main/src/lib/gizmos/index.ts` | Main gizmos barrel export |
+| `@/types/*` | `packages/shared/types/src/*` | Shared type definitions, DTOs, interfaces |
+| `@/types` | `packages/shared/types/src/index.ts` | Main types barrel export |
+
+### Usage Examples
+
+**Before (deep relative imports):**
+```typescript
+import { NarrativeExecutor } from '../../../packages/game/engine/src/narrative/executor';
+import type { GameSessionDTO } from '@pixsim7/shared.types';
+import { interactionStats } from '../../lib/gizmos/interactionStats';
+```
+
+**After (using aliases):**
+```typescript
+import { NarrativeExecutor } from '@/narrative/executor';
+import type { GameSessionDTO } from '@/types';
+import { interactionStats } from '@/gizmos/interactionStats';
+```
+
+**Barrel imports (recommended for public API):**
+```typescript
+import {
+  NarrativeExecutor,
+  createProgramProvider,
+  createNodeHandlerRegistry
+} from '@/narrative';
+
+import type { GameSessionDTO, SceneNode, SceneEdge } from '@/types';
+
+import {
+  calculateStatChanges,
+  getZoneStatModifiers
+} from '@/gizmos';
+```
+
+### Configuration
+
+The aliases are configured in three places:
+
+1. **TypeScript** (`tsconfig.base.json`):
+   ```json
+   {
+     "compilerOptions": {
+       "baseUrl": ".",
+       "paths": {
+         "@/narrative/*": ["packages/game/engine/src/narrative/*"],
+         "@/narrative": ["packages/game/engine/src/narrative/index.ts"],
+         "@/scene/*": ["packages/game/engine/src/narrative/*"],
+         "@/scene": ["packages/game/engine/src/narrative/index.ts"],
+         "@/gizmos/*": ["apps/main/src/lib/gizmos/*"],
+         "@/gizmos": ["apps/main/src/lib/gizmos/index.ts"],
+         "@/types/*": ["packages/shared/types/src/*"],
+         "@/types": ["packages/shared/types/src/index.ts"]
+       }
+     }
+   }
+   ```
+
+2. **Vite** (`apps/main/vite.config.ts`, `apps/game/vite.config.ts`):
+   ```typescript
+   export default defineConfig({
+     resolve: {
+       alias: {
+         '@/narrative': path.resolve(__dirname, '../../packages/game/engine/src/narrative'),
+         '@/scene': path.resolve(__dirname, '../../packages/game/engine/src/narrative'),
+         '@/gizmos': path.resolve(__dirname, './src/lib/gizmos'),
+         '@/types': path.resolve(__dirname, '../../packages/shared/types/src'),
+       },
+     },
+   });
+   ```
+
+3. **ESLint/other tools**: Inherit from `tsconfig.base.json`
+
+### Barrel Exports
+
+Each aliased domain has an `index.ts` barrel file that exports the public API:
+
+- **`@/narrative`**: Exports narrative executor, node handlers, condition evaluator, effect applicator, logging, generation bridge, runtime integration, and scene integration
+- **`@/gizmos`**: Exports surface registry, registration helpers, console integration, tool overrides, and interaction stats
+- **`@/types`**: Exports all shared types including game DTOs, scene graph types, generation types, node type registry, and NPC types
+
+Barrel exports help maintain a stable public API and make it clear which modules are intended for external use.
+
+### Best Practices
+
+1. **Prefer barrel imports** for public APIs: `import { X } from '@/narrative'`
+2. **Use specific imports** for internal/advanced usage: `import { X } from '@/narrative/executor'`
+3. **Avoid barrel re-exports** in your own modules to prevent circular dependencies
+4. **Use barrel imports in apps**, use workspace packages (`@pixsim7/*`) in libraries
+
+### Future Domains
+
+Potential future aliases as the codebase evolves:
+
+- `@/simulation/*` - Core simulation logic and state management
+- `@/automation/*` - Browser automation and provider integration
+- `@/panels/*` - Reusable UI panel components
+- `@/console/*` - Console framework and commands
+- `@/stores/*` - Shared Zustand stores
+
+---
 
 ## Keeping This Up to Date
 
 - Add new domains/paths here when creating major features.
 - When moving files, update both the alias map (tsconfig) and this repo map.
 - If a section grows large, link out to a dedicated doc (e.g., `docs/narrative-runtime.md`).
+- When adding new domains that would benefit from aliases:
+  1. Add the path mapping to `tsconfig.base.json`
+  2. Add the alias to all Vite configs
+  3. Create or update the barrel export (`index.ts`)
+  4. Document the alias in this file

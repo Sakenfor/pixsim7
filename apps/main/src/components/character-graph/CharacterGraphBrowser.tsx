@@ -10,7 +10,7 @@ import type {
   CharacterGraphNodeUnion,
   CharacterGraphEdge,
   CharacterUsageStats,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 interface CharacterGraphBrowserProps {
   /** Character UUID to display */

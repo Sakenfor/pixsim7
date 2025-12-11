@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@pixsim7/shared.types';
+import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@/types';
 import {
   getWorldUiConfig,
   setWorldUiConfig,

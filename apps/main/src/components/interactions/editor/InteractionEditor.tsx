@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from 'react';
-import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import type { NpcInteractionDefinition } from '@/types';
 import { validateInteraction, formatValidationResult, getTemplate, getTemplatesByCategory } from '@pixsim7/game.engine';
 import './InteractionEditor.css';
 

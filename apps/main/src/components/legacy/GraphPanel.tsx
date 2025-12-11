@@ -28,7 +28,7 @@ import { previewBridge } from '@/lib/preview-bridge';
 import { ValidationPanel } from '../panels/tools/ValidationPanel';
 import { EdgeEffectsPanel } from '../panels/tools/EdgeEffectsPanel';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
-import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeTypeRegistry } from '@/types';
 import { GraphTemplatePalette } from '../graph/GraphTemplatePalette';
 import { TemplateWizardPalette } from '../graph/TemplateWizardPalette';
 import { useTemplateStore } from '@/lib/graph/templatesStore';

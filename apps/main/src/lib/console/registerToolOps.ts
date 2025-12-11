@@ -7,4 +7,4 @@
  */
 
 // Re-export from gizmos (canonical location)
-export { useToolConsoleStore, registerGizmoConsole as registerToolOps } from '@/lib/gizmos/console';
+export { useToolConsoleStore, registerGizmoConsole as registerToolOps } from '@/gizmos/console';

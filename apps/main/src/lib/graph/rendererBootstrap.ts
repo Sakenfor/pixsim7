@@ -12,7 +12,7 @@
  * 3. Heavy/rare renderers stay lazy, core ones are preloaded
  */
 
-import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeTypeRegistry } from '@/types';
 import { nodeRendererRegistry, type NodeRenderer } from './nodeRendererRegistry';
 import type { ComponentType } from 'react';
 import type { NodeRendererProps } from './nodeRendererRegistry';

@@ -9,7 +9,7 @@
  */
 
 import React, { useMemo } from 'react';
-import type { RelationshipGate } from '@pixsim7/shared.types';
+import type { RelationshipGate } from '@/types';
 import type { SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
 import { checkAllGates } from '@/lib/intimacy/gateChecking';
 import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';

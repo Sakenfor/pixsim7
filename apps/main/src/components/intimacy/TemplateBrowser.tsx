@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import type { IntimacySceneConfig, RelationshipProgressionArc } from '@pixsim7/shared.types';
+import type { IntimacySceneConfig, RelationshipProgressionArc } from '@/types';
 import {
   getAllSceneTemplates,
   getAllArcTemplates,

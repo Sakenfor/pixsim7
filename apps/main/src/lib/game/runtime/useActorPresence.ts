@@ -24,7 +24,7 @@ import type {
   NpcActor,
   PlayerActor,
   GameSessionDTO,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 export type ActorTypeFilter = ActorType | 'all';
 

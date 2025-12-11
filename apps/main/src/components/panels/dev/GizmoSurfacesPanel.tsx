@@ -12,8 +12,8 @@ import {
   type GizmoSurfaceDefinition,
   type GizmoSurfaceCategory,
   type GizmoSurfaceContext,
-} from '@/lib/gizmos';
-import { useGizmoSurfaceStore } from '@/lib/gizmos/gizmoSurfaceStore';
+} from '@/gizmos';
+import { useGizmoSurfaceStore } from '@/gizmos/gizmoSurfaceStore';
 
 interface GizmoSurfacesPanelProps {
   /** Optional callback when panel is closed */

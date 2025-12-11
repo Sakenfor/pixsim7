@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import type { GenerationSocialContext } from '@pixsim7/shared.types';
+import type { GenerationSocialContext } from '@/types';
 
 interface SocialContextPanelProps {
   /**

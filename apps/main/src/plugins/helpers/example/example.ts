@@ -15,7 +15,7 @@
  */
 
 import { sessionHelperRegistry, generateHelper } from '@/lib/registries';
-import type { GameSessionDTO } from '@pixsim7/shared.types';
+import type { GameSessionDTO } from '@/types';
 import { debugFlags } from '@/lib/debugFlags';
 
 /**

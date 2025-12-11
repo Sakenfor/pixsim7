@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { parseNpcKey } from '@pixsim7/game.engine';
-import type { BrainState } from '@pixsim7/shared.types';
+import type { BrainState } from '@/types';
 import type { BrainFace } from '@pixsim7/scene.shapes';
 import { usePixSim7Core } from '../lib/game/usePixSim7Core';
 import { getGameSession, listGameSessions, type GameSessionSummary } from '../lib/api/game';

@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from 'react';
-import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import type { NpcInteractionDefinition } from '@/types';
 import { InteractionEditor } from '../components/interactions/editor/InteractionEditor';
 import { TemplateSelector } from '../components/interactions/editor/TemplateSelector';
 import './InteractionStudio.css';

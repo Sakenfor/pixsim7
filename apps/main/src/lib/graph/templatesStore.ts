@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GraphTemplate, TemplateSource, TemplatePack } from './graphTemplates';
 import { getGameWorld, saveGameWorldMeta } from '../api/game';
-import type { GameWorldDetail } from '@pixsim7/shared.types';
+import type { GameWorldDetail } from '@/types';
 import builtinTemplatesJson from '../../data/graphTemplates.json';
 
 /**

@@ -4,7 +4,7 @@
  * Handles communication between the Scene Editor and Game Player iframe.
  */
 
-import type { Scene } from '@pixsim7/shared.types';
+import type { Scene } from '@/types';
 import type {
   EditorToGameMessage,
   GameToEditorMessage,

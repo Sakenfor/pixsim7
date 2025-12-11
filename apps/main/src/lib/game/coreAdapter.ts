@@ -3,7 +3,7 @@
  */
 
 import type { ApiClient, StorageProvider } from '@pixsim7/game.engine';
-import type { GameSessionDTO } from '@pixsim7/shared.types';
+import type { GameSessionDTO } from '@/types';
 import { getGameSession, updateGameSession } from '../api/game';
 
 /**

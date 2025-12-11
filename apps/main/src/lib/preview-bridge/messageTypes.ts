@@ -5,7 +5,7 @@
  * and the Game Player (game-frontend) via postMessage.
  */
 
-import type { Scene } from '@pixsim7/shared.types';
+import type { Scene } from '@/types';
 
 // ============================================================================
 // Editor → Game Messages

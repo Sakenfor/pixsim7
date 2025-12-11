@@ -9,7 +9,7 @@ import {
   gizmoSurfaceRegistry,
   type GizmoSurfaceContext,
   type GizmoSurfaceDefinition,
-} from '@/lib/gizmos/surfaceRegistry';
+} from '@/gizmos/surfaceRegistry';
 
 type SurfaceModeFilter = 'all' | 'panel' | 'overlay' | 'hud';
 

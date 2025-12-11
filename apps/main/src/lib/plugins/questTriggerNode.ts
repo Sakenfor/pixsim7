@@ -18,7 +18,7 @@
  * ```
  */
 
-import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeTypeRegistry } from '@/types';
 
 /**
  * Quest objective structure

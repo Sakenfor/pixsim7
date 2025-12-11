@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameContext, GameMode } from '@pixsim7/shared.types';
+import { GameContext, GameMode } from '@/types';
 
 /**
  * Game State Store (Task 22)

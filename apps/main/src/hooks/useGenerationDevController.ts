@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { OperationType } from '@pixsim7/shared.types';
+import type { OperationType } from '@/types';
 
 interface Generation {
   id: number;

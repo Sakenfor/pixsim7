@@ -1,4 +1,4 @@
-import type { SessionFlags, WorldMode } from '@pixsim7/shared.types';
+import type { SessionFlags, WorldMode } from '@/types';
 
 export interface WorldSessionState {
   /**

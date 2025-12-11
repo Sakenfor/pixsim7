@@ -12,7 +12,7 @@ import type {
   PlayerActor,
   AnyActor,
   PlayerSlot,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 /**
  * Runtime state snapshot - reactive state for React components

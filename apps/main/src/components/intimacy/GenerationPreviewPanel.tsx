@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { IntimacySceneConfig, GenerationSocialContext } from '@pixsim7/shared.types';
+import type { IntimacySceneConfig, GenerationSocialContext } from '@/types';
 import type { SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
 import type { IntimacyPreviewResult } from '@/lib/intimacy/generationPreview';
 import {

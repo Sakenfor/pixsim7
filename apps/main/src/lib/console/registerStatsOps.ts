@@ -18,7 +18,7 @@ import {
   DEFAULT_TOOL_STATS,
   type StatConfig,
   type StatContribution,
-} from '@/lib/gizmos/interactionStats';
+} from '@/gizmos/interactionStats';
 
 /**
  * Register all stats operations

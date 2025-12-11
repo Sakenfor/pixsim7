@@ -7,8 +7,8 @@
 
 import { useState } from 'react';
 import { Badge } from '@pixsim7/shared.ui';
-import { useGizmoSurfaceStore } from '@/lib/gizmos/gizmoSurfaceStore';
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '@/lib/gizmos';
+import { useGizmoSurfaceStore } from '@/gizmos/gizmoSurfaceStore';
+import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '@/gizmos';
 
 interface ActiveGizmosIndicatorProps {
   /** The context to show active gizmos for */

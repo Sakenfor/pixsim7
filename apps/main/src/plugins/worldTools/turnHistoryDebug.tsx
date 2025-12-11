@@ -5,7 +5,7 @@
  */
 
 import type { WorldToolPlugin } from '../../lib/worldTools/types';
-import type { TurnRecord, SessionFlags } from '@pixsim7/shared.types';
+import type { TurnRecord, SessionFlags } from '@/types';
 import { Badge } from '@pixsim7/shared.ui';
 
 export const turnHistoryDebugTool: WorldToolPlugin = {

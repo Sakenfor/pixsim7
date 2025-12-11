@@ -1,5 +1,5 @@
 import type { DraftSceneNode } from './index';
-import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@pixsim7/shared.types';
+import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@/types';
 
 // Re-export DSL helpers and types for convenience
 export {

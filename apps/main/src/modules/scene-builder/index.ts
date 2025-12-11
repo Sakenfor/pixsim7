@@ -1,4 +1,4 @@
-import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@pixsim7/shared.types';
+import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@/types';
 
 /**
  * Scene Builder Types - Scene as Function Architecture

@@ -15,7 +15,7 @@ import type {
   ProgressionStage,
   ProgressionArcState,
   RelationshipGate,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateProgressionArc } from '@/lib/intimacy/validation';
 import { RelationshipStateEditor } from './RelationshipStateEditor';

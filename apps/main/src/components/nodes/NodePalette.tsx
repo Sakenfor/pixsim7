@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { nodeTypeRegistry, type NodeTypeDefinition } from '@pixsim7/shared.types';
+import { nodeTypeRegistry, type NodeTypeDefinition } from '@/types';
 
 export type NodeType = string; // Now accepts any registered node type
 

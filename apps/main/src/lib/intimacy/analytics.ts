@@ -12,7 +12,7 @@ import type {
   IntimacySceneConfig,
   RelationshipProgressionArc,
   RelationshipGate,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 // ============================================================================
 // Analytics Event Types
