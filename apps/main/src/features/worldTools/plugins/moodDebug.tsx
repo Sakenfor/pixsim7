@@ -5,7 +5,7 @@
  * Uses data-driven BrainState for mood derivation.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
 import { useUnifiedMood } from '../../hooks/useUnifiedMood';

@@ -66,6 +66,11 @@ features/
 │   ├── panels/         # RegionalHudLayout, HudCustomizationPanel, HudProfileSwitcher
 │   ├── stores/         # hudLayoutStore (HUD layout state management)
 │   └── index.ts        # Barrel export
+├── worldTools/         # World tools editor/debugging functionality
+│   ├── components/     # WorldToolsPanel, WorldVisualRolesPanel
+│   ├── plugins/        # World tool plugins (inventory, questLog, relationshipDashboard, etc.)
+│   ├── lib/            # World tools types, registry, HUD layout/profile management
+│   └── index.ts        # Barrel export
 ├── brainTools/         # NPC Brain Lab and brain inspection tools
 │   ├── components/     # NpcBrainLab (main panel)
 │   ├── plugins/        # Brain tool plugins (traits, mood, social, memories, etc.)
@@ -162,6 +167,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/scene` | `apps/main/src/features/scene/index.ts` | Scene feature barrel export |
 | `@features/hud/*` | `apps/main/src/features/hud/*` | HUD layout builder, editor, renderer, and customization |
 | `@features/hud` | `apps/main/src/features/hud/index.ts` | HUD feature barrel export |
+| `@features/worldTools/*` | `apps/main/src/features/worldTools/*` | World tools editor/debugging (panels, plugins, registry, HUD config) |
+| `@features/worldTools` | `apps/main/src/features/worldTools/index.ts` | World tools feature barrel export |
 | `@features/brainTools/*` | `apps/main/src/features/brainTools/*` | NPC Brain Lab and brain inspection tools |
 | `@features/brainTools` | `apps/main/src/features/brainTools/index.ts` | Brain Tools feature barrel export |
 

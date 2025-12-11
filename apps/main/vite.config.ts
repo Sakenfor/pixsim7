@@ -21,6 +21,7 @@ export default defineConfig({
       { find: '@features/gallery', replacement: path.resolve(__dirname, './src/features/gallery') },
       { find: '@features/scene', replacement: path.resolve(__dirname, './src/features/scene') },
       { find: '@features/hud', replacement: path.resolve(__dirname, './src/features/hud') },
+      { find: '@features/worldTools', replacement: path.resolve(__dirname, './src/features/worldTools') },
       { find: '@features/brainTools', replacement: path.resolve(__dirname, './src/features/brainTools') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },

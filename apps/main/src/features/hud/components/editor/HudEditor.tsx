@@ -15,13 +15,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
 import type { GameWorldDetail } from '@/lib/api/game';
 import { updateGameWorldMeta } from '@/lib/api/game';
-import { worldToolRegistry } from '@/lib/worldTools/registry';
+import { worldToolRegistry } from '@features/worldTools/lib/registry';
 import type {
   HudToolPlacement,
   HudRegion,
   WorldUiConfig,
-} from '@/lib/worldTools/types';
-import { getHudConfig } from '@/lib/worldTools/hudLayout';
+} from '@features/worldTools/lib/types';
+import { getHudConfig } from '@features/worldTools/lib/hudLayout';
 import {
   createPreset,
   deletePreset,
@@ -33,13 +33,13 @@ import {
   deleteWorldPreset,
   isWorldPreset,
   type HudLayoutPreset,
-} from '@/lib/worldTools/hudPresets';
+} from '@features/worldTools/lib/hudPresets';
 import {
   getAvailableProfiles,
   saveProfileLayout,
   getProfileLayout,
   type HudProfile,
-} from '@/lib/worldTools/hudProfiles';
+} from '@features/worldTools/lib/hudProfiles';
 // Editing Core - Shared undo/redo hook
 import { useUndoRedo } from '@/lib/editing-core';
 // Gameplay UI Core - HUD-specific config layer

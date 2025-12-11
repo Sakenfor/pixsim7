@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { panelRegistry } from '@/lib/panels/panelRegistry';
 import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
-import { worldToolRegistry } from '@/lib/worldTools/registry';
+import { worldToolRegistry } from '@features/worldTools/lib/registry';
 import { interactionRegistry } from '@/lib/registries';
 import { pluginCatalog } from '@/lib/plugins/pluginSystem';
 import { useEditorContext, type EditorPrimaryView, type EditorMode } from '@/lib/context/editorContext';

@@ -4,7 +4,7 @@
  * Displays NPC relationship tracking and status.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { RelationshipDashboard } from '../../components/game/RelationshipDashboard';
 
 export const relationshipDashboardTool: WorldToolPlugin = {

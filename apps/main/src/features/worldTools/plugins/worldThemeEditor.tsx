@@ -4,7 +4,7 @@
  * Allows designers to configure per-world UI theme and view mode.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { WorldThemeEditor } from '../../components/game/WorldThemeEditor';
 import { useToast } from '@pixsim7/shared.ui';
 

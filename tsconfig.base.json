@@ -34,6 +34,10 @@
       "@features/gallery": ["apps/main/src/features/gallery/index.ts"],
       "@features/scene/*": ["apps/main/src/features/scene/*"],
       "@features/scene": ["apps/main/src/features/scene/index.ts"],
+      "@features/hud/*": ["apps/main/src/features/hud/*"],
+      "@features/hud": ["apps/main/src/features/hud/index.ts"],
+      "@features/worldTools/*": ["apps/main/src/features/worldTools/*"],
+      "@features/worldTools": ["apps/main/src/features/worldTools/index.ts"],
       "@features/brainTools/*": ["apps/main/src/features/brainTools/*"],
       "@features/brainTools": ["apps/main/src/features/brainTools/index.ts"]
     }

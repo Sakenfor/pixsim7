@@ -4,7 +4,7 @@
  * Displays player inventory and items.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { InventoryPanel } from '@/components/game/panels/InventoryPanel';
 
 export const inventoryTool: WorldToolPlugin = {

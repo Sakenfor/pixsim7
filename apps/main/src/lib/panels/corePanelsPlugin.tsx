@@ -19,7 +19,7 @@ import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '@features/brainTools';
 import { DevToolsPanel } from '@/components/panels/dev/DevToolsPanel';
 import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
-import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRolesPanel';
+import { WorldVisualRolesPanel } from '@features/worldTools';
 import { GenerationsPanel } from '@/components/generation/GenerationsPanel';
 import { GameToolsPanel } from '@/components/panels/tools/GameToolsPanel';
 import { SurfaceWorkbenchPanel } from '@/components/panels/tools/SurfaceWorkbenchPanel';

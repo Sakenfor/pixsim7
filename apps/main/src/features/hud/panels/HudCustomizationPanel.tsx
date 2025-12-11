@@ -8,14 +8,14 @@
 import { useState, useEffect } from 'react';
 import { Panel, Button, Select, Modal } from '@pixsim7/shared.ui';
 import type { GameWorldDetail } from '@/lib/api/game';
-import type { WorldToolPlugin } from '@/lib/worldTools/types';
+import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 import {
   getPlayerPreferences,
   toggleToolVisibility,
   setViewModeOverride,
   clearPlayerPreferences,
-} from '@/lib/worldTools/playerHudPreferences';
-import { getLayoutVariantNames, switchLayoutVariant } from '@/lib/worldTools/hudLayoutVariants';
+} from '@features/worldTools/lib/playerHudPreferences';
+import { getLayoutVariantNames, switchLayoutVariant } from '@features/worldTools/lib/hudLayoutVariants';
 
 interface HudCustomizationPanelProps {
   worldDetail: GameWorldDetail;
