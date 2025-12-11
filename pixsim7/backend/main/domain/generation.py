@@ -20,7 +20,7 @@ from sqlalchemy import JSON, Enum as SAEnum
 import hashlib
 import json
 
-from .enums import OperationType, GenerationStatus
+from .enums import OperationType, GenerationStatus, BillingState
 
 
 class Generation(SQLModel, table=True):
@@ -139,6 +139,43 @@ class Generation(SQLModel, table=True):
         default=None,
         foreign_key="assets.id",
         index=True
+    )
+
+    # Billing
+    final_account_id: Optional[int] = Field(
+        default=None,
+        foreign_key="provider_accounts.id",
+        index=True,
+        description="Provider account that was charged"
+    )
+    estimated_credits: Optional[int] = Field(
+        default=None,
+        description="Credit estimate computed at creation time"
+    )
+    actual_credits: Optional[int] = Field(
+        default=None,
+        description="Final credit cost after completion"
+    )
+    credit_type: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="Credit type used (e.g., 'web', 'openapi')"
+    )
+    billing_state: BillingState = Field(
+        default=BillingState.PENDING,
+        sa_column=Column(
+            SAEnum(BillingState, name="billing_state_enum", native_enum=False),
+            index=True,
+        ),
+        description="Billing state: pending, charged, skipped, failed"
+    )
+    charged_at: Optional[datetime] = Field(
+        default=None,
+        description="When credits were successfully deducted"
+    )
+    billing_error: Optional[str] = Field(
+        default=None,
+        description="Error message if billing failed"
     )
 
     # Metadata

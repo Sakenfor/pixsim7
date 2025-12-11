@@ -67,3 +67,11 @@ class ContentDomain(str, Enum):
     SPORTS = "sports"
     FASHION = "fashion"
     EDUCATION = "education"
+
+
+class BillingState(str, Enum):
+    """Generation billing state"""
+    PENDING = "pending"    # Not yet charged (generation in progress)
+    CHARGED = "charged"    # Credits successfully deducted
+    SKIPPED = "skipped"    # No charge (failed/cancelled generation)
+    FAILED = "failed"      # Deduction attempted but failed

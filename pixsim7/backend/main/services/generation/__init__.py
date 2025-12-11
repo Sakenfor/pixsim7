@@ -9,6 +9,7 @@ Services:
 - GenerationLifecycleService: Status transitions
 - GenerationQueryService: Retrieval and listing
 - GenerationRetryService: Retry logic
+- GenerationBillingService: Credit deduction and billing finalization
 """
 
 # Main service (backward compatibility)
@@ -19,6 +20,7 @@ from .creation_service import GenerationCreationService
 from .lifecycle_service import GenerationLifecycleService
 from .query_service import GenerationQueryService
 from .retry_service import GenerationRetryService
+from .billing_service import GenerationBillingService
 
 __all__ = [
     "GenerationService",  # Main service (backward compatible)
@@ -26,4 +28,5 @@ __all__ = [
     "GenerationLifecycleService",
     "GenerationQueryService",
     "GenerationRetryService",
+    "GenerationBillingService",
 ]

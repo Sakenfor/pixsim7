@@ -15,7 +15,7 @@ from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation, ProviderSubmission, ProviderAccount
 from pixsim7.backend.main.domain.enums import GenerationStatus, VideoStatus, OperationType
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis, AnalysisStatus
-from pixsim7.backend.main.services.generation import GenerationService
+from pixsim7.backend.main.services.generation import GenerationService, GenerationBillingService
 from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.account import AccountService
@@ -124,6 +124,22 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
                         await generation_service.mark_failed(generation.id, f"Generation timed out after {TIMEOUT_HOURS} hours")
 
+                        # Finalize billing as skipped (no charge for timed-out generations)
+                        try:
+                            billing_service = GenerationBillingService(db)
+                            await db.refresh(generation)
+                            await billing_service.finalize_billing(
+                                generation=generation,
+                                final_submission=submission,
+                                account=account,
+                            )
+                        except Exception as billing_err:
+                            logger.warning(
+                                "billing_finalization_error",
+                                generation_id=generation.id,
+                                error=str(billing_err),
+                            )
+
                         # Decrement account's concurrent job count
                         if account.current_processing_jobs > 0:
                             account.current_processing_jobs -= 1
@@ -178,75 +194,22 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # Mark generation as completed
                             await generation_service.mark_completed(generation.id, asset.id)
 
-                            # Best-effort local credit deduction for Pixverse completions.
-                            # Both images and videos are only charged when they successfully complete;
-                            # failed/filtered generations don't consume credits (provider refunds them).
+                            # Finalize billing (idempotent - safe to re-run)
+                            # This handles credit deduction and updates Generation.billing fields
                             try:
-                                from pixsim7.backend.main.services.generation.pixverse_pricing import (
-                                    estimate_video_credit_change,
-                                    get_image_credit_change,
+                                billing_service = GenerationBillingService(db)
+                                await db.refresh(generation)  # Get updated status
+                                await billing_service.finalize_billing(
+                                    generation=generation,
+                                    final_submission=submission,
+                                    account=account,
+                                    actual_duration=status_result.duration_sec,
                                 )
-
-                                if generation.provider_id == "pixverse":
-                                    params = generation.canonical_params or generation.raw_params or {}
-                                    model = params.get("model") or "v5"
-                                    quality = params.get("quality") or "360p"
-                                    credits = None
-
-                                    # Image operations: static table
-                                    if generation.operation_type in {
-                                        OperationType.TEXT_TO_IMAGE,
-                                        OperationType.IMAGE_TO_IMAGE,
-                                    }:
-                                        credits = get_image_credit_change(str(model), str(quality))
-
-                                    # Video operations: dynamic calculation
-                                    elif generation.operation_type in {
-                                        OperationType.TEXT_TO_VIDEO,
-                                        OperationType.IMAGE_TO_VIDEO,
-                                        OperationType.VIDEO_EXTEND,
-                                        OperationType.VIDEO_TRANSITION,
-                                        OperationType.FUSION,
-                                    }:
-                                        duration = status_result.duration_sec or params.get("duration")
-                                        if isinstance(duration, (int, float)) and duration > 0:
-                                            motion_mode = params.get("motion_mode")
-                                            multi_shot = bool(params.get("multi_shot"))
-                                            audio = bool(params.get("audio"))
-                                            credits = estimate_video_credit_change(
-                                                quality=str(quality),
-                                                duration=int(duration),
-                                                model=str(model),
-                                                motion_mode=motion_mode,
-                                                multi_shot=multi_shot,
-                                                audio=audio,
-                                            )
-
-                                    if credits and credits > 0:
-                                        try:
-                                            await account_service.deduct_credit(
-                                                account.id,
-                                                "webapi",
-                                                credits,
-                                            )
-                                            logger.info(
-                                                "account_credit_deducted",
-                                                account_id=account.id,
-                                                provider_id=generation.provider_id,
-                                                credits=credits,
-                                                operation_type=generation.operation_type.value,
-                                            )
-                                        except Exception as credit_err:
-                                            logger.warning(
-                                                "account_credit_deduct_failed",
-                                                account_id=account.id,
-                                                provider_id=generation.provider_id,
-                                                error=str(credit_err),
-                                            )
-                            except Exception as credit_calc_err:
-                                logger.debug(
-                                    "account_credit_estimate_failed",
-                                    error=str(credit_calc_err),
+                            except Exception as billing_err:
+                                logger.warning(
+                                    "billing_finalization_error",
+                                    generation_id=generation.id,
+                                    error=str(billing_err),
                                 )
 
                             # Decrement account's concurrent job count
@@ -275,6 +238,22 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 generation.id,
                                 error_text,
                             )
+
+                            # Finalize billing as skipped (no charge for failed generations)
+                            try:
+                                billing_service = GenerationBillingService(db)
+                                await db.refresh(generation)  # Get updated status
+                                await billing_service.finalize_billing(
+                                    generation=generation,
+                                    final_submission=submission,
+                                    account=account,
+                                )
+                            except Exception as billing_err:
+                                logger.warning(
+                                    "billing_finalization_error",
+                                    generation_id=generation.id,
+                                    error=str(billing_err),
+                                )
 
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:

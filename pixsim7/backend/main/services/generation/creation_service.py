@@ -19,12 +19,14 @@ from pixsim7.backend.main.domain import (
     Generation,
     GenerationStatus,
     OperationType,
+    BillingState,
     User,
 )
 from pixsim7.backend.main.domain.prompt_versioning import PromptVersion
 from pixsim7.backend.main.shared.errors import (
     QuotaError,
     InvalidOperationError,
+    NoAccountAvailableError,
 )
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, JOB_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
@@ -289,6 +291,33 @@ class GenerationCreationService:
                         debug.generation(f"Cache HIT! Returning cached generation {cached_generation_id}")
                         return cached_generation
 
+        # === Estimate credits for billing ===
+        estimated_credits = self._estimate_credits(
+            operation_type=operation_type,
+            provider_id=provider_id,
+            canonical_params=canonical_params,
+        )
+
+        # Optional fail-fast: check if user has an account with sufficient credits
+        # This is a soft check - actual credit deduction happens in status_poller
+        if estimated_credits is not None and estimated_credits > 0:
+            has_credits = await self._check_sufficient_credits(
+                user_id=user.id,
+                provider_id=provider_id,
+                required_credits=estimated_credits,
+            )
+            if not has_credits:
+                logger.warning(
+                    "insufficient_credits_fail_fast",
+                    user_id=user.id,
+                    provider_id=provider_id,
+                    estimated_credits=estimated_credits,
+                )
+                raise QuotaError(
+                    f"No account with sufficient credits ({estimated_credits}) "
+                    f"available for provider '{provider_id}'"
+                )
+
         # Resolve or create prompt version
         final_prompt = None
         if prompt_version_id:
@@ -312,7 +341,7 @@ class GenerationCreationService:
                 else:
                     debug.generation(f"Reusing existing PromptVersion {prompt_version_id}")
 
-        # Create generation
+        # Create generation with billing fields
         generation = Generation(
             user_id=user.id,
             operation_type=operation_type,
@@ -330,6 +359,10 @@ class GenerationCreationService:
             scheduled_at=scheduled_at,
             parent_generation_id=parent_generation_id,
             status=GenerationStatus.PENDING,
+            # Billing fields
+            estimated_credits=estimated_credits,
+            credit_type="web",  # Default to web credits (most common)
+            billing_state=BillingState.PENDING,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -899,3 +932,101 @@ class GenerationCreationService:
                 final_prompt = final_prompt.replace(placeholder, str(value))
 
         return final_prompt
+
+    def _estimate_credits(
+        self,
+        operation_type: OperationType,
+        provider_id: str,
+        canonical_params: Dict[str, Any],
+    ) -> Optional[int]:
+        """
+        Estimate credits required for a generation based on params.
+
+        Uses pixverse_pricing helpers for Pixverse provider.
+
+        Args:
+            operation_type: Operation type
+            provider_id: Provider identifier
+            canonical_params: Canonicalized generation parameters
+
+        Returns:
+            Estimated credits or None if cannot be determined
+        """
+        if provider_id != "pixverse":
+            return None
+
+        from pixsim7.backend.main.services.generation.pixverse_pricing import (
+            get_image_credit_change,
+            estimate_video_credit_change,
+        )
+
+        model = canonical_params.get("model") or "v5"
+        quality = canonical_params.get("quality") or "360p"
+
+        # Image operations: static table lookup
+        if operation_type in {
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
+        }:
+            return get_image_credit_change(str(model), str(quality))
+
+        # Video operations: dynamic calculation
+        if operation_type in {
+            OperationType.TEXT_TO_VIDEO,
+            OperationType.IMAGE_TO_VIDEO,
+            OperationType.VIDEO_EXTEND,
+            OperationType.VIDEO_TRANSITION,
+            OperationType.FUSION,
+        }:
+            duration = canonical_params.get("duration")
+            if not isinstance(duration, (int, float)) or duration <= 0:
+                return None
+
+            motion_mode = canonical_params.get("motion_mode")
+            multi_shot = bool(canonical_params.get("multi_shot"))
+            audio = bool(canonical_params.get("audio"))
+
+            return estimate_video_credit_change(
+                quality=str(quality),
+                duration=int(duration),
+                model=str(model),
+                motion_mode=motion_mode,
+                multi_shot=multi_shot,
+                audio=audio,
+            )
+
+        return None
+
+    async def _check_sufficient_credits(
+        self,
+        user_id: int,
+        provider_id: str,
+        required_credits: int,
+    ) -> bool:
+        """
+        Check if user has access to an account with sufficient credits.
+
+        This is a fail-fast check to reject generations that would fail
+        due to insufficient credits.
+
+        Args:
+            user_id: User ID
+            provider_id: Provider identifier
+            required_credits: Minimum credits required
+
+        Returns:
+            True if an account with sufficient credits exists
+        """
+        from pixsim7.backend.main.services.account import AccountService
+
+        account_service = AccountService(self.db)
+        try:
+            # Try to select an account with sufficient credits
+            await account_service.select_account(
+                provider_id=provider_id,
+                user_id=user_id,
+                required_credits=required_credits,
+            )
+            return True
+        except NoAccountAvailableError:
+            return False
