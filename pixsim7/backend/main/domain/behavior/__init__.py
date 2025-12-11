@@ -31,6 +31,7 @@ from .simulation import (
     determine_simulation_tier,
     get_default_simulation_config,
     should_tick_npc,
+    get_npcs_to_simulate,
 )
 from .routine_resolver import (
     find_active_routine_node,
@@ -60,6 +61,7 @@ __all__ = [
     "determine_simulation_tier",
     "get_default_simulation_config",
     "should_tick_npc",
+    "get_npcs_to_simulate",
     # Routine Resolution
     "find_active_routine_node",
     "collect_candidate_activities",

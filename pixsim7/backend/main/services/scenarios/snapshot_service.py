@@ -9,7 +9,8 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameWorldState, GameSession
+# Use domain entry module for cross-domain imports
+from pixsim7.backend.game import GameWorld, GameWorldState, GameSession
 from pixsim7.backend.main.domain.scenarios.models import WorldSnapshot, SessionSnapshot
 
 

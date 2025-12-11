@@ -19,17 +19,21 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameWorldState, GameSession, GameNPC
-from pixsim7.backend.main.services.simulation.context import WorldSimulationContext
-from pixsim7.backend.main.domain.game.schemas import get_default_world_scheduler_config
-from pixsim7.backend.main.domain.behavior.simulation import (
-    get_npcs_to_simulate,
-    determine_simulation_tier,
-)
-from pixsim7.backend.main.domain.game.ecs import (
+# Use domain entry modules for cross-domain imports
+from pixsim7.backend.game import (
+    GameWorld,
+    GameWorldState,
+    GameSession,
+    GameNPC,
+    get_default_world_scheduler_config,
     get_npc_component,
     update_npc_component,
 )
+from pixsim7.backend.simulation import (
+    get_npcs_to_simulate,
+    determine_simulation_tier,
+)
+from pixsim7.backend.main.services.simulation.context import WorldSimulationContext
 
 logger = logging.getLogger(__name__)
 
