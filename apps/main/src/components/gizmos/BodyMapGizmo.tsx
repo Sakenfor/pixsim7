@@ -21,11 +21,8 @@ import {
   getZoneEffectivenessDescription,
 } from '@pixsim7/scene.gizmos';
 import type { NpcBodyZone, ZoneInteractionContext } from '@pixsim7/shared.types';
-import {
-  useInteractionStatsStore,
-  startStatDecay,
-  stopStatDecay,
-} from '@/stores/interactionStatsStore';
+import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
+import { useStatsDecay } from '@/hooks/useStatsDecay';
 import {
   calculateStatChanges,
   DEFAULT_STAT_CONFIGS,
@@ -172,11 +169,8 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   const setStatsActive = useInteractionStatsStore((s) => s.setActive);
   const getToolStats = useInteractionStatsStore((s) => s.getToolStats);
 
-  // Start/stop decay timer
-  useEffect(() => {
-    startStatDecay(100);
-    return () => stopStatDecay();
-  }, []);
+  // Subscribe to centralized decay timer (reference counted)
+  useStatsDecay(100);
 
   // Get active stats for display (sorted by value, limited)
   const displayedStats = useMemo(() => {

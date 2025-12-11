@@ -3,6 +3,10 @@
  *
  * Manages dynamic stat values for NPC interactions.
  * Stats accumulate from tool-zone interactions and decay over time.
+ *
+ * Timer management is centralized in the store to prevent:
+ * - Multiple timers when multiple gizmos mount
+ * - Premature timer stop when one gizmo unmounts while others remain
  */
 
 import { create } from 'zustand';
@@ -40,6 +44,12 @@ interface InteractionStatsState {
     stats: StatValues;
     trigger?: { toolId: string; zoneId: string };
   }>;
+
+  /** Number of active decay subscribers (components using decay) */
+  decaySubscriberCount: number;
+
+  /** Whether decay timer is currently running */
+  isDecayRunning: boolean;
 }
 
 interface InteractionStatsActions {
@@ -93,7 +103,25 @@ interface InteractionStatsActions {
 
   /** Cheat: max out all stats */
   maxAllStats: () => void;
+
+  /**
+   * Subscribe to decay timer. Call this when a component mounts.
+   * Returns an unsubscribe function to call on unmount.
+   * The timer starts automatically when the first subscriber joins
+   * and stops when the last subscriber leaves.
+   */
+  subscribeDecay: (intervalMs?: number) => () => void;
+
+  /** Internal: start the decay timer (called automatically) */
+  _startDecayTimer: (intervalMs: number) => void;
+
+  /** Internal: stop the decay timer (called automatically) */
+  _stopDecayTimer: () => void;
 }
+
+// Module-level timer reference (managed by store)
+let decayTimerId: ReturnType<typeof setInterval> | null = null;
+let currentIntervalMs = 100;
 
 export const useInteractionStatsStore = create<InteractionStatsState & InteractionStatsActions>(
   (set, get) => ({
@@ -103,6 +131,8 @@ export const useInteractionStatsStore = create<InteractionStatsState & Interacti
     isActive: false,
     lastUpdate: Date.now(),
     history: [],
+    decaySubscriberCount: 0,
+    isDecayRunning: false,
 
     updateStat: (stat, delta) => {
       set((state) => {
@@ -247,23 +277,71 @@ export const useInteractionStatsStore = create<InteractionStatsState & Interacti
 
       set({ stats: maxedStats });
     },
+
+    subscribeDecay: (intervalMs = 100) => {
+      const { decaySubscriberCount, _startDecayTimer } = get();
+
+      // Increment subscriber count
+      set({ decaySubscriberCount: decaySubscriberCount + 1 });
+
+      // Start timer if this is the first subscriber
+      if (decaySubscriberCount === 0) {
+        _startDecayTimer(intervalMs);
+      }
+
+      // Return unsubscribe function
+      return () => {
+        const { decaySubscriberCount, _stopDecayTimer } = get();
+        const newCount = Math.max(0, decaySubscriberCount - 1);
+        set({ decaySubscriberCount: newCount });
+
+        // Stop timer if this was the last subscriber
+        if (newCount === 0) {
+          _stopDecayTimer();
+        }
+      };
+    },
+
+    _startDecayTimer: (intervalMs: number) => {
+      // Don't start if already running
+      if (decayTimerId !== null) {
+        return;
+      }
+
+      currentIntervalMs = intervalMs;
+      decayTimerId = setInterval(() => {
+        get().applyDecay();
+      }, intervalMs);
+
+      set({ isDecayRunning: true });
+    },
+
+    _stopDecayTimer: () => {
+      if (decayTimerId !== null) {
+        clearInterval(decayTimerId);
+        decayTimerId = null;
+      }
+      set({ isDecayRunning: false });
+    },
   })
 );
 
-// Decay timer - runs in background
-let decayInterval: ReturnType<typeof setInterval> | null = null;
-
+/**
+ * Legacy function to start stat decay.
+ * @deprecated Use useStatsDecay hook or store.subscribeDecay() instead.
+ * This function is kept for backward compatibility but doesn't integrate
+ * with the subscriber count system.
+ */
 export function startStatDecay(intervalMs: number = 100): void {
-  if (decayInterval) return;
-
-  decayInterval = setInterval(() => {
-    useInteractionStatsStore.getState().applyDecay();
-  }, intervalMs);
+  useInteractionStatsStore.getState()._startDecayTimer(intervalMs);
 }
 
+/**
+ * Legacy function to stop stat decay.
+ * @deprecated Use useStatsDecay hook or store.subscribeDecay() instead.
+ * This function is kept for backward compatibility but doesn't integrate
+ * with the subscriber count system.
+ */
 export function stopStatDecay(): void {
-  if (decayInterval) {
-    clearInterval(decayInterval);
-    decayInterval = null;
-  }
+  useInteractionStatsStore.getState()._stopDecayTimer();
 }
