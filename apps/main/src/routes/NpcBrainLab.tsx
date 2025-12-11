@@ -21,7 +21,7 @@ export interface NpcBrainLabProps {
  * NPC Brain Lab - Dev UI for inspecting NPC brain state
  *
  * Similar to GizmoLab, this provides a small UI to inspect NPC brain state
- * using PixSim7Core and buildNpcBrainState.
+ * using PixSim7Core.getNpcBrainState() and the data-driven BrainState model.
  *
  * Shows:
  * - NPC traits (personality)
@@ -351,4 +351,3 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
     </div>
   );
 }
-

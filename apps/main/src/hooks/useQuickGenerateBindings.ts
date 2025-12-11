@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, useRef, type Dispatch, type SetStateAction } from 'react';
 import { useAssetSelectionStore, type SelectedAsset } from '../stores/assetSelectionStore';
 import {
   useGenerationQueueStore,
@@ -67,6 +67,11 @@ export function useQuickGenerateBindings(
   const [prompts, setPrompts] = useState<string[]>([]);
   const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
 
+  // Track previous queue lengths to detect when items are ADDED vs initial hydration
+  // We only auto-switch operation type when items are actively added, not on page load
+  const prevMainQueueLengthRef = useRef<number | null>(null);
+  const prevTransitionQueueLengthRef = useRef<number | null>(null);
+
   // Function to use active asset explicitly (e.g., "Use Asset" button)
   const useActiveAsset = () => {
     if (!lastSelectedAsset) return;
@@ -91,37 +96,66 @@ export function useQuickGenerateBindings(
 
   // Auto-fill from main generation queue
   useEffect(() => {
+    const prevLength = prevMainQueueLengthRef.current;
+    const currentLength = mainQueue.length;
+
+    // Update ref for next render
+    prevMainQueueLengthRef.current = currentLength;
+
     const nextInQueue = mainQueue[0];
     if (!nextInQueue) return;
 
     const { asset, operation } = nextInQueue;
 
-    // Set operation type if specified
-    if (operation) {
-      setOperationType(operation);
-    }
+    // Only auto-switch operation type when items are ADDED to the queue
+    // (prevLength was set and current > prev), not on initial hydration (prevLength was null)
+    const itemsWereAdded = prevLength !== null && currentLength > prevLength;
 
-    // Auto-fill based on operation and asset type
-    if ((operation === 'image_to_video' || !operation) && asset.media_type === 'image') {
-      setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
-      if (!operation) setOperationType('image_to_video');
-    } else if ((operation === 'video_extend' || !operation) && asset.media_type === 'video') {
-      setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
-      if (!operation) setOperationType('video_extend');
+    if (itemsWereAdded) {
+      // Set operation type if specified
+      if (operation) {
+        setOperationType(operation);
+      }
+
+      // Auto-fill based on operation and asset type
+      if ((operation === 'image_to_video' || !operation) && asset.media_type === 'image') {
+        setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
+        if (!operation) setOperationType('image_to_video');
+      } else if ((operation === 'video_extend' || !operation) && asset.media_type === 'video') {
+        setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+        if (!operation) setOperationType('video_extend');
+      }
+    } else {
+      // On initial load or when not adding, only fill params without changing operation type
+      if (asset.media_type === 'image') {
+        setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
+      } else if (asset.media_type === 'video') {
+        setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+      }
     }
   }, [mainQueue, setOperationType]);
 
-  // Auto-fill transition queue
+  // Auto-fill transition queue data (but don't auto-switch operation type on load)
   useEffect(() => {
-    if (transitionQueue.length === 0) {
+    const prevLength = prevTransitionQueueLengthRef.current;
+    const currentLength = transitionQueue.length;
+
+    // Update ref for next render
+    prevTransitionQueueLengthRef.current = currentLength;
+
+    if (currentLength === 0) {
       setImageUrls([]);
       setPrompts([]);
       setTransitionDurations([]);
       return;
     }
 
-    // Set operation to video_transition
-    setOperationType('video_transition');
+    // Only auto-switch to video_transition when NEW items are added
+    // (prevLength was set and current > prev), not on initial hydration (prevLength was null)
+    const itemsWereAdded = prevLength !== null && currentLength > prevLength;
+    if (itemsWereAdded) {
+      setOperationType('video_transition');
+    }
 
     // Fill image URLs from transition queue
     const urls = transitionQueue.map(item => item.asset.remote_url);

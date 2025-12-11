@@ -95,11 +95,11 @@ export function AdvancedSettingsPopover({
         )}
       </button>
 
-      {/* Popover - appears to the left */}
+      {/* Popover - appears above the button to avoid clipping at container edges */}
       {isOpen && (
         <div
           ref={popoverRef}
-          className="absolute right-full top-0 mr-2 z-50 w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+          className="absolute bottom-full right-0 mb-2 z-50 w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden"
         >
           <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
             <h3 className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-200">

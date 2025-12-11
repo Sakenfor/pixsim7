@@ -124,8 +124,9 @@ export function FloatingPanelsManager() {
             bounds="window"
             dragHandleClassName="floating-panel-header"
             // Use a high base z-index so floating panels appear above
-            // other overlays like the Control Center dock (z-50).
-            style={{ zIndex: 100 + panel.zIndex }}
+            // other overlays like the Control Center dock (z-50) and
+            // cube systems (z-9999). Base at 10000+ to be above cubes.
+            style={{ zIndex: 10100 + panel.zIndex }}
             className="floating-panel"
           >
             <div className="h-full flex flex-col bg-white dark:bg-neutral-900 rounded-lg shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden">
