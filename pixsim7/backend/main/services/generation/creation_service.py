@@ -361,7 +361,7 @@ class GenerationCreationService:
             status=GenerationStatus.PENDING,
             # Billing fields
             estimated_credits=estimated_credits,
-            credit_type="web",  # Default to web credits (most common)
+            credit_type="webapi",  # Default to webapi credits (matches ProviderCredit DB naming)
             billing_state=BillingState.PENDING,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),

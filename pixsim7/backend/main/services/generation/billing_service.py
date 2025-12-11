@@ -101,16 +101,25 @@ class GenerationBillingService:
             )
             return generation
 
+        # Determine account for all paths (needed for SKIPPED too)
+        account_id = None
+        if account:
+            account_id = account.id
+        elif final_submission:
+            account_id = final_submission.account_id
+
         # Handle non-COMPLETED states (FAILED, CANCELLED)
         if generation.status != GenerationStatus.COMPLETED:
             generation.billing_state = BillingState.SKIPPED
             generation.actual_credits = 0
+            generation.account_id = account_id  # Set even for skipped
             generation.charged_at = None
             generation.billing_error = None
 
             logger.info(
                 "billing_skipped",
                 generation_id=generation.id,
+                account_id=account_id,
                 status=generation.status.value,
             )
 
@@ -119,12 +128,8 @@ class GenerationBillingService:
 
         # === COMPLETED: Compute and charge credits ===
 
-        # Determine account to charge
-        account_id = None
-        if account:
-            account_id = account.id
-        elif final_submission:
-            account_id = final_submission.account_id
+        # Load account if we only have the ID
+        if account_id and not account:
             account = await self.db.get(ProviderAccount, account_id)
 
         if not account_id:
@@ -162,6 +167,11 @@ class GenerationBillingService:
         # Attempt to deduct credits
         credit_type = generation.credit_type or "web"
 
+        # Normalize credit type to match ProviderCredit DB values
+        # - 'web' credits are stored as 'webapi' in the database
+        if credit_type == "web":
+            credit_type = "webapi"
+
         try:
             await self.account_service.deduct_credit(
                 account_id=account_id,
@@ -169,10 +179,11 @@ class GenerationBillingService:
                 amount=actual_credits,
             )
 
-            # Success - update generation
+            # Success - update generation with normalized credit_type
             generation.billing_state = BillingState.CHARGED
             generation.actual_credits = actual_credits
             generation.account_id = account_id
+            generation.credit_type = credit_type  # Store normalized value
             generation.charged_at = datetime.utcnow()
             generation.billing_error = None
 
