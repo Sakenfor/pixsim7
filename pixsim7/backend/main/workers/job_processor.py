@@ -226,48 +226,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     account_id=account.id,
                 )
 
-                # Best-effort local credit tracking for Pixverse images.
-                # For image operations we deduct credits on attempt (submission),
-                # while video credits are handled on successful completion in the
-                # status poller (provider refunds failed videos).
-                try:
-                    from pixsim7.backend.main.domain.enums import OperationType as OpType
-                    from pixsim7.backend.main.services.generation.pixverse_pricing import (
-                        get_image_credit_change,
-                    )
-
-                    if generation.provider_id == "pixverse":
-                        params = generation.canonical_params or generation.raw_params or {}
-                        model = params.get("model") or "v5"
-                        quality = params.get("quality") or "360p"
-                        credits: int | None = None
-
-                        # Image operations: static table, deduct on attempt
-                        if generation.operation_type in {OpType.TEXT_TO_IMAGE, OpType.IMAGE_TO_IMAGE}:
-                            credits = get_image_credit_change(str(model), str(quality)) or None
-
-                        if credits and credits > 0:
-                            try:
-                                await account_service.deduct_credit(account.id, "webapi", credits)
-                                gen_logger.info(
-                                    "account_credit_deducted",
-                                    account_id=account.id,
-                                    provider_id=generation.provider_id,
-                                    credits=credits,
-                                    operation_type=generation.operation_type.value,
-                                )
-                            except Exception as credit_err:
-                                gen_logger.warning(
-                                    "account_credit_deduct_failed",
-                                    account_id=account.id,
-                                    provider_id=generation.provider_id,
-                                    error=str(credit_err),
-                                )
-                except Exception as credit_calc_err:
-                    gen_logger.debug(
-                        "account_credit_estimate_failed",
-                        error=str(credit_calc_err),
-                    )
+                # Credit tracking for Pixverse is now unified for both images and videos:
+                # All credits are deducted on successful completion in the status poller.
+                # This ensures failed/filtered generations don't charge credits.
 
                 # Note: Credits refreshed before submission; status_poller refreshes on completion
 
