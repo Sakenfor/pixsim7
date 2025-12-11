@@ -1,0 +1,307 @@
+# Automation Domain
+
+The Automation domain handles Android device control, automation presets, execution loops, and device pool management.
+
+## Entry Module
+
+```python
+from pixsim7.backend.automation import (
+    # Device Models
+    AndroidDevice, DeviceAgent, DeviceStatus, DeviceType,
+    # Preset Models
+    AppActionPreset, ActionType,
+    # Execution Models
+    AutomationExecution, AutomationStatus,
+    ExecutionLoop, ExecutionLoopHistory, LoopStatus,
+    # Services
+    ExecutionLoopService, DevicePoolService, DeviceAssignmentResult,
+)
+```
+
+## Architecture
+
+```
+pixsim7/backend/main/
+├── domain/automation/     # Domain models
+│   ├── device.py          # AndroidDevice, DeviceStatus
+│   ├── agent.py           # DeviceAgent
+│   ├── preset.py          # AppActionPreset
+│   ├── execution.py       # AutomationExecution
+│   └── execution_loop.py  # ExecutionLoop, history
+├── services/automation/   # Business logic
+│   ├── execution_loop_service.py
+│   └── device_pool_service.py
+├── routes/automation/     # API endpoints
+└── workers/automation.py  # Background executor
+```
+
+## Key Types
+
+### AndroidDevice
+
+Represents a connected Android device.
+
+```python
+class AndroidDevice(SQLModel, table=True):
+    id: int
+    name: str
+    serial: str              # ADB serial
+    device_type: DeviceType  # phone, tablet, emulator
+    connection_method: ConnectionMethod  # usb, wifi, cloud
+    status: DeviceStatus     # idle, busy, offline
+```
+
+**Device Statuses:**
+- `idle` - Available for automation
+- `busy` - Currently executing
+- `offline` - Not connected
+- `error` - Has error state
+
+### DeviceAgent
+
+An agent that manages device connections.
+
+```python
+class DeviceAgent(SQLModel, table=True):
+    id: int
+    user_id: int
+    name: str
+    auth_token: str
+    devices: list[AndroidDevice]
+```
+
+### AppActionPreset
+
+A reusable automation preset defining actions to execute.
+
+```python
+class AppActionPreset(SQLModel, table=True):
+    id: int
+    user_id: int
+    name: str
+    app_package: str         # Target app
+    actions: list[dict]      # Action sequence
+    action_type: ActionType  # tap, swipe, input, etc.
+```
+
+**Action Types:**
+- `tap` - Tap at coordinates
+- `swipe` - Swipe gesture
+- `input` - Text input
+- `wait` - Delay
+- `screenshot` - Capture screen
+- `custom` - Custom ADB command
+
+### AutomationExecution
+
+A single execution record.
+
+```python
+class AutomationExecution(SQLModel, table=True):
+    id: int
+    preset_id: int
+    device_id: int
+    status: AutomationStatus
+    started_at: datetime
+    completed_at: datetime
+    result: dict  # Output/logs
+```
+
+### ExecutionLoop
+
+A looped automation workflow that runs multiple presets.
+
+```python
+class ExecutionLoop(SQLModel, table=True):
+    id: int
+    user_id: int
+    name: str
+    presets: list[int]           # Preset IDs to run
+    selection_mode: LoopSelectionMode  # sequential, random
+    execution_mode: PresetExecutionMode
+    status: LoopStatus           # idle, running, paused
+    iteration_count: int
+```
+
+**Loop Selection Modes:**
+- `sequential` - Run presets in order
+- `random` - Random selection each iteration
+- `weighted` - Weighted random selection
+
+## Services
+
+### ExecutionLoopService
+
+Manages execution loop lifecycle.
+
+```python
+from pixsim7.backend.automation import ExecutionLoopService
+
+service = ExecutionLoopService(db)
+
+# Create loop
+loop = await service.create_loop(
+    user_id=1,
+    name="Content Generation Loop",
+    presets=[preset1.id, preset2.id],
+    selection_mode=LoopSelectionMode.sequential
+)
+
+# Start loop
+await service.start_loop(loop.id)
+
+# Check status
+status = await service.get_loop_status(loop.id)
+
+# Stop loop
+await service.stop_loop(loop.id)
+```
+
+### DevicePoolService
+
+Manages device assignment and pooling.
+
+```python
+from pixsim7.backend.automation import DevicePoolService, DeviceAssignmentResult
+
+service = DevicePoolService(db)
+
+# Request a device
+result: DeviceAssignmentResult = await service.assign_device(
+    user_id=1,
+    requirements={"device_type": "phone"}
+)
+
+if result.success:
+    device = result.device
+    # Use device...
+    await service.release_device(device.id)
+else:
+    print(f"No device available: {result.reason}")
+
+# List available devices
+devices = await service.list_available_devices(user_id=1)
+```
+
+## Execution Flow
+
+### Single Execution
+
+```python
+from pixsim7.backend.automation import (
+    AutomationExecution, AutomationStatus
+)
+
+# Create execution
+execution = AutomationExecution(
+    preset_id=preset.id,
+    device_id=device.id,
+    status=AutomationStatus.pending
+)
+db.add(execution)
+await db.commit()
+
+# Worker picks up and runs
+# Status transitions: pending -> running -> completed/failed
+```
+
+### Loop Execution
+
+```python
+from pixsim7.backend.automation import ExecutionLoopService
+
+service = ExecutionLoopService(db)
+
+# Start loop (runs in background worker)
+await service.start_loop(loop.id)
+
+# Loop runs: select preset -> execute -> record history -> repeat
+# Until: max_iterations reached, error, or manual stop
+
+# View history
+history = await service.get_loop_history(loop.id, limit=50)
+for entry in history:
+    print(f"Iteration {entry.iteration}: {entry.preset_id} - {entry.status}")
+```
+
+## Worker Integration
+
+The automation worker processes pending executions:
+
+```python
+# workers/automation.py
+async def process_automation_queue():
+    while True:
+        # Get next pending execution
+        execution = await get_next_execution()
+        if execution:
+            await run_execution(execution)
+        await asyncio.sleep(1)
+```
+
+## Device Connection
+
+Devices connect via agents running on host machines:
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Backend   │◀───▶│ DeviceAgent  │◀───▶│   Device    │
+│   Server    │     │   (local)    │     │  (Android)  │
+└─────────────┘     └──────────────┘     └─────────────┘
+      │                    │
+      │ WebSocket/HTTP     │ ADB
+      ▼                    ▼
+```
+
+## Integration with Other Domains
+
+### Automation + Content Generation
+
+```python
+from pixsim7.backend.automation import ExecutionLoopService
+from pixsim7.backend.content import GenerationService
+
+# Automation can trigger content generation
+async def on_screenshot_captured(screenshot_path: str):
+    gen_service = GenerationService(db)
+    await gen_service.create_generation(
+        user_id=user_id,
+        source_image=screenshot_path,
+        operation_type="image_to_video"
+    )
+```
+
+### Automation + Simulation
+
+```python
+# Automation loops can be used for regression testing
+from pixsim7.backend.simulation import WorldScheduler
+
+async def regression_test_loop():
+    scheduler = WorldScheduler(db)
+
+    for scenario in test_scenarios:
+        await scheduler.register_world(scenario.world_id)
+        for _ in range(100):
+            await scheduler.tick_world(scenario.world_id)
+        # Validate expected state
+```
+
+## Extending Automation
+
+### Adding New Action Types
+
+1. Add enum value to `ActionType` in `domain/automation/preset.py`
+2. Add handler in worker: `workers/automation.py`
+3. Update preset validation
+
+### Custom Execution Modes
+
+1. Add mode to `PresetExecutionMode` enum
+2. Update `ExecutionLoopService.select_next_preset()`
+
+## Related Domains
+
+- **Content**: Automation can capture screenshots for generation
+- **Simulation**: Used for regression testing simulation
+- **Game**: Can automate gameplay testing

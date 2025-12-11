@@ -1,10 +1,29 @@
 """
-Game domain models
+PixSim7 Game Domain Entry Module
 
-This module contains all game-related domain models that were consolidated
-from the standalone game service into the main backend.
+Provides a stable public interface for game-related functionality including:
+- Core game models (scenes, sessions, locations, NPCs)
+- Entity-Component-System (ECS) helpers for NPC state
+- Game state management (mode, focus, current location)
+- Game services for session and world management
+
+Usage:
+    from pixsim7.backend.game import (
+        GameSession, GameNPC, GameLocation,
+        get_npc_component, set_npc_component,
+        get_game_state, is_conversation_mode,
+        GameSessionService,
+    )
+
+See docs/backend/game.md for detailed documentation.
 """
-from pixsim7.backend.main.domain.game.models import (
+
+# =============================================================================
+# Domain Models
+# =============================================================================
+
+from pixsim7.backend.main.domain.game import (
+    # Core models
     GameScene,
     GameSceneNode,
     GameSceneEdge,
@@ -14,11 +33,10 @@ from pixsim7.backend.main.domain.game.models import (
     GameNPC,
     NPCSchedule,
     NPCState,
-    # World models (for simulation domain)
+    # World models (for simulation)
     GameWorld,
     GameWorldState,
-)
-from pixsim7.backend.main.domain.game.ecs import (
+    # ECS helpers
     get_npc_entity,
     set_npc_entity,
     get_npc_component,
@@ -43,8 +61,8 @@ from pixsim7.backend.main.domain.game.ecs import (
     update_npc_metric,
     list_metrics_for_category,
     get_metric_definition,
-)
-from pixsim7.backend.main.domain.game.game_state import (
+    # Game state
+    GameStateSchema,
     get_game_state,
     set_game_state,
     update_game_state,
@@ -60,9 +78,24 @@ from pixsim7.backend.main.domain.game.game_state import (
     get_current_location,
     get_current_scene,
 )
-from pixsim7.backend.main.domain.game.schemas import GameStateSchema
+
+# =============================================================================
+# Services
+# =============================================================================
+
+from pixsim7.backend.main.services.game import (
+    GameSessionService,
+    GameLocationService,
+    NpcExpressionService,
+    GameWorldService,
+)
+
+# =============================================================================
+# Public API
+# =============================================================================
 
 __all__ = [
+    # Core Models
     "GameScene",
     "GameSceneNode",
     "GameSceneEdge",
@@ -72,10 +105,10 @@ __all__ = [
     "GameNPC",
     "NPCSchedule",
     "NPCState",
-    # World models (for simulation domain)
+    # World Models
     "GameWorld",
     "GameWorldState",
-    # ECS helpers
+    # ECS Helpers
     "get_npc_entity",
     "set_npc_entity",
     "get_npc_component",
@@ -92,7 +125,7 @@ __all__ = [
     "set_npc_metadata",
     "update_npc_metadata",
     "validate_entity",
-    # Metric registry
+    # Metric Registry
     "get_metric_registry",
     "resolve_metric",
     "get_npc_metric",
@@ -100,7 +133,7 @@ __all__ = [
     "update_npc_metric",
     "list_metrics_for_category",
     "get_metric_definition",
-    # Game state (Task 22)
+    # Game State
     "GameStateSchema",
     "get_game_state",
     "set_game_state",
@@ -116,4 +149,9 @@ __all__ = [
     "get_active_narrative_program",
     "get_current_location",
     "get_current_scene",
+    # Services
+    "GameSessionService",
+    "GameLocationService",
+    "NpcExpressionService",
+    "GameWorldService",
 ]
