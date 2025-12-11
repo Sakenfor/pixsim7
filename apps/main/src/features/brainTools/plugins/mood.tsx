@@ -5,7 +5,7 @@
  * Uses data-driven BrainState - accesses mood via brain.stats['mood'] or brain.derived['mood']
  */
 
-import type { BrainToolPlugin } from '../../lib/brainTools/types';
+import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar } from '@pixsim7/shared.ui';
 import { getMood } from '@/types';
 

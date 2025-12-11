@@ -33,7 +33,9 @@
       "@features/gallery/*": ["apps/main/src/features/gallery/*"],
       "@features/gallery": ["apps/main/src/features/gallery/index.ts"],
       "@features/scene/*": ["apps/main/src/features/scene/*"],
-      "@features/scene": ["apps/main/src/features/scene/index.ts"]
+      "@features/scene": ["apps/main/src/features/scene/index.ts"],
+      "@features/brainTools/*": ["apps/main/src/features/brainTools/*"],
+      "@features/brainTools": ["apps/main/src/features/brainTools/index.ts"]
     }
   }
 }

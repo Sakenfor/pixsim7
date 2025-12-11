@@ -4,7 +4,7 @@
  * Displays NPC decision-making strategies and logic.
  */
 
-import type { BrainToolPlugin } from '../../lib/brainTools/types';
+import type { BrainToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
 import { getLogicStrategies, hasDerived } from '@/types';
 

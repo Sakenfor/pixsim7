@@ -6,7 +6,7 @@
  */
 
 import { brainToolRegistry } from './types';
-import { builtInBrainTools } from '../../plugins/brainTools';
+import { builtInBrainTools } from '../plugins';
 
 // Auto-register all built-in brain tools
 builtInBrainTools.forEach(tool => {

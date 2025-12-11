@@ -16,7 +16,7 @@ import { GameWorld } from './routes/GameWorld';
 import { AutomationRoute } from './routes/Automation';
 import { NpcPortraits } from './routes/NpcPortraits';
 import { Game2D } from './routes/Game2D';
-import { NpcBrainLab } from './routes/NpcBrainLab';
+import { NpcBrainLab } from '@features/brainTools';
 import { GizmoLab } from './routes/GizmoLab';
 import { PluginWorkspaceRoute } from './routes/PluginWorkspace';
 import { SimulationPlayground } from './routes/SimulationPlayground';

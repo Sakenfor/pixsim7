@@ -4,7 +4,7 @@
  * Displays NPC base instincts.
  */
 
-import type { BrainToolPlugin } from '../../lib/brainTools/types';
+import type { BrainToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
 import { getInstincts, hasDerived } from '@/types';
 

@@ -4,12 +4,12 @@ import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { parseNpcKey } from '@pixsim7/game.engine';
 import type { BrainState } from '@/types';
 import type { BrainFace } from '@pixsim7/scene.shapes';
-import { usePixSim7Core } from '../lib/game/usePixSim7Core';
-import { getGameSession, listGameSessions, type GameSessionSummary } from '../lib/api/game';
-import { BrainShape } from '../components/shapes/BrainShape';
-import { BrainToolsPanel } from '../components/brain/BrainToolsPanel';
-import { brainToolRegistry } from '../lib/brainTools/registry';
-import type { BrainToolContext } from '../lib/brainTools/types';
+import { usePixSim7Core } from '@/lib/game/usePixSim7Core';
+import { getGameSession, listGameSessions, type GameSessionSummary } from '@/lib/api/game';
+import { BrainShape } from '@/components/shapes/BrainShape';
+import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
+import { brainToolRegistry } from '../lib/registry';
+import type { BrainToolContext } from '../lib/types';
 
 export interface NpcBrainLabProps {
   npcId?: number;

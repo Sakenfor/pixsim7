@@ -5,7 +5,7 @@
  * Uses data-driven BrainState - accesses personality via brain.stats['personality']
  */
 
-import type { BrainToolPlugin } from '../../lib/brainTools/types';
+import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar, Badge } from '@pixsim7/shared.ui';
 import { getDerived, hasStat } from '@/types';
 

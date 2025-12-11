@@ -66,6 +66,11 @@ features/
 │   ├── panels/         # RegionalHudLayout, HudCustomizationPanel, HudProfileSwitcher
 │   ├── stores/         # hudLayoutStore (HUD layout state management)
 │   └── index.ts        # Barrel export
+├── brainTools/         # NPC Brain Lab and brain inspection tools
+│   ├── components/     # NpcBrainLab (main panel)
+│   ├── plugins/        # Brain tool plugins (traits, mood, social, memories, etc.)
+│   ├── lib/            # Registry, types
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
@@ -157,6 +162,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/scene` | `apps/main/src/features/scene/index.ts` | Scene feature barrel export |
 | `@features/hud/*` | `apps/main/src/features/hud/*` | HUD layout builder, editor, renderer, and customization |
 | `@features/hud` | `apps/main/src/features/hud/index.ts` | HUD feature barrel export |
+| `@features/brainTools/*` | `apps/main/src/features/brainTools/*` | NPC Brain Lab and brain inspection tools |
+| `@features/brainTools` | `apps/main/src/features/brainTools/index.ts` | Brain Tools feature barrel export |
 
 ### Usage Examples
 

@@ -16,7 +16,7 @@ import { ProviderSettingsPanel } from '../../components/provider/ProviderSetting
 import { SettingsPanel } from '../../components/settings/SettingsPanel';
 import { GameThemingPanel } from '@/components/game/panels/GameThemingPanel';
 import { GizmoLab } from '../../routes/GizmoLab';
-import { NpcBrainLab } from '../../routes/NpcBrainLab';
+import { NpcBrainLab } from '@features/brainTools';
 import { DevToolsPanel } from '@/components/panels/dev/DevToolsPanel';
 import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRolesPanel';

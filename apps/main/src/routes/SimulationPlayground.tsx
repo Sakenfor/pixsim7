@@ -28,9 +28,9 @@ import { useGameRuntime, useActorPresence } from '../lib/game/runtime';
 import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
 import { BrainToolsPanel } from '../components/brain/BrainToolsPanel';
 import { worldToolRegistry } from '../lib/worldTools/registry';
-import { brainToolRegistry } from '../lib/brainTools/registry';
+import { brainToolRegistry } from '@features/brainTools/lib/registry';
 import type { WorldToolContext } from '../lib/worldTools/types';
-import type { BrainToolContext } from '../lib/brainTools/types';
+import type { BrainToolContext } from '@features/brainTools/lib/types';
 import {
   loadScenarios,
   createScenario,
