@@ -31,7 +31,9 @@
       "@features/prompts/*": ["apps/main/src/features/prompts/*"],
       "@features/prompts": ["apps/main/src/features/prompts/index.ts"],
       "@features/gallery/*": ["apps/main/src/features/gallery/*"],
-      "@features/gallery": ["apps/main/src/features/gallery/index.ts"]
+      "@features/gallery": ["apps/main/src/features/gallery/index.ts"],
+      "@features/scene/*": ["apps/main/src/features/scene/*"],
+      "@features/scene": ["apps/main/src/features/scene/index.ts"]
     }
   }
 }

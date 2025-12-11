@@ -54,6 +54,11 @@ features/
 ├── gallery/            # Gallery UI (surfaces, layout controls, tools panels)
 │   ├── components/     # GallerySurfaceHost, GallerySurfaceSwitcher, GalleryLayoutControls
 │   ├── components/panels/ # GalleryToolsPanel
+│   ├── hooks/          # useGallerySurfaceController, useCuratorGalleryController
+│   └── index.ts        # Barrel export
+├── scene/              # Scene browsing, playback, and management UI
+│   ├── components/panels/ # SceneManagementPanel, SceneLibraryPanel, ScenePlaybackPanel, etc.
+│   ├── components/player/ # PlaybackTimeline, MockStateEditor
 │   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
@@ -142,6 +147,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/prompts` | `apps/main/src/features/prompts/index.ts` | Prompts barrel export |
 | `@features/gallery/*` | `apps/main/src/features/gallery/*` | Gallery UI components (surfaces, layout, tools) |
 | `@features/gallery` | `apps/main/src/features/gallery/index.ts` | Gallery barrel export |
+| `@features/scene/*` | `apps/main/src/features/scene/*` | Scene browsing, playback, and management UI |
+| `@features/scene` | `apps/main/src/features/scene/index.ts` | Scene feature barrel export |
 
 ### Usage Examples
 

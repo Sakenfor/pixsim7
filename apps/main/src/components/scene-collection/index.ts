@@ -1,1 +1,0 @@
-export { SceneCollectionPanel } from './SceneCollectionPanel';
