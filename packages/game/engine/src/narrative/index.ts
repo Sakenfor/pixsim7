@@ -100,6 +100,24 @@ export {
   type ExecutorHooks,
 } from './executor';
 
+// Structured logging
+export {
+  createNarrativeLogger,
+  configureLogging,
+  enableDebugLogging,
+  disableLogging,
+  startTimer,
+  withTiming,
+  narrativeLog,
+  sceneLog,
+  generationLog,
+  type LogLevel,
+  type NarrativeLogContext,
+  type LogEntry,
+  type LoggerConfig,
+  type NarrativeLogger,
+} from './logging';
+
 // Generation integration
 export {
   GenerationBridge,
@@ -108,6 +126,7 @@ export {
   buildSocialContext,
   createBlockGenerationHooks,
   createFusionGenerationHooks,
+  isExplicitStrategy,
   // Types
   type NarrativeGenerationStrategy,
   type NarrativeGenerationConfig,
