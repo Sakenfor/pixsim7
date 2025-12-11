@@ -23,6 +23,7 @@ export default defineConfig({
       { find: '@features/hud', replacement: path.resolve(__dirname, './src/features/hud') },
       { find: '@features/worldTools', replacement: path.resolve(__dirname, './src/features/worldTools') },
       { find: '@features/brainTools', replacement: path.resolve(__dirname, './src/features/brainTools') },
+      { find: '@features/simulation', replacement: path.resolve(__dirname, './src/features/simulation') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

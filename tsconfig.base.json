@@ -39,7 +39,9 @@
       "@features/worldTools/*": ["apps/main/src/features/worldTools/*"],
       "@features/worldTools": ["apps/main/src/features/worldTools/index.ts"],
       "@features/brainTools/*": ["apps/main/src/features/brainTools/*"],
-      "@features/brainTools": ["apps/main/src/features/brainTools/index.ts"]
+      "@features/brainTools": ["apps/main/src/features/brainTools/index.ts"],
+      "@features/simulation/*": ["apps/main/src/features/simulation/*"],
+      "@features/simulation": ["apps/main/src/features/simulation/index.ts"]
     }
   }
 }

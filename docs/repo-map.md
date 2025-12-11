@@ -76,6 +76,9 @@ features/
 │   ├── plugins/        # Brain tool plugins (traits, mood, social, memories, etc.)
 │   ├── lib/            # Registry, types
 │   └── index.ts        # Barrel export
+├── simulation/         # Simulation Playground (world/brain evolution testing)
+│   ├── components/     # SimulationPlayground, WorldStateOverview, ConstraintRunner, etc.
+│   └── index.ts        # Barrel export (note: low-level libs remain in @/lib/simulation)
 └── [future-feature]/
 ```
 
@@ -171,6 +174,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/worldTools` | `apps/main/src/features/worldTools/index.ts` | World tools feature barrel export |
 | `@features/brainTools/*` | `apps/main/src/features/brainTools/*` | NPC Brain Lab and brain inspection tools |
 | `@features/brainTools` | `apps/main/src/features/brainTools/index.ts` | Brain Tools feature barrel export |
+| `@features/simulation/*` | `apps/main/src/features/simulation/*` | Simulation Playground UI components |
+| `@features/simulation` | `apps/main/src/features/simulation/index.ts` | Simulation feature barrel export |
 
 ### Usage Examples
 
