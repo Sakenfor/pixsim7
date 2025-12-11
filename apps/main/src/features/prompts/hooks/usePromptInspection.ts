@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useApi } from './useApi';
-import type { PromptSegment } from '@/types/prompts';
+import { useApi } from '@/hooks/useApi';
+import type { PromptSegment } from '../types';
 
 export interface UsePromptInspectionOptions {
   assetId?: number;

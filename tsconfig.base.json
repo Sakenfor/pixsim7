@@ -27,7 +27,9 @@
       "@features/automation/*": ["apps/main/src/features/automation/*"],
       "@features/automation": ["apps/main/src/features/automation/index.ts"],
       "@features/interactions/*": ["apps/main/src/features/interactions/*"],
-      "@features/interactions": ["apps/main/src/features/interactions/index.ts"]
+      "@features/interactions": ["apps/main/src/features/interactions/index.ts"],
+      "@features/prompts/*": ["apps/main/src/features/prompts/*"],
+      "@features/prompts": ["apps/main/src/features/prompts/index.ts"]
     }
   }
 }

@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { useApi } from '../hooks/useApi';
-import { PromptSegmentsViewer } from '../components/prompts/PromptBlocksViewer';
+import { PromptSegmentsViewer } from '@features/prompts';
 
 // Response types matching backend
 interface PromptFamilyResponse {

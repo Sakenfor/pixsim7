@@ -9,10 +9,9 @@ import { useState, useEffect } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { DevPromptImporter } from './DevPromptImporter';
-import { PromptSegmentsViewer } from '../components/prompts/PromptBlocksViewer';
+import { PromptSegmentsViewer, type PromptSegment } from '@features/prompts';
 import { PromptBlockGraphSurface } from '../components/graph/PromptBlockGraphSurface';
 import { useApi } from '../hooks/useApi';
-import type { PromptSegment } from '../types/prompts';
 
 // ===== Types =====
 

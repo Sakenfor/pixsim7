@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef, type Dispatch, type SetStateAction } from 'react';
-import { useAssetSelectionStore, type SelectedAsset } from '../stores/assetSelectionStore';
+import { useAssetSelectionStore, type SelectedAsset } from '@/stores/assetSelectionStore';
 import {
   useGenerationQueueStore,
   type GenerationQueueState,
   type QueuedAsset,
-} from '../stores/generationQueueStore';
-import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
+} from '@/stores/generationQueueStore';
+import { useGenerationSettingsStore } from '@/stores/generationSettingsStore';
 import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility

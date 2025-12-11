@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { useControlCenterStore } from '../stores/controlCenterStore';
-import { useGenerationsStore } from '../stores/generationsStore';
-import { ccSelectors } from '../stores/selectors';
-import { generateAsset } from '../lib/api/controlCenter';
-import { extractFrame } from '../lib/api/assets';
-import { logEvent } from '../lib/logging';
-import { buildGenerationRequest } from '../lib/control/quickGenerateLogic';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useGenerationsStore } from '@/stores/generationsStore';
+import { ccSelectors } from '@/stores/selectors';
+import { generateAsset } from '@/lib/api/controlCenter';
+import { extractFrame } from '@/lib/api/assets';
+import { logEvent } from '@/lib/logging';
+import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';
-import { extractErrorMessage } from '../lib/api/errorHandling';
+import { extractErrorMessage } from '@/lib/api/errorHandling';
 
 /**
  * Hook: useQuickGenerateController

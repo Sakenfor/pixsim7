@@ -20,9 +20,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { PromptSegmentsViewer } from '../prompts/PromptBlocksViewer';
-import { usePromptInspection } from '@/hooks/usePromptInspection';
-import { usePromptAiEdit } from '@/hooks/usePromptAiEdit';
+import { PromptSegmentsViewer, usePromptInspection, usePromptAiEdit } from '@features/prompts';
 import { useAiProviders } from '@/hooks/useAiProviders';
 import { useGenerationDevController } from '@/hooks/useGenerationDevController';
 

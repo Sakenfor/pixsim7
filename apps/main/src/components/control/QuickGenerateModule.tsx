@@ -5,7 +5,7 @@ import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useGenerationQueueStore } from '@/stores/generationQueueStore';
 import { useGenerationWebSocket } from '@/hooks/useGenerationWebSocket';
-import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
+import { useQuickGenerateController } from '@features/prompts';
 import { useGenerationWorkbench } from '@/hooks/useGenerationWorkbench';
 import { CompactAssetCard } from './CompactAssetCard';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiClient } from '../lib/api/client';
+import { apiClient } from '@/lib/api/client';
 
 /**
  * Request to edit a prompt using AI

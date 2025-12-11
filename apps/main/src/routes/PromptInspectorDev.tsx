@@ -8,8 +8,7 @@
 import { useState } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
-import { PromptSegmentsViewer } from '../components/prompts/PromptBlocksViewer';
-import { usePromptInspection } from '../hooks/usePromptInspection';
+import { PromptSegmentsViewer, usePromptInspection } from '@features/prompts';
 
 export function PromptInspectorDev() {
   // Input field values (strings)

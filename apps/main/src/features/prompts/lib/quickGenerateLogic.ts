@@ -1,5 +1,5 @@
-import type { SelectedAsset } from '../../stores/assetSelectionStore';
-import type { QueuedAsset } from '../../stores/generationQueueStore';
+import type { SelectedAsset } from '@/stores/assetSelectionStore';
+import type { QueuedAsset } from '@/stores/generationQueueStore';
 import { normalizeProviderParams } from '@/lib/generation/normalizeProviderParams';
 import type { OperationType } from '@/types/operations';
 

@@ -9,7 +9,7 @@
 import { useState, useMemo } from 'react';
 import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { useGenerationQueueStore } from '@/stores/generationQueueStore';
-import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
+import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@/lib/icons';
 import type { ViewerAsset } from '@/stores/assetViewerStore';
 

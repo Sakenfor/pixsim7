@@ -45,6 +45,12 @@ features/
 │   ├── components/     # InteractionMenu, MoodIndicator, ChainProgress, etc.
 │   ├── components/editor/ # InteractionEditor, TemplateSelector
 │   └── index.ts        # Barrel export
+├── prompts/            # Prompt/generation workbench (inspection, editing, quick generation)
+│   ├── components/     # PromptSegmentsViewer
+│   ├── hooks/          # usePromptInspection, useQuickGenerateController, etc.
+│   ├── lib/            # quickGenerateLogic
+│   ├── types.ts        # Prompt segment types
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
@@ -128,6 +134,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/automation` | `apps/main/src/features/automation/index.ts` | Automation barrel export |
 | `@features/interactions/*` | `apps/main/src/features/interactions/*` | NPC interaction UI components |
 | `@features/interactions` | `apps/main/src/features/interactions/index.ts` | Interactions barrel export |
+| `@features/prompts/*` | `apps/main/src/features/prompts/*` | Prompt workbench components and hooks |
+| `@features/prompts` | `apps/main/src/features/prompts/index.ts` | Prompts barrel export |
 
 ### Usage Examples
 
