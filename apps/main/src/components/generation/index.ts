@@ -12,7 +12,5 @@ export type {
 export { GenerationHistoryButton } from './GenerationHistoryButton';
 export type { GenerationHistoryButtonProps } from './GenerationHistoryButton';
 
-export { SocialContextPanel } from './SocialContextPanel';
-
 export { GenerationsPanel } from './GenerationsPanel';
 export type { GenerationsPanelProps } from './GenerationsPanel';

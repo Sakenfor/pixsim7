@@ -28,6 +28,7 @@ export { RelationshipGateVisualizer } from './components/RelationshipGateVisuali
 export { RelationshipStateEditor } from './components/RelationshipStateEditor';
 export { SaveLoadControls } from './components/SaveLoadControls';
 export { TemplateBrowser } from './components/TemplateBrowser';
+export { SocialContextPanel, SocialContextBadge } from './components/SocialContextPanel';
 
 // ============================================================================
 // Library - Gating & Validation
