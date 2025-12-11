@@ -18,8 +18,10 @@
       "@/scene": ["packages/game/engine/src/narrative/index.ts"],
       "@/gizmos/*": ["apps/main/src/lib/gizmos/*"],
       "@/gizmos": ["apps/main/src/lib/gizmos/index.ts"],
-      "@/types/*": ["packages/shared/types/src/*"],
-      "@/types": ["packages/shared/types/src/index.ts"],
+      "@/types/*": ["apps/main/src/types/*"],
+      "@/types": ["apps/main/src/types/index.ts"],
+      "@shared/types/*": ["packages/shared/types/src/*"],
+      "@shared/types": ["packages/shared/types/src/index.ts"],
       "@features/intimacy/*": ["apps/main/src/features/intimacy/*"],
       "@features/intimacy": ["apps/main/src/features/intimacy/index.ts"]
     }

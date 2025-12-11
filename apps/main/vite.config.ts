@@ -11,7 +11,8 @@ export default defineConfig({
       { find: '@/narrative', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
       { find: '@/scene', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
       { find: '@/gizmos', replacement: path.resolve(__dirname, './src/lib/gizmos') },
-      { find: '@/types', replacement: path.resolve(__dirname, '../../packages/shared/types/src') },
+      { find: '@/types', replacement: path.resolve(__dirname, './src/types') },
+      { find: '@shared/types', replacement: path.resolve(__dirname, '../../packages/shared/types/src') },
       // Feature modules
       { find: '@features/intimacy', replacement: path.resolve(__dirname, './src/features/intimacy') },
       // Workspace packages
