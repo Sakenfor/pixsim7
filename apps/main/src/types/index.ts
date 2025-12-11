@@ -54,9 +54,6 @@ export interface ApiError {
   [key: string]: any;
 }
 
-// Re-export automation types
-export * from './automation';
-
 // Re-export game types
 export * from './game';
 

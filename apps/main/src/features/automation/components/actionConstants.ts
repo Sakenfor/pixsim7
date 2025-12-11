@@ -4,7 +4,7 @@
  * Static metadata and styling configuration for automation actions.
  */
 
-import { ActionType } from '@/types/automation';
+import { ActionType } from '../types';
 
 /** Empty params placeholder */
 export const EMPTY_PARAMS = {};

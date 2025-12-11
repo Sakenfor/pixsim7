@@ -23,7 +23,9 @@
       "@shared/types/*": ["packages/shared/types/src/*"],
       "@shared/types": ["packages/shared/types/src/index.ts"],
       "@features/intimacy/*": ["apps/main/src/features/intimacy/*"],
-      "@features/intimacy": ["apps/main/src/features/intimacy/index.ts"]
+      "@features/intimacy": ["apps/main/src/features/intimacy/index.ts"],
+      "@features/automation/*": ["apps/main/src/features/automation/*"],
+      "@features/automation": ["apps/main/src/features/automation/index.ts"]
     }
   }
 }

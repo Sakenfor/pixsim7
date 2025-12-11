@@ -1,4 +1,4 @@
-import { type AndroidDevice, DeviceStatus, DeviceType } from '@/types/automation';
+import { type AndroidDevice, DeviceStatus, DeviceType } from '../types';
 
 interface DeviceCardProps {
   device: AndroidDevice;

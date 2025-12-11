@@ -1,5 +1,5 @@
 import { useState, useEffect, useId } from 'react';
-import { type ActionDefinition, type PresetVariable, type AutomationExecution, ActionType, type AppActionPreset } from '@/types/automation';
+import { type ActionDefinition, type PresetVariable, type AutomationExecution, ActionType, type AppActionPreset } from '../types';
 import { Button } from '@pixsim7/shared.ui';
 import { ActionParamsEditor } from './ActionParamsEditor';
 import { EMPTY_PARAMS } from './actionConstants';

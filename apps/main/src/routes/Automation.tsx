@@ -1,8 +1,5 @@
 import { useState } from 'react';
-import { DeviceList } from '../components/automation/DeviceList';
-import { PresetList } from '../components/automation/PresetList';
-import { ExecutionList } from '../components/automation/ExecutionList';
-import { LoopList } from '../components/automation/LoopList';
+import { DeviceList, PresetList, ExecutionList, LoopList } from '@features/automation';
 
 type AutomationTab = 'devices' | 'presets' | 'executions' | 'loops';
 

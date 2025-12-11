@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, AutomationStatus, ActionType } from '@/types/automation';
+import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, AutomationStatus, ActionType } from '../types';
 import { Button, Panel, Modal, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';

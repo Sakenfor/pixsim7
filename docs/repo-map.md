@@ -37,6 +37,10 @@ features/
 │   ├── lib/            # Business logic
 │   ├── hooks/          # React hooks (if any)
 │   └── index.ts        # Barrel export
+├── automation/         # Browser automation (devices, presets, loops)
+│   ├── components/     # Device, preset, loop, execution UIs
+│   ├── types.ts        # Automation-specific types
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 

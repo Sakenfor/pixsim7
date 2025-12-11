@@ -4,7 +4,7 @@ import {
   ExecutionLoopStatus,
   PresetExecutionMode,
   AccountSelectionMode,
-} from '@/types/automation';
+} from '../types';
 import { Button, Panel, useToast } from '@pixsim7/shared.ui';
 
 interface LoopFormProps {

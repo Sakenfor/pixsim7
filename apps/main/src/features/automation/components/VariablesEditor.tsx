@@ -4,7 +4,7 @@ import {
   type ElementSelector,
   VariableType,
   MatchMode,
-} from '@/types/automation';
+} from '../types';
 import { Button, Panel } from '@pixsim7/shared.ui';
 
 interface VariablesEditorProps {

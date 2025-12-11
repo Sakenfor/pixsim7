@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { type ExecutionLoop, ExecutionLoopStatus } from '@/types/automation';
+import { type ExecutionLoop, ExecutionLoopStatus } from '../types';
 import { automationService } from '@/lib/automation/automationService';
 import { Button, Panel, ConfirmModal, useToast } from '@pixsim7/shared.ui';
 import { LoopCard } from './LoopCard';

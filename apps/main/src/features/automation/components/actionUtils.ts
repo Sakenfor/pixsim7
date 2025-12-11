@@ -4,8 +4,8 @@
  * Pure helper functions for automation action handling.
  */
 
-import { ActionType, AutomationStatus } from '@/types/automation';
-import type { ActionDefinition, AutomationExecution } from '@/types/automation';
+import { ActionType, AutomationStatus } from '../types';
+import type { ActionDefinition, AutomationExecution } from '../types';
 import {
   NESTED_ACTION_TYPES,
   ACTION_META,

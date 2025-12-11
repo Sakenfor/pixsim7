@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DeviceCard } from './DeviceCard';
 import { automationService } from '@/lib/automation/automationService';
-import { type AndroidDevice, DeviceStatus } from '@/types/automation';
+import { type AndroidDevice, DeviceStatus } from '../types';
 import { logEvent } from '@/lib/logging';
 
 export function DeviceList() {
