@@ -23,9 +23,6 @@ import {
   removeInventoryItem,
   getEventState,
   setEventState,
-  // NPC brain
-  buildNpcBrainState,
-  type NpcPersona,
   // Scene runtime
   evaluateEdgeConditions,
   applyEdgeEffects,
@@ -167,89 +164,6 @@ function testSessionStateHelpers() {
   console.log('  Active:', eventState?.active);
   console.log('  Triggered at:', eventState?.triggeredAt);
   console.log('  Duration:', eventState?.duration);
-}
-
-// ===== Test 3: NPC Brain Projection =====
-
-function testNpcBrain() {
-  log('Test 3: NPC Brain Projection');
-
-  const session = createTestSession();
-
-  // Get relationship state for brain building
-  const npc12Rel = getNpcRelationshipState(session, 12);
-  if (!npc12Rel) {
-    console.error('Failed to get NPC 12 relationship');
-    return;
-  }
-
-  // Test 1: Brain without persona
-  console.log('\n--- Without base persona ---');
-  const brain1 = buildNpcBrainState({
-    npcId: 12,
-    session,
-    relationship: npc12Rel,
-  });
-
-  console.log('Traits:', brain1.traits);
-  console.log('Tags:', brain1.personaTags);
-  console.log('Conversation style:', brain1.conversationStyle);
-  console.log('Mood:', brain1.mood);
-  console.log('Social tier:', brain1.social.tierId);
-
-  // Test 2: Brain with base persona
-  console.log('\n--- With base persona ---');
-  const persona: NpcPersona = {
-    traits: {
-      openness: 80,
-      conscientiousness: 60,
-      extraversion: 75,
-      agreeableness: 85,
-      neuroticism: 30,
-    },
-    tags: ['playful', 'romantic', 'adventurous'],
-    conversation_style: 'warm',
-  };
-
-  const brain2 = buildNpcBrainState({
-    npcId: 12,
-    session,
-    relationship: npc12Rel,
-    persona,
-  });
-
-  console.log('Traits:', brain2.traits);
-  console.log('Tags:', brain2.personaTags);
-  console.log('Conversation style:', brain2.conversationStyle);
-
-  // Test 3: Brain with session overrides
-  console.log('\n--- With session overrides ---');
-  const sessionWithOverrides = {
-    ...session,
-    flags: {
-      ...session.flags,
-      npcs: {
-        'npc:12': {
-          personality: {
-            traits: { extraversion: 95 }, // Override
-            tags: ['flirty'], // Add to base
-          },
-          conversation_style: 'playful', // Override
-        },
-      },
-    },
-  };
-
-  const brain3 = buildNpcBrainState({
-    npcId: 12,
-    session: sessionWithOverrides,
-    relationship: npc12Rel,
-    persona,
-  });
-
-  console.log('Traits (extraversion overridden):', brain3.traits);
-  console.log('Tags (combined):', brain3.personaTags);
-  console.log('Conversation style (overridden):', brain3.conversationStyle);
 }
 
 // ===== Test 4: Scene Runtime =====

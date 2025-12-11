@@ -85,7 +85,8 @@ export interface AuthProvider {
  * **Implementation Notes:**
  *
  * - The provider should return base persona data from GameNPC.personality
- * - buildNpcBrainState will merge this with session overrides from flags.npcs
+ * - PixSim7Core will merge this with session overrides from flags.npcs when
+ *   building the data-driven BrainState projection
  * - Session overrides always take precedence over base persona
  * - No new database columns needed; all data comes from existing JSON fields
  */
