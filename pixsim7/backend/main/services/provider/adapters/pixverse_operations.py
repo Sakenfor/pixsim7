@@ -531,12 +531,18 @@ class PixverseOperationsMixin:
                     )
                     # Map image status
                     # Pixverse returns image_status as int: 1=completed, 0=processing, -1=failed
+                    # Newer codes (e.g. 7, 8) represent flagged/rejected content.
                     raw_status = get_field(result, "image_status", "status", default=0)
                     image_url = get_field(result, "image_url", "url")
                     # Map numeric status to enum
                     if raw_status == 1 or raw_status == "completed":
                         status = VideoStatus.COMPLETED
-                    elif raw_status == -1 or raw_status in ("failed", "filtered"):
+                    elif (
+                        raw_status == -1
+                        or raw_status in ("failed", "filtered")
+                        or raw_status in (7, 8)
+                    ):
+                        # Treat flagged/rejected images as terminal failures
                         status = VideoStatus.FAILED
                     else:
                         status = VideoStatus.PROCESSING
@@ -861,7 +867,9 @@ class PixverseOperationsMixin:
             return VideoStatus.PROCESSING
 
         # Handle integer status codes (Pixverse API uses integers)
-        # 1 = completed, 0 = processing, 2 = failed (based on observed behavior)
+        # 1 = completed, 0 = processing, 2 = failed, 3 = filtered
+        # Newer Pixverse codes (observed):
+        # 7, 8 = flagged/rejected content → treat as filtered
         if isinstance(status, int):
             if status == 1:
                 return VideoStatus.COMPLETED
@@ -870,6 +878,9 @@ class PixverseOperationsMixin:
             elif status == 2:
                 return VideoStatus.FAILED
             elif status == 3:
+                return VideoStatus.FILTERED
+            elif status in (7, 8):
+                # Provider has definitively decided the content is not allowed
                 return VideoStatus.FILTERED
             else:
                 return VideoStatus.PROCESSING
@@ -902,4 +913,3 @@ class PixverseOperationsMixin:
         """
         outcome = self.session_manager.classify_error(error, context="execute")
         return outcome.is_session_error
-

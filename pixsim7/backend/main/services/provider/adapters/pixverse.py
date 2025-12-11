@@ -820,7 +820,9 @@ class PixverseProvider(
                 raise ContentFilteredError("pixverse", friendly)
 
             # Insufficient balance / quota
-            if err_code in {500090}:
+            # 500090: generic insufficient balance
+            # 500043: "All Credits have been used up" (treat as quota exhausted as well)
+            if err_code in {500090, 500043}:
                 friendly = (
                     "Pixverse reports insufficient balance for this account. "
                     "Please top up credits or pick a different account."
@@ -882,4 +884,3 @@ class PixverseProvider(
 
         # Generic provider error
         raise ProviderError(f"Pixverse API error: {raw_error}")
-
