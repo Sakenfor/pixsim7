@@ -147,7 +147,7 @@ class GenerationBillingService:
             # Can't determine credits or zero cost - skip billing
             generation.billing_state = BillingState.SKIPPED
             generation.actual_credits = 0
-            generation.final_account_id = account_id
+            generation.account_id = account_id
             generation.charged_at = None
 
             logger.info(
@@ -172,7 +172,7 @@ class GenerationBillingService:
             # Success - update generation
             generation.billing_state = BillingState.CHARGED
             generation.actual_credits = actual_credits
-            generation.final_account_id = account_id
+            generation.account_id = account_id
             generation.charged_at = datetime.utcnow()
             generation.billing_error = None
 
@@ -188,7 +188,7 @@ class GenerationBillingService:
             # Deduction failed - mark as failed
             generation.billing_state = BillingState.FAILED
             generation.actual_credits = actual_credits  # Store what we tried to charge
-            generation.final_account_id = account_id
+            generation.account_id = account_id
             generation.billing_error = str(e)
 
             logger.error(

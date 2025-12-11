@@ -142,7 +142,7 @@ class Generation(SQLModel, table=True):
     )
 
     # Billing
-    final_account_id: Optional[int] = Field(
+    account_id: Optional[int] = Field(
         default=None,
         foreign_key="provider_accounts.id",
         index=True,
