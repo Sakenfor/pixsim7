@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { useHudLayoutStore } from '@/stores/hudLayoutStore';
+import { useHudLayoutStore } from '../stores/hudLayoutStore';
 import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
 import { addWidget } from '@/lib/widgets/panelComposer';
 import type { HudRegionId } from '@/lib/hud/types';

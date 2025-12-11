@@ -75,12 +75,16 @@ import { executeSlotInteractions } from '../lib/game/interactions/executor';
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
 import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
-import { RegionalHudLayout } from '../components/game/RegionalHudLayout';
-import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
+import {
+  RegionalHudLayout,
+  HudLayoutEditor,
+  HudCustomizationButton,
+  HudProfileSwitcherButton,
+  HudRenderer,
+  HudRendererToggle,
+  HudLayoutSwitcher,
+} from '@features/hud';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
-import { HudCustomizationButton } from '@/components/game/panels/HudCustomizationPanel';
-import { HudProfileSwitcherButton } from '../components/game/HudProfileSwitcher';
-import { HudRenderer, HudRendererToggle, HudLayoutSwitcher } from '../components/hud';
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';

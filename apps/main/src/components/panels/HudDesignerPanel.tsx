@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { HudLayoutBuilder } from '../hud/HudLayoutBuilder';
+import { HudLayoutBuilder } from '@features/hud';
 import { listGameWorlds, type GameWorldSummary } from '@/lib/api/game';
 
 export function HudDesignerPanel() {

@@ -60,6 +60,12 @@ features/
 │   ├── components/panels/ # SceneManagementPanel, SceneLibraryPanel, ScenePlaybackPanel, etc.
 │   ├── components/player/ # PlaybackTimeline, MockStateEditor
 │   └── index.ts        # Barrel export
+├── hud/                # HUD layout builder, editor, and renderer
+│   ├── components/     # HudLayoutBuilder, HudRenderer, HudLayoutSwitcher, etc.
+│   ├── components/editor/ # HudEditor (main HUD configuration UI)
+│   ├── panels/         # RegionalHudLayout, HudCustomizationPanel, HudProfileSwitcher
+│   ├── stores/         # hudLayoutStore (HUD layout state management)
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
@@ -149,6 +155,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/gallery` | `apps/main/src/features/gallery/index.ts` | Gallery barrel export |
 | `@features/scene/*` | `apps/main/src/features/scene/*` | Scene browsing, playback, and management UI |
 | `@features/scene` | `apps/main/src/features/scene/index.ts` | Scene feature barrel export |
+| `@features/hud/*` | `apps/main/src/features/hud/*` | HUD layout builder, editor, renderer, and customization |
+| `@features/hud` | `apps/main/src/features/hud/index.ts` | HUD feature barrel export |
 
 ### Usage Examples
 

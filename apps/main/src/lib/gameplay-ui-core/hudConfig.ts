@@ -7,7 +7,7 @@
  * Part of the "Editable UI Core" architecture:
  * - editing-core: Generic config/binding/preset layer
  * - gameplay-ui-core: HUD/gameplay-specific layer (this file)
- * - components/game/HudLayoutEditor: UI for editing HUD
+ * - features/hud: UI for editing HUD (HudEditor, HudLayoutBuilder)
  */
 
 import type {

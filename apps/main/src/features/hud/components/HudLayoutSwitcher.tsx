@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useHudLayoutStore } from '@/stores/hudLayoutStore';
+import { useHudLayoutStore } from '../stores/hudLayoutStore';
 import type { WorldHudLayout } from '@/lib/hud/types';
 
 export interface HudLayoutSwitcherProps {

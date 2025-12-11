@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { createBackendStorage } from '../lib/backendStorage';
-import type { WorldHudLayout, HudRegionLayout, HudPreset } from '../lib/hud/types';
-import { createComposition } from '../lib/widgets/panelComposer';
+import { createBackendStorage } from '@/lib/backendStorage';
+import type { WorldHudLayout, HudRegionLayout, HudPreset } from '@/lib/hud/types';
+import { createComposition } from '@/lib/widgets/panelComposer';
 
 /**
  * HUD Layout Store

@@ -4,7 +4,7 @@
  * Verification tests for Phase 58.1
  */
 
-import { useHudLayoutStore } from '../../stores/hudLayoutStore';
+import { useHudLayoutStore } from '@features/hud';
 import type { HudRegionLayout } from './types';
 import { createComposition } from '../widgets/panelComposer';
 

@@ -6,7 +6,7 @@
  * Manage HUD layouts: select, create, delete, apply presets
  */
 
-import { useHudLayoutStore } from '@/stores/hudLayoutStore';
+import { useHudLayoutStore } from '../stores/hudLayoutStore';
 
 export interface HudLayoutManagerProps {
   worldId: number | string;

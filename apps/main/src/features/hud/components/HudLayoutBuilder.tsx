@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useHudLayoutStore } from '@/stores/hudLayoutStore';
+import { useHudLayoutStore } from '../stores/hudLayoutStore';
 import { HudRegionSelector } from './HudRegionSelector';
 import { HudRegionCanvas } from './HudRegionCanvas';
 import { HudWidgetLibrary } from './HudWidgetLibrary';

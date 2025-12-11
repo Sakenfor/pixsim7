@@ -49,7 +49,7 @@ import {
   fromHudToolPlacements,
   toHudToolPlacements,
 } from '@/lib/gameplay-ui-core';
-import { SurfaceWorkbench, type SurfaceWorkbenchStatus } from '../surface-workbench';
+import { SurfaceWorkbench, type SurfaceWorkbenchStatus } from '@/components/surface-workbench';
 
 export interface HudLayoutEditorProps {
   worldDetail: GameWorldDetail;
