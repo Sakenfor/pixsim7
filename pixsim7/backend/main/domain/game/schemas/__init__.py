@@ -83,6 +83,7 @@ from .simulation import (
     WorldSchedulerConfigSchema,
     TurnConfigSchema,
     GameProfileSchema,
+    get_default_world_scheduler_config,
 )
 
 __all__ = [
@@ -149,4 +150,5 @@ __all__ = [
     "WorldSchedulerConfigSchema",
     "TurnConfigSchema",
     "GameProfileSchema",
+    "get_default_world_scheduler_config",
 ]

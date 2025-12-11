@@ -14,7 +14,8 @@ import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.game.models import GameSession, GameWorld, GameNPC
+# Use domain entry module for cross-domain imports
+from pixsim7.backend.game import GameSession, GameWorld, GameNPC
 from pixsim7.backend.main.domain.narrative import (
     NarrativeProgram,
     NarrativeNode,
@@ -673,13 +674,11 @@ class NarrativeRuntimeEngine:
         context: Dict[str, Any]
     ) -> None:
         """Apply state effects to session."""
-        # Reuse existing interaction_execution logic
-        from pixsim7.backend.main.domain.game.interaction_execution import (
+        # Reuse existing interaction_execution logic via domain entry module
+        from pixsim7.backend.game import (
             apply_relationship_deltas,
             apply_flag_changes,
             apply_inventory_changes,
-        )
-        from pixsim7.backend.main.domain.game.npc_interactions import (
             RelationshipDelta,
             FlagChanges,
             InventoryChanges,

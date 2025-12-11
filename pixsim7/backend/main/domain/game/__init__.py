@@ -60,7 +60,22 @@ from pixsim7.backend.main.domain.game.game_state import (
     get_current_location,
     get_current_scene,
 )
-from pixsim7.backend.main.domain.game.schemas import GameStateSchema
+from pixsim7.backend.main.domain.game.schemas import (
+    GameStateSchema,
+    WorldSchedulerConfigSchema,
+    get_default_world_scheduler_config,
+)
+# Interaction types (for narrative domain)
+from pixsim7.backend.main.domain.game.npc_interactions import (
+    RelationshipDelta,
+    FlagChanges,
+    InventoryChanges,
+)
+from pixsim7.backend.main.domain.game.interaction_execution import (
+    apply_relationship_deltas,
+    apply_flag_changes,
+    apply_inventory_changes,
+)
 
 __all__ = [
     "GameScene",
@@ -102,6 +117,9 @@ __all__ = [
     "get_metric_definition",
     # Game state (Task 22)
     "GameStateSchema",
+    # Scheduler config (for simulation domain)
+    "WorldSchedulerConfigSchema",
+    "get_default_world_scheduler_config",
     "get_game_state",
     "set_game_state",
     "update_game_state",
@@ -116,4 +134,11 @@ __all__ = [
     "get_active_narrative_program",
     "get_current_location",
     "get_current_scene",
+    # Interaction types (for narrative domain)
+    "RelationshipDelta",
+    "FlagChanges",
+    "InventoryChanges",
+    "apply_relationship_deltas",
+    "apply_flag_changes",
+    "apply_inventory_changes",
 ]

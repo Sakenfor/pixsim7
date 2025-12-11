@@ -12,7 +12,8 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from pixsim7.backend.main.domain.game.schemas import (
+# Use domain entry module for cross-domain imports
+from pixsim7.backend.game import (
     WorldSchedulerConfigSchema,
     get_default_world_scheduler_config,
 )

@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from pixsim7.backend.main.domain.character_integrations import CharacterNPCLink, CharacterInstance
-from pixsim7.backend.main.domain.game.models import GameNPC, NPCState
+# Use domain entry module for cross-domain imports
+from pixsim7.backend.game import GameNPC, NPCState
 from pixsim7.backend.main.services.characters.instance_service import CharacterInstanceService
 
 

@@ -402,7 +402,7 @@ Device automation for mobile app control.
 **Usage Example:**
 ```python
 # Start automation loop
-from pixsim7.backend.main.services.automation import ExecutionLoopService
+from pixsim7.backend.automation import ExecutionLoopService
 
 service = ExecutionLoopService(db)
 await service.start_loop(device_id=1)

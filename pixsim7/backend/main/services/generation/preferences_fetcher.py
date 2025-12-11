@@ -26,7 +26,7 @@ async def fetch_world_meta(
         World meta dict with generation config, or None if not found
     """
     try:
-        from pixsim7.backend.main.domain.game_world import GameWorld
+        from pixsim7.backend.game import GameWorld
 
         result = await db.execute(
             select(GameWorld).where(GameWorld.id == world_id)
