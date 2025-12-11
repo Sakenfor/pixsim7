@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GenerationNodeConfig, GenerationValidationResult } from '@pixsim7/shared.types';
+import type { GenerationNodeConfig, GenerationValidationResult } from '@/types';
 import {
   validateGenerationNode,
   getValidationStatus,

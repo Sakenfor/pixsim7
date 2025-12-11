@@ -10,6 +10,16 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@/narrative/*": ["packages/game/engine/src/narrative/*"],
+      "@/narrative": ["packages/game/engine/src/narrative/index.ts"],
+      "@/scene/*": ["packages/game/engine/src/narrative/*"],
+      "@/scene": ["packages/game/engine/src/narrative/index.ts"],
+      "@/gizmos/*": ["apps/main/src/lib/gizmos/*"],
+      "@/gizmos": ["apps/main/src/lib/gizmos/index.ts"],
+      "@/types/*": ["packages/shared/types/src/*"],
+      "@/types": ["packages/shared/types/src/index.ts"]
+    }
   }
 }

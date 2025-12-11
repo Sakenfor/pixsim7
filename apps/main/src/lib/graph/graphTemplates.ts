@@ -1,5 +1,5 @@
 import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
-import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeTypeRegistry } from '@/types';
 
 /**
  * Template source type

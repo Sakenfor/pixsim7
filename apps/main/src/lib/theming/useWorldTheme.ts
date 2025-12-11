@@ -7,7 +7,7 @@
  */
 
 import { useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride, GameSessionDTO } from '@pixsim7/shared.types';
+import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride, GameSessionDTO } from '@/types';
 import {
   getWorldTheme,
   loadUserPreferences,

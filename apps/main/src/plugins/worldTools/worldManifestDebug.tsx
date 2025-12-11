@@ -5,7 +5,7 @@
  */
 
 import type { WorldToolPlugin } from '../../lib/worldTools/types';
-import type { WorldManifest } from '@pixsim7/shared.types';
+import type { WorldManifest } from '@/types';
 import { Badge } from '@pixsim7/shared.ui';
 
 export const worldManifestDebugTool: WorldToolPlugin = {

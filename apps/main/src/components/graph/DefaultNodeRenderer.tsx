@@ -1,5 +1,5 @@
 import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
-import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeTypeRegistry } from '@/types';
 
 /**
  * Default node body renderer - used as fallback for node types without custom renderers

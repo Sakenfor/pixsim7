@@ -5,10 +5,10 @@
  * Note: BrainState is now imported from @pixsim7/shared.types
  */
 
-import type { BrainState } from '@pixsim7/shared.types';
+import type { BrainState } from '@/types';
 
 // Re-export BrainState for convenience
-export type { BrainState } from '@pixsim7/shared.types';
+export type { BrainState } from '@/types';
 
 // ============================================================================
 // Event System

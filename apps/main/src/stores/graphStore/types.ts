@@ -8,7 +8,7 @@ import type {
   SceneMetadata,
   NodeGroupData,
 } from '../../modules/scene-builder';
-import type { Scene } from '@pixsim7/shared.types';
+import type { Scene } from '@/types';
 import type { StateCreator as ZustandStateCreator } from 'zustand';
 
 /**

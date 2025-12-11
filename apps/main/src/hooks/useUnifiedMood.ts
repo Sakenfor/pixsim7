@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { previewUnifiedMood } from '@pixsim7/game.engine';
-import type { UnifiedMoodState } from '@pixsim7/shared.types';
+import type { UnifiedMoodState } from '@/types';
 
 interface UseUnifiedMoodArgs {
   worldId: number;

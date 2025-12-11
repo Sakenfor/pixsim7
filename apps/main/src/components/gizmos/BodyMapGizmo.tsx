@@ -20,7 +20,7 @@ import {
   getZoneColorByEffectiveness,
   getZoneEffectivenessDescription,
 } from '@pixsim7/scene.gizmos';
-import type { NpcBodyZone, ZoneInteractionContext } from '@pixsim7/shared.types';
+import type { NpcBodyZone, ZoneInteractionContext } from '@/types';
 import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
 import { useStatsDecay } from '@/hooks/useStatsDecay';
 import {
@@ -28,7 +28,7 @@ import {
   DEFAULT_STAT_CONFIGS,
   getActiveStats,
   getDominantStat,
-} from '@/lib/gizmos/interactionStats';
+} from '@/gizmos/interactionStats';
 import './BodyMapGizmo.css';
 
 /** Extended props for BodyMapGizmo with tool and feedback support */

@@ -18,7 +18,7 @@
  * - onSceneStarted / onSceneEnded - Scene lifecycle
  */
 
-import type { GameSessionDTO, GameWorldDetail } from '@pixsim7/shared.types';
+import type { GameSessionDTO, GameWorldDetail } from '@/types';
 
 // ============================================
 // Event Types

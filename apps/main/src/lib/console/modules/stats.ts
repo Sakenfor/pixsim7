@@ -14,7 +14,7 @@ import {
   DEFAULT_TOOL_STATS,
   type StatConfig,
   type StatContribution,
-} from '@/lib/gizmos/interactionStats';
+} from '@/gizmos/interactionStats';
 
 export const statsModule: ConsoleModule = {
   id: 'stats',

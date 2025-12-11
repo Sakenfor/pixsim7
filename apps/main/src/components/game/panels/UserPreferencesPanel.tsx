@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { UserUiPreferences } from '@pixsim7/shared.types';
+import type { UserUiPreferences } from '@/types';
 import {
   loadUserPreferences,
   updateUserPreferences,

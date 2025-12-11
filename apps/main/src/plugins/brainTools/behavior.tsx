@@ -12,7 +12,7 @@ import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,
   type BehaviorUrge,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 /**
  * Human-readable labels for behavior keys

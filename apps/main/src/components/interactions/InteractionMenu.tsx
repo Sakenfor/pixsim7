@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { NpcInteractionInstance, InteractionSurface } from '@pixsim7/shared.types';
+import type { NpcInteractionInstance, InteractionSurface } from '@/types';
 import {
   getRemainingCooldown,
   formatCooldownSmart,

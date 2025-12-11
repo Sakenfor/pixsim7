@@ -3,8 +3,8 @@
  * This is UI-agnostic and describes the contract for the brain shape
  */
 
-import type { BrainState } from '@pixsim7/shared.types';
-import { getMood } from '@pixsim7/shared.types';
+import type { BrainState } from '@/types';
+import { getMood } from '@/types';
 
 export type BrainFace =
   | 'cortex'

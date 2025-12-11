@@ -11,7 +11,7 @@
 import type {
   RelationshipGate,
   GateCheckResult,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 /**
  * Simulated relationship state for preview

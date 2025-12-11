@@ -19,7 +19,7 @@ import type {
   ConstraintSet,
   FallbackConfig,
   GenerationValidationResult,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import {
   validateGenerationNode,
   getValidationStatus,

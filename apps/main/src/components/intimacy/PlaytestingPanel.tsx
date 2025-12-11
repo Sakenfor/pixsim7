@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react';
-import type { RelationshipProgressionArc } from '@pixsim7/shared.types';
+import type { RelationshipProgressionArc } from '@/types';
 import {
   startPlaytestSession,
   advanceStage,

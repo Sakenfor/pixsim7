@@ -6,7 +6,7 @@
  * to determine turn-based behavior and time deltas.
  */
 
-import type { SessionFlags, GameWorldDetail } from '@pixsim7/shared.types';
+import type { SessionFlags, GameWorldDetail } from '@/types';
 import {
   parseWorldTime,
   composeWorldTime,

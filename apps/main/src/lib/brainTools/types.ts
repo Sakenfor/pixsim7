@@ -13,7 +13,7 @@
  */
 
 import type { ReactNode } from 'react';
-import type { BrainState } from '@pixsim7/shared.types';
+import type { BrainState } from '@/types';
 import type { GameSessionDTO } from '../api/game';
 
 /**

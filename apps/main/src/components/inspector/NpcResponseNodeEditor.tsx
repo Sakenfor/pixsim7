@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { NpcResponseMetadata, ResponseGraphTemplate, RESPONSE_TEMPLATES } from '@pixsim7/shared.types/npcResponseNode';
+import type { NpcResponseMetadata, ResponseGraphTemplate, RESPONSE_TEMPLATES } from '@/types/npcResponseNode';
 import { Panel, Button, Select, Input } from '@pixsim7/shared.ui';
 
 interface NpcResponseNodeEditorProps {

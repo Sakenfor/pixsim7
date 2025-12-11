@@ -20,7 +20,7 @@ import type {
 import {
   getAllGizmos,
   getAllTools,
-} from '../lib/gizmos/loadDefaultPacks';
+} from '@/gizmos/loadDefaultPacks';
 
 export interface GizmoLabProps {
   sceneId?: number;

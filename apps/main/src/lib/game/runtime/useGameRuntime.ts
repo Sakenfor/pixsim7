@@ -18,7 +18,7 @@ import {
   type GameRuntimeConfig,
   type SessionFlags,
 } from '@pixsim7/game.engine';
-import type { GameSessionDTO, GameWorldDetail } from '@pixsim7/shared.types';
+import type { GameSessionDTO, GameWorldDetail } from '@/types';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import {
   createGameSession,

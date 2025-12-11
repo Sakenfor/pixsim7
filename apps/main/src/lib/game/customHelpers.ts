@@ -6,7 +6,7 @@
  */
 
 import { sessionHelperRegistry, generateHelper } from '@pixsim7/game.engine';
-import type { GameSessionDTO } from '@pixsim7/shared.types';
+import type { GameSessionDTO } from '@/types';
 
 /**
  * Get points required for next level (example formula)

@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import type { SessionUiOverride } from '@pixsim7/shared.types';
+import type { SessionUiOverride } from '@/types';
 import {
   getSessionOverridePresetIds,
   getSessionOverridePreset,

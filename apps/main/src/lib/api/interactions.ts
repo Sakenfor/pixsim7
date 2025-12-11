@@ -10,7 +10,7 @@ import type {
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
   NpcInteractionInstance,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import { apiClient } from './client';
 
 /**

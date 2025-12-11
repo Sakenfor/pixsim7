@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { NpcInteractionInstance } from '@pixsim7/shared.types';
+import type { NpcInteractionInstance } from '@/types';
 import { listNpcInteractions } from '../api/interactions';
 
 export interface UseNpcInteractionsOptions {

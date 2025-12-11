@@ -6,7 +6,7 @@
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { getLogicStrategies, hasDerived } from '@pixsim7/shared.types';
+import { getLogicStrategies, hasDerived } from '@/types';
 
 export const logicTool: BrainToolPlugin = {
   id: 'npc-logic',

@@ -10,7 +10,7 @@
 import type {
   IntimacySceneConfig,
   RelationshipProgressionArc,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import type { SimulatedRelationshipState } from './gateChecking';
 
 /**

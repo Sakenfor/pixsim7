@@ -11,7 +11,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { Panel } from '@pixsim7/shared.ui';
 import type { SceneGizmoConfig, GizmoResult, GizmoAction } from '@pixsim7/scene.gizmos';
-import { getGizmoRenderer } from '@/lib/gizmos/renderers';
+import { getGizmoRenderer } from '@/gizmos/renderers';
 
 interface SceneGizmoMiniGameProps {
   onResult: (result: GizmoResult) => void;

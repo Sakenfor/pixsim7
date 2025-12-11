@@ -22,7 +22,7 @@ import type {
   QuestDTO,
   InventoryItemDTO,
   WorldManifest,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 // Re-export types for backward compatibility
 export type {

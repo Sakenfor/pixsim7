@@ -2,7 +2,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useNodeEditor } from './useNodeEditor';
 import type { NodeEditorProps, VideoConfig } from './editorTypes';
 import { validateVideoConfig, logValidationError } from './editorValidation';
-import type { SelectionStrategy, PlaybackMode } from '@pixsim7/shared.types';
+import type { SelectionStrategy, PlaybackMode } from '@/types';
 import { useAssetPickerStore, type SelectedAsset } from '@/stores/assetPickerStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useToast } from '@pixsim7/shared.ui';

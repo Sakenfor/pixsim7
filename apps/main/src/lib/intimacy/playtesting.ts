@@ -12,7 +12,7 @@ import type {
   RelationshipProgressionArc,
   ProgressionStage,
   RelationshipGate,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import { checkGate, type SimulatedRelationshipState } from './gateChecking';
 
 // ============================================================================

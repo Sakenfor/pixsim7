@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { ExecuteInteractionResponse } from '@pixsim7/shared.types';
+import type { ExecuteInteractionResponse } from '@/types';
 import { formatCooldownSmart } from '@pixsim7/game.engine';
 import './InteractionHistory.css';
 

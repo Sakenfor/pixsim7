@@ -10,7 +10,7 @@ import type {
   IntimacySceneConfig,
   RelationshipProgressionArc,
   RelationshipGate,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import type { SceneTemplate, ArcTemplate } from './templates';
 
 export interface ValidationResult {

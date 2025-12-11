@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeTypeRegistry } from '@/types';
 import type { DraftSceneNode } from '@/modules/scene-builder';
 import type { QuestTriggerNodeData, QuestObjective } from '@/lib/plugins/questTriggerNode';
 

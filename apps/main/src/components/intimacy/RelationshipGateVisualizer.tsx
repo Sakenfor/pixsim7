@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import type { RelationshipGate, GateCheckResult } from '@pixsim7/shared.types';
+import type { RelationshipGate, GateCheckResult } from '@/types';
 
 interface RelationshipGateVisualizerProps {
   /** The gate to visualize */

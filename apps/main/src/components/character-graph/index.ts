@@ -14,4 +14,4 @@ export type {
   CharacterGraphEdge,
   CharacterUsageStats,
   CharacterGraphQueryOptions,
-} from '@pixsim7/shared.types';
+} from '@/types';

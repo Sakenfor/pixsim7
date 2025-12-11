@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import type { GameWorldDetail, ViewMode } from '@pixsim7/shared.types';
+import type { GameWorldDetail, ViewMode } from '@/types';
 import { getWorldViewMode } from '@pixsim7/game.engine';
 import type { WorldToolPlugin } from '../worldTools/types';
 

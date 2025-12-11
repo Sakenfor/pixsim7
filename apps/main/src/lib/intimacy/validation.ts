@@ -13,7 +13,7 @@ import type {
   ContentRatingCheck,
   RelationshipGate,
   RelationshipProgressionArc,
-} from '@pixsim7/shared.types';
+} from '@/types';
 
 /**
  * Content rating hierarchy (ordered from least to most permissive)

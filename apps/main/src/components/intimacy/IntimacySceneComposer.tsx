@@ -15,7 +15,7 @@ import type {
   IntimacySceneType,
   IntimacyIntensity,
   RelationshipGate,
-} from '@pixsim7/shared.types';
+} from '@/types';
 import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';
 import { validateIntimacyScene } from '@/lib/intimacy/validation';
 import { SocialContextPanel } from '../generation/SocialContextPanel';
