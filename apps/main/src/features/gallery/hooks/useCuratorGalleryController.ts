@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from 'react';
-import { useAssets, type AssetFilters, type AssetSummary } from './useAssets';
-import { useSelection } from './useSelection';
+import { useAssets, type AssetFilters, type AssetSummary } from '@/hooks/useAssets';
+import { useSelection } from '@/hooks/useSelection';
 
 export interface CuratorFilters extends AssetFilters {}
 

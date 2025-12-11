@@ -18,6 +18,7 @@ export default defineConfig({
       { find: '@features/automation', replacement: path.resolve(__dirname, './src/features/automation') },
       { find: '@features/interactions', replacement: path.resolve(__dirname, './src/features/interactions') },
       { find: '@features/prompts', replacement: path.resolve(__dirname, './src/features/prompts') },
+      { find: '@features/gallery', replacement: path.resolve(__dirname, './src/features/gallery') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

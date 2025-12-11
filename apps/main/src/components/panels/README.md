@@ -20,7 +20,7 @@ This directory contains all workspace panels organized by category.
 Domain panels live under `components/{domain}/panels/`:
 - `components/scene/panels/` - Scene-related panels
 - `components/game/panels/` - Game-related panels
-- `components/gallery/panels/` - Gallery-related panels
+- `features/gallery/components/panels/` - Gallery-related panels
 - etc.
 
 ## Conventions

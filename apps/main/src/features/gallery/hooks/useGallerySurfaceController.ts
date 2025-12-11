@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
-import { useMediaGenerationActions } from './useMediaGenerationActions';
-import { useSelection } from './useSelection';
-import { createAssetActions } from '../lib/assets/assetActions';
+import { useAssets, type AssetSummary, type AssetFilters } from '@/hooks/useAssets';
+import { useMediaGenerationActions } from '@/hooks/useMediaGenerationActions';
+import { useSelection } from '@/hooks/useSelection';
+import { createAssetActions } from '@/lib/assets/assetActions';
 
 export interface GallerySurfaceConfig {
   /**

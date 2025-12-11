@@ -51,6 +51,10 @@ features/
 │   ├── lib/            # quickGenerateLogic
 │   ├── types.ts        # Prompt segment types
 │   └── index.ts        # Barrel export
+├── gallery/            # Gallery UI (surfaces, layout controls, tools panels)
+│   ├── components/     # GallerySurfaceHost, GallerySurfaceSwitcher, GalleryLayoutControls
+│   ├── components/panels/ # GalleryToolsPanel
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
@@ -136,6 +140,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/interactions` | `apps/main/src/features/interactions/index.ts` | Interactions barrel export |
 | `@features/prompts/*` | `apps/main/src/features/prompts/*` | Prompt workbench components and hooks |
 | `@features/prompts` | `apps/main/src/features/prompts/index.ts` | Prompts barrel export |
+| `@features/gallery/*` | `apps/main/src/features/gallery/*` | Gallery UI components (surfaces, layout, tools) |
+| `@features/gallery` | `apps/main/src/features/gallery/index.ts` | Gallery barrel export |
 
 ### Usage Examples
 

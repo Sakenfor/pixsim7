@@ -5,7 +5,7 @@ import { useAssetsController } from '@/hooks/useAssetsController';
 import { useAssetViewer } from '@/hooks/useAssetViewer';
 import { MediaCard } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
-import { GalleryToolsPanel } from '../gallery/panels/GalleryToolsPanel';
+import { GalleryToolsPanel } from '@features/gallery';
 import { Button } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@/lib/icons';
 import type { GalleryToolContext, GalleryAsset } from '@/lib/gallery/types';

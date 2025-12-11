@@ -150,9 +150,14 @@ src/lib/gallery/
 ├── registerGallerySurfaces.ts  # Surface registration
 └── types.ts                     # Gallery tool types
 
-src/components/gallery/
-├── GallerySurfaceHost.tsx      # Dynamic surface renderer
-└── GallerySurfaceSwitcher.tsx  # Surface switcher UI
+src/features/gallery/
+├── components/
+│   ├── GallerySurfaceHost.tsx      # Dynamic surface renderer
+│   ├── GallerySurfaceSwitcher.tsx  # Surface switcher UI
+│   ├── GalleryLayoutControls.tsx   # Layout controls (masonry/grid)
+│   └── panels/
+│       └── GalleryToolsPanel.tsx   # Gallery tools panel
+└── index.ts                        # Barrel export
 
 src/components/assets/
 ├── DefaultGallerySurface.tsx   # Default surface wrapper
@@ -304,7 +309,7 @@ const defaultSurface = gallerySurfaceRegistry.getDefault();
 ### Using the Surface Host
 
 ```tsx
-import { GallerySurfaceHost } from '@/components/gallery/GallerySurfaceHost';
+import { GallerySurfaceHost } from '@features/gallery';
 
 // Render a specific surface
 <GallerySurfaceHost surfaceId="assets-review" />

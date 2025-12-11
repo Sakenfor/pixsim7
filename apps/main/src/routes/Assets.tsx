@@ -7,8 +7,7 @@ import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
-import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
-import { GalleryLayoutControls } from '../components/gallery/GalleryLayoutControls';
+import { GallerySurfaceSwitcher, GalleryLayoutControls } from '@features/gallery';
 import { mergeBadgeConfig, deriveOverlayPresetIdFromBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { mediaCardPresets } from '@/lib/overlay';
 import { ThemedIcon, Icon, IconBadge } from '../lib/icons';

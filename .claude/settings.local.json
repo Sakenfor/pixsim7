@@ -21,7 +21,11 @@
       "Bash(do:*)",
       "Bash(done)",
       "Bash(git diff:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(rmdir:*)",
+      "Bash(pnpm exec vite build:*)",
+      "Bash(pnpm --filter @pixsim7/main exec vite build:*)"
     ],
     "deny": [],
     "ask": []

@@ -9,7 +9,7 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { useGallerySurfaceController } from '@/hooks/useGallerySurfaceController';
+import { useGallerySurfaceController } from '@features/gallery';
 import { MediaCard } from '../media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '@/hooks/usePersistentState';

@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
-import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
+import { GallerySurfaceSwitcher } from '@features/gallery';
 import { AssetsRoute } from './Assets';
 import { ReviewGallerySurface } from '../components/assets/ReviewGallerySurface';
 
