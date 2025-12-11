@@ -221,9 +221,8 @@ async def sync_all_account_credits(
                             web_int = int(web_total)
                         except (TypeError, ValueError):
                             web_int = 0
-                        # Store as 'webapi' to match DB naming convention
-                        await account_service.set_credit(account_id, "webapi", web_int)
-                        updated_credits["webapi"] = web_int
+                        await account_service.set_credit(account_id, "web", web_int)
+                        updated_credits["web"] = web_int
 
                     if openapi_total is not None:
                         try:
@@ -445,9 +444,8 @@ async def sync_account_credits(
                         web_int = int(web_total)
                     except (TypeError, ValueError):
                         web_int = 0
-                    # Store as 'webapi' to match DB naming convention
-                    await account_service.set_credit(account.id, "webapi", web_int)
-                    updated_credits["webapi"] = web_int
+                    await account_service.set_credit(account.id, "web", web_int)
+                    updated_credits["web"] = web_int
 
                 if openapi_total is not None:
                     try:

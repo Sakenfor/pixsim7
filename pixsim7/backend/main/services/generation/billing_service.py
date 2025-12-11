@@ -167,11 +167,6 @@ class GenerationBillingService:
         # Attempt to deduct credits
         credit_type = generation.credit_type or "web"
 
-        # Normalize credit type to match ProviderCredit DB values
-        # - 'web' credits are stored as 'webapi' in the database
-        if credit_type == "web":
-            credit_type = "webapi"
-
         try:
             await self.account_service.deduct_credit(
                 account_id=account_id,
@@ -179,11 +174,11 @@ class GenerationBillingService:
                 amount=actual_credits,
             )
 
-            # Success - update generation with normalized credit_type
+            # Success - update generation
             generation.billing_state = BillingState.CHARGED
             generation.actual_credits = actual_credits
             generation.account_id = account_id
-            generation.credit_type = credit_type  # Store normalized value
+            generation.credit_type = credit_type
             generation.charged_at = datetime.utcnow()
             generation.billing_error = None
 

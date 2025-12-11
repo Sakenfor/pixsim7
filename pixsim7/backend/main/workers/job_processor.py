@@ -86,13 +86,11 @@ async def refresh_account_credits(
         # Update credits in database
         if credits_data:
             for credit_type, amount in credits_data.items():
-                if credit_type in ('web', 'webapi', 'openapi', 'standard'):
-                    # Map 'web' to 'webapi' for consistency
-                    db_credit_type = 'webapi' if credit_type == 'web' else credit_type
+                if credit_type in ('web', 'openapi', 'standard'):
                     try:
-                        await account_service.set_credit(account.id, db_credit_type, int(amount))
+                        await account_service.set_credit(account.id, credit_type, int(amount))
                     except Exception as e:
-                        gen_logger.warning("credit_update_failed", credit_type=db_credit_type, error=str(e))
+                        gen_logger.warning("credit_update_failed", credit_type=credit_type, error=str(e))
 
             gen_logger.info("credits_refreshed", account_id=account.id, credits=credits_data)
 
