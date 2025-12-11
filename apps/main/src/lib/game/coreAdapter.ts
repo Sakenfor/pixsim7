@@ -19,9 +19,6 @@ export const frontendApiClient: ApiClient = {
       world_time: session.world_time,
       flags: session.flags,
       stats: session.stats,
-      // Include relationships for backward compatibility during migration (Task 107 Phase 4)
-      // Will be removed in Phase 5
-      relationships: session.relationships,
     });
   },
 };

@@ -135,6 +135,8 @@ export interface GameWorldState {
 
 /**
  * Game session
+ *
+ * Relationships are now stored in stats.relationships (Task 107 complete).
  */
 export interface GameSession {
   id: number;
@@ -144,13 +146,10 @@ export interface GameSession {
   world_id?: number;
   flags: Record<string, any>;
   /**
-   * @deprecated Use session.stats.relationships instead (Task 107 Phase 4)
-   * Legacy relationship storage - will be removed in Phase 5
-   */
-  relationships?: Record<string, any>;
-  /**
    * Stat packages indexed by package ID (e.g., "relationships", "skills")
    * Each package contains entity stats keyed by entity (e.g., "npc:123")
+   *
+   * Example: stats.relationships["npc:42"] = { affinity: 75, trust: 60, ... }
    */
   stats: Record<string, Record<string, any>>;
   world_time: number;

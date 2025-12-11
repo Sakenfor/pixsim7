@@ -347,11 +347,10 @@ export const relationshipDriftHook: SimulationHook = (context) => {
   const events: SimulationEvent[] = [];
 
   // Stub: Log that relationship drift would be calculated here
-  const relationshipsData = context.session?.stats?.relationships || context.session?.relationships || {};
-  if (Object.keys(relationshipsData).length > 0) {
-    const relationshipCount = Object.keys(relationshipsData).length;
-    if (relationshipCount > 0) {
-      events.push({
+  const relationshipsData = context.session?.stats?.relationships || {};
+  const relationshipCount = Object.keys(relationshipsData).length;
+  if (relationshipCount > 0) {
+    events.push({
         id: `relationship-drift-${Date.now()}`,
         timestamp: Date.now(),
         worldTime: context.worldTime,
