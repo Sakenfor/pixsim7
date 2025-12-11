@@ -6,12 +6,21 @@ Automatically retries failed generations when appropriate:
 - Temporary provider errors
 - Rate limits and timeouts
 
-Max retry attempts configurable via settings (default: 10).
+Behavior (v2):
+- Reuses the same Generation record (no new generation rows)
+- Increments retry_count on the generation
+- Resets status back to PENDING and re-enqueues the job
+
+Max retry attempts configurable via settings (default: 20, overridable via AUTO_RETRY_MAX_ATTEMPTS).
 Can be disabled via AUTO_RETRY_ENABLED=false in .env
 """
+from datetime import datetime
+
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.logging import get_event_logger
+from pixsim7.backend.main.domain.enums import GenerationStatus
+from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 
 logger = get_event_logger("auto_retry")
 
@@ -70,30 +79,41 @@ async def handle_event(event: Event) -> None:
                 )
                 return
 
-            # Get user for authorization
-            user = await user_service.get_user(generation.user_id)
+            # Respect global max attempts (including the original failure)
+            if generation.retry_count >= settings.auto_retry_max_attempts:
+                logger.info(
+                    "auto_retry_max_attempts_reached",
+                    generation_id=generation_id,
+                    retry_count=generation.retry_count,
+                    max_attempts=settings.auto_retry_max_attempts,
+                )
+                return
 
-            # Retry the generation (use max_retries from settings)
-            logger.info(
-                "auto_retry_triggered",
-                generation_id=generation_id,
-                retry_count=generation.retry_count,
-                max_retries=settings.auto_retry_max_attempts,
-                error=generation.error_message[:100] if generation.error_message else None
+            # Increment retry_count on the same generation
+            generation = await generation_service.increment_retry(generation_id)
+
+            # Reset lifecycle fields for a fresh attempt
+            generation.status = GenerationStatus.PENDING
+            generation.started_at = None
+            generation.completed_at = None
+            generation.updated_at = datetime.utcnow()
+            # Keep error_message for history; caller can inspect last failure reason
+
+            await db.commit()
+            await db.refresh(generation)
+
+            # Re-enqueue the same generation for processing
+            arq_pool = await get_arq_pool()
+            await arq_pool.enqueue_job(
+                "process_generation",
+                generation_id=generation.id,
             )
 
-            new_generation = await generation_service.retry_generation(
-                generation_id=generation_id,
-                user=user,
-                max_retries=settings.auto_retry_max_attempts
-            )
-
             logger.info(
-                "auto_retry_created",
-                original_generation_id=generation_id,
-                new_generation_id=new_generation.id,
-                retry_attempt=new_generation.retry_count,
-                max_attempts=settings.auto_retry_max_attempts
+                "auto_retry_requeued",
+                generation_id=generation.id,
+                retry_attempt=generation.retry_count,
+                max_attempts=settings.auto_retry_max_attempts,
             )
 
     except Exception as e:

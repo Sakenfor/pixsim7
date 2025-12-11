@@ -14,8 +14,8 @@ Controlled via environment variables in `.env`:
 # Enable/disable auto-retry (default: true)
 AUTO_RETRY_ENABLED=true
 
-# Maximum retry attempts per generation (default: 10, range: 1-20)
-AUTO_RETRY_MAX_ATTEMPTS=10
+# Maximum retry attempts per generation (default: 20, range: 1-50)
+AUTO_RETRY_MAX_ATTEMPTS=20
 ```
 
 To disable completely, set:
@@ -27,9 +27,10 @@ AUTO_RETRY_ENABLED=false
 
 - Listens to `job:failed` events
 - Checks if generation should be auto-retried using `GenerationService.should_auto_retry()`
-- Creates new generation with same parameters if appropriate
-- Max attempts configurable (default: 10, including original)
-- Preserves parent/child relationship
+- Reuses the same `Generation` row (no new generation is created)
+- Increments `retry_count` on that generation
+- Resets status back to `PENDING` and re-enqueues the same job ID
+- Max attempts configurable (default: 20, including original)
 - Silent/automatic - no user interaction needed
 
 ## Detection Logic
@@ -48,10 +49,10 @@ Temporary error keywords:
 1. Generation fails with content filter error
 2. Event handler receives `job:failed` event
 3. Handler checks `should_auto_retry()` - detects "content filter" keyword
-4. Handler creates new generation with same params (retry_count + 1)
-5. New generation queued automatically
+4. Handler increments `retry_count` on the same generation and sets status back to `PENDING`
+5. Same generation ID is queued again via ARQ
 6. Process repeats up to max attempts
-7. User sees retry attempts in UI
+7. User sees retry attempts via `retry_count` on the generation
 
 ## Example
 

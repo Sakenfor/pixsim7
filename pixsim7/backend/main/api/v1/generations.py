@@ -25,6 +25,7 @@ from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     ValidationError as DomainValidationError,
     QuotaExceededError,
+    InvalidOperationError,
 )
 from pixsim7.backend.main.shared.operation_mapping import (
     resolve_operation_type,
@@ -370,12 +371,13 @@ async def cancel_generation(
 async def retry_generation(
     generation_id: int,
     user: CurrentUser,
-    generation_service: GenerationSvc
+    generation_service: GenerationSvc,
+    db: DatabaseSession,
 ):
     """
     Retry a failed generation
 
-    Creates a new generation with the same parameters as the failed one.
+    Re-queues the same generation with the same parameters and increments its retry_count.
     Useful for generations that failed due to:
     - Content filtering (romantic/erotic content that might pass on retry)
     - Temporary provider errors
@@ -383,11 +385,57 @@ async def retry_generation(
 
     Only the generation owner or admin can retry.
     Maximum retry attempts per generation are limited by server configuration
-    (settings.auto_retry_max_attempts, default: 10).
+    (settings.auto_retry_max_attempts, default: 20).
     """
+    from datetime import datetime
+    from pixsim7.backend.main.shared.config import settings
+
     try:
-        new_generation = await generation_service.retry_generation(generation_id, user)
-        return GenerationResponse.model_validate(new_generation)
+        # Authorization + existence check
+        generation = await generation_service.get_generation_for_user(generation_id, user)
+
+        # Only allow retry for failed or cancelled generations
+        if generation.status not in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
+            raise InvalidOperationError(
+                f"Can only retry failed or cancelled generations, not {generation.status.value}"
+            )
+
+        # Enforce max attempts (including original)
+        if generation.retry_count >= settings.auto_retry_max_attempts:
+            raise InvalidOperationError(
+                f"Maximum retry attempts ({settings.auto_retry_max_attempts}) exceeded"
+            )
+
+        # Increment retry_count via service helper
+        generation = await generation_service.increment_retry(generation_id)
+
+        # Reset lifecycle fields for a fresh attempt
+        generation.status = GenerationStatus.PENDING
+        generation.started_at = None
+        generation.completed_at = None
+        generation.updated_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(generation)
+
+        # Enqueue the same generation for processing
+        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+        arq_pool = await get_arq_pool()
+        await arq_pool.enqueue_job(
+            "process_generation",
+            generation_id=generation.id,
+        )
+
+        logger.info(
+            "manual_retry_requeued",
+            generation_id=generation.id,
+            retry_attempt=generation.retry_count,
+            max_attempts=settings.auto_retry_max_attempts,
+        )
+
+        return GenerationResponse.model_validate(generation)
+
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
