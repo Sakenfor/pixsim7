@@ -63,7 +63,7 @@ Out of scope:
 
 - [x] **Phase 1 – Make Relationship Stats Canonical in Session/World Models**
 - [x] **Phase 2 – Replace Legacy Relationship Logic in Backend Services** ✅ **COMPLETE**
-- [x] **Phase 3 – Replace Relationship Preview API with Stat-Based Preview**
+- [x] **Phase 3 – Replace Relationship Preview API with Stat-Based Preview** ✅ **COMPLETE**
 - [x] **Phase 4 – Migrate Frontend/Editor to Use Stat-Based Relationships**
 - [ ] **Phase 5 – Remove Legacy Relationship Fields, Helpers, and Docs**
 
@@ -159,25 +159,42 @@ All backend services now use the stat-based relationship system exclusively. The
 
 **Goal:** Expose a generic stat preview API that works for relationships (and other stat types) using `WorldStatsConfig` + `StatEngine`, then remove the relationship-specific preview API.
 
-**Steps:**
+**Status: ✅ COMPLETE** (generic stat preview API already implemented)
 
-- Add a stat preview endpoint (e.g. `POST /stats/{stat_definition_id}/preview-entity`) that:
-  - Loads `GameWorld.meta.stats_config` via `StatService._get_world_stats_config()`.
-  - Accepts `{ "values": { axis_name: number } }` payload.
-  - Returns normalized output using `StatEngine.normalize_entity_stats` (clamped axes + `*TierId` + `levelId`).
-- Provide a convenience wrapper for relationships in game-core/types if needed (e.g. `previewRelationshipStats` that calls the generic stat preview with `"relationships"`).
-- Remove legacy preview machinery:
-  - `pixsim7/backend/main/api/v1/game_relationship_preview.py`
-  - `pixsim7/backend/main/domain/metrics/relationship_evaluators.py`
-  - Any relationship-specific metric types that only exist to support that API.
-- Update or replace tests in `tests/test_relationship_preview_api.py` to cover the new stat preview endpoint.
+**Implementation Summary:**
+
+- ✅ **Generic Stat Preview Endpoint** - Fully implemented at `POST /api/v1/stats/preview-entity-stats`:
+  - Loads `GameWorld.meta.stats_config` with auto-migration from legacy schemas
+  - Falls back to `get_default_relationship_definition()` for relationships
+  - Accepts `{ "world_id": int, "stat_definition_id": str, "values": { axis_name: float } }` payload
+  - Returns normalized output using `StatEngine.normalize_entity_stats` (clamped axes + `*TierId` + `levelId`)
+  - Works with any stat type: relationships, skills, reputation, etc.
+  - Registered as `stat_preview` plugin with prefix `/api/v1/stats`
+
+- ✅ **Comprehensive Test Coverage** - Added `tests/test_stat_preview_api.py`:
+  - Tests basic preview with clamping
+  - Tests tier computation across value ranges
+  - Tests multi-axis level computation
+  - Tests fallback to default definitions
+  - Tests error handling (world not found, invalid stat type, invalid requests)
+  - Tests edge cases (partial values, empty values)
+
+- ✅ **Legacy Cleanup**:
+  - Removed empty `pixsim7/backend/main/routes/game_relationship_preview/` stub directory
+  - No relationship-specific preview API files found (already removed or never implemented)
+  - `domain/metrics/relationship_evaluators.py` does not exist
+
+**Note:** The `game_reputation_preview` and `game_npc_mood_preview` APIs are NOT duplicates - they compute higher-level derived values from multiple stat packages and serve different purposes.
+
+**Phase 3 Status: ✅ FULLY COMPLETE**
+
+All relationship preview functionality now routes through the generic stat preview API. No relationship-specific preview code remains.
 
 **Key files:**
 
-- `pixsim7/backend/main/services/game/stat_service.py`
-- `pixsim7/backend/main/domain/stats/engine.py`
-- `pixsim7/backend/main/api/v1/*` (new stat preview route)
-- `tests/test_relationship_preview_api.py` (rewrite or replace)
+- `pixsim7/backend/main/api/v1/stat_preview.py` - Generic stat preview endpoint
+- `pixsim7/backend/main/routes/stat_preview/manifest.py` - Plugin registration
+- `tests/test_stat_preview_api.py` - Comprehensive test suite
 
 ---
 
