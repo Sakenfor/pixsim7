@@ -16,6 +16,7 @@ export default defineConfig({
       // Feature modules
       { find: '@features/intimacy', replacement: path.resolve(__dirname, './src/features/intimacy') },
       { find: '@features/automation', replacement: path.resolve(__dirname, './src/features/automation') },
+      { find: '@features/interactions', replacement: path.resolve(__dirname, './src/features/interactions') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

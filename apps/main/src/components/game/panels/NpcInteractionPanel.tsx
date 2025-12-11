@@ -16,7 +16,7 @@ import {
   ChainProgress,
   InteractionHistory,
   PendingDialoguePanel,
-} from '@/components/interactions';
+} from '@features/interactions';
 import type {
   MoodState,
   InteractionSuggestion,

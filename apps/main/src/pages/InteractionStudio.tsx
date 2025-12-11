@@ -7,8 +7,7 @@
 
 import React, { useState } from 'react';
 import type { NpcInteractionDefinition } from '@/types';
-import { InteractionEditor } from '../components/interactions/editor/InteractionEditor';
-import { TemplateSelector } from '../components/interactions/editor/TemplateSelector';
+import { InteractionEditor, TemplateSelector } from '@features/interactions';
 import './InteractionStudio.css';
 
 /**

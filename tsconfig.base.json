@@ -25,7 +25,9 @@
       "@features/intimacy/*": ["apps/main/src/features/intimacy/*"],
       "@features/intimacy": ["apps/main/src/features/intimacy/index.ts"],
       "@features/automation/*": ["apps/main/src/features/automation/*"],
-      "@features/automation": ["apps/main/src/features/automation/index.ts"]
+      "@features/automation": ["apps/main/src/features/automation/index.ts"],
+      "@features/interactions/*": ["apps/main/src/features/interactions/*"],
+      "@features/interactions": ["apps/main/src/features/interactions/index.ts"]
     }
   }
 }

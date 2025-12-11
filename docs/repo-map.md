@@ -41,6 +41,10 @@ features/
 │   ├── components/     # Device, preset, loop, execution UIs
 │   ├── types.ts        # Automation-specific types
 │   └── index.ts        # Barrel export
+├── interactions/       # NPC interaction UI (menus, history, suggestions, editor)
+│   ├── components/     # InteractionMenu, MoodIndicator, ChainProgress, etc.
+│   ├── components/editor/ # InteractionEditor, TemplateSelector
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
@@ -118,6 +122,12 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@/types` | `apps/main/src/types/index.ts` | Main app types barrel export |
 | `@shared/types/*` | `packages/shared/types/src/*` | Shared DTOs and interfaces used by engine + backend |
 | `@shared/types` | `packages/shared/types/src/index.ts` | Shared types barrel export |
+| `@features/intimacy/*` | `apps/main/src/features/intimacy/*` | Intimacy composer, gating, playtesting |
+| `@features/intimacy` | `apps/main/src/features/intimacy/index.ts` | Intimacy barrel export |
+| `@features/automation/*` | `apps/main/src/features/automation/*` | Browser automation components and types |
+| `@features/automation` | `apps/main/src/features/automation/index.ts` | Automation barrel export |
+| `@features/interactions/*` | `apps/main/src/features/interactions/*` | NPC interaction UI components |
+| `@features/interactions` | `apps/main/src/features/interactions/index.ts` | Interactions barrel export |
 
 ### Usage Examples
 
