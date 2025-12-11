@@ -9,8 +9,8 @@ import {
   type GizmoDefinition,
   type InteractiveTool,
 } from '@pixsim7/scene.gizmos';
-import { OrbGizmo } from '../../components/gizmos/OrbGizmo';
-import { ConstellationGizmo } from '../../components/gizmos/ConstellationGizmo';
+import { OrbGizmo } from './components/OrbGizmo';
+import { ConstellationGizmo } from './components/ConstellationGizmo';
 import {
   type InteractiveToolWithOps,
   registerToolConsoleOps,

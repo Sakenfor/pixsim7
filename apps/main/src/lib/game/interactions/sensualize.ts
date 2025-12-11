@@ -4,7 +4,7 @@ import type {
   InteractionContext,
   InteractionResult,
 } from './types';
-import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@/lib/intimacy/intimacyGating';
+import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@features/intimacy/lib/intimacyGating';
 
 /**
  * Sensual Touch interaction config

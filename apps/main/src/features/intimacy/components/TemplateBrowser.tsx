@@ -19,7 +19,7 @@ import {
   deleteUserArcTemplate,
   type SceneTemplate,
   type ArcTemplate,
-} from '@/lib/intimacy/templates';
+} from '../lib/templates';
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 
 // ============================================================================

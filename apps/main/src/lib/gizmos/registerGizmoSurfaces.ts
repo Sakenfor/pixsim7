@@ -9,10 +9,10 @@ import { gizmoSurfaceRegistry } from './surfaceRegistry';
 import type { GizmoSurfaceDefinition } from './surfaceRegistry';
 
 // Import gizmo components
-import { RingsGizmo } from '../../components/gizmos/RingsGizmo';
-import { OrbGizmo } from '../../components/gizmos/OrbGizmo';
-import { ConstellationGizmo } from '../../components/gizmos/ConstellationGizmo';
-import { BodyMapGizmo } from '../../components/gizmos/BodyMapGizmo';
+import { RingsGizmo } from './components/RingsGizmo';
+import { OrbGizmo } from './components/OrbGizmo';
+import { ConstellationGizmo } from './components/ConstellationGizmo';
+import { BodyMapGizmo } from './components/BodyMapGizmo';
 
 // Import debug/dashboard components
 import { RelationshipDashboard } from '../../components/game/RelationshipDashboard';

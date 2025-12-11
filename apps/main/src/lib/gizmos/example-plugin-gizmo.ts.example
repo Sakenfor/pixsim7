@@ -15,7 +15,7 @@ import { registerGizmoSurface } from '../plugins/registryBridge';
 import type { GizmoSurfaceDefinition } from './surfaceRegistry';
 
 // Import your custom gizmo component
-// import { MyCustomGizmo } from '../../components/gizmos/MyCustomGizmo';
+// import { MyCustomGizmo } from './components/MyCustomGizmo';
 
 /**
  * Example gizmo surface definition

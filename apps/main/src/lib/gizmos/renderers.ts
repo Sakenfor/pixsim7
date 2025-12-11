@@ -15,28 +15,28 @@ import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
 // Lazy load gizmo components for code splitting
 const gizmoRenderers: Record<string, ComponentType<GizmoComponentProps>> = {
   orb: lazy(() =>
-    import('../../components/gizmos/OrbGizmo').then(m => ({
+    import('./components/OrbGizmo').then(m => ({
       default: m.OrbGizmo,
     }))
   ),
   constellation: lazy(() =>
-    import('../../components/gizmos/ConstellationGizmo').then(m => ({
+    import('./components/ConstellationGizmo').then(m => ({
       default: m.ConstellationGizmo,
     }))
   ),
   rings: lazy(() =>
-    import('../../components/gizmos/RingsGizmo').then(m => ({
+    import('./components/RingsGizmo').then(m => ({
       default: m.RingsGizmo,
     }))
   ),
   'body-map': lazy(() =>
-    import('../../components/gizmos/BodyMapGizmo').then(m => ({
+    import('./components/BodyMapGizmo').then(m => ({
       default: m.BodyMapGizmo,
     }))
   ),
   // Note: 'custom' style is used by BodyMapGizmo - map it to the same component
   custom: lazy(() =>
-    import('../../components/gizmos/BodyMapGizmo').then(m => ({
+    import('./components/BodyMapGizmo').then(m => ({
       default: m.BodyMapGizmo,
     }))
   ),

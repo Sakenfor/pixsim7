@@ -7,7 +7,7 @@
  */
 
 import { useMemo } from 'react';
-import { getTool, createToolInstance, type InteractiveTool } from '@pixsim/scene-gizmos';
+import { getTool, createToolInstance, type InteractiveTool } from '@pixsim7/scene.gizmos';
 import { useToolConfigStore, type ToolOverrides } from '@/stores/toolConfigStore';
 
 /**
@@ -128,7 +128,7 @@ export function useToolHasOverrides(toolId: string): boolean {
  */
 export function useAllToolsWithOverrides(): InteractiveTool[] {
   const allOverrides = useToolConfigStore((state) => state.overrides);
-  const { getAllTools } = require('@pixsim/scene-gizmos');
+  const { getAllTools } = require('@pixsim7/scene.gizmos');
 
   return useMemo(() => {
     const tools = getAllTools() as InteractiveTool[];

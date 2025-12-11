@@ -11,14 +11,14 @@
 
 import React, { useState, useEffect } from 'react';
 import type { IntimacySceneConfig, GenerationSocialContext } from '@/types';
-import type { SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
-import type { IntimacyPreviewResult } from '@/lib/intimacy/generationPreview';
+import type { SimulatedRelationshipState } from '../lib/gateChecking';
+import type { IntimacyPreviewResult } from '../lib/generationPreview';
 import {
   generateIntimacyPreview,
   startIntimacyPreview,
   getPreviewStatus,
-} from '@/lib/intimacy/generationPreview';
-import { deriveSocialContext } from '@/lib/intimacy/socialContextDerivation';
+} from '../lib/generationPreview';
+import { deriveSocialContext } from '../lib/socialContextDerivation';
 import { SocialContextPanel } from '../generation/SocialContextPanel';
 
 interface GenerationPreviewPanelProps {

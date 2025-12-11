@@ -25,7 +25,7 @@ export const ringsGizmo: GizmoDefinition = {
 
   // Component will be loaded lazily
   component: lazy(() =>
-    import('../../components/gizmos/RingsGizmo').then(m => ({ default: m.RingsGizmo }))
+    import('./components/RingsGizmo').then(m => ({ default: m.RingsGizmo }))
   ),
 
   defaultConfig: {

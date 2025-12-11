@@ -6,16 +6,18 @@ import path from 'node:path';
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      // Local src directory alias for cleaner imports
-      '@': path.resolve(__dirname, './src'),
-      // Domain-based path aliases
-      '@/narrative': path.resolve(__dirname, '../../packages/game/engine/src/narrative'),
-      '@/scene': path.resolve(__dirname, '../../packages/game/engine/src/narrative'),
-      '@/gizmos': path.resolve(__dirname, './src/lib/gizmos'),
-      '@/types': path.resolve(__dirname, '../../packages/shared/types/src'),
-      // Point scene.cubes imports at the workspace package
-      '@pixsim7/scene.cubes': path.resolve(__dirname, '../../packages/scene/cubes/src'),
-    },
+    alias: [
+      // Domain-based path aliases (must come before generic '@' to take precedence)
+      { find: '@/narrative', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
+      { find: '@/scene', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
+      { find: '@/gizmos', replacement: path.resolve(__dirname, './src/lib/gizmos') },
+      { find: '@/types', replacement: path.resolve(__dirname, '../../packages/shared/types/src') },
+      // Feature modules
+      { find: '@features/intimacy', replacement: path.resolve(__dirname, './src/features/intimacy') },
+      // Workspace packages
+      { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
+      // Local src directory alias for cleaner imports (must be last)
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
 });

@@ -83,3 +83,15 @@ export {
   type StatCalculationInput,
   type StatCalculationResult,
 } from './interactionStats';
+
+// ============================================================================
+// React Components (UI layer)
+// ============================================================================
+
+export { GizmoSurfaceRenderer, useEnabledGizmoSurfaces, useIsSurfaceEnabled, useToggleSurface } from './components/GizmoSurfaceRenderer';
+export { ActiveGizmosIndicator } from './components/ActiveGizmosIndicator';
+export { InteractiveTool } from './components/InteractiveTool';
+export { BodyMapGizmo } from './components/BodyMapGizmo';
+export { OrbGizmo } from './components/OrbGizmo';
+export { ConstellationGizmo } from './components/ConstellationGizmo';
+export { RingsGizmo } from './components/RingsGizmo';

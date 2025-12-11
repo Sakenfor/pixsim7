@@ -10,8 +10,8 @@
 
 import React, { useMemo } from 'react';
 import type { RelationshipGate } from '@/types';
-import type { SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
-import { checkAllGates } from '@/lib/intimacy/gateChecking';
+import type { SimulatedRelationshipState } from '../lib/gateChecking';
+import { checkAllGates } from '../lib/gateChecking';
 import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';
 
 interface GatePreviewPanelProps {

@@ -18,12 +18,37 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 
 ## Front-End (`apps/main/src`)
 
-- `components/` — Shared UI components and feature-specific UIs (simulation dashboards, gizmos, etc.).
-- `components/panels/` — Dockview panels (Model inspector, console, world tools). Upcoming 3D panel work lives here.
+- `features/` — **Feature-first modules** (self-contained domains with components/lib/hooks/stores).
+- `components/` — Shared UI components and legacy feature-specific UIs.
+- `components/panels/` — Dockview panels (Model inspector, console, world tools).
 - `lib/` — Front-end libraries (console namespace, gizmo registries, interaction stats logic).
 - `stores/` — Zustand stores for editor/runtime state (tool configs, interaction stats, workspace layout).
 - `routes/` — Top-level React routes (Simulation Playground, NPC labs, etc.).
 - `plugins/` — Feature bundles that plug into the editor (world tools, ops panels).
+
+### Feature-First Organization
+
+New self-contained features should go under `apps/main/src/features/`:
+
+```
+features/
+├── intimacy/           # Intimacy composer, gating, playtesting
+│   ├── components/     # React components
+│   ├── lib/            # Business logic
+│   ├── hooks/          # React hooks (if any)
+│   └── index.ts        # Barrel export
+└── [future-feature]/
+```
+
+**When to use `features/`:**
+- Self-contained domains without a shared package
+- Cohesive functionality spanning components + logic + state
+- New features that don't fit existing `lib/` or `components/` patterns
+
+**When NOT to use `features/`:**
+- Code that already has a shared package (e.g., gizmos → `@pixsim7/scene.gizmos`)
+- Pure utilities or shared components
+- Existing aliased domains (`@/gizmos`, `@/narrative`, etc.)
 
 ## Game Engine (`packages/game/engine/src`)
 
@@ -35,7 +60,19 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 ## Shared Packages
 
 - `packages/shared/types/` — Canonical DTOs (GameSession, NPC zones, graph schemas) referenced by both front-end and backend.
-- `packages/scene/` — Gizmo + scene utilities (zoneUtils, tool registries) used by both UI and engine layers.
+- `packages/scene/gizmos/` — Core gizmo types, registries, NPC preferences, zone utilities (shared by engine + UI).
+
+### Gizmo Architecture
+
+Gizmos follow a **package/app split**:
+
+| Layer | Location | Alias | Purpose |
+|-------|----------|-------|---------|
+| **Core** | `packages/scene/gizmos/` | `@pixsim7/scene.gizmos` | Types, registry, NPC preferences, zone utils, video generation manager |
+| **App UI** | `apps/main/src/lib/gizmos/` | `@/gizmos` | Surface registry, console integration, tool overrides, interaction stats |
+| **Components** | `apps/main/src/components/gizmos/` | — | React components (BodyMapGizmo, InteractiveTool, etc.) |
+
+The core package is UI-agnostic and shared across engine/UI layers. The app layer adds presentation-specific code. Import from `@pixsim7/scene.gizmos` in shared libraries, use `@/gizmos` in app code.
 
 ## Backend (`pixsim7/backend`)
 

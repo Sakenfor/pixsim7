@@ -9,7 +9,7 @@ import {
   type GizmoDefinition,
   type InteractiveTool,
 } from '@pixsim7/scene.gizmos';
-import { BodyMapGizmo } from '../../components/gizmos/BodyMapGizmo';
+import { BodyMapGizmo } from './components/BodyMapGizmo';
 
 // ============================================================================
 // Romance Interactive Tools

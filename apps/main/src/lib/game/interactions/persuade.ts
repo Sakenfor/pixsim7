@@ -17,7 +17,7 @@ import type {
   InteractionContext,
   InteractionResult,
 } from './types';
-import { canAttemptSeduction, type IntimacyGatingConfig } from '@/lib/intimacy/intimacyGating';
+import { canAttemptSeduction, type IntimacyGatingConfig } from '@features/intimacy/lib/intimacyGating';
 
 /**
  * Persuade/Seduce interaction config

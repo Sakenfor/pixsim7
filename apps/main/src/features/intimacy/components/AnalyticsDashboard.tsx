@@ -17,13 +17,13 @@ import {
   importAnalytics,
   type SceneAnalyticsSummary,
   type ArcAnalyticsSummary,
-} from '@/lib/intimacy/analytics';
+} from '../lib/analytics';
 import {
   downloadSceneAnalyticsCSV,
   downloadArcAnalyticsCSV,
   downloadSceneEventsCSV,
   downloadArcEventsCSV,
-} from '@/lib/intimacy/analyticsExport';
+} from '../lib/analyticsExport';
 
 interface AnalyticsDashboardProps {
   /** Callback when dashboard is closed */

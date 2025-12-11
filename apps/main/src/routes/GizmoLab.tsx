@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
 import { SceneGizmoMiniGame } from '../components/minigames/SceneGizmoMiniGame';
-import { InteractiveTool } from '../components/gizmos/InteractiveTool';
+import { InteractiveTool } from '@/gizmos/components/InteractiveTool';
 import type {
   GizmoDefinition,
   InteractiveTool as ToolType,

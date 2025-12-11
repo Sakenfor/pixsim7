@@ -9,7 +9,7 @@ The Gizmo Surface Renderer system allows you to dynamically enable/disable gizmo
 ### 1. Using GizmoSurfaceRenderer in a Component
 
 ```tsx
-import { GizmoSurfaceRenderer } from './components/gizmos/GizmoSurfaceRenderer';
+import { GizmoSurfaceRenderer } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 function Game2D() {
   return (
@@ -63,7 +63,7 @@ function MyComponent() {
 ```tsx
 // In Game2D.tsx or similar component
 
-import { GizmoSurfaceRenderer } from './components/gizmos/GizmoSurfaceRenderer';
+import { GizmoSurfaceRenderer } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 export function Game2D() {
   return (
@@ -92,7 +92,7 @@ export function Game2D() {
 ```tsx
 // In SceneEditor.tsx
 
-import { GizmoSurfaceRenderer } from './components/gizmos/GizmoSurfaceRenderer';
+import { GizmoSurfaceRenderer } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 export function SceneEditor() {
   return (
@@ -124,7 +124,7 @@ export function SceneEditor() {
 ```tsx
 // In SimulationPlayground.tsx
 
-import { GizmoSurfaceRenderer } from './components/gizmos/GizmoSurfaceRenderer';
+import { GizmoSurfaceRenderer } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 export function SimulationPlayground() {
   return (
@@ -201,7 +201,7 @@ store.clearContext('game-2d');
 Get enabled surface definitions for a context:
 
 ```tsx
-import { useEnabledGizmoSurfaces } from './components/gizmos/GizmoSurfaceRenderer';
+import { useEnabledGizmoSurfaces } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 const enabledSurfaces = useEnabledGizmoSurfaces('game-2d');
 // Returns: GizmoSurfaceDefinition[]
@@ -212,7 +212,7 @@ const enabledSurfaces = useEnabledGizmoSurfaces('game-2d');
 Check if a specific surface is enabled:
 
 ```tsx
-import { useIsSurfaceEnabled } from './components/gizmos/GizmoSurfaceRenderer';
+import { useIsSurfaceEnabled } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 const isRingsEnabled = useIsSurfaceEnabled('game-2d', 'rings-gizmo');
 ```
@@ -222,7 +222,7 @@ const isRingsEnabled = useIsSurfaceEnabled('game-2d', 'rings-gizmo');
 Get the toggle function:
 
 ```tsx
-import { useToggleSurface } from './components/gizmos/GizmoSurfaceRenderer';
+import { useToggleSurface } from '@/gizmos/components/GizmoSurfaceRenderer';
 
 const toggleSurface = useToggleSurface();
 

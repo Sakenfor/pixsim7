@@ -24,7 +24,7 @@ import {
   type IntimacyBand,
   type ContentRating,
   type IntimacyGatingConfig,
-} from '@/lib/intimacy/intimacyGating';
+} from '@features/intimacy/lib/intimacyGating';
 
 /**
  * Map gate type strings to content rating types
