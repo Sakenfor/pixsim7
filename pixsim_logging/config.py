@@ -12,6 +12,28 @@ import sys
 import structlog
 from typing import Any, List, Optional
 
+
+def _ensure_utf8_stdout():
+    """Ensure stdout/stderr use UTF-8 encoding on Windows.
+
+    Windows console uses cp1252 by default which can't handle many Unicode
+    characters (like →). This reconfigures stdout/stderr to use UTF-8 with
+    'replace' error handling to prevent crashes from unencodable chars.
+    """
+    if sys.platform == "win32":
+        # Reconfigure stdout/stderr to use UTF-8 with error replacement
+        # This prevents UnicodeEncodeError when logging non-ASCII chars
+        if hasattr(sys.stdout, 'reconfigure'):
+            try:
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            except Exception:
+                pass  # Some environments don't support reconfigure
+        if hasattr(sys.stderr, 'reconfigure'):
+            try:
+                sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+            except Exception:
+                pass
+
 DEFAULT_LEVEL = "INFO"
 
 
@@ -33,6 +55,9 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
         PIXSIM_LOG_EXCLUDE_PATHS=/health,/metrics               (comma-separated paths to exclude from logging)
         PIXSIM_LOG_SAMPLE_PATHS=/status:50                      (comma-separated path:rate pairs for sampling)
     """
+    # Ensure UTF-8 output on Windows to handle Unicode in log messages
+    _ensure_utf8_stdout()
+
     # Avoid reconfiguring structlog repeatedly unless explicitly requested.
     # structlog keeps a global configuration; calling configure() many times
     # can stack processors and create duplicate handlers.
