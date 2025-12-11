@@ -4,7 +4,7 @@
  * Shows which NPCs are present at which locations and NPC slot assignments.
  */
 
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
 
 export const npcPresenceDebugTool: WorldToolPlugin = {

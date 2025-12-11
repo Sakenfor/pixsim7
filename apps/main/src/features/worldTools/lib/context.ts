@@ -9,7 +9,7 @@ import type {
   GameWorldDetail,
   GameLocationDetail,
   NpcPresenceDTO,
-} from '../api/game';
+} from '@/lib/api/game';
 import type { NpcSlotAssignment } from '@pixsim7/game.engine';
 
 /**

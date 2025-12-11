@@ -25,11 +25,11 @@ import {
   SECONDS_PER_DAY,
 } from '@pixsim7/game.engine';
 import { useGameRuntime, useActorPresence } from '../lib/game/runtime';
-import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
+import { WorldToolsPanel } from '@features/worldTools';
 import { BrainToolsPanel } from '../components/brain/BrainToolsPanel';
-import { worldToolRegistry } from '../lib/worldTools/registry';
+import { worldToolRegistry } from '@features/worldTools/lib/registry';
 import { brainToolRegistry } from '../lib/brainTools/registry';
-import type { WorldToolContext } from '../lib/worldTools/types';
+import type { WorldToolContext } from '@features/worldTools/lib/types';
 import type { BrainToolContext } from '../lib/brainTools/types';
 import {
   loadScenarios,

@@ -16,7 +16,7 @@ import { BodyMapGizmo } from './components/BodyMapGizmo';
 
 // Import debug/dashboard components
 import { RelationshipDashboard } from '../../components/game/RelationshipDashboard';
-import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
+import { WorldToolsPanel } from '@features/worldTools';
 
 /**
  * Register all core gizmo surfaces

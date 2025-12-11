@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import type { WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolPlugin } from '../lib/types';
 import { Badge, ProgressBar } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
 import type { BrainState, BrainStatSnapshot } from '@/types';
