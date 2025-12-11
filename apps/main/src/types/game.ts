@@ -143,12 +143,26 @@ export interface GameSession {
   current_node_id: number;
   world_id?: number;
   flags: Record<string, any>;
-  relationships: Record<string, any>;
+  /**
+   * @deprecated Use session.stats.relationships instead (Task 107 Phase 4)
+   * Legacy relationship storage - will be removed in Phase 5
+   */
+  relationships?: Record<string, any>;
+  /**
+   * Stat packages indexed by package ID (e.g., "relationships", "skills")
+   * Each package contains entity stats keyed by entity (e.g., "npc:123")
+   */
+  stats: Record<string, Record<string, any>>;
   world_time: number;
   version: number;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Alias for GameSession used in API responses
+ */
+export type GameSessionDTO = GameSession;
 
 // ===================
 // NPC Types

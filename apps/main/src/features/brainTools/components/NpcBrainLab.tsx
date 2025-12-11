@@ -84,10 +84,11 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
     })();
   }, []);
 
-  // Extract available NPCs from session relationships
+  // Extract available NPCs from session relationships (stat-based)
   const availableNpcIds: number[] = [];
-  if (session?.relationships) {
-    for (const key of Object.keys(session.relationships)) {
+  const relationshipsData = session?.stats?.relationships || session?.relationships || {};
+  if (Object.keys(relationshipsData).length > 0) {
+    for (const key of Object.keys(relationshipsData)) {
       const npcId = parseNpcKey(key);
       if (npcId !== null) {
         availableNpcIds.push(npcId);
