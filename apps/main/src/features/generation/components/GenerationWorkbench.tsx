@@ -1,10 +1,10 @@
 import React from 'react';
 import clsx from 'clsx';
-import { GenerationSettingsBar } from '../control/GenerationSettingsBar';
-import { GenerationStatusDisplay } from '../control/GenerationStatusDisplay';
+import { GenerationSettingsBar } from '@/components/control/GenerationSettingsBar';
+import { GenerationStatusDisplay } from '@/components/control/GenerationStatusDisplay';
 import { ThemedIcon } from '@/lib/icons';
-import type { ParamSpec } from '../control/DynamicParamForm';
-import { useGenerationsStore } from '@/stores/generationsStore';
+import type { ParamSpec } from '@/components/control/DynamicParamForm';
+import { useGenerationsStore } from '@features/generation';
 import type { GenerationResponse } from '@/lib/api/generations';
 
 /**
@@ -304,5 +304,5 @@ export function GenerationWorkbench({
 /**
  * Re-export for convenience
  */
-export { GenerationSettingsBar } from '../control/GenerationSettingsBar';
-export { GenerationStatusDisplay } from '../control/GenerationStatusDisplay';
+export { GenerationSettingsBar } from '@/components/control/GenerationSettingsBar';
+export { GenerationStatusDisplay } from '@/components/control/GenerationStatusDisplay';

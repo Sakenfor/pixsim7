@@ -27,7 +27,7 @@ import { SceneTemplateBrowser } from './TemplateBrowser';
 import { createDefaultState, type SimulatedRelationshipState } from '../lib/gateChecking';
 import { saveSceneAsTemplate, type SceneTemplate } from '../lib/templates';
 import { validateSceneForTemplate } from '../lib/templateValidation';
-import { useGenerationWorkbench } from '@/hooks/useGenerationWorkbench';
+import { useGenerationWorkbench } from '@features/generation';
 import { GenerationSettingsBar } from '../control/GenerationSettingsBar';
 
 interface IntimacySceneComposerProps {

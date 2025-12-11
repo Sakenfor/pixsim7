@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useGenerationsStore, isGenerationTerminal } from '@/stores/generationsStore';
+import { useGenerationsStore, isGenerationTerminal } from '@features/generation';
 import { logEvent } from '@/lib/logging';
 import { getStatusContainerClasses } from '@/lib/generation/generationStatusConfig';
 import { extractErrorMessage } from '@/lib/api/errorHandling';

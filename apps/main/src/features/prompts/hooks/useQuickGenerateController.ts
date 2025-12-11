@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useControlCenterStore } from '@/stores/controlCenterStore';
-import { useGenerationsStore } from '@/stores/generationsStore';
+import { useGenerationsStore } from '@features/generation';
 import { ccSelectors } from '@/stores/selectors';
 import { generateAsset } from '@/lib/api/controlCenter';
 import { extractFrame } from '@/lib/api/assets';

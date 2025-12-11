@@ -5,7 +5,7 @@
  * All status-related UI should import from here to ensure consistency.
  */
 
-import type { GenerationStatus } from '@/stores/generationsStore';
+import type { GenerationStatus } from '@features/generation';
 
 export interface GenerationStatusConfig {
   /** Display label */

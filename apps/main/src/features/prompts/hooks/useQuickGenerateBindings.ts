@@ -4,8 +4,8 @@ import {
   useGenerationQueueStore,
   type GenerationQueueState,
   type QueuedAsset,
-} from '@/stores/generationQueueStore';
-import { useGenerationSettingsStore } from '@/stores/generationSettingsStore';
+} from '@features/generation';
+import { useGenerationSettingsStore } from '@features/generation';
 import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility

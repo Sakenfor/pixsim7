@@ -24,6 +24,7 @@ export default defineConfig({
       { find: '@features/worldTools', replacement: path.resolve(__dirname, './src/features/worldTools') },
       { find: '@features/brainTools', replacement: path.resolve(__dirname, './src/features/brainTools') },
       { find: '@features/simulation', replacement: path.resolve(__dirname, './src/features/simulation') },
+      { find: '@features/generation', replacement: path.resolve(__dirname, './src/features/generation') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

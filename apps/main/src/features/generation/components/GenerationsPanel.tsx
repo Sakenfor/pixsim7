@@ -5,8 +5,8 @@
  * Shows status, allows filtering, and provides retry/open actions.
  */
 import { useMemo, useState, useCallback } from 'react';
-import { useGenerationsStore, isGenerationActive } from '@/stores/generationsStore';
-import { useRecentGenerations } from '@/hooks/useRecentGenerations';
+import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
+import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
 import { Icons, ThemedIcon } from '@/lib/icons';
 import { getGenerationStatusDisplay } from '@/lib/generation/generationAssetMapping';

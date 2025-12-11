@@ -5,7 +5,7 @@
  */
 
 import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from './settingsSchemaRegistry';
-import { useGenerationSettingsStore } from '@/stores/generationSettingsStore';
+import { useGenerationSettingsStore } from '@features/generation';
 
 const generationGroups: SettingGroup[] = [
   {

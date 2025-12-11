@@ -5,7 +5,7 @@
  * surfacing generation status in media galleries.
  */
 import type { GenerationResponse } from '../api/generations';
-import { isGenerationActive, isGenerationTerminal, type GenerationStatus } from '@/stores/generationsStore';
+import { isGenerationActive, isGenerationTerminal, type GenerationStatus } from '@features/generation';
 import { getStatusConfig, getStatusTextColor } from './generationStatusConfig';
 
 export interface GenerationStatusInfo {
@@ -100,5 +100,5 @@ export function getGenerationStatusDisplay(
 }
 
 // Re-export for backwards compatibility
-// Prefer importing directly from '@/stores/generationsStore'
-export { isGenerationTerminal as isGenerationStatusTerminal } from '@/stores/generationsStore';
+// Prefer importing directly from '@features/generation'
+export { isGenerationTerminal as isGenerationStatusTerminal } from '@features/generation';

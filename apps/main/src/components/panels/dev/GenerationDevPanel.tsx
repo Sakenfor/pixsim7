@@ -22,7 +22,7 @@
 import { useState, useEffect } from 'react';
 import { PromptSegmentsViewer, usePromptInspection, usePromptAiEdit } from '@features/prompts';
 import { useAiProviders } from '@/hooks/useAiProviders';
-import { useGenerationDevController } from '@/hooks/useGenerationDevController';
+import { useGenerationDevController } from '@features/generation';
 
 interface GenerationDevPanelProps {
   /** Optional workspace filter */

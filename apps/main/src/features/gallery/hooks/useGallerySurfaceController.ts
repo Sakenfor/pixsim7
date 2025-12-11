@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAssets, type AssetSummary, type AssetFilters } from '@/hooks/useAssets';
-import { useMediaGenerationActions } from '@/hooks/useMediaGenerationActions';
+import { useMediaGenerationActions } from '@features/generation';
 import { useSelection } from '@/hooks/useSelection';
 import { createAssetActions } from '@/lib/assets/assetActions';
 

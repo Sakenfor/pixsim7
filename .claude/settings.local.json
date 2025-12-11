@@ -25,7 +25,8 @@
       "Bash(mkdir:*)",
       "Bash(rmdir:*)",
       "Bash(pnpm exec vite build:*)",
-      "Bash(pnpm --filter @pixsim7/main exec vite build:*)"
+      "Bash(pnpm --filter @pixsim7/main exec vite build:*)",
+      "Bash(pnpm:*)"
     ],
     "deny": [],
     "ask": []

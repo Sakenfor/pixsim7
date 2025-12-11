@@ -41,7 +41,9 @@
       "@features/brainTools/*": ["apps/main/src/features/brainTools/*"],
       "@features/brainTools": ["apps/main/src/features/brainTools/index.ts"],
       "@features/simulation/*": ["apps/main/src/features/simulation/*"],
-      "@features/simulation": ["apps/main/src/features/simulation/index.ts"]
+      "@features/simulation": ["apps/main/src/features/simulation/index.ts"],
+      "@features/generation/*": ["apps/main/src/features/generation/*"],
+      "@features/generation": ["apps/main/src/features/generation/index.ts"]
     }
   }
 }

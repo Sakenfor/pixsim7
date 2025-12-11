@@ -3,15 +3,12 @@ import clsx from 'clsx';
 import { useControlCenterStore, type ControlCenterState } from '@/stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
-import { useGenerationQueueStore } from '@/stores/generationQueueStore';
-import { useGenerationWebSocket } from '@/hooks/useGenerationWebSocket';
+import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
-import { useGenerationWorkbench } from '@/hooks/useGenerationWorkbench';
 import { CompactAssetCard } from './CompactAssetCard';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@/lib/icons';
 import { estimatePixverseCost } from '@/lib/api/pixverseCost';
-import { GenerationWorkbench } from '../generation/GenerationWorkbench';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {

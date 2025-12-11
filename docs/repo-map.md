@@ -79,6 +79,11 @@ features/
 ├── simulation/         # Simulation Playground (world/brain evolution testing)
 │   ├── components/     # SimulationPlayground, WorldStateOverview, ConstraintRunner, etc.
 │   └── index.ts        # Barrel export (note: low-level libs remain in @/lib/simulation)
+├── generation/         # Generation workbench, queue, and status tracking
+│   ├── components/     # GenerationWorkbench, GenerationsPanel, GenerationHistoryButton
+│   ├── hooks/          # useGenerationWebSocket, useRecentGenerations, useMediaCardGenerationStatus, etc.
+│   ├── stores/         # generationsStore, generationQueueStore, generationSettingsStore
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
