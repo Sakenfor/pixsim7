@@ -82,9 +82,11 @@ from pixsim7.backend.main.domain.game import (
     get_current_scene,
     # Interaction types (for narrative domain)
     RelationshipDelta,
+    StatDelta,
     FlagChanges,
     InventoryChanges,
     apply_relationship_deltas,
+    apply_stat_deltas,
     apply_flag_changes,
     apply_inventory_changes,
 )
@@ -164,9 +166,11 @@ __all__ = [
     "get_current_scene",
     # Interaction Types
     "RelationshipDelta",
+    "StatDelta",
     "FlagChanges",
     "InventoryChanges",
     "apply_relationship_deltas",
+    "apply_stat_deltas",
     "apply_flag_changes",
     "apply_inventory_changes",
     # Services

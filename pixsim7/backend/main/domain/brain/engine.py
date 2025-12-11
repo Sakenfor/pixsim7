@@ -424,22 +424,23 @@ class BrainEngine:
         stat_def_id: str,
     ) -> Dict[str, float]:
         """Extract session-level stat overrides for an NPC."""
-        if not session or not session.flags:
+        if not session:
             return {}
 
         npc_key = f"npc:{npc_id}"
-        npc_data = session.flags.get("npcs", {}).get(npc_key, {})
 
-        # Try npc_data.stats[stat_def_id]
-        stats = npc_data.get("stats", {})
-        if stat_def_id in stats:
-            return {k: float(v) for k, v in stats[stat_def_id].items() if isinstance(v, (int, float))}
+        # Try npc_data.stats[stat_def_id] in session.flags (legacy per-NPC stats)
+        if session.flags:
+            npc_data = session.flags.get("npcs", {}).get(npc_key, {})
+            stats = npc_data.get("stats", {})
+            if stat_def_id in stats:
+                return {k: float(v) for k, v in stats[stat_def_id].items() if isinstance(v, (int, float))}
 
-        # Legacy: for relationships, try session.relationships
-        if stat_def_id == "relationships":
-            relationships = getattr(session, "relationships", None) or {}
-            rel = relationships.get(npc_key, {})
-            if rel:
-                return {k: float(v) for k, v in rel.items() if isinstance(v, (int, float))}
+        # Try session.stats[stat_def_id][npc_key] (canonical stat system storage)
+        if session.stats and stat_def_id in session.stats:
+            stat_package = session.stats[stat_def_id]
+            if npc_key in stat_package:
+                entity_stats = stat_package[npc_key]
+                return {k: float(v) for k, v in entity_stats.items() if isinstance(v, (int, float))}
 
         return {}

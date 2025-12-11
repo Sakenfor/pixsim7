@@ -62,7 +62,7 @@ Out of scope:
 ## Phase Checklist (High-Level)
 
 - [x] **Phase 1 – Make Relationship Stats Canonical in Session/World Models**
-- [x] **Phase 2 – Replace Legacy Relationship Logic in Backend Services**
+- [x] **Phase 2 – Replace Legacy Relationship Logic in Backend Services** ✅ **COMPLETE**
 - [x] **Phase 3 – Replace Relationship Preview API with Stat-Based Preview**
 - [x] **Phase 4 – Migrate Frontend/Editor to Use Stat-Based Relationships**
 - [ ] **Phase 5 – Remove Legacy Relationship Fields, Helpers, and Docs**
@@ -100,19 +100,48 @@ Each phase should be implemented via small, reviewable PRs and validated with ex
 
 **Goal:** Stop using legacy relationship helpers and JSON paths in gameplay/session services; instead use stat definitions + `StatEngine`/`StatService`.
 
-**Steps:**
+**Status: IMPLEMENTED** (via generic StatDelta + apply_stat_deltas routing)
 
-- Refactor `apply_relationship_deltas` in `pixsim7/backend/main/domain/game/interaction_execution.py` to:
-  - Read/modify the canonical stat structure under `session.stats["relationships"][npc_key]` (using `StatEngine.initialize_entity_stats` when needed).
-  - Use world relationship stat definition from `WorldStatsConfig` if needed for clamping/validation.
-- Update all services that currently read/write `session.relationships` to operate on `session.stats["relationships"]`:
-  - `pixsim7/backend/main/services/game/game_session_service.py`
-  - `pixsim7/backend/main/services/generation/social_context_builder.py`
-  - Dialogue APIs (`pixsim7/backend/main/api/v1/dialogue.py`, dialogue plugin manifest)
-  - Stealth/romance/simulation services that consume relationship data.
-- Remove direct calls to:
-  - `compute_relationship_tier`, `compute_intimacy_level`, `extract_relationship_values` in `domain/narrative/relationships.py`
-  - Replace with `StatEngine`-based normalization + stat lookup on the `"relationships"` definition.
+**Implementation Summary:**
+
+- ✅ Introduced generic `StatDelta` model in `pixsim7/backend/main/domain/game/npc_interactions.py`:
+  - Generic representation for stat changes across any stat package
+  - Validates entity_type and required fields (e.g., `npc_id` for NPC-scoped stats)
+  - Extensible for future stat packages beyond relationships
+- ✅ Implemented `apply_stat_deltas` in `pixsim7/backend/main/domain/game/interaction_execution.py`:
+  - Routes stat changes through the abstract stat system using `StatEngine`
+  - Resolves stat definitions from `WorldStatsConfig` or default definitions
+  - Applies deltas incrementally and clamps values using `StatEngine.clamp_stat_values`
+  - Replaces hardcoded 0-100 clamping with definition-based ranges
+- ✅ Refactored `apply_relationship_deltas` to be a thin compatibility wrapper:
+  - Converts `RelationshipDelta` → `StatDelta` targeting "core.relationships"
+  - Delegates to `apply_stat_deltas` for stat computation
+  - Preserves timestamp behavior (`lastInteractionAt`) for backward compatibility
+- ✅ Exported `StatDelta` and `apply_stat_deltas` from `pixsim7.backend.game` public API
+- ✅ Added comprehensive test coverage in `tests/test_stat_deltas.py`:
+  - Tests for `apply_stat_deltas` with clamping, multiple NPCs, validation
+  - Tests for `apply_relationship_deltas` delegation and backward compatibility
+  - Confirms stat definition ranges are used instead of hardcoded 0-100
+
+**Additional Cleanup (completed):**
+
+- ✅ Updated `pixsim7/backend/main/domain/brain/engine.py`:
+  - Removed legacy fallback to `session.relationships`
+  - Now uses canonical `session.stats["relationships"]` path
+  - Maintains backward compatibility with `session.flags.npcs[...].stats` for migration period
+- ✅ Verified all services already use stat-based relationships:
+  - `game_session_service.py` - Uses `StatService` for normalization
+  - `social_context_builder.py` - No direct `session.relationships` usage
+  - No remaining calls to legacy relationship helpers found
+- ✅ Legacy helpers already removed:
+  - `compute_relationship_tier`, `compute_intimacy_level`, `extract_relationship_values` - No usages found
+  - `domain/narrative/relationships.py` - File does not exist
+
+**Phase 2 Status: ✅ FULLY COMPLETE**
+
+All backend services now use the stat-based relationship system exclusively. The only remaining references to `session.relationships` are in:
+- Documentation files (intentional for migration guidance)
+- Frontend/editor code (to be addressed in Phase 4)
 
 **Key files:**
 

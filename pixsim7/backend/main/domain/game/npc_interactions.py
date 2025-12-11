@@ -13,7 +13,7 @@ Design Principles:
 from __future__ import annotations
 from typing import Dict, Any, List, Optional, Literal, Union
 from enum import Enum
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 
 
 # ===================
@@ -109,11 +109,63 @@ class InteractionGating(BaseModel):
 # ===================
 
 class RelationshipDelta(BaseModel):
-    """Relationship changes as a result of interaction"""
+    """
+    Relationship changes as a result of interaction.
+
+    NOTE: This is a compatibility wrapper around StatDelta targeting the "core.relationships" package.
+    Prefer using StatDelta directly for new code, as it provides a generic interface for all stat systems.
+    RelationshipDelta will be preserved for backward compatibility with existing content and frontend code.
+    """
     affinity: Optional[float] = None
     trust: Optional[float] = None
     chemistry: Optional[float] = None
     tension: Optional[float] = None
+
+
+class StatDelta(BaseModel):
+    """
+    Generic stat delta for applying changes to any stat package.
+
+    This model provides a unified way to describe changes to stats across all stat packages,
+    replacing hardcoded relationship math with abstract stat system routing through StatEngine.
+
+    Examples:
+        # Relationship stat delta (for "core.relationships" package)
+        StatDelta(
+            package_id="core.relationships",
+            axes={"affinity": +5.0, "trust": -3.0},
+            entity_type="npc",
+            npc_id=42
+        )
+
+        # Future: Resource stat delta (for "core.resources" package)
+        StatDelta(
+            package_id="core.resources",
+            axes={"energy": -10.0, "stress": +5.0},
+            entity_type="session"
+        )
+    """
+    package_id: str = Field(
+        description="Stat package ID (e.g., 'core.relationships', 'core.resources')"
+    )
+    axes: Dict[str, float] = Field(
+        description="Map of axis_name -> delta_value (e.g., {'affinity': +5, 'trust': -3})"
+    )
+    entity_type: Literal["npc", "session", "world"] = Field(
+        default="npc",
+        description="Entity scope for this stat delta"
+    )
+    npc_id: Optional[int] = Field(
+        default=None,
+        description="Required when entity_type == 'npc'. NPC ID to apply stats to."
+    )
+
+    @model_validator(mode='after')
+    def validate_npc_id_required(self):
+        """Ensure npc_id is provided when entity_type is 'npc'."""
+        if self.entity_type == "npc" and self.npc_id is None:
+            raise ValueError('npc_id is required when entity_type is "npc"')
+        return self
 
 
 class FlagChanges(BaseModel):
