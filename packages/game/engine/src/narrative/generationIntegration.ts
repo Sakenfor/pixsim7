@@ -58,13 +58,38 @@ import type {
 /**
  * Extended generation strategy for narrative nodes.
  * Controls when to generate new content vs use existing pool.
+ *
+ * Core strategies:
+ * - generate_new: Always generate fresh content
+ * - pool_only: Only use pre-generated pool content
+ * - pool_fallback: Try pool first, generate if not found
+ * - generate_fallback: Generate first, fallback to pool on error
+ * - dynamic: Evaluate at runtime based on conditions
+ *
+ * Explicit workflow strategies (for specific generation behaviors):
+ * - extend_video: Extend existing video with additional content
+ * - regen_simple: Simple regeneration with minimal parameters
+ * - regen_with_context: Regeneration preserving narrative context
+ * - refine_result: Refine/improve previous generation output
  */
 export type NarrativeGenerationStrategy =
-  | 'generate_new'      // Always generate fresh content
-  | 'pool_only'         // Only use pre-generated pool content
-  | 'pool_fallback'     // Try pool first, generate if not found
-  | 'generate_fallback' // Generate first, fallback to pool on error
-  | 'dynamic';          // Evaluate at runtime based on conditions
+  | 'generate_new'        // Always generate fresh content
+  | 'pool_only'           // Only use pre-generated pool content
+  | 'pool_fallback'       // Try pool first, generate if not found
+  | 'generate_fallback'   // Generate first, fallback to pool on error
+  | 'dynamic'             // Evaluate at runtime based on conditions
+  // Explicit workflow strategies
+  | 'extend_video'        // Extend existing video with additional frames
+  | 'regen_simple'        // Simple regeneration with minimal context
+  | 'regen_with_context'  // Regeneration preserving full narrative context
+  | 'refine_result';      // Refine/improve previous generation output
+
+/**
+ * Check if a strategy is an explicit workflow strategy.
+ */
+export function isExplicitStrategy(strategy: NarrativeGenerationStrategy): boolean {
+  return ['extend_video', 'regen_simple', 'regen_with_context', 'refine_result'].includes(strategy);
+}
 
 /**
  * Pool selection criteria for finding cached content.
@@ -411,6 +436,9 @@ export interface GenerationBridgeConfig {
 
   /** Default generation timeout (ms) */
   defaultTimeoutMs?: number;
+
+  /** Enable debug logging */
+  debug?: boolean;
 }
 
 /**
@@ -424,6 +452,7 @@ export class GenerationBridge {
   private playerPrefs: PlayerGenerationPrefs;
   private strategyEvaluators: Map<string, DynamicStrategyEvaluator>;
   private defaultTimeoutMs: number;
+  private debug: boolean;
 
   constructor(config: GenerationBridgeConfig = {}) {
     this.service = config.service;
@@ -432,6 +461,36 @@ export class GenerationBridge {
     this.playerPrefs = config.playerPrefs || {};
     this.strategyEvaluators = new Map(Object.entries(config.strategyEvaluators || {}));
     this.defaultTimeoutMs = config.defaultTimeoutMs || 30000;
+    this.debug = config.debug ?? false;
+  }
+
+  /**
+   * Log with structured context.
+   */
+  private log(
+    level: 'debug' | 'info' | 'warn' | 'error',
+    message: string,
+    context?: Record<string, unknown>
+  ): void {
+    if (!this.debug && level === 'debug') return;
+
+    const prefix = `[GenerationBridge]`;
+    const contextStr = context ? ` ${JSON.stringify(context)}` : '';
+
+    switch (level) {
+      case 'debug':
+        console.debug(`${prefix} ${message}${contextStr}`);
+        break;
+      case 'info':
+        console.info(`${prefix} ${message}${contextStr}`);
+        break;
+      case 'warn':
+        console.warn(`${prefix} ${message}${contextStr}`);
+        break;
+      case 'error':
+        console.error(`${prefix} ${message}${contextStr}`);
+        break;
+    }
   }
 
   /**
@@ -514,39 +573,187 @@ export class GenerationBridge {
   async resolveContent(context: GenerationHookContext): Promise<GenerationHookResult> {
     const config = context.generationConfig;
     const strategy = this.resolveStrategy(config, context);
+    const startTime = Date.now();
+
+    // Log context for diagnostics
+    this.log('debug', 'Resolving content', {
+      programId: context.state.activeProgramId,
+      npcId: context.npcId,
+      nodeId: context.node.id,
+      nodeType: context.node.type,
+      strategy,
+    });
+
+    let result: GenerationHookResult;
 
     switch (strategy) {
       case 'pool_only':
-        return this.resolveFromPool(context);
+        result = await this.resolveFromPool(context);
+        break;
 
       case 'generate_new':
-        return this.resolveFromGeneration(context);
+        result = await this.resolveFromGeneration(context);
+        break;
 
       case 'pool_fallback':
         const poolResult = await this.resolveFromPool(context);
         if (poolResult.content) {
-          return poolResult;
+          result = poolResult;
+        } else {
+          this.log('debug', 'Pool miss, falling back to generation', {
+            programId: context.state.activeProgramId,
+            npcId: context.npcId,
+          });
+          result = await this.resolveFromGeneration(context);
         }
-        return this.resolveFromGeneration(context);
+        break;
 
       case 'generate_fallback':
         try {
           const genResult = await this.resolveFromGeneration(context);
           if (genResult.content) {
-            return genResult;
+            result = genResult;
+          } else {
+            throw new Error('Generation returned no content');
           }
         } catch (e) {
-          // Fall through to pool
+          this.log('debug', 'Generation failed, falling back to pool', {
+            programId: context.state.activeProgramId,
+            error: (e as Error).message,
+          });
+          result = await this.resolveFromPool(context);
         }
-        return this.resolveFromPool(context);
+        break;
+
+      // Explicit workflow strategies
+      case 'extend_video':
+        result = await this.resolveFromExplicitStrategy(context, 'extend_video');
+        break;
+
+      case 'regen_simple':
+        result = await this.resolveFromExplicitStrategy(context, 'regen_simple');
+        break;
+
+      case 'regen_with_context':
+        result = await this.resolveFromExplicitStrategy(context, 'regen_with_context');
+        break;
+
+      case 'refine_result':
+        result = await this.resolveFromExplicitStrategy(context, 'refine_result');
+        break;
 
       default:
         // Default to pool_fallback
         const defaultPool = await this.resolveFromPool(context);
         if (defaultPool.content) {
-          return defaultPool;
+          result = defaultPool;
+        } else {
+          result = await this.resolveFromGeneration(context);
         }
-        return this.resolveFromGeneration(context);
+    }
+
+    // Log outcome
+    const durationMs = Date.now() - startTime;
+    if (result.content) {
+      this.log('debug', 'Content resolved', {
+        programId: context.state.activeProgramId,
+        npcId: context.npcId,
+        strategy,
+        durationMs,
+        contentType: (result.content as any).type,
+      });
+    } else if (result.error) {
+      this.log('warn', 'Content resolution failed', {
+        programId: context.state.activeProgramId,
+        npcId: context.npcId,
+        strategy,
+        durationMs,
+        error: result.error,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Resolve content using explicit workflow strategies.
+   * These strategies map directly to specific GenerationService methods.
+   */
+  private async resolveFromExplicitStrategy(
+    context: GenerationHookContext,
+    explicitStrategy: 'extend_video' | 'regen_simple' | 'regen_with_context' | 'refine_result'
+  ): Promise<GenerationHookResult> {
+    if (!this.service) {
+      return { error: 'No generation service configured for explicit strategy' };
+    }
+
+    const available = await this.service.isAvailable();
+    if (!available) {
+      this.log('warn', 'Generation service unavailable for explicit strategy', {
+        strategy: explicitStrategy,
+        programId: context.state.activeProgramId,
+      });
+      return { error: 'Generation service unavailable' };
+    }
+
+    // Build request with explicit workflow type
+    const request = this.buildGenerationRequest(context);
+
+    // Set workflow-specific parameters
+    (request as any).workflow = explicitStrategy;
+
+    // Workflow-specific configuration
+    switch (explicitStrategy) {
+      case 'extend_video':
+        // Extend existing content - requires previous content reference
+        (request as any).extendFrom = context.generationConfig.generationParams?.previousContentId;
+        (request as any).extensionDuration = context.generationConfig.generationParams?.extensionDuration || 5;
+        break;
+
+      case 'regen_simple':
+        // Simple regeneration - minimal context
+        (request as any).preserveContext = false;
+        (request as any).lightweight = true;
+        break;
+
+      case 'regen_with_context':
+        // Full context regeneration
+        (request as any).preserveContext = true;
+        (request as any).narrativeHistory = context.state.history?.slice(-5);
+        break;
+
+      case 'refine_result':
+        // Refine previous output
+        (request as any).refineFrom = context.generationConfig.generationParams?.previousContentId;
+        (request as any).refinementInstructions = context.generationConfig.generationParams?.refinementInstructions;
+        break;
+    }
+
+    this.log('debug', 'Executing explicit strategy', {
+      strategy: explicitStrategy,
+      programId: context.state.activeProgramId,
+      npcId: context.npcId,
+    });
+
+    try {
+      const response = await this.service.generate(request);
+
+      if (response.status === 'complete' && response.content) {
+        return { content: response.content, handled: true };
+      }
+
+      if (response.status === 'queued' || response.status === 'processing') {
+        return { jobId: response.job_id, handled: false };
+      }
+
+      return { error: response.error?.message || `${explicitStrategy} failed` };
+    } catch (e) {
+      const err = e as Error;
+      this.log('error', 'Explicit strategy failed', {
+        strategy: explicitStrategy,
+        error: err.message,
+      });
+      return { error: err.message };
     }
   }
 

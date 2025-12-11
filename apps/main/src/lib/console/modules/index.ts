@@ -22,6 +22,21 @@ export { coreModule } from './core';
 export { workspaceModule } from './workspace';
 export { toolsModule, useToolConsoleStore } from './tools';
 
+// Inspector module system
+export {
+  createInspectorModule,
+  registerInspectorTab,
+  unregisterInspectorTab,
+  getInspectorTabs,
+  getInspectorTab,
+  clearInspectorTabs,
+  useInspectorTabs,
+  modelInspectorModule,
+  type InspectorTab,
+  type InspectorTabProps,
+  type InspectorConfig,
+} from './inspectorModule';
+
 // Re-export module type
 export type { ConsoleModule } from '../moduleRegistry';
 
