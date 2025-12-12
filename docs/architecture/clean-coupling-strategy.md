@@ -1,6 +1,101 @@
 # Clean Coupling Strategy
 
+> **⚠️ STATUS: PROPOSED (Not Yet Implemented)**
+>
+> This document describes a **future architecture** for cleaner coupling between game and generation layers.
+> None of the code examples, interfaces, or endpoints described here exist yet.
+>
+> **What Exists Today:**
+> - Game components directly import from `features/generation/`
+> - Backend endpoints: `POST /api/v1/generations`, `GET /api/v1/jobs/:id`
+> - No `IAssetProvider` abstraction or `packages/shared/contracts/`
+>
+> **Implementation Status:** See [Migration Plan](#-migration-plan) for phases.
+
+---
+
 **Goal:** Maintain necessary game ↔ generation coupling while improving architectural clarity, testability, and maintainability.
+
+---
+
+## 📸 Current State vs. Proposed
+
+### What Exists Today
+
+**Frontend Structure:**
+```
+apps/main/src/
+├── features/
+│   ├── game/              # Game components (ScenePlayer, etc.)
+│   │   └── components/    # Directly import from features/generation/
+│   └── generation/        # Generation UI and logic
+│       ├── components/    # Generation control panel
+│       └── services/      # Direct API calls to /generations
+└── lib/
+    └── api/               # API client (generic)
+```
+
+**Backend Endpoints:**
+```
+POST /api/v1/generations   # Create generation job
+GET  /api/v1/jobs/:id      # Poll job status
+GET  /api/v1/assets/:id    # Get asset metadata
+```
+
+**How Game Requests Assets Today:**
+```typescript
+// Direct import from generation features
+import { generateVideo } from '@/features/generation/services/generationService'
+
+// Game knows about providers, jobs, polling
+const job = await generateVideo({
+  prompt: "...",
+  provider: "pixverse",
+  // ... many generation-specific params
+})
+const asset = await pollJobUntilComplete(job.id)
+```
+
+### What This Proposal Adds
+
+**New Frontend Structure:**
+```
+apps/main/src/
+├── lib/
+│   └── assets/                    # 🆕 Asset abstraction layer
+│       ├── AssetService.ts        # Facade
+│       ├── AssetProviderContext.tsx
+│       └── providers/
+│           ├── GeneratedAssetProvider.ts  # Wraps /generations API
+│           ├── PreMadeAssetProvider.ts    # Wraps /assets API
+│           └── CachedAssetProvider.ts
+└── packages/shared/
+    └── contracts/                 # 🆕 Shared interfaces
+        └── IAssetProvider.ts
+
+(features/game/ and features/generation/ stay unchanged)
+```
+
+**New Backend Endpoint (Phase 3):**
+```
+POST /api/v1/game/assets/request   # 🆕 Game-specific, higher-level
+```
+
+**How Game Requests Assets (After Migration):**
+```typescript
+// Import abstraction
+import { useAssetProvider } from '@/lib/assets/AssetProviderContext'
+
+// Game agnostic to source (pre-made vs generated)
+const assetProvider = useAssetProvider()
+const asset = await assetProvider.requestAsset({
+  sceneId: "romance_5",
+  choiceId: "confess"
+  // Service decides: cache, pre-made, or generate
+})
+```
+
+**Key Difference:** Game code doesn't change when we add caching, switch providers, or change generation strategy.
 
 ---
 
@@ -212,6 +307,8 @@ export class GeneratedAssetProvider {
 
   async generateAsset(request: AssetRequest): Promise<Asset> {
     // 1. Submit generation job to backend
+    // NOTE: This endpoint doesn't exist yet - proposed in Phase 3
+    // Current: POST /api/v1/generations (more generic, no game context)
     const job = await this.apiClient.post('/api/v1/game/generate-asset', {
       scene_id: request.sceneId,
       choice_id: request.choiceId,
@@ -220,6 +317,7 @@ export class GeneratedAssetProvider {
     })
 
     // 2. Poll for completion (or use websocket)
+    // Current: GET /api/v1/jobs/:id
     const result = await this.pollForCompletion(job.id, request.maxWaitTime)
 
     // 3. Return asset
@@ -512,18 +610,22 @@ module.exports = {
 
 ## 📊 Backend: Clean Generation API
 
-### Current State
+### Current State (What Exists Today)
 
 ```
-POST /api/v1/jobs          # Generic job creation
-GET  /api/v1/jobs/:id      # Poll for status
+POST /api/v1/generations   # Create generation job
+GET  /api/v1/jobs/:id      # Poll for job status
+GET  /api/v1/assets/:id    # Get asset by ID
 ```
 
 Problems:
 - Game has to know about jobs, polling, status codes
 - Generic job API leaks implementation details
+- No game-specific context (scene_id, choice_id)
 
-### Proposed: Game-Specific Endpoints
+### Proposed: Game-Specific Endpoints (Phase 3)
+
+> **⚠️ These endpoints don't exist yet - proposed for Phase 3**
 
 ```
 POST /api/v1/game/assets/request
@@ -700,12 +802,26 @@ export function setupPredictiveGeneration(
 
 ## 📋 Migration Plan
 
+> **Note:** This plan creates new code structures. Existing code continues to work during migration.
+
 ### Phase 1: Create Abstractions (1-2 days)
-- [ ] Define `IAssetProvider` interface in `packages/shared/contracts/`
-- [ ] Create `AssetService` facade in `lib/assets/`
-- [ ] Implement `PreMadeAssetProvider` (wraps existing asset API)
-- [ ] Implement `GeneratedAssetProvider` (wraps existing generation API)
+
+**New directories to create:**
+```
+packages/shared/contracts/    # 🆕 Shared TypeScript interfaces
+apps/main/src/lib/assets/     # 🆕 Asset abstraction layer
+```
+
+**Tasks:**
+- [ ] Create `packages/shared/` monorepo package
+- [ ] Define `IAssetProvider` interface in `packages/shared/contracts/IAssetProvider.ts`
+- [ ] Create `apps/main/src/lib/assets/` directory
+- [ ] Create `AssetService` facade in `lib/assets/AssetService.ts`
+- [ ] Implement `PreMadeAssetProvider` (wraps existing `GET /api/v1/assets/:id`)
+- [ ] Implement `GeneratedAssetProvider` (wraps existing `POST /api/v1/generations` + polling)
 - [ ] Set up `AssetProviderContext` for dependency injection
+
+**Outcome:** New abstractions exist alongside current code
 
 ### Phase 2: Migrate Game Components (2-3 days)
 - [ ] Update `ScenePlayer` to use `useAssetProvider()`
@@ -714,10 +830,21 @@ export function setupPredictiveGeneration(
 - [ ] Remove direct imports from `features/generation/`
 
 ### Phase 3: Add Backend Game API (1 day)
-- [ ] Create `/api/v1/game/assets/request` endpoint
-- [ ] Implement strategy selection logic
-- [ ] Add caching layer
-- [ ] Update frontend to use new endpoint
+
+**New backend code:**
+```
+pixsim7/backend/main/api/v1/game_assets.py    # 🆕 Game-specific endpoints
+```
+
+**Tasks:**
+- [ ] Create `pixsim7/backend/main/api/v1/game_assets.py`
+- [ ] Implement `POST /api/v1/game/assets/request` endpoint
+- [ ] Add strategy selection logic (cache → pre-made → generate)
+- [ ] Implement caching layer
+- [ ] Update `GeneratedAssetProvider` to use new endpoint
+- [ ] Keep old endpoints (`/generations`, `/jobs`) for backward compatibility
+
+**Outcome:** Game-specific API available, old API still works
 
 ### Phase 4: Enhanced Features (Ongoing)
 - [ ] Add `CachedAssetProvider` with smart caching
