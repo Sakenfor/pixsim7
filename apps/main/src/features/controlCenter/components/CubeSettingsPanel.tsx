@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useControlCubeStore, type CubeType } from '@/stores/controlCubeStore';
-import { useCubeSettingsStore, type LinkingGesture } from '@/stores/cubeSettingsStore';
+import { useControlCubeStore, type CubeType } from '@features/controlCenter/stores/controlCubeStore';
+import { useCubeSettingsStore, type LinkingGesture } from '@features/controlCenter/stores/cubeSettingsStore';
 import { panelActionRegistry } from '@/lib/panelActions';
 import { Button } from '@pixsim7/shared.ui';
 

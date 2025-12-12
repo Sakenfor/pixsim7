@@ -22,11 +22,9 @@ export default defineConfig({
       // Lib modules - Infrastructure
       { find: '@lib/utils', replacement: path.resolve(__dirname, './src/lib/utils') },
       { find: '@lib/auth', replacement: path.resolve(__dirname, './src/lib/auth') },
-      { find: '@lib/cubes', replacement: path.resolve(__dirname, './src/lib/cubes') },
       { find: '@lib/theming', replacement: path.resolve(__dirname, './src/lib/theming') },
       { find: '@lib/game', replacement: path.resolve(__dirname, './src/lib/game') },
       { find: '@lib/hooks', replacement: path.resolve(__dirname, './src/lib/hooks') },
-      { find: '@lib/control', replacement: path.resolve(__dirname, './src/lib/control') },
       { find: '@lib/analyzers', replacement: path.resolve(__dirname, './src/lib/analyzers') },
       { find: '@lib/context', replacement: path.resolve(__dirname, './src/lib/context') },
       { find: '@lib/display', replacement: path.resolve(__dirname, './src/lib/display') },
@@ -47,6 +45,7 @@ export default defineConfig({
       { find: '@features/generation', replacement: path.resolve(__dirname, './src/features/generation') },
       { find: '@features/graph', replacement: path.resolve(__dirname, './src/features/graph') },
       { find: '@features/assets', replacement: path.resolve(__dirname, './src/features/assets') },
+      { find: '@features/controlCenter', replacement: path.resolve(__dirname, './src/features/controlCenter') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

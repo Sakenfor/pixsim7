@@ -7,7 +7,7 @@
  */
 
 import { useMemo } from 'react';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 export interface ControlCenterLayoutPadding {
   paddingTop: number;

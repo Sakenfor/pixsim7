@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useControlCubeStore, type CubeType } from '@/stores/controlCubeStore';
-import { useControlCenterStore, type ControlModule } from '@/stores/controlCenterStore';
+import { useControlCubeStore, type CubeType } from '@features/controlCenter/stores/controlCubeStore';
+import { useControlCenterStore, type ControlModule } from '@features/controlCenter/stores/controlCenterStore';
 import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
 import { ControlCube } from './ControlCube';
 import { DraggableCube } from './DraggableCube';

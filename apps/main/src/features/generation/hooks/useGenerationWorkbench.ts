@@ -1,5 +1,5 @@
 import { useMemo, useEffect } from 'react';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
 import { useProviders } from '@features/providers';
 import { useProviderSpecs } from '@features/providers';

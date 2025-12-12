@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationsStore } from '@features/generation';
 import { ccSelectors } from '@/stores/selectors';
-import { generateAsset } from '@/lib/api/controlCenter';
+import { generateAsset } from '@features/controlCenter/lib/api';
 import { extractFrame } from '@features/assets';
 import { logEvent } from '@/lib/utils/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';

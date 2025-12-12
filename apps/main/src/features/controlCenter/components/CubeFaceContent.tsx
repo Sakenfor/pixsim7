@@ -1,5 +1,5 @@
-import type { CubeType } from '@/stores/controlCubeStore';
-import type { CubeFace } from '@/stores/controlCubeStore';
+import type { CubeType } from '@features/controlCenter/stores/controlCubeStore';
+import type { CubeFace } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFaceContent } from './ControlCube';
 import { panelActionRegistry } from '@/lib/panelActions';
 import { Icon } from '@/lib/icons';

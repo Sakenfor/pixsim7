@@ -7,8 +7,8 @@
 
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@/lib/plugins/controlCenterPlugin';
 import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
-import { ControlCenterDock } from '@/components/control/ControlCenterDock';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { ControlCenterDock } from '@features/controlCenter/components/ControlCenterDock';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 export const manifest: ControlCenterPluginManifest = {
   id: 'dock-control-center',

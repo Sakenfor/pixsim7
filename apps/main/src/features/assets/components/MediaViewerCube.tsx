@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useControlCubeStore, type CubeFace } from '@/stores/controlCubeStore';
+import { useControlCubeStore, type CubeFace } from '@features/controlCenter/stores/controlCubeStore';
 import { ControlCube } from '../control/ControlCube';
 import type { LocalAsset } from '../stores/localFoldersStore';
 import { clsx } from 'clsx';

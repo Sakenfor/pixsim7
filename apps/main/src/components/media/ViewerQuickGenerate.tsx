@@ -7,7 +7,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationQueueStore } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@/lib/icons';

@@ -7,8 +7,8 @@
 
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@/lib/plugins/controlCenterPlugin';
 import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
-import { CubeFormationControlCenter } from '@/components/control/CubeFormationControlCenter';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { CubeFormationControlCenter } from '@features/controlCenter/components/CubeFormationControlCenter';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 export const manifest: ControlCenterPluginManifest = {
   id: 'cube-formation-v1',

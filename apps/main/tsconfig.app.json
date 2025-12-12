@@ -35,6 +35,8 @@
       "@features/automation": ["./src/features/automation/index.ts"],
       "@features/interactions": ["./src/features/interactions/index.ts"],
       "@features/gizmos": ["./src/features/gizmos/index.ts"],
+      "@features/controlCenter/*": ["./src/features/controlCenter/*"],
+      "@features/controlCenter": ["./src/features/controlCenter/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],
@@ -46,11 +48,9 @@
       // Lib - Infrastructure (Phase 1 & 3)
       "@lib/utils": ["./src/lib/utils/index.ts"],
       "@lib/auth": ["./src/lib/auth/index.ts"],
-      "@lib/cubes": ["./src/lib/cubes/index.ts"],
       "@lib/theming": ["./src/lib/theming/index.ts"],
       "@lib/game": ["./src/lib/game/index.ts"],
       "@lib/hooks": ["./src/lib/hooks/index.ts"],
-      "@lib/control": ["./src/lib/control/index.ts"],
       "@lib/analyzers": ["./src/lib/analyzers/index.ts"],
       "@lib/assets": ["./src/lib/assets/index.ts"],
       "@lib/context": ["./src/lib/context/index.ts"],
