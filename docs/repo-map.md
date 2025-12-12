@@ -26,6 +26,76 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 - `routes/` — Top-level React routes (Simulation Playground, NPC labs, etc.).
 - `plugins/` — Feature bundles that plug into the editor (world tools, ops panels).
 
+### Import Hygiene & Barrel Exports
+
+PixSim7 uses barrel exports (`index.ts`) to control public API surfaces and maintain clean import boundaries.
+
+**Lib Aliases** (`@lib/*`) - All 29 lib modules now have barrels:
+
+*Core Registries & Systems:*
+- `@lib/core` - Core types, BrainState helpers, BaseRegistry, mock core
+- `@lib/panels` - Panel registry and constants
+- `@lib/shapes` - Shape rendering system
+- `@lib/widgets` - Widget registry and composition
+- `@lib/api` - API client and domain endpoints
+
+*Infrastructure & Utilities:*
+- `@lib/utils` - Shared utilities (logging, uuid, debugFlags, storage, time, validation, polling)
+- `@lib/auth` - Authentication service and providers
+- `@lib/hooks` - Shared React hooks
+- `@lib/cubes` - Workspace cube system (expansion registry, formations)
+- `@lib/theming` - Theme system and tokens
+- `@lib/game` - Game runtime adapters and session management
+- `@lib/control` - Control center module registry
+- `@lib/context` - Editor context and state derivation
+- `@lib/assets` - Asset management actions
+- `@lib/display` - Display space utilities
+- `@lib/analyzers` - Code/data analysis constants
+
+*Other Libs:*
+All remaining lib directories have barrels: `capabilities`, `console`, `dataBinding`, `devtools`, `editing-core`, `gameplay-ui-core`, `gating`, `models`, `overlay`, `preview-bridge`, `providers`, `plugins`, `settings`.
+
+**Feature Aliases** (`@features/*`):
+All 13 features have barrel exports. Import from feature root, not nested paths.
+
+**Feature Libs Reorganization:**
+Feature-specific code has been moved from `lib/` to feature directories:
+- `lib/graph/` + `lib/graphs/` → `@features/graph/lib/` (editor, builders)
+- `lib/gallery/` → `@features/gallery/lib/core/` (surfaces, sources, tools)
+- `lib/hud/` → `@features/hud/lib/core/` (layout management)
+- `lib/generation/` → `@features/generation/lib/core/`
+- `lib/simulation/` → `@features/simulation/lib/core/`
+- `lib/automation/` → `@features/automation/lib/core/`
+- `lib/gizmos/` → `@features/gizmos/lib/core/`
+
+**Import Rules**:
+1. ✅ Import from barrels: `@lib/core`, `@features/graph`
+2. ❌ Never deep import: `@lib/core/types`, `@features/graph/components/...`
+3. ✅ Exception: Feature plugins/lib: `@features/worldTools/plugins/inventory`, `@features/worldTools/lib/hudPresets`
+4. Enforced by ESLint `import/no-internal-modules` rule
+
+**Example**:
+```typescript
+// GOOD
+import { BrainState, getMood } from '@lib/core';
+import { GraphEditorHost } from '@features/graph';
+import { createPreset } from '@features/worldTools/lib/hudPresets'; // Advanced tooling OK
+
+// BAD
+import { BrainState } from '@/lib/core/types';
+import { GraphEditorHost } from '@features/graph/components/graph/GraphEditorHost';
+```
+
+**Backend**: Domain modules have barrels. Import from `pixsim7.backend.main.domain.<domain>`, not deep paths.
+```python
+# GOOD
+from pixsim7.backend.main.domain.stats import StatEngine
+from pixsim7.backend.main.domain.stats.migration import migrate_world_meta_to_stats_config
+
+# BAD
+from pixsim7.backend.main.domain.stats.engine import StatEngine
+```
+
 ### Feature-First Organization
 
 New self-contained features should go under `apps/main/src/features/`:
