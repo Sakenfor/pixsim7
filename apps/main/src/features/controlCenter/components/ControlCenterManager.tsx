@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
 import { Button } from '@pixsim7/shared.ui';
 import { useToast } from '@pixsim7/shared.ui';
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 export function ControlCenterManager() {
   const [activePlugin, setActivePlugin] = useState(() => controlCenterRegistry.getActive());

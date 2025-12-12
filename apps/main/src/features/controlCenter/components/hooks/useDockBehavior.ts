@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { DockPosition } from '@/stores/controlCenterStore';
+import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 import {
   REVEAL_STRIP_THRESHOLD,
   LEAVE_BUFFER_THRESHOLD,

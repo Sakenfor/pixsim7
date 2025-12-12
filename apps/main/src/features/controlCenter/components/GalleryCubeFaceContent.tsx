@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAssets, type AssetSummary } from '@features/assets';
-import { useControlCubeStore } from '@/stores/controlCubeStore';
+import { useControlCubeStore } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
 import { BACKEND_BASE } from '@/lib/api/client';
 import { Icon, Icons } from '@/lib/icons';

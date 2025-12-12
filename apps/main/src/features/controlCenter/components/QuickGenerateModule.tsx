@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
-import { useControlCenterStore, type ControlCenterState } from '@/stores/controlCenterStore';
+import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench } from '@features/generation';

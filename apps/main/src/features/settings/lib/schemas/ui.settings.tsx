@@ -7,7 +7,7 @@
 
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from './settingsSchemaRegistry';
 import { useAssetViewerStore } from '@features/assets';
-import { useControlCenterStore, type LayoutBehavior, type DockPosition } from '@/stores/controlCenterStore';
+import { useControlCenterStore, type LayoutBehavior, type DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 
 // Media Viewer settings tab
 const mediaViewerTab: SettingTab = {

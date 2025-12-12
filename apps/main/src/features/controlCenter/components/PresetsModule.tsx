@@ -1,4 +1,4 @@
-import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import clsx from 'clsx';
 import { useProviderSpecs } from '@features/providers';
 import { useMemo, useState } from 'react';

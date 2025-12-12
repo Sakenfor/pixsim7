@@ -45,10 +45,8 @@ PixSim7 uses barrel exports (`index.ts`) to control public API surfaces and main
 - `@lib/utils` - Shared utilities (logging, uuid, debugFlags, storage, time, validation, polling)
 - `@lib/auth` - Authentication service and providers
 - `@lib/hooks` - Shared React hooks
-- `@lib/cubes` - Workspace cube system (expansion registry, formations)
 - `@lib/theming` - Theme system and tokens
 - `@lib/game` - Game runtime adapters and session management
-- `@lib/control` - Control center module registry
 - `@lib/context` - Editor context and state derivation
 - `@lib/assets` - Asset management actions
 - `@lib/display` - Display space utilities
@@ -165,6 +163,18 @@ features/
 │   ├── stores/         # graphStore (scene graphs), arcGraphStore (arc/quest graphs)
 │   ├── hooks/          # useLineageGraph
 │   └── index.ts        # Barrel export
+├── controlCenter/      # Control Center domain - docking panels and expandable cubes
+│   ├── components/     # ControlCenterDock, CubeFormationControlCenter, GenerationSettingsBar, etc.
+│   │   ├── modules/    # Control center modules (Workspace, Gallery, Plugins)
+│   │   ├── preset-operator/ # Preset operator components (AssetCard, Timeline, etc.)
+│   │   └── hooks/      # Component-specific hooks (useDockBehavior)
+│   ├── hooks/          # Feature hooks (useControlCenterLayout, useCubeDocking)
+│   ├── stores/         # Control center stores (controlCenterStore, controlCubeStore, cubeSettingsStore)
+│   ├── lib/            # Control center utilities
+│   │   ├── cubes/      # Cube expansion registry, formations, registration
+│   │   ├── api.ts      # Generation API wrapper (generateAsset)
+│   │   └── controlCenterModuleRegistry.ts # Module registry
+│   └── index.ts        # Barrel export
 └── [future-feature]/
 ```
 
@@ -266,6 +276,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@features/brainTools` | `apps/main/src/features/brainTools/index.ts` | Brain Tools feature barrel export |
 | `@features/simulation/*` | `apps/main/src/features/simulation/*` | Simulation Playground UI components |
 | `@features/simulation` | `apps/main/src/features/simulation/index.ts` | Simulation feature barrel export |
+| `@features/controlCenter/*` | `apps/main/src/features/controlCenter/*` | Control Center domain - docking panels, expandable cubes, generation settings |
+| `@features/controlCenter` | `apps/main/src/features/controlCenter/index.ts` | Control Center feature barrel export |
 
 ### Usage Examples
 

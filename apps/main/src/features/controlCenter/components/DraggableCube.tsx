@@ -4,9 +4,9 @@ import {
   type DraggableCubeProps as PixcubesDraggableCubeProps,
   type CubeFaceContent,
 } from '@pixsim7/scene.cubes';
-import { useControlCubeStore, type CubeFace } from '@/stores/controlCubeStore';
-import { useCubeSettingsStore } from '@/stores/cubeSettingsStore';
-import { cubeExpansionRegistry } from '@/lib/cubeExpansionRegistry';
+import { useControlCubeStore, type CubeFace } from '@features/controlCenter/stores/controlCubeStore';
+import { useCubeSettingsStore } from '@features/controlCenter/stores/cubeSettingsStore';
+import { cubeExpansionRegistry } from '../lib/cubes/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { CubeTooltip, useTooltipDismissal } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
