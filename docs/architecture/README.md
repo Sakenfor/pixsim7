@@ -185,6 +185,81 @@ PixSim7 is built around **assets as the central abstraction**:
 
 ---
 
+## 🎨 Common Patterns
+
+PixSim7 uses consistent architectural patterns across frontend and backend:
+
+### 1. **Abstract Provider Pattern**
+
+**Backend:** `pixsim7/backend/main/services/provider/base.py`
+```python
+class Provider(ABC):
+    @abstractmethod
+    async def execute(operation_type, account, params) -> GenerationResult
+    @abstractmethod
+    async def check_status(account, provider_job_id) -> VideoStatusResult
+```
+
+**Game Engine:** `packages/game/engine/src/generation/requestBuilder.ts`
+```typescript
+interface GenerationService {
+  generate(request: GenerateContentRequest): Promise<GenerationJob>
+  getJobStatus(jobId: string): Promise<JobStatus>
+}
+```
+
+**Usage:** Abstracts provider implementations (Pixverse, Sora) behind interfaces for swappable backends.
+
+### 2. **Registry Pattern**
+
+**Backend:** `pixsim7/backend/main/services/provider/registry.py`
+- Singleton `ProviderRegistry` with `register()`, `get()`, `list()` methods
+- Auto-discovery of provider plugins
+
+**Frontend:**
+- `cubeRegistry` (`apps/main/src/plugins/ui/cube-system-v2/cubeRegistry.ts`)
+- `controlCenterModuleRegistry` (`apps/main/src/lib/control/controlCenterModuleRegistry.ts`)
+- `panelRegistry`, `widgetRegistry` (extensibility system)
+
+**Usage:** Dynamic registration/lookup of plugins, providers, UI components.
+
+### 3. **Service Facade Pattern**
+
+**Backend:** `pixsim7/backend/main/services/generation/generation_service.py`
+```python
+class GenerationService:
+    def __init__(self, db, user_service):
+        self._creation = GenerationCreationService(db, user_service)
+        self._lifecycle = GenerationLifecycleService(db)
+        self._query = GenerationQueryService(db)
+        self._retry = GenerationRetryService(db, self._creation)
+```
+
+**Usage:** Single entry point delegates to focused services (creation, lifecycle, query, retry).
+
+### 4. **Context Provider Pattern** (Frontend)
+
+**Example:** `apps/main/src/lib/devtools/devToolContext.tsx`
+```typescript
+export function DevToolProvider({ children }) {
+  return <DevToolContext.Provider value={value}>{children}</DevToolContext.Provider>
+}
+export function useDevToolContext(): DevToolContextValue
+```
+
+**Usage:** Dependency injection via React context for shared services.
+
+### 5. **Hook-Based Controllers** (Frontend)
+
+**Examples:**
+- `useAssetsController` - Gallery route business logic
+- `useGallerySurfaceController` - Reusable gallery surface logic
+- `useMediaGenerationActions` - Generation action orchestration
+
+**Usage:** Extract component logic into reusable, testable hooks following React patterns.
+
+---
+
 ## 🔧 Technology Stack
 
 ### **Backend**
