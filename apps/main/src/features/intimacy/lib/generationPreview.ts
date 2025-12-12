@@ -18,7 +18,7 @@ import type {
 import type { SimulatedRelationshipState } from './gateChecking';
 import { deriveSocialContext } from './socialContextDerivation';
 import { createGeneration, getGeneration, type GenerationResponse } from '../api/generations';
-import { normalizeProviderParams } from '@/lib/generation/normalizeProviderParams';
+import { normalizeProviderParams } from '@features/generation/normalizeProviderParams';
 
 /**
  * Preview generation request for intimacy scenes

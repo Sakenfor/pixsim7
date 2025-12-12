@@ -7,7 +7,7 @@
  */
 import { useMemo } from 'react';
 import { useGenerationsStore, generationsSelectors, isGenerationActive } from '../stores/generationsStore';
-import { mapAssetToGeneration } from '@/lib/generation/generationAssetMapping';
+import { mapAssetToGeneration } from '@features/generation/generationAssetMapping';
 import { createGenerationStatusWidget } from '@/components/media/mediaCardWidgets';
 import type { MediaCardProps } from '@/components/media/MediaCard';
 import type { OverlayWidget } from '@/lib/overlay';

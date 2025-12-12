@@ -4,8 +4,8 @@ import {
   useTemplateAnalyticsStore,
   type TemplateUsageStats,
   type RefactoringHint,
-} from '@/lib/graph/templateAnalyticsStore';
-import { useTemplateStore } from '@/lib/graph/templatesStore';
+} from '@features/graph' // templateAnalyticsStore';
+import { useTemplateStore } from '@features/graph' // templatesStore';
 
 /**
  * TemplateAnalyticsPanel - Live visualization of template usage analytics

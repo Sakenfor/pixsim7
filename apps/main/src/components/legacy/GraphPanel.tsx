@@ -27,12 +27,12 @@ import { EdgeEffectsPanel } from '../panels/tools/EdgeEffectsPanel';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 import { nodeTypeRegistry } from '@/lib/registries';
 import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
-import { useTemplateStore } from '@/lib/graph/templatesStore';
-import { captureTemplate, applyTemplate } from '@/lib/graph/graphTemplates';
-import type { GraphTemplate } from '@/lib/graph/graphTemplates';
+import { useTemplateStore } from '@features/graph' // templatesStore';
+import { captureTemplate, applyTemplate } from '@features/graph' // graphTemplates';
+import type { GraphTemplate } from '@features/graph' // graphTemplates';
 import { useWorldContextStore } from '@/stores/worldContextStore';
-import { useTemplateAnalyticsStore } from '@/lib/graph/templateAnalyticsStore';
-import { graphClipboard } from '@/lib/graph/clipboard';
+import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
+import { graphClipboard } from '@features/graph' // clipboard';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {

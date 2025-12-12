@@ -83,3 +83,5 @@ export {
   getActionTestStatus,
   type ActionTestStatus,
 } from './components/actionUtils';
+// Lib - Automation Core
+export * from './lib/core';

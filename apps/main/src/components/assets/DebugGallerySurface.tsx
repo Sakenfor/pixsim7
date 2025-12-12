@@ -5,8 +5,8 @@
  */
 
 import { useState } from 'react';
-import { gallerySurfaceRegistry } from '@/lib/gallery/surfaceRegistry';
-import { galleryToolRegistry } from '@/lib/gallery/types';
+import { gallerySurfaceRegistry } from '@features/gallery/surfaceRegistry';
+import { galleryToolRegistry } from '@features/gallery/types';
 import { useAssets } from '@/hooks/useAssets';
 
 export function DebugGallerySurface() {

@@ -1,4 +1,4 @@
-import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@/lib/registries';
 import type { MilestoneNodeData } from '@/modules/arc-graph';
 

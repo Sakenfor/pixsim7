@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DeviceCard } from './DeviceCard';
-import { automationService } from '@/lib/automation/automationService';
+import { automationService } from '@features/automation/automationService';
 import { type AndroidDevice, DeviceStatus } from '../types';
 import { logEvent } from '@/lib/logging';
 

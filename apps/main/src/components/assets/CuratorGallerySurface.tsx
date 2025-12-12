@@ -12,7 +12,7 @@
 import { MediaCard } from '../media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
 import { useCuratorGalleryController } from '@features/gallery';
-import type { GalleryAsset } from '@/lib/gallery/types';
+import type { GalleryAsset } from '@features/gallery/types';
 
 export function CuratorGallerySurface() {
   const controller = useCuratorGalleryController();

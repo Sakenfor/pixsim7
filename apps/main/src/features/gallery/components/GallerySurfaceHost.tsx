@@ -5,7 +5,7 @@
  */
 
 import { useMemo, useEffect } from 'react';
-import { gallerySurfaceRegistry, type GallerySurfaceId } from '@/lib/gallery/surfaceRegistry';
+import { gallerySurfaceRegistry, type GallerySurfaceId } from '../lib/core/surfaceRegistry';
 import { logEvent } from '@/lib/logging';
 
 interface GallerySurfaceHostProps {

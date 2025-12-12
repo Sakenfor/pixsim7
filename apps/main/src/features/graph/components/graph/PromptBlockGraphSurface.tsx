@@ -22,7 +22,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { PromptSegment } from '@/types/promptGraphs';
-import { buildPromptSegmentGraph, getNodeColorByRole, getEdgeStyle } from '@/lib/graphs/promptGraphBuilder';
+import { buildPromptSegmentGraph, getNodeColorByRole, getEdgeStyle } from '../../lib/builders/promptGraphBuilder';
 import { Handle, Position } from 'reactflow';
 
 export interface PromptBlockGraphSurfaceProps {

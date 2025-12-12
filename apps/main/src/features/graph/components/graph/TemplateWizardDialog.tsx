@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import type { TemplateWizard, WizardField, WizardValues } from '@/lib/graph/templateWizards';
+import type { TemplateWizard, WizardField, WizardValues } from '../../lib/editor/templateWizards';
 
 interface TemplateWizardDialogProps {
   wizard: TemplateWizard;

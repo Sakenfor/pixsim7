@@ -6,7 +6,7 @@
  * Visual selector for HUD regions (top, bottom, left, right, center)
  */
 
-import type { HudRegionId, WorldHudLayout } from '@/lib/hud/types';
+import type { HudRegionId, WorldHudLayout } from '@features/hud/types';
 
 export interface HudRegionSelectorProps {
   selectedRegion: HudRegionId;

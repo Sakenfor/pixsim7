@@ -6,7 +6,7 @@
 
 import type { BrainToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { getMemories, hasDerived, type BrainMemory } from '@/lib/core/types';
+import { getMemories, hasDerived, type BrainMemory } from '@lib/core';
 
 export const memoriesTool: BrainToolPlugin = {
   id: 'npc-memories',

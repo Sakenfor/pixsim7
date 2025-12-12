@@ -1,4 +1,4 @@
-import type { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
+import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Intimacy Generation Node Renderer

@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { useTemplateStore } from '@/lib/graph/templatesStore';
+import { useTemplateStore } from '../../lib/editor/templatesStore';
 import {
   validateTemplate,
   validatePreconditions,
   downloadTemplatePack,
   importTemplatePack,
   type TemplateCategory,
-} from '@/lib/graph/graphTemplates';
-import type { GraphTemplate } from '@/lib/graph/graphTemplates';
+} from '../../lib/editor/graphTemplates';
+import type { GraphTemplate } from '../../lib/editor/graphTemplates';
 import type { DraftScene } from '@/modules/scene-builder';
 
 // Available categories for filtering

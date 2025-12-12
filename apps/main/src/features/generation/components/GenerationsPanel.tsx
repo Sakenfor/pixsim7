@@ -9,7 +9,7 @@ import { useGenerationsStore, isGenerationActive } from '../stores/generationsSt
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
 import { Icons, ThemedIcon } from '@/lib/icons';
-import { getGenerationStatusDisplay } from '@/lib/generation/generationAssetMapping';
+import { getGenerationStatusDisplay } from '@features/generation/generationAssetMapping';
 
 type StatusFilter = 'all' | 'active' | 'failed' | 'completed';
 type ProviderFilter = 'all' | string;

@@ -13,8 +13,8 @@ import { HudRegionSelector } from './HudRegionSelector';
 import { HudRegionCanvas } from './HudRegionCanvas';
 import { HudWidgetLibrary } from './HudWidgetLibrary';
 import { HudLayoutManager } from './HudLayoutManager';
-import type { HudRegionId, HudRegionLayout } from '@/lib/hud/types';
-import type { WorldHudLayout } from '@/lib/hud/types';
+import type { HudRegionId, HudRegionLayout } from '@features/hud/types';
+import type { WorldHudLayout } from '@features/hud/types';
 
 export interface HudLayoutBuilderProps {
   worldId: number | string;

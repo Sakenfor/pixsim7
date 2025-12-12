@@ -25,11 +25,9 @@ import {
   SECONDS_PER_DAY,
 } from '@pixsim7/game.engine';
 import { useGameRuntime, useActorPresence } from '@/lib/game/runtime';
-import { WorldToolsPanel } from '@features/worldTools';
+import { WorldToolsPanel, worldToolRegistry, type WorldToolContext } from '@features/worldTools';
 import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
-import { worldToolRegistry } from '@features/worldTools/lib/registry';
 import { brainToolRegistry } from '@features/brainTools/lib/registry';
-import type { WorldToolContext } from '@features/worldTools/lib/types';
 import type { BrainToolContext } from '@features/brainTools/lib/types';
 import {
   loadScenarios,
@@ -37,7 +35,7 @@ import {
   deleteScenario,
   createDefaultScenario,
   type SimulationScenario,
-} from '@/lib/simulation/scenarios';
+} from '@features/simulation/scenarios';
 import {
   gameHooksRegistry,
   registerBuiltinGamePlugins,
@@ -51,7 +49,7 @@ import {
   unregisterBuiltinHooks,
   registerExamplePlugins as registerLegacyExamplePlugins,
   unregisterExamplePlugins as unregisterLegacyExamplePlugins,
-} from '@/lib/simulation/hooks';
+} from '@features/simulation/hooks';
 import {
   createHistory,
   addSnapshot,
@@ -62,7 +60,7 @@ import {
   goToSnapshot,
   type SimulationHistory,
   type SimulationSnapshot,
-} from '@/lib/simulation/history';
+} from '@features/simulation/history';
 import { LocationPresenceMap } from './LocationPresenceMap';
 import { TimelineScrubber } from './TimelineScrubber';
 import { ScenarioComparison } from './ScenarioComparison';
@@ -76,8 +74,8 @@ import {
   saveSimulationRun,
   deleteSavedRun,
   type SavedSimulationRun,
-} from '@/lib/simulation/multiRunStorage';
-import type { ConstraintEvaluationContext } from '@/lib/simulation/constraints';
+} from '@features/simulation/multiRunStorage';
+import type { ConstraintEvaluationContext } from '@features/simulation/constraints';
 import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,

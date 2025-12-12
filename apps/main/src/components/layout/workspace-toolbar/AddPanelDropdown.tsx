@@ -1,7 +1,7 @@
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
 import { Icon } from '@/lib/icons';
-import { panelRegistry } from '@/lib/panels/panelRegistry';
-import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/panels/panelConstants';
+import { panelRegistry } from '@lib/panels';
+import { CATEGORY_LABELS, CATEGORY_ORDER } from '@lib/panels';
 
 interface AddPanelDropdownProps {
   onRestorePanel: (panelId: PanelId) => void;

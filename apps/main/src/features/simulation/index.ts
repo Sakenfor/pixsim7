@@ -40,3 +40,5 @@ export { MultiRunComparison } from './components/MultiRunComparison';
 
 export { ConstraintRunner } from './components/ConstraintRunner';
 export { SimulationPluginsPanel } from './components/SimulationPluginsPanel';
+// Lib - Simulation Core
+export * from './lib/core';

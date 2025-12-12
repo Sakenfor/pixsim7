@@ -7,8 +7,8 @@
  */
 
 import { useMemo } from 'react';
-import { graphEditorRegistry } from '@/lib/graph/editorRegistry';
-import type { GraphEditorId } from '@/lib/graph/types';
+import { graphEditorRegistry } from '../../lib/editor/editorRegistry';
+import type { GraphEditorId } from '../../lib/editor/types';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 

@@ -29,7 +29,7 @@ import {
   getNodeColorByComplexity,
   getCompositeNodeStyle,
   getActionEdgeStyle,
-} from '@/lib/graphs/actionGraphBuilder';
+} from '../../lib/builders/actionGraphBuilder';
 import { Handle, Position } from 'reactflow';
 
 export interface ActionBlockGraphSurfaceProps {

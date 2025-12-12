@@ -11,7 +11,7 @@ import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { pluginCatalog } from '@/lib/plugins/pluginSystem';
 import { mediaCardPresets } from '@/lib/overlay';
-import { deriveOverlayPresetIdFromBadgeConfig } from '@/lib/gallery/badgeConfigMerge';
+import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/badgeConfigMerge';
 
 type ViewMode = 'grid' | 'list';
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';

@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps } from 'reactflow';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { getNodePorts, getPortPosition } from '@/modules/scene-builder/portConfig';
 import { validateScene } from '@/modules/scene-builder/validation';
-import { nodeRendererRegistry } from '@/lib/graph/nodeRendererRegistry';
+import { nodeRendererRegistry } from '../../lib/editor/nodeRendererRegistry';
 
 import type { DraftSceneNode } from '@/modules/scene-builder';
 

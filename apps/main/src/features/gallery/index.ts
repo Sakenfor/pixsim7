@@ -47,3 +47,10 @@ export {
   type CuratorViewMode,
   type CuratorGalleryController,
 } from './hooks/useCuratorGalleryController';
+
+// ============================================================================
+// Lib - Gallery System
+// ============================================================================
+
+// Re-export from lib/core (former lib/gallery)
+export * from './lib/core';

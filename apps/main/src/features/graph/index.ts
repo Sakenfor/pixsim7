@@ -63,3 +63,18 @@ export type { ArcGraphState } from './stores/arcGraphStore';
 
 // Hooks
 export { useLineageGraph } from './hooks/useLineageGraph';
+
+// Lib - Editor Registry & Renderers
+export {
+  editorRegistry,
+  type GraphEditorDefinition,
+} from './lib/editor/editorRegistry';
+export {
+  nodeRendererRegistry,
+  type NodeRendererDefinition,
+} from './lib/editor/nodeRendererRegistry';
+export * from './lib/editor/types';
+
+// Lib - Graph Builders
+export * from './lib/builders/actionGraphBuilder';
+export * from './lib/builders/promptGraphBuilder';

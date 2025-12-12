@@ -14,7 +14,7 @@ import { MediaCard } from '../media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import type { GalleryAsset } from '@/lib/gallery/types';
+import type { GalleryAsset } from '@features/gallery/types';
 
 export function ReviewGallerySurface() {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);

@@ -6,14 +6,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { BrainState } from '@/lib/core/types';
+import type { BrainState } from '@lib/core';
+import { getLogicStrategies, getInstincts, getMemories } from '@lib/core';
 import { BrainFace, brainShape } from '@pixsim7/scene.shapes';
 import './BrainShape.css';
-
-// Helper functions to extract values from BrainState
-const getLogicStrategies = (brain: BrainState): string[] => brain.derived?.logic_strategies as string[] || [];
-const getInstincts = (brain: BrainState): string[] => brain.derived?.instincts as string[] || [];
-const getMemories = (brain: BrainState): unknown[] => brain.derived?.memories as unknown[] || [];
 
 export interface BrainShapeProps {
   npcId: number;

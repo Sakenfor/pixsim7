@@ -5,7 +5,7 @@
  * Shows stages, current progress, and affinity requirements.
  */
 
-import type { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
+import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import type { SeductionNodeData, SeductionStage } from '@/lib/plugins/seductionNode';
 
 /**

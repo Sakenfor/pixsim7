@@ -1,6 +1,6 @@
 import type { SelectedAsset } from '@/stores/assetSelectionStore';
 import type { QueuedAsset } from '@features/generation';
-import { normalizeProviderParams } from '@/lib/generation/normalizeProviderParams';
+import { normalizeProviderParams } from '@features/generation/normalizeProviderParams';
 import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility
