@@ -4,4 +4,4 @@
  * Asset actions and utilities
  */
 
-export * from './assetActions';
+export * from './assetCardActions';

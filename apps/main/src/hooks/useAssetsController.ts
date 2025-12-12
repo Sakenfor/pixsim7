@@ -10,7 +10,7 @@ import { extractErrorMessage } from '../lib/api/errorHandling';
 import { useFilterPersistence } from './useFilterPersistence';
 import { useSelection } from './useSelection';
 import { useViewer } from './useViewer';
-import { createAssetActions } from '../lib/assets/assetActions';
+import { createAssetActions } from '../lib/assets/assetCardActions';
 
 const SESSION_KEY = 'assets_filters';
 
