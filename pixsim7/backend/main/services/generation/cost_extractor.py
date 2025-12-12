@@ -16,6 +16,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Stub for legacy USD pricing fallback (deprecated - use pixverse_pricing helpers instead)
+PROVIDER_PRICING: dict[str, dict[str, float]] = {}
+
+
 class CostExtractor:
     """
     Extract cost data from Generation billing fields.
