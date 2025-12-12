@@ -8,7 +8,7 @@
 > **What Exists Today:**
 > - Game components directly import from `features/generation/`
 > - Backend endpoints: `POST /api/v1/generations`, `GET /api/v1/jobs/:id`
-> - No `IAssetProvider` abstraction or `packages/shared/contracts/`
+> - No `IAssetProvider` abstraction (though `packages/shared/types/` exists for other shared types)
 >
 > **Implementation Status:** See [Migration Plan](#-migration-plan) for phases.
 
@@ -69,9 +69,9 @@ apps/main/src/
 │           ├── GeneratedAssetProvider.ts  # Wraps /generations API
 │           ├── PreMadeAssetProvider.ts    # Wraps /assets API
 │           └── CachedAssetProvider.ts
-└── packages/shared/
-    └── contracts/                 # 🆕 Shared interfaces
-        └── IAssetProvider.ts
+
+packages/shared/types/src/         # ✅ Already exists
+└── assetProvider.ts               # 🆕 Add IAssetProvider interface
 
 (features/game/ and features/generation/ stay unchanged)
 ```
@@ -96,6 +96,109 @@ const asset = await assetProvider.requestAsset({
 ```
 
 **Key Difference:** Game code doesn't change when we add caching, switch providers, or change generation strategy.
+
+---
+
+## 🏗️ Building on Existing Patterns
+
+**Good News:** This proposal isn't starting from zero. PixSim7 already has several architectural patterns we can leverage:
+
+### 1. Backend Provider Abstraction (Template for Frontend)
+
+**What Exists:** `pixsim7/backend/main/services/provider/base.py`
+
+The backend already has a clean provider abstraction pattern:
+
+```python
+class Provider(ABC):
+    @abstractmethod
+    async def execute(operation_type, account, params) -> GenerationResult:
+        """Execute generation operation"""
+        pass
+
+    @abstractmethod
+    async def check_status(account, provider_job_id) -> VideoStatusResult:
+        """Check generation job status"""
+        pass
+
+    async def upload_asset(account, file_path) -> str:
+        """Optional: Upload asset to provider"""
+        pass
+
+    def get_operation_parameter_spec() -> dict:
+        """Get operation parameters schema"""
+        pass
+```
+
+**Registry Pattern:** `pixsim7/backend/main/services/provider/registry.py`
+- Singleton `ProviderRegistry` with `register()`, `get()`, `list()` methods
+- Auto-discovery of provider plugins
+- Clean separation between interface and implementation
+
+**How This Helps:** The proposed `IAssetProvider` interface mirrors this proven pattern. We can use the same registry approach for `AssetService`.
+
+### 2. Game Engine Already Uses Abstraction
+
+**What Exists:** `packages/game/engine/src/generation/requestBuilder.ts`
+
+The game engine already defines a `GenerationService` interface (lines 297-336):
+
+```typescript
+interface GenerationService {
+  generate(request: GenerateContentRequest): Promise<GenerationJob>;
+  getJobStatus(jobId: string): Promise<JobStatus>;
+  cancelJob(jobId: string): Promise<void>;
+}
+```
+
+**Integration:** `packages/game/engine/src/narrative/generationIntegration.ts`
+- `GenerationBridge` class coordinates pool vs. generation
+- Narrative executor depends on the interface, not implementation
+- Hook-based integration with game systems
+
+**How This Helps:** This proves the abstraction pattern works! The proposal extends this to the frontend app layer, where components currently bypass the abstraction and directly import from `features/generation/`.
+
+### 3. Shared Types Infrastructure
+
+**What Exists:** `packages/shared/types/src/`
+- `generation.ts` - Generation types (GenerationNodeConfig, GenerateContentRequest, etc.)
+- `game.ts`, `interactions.ts`, `brain.ts` - Core game types
+- `index.ts` - Central export barrel
+
+**How This Helps:** We can add `IAssetProvider` interface alongside existing shared types. No need to create a separate `packages/shared/contracts/` - just extend the existing `packages/shared/types/`.
+
+### 4. Context Provider Pattern
+
+**What Exists:** `apps/main/src/lib/devtools/devToolContext.tsx`
+
+```typescript
+export function DevToolProvider({ children }) {
+  return <DevToolContext.Provider value={value}>{children}</DevToolContext.Provider>;
+}
+
+export function useDevToolContext(): DevToolContextValue {
+  // ...
+}
+```
+
+**How This Helps:** The proposed `AssetProviderContext` follows the exact same pattern. We know this works well in the codebase.
+
+### 5. Backend Service Facade Pattern
+
+**What Exists:** `pixsim7/backend/main/services/generation/generation_service.py`
+
+```python
+class GenerationService:
+    def __init__(self, db, user_service):
+        self._creation = GenerationCreationService(db, user_service)
+        self._lifecycle = GenerationLifecycleService(db)
+        self._query = GenerationQueryService(db)
+        self._retry = GenerationRetryService(db, self._creation)
+```
+
+Clean facade that delegates to focused services (creation, lifecycle, query, retry).
+
+**How This Helps:** The proposed `AssetService` facade follows this proven pattern - coordinating `GeneratedAssetProvider`, `PreMadeAssetProvider`, and `CachedAssetProvider`.
 
 ---
 
@@ -578,7 +681,7 @@ apps/main/src/
 ```typescript
 // ✅ ALLOWED
 features/game/ → lib/assets/AssetProviderContext (abstraction)
-features/game/ → packages/shared/contracts (interfaces)
+features/game/ → packages/shared/types (interfaces)
 
 // ❌ NOT ALLOWED
 features/game/ → features/generation/ (direct coupling)
@@ -808,13 +911,16 @@ export function setupPredictiveGeneration(
 
 **New directories to create:**
 ```
-packages/shared/contracts/    # 🆕 Shared TypeScript interfaces
 apps/main/src/lib/assets/     # 🆕 Asset abstraction layer
 ```
 
+**Extend existing:**
+```
+packages/shared/types/src/    # ✅ Already exists - add IAssetProvider.ts here
+```
+
 **Tasks:**
-- [ ] Create `packages/shared/` monorepo package
-- [ ] Define `IAssetProvider` interface in `packages/shared/contracts/IAssetProvider.ts`
+- [ ] Define `IAssetProvider` interface in `packages/shared/types/src/assetProvider.ts`
 - [ ] Create `apps/main/src/lib/assets/` directory
 - [ ] Create `AssetService` facade in `lib/assets/AssetService.ts`
 - [ ] Implement `PreMadeAssetProvider` (wraps existing `GET /api/v1/assets/:id`)
