@@ -1,7 +1,7 @@
 // Simple web logger posting to backend ingestion API (batched).
 // Usage: import { initWebLogger, logEvent } from '@/lib/logging'; initWebLogger('frontend');
 
-import { API_BASE_URL } from './api/client';
+import { API_BASE_URL } from '../api/client';
 
 const getBackendUrl = (): string | undefined => {
   return API_BASE_URL;

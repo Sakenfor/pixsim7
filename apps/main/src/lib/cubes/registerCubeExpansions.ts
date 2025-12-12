@@ -1,6 +1,6 @@
 import { cubeExpansionRegistry } from './cubeExpansionRegistry';
-import { HealthCubeExpansion } from '../components/health/HealthCubeExpansion';
-import { GalleryCubeExpansion } from '../components/assets/GalleryCubeExpansion';
+import { HealthCubeExpansion } from '../../components/health/HealthCubeExpansion';
+import { GalleryCubeExpansion } from '../../components/assets/GalleryCubeExpansion';
 import { GraphCubeExpansion } from '@features/graph';
 
 /**

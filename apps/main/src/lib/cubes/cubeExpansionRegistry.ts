@@ -1,6 +1,6 @@
 import { ComponentType } from 'react';
-import type { PanelId } from '../stores/workspaceStore';
-import type { CubeType } from '../stores/controlCubeStore';
+import type { PanelId } from '../../stores/workspaceStore';
+import type { CubeType } from '../../stores/controlCubeStore';
 
 /**
  * Types of expansions that cubes can show

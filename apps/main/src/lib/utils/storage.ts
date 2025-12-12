@@ -1,5 +1,5 @@
 import type { StateStorage } from 'zustand/middleware';
-import { getUserPreferences, updatePreferenceKey } from './api/userPreferences';
+import { getUserPreferences, updatePreferenceKey } from '../api/userPreferences';
 import { debugFlags } from './debugFlags';
 
 /**

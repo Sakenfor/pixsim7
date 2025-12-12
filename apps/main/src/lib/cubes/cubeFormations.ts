@@ -1,4 +1,4 @@
-import type { CubePosition } from '../stores/controlCubeStore';
+import type { CubePosition } from '../../stores/controlCubeStore';
 
 /**
  * Formation patterns for cube arrangements
