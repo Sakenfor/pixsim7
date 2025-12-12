@@ -8,7 +8,7 @@ import { useQuickGenerateController } from '@features/prompts';
 import { CompactAssetCard } from './CompactAssetCard';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@/lib/icons';
-import { estimatePixverseCost } from '@/lib/api/pixverseCost';
+import { estimatePixverseCost } from '@features/providers';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {

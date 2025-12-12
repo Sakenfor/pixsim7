@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { Modal, Button } from '@pixsim7/shared.ui';
-import type { ProviderAccount } from '@/hooks/useProviderAccounts';
+import type { ProviderAccount } from '../hooks/useProviderAccounts';
 
 interface DeleteConfirmModalProps {
   account: ProviderAccount;

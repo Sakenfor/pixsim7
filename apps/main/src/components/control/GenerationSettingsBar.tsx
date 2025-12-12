@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import type { ParamSpec } from './DynamicParamForm';
-import { useCostHints } from '@/lib/providers/hooks';
-import { estimatePixverseCost } from '@/lib/api/pixverseCost';
+import { useCostHints } from '@features/providers/hooks';
+import { estimatePixverseCost } from '@features/providers';
 
 /**
  * Provider option for the provider selector dropdown.

@@ -1,4 +1,4 @@
-import type { ProviderAccount } from '@/hooks/useProviderAccounts';
+import type { ProviderAccount } from '../hooks/useProviderAccounts';
 
 interface CompactAccountCardProps {
   account: ProviderAccount;

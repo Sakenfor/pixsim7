@@ -10,9 +10,9 @@
 
 import { useState, useEffect } from 'react';
 import { Modal, FormField, Input, Button, useToast } from '@pixsim7/shared.ui';
-import type { ProviderAccount } from '@/hooks/useProviderAccounts';
-import type { UpdateAccountRequest } from '@/lib/api/accounts';
-import { connectPixverseWithGoogle } from '@/lib/api/accounts';
+import type { ProviderAccount } from '../hooks/useProviderAccounts';
+import type { UpdateAccountRequest } from '../lib/api/accounts';
+import { connectPixverseWithGoogle } from '../lib/api/accounts';
 
 /** Form state for editing an account */
 export interface EditAccountFormState {

@@ -5,7 +5,7 @@
  * Import this module early in your app to ensure plugins are available.
  */
 
-import { generationUIPluginRegistry } from '../generationPlugins';
+import { generationUIPluginRegistry } from '../core/generationPlugins';
 import { pixversePlugin } from './PixversePlugin';
 import { soraPlugin } from './SoraPlugin';
 

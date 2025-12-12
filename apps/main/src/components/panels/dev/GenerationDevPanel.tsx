@@ -21,7 +21,7 @@
 
 import { useState, useEffect } from 'react';
 import { PromptSegmentsViewer, usePromptInspection, usePromptAiEdit } from '@features/prompts';
-import { useAiProviders } from '@/hooks/useAiProviders';
+import { useAiProviders } from '@features/providers';
 import { useGenerationDevController } from '@features/generation';
 
 interface GenerationDevPanelProps {

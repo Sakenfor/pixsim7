@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
 import { X, Plus } from 'lucide-react';
-import { useProviderSpecs } from '@/hooks/useProviderSpecs';
+import { useProviderSpecs } from '@features/providers';
 import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 import { AssetCard } from './preset-operator/AssetCard';
 import { Timeline } from './preset-operator/Timeline';

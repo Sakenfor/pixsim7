@@ -6,8 +6,8 @@
 
 import { useState } from 'react';
 import { useToast } from '@pixsim7/shared.ui';
-import type { ProviderAccount } from '@/hooks/useProviderAccounts';
-import { dryRunPixverseSync } from '@/lib/api/accounts';
+import type { ProviderAccount } from '../hooks/useProviderAccounts';
+import { dryRunPixverseSync } from '../lib/api/accounts';
 
 /** Status color mapping */
 const STATUS_COLORS: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useProviders } from '@/hooks/useProviders';
+import { useProviders } from '@features/providers';
 import { useAssetsController } from '@features/assetssController';
 import { useAssetViewer } from '@features/assetsViewer';
 import { MediaCard } from '../media/MediaCard';

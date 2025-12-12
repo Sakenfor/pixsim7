@@ -3,8 +3,8 @@ import { type AppActionPreset, type ActionDefinition, type PresetVariable, type 
 import { Button, Panel, Modal, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';
-import { getAccounts } from '@/lib/api/accounts';
-import type { ProviderAccount } from '@/hooks/useProviderAccounts';
+import { getAccounts } from '@features/providers';
+import type { ProviderAccount } from '@features/providers';
 import { automationService } from '@features/automation/automationService';
 import { API_BASE_URL } from '@/lib/api/client';
 

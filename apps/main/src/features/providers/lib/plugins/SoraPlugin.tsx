@@ -4,8 +4,8 @@
  * Provides Sora-specific UI controls and validation for generation operations.
  */
 
-import { defineGenerationUIPlugin } from '../generationPlugins';
-import type { GenerationUIPluginProps } from '../generationPlugins';
+import { defineGenerationUIPlugin } from '../core/generationPlugins';
+import type { GenerationUIPluginProps } from '../core/generationPlugins';
 
 /**
  * Sora-specific controls component

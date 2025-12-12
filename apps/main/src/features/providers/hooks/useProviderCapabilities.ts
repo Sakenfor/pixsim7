@@ -3,8 +3,8 @@
  */
 
 import { useEffect, useState, useMemo } from 'react';
-import { providerCapabilityRegistry } from './capabilityRegistry';
-import type { ProviderCapability, ProviderLimits, CostHints } from './types';
+import { providerCapabilityRegistry } from '../lib/core/capabilityRegistry';
+import type { ProviderCapability, ProviderLimits, CostHints } from '../lib/core/types';
 
 /**
  * Hook to get all provider capabilities

@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
-import { useProviders } from '@/hooks/useProviders';
+import { useProviders } from '@features/providers';
 import { useAssetViewer } from '@features/assetsViewer';
 import { TreeFolderView } from './TreeFolderView';
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '../media/AssetGallery';

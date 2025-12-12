@@ -3,8 +3,8 @@
  */
 
 import { useMemo } from 'react';
-import { generationUIPluginRegistry } from './generationPlugins';
-import type { GenerationUIPlugin, GenerationUIPluginProps, ValidationResult } from './generationPlugins';
+import { generationUIPluginRegistry } from '../lib/core/generationPlugins';
+import type { GenerationUIPlugin, GenerationUIPluginProps, ValidationResult } from '../lib/core/generationPlugins';
 
 /**
  * Hook to get plugins for a provider and operation

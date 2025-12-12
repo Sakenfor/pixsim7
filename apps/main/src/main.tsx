@@ -5,7 +5,7 @@ import App from './App.tsx'
 import { initWebLogger, logEvent } from './lib/utils/logging'
 import { registerBuiltInMiniGames } from '@pixsim7/game.components'
 import { registerFrontendMiniGames } from './components/minigames/registry'
-import './lib/providers/plugins' // Register provider generation UI plugins
+import '@features/providers/lib/plugins' // Register provider generation UI plugins
 import { registerDevTools } from './lib/devtools/registerDevTools'
 import { registerGallerySurfaces } from './features/gallery/lib/core/registerGallerySurfaces'
 import { registerGalleryTools } from './features/gallery/lib/core/registerGalleryTools'

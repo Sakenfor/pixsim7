@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { type AppActionPreset } from '../types';
 import { automationService } from '@features/automation/automationService';
-import { getAccounts } from '@/lib/api/accounts';
+import { getAccounts } from '@features/providers';
 import { Button, Panel, ConfirmModal, Modal, Select, useToast } from '@pixsim7/shared.ui';
 import { PresetCard } from './PresetCard';
 import { PresetForm } from './PresetForm';

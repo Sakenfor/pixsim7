@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Button, FormField, Input, useToast } from '@pixsim7/shared.ui';
-import { useProviderCapacity } from '@/hooks/useProviderAccounts';
-import { useProviders } from '@/hooks/useProviders';
-import type { ProviderAccount } from '@/hooks/useProviderAccounts';
-import { deleteAccount, toggleAccountStatus, updateAccount } from '@/lib/api/accounts';
-import type { UpdateAccountRequest } from '@/lib/api/accounts';
+import { useProviderCapacity } from '../hooks/useProviderAccounts';
+import { useProviders } from '../hooks/useProviders';
+import type { ProviderAccount } from '../hooks/useProviderAccounts';
+import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
+import type { UpdateAccountRequest } from '../lib/api/accounts';
 import { apiClient } from '@/lib/api/client';
 import { EditAccountModal } from './EditAccountModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -14,7 +14,7 @@ import {
   syncPixverseAssets,
   refreshAssetLineage,
   type SyncDryRunResponse,
-} from '@/lib/api/pixverseSync';
+} from '../lib/api/pixverseSync';
 
 interface ProviderSettings {
   provider_id: string;

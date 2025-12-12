@@ -1,5 +1,5 @@
-import { useProviderCapacity } from '@/hooks/useProviderAccounts';
-import { useProviders } from '@/hooks/useProviders';
+import { useProviderCapacity } from '../hooks/useProviderAccounts';
+import { useProviders } from '../hooks/useProviders';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 
 export function ProviderOverviewModule() {
