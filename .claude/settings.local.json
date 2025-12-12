@@ -34,7 +34,22 @@
       "Bash(PYTHONPATH=. python:*)",
       "Bash(git restore:*)",
       "Bash(grep:*)",
-      "Bash(xargs sed -i \"s|from ''@/types''|from ''@/lib/registries''|g\")"
+      "Bash(xargs sed -i \"s|from ''@/types''|from ''@/lib/registries''|g\")",
+      "Bash(npm ls)",
+      "Bash(while read dir)",
+      "Bash(then echo \"$dir\")",
+      "Bash(fi)",
+      "Bash(powershell -Command \"New-Item -ItemType Directory -Force -Path ''C:\\Users\\Stefan\\.claude\\plans''\")",
+      "Bash(chmod:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(xargs sed:*)",
+      "Bash(then echo \"❌ $dir%/ - No barrel\")",
+      "Bash(else echo \"✅ $dir%/ - Has barrel\")",
+      "Bash(if [ -f \"$dirName/index.ts\" ])",
+      "Bash(then echo \"✅ $dirName\")",
+      "Bash(else echo \"❌ $dirName\")",
+      "Bash(then echo \"✅ $dir\")",
+      "Bash(else echo \"❌ $dir\")"
     ],
     "deny": [],
     "ask": []
