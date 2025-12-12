@@ -4,7 +4,7 @@
  * Wrapper for PanelConfigurationPanel to register it in the settings registry.
  */
 import { PanelConfigurationPanel } from '../PanelConfigurationPanel';
-import { settingsRegistry } from '@/lib/settingsRegistry';
+import { settingsRegistry } from '../../lib/core/registry';
 
 export function PanelsSettings() {
   return <PanelConfigurationPanel />;

@@ -4,9 +4,9 @@
  * Visual and interaction settings for the application UI.
  * Uses schema-driven settings system with auto-registration.
  */
-import { settingsRegistry } from '@/lib/settingsRegistry';
-import { DynamicSettingsPanel } from '@/lib/settings';
-import { registerUISettings } from '@/lib/settings/ui.settings.js';
+import { settingsRegistry } from '../../lib/core/registry';
+import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
+import { registerUISettings } from '../../lib/schemas/ui.settings';
 
 // Auto-register schema-based settings when module loads
 registerUISettings();

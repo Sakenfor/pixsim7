@@ -9,7 +9,7 @@ import { CubeSettingsPanel } from '../../control/CubeSettingsPanel';
 import { useCubeSettingsStore, type LinkingGesture } from '@/stores/cubeSettingsStore';
 import { panelActionRegistry } from '@/lib/panelActions';
 import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
-import { settingsRegistry } from '@/lib/settingsRegistry';
+import { settingsRegistry } from '../../lib/core/registry';
 
 export function GeneralSettings() {
   const [showCubeSettings, setShowCubeSettings] = useState(false);

@@ -4,9 +4,9 @@
  * Configure prompt analysis, block extraction, and curation workflows.
  * Uses schema-driven settings system with auto-registration.
  */
-import { settingsRegistry } from '@/lib/settingsRegistry';
-import { DynamicSettingsPanel } from '@/lib/settings';
-import { registerPromptSettings } from '@/lib/settings/prompts.settings';
+import { settingsRegistry } from '../../lib/core/registry';
+import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
+import { registerPromptSettings } from '../../lib/schemas/prompts.settings';
 
 // Auto-register schema-based settings when module loads
 registerPromptSettings();

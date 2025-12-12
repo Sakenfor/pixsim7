@@ -4,7 +4,7 @@
  * Wrapper for WorkspaceProfileManager to register it in the settings registry.
  */
 import { WorkspaceProfileManager } from '../WorkspaceProfileManager';
-import { settingsRegistry } from '@/lib/settingsRegistry';
+import { settingsRegistry } from '../../lib/core/registry';
 
 export function ProfilesSettings() {
   return <WorkspaceProfileManager />;

@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { debugFlags } from '@/lib/utils/debugFlags';
 import { getUserPreferences, updatePreferenceKey, type DebugPreferences } from '@/lib/api/userPreferences';
-import { settingsRegistry } from '@/lib/settingsRegistry';
+import { settingsRegistry } from '../../lib/core/registry';
 
 interface DebugCategory {
   id: keyof DebugPreferences;
