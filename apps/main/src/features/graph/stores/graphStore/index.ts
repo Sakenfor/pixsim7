@@ -9,7 +9,7 @@ import { createNodeGroupSlice } from './nodeGroupSlice';
 import { createNavigationSlice } from './navigationSlice';
 import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 import { createBackendStorage } from '@/lib/backendStorage';
 import { createTemporalStore, graphStorePartialize } from '@/stores/_shared/temporal';
 

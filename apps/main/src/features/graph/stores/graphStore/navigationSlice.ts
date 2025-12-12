@@ -1,6 +1,6 @@
 import type { StateCreator } from './types';
 import type { NodeGroupData } from '@/modules/scene-builder';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 
 /**
  * Navigation Slice

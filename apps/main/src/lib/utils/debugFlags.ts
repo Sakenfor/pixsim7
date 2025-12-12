@@ -9,7 +9,7 @@
  * - Both frontend (browser console) and backend (server logs) debug control
  */
 
-import { getUserPreferences, updatePreferenceKey, type DebugPreferences } from '../api/userPreferences';
+import { getUserPreferences, updatePreferenceKey, type DebugPreferences } from '@lib/api/userPreferences';
 
 type DebugCategory = keyof DebugPreferences;
 

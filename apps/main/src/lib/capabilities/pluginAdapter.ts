@@ -22,7 +22,7 @@ import type {
 import { useCapabilityStore } from './index';
 import type { PluginPermission } from '../plugins/types';
 import { debugFlags } from '@/lib/utils/debugFlags';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 
 /**
  * Simplified types for plugin registration (no execute functions, etc.)

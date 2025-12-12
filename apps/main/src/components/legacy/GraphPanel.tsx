@@ -17,7 +17,7 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useGraphStore, type GraphState, SceneNode, NodeGroup, NodePalette, type NodeType } from '@features/graph';
 import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@/modules/scene-builder/graphSync';
 import { useSelectionStore } from '@/stores/selectionStore';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 import { Breadcrumbs } from '../navigation/Breadcrumbs';
 import type { DraftSceneNode, DraftEdge } from '@/modules/scene-builder';
 import { validateConnection, getValidationMessage } from '@/modules/scene-builder/portValidation';

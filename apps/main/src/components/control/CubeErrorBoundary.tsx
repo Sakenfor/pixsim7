@@ -1,6 +1,6 @@
 // Re-export CubeErrorBoundary from pixcubes with pixsim7-specific logging
 import { CubeErrorBoundary as BaseCubeErrorBoundary } from '@pixsim7/scene.cubes';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 import type { ReactNode } from 'react';
 
 interface Props {

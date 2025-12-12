@@ -3,7 +3,7 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useWorldContextStore } from '@/stores/worldContextStore';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 import { previewBridge } from '@/lib/preview-bridge';
 import { InspectorPanel } from '@/components/inspector/InspectorPanel';
 

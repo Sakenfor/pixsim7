@@ -1,6 +1,6 @@
 import type { StateCreator, ImportExportState } from './types';
 import type { DraftScene } from '@/modules/scene-builder';
-import { logEvent } from '@/lib/logging';
+import { logEvent } from '@/lib/utils/logging';
 
 /**
  * Import/Export Slice
