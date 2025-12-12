@@ -12,7 +12,7 @@ import type {
   NodeTypeDefinition,
 } from '../registries';
 import type { GalleryToolPlugin } from '../gallery/types';
-import type { WorldToolPlugin } from '../worldTools/types';
+import type { WorldToolPlugin } from '@features/worldTools';
 import type { GenerationUIPlugin } from '../providers/generationPlugins';
 import type { PluginEntry, PluginManifest } from './types';
 

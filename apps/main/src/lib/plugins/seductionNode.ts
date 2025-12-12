@@ -18,7 +18,7 @@
  * ```
  */
 
-import { nodeTypeRegistry } from '@/types';
+import { nodeTypeRegistry } from '@/lib/registries';
 
 /**
  * Seduction stage definition

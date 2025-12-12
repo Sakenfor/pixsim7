@@ -19,7 +19,7 @@ import type {
   ConstraintSet,
   FallbackConfig,
   GenerationValidationResult,
-} from '@/types';
+} from '@/lib/registries';
 import {
   validateGenerationNode,
   getValidationStatus,

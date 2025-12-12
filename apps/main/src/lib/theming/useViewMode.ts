@@ -6,9 +6,9 @@
  */
 
 import { useMemo } from 'react';
-import type { GameWorldDetail, ViewMode } from '@/types';
+import type { GameWorldDetail, ViewMode } from '@/lib/registries';
 import { getWorldViewMode } from '@pixsim7/game.engine';
-import type { WorldToolPlugin } from '../worldTools/types';
+import type { WorldToolPlugin } from '@features/worldTools';
 
 /**
  * Tool categories that should be visible in each view mode

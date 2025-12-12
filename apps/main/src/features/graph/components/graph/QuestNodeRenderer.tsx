@@ -1,5 +1,5 @@
 import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
-import { nodeTypeRegistry } from '@/types';
+import { nodeTypeRegistry } from '@/lib/registries';
 import type { QuestNodeData } from '@/modules/arc-graph';
 
 /**

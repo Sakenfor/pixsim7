@@ -205,7 +205,7 @@ class ProviderAccount(SQLModel, table=True):
         Get credits for specific type
 
         Args:
-            credit_type: Credit type (e.g., "webapi", "openapi", "standard")
+            credit_type: Credit type (e.g., "web", "openapi", "standard")
 
         Returns:
             Credit amount for that type, or 0 if not found

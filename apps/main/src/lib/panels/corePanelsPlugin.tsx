@@ -9,7 +9,7 @@ import type { PanelPlugin } from './panelPlugin';
 import { registerBuiltinPanel } from '../plugins/registryBridge';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel, SceneManagementPanel } from '@features/scene';
-import { GraphEditorHost } from '../../components/graph/GraphEditorHost';
+import { GraphEditorHost } from '@features/graph/components/graph/GraphEditorHost';
 import { InspectorPanel } from '../../components/inspector/InspectorPanel';
 import { HealthPanel } from '../../components/health/HealthPanel';
 import { ProviderSettingsPanel } from '../../components/provider/ProviderSettingsPanel';

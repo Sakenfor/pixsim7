@@ -11,7 +11,7 @@ import {
   getSuggestionColor,
   formatSuggestionScore,
 } from '@pixsim7/game.engine';
-import type { NpcInteractionInstance } from '@/types';
+import type { NpcInteractionInstance } from '@/lib/registries';
 import './InteractionSuggestions.css';
 
 export interface InteractionSuggestionsProps {

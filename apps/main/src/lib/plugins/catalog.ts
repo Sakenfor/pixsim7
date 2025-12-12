@@ -55,7 +55,7 @@ import {
   type NodeTypeDefinition,
 } from '../registries';
 import { galleryToolRegistry, type GalleryToolPlugin } from '../gallery/types';
-import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/types';
+import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import { pluginManager } from './PluginManager';
 import { generationUIPluginRegistry, type GenerationUIPlugin } from '../providers/generationPlugins';
 import { isPluginEnabled } from '../../stores/pluginConfigStore';

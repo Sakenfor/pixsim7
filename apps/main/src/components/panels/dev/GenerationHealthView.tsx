@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GenerationNodeConfig, GenerationValidationResult } from '@/types';
+import type { GenerationNodeConfig, GenerationValidationResult } from '@/lib/registries';
 import {
   validateGenerationNode,
   getValidationStatus,

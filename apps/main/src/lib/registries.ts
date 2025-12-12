@@ -50,21 +50,21 @@ export type {
 
 // ===== Node Type Registry =====
 // Manages scene graph node types
-// Source: @pixsim7/types
-export { nodeTypeRegistry, NodeTypeRegistry } from '@/types';
+// Source: @pixsim7/shared.types
+export { nodeTypeRegistry, NodeTypeRegistry } from '@pixsim7/shared.types';
 
 export type {
   NodeTypeDefinition,
   PortDefinition,
   PortConfig,
-} from '@/types';
+} from '@pixsim7/shared.types';
 
 /**
  * Re-export registration helper functions
  */
 export { registerBuiltinHelpers } from '@pixsim7/game.engine';
 export { generateHelper } from '@pixsim7/game.engine';
-export { registerBuiltinNodeTypes, registerArcNodeTypes } from '@/types';
+export { registerBuiltinNodeTypes, registerArcNodeTypes } from '@/lib/registries';
 
 /**
  * Registry summary for debugging

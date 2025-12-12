@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import type { NpcInteractionDefinition } from '@/types';
+import type { NpcInteractionDefinition } from '@/lib/registries';
 import {
   getTemplatesByCategory,
   createFromTemplate,

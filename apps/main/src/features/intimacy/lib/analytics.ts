@@ -12,7 +12,7 @@ import type {
   IntimacySceneConfig,
   RelationshipProgressionArc,
   RelationshipGate,
-} from '@/types';
+} from '@/lib/registries';
 
 // ============================================================================
 // Analytics Event Types

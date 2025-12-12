@@ -15,7 +15,7 @@
  */
 
 import { sessionHelperRegistry, generateHelper } from '@/lib/registries';
-import type { GameSessionDTO } from '@/types';
+import type { GameSessionDTO } from '@/lib/registries';
 import { debugFlags } from '@/lib/debugFlags';
 
 /**

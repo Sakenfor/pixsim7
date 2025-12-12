@@ -5,10 +5,10 @@
  * Replaces useJobStatus.
  */
 import { useEffect, useRef, useState } from 'react';
-import { getGeneration } from '../lib/api/generations';
+import { getGeneration } from '@/lib/api/generations';
 import { useGenerationsStore, isGenerationTerminal, generationsSelectors } from '../stores/generationsStore';
-import { pollUntil } from '../lib/polling/pollUntil';
-import { extractErrorMessage } from '../lib/api/errorHandling';
+import { pollUntil } from '@/lib/polling/pollUntil';
+import { extractErrorMessage } from '@/lib/api/errorHandling';
 
 export interface UseGenerationStatusOptions {
   /** Base polling interval in ms (default: 3000) */

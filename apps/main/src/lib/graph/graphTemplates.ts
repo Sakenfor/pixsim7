@@ -1,5 +1,5 @@
 import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
-import { nodeTypeRegistry } from '@/types';
+import { nodeTypeRegistry } from '@/lib/registries';
 
 /**
  * Template source type

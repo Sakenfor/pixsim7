@@ -5,8 +5,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
-import type { GenerationResponse } from '../lib/api/generations';
-import { parseWebSocketMessage } from '../types/websocket';
+import type { GenerationResponse } from '@/lib/api/generations';
+import { parseWebSocketMessage } from '@/types/websocket';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/api/v1/ws/generations';
 
@@ -66,7 +66,7 @@ export function useGenerationWebSocket() {
 
               if (generationId) {
                 // Fetch full generation data from API to get complete info
-                import('../lib/api/generations').then(({ getGeneration }) => {
+                import('@/lib/api/generations').then(({ getGeneration }) => {
                   getGeneration(generationId).then(fullGeneration => {
                     console.log('[WebSocket] Fetched full generation:', fullGeneration.id, fullGeneration.status);
                     addOrUpdateGeneration(fullGeneration);

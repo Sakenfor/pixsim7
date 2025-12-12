@@ -6,8 +6,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { BrainState } from '@/types';
-import { getLogicStrategies, getInstincts, getMemories } from '@/types';
+import type { BrainState } from '@/lib/registries';
+import { getLogicStrategies, getInstincts, getMemories } from '@/lib/registries';
 import { BrainFace, brainShape } from '@pixsim7/scene.shapes';
 import './BrainShape.css';
 

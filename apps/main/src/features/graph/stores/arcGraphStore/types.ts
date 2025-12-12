@@ -1,4 +1,4 @@
-import type { ArcGraph, ArcGraphNode, ArcGraphEdge } from '../../modules/arc-graph';
+import type { ArcGraph, ArcGraphNode, ArcGraphEdge } from '@/modules/arc-graph';
 import type { StateCreator as ZustandStateCreator } from 'zustand';
 
 /**

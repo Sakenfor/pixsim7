@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@/types';
+import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@/lib/registries';
 import {
   getWorldUiConfig,
   setWorldUiConfig,

@@ -5,7 +5,7 @@
  */
 
 import type { WorldToolPlugin } from '../lib/types';
-import { QuestLog } from '../../components/game/QuestLog';
+import { QuestLog } from '@/components/game/QuestLog';
 
 export const questLogTool: WorldToolPlugin = {
   id: 'quest-log',

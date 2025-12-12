@@ -13,7 +13,7 @@
  */
 
 import type { ReactNode } from 'react';
-import type { BrainState } from '@/types';
+import type { BrainState } from '@/lib/registries';
 import type { GameSessionDTO } from '../api/game';
 
 /**

@@ -21,7 +21,7 @@ import type {
   HudRegion,
   HudToolSize,
   HudToolPlacement,
-} from '../worldTools/types';
+} from '@features/worldTools';
 
 /**
  * HUD-specific metadata that extends the base widget config

@@ -1,7 +1,7 @@
 import { cubeExpansionRegistry } from './cubeExpansionRegistry';
 import { HealthCubeExpansion } from '../components/health/HealthCubeExpansion';
 import { GalleryCubeExpansion } from '../components/assets/GalleryCubeExpansion';
-import { GraphCubeExpansion } from '../components/graph/GraphCubeExpansion';
+import { GraphCubeExpansion } from '@features/graph';
 
 /**
  * Register all default cube expansion providers

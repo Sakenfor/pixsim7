@@ -9,13 +9,13 @@ import { useState } from 'react';
 import type { WorldToolPlugin } from '../lib/types';
 import { Badge, ProgressBar } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
-import type { BrainState, BrainStatSnapshot } from '@/types';
+import type { BrainState, BrainStatSnapshot } from '@/lib/registries';
 import {
   getMood,
   getConversationStyle,
   getPersonaTags,
   getIntimacyLevel,
-} from '@/types';
+} from '@/lib/registries';
 
 /**
  * Build a simple BrainState from session data for the debug view

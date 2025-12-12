@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { createPixSim7Core, type PixSim7Core, type NpcRelationshipState } from '@pixsim7/game.engine';
-import type { GameSessionDTO } from '@/types';
+import type { GameSessionDTO } from '@/lib/registries';
 import { frontendApiClient, localStorageProvider } from './coreAdapter';
 
 // Singleton core instance

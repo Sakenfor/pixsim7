@@ -3,8 +3,8 @@
  * This is UI-agnostic and describes the contract for the brain shape
  */
 
-import type { BrainState } from '@/types';
-import { getMood } from '@/types';
+import type { BrainState } from '@/lib/registries';
+import { getMood } from '@/lib/registries';
 
 export type BrainFace =
   | 'cortex'

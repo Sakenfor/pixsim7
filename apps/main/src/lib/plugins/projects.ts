@@ -9,7 +9,7 @@
 
 import type { PluginManifest, PluginBundle } from './types';
 import type { InteractionPlugin, BaseInteractionConfig, FormField } from '../game/interactions/types';
-import type { NodeTypeDefinition } from '@/types';
+import type { NodeTypeDefinition } from '@/lib/registries';
 import type { GalleryToolPlugin } from '../gallery/types';
 import { pluginManager } from './PluginManager';
 

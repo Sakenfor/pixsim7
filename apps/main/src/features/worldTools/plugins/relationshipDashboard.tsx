@@ -5,7 +5,7 @@
  */
 
 import type { WorldToolPlugin } from '../lib/types';
-import { RelationshipDashboard } from '../../components/game/RelationshipDashboard';
+import { RelationshipDashboard } from '@/components/game/RelationshipDashboard';
 
 export const relationshipDashboardTool: WorldToolPlugin = {
   id: 'relationship-dashboard',

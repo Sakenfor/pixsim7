@@ -22,7 +22,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Scene, SessionFlags } from '@/types';
+import type { Scene, SessionFlags } from '@/lib/registries';
 import { ScenePlayer } from '@pixsim7/game.components';
 import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
@@ -88,10 +88,9 @@ import { InteractionPresetEditor } from '../components/game/InteractionPresetEdi
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
-import type { WorldToolContext } from '../lib/worldTools/types';
-import { worldToolRegistry } from '../lib/worldTools/registry';
+import { worldToolRegistry, type WorldToolContext } from '@features/worldTools';
 import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
-import { applyPlayerPreferences, getEffectiveViewMode } from '../lib/worldTools/playerHudPreferences';
+import { applyPlayerPreferences, getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferences';
 
 // WorldTime type for display (kept for backward compatibility with UI components)
 interface WorldTime {

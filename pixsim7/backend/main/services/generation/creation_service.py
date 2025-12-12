@@ -342,6 +342,8 @@ class GenerationCreationService:
                     debug.generation(f"Reusing existing PromptVersion {prompt_version_id}")
 
         # Create generation with billing fields
+        # Note: credit_type is left None at creation - it will be determined
+        # at billing time based on the account's available credits.
         generation = Generation(
             user_id=user.id,
             operation_type=operation_type,
@@ -361,7 +363,7 @@ class GenerationCreationService:
             status=GenerationStatus.PENDING,
             # Billing fields
             estimated_credits=estimated_credits,
-            credit_type="web",  # Default to web credits (matches provider naming)
+            # credit_type=None - derived at billing time from account credits
             billing_state=BillingState.PENDING,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),

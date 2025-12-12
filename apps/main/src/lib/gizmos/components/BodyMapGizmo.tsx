@@ -20,7 +20,7 @@ import {
   getZoneColorByEffectiveness,
   getZoneEffectivenessDescription,
 } from '@pixsim7/scene.gizmos';
-import type { NpcBodyZone, ZoneInteractionContext } from '@/types';
+import type { NpcBodyZone, ZoneInteractionContext } from '@/lib/registries';
 import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
 import { useStatsDecay } from '@/hooks/useStatsDecay';
 import {

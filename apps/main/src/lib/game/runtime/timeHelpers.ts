@@ -6,7 +6,7 @@
  * to determine turn-based behavior and time deltas.
  */
 
-import type { SessionFlags, GameWorldDetail } from '@/types';
+import type { SessionFlags, GameWorldDetail } from '@/lib/registries';
 import {
   parseWorldTime,
   composeWorldTime,

@@ -3,7 +3,7 @@ import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
-import { useMediaGenerationActions } from './useMediaGenerationActions';
+import { useMediaGenerationActions } from '@features/generation';
 import { deleteAsset, uploadAssetToProvider } from '../lib/api/assets';
 import { BACKEND_BASE } from '../lib/api/client';
 import { extractErrorMessage } from '../lib/api/errorHandling';

@@ -8,7 +8,7 @@
 import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
-import { useUnifiedMood } from '../../hooks/useUnifiedMood';
+import { useUnifiedMood } from '@/hooks/useUnifiedMood';
 
 export const moodDebugTool: WorldToolPlugin = {
   id: 'mood-debug',

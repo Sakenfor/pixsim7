@@ -1,5 +1,5 @@
 import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
-import { nodeTypeRegistry } from '@/types';
+import { nodeTypeRegistry } from '@/lib/registries';
 
 /**
  * Default node body renderer - used as fallback for node types without custom renderers

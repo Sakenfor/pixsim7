@@ -81,7 +81,7 @@ import type { ConstraintEvaluationContext } from '@/lib/simulation/constraints';
 import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,
-} from '@/types';
+} from '@/lib/registries';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();

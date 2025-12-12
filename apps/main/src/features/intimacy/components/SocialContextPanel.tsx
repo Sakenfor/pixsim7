@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import type { GenerationSocialContext } from '@/types';
+import type { GenerationSocialContext } from '@/lib/registries';
 
 interface SocialContextPanelProps {
   /**

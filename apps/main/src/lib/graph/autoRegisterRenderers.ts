@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { nodeRendererRegistry, type NodeRendererProps } from './nodeRendererRegistry';
-import { nodeTypeRegistry } from '@/types';
+import { nodeTypeRegistry } from '@/lib/registries';
 import { registerRenderer } from '../plugins/registryBridge';
 import { pluginCatalog } from '../plugins/pluginSystem';
 import { debugFlags } from '@/lib/debugFlags';

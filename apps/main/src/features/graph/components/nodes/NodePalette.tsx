@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { nodeTypeRegistry, type NodeTypeDefinition } from '@/types';
+import { nodeTypeRegistry, type NodeTypeDefinition } from '@/lib/registries';
 
 export type NodeType = string; // Now accepts any registered node type
 

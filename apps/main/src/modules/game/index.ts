@@ -1,6 +1,6 @@
 import type { Module } from '../types';
 import { registerGameFeature } from '../../lib/capabilities/registerCoreFeatures';
-import { worldToolRegistry } from '../../lib/worldTools/registry';
+import { worldToolRegistry } from '@features/worldTools';
 
 /**
  * Game Module

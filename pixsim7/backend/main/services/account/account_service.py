@@ -347,7 +347,7 @@ class AccountService:
 
         Args:
             account_id: Account ID
-            credit_type: Credit type (e.g., "webapi", "openapi", "standard")
+            credit_type: Credit type (e.g., "web", "openapi", "standard")
             amount: New credit amount
 
         Returns:
@@ -832,7 +832,7 @@ class AccountService:
         Args:
             email: Account email
             provider_id: Provider ID
-            credits_map: Dict of credit_type -> amount (e.g., {"webapi": 100, "openapi": 50})
+            credits_map: Dict of credit_type -> amount (e.g., {"web": 100, "openapi": 50})
 
         Returns:
             List of updated accounts

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { UserUiPreferences } from '@/types';
+import type { UserUiPreferences } from '@/lib/registries';
 import {
   loadUserPreferences,
   updateUserPreferences,

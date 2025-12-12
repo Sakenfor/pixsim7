@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import type { SessionUiOverride } from '@/types';
+import type { SessionUiOverride } from '@/lib/registries';
 import {
   getSessionOverridePresetIds,
   getSessionOverridePreset,

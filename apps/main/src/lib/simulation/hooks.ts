@@ -351,18 +351,17 @@ export const relationshipDriftHook: SimulationHook = (context) => {
   const relationshipCount = Object.keys(relationshipsData).length;
   if (relationshipCount > 0) {
     events.push({
-        id: `relationship-drift-${Date.now()}`,
-        timestamp: Date.now(),
-        worldTime: context.worldTime,
-        type: 'info',
-        category: 'relationship',
-        title: 'Relationship Drift',
-        message: `Simulated relationship changes for ${relationshipCount} relationship(s)`,
-        metadata: {
-          relationshipCount,
-        },
-      });
-    }
+      id: `relationship-drift-${Date.now()}`,
+      timestamp: Date.now(),
+      worldTime: context.worldTime,
+      type: 'info',
+      category: 'relationship',
+      title: 'Relationship Drift',
+      message: `Simulated relationship changes for ${relationshipCount} relationship(s)`,
+      metadata: {
+        relationshipCount,
+      },
+    });
   }
 
   return events;

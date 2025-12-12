@@ -9,7 +9,7 @@
  * @see docs/INTIMACY_SCENE_COMPOSER.md - Phase 3 documentation
  */
 
-import type { GenerationSocialContext, IntimacySceneConfig } from '@/types';
+import type { GenerationSocialContext, IntimacySceneConfig } from '@/lib/registries';
 import type { SimulatedRelationshipState } from './gateChecking';
 import {
   deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,

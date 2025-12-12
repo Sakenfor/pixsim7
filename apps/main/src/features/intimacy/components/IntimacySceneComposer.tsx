@@ -15,7 +15,7 @@ import type {
   IntimacySceneType,
   IntimacyIntensity,
   RelationshipGate,
-} from '@/types';
+} from '@/lib/registries';
 import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';
 import { validateIntimacyScene } from '../lib/validation';
 import { SocialContextPanel } from '../generation/SocialContextPanel';

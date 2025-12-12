@@ -38,7 +38,7 @@ export { SceneCharacterViewer } from './components/character-graph/SceneCharacte
 // Components - Nodes
 export { ArcNode } from './components/nodes/ArcNode';
 export { NodeGroup } from './components/nodes/NodeGroup';
-export { NodePalette } from './components/nodes/NodePalette';
+export { NodePalette, type NodeType } from './components/nodes/NodePalette';
 export { SceneNode } from './components/nodes/SceneNode';
 
 // Stores - Graph Store

@@ -5,7 +5,7 @@
  */
 
 import type { WorldToolPlugin } from '../lib/types';
-import { WorldThemeEditor } from '../../components/game/WorldThemeEditor';
+import { WorldThemeEditor } from '@/components/game/WorldThemeEditor';
 import { useToast } from '@pixsim7/shared.ui';
 
 export const worldThemeEditorTool: WorldToolPlugin = {

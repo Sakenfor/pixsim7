@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { BrainShape } from '../shapes/BrainShape';
 import { mockCore } from '@/lib/core/mockCore';
-import type { BrainState } from '@/types';
+import type { BrainState } from '@/lib/registries';
 import {
   getMood,
   getLogicStrategies,
@@ -15,7 +15,7 @@ import {
   getPersonaTags,
   getIntimacyLevel,
   getRelationshipFlags,
-} from '@/types';
+} from '@/lib/registries';
 import { BrainFace } from '@pixsim7/scene.shapes';
 import { sciFiTheme } from '@/lib/theme/scifi-tokens';
 import './BrainShapeExample.css';

@@ -1,4 +1,4 @@
-import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@/types';
+import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@/lib/registries';
 
 /**
  * Scene Builder Types - Scene as Function Architecture

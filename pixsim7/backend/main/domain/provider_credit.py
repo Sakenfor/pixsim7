@@ -24,7 +24,7 @@ class ProviderCredit(SQLModel, table=True):
     - Flexible: New credit types don't require schema changes
 
     Examples:
-    - Pixverse account: 2 rows (webapi=100, openapi=50)
+    - Pixverse account: 2 rows (web=100, openapi=50)
     - Runway account: 1 row (standard=200)
     - Kling account: 1 row (credits=150)
     """
@@ -44,7 +44,7 @@ class ProviderCredit(SQLModel, table=True):
     credit_type: str = Field(
         max_length=50,
         index=True,
-        description="Credit type: 'webapi', 'openapi', 'standard', 'pro', etc."
+        description="Credit type: 'web', 'openapi', 'standard', 'pro', etc."
     )
 
     # Credit amount
@@ -87,12 +87,12 @@ class ProviderCredit(SQLModel, table=True):
         Get human-readable credit type name
 
         Provider-specific mapping:
-        - Pixverse: webapi → "WebAPI (Free)", openapi → "OpenAPI (Paid)"
+        - Pixverse: web → "Web (Free)", openapi → "OpenAPI (Paid)"
         - Runway: standard → "Standard Credits"
         """
         mappings = {
             "pixverse": {
-                "webapi": "WebAPI (Free)",
+                "web": "Web (Free)",
                 "openapi": "OpenAPI (Paid)",
                 "pro": "Pro Tier"
             },

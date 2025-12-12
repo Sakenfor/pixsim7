@@ -5,9 +5,9 @@
  * Shared between GenerationsPanel and GenerationHistoryButton.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { listGenerations } from '../lib/api/generations';
+import { listGenerations } from '@/lib/api/generations';
 import { useGenerationsStore } from '../stores/generationsStore';
-import { extractErrorMessage } from '../lib/api/errorHandling';
+import { extractErrorMessage } from '@/lib/api/errorHandling';
 
 export interface UseRecentGenerationsOptions {
   /** Number of generations to fetch (default: 50) */

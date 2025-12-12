@@ -7,7 +7,7 @@
 
 import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar, Badge } from '@pixsim7/shared.ui';
-import { getDerived, hasStat } from '@/types';
+import { getDerived, hasStat } from '@/lib/registries';
 
 export const traitsTool: BrainToolPlugin = {
   id: 'npc-traits',

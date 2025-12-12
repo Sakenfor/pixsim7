@@ -13,7 +13,7 @@ import type {
   GenerationSocialContext,
   SceneRef,
   PlayerContextSnapshot,
-} from '@/types';
+} from '@/lib/registries';
 
 // Re-export types from @pixsim7/shared.types for convenience
 export type {

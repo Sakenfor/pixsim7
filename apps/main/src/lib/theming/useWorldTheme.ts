@@ -7,7 +7,7 @@
  */
 
 import { useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride, GameSessionDTO } from '@/types';
+import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride, GameSessionDTO } from '@/lib/registries';
 import {
   getWorldTheme,
   loadUserPreferences,

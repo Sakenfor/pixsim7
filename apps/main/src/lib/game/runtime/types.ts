@@ -12,7 +12,7 @@ import type {
   PlayerActor,
   AnyActor,
   PlayerSlot,
-} from '@/types';
+} from '@/lib/registries';
 
 /**
  * Runtime state snapshot - reactive state for React components

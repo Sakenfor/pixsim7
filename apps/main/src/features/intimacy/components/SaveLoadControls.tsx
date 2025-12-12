@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react';
-import type { IntimacySceneConfig, RelationshipProgressionArc } from '@/types';
+import type { IntimacySceneConfig, RelationshipProgressionArc } from '@/lib/registries';
 import type { SimulatedRelationshipState } from '../lib/gateChecking';
 import {
   downloadScenesAsFile,

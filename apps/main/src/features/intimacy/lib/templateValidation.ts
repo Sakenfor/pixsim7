@@ -10,7 +10,7 @@ import type {
   IntimacySceneConfig,
   RelationshipProgressionArc,
   RelationshipGate,
-} from '@/types';
+} from '@/lib/registries';
 import type { SceneTemplate, ArcTemplate } from './templates';
 
 export interface ValidationResult {

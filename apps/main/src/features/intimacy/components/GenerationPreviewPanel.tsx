@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { IntimacySceneConfig, GenerationSocialContext } from '@/types';
+import type { IntimacySceneConfig, GenerationSocialContext } from '@/lib/registries';
 import type { SimulatedRelationshipState } from '../lib/gateChecking';
 import type { IntimacyPreviewResult } from '../lib/generationPreview';
 import {

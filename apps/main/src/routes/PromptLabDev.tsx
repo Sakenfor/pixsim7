@@ -10,7 +10,7 @@ import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { DevPromptImporter } from './DevPromptImporter';
 import { PromptSegmentsViewer, type PromptSegment } from '@features/prompts';
-import { PromptBlockGraphSurface } from '../components/graph/PromptBlockGraphSurface';
+import { PromptBlockGraphSurface } from '@features/graph';
 import { useApi } from '../hooks/useApi';
 
 // ===== Types =====

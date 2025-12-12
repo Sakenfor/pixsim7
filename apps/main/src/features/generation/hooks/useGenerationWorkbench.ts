@@ -1,8 +1,8 @@
 import { useMemo, useEffect } from 'react';
-import { useControlCenterStore } from '../stores/controlCenterStore';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
-import { useProviders } from './useProviders';
-import { useProviderSpecs } from './useProviderSpecs';
+import { useProviders } from '@/hooks/useProviders';
+import { useProviderSpecs } from '@/hooks/useProviderSpecs';
 import type { ParamSpec } from '../components/control/DynamicParamForm';
 import type { OperationType } from '@/types/operations';
 

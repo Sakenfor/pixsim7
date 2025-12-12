@@ -103,8 +103,8 @@ async def refresh_account_credits(
 
 def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
     """Check if account has any usable credits."""
-    # Check web/webapi credits (free tier)
-    web = credits_data.get('web', 0) or credits_data.get('webapi', 0)
+    # Check web credits (free tier)
+    web = credits_data.get('web', 0)
     # Check openapi credits (paid tier)
     openapi = credits_data.get('openapi', 0)
 

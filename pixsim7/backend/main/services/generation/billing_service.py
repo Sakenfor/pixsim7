@@ -164,8 +164,34 @@ class GenerationBillingService:
             await self.db.flush()
             return generation
 
-        # Attempt to deduct credits
-        credit_type = generation.credit_type or "web"
+        # Determine credit type: use existing if set, otherwise derive from account's credits
+        credit_type = generation.credit_type
+        if not credit_type:
+            # Derive credit type from account's available credits
+            # Priority: 'web' > 'openapi' > any available
+            credits = await self.account_service.get_credits(account_id)
+            if 'web' in credits and credits['web'] > 0:
+                credit_type = 'web'
+            elif 'openapi' in credits and credits['openapi'] > 0:
+                credit_type = 'openapi'
+            elif credits:
+                # Use first available credit type
+                credit_type = next(iter(credits.keys()))
+            else:
+                # No credits available
+                generation.billing_state = BillingState.FAILED
+                generation.actual_credits = actual_credits
+                generation.account_id = account_id
+                generation.billing_error = "No credits available for billing"
+
+                logger.warning(
+                    "billing_no_credits_available",
+                    generation_id=generation.id,
+                    account_id=account_id,
+                )
+
+                await self.db.flush()
+                return generation
 
         try:
             await self.account_service.deduct_credit(
@@ -219,6 +245,11 @@ class GenerationBillingService:
 
         Uses pixverse_pricing helpers with actual values from completion.
 
+        Note: This method handles provider-specific pricing logic (how many credits
+        a generation costs based on quality, duration, etc.). The credit type
+        (which credit pool to deduct from, e.g., 'web' vs 'openapi') is determined
+        separately in finalize_billing() based on the account's available credits.
+
         Args:
             generation: The completed generation
             actual_duration: Actual duration from provider (for videos)
@@ -226,6 +257,8 @@ class GenerationBillingService:
         Returns:
             Actual credit cost or None if cannot be determined
         """
+        # Provider-specific pricing: only Pixverse is currently implemented.
+        # Other providers return None (no billing).
         if generation.provider_id != "pixverse":
             return None
 

@@ -22,7 +22,7 @@ import type {
   QuestDTO,
   InventoryItemDTO,
   WorldManifest,
-} from '@/types';
+} from '@/lib/registries';
 
 // Re-export types for backward compatibility
 export type {

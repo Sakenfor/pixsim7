@@ -24,7 +24,7 @@ import type {
   NpcActor,
   PlayerActor,
   GameSessionDTO,
-} from '@/types';
+} from '@/lib/registries';
 
 export type ActorTypeFilter = ActorType | 'all';
 
