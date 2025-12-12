@@ -8,7 +8,6 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import asyncio
 
 from pixsim7.backend.main.api.dependencies import get_current_user, get_database
 from pixsim7.backend.main.domain import ProviderAccount, Asset, User
@@ -76,11 +75,9 @@ async def pixverse_sync_dry_run(
 
     client = provider._create_client(account)  # type: ignore[attr-defined]
 
-    # Call pixverse-py list_videos in a thread to avoid blocking the event loop
+    # Call pixverse-py list_videos (now returns a coroutine, so await directly)
     try:
-        videos: List[Dict[str, Any]] = await asyncio.to_thread(
-            client.list_videos, limit=limit, offset=offset
-        )
+        videos: List[Dict[str, Any]] = await client.list_videos(limit=limit, offset=offset)
     except Exception as e:
         logger.error(
             "pixverse_list_videos_failed",

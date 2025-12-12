@@ -151,7 +151,7 @@ cd admin && npm install && npm run dev
 ## Documentation
 
 ### Getting Started
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System design and component overview **← Start here!**
+- **[Architecture Overview](./docs/architecture/README.md)** - System design and component overview **← Start here!**
 - **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Setup, workflows, and contribution guide
 - **[docs/SETUP.md](./docs/SETUP.md)** - Detailed installation and configuration
 - **[AI_README.md](./AI_README.md)** - Guide for AI assistants working with the codebase

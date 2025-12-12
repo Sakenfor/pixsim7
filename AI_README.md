@@ -27,7 +27,7 @@ This guide helps AI assistants understand what's already implemented, where thin
 | Topic | Primary Doc | Also See |
 |-------|-------------|----------|
 | **Getting started** | `DEVELOPMENT_GUIDE.md` | `docs/INDEX.md` |
-| **System architecture** | `ARCHITECTURE.md` | `docs/architecture/README.md` |
+| **System architecture** | `docs/architecture/README.md` | `docs/architecture/diagrams.md` |
 | **Building plugins** | `docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md` | `docs/EXTENSION_ARCHITECTURE.md` |
 | **Generation system** | `docs/systems/generation/GENERATION_SYSTEM.md` | `docs/systems/generation/README.md` |
 | **Backend services** | `docs/backend/SERVICES.md` | `docs/BACKEND_MODERNIZATION.md` |
@@ -456,7 +456,7 @@ Understanding the documentation structure helps you find information quickly and
 #### **1. Living Docs - Read First, Update Frequently**
 These docs evolve with the system. Always check these before making changes:
 
-- **`ARCHITECTURE.md`** - Complete system architecture
+- **`docs/architecture/README.md`** - Complete system architecture
   - When to read: Before any significant architectural work
   - When to update: Major system changes, new layers/services
 
@@ -526,7 +526,7 @@ Is this a workflow or setup change?
 └─ NO ↓
 
 Is this a system architecture change?
-├─ YES → Update ARCHITECTURE.md
+├─ YES → Update docs/architecture/README.md
 └─ NO ↓
 
 Is this a pattern AI assistants should know?
@@ -543,9 +543,9 @@ Is this a pattern AI assistants should know?
 
 2. **Update Triggers You Should Watch For**
    ```
-   Major architectural change → Update ARCHITECTURE.md + create ADR
+   Major architectural change → Update docs/architecture/README.md + create ADR
    New service/component      → Update reference docs
-   API endpoint change        → Update API docs + ARCHITECTURE.md if significant
+   API endpoint change        → Update API docs + docs/architecture/README.md if significant
    Workflow change            → Update DEVELOPMENT_GUIDE.md
    New pattern/gotcha         → Update AI_README.md
    Task completion            → Archive task doc, update DOCUMENTATION_CHANGELOG.md
@@ -579,7 +579,7 @@ Is this a pattern AI assistants should know?
 
 ### Primary Documentation
 - **Start Here:** `README.md` (project overview and quick start)
-- **Architecture:** `ARCHITECTURE.md` (complete system overview)
+- **Architecture:** `docs/architecture/README.md` (complete system overview)
 - **Setup:** `DEVELOPMENT_GUIDE.md` (setup, workflows, conventions)
 - **Decisions:** `docs/decisions/*.md` (why things are the way they are)
 
