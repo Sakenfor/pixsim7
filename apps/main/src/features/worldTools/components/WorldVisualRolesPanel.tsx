@@ -24,7 +24,7 @@ import {
   type GameNpcSummary,
   type GameLocationSummary,
 } from '@/lib/api/game';
-import { useAssetPickerStore, type SelectedAsset } from '@/stores/assetPickerStore';
+import { useAssetPickerStore, type SelectedAsset } from '@features/assets';
 
 /**
  * Visual roles data structure stored in world.meta.visualRoles

@@ -6,7 +6,7 @@
  */
 
 import { ReactNode } from 'react';
-import { useAssetViewerStore, selectIsViewerOpen } from '@/stores/assetViewerStore';
+import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { AssetViewerPanel } from './AssetViewerPanel';
 
 interface AssetViewerLayoutProps {

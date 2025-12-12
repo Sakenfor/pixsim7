@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useControlCubeStore, type CubeFace } from '@/stores/controlCubeStore';
 import { ControlCube } from '../control/ControlCube';
-import type { LocalAsset } from '@/stores/localFoldersStore';
+import type { LocalAsset } from '../stores/localFoldersStore';
 import { clsx } from 'clsx';
 
 export interface MediaViewerCubeProps {

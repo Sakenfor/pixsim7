@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { useAsset } from '../hooks/useAsset';
+import { useAsset } from '@features/assets';
 
 export function AssetDetailRoute() {
   const { id } = useParams();

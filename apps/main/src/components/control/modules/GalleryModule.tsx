@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
 import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
-import { useAssets } from '@/hooks/useAssets';
+import { useAssets } from '@features/assets';
 import { mediaCardPresets } from '@/lib/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/badgeConfigMerge';
 import { gallerySurfaceRegistry } from '@features/gallery/surfaceRegistry';

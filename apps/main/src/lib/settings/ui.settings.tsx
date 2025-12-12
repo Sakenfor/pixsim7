@@ -6,7 +6,7 @@
  */
 
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from './settingsSchemaRegistry';
-import { useAssetViewerStore } from '@/stores/assetViewerStore';
+import { useAssetViewerStore } from '@features/assets';
 import { useControlCenterStore, type LayoutBehavior, type DockPosition } from '@/stores/controlCenterStore';
 
 // Media Viewer settings tab

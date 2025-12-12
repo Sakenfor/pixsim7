@@ -1,7 +1,7 @@
 import { registerAssetSource } from './assetSources';
 import { registerSourceType, getDefaultInstanceId } from './sourceTypes';
-import { RemoteGallerySource } from '@/components/assets/RemoteGallerySource';
-import { LocalFoldersSource } from '@/components/assets/LocalFoldersSource';
+import { RemoteGallerySource } from '@features/assets';
+import { LocalFoldersSource } from '@features/assets';
 
 /**
  * Register all available asset sources

@@ -3,7 +3,7 @@ import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { useGenerationsStore } from '@features/generation';
 import { ccSelectors } from '@/stores/selectors';
 import { generateAsset } from '@/lib/api/controlCenter';
-import { extractFrame } from '@/lib/api/assets';
+import { extractFrame } from '@features/assets';
 import { logEvent } from '@/lib/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';

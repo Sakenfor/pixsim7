@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAssets, type AssetSummary } from '@/hooks/useAssets';
+import { useAssets, type AssetSummary } from '@features/assets';
 import { useControlCubeStore } from '@/stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
 import { BACKEND_BASE } from '@/lib/api/client';

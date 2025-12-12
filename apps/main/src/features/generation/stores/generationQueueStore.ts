@@ -9,7 +9,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AssetSummary } from '@/hooks/useAssets';
+import type { AssetSummary } from '@features/assets';
 
 export interface QueuedAsset {
   asset: AssetSummary;

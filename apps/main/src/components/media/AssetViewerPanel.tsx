@@ -10,7 +10,7 @@ import {
   useAssetViewerStore,
   selectCanNavigatePrev,
   selectCanNavigateNext,
-} from '@/stores/assetViewerStore';
+} from '@features/assets';
 import { Icon } from '@/lib/icons';
 import { Button } from '@pixsim7/shared.ui';
 import { ViewerQuickGenerate } from './ViewerQuickGenerate';

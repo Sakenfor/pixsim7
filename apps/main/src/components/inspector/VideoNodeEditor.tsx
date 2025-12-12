@@ -3,7 +3,7 @@ import { useNodeEditor } from './useNodeEditor';
 import type { NodeEditorProps, VideoConfig } from './editorTypes';
 import { validateVideoConfig, logValidationError } from './editorValidation';
 import type { SelectionStrategy, PlaybackMode } from '@/lib/registries';
-import { useAssetPickerStore, type SelectedAsset } from '@/stores/assetPickerStore';
+import { useAssetPickerStore, type SelectedAsset } from '@features/assets';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useToast } from '@pixsim7/shared.ui';
 

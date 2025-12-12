@@ -2,15 +2,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
-import { useWorkspaceStore } from '../stores/workspaceStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useMediaGenerationActions } from '@features/generation';
-import { deleteAsset, uploadAssetToProvider } from '../lib/api/assets';
+import { deleteAsset, uploadAssetToProvider } from '../lib/api';
 import { BACKEND_BASE } from '../lib/api/client';
 import { extractErrorMessage } from '../lib/api/errorHandling';
-import { useFilterPersistence } from './useFilterPersistence';
-import { useSelection } from './useSelection';
-import { useViewer } from './useViewer';
-import { createAssetActions } from '../lib/assets/assetCardActions';
+import { useFilterPersistence } from '@/hooks/useFilterPersistence';
+import { useSelection } from '@/hooks/useSelection';
+import { useViewer } from '@/hooks/useViewer';
+import { createAssetActions } from '../lib/assetCardActions';
 
 const SESSION_KEY = 'assets_filters';
 

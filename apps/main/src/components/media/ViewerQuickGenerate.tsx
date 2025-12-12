@@ -11,7 +11,7 @@ import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { useGenerationQueueStore } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@/lib/icons';
-import type { ViewerAsset } from '@/stores/assetViewerStore';
+import type { ViewerAsset } from '@features/assets';
 
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;

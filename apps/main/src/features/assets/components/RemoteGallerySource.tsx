@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useProviders } from '@/hooks/useProviders';
-import { useAssetsController } from '@/hooks/useAssetsController';
-import { useAssetViewer } from '@/hooks/useAssetViewer';
+import { useAssetsController } from '@features/assetssController';
+import { useAssetViewer } from '@features/assetsViewer';
 import { MediaCard } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import { GalleryToolsPanel } from '@features/gallery';

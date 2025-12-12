@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { ThemedIcon } from '@/lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import type { AssetSummary } from '@/hooks/useAssets';
+import type { AssetSummary } from '@features/assets';
 
 export interface CompactAssetCardProps {
   asset: AssetSummary;

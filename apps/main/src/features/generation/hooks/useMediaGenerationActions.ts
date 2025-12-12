@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { AssetSummary } from '@/hooks/useAssets';
+import type { AssetSummary } from '@features/assets';
 import { useGenerationQueueStore } from '../stores/generationQueueStore';
 import { useControlCenterStore } from '@/stores/controlCenterStore';
 

@@ -1,10 +1,10 @@
 import { useMemo, useCallback } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
-import { useAssetViewer } from '@/hooks/useAssetViewer';
+import { useAssetViewer } from '@features/assetsViewer';
 import { TreeFolderView } from './TreeFolderView';
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '../media/AssetGallery';
-import type { LocalAsset } from '@/stores/localFoldersStore';
+import type { LocalAsset } from '../stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
 
 interface LocalFoldersPanelProps {

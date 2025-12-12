@@ -6,10 +6,12 @@
  */
 
 import { gallerySurfaceRegistry } from './surfaceRegistry';
-import { DefaultGallerySurface } from '../../components/assets/DefaultGallerySurface';
-import { ReviewGallerySurface } from '../../components/assets/ReviewGallerySurface';
-import { CuratorGallerySurface } from '../../components/assets/CuratorGallerySurface';
-import { DebugGallerySurface } from '../../components/assets/DebugGallerySurface';
+import {
+  DefaultGallerySurface,
+  ReviewGallerySurface,
+  CuratorGallerySurface,
+  DebugGallerySurface,
+} from '@features/assets';
 
 /**
  * Register all gallery surfaces

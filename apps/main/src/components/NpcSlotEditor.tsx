@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button, Panel, Badge, Input, Select } from '@pixsim7/shared.ui';
-import { getAsset, type AssetResponse } from '@/lib/api/assets';
+import { getAsset, type AssetResponse } from '@features/assets';
 import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '@/lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '@/lib/api/game';
 import { interactionRegistry } from '@/lib/registries';
