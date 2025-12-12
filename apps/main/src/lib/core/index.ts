@@ -1,0 +1,45 @@
+/**
+ * Core headless game engine types and interfaces
+ * Re-exports core types from @shared/types and local core definitions
+ */
+
+// Core types (re-exported from @shared/types via types.ts)
+export type {
+  CoreEventMap,
+  ApiClient,
+  StorageProvider,
+  AuthProvider,
+  GameSession,
+  GameNPC,
+  NpcRelationshipState,
+  RelationshipTier,
+  IntimacyLevel,
+  PixSim7Core,
+  BrainState,
+  BrainStatSnapshot,
+  BrainMemory,
+  DerivedBehaviorUrgency,
+  BehaviorUrge,
+} from './types';
+
+// BrainState helpers (re-exported from @shared/types)
+export {
+  hasStat,
+  hasDerived,
+  getDerived,
+  getAxisValue,
+  getMood,
+  getBehaviorUrgency,
+  getTopBehaviorUrges,
+  hasBehaviorUrgency,
+  getConversationStyle,
+  getLogicStrategies,
+  getInstincts,
+  getMemories,
+  getPersonaTags,
+  getIntimacyLevel,
+  getRelationshipFlags,
+} from './types';
+
+export { createMockCore } from './mockCore';
+export { BaseRegistry } from './BaseRegistry';

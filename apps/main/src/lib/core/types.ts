@@ -1,14 +1,44 @@
 /**
- * Core type definitions for the headless@pixsim7/game.engine
+ * Core type definitions for the headless @pixsim7/game.engine
  * These types define the contract between the core and any frontend (React/CLI/Discord/etc)
  *
- * Note: BrainState is now imported from @pixsim7/shared.types
+ * Brain types and helpers are sourced from the shared types package so that
+ * frontend and backend use the same data-driven BrainState model.
  */
 
-import type { BrainState } from '@/lib/core/types';
+import type {
+  BrainState,
+  BrainStatSnapshot,
+  BrainMemory,
+  DerivedBehaviorUrgency,
+  BehaviorUrge,
+} from '@shared/types';
 
-// Re-export BrainState for convenience
-export type { BrainState } from '@/lib/core/types';
+export type {
+  BrainState,
+  BrainStatSnapshot,
+  BrainMemory,
+  DerivedBehaviorUrgency,
+  BehaviorUrge,
+} from '@shared/types';
+
+export {
+  hasStat,
+  hasDerived,
+  getDerived,
+  getAxisValue,
+  getMood,
+  getBehaviorUrgency,
+  getTopBehaviorUrges,
+  hasBehaviorUrgency,
+  getConversationStyle,
+  getLogicStrategies,
+  getInstincts,
+  getMemories,
+  getPersonaTags,
+  getIntimacyLevel,
+  getRelationshipFlags,
+} from '@shared/types';
 
 // ============================================================================
 // Event System
@@ -158,56 +188,3 @@ export type IntimacyLevel =
   | 'intimate'
   | 'very_intimate'
   | null;
-
-// ============================================================================
-// BrainState Helper Functions
-// ============================================================================
-
-/**
- * Helper functions to extract values from BrainState
- */
-export const hasStat = (brain: any, statKey: string): boolean => {
-  return statKey in (brain.stats || {});
-};
-
-export const hasDerived = (brain: any, key: string): boolean => {
-  return key in (brain.derived || {});
-};
-
-export const getDerived = <T = unknown>(brain: any, key: string): T | undefined => {
-  return brain.derived?.[key] as T;
-};
-
-export const getAxisValue = (brain: any, statKey: string, axisKey: string): number | undefined => {
-  return brain.stats?.[statKey]?.axes?.[axisKey] as number;
-};
-
-export const getMood = (brain: any): { valence: number; arousal: number; label: string } | null => {
-  return getDerived(brain, 'mood') || null;
-};
-
-export const getConversationStyle = (brain: any): string | null => {
-  return getDerived(brain, 'conversation_style') || null;
-};
-
-export const getPersonaTags = (brain: any): string[] => {
-  return getDerived<string[]>(brain, 'persona_tags') || [];
-};
-
-export const getIntimacyLevel = (brain: any): string | null => {
-  return getDerived(brain, 'intimacy_level') || null;
-};
-
-export const getLogicStrategies = (brain: any): string[] => {
-  return getDerived<string[]>(brain, 'logic_strategies') || [];
-};
-
-export const getInstincts = (brain: any): string[] => {
-  return getDerived<string[]>(brain, 'instincts') || [];
-};
-
-export const getMemories = (brain: any): unknown[] => {
-  return getDerived<unknown[]>(brain, 'memories') || [];
-};
-
-export type BrainMemory = unknown;

@@ -6,6 +6,7 @@
 
 export * from './types';
 export * from './settingsSchemaRegistry';
+export * from './registry';
 export { SettingFieldRenderer } from './SettingFieldRenderer';
 export { DynamicSettingsPanel } from './DynamicSettingsPanel';
 

@@ -9,4 +9,7 @@ export { bootstrapExamplePlugins } from './bootstrap';
 export { updatePluginGameState } from './gameStateSync';
 export { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 
+// Plugin loader
+export * from './loader';
+
 export type * from './types';
