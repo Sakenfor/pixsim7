@@ -23,7 +23,86 @@ The `pixverse-py` library migrated from `requests` to `httpx` (async HTTP):
 
 ## 📊 System Overview
 
-PixSim7 is a video generation platform with cross-provider support, asset management, and branching narrative capabilities for games. Built with clean architecture principles and strict separation of concerns.
+PixSim7 is a **game engine with first-class AI asset generation**. Unlike traditional engines where all assets are pre-made, PixSim7 enables games to generate video, image, and audio assets at runtime based on player choices and narrative flow.
+
+Built with clean architecture principles and asset-centric design.
+
+---
+
+## 💡 Core Concept: Runtime Asset Generation
+
+### The Vision
+
+Traditional game engines require all assets to be created before the game runs. PixSim7 flips this model:
+
+- **Games can generate assets during gameplay** - based on player choices, narrative branches, or dynamic events
+- **Generation is a first-class runtime service** - like physics or rendering in Unity/Unreal
+- **Hybrid approach** - Mix pre-made assets with on-demand generation as the game designer chooses
+
+### Why This Matters
+
+**Example: Branching Narrative Game**
+```
+Traditional: 1000 story paths = 1000 pre-rendered videos (500GB, weeks of production)
+PixSim7:     1000 story paths = 10-20 videos per playthrough (generated on-demand)
+```
+
+**Player makes choice** → Game requests asset → **Generated in seconds** → Plays immediately
+
+### Architectural Implications
+
+This dual nature (game engine + generation platform) creates **intentional coupling**:
+
+1. **Game Components Import Generation**
+   - Not a violation of separation of concerns - it's the core feature
+   - Game runtime needs to request asset generation
+   - Generation is a service, not a separate product
+
+2. **Assets Are the Common Language**
+   - Backend: Manages asset creation (generation, upload, lineage)
+   - Frontend: Consumes assets (playback, editing, browsing)
+   - Generation: One way to create assets (alongside upload, import)
+
+3. **Backend Focused on Generation**
+   - Multi-provider orchestration (Pixverse, Sora, Runway)
+   - Account pooling (scale beyond single-account limits)
+   - Async processing (generation takes 5-60 seconds)
+   - All this enables real-time generation during gameplay
+
+### Configuration Flexibility
+
+Game makers control:
+- **When to generate**: "Generate on choice" vs "Pre-generate likely paths"
+- **Which providers**: Limit to specific providers or let system choose fastest
+- **Offline support**: Games can bundle pre-generated assets for offline play
+- **Wait strategies**: Show loading, play previous scene, or predict next scene
+
+---
+
+## 🎯 Asset-Centric Architecture
+
+PixSim7 is built around **assets as the central abstraction**:
+
+```
+┌─────────────────────────────────────────────────┐
+│           GAME ENGINE (Frontend)                 │
+│  Player choices → Asset requests → Playback     │
+└─────────────────────────────────────────────────┘
+                    ↓
+         (IAssetProvider interface)
+                    ↓
+┌─────────────────────────────────────────────────┐
+│      ASSET ORCHESTRATION (Backend)               │
+│  Pre-made assets ← OR → Generated assets        │
+│  (Upload/Import)         (Multi-provider gen)   │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  STORAGE: PostgreSQL (metadata) + Files (media) │
+└─────────────────────────────────────────────────┘
+```
+
+**Game code doesn't know (or care) if an asset was pre-made or generated** - it just requests an asset and receives it.
 
 ### **Current Implementation Status**
 
