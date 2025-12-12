@@ -37,6 +37,7 @@ export default defineConfig({
       { find: '@features/interactions', replacement: path.resolve(__dirname, './src/features/interactions') },
       { find: '@features/prompts', replacement: path.resolve(__dirname, './src/features/prompts') },
       { find: '@features/providers', replacement: path.resolve(__dirname, './src/features/providers') },
+      { find: '@features/settings', replacement: path.resolve(__dirname, './src/features/settings') },
       { find: '@features/gallery', replacement: path.resolve(__dirname, './src/features/gallery') },
       { find: '@features/scene', replacement: path.resolve(__dirname, './src/features/scene') },
       { find: '@features/hud', replacement: path.resolve(__dirname, './src/features/hud') },
