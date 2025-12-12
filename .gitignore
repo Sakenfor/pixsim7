@@ -112,6 +112,7 @@ pixsim7/backend/main/domain/narrative/action_blocks/library/*.json
 # Test scenario data
 tests/scenarios/
 /storage/automation_screenshots
-launcher/gui/launcher.json
-launcher/gui/launcher.json
 /data/orphaned
+
+# Launcher GUI state files
+launcher/gui/launcher.json
