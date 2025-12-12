@@ -10,7 +10,7 @@
 
 import * as React from 'react';
 import { create } from 'zustand';
-import { debugFlags } from '@/lib/debugFlags';
+import { debugFlags } from '@/lib/utils/debugFlags';
 import { logEvent } from '@/lib/logging';
 
 // Re-export modules

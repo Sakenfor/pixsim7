@@ -21,7 +21,7 @@ import type {
 } from './index';
 import { useCapabilityStore } from './index';
 import type { PluginPermission } from '../plugins/types';
-import { debugFlags } from '@/lib/debugFlags';
+import { debugFlags } from '@/lib/utils/debugFlags';
 import { logEvent } from '@/lib/logging';
 
 /**

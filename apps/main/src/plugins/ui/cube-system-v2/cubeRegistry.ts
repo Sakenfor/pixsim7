@@ -5,7 +5,7 @@
  * Allows any part of the app to register cubes and their behaviors.
  */
 
-import { debugFlags } from '@/lib/debugFlags';
+import { debugFlags } from '@/lib/utils/debugFlags';
 
 export interface CubeFace {
   label: string;

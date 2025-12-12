@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { debugFlags } from '@/lib/debugFlags';
+import { debugFlags } from '@/lib/utils/debugFlags';
 import type {
   GameSessionDTO,
   GameWorldDetail,

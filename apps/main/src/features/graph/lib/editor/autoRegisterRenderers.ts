@@ -3,7 +3,7 @@ import { nodeRendererRegistry, type NodeRendererProps } from './nodeRendererRegi
 import { nodeTypeRegistry } from '@/lib/registries';
 import { registerRenderer } from '../plugins/registryBridge';
 import { pluginCatalog } from '../plugins/pluginSystem';
-import { debugFlags } from '@/lib/debugFlags';
+import { debugFlags } from '@/lib/utils/debugFlags';
 
 /**
  * Auto-wire renderers from node type definitions
