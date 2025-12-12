@@ -4,7 +4,7 @@ import { Button, Panel, Tabs } from '@pixsim7/shared.ui';
 import { useGraphStore } from '@features/graph';
 import type { SceneRuntimeState } from '@/lib/registries';
 import { PlaybackTimeline, type PlaybackEvent } from '../player/PlaybackTimeline';
-import { MockStateEditor } from '../player/MockStateEditor';
+import { SceneStateEditor } from '../player/SceneStateEditor';
 
 export interface ScenePlaybackPanelProps {
   /** Optional start node ID (for "play from here" functionality) */
@@ -160,9 +160,9 @@ export function ScenePlaybackPanel({
             )}
           </div>
 
-          {/* Mock state editor */}
+          {/* Scene state editor */}
           <div id="mockState" className="h-full overflow-auto p-4">
-            <MockStateEditor state={mockState} onChange={setMockState} />
+            <SceneStateEditor state={mockState} onChange={setMockState} />
           </div>
 
           {/* Execution timeline */}

@@ -41,5 +41,4 @@ export {
   getRelationshipFlags,
 } from './types';
 
-export { createMockCore } from './mockCore';
 export { BaseRegistry } from './BaseRegistry';

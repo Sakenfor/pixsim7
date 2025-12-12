@@ -4,6 +4,23 @@
 
 The Semantic Shapes system provides a unified visual language for PixSim7's UI, transforming abstract data into meaningful 3D visualizations. This guide shows how to integrate the NPC Brain Shape and extend the system with new semantic shapes.
 
+## Implementation Status
+
+**Architecture:** ✅ Fully implemented in `@lib/shapes/registry.ts`
+
+**Shape Definitions:** All shapes are fully defined with faces, connections, and behaviors:
+- ✅ **Brain Shape** - Complete (React component + registry)
+- ⏳ **Portal Shape** - Registry only (mode switching UI)
+- ⏳ **Prism Shape** - Registry only (data transformation)
+- ⏳ **Matrix Shape** - Registry only (grid data/inventory)
+- ⏳ **Constellation Shape** - Registry only (relationship network)
+
+**React Components:**
+- ✅ `BrainShape.tsx` - Production-ready, used in NpcBrainLab
+- ❌ Other shape components - Not yet implemented
+
+The system is designed for extensibility. Shape metadata is complete; React visualizations can be added as needed.
+
 ## Architecture
 
 ```
@@ -31,21 +48,23 @@ The Semantic Shapes system provides a unified visual language for PixSim7's UI, 
 
 ```tsx
 import { BrainShape } from './components/shapes/BrainShape';
-import { mockCore } from './lib/core/mockCore';
+import { usePixSim7Core } from '@/lib/game/usePixSim7Core';
 
-function NPCEditor() {
+function NPCBrainPanel() {
+  const { core, loadSession } = usePixSim7Core();
   const [npcId] = useState(1);
   const [brainState, setBrainState] = useState(null);
   const [activeFace, setActiveFace] = useState('cortex');
 
   useEffect(() => {
-    // Load initial state
-    mockCore.loadSession(1).then(() => {
-      setBrainState(mockCore.getNpcBrainState(npcId));
+    // Load session with real data
+    loadSession(1).then(() => {
+      const brain = core.getNpcBrainState(npcId);
+      setBrainState(brain);
     });
 
-    // Subscribe to updates
-    const unsubscribe = mockCore.on('npcBrainChanged', (payload) => {
+    // Subscribe to brain updates
+    const unsubscribe = core.on('npcBrainChanged', (payload) => {
       if (payload.npcId === npcId) {
         setBrainState(payload.brain);
       }
@@ -65,6 +84,8 @@ function NPCEditor() {
   );
 }
 ```
+
+**Production Example:** See `features/brainTools/components/NpcBrainLab.tsx` for a complete implementation with session selection, NPC selection, and real-time brain state updates.
 
 ### 2. Using the Shape Registry
 
@@ -236,23 +257,43 @@ const useSemanticCubeStore = create((set, get) => {
 
 ## Connecting to Headless Core
 
-When the real `@pixsim7/game.engine` is ready:
+Use the `usePixSim7Core()` hook to access the real game engine:
 
 ```typescript
-// Replace mock with real core
-import { PixSim7Core } from '@pixsim7/game.engine';
+import { usePixSim7Core } from '@/lib/game/usePixSim7Core';
+import { useEffect, useState } from 'react';
 
-const core = new PixSim7Core({
-  api: apiClient,
-  storage: storageProvider,
-  auth: authProvider,
-});
+function MyComponent() {
+  const { core, session, loadSession } = usePixSim7Core();
+  const [brainState, setBrainState] = useState(null);
 
-// Use same interface
-core.loadSession(sessionId);
-core.on('npcBrainChanged', handleBrainChange);
-core.applyNpcBrainEdit(npcId, edits);
+  useEffect(() => {
+    // Load a session
+    loadSession(sessionId);
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+
+    // Get brain state for an NPC
+    const brain = core.getNpcBrainState(npcId);
+    setBrainState(brain);
+
+    // Subscribe to changes
+    const unsubscribe = core.on('npcBrainChanged', (payload) => {
+      if (payload.npcId === npcId) {
+        setBrainState(payload.brain);
+      }
+    });
+
+    return unsubscribe;
+  }, [session, npcId]);
+
+  return <BrainShape brainState={brainState} />;
+}
 ```
+
+**Note:** `usePixSim7Core()` creates a singleton instance of the real `PixSim7Core` from `@pixsim7/game.engine`, wired to the frontend API client and local storage.
 
 ## Styling Guidelines
 
@@ -313,28 +354,58 @@ import { BrainShapeExample } from './components/examples/BrainShapeExample';
 
 ## Next Steps
 
-1. **Switch to Sonnet** to implement:
-   - NPC Brain Editor with face panels
-   - Individual face editor components
-   - Core event integration
+### Current System (BrainShape)
+1. ✅ Brain shape metadata defined in registry
+2. ✅ BrainShape React component implemented
+3. ✅ Used in production (NpcBrainLab)
+4. ⏳ Additional face editor panels (use BrainToolsPanel plugin system)
 
-2. **Extend the system** with:
-   - Portal shape for mode switching
-   - Matrix shape for inventory
-   - Constellation shape for relationships
+### Future Shapes (Implement React Components)
+Shape definitions exist in `@lib/shapes/registry.ts`. To implement:
 
-3. **Polish the experience**:
-   - Add sound effects for interactions
-   - Implement keyboard navigation
-   - Add accessibility features
+1. **Portal Shape** - Mode switching visualization
+   - Create `PortalShape.tsx` following BrainShape pattern
+   - Render torus geometry with 5 faces (Entry, Gameplay, Editor, Generator, Exit)
+   - Wire to mode switching logic
+
+2. **Matrix Shape** - Inventory/grid data visualization
+   - Create `MatrixShape.tsx` with cube geometry
+   - Implement 3D grid expansion controls
+   - Connect to inventory data
+
+3. **Constellation Shape** - Relationship network
+   - Create `ConstellationShape.tsx` with dynamic nodes
+   - Render star map of player + NPCs
+   - Show relationship connections as links
+
+4. **Prism Shape** - Data transformation pipeline
+   - Create `PrismShape.tsx` with pyramid geometry
+   - Visualize data flow through transforms
+   - Animate data processing
+
+### Polish
+- Add sound effects for interactions
+- Implement keyboard navigation
+- Add accessibility features (ARIA labels, focus management)
 
 ## Resources
 
+**Core System:**
 - Core Types: `@pixsim7/game.engine`
-- Shape Registry: `@pixsim7/semantic-shapes`
-- Sci-Fi Theme: `/lib/theme/scifi-tokens.ts`
-- Brain Shape Component: `/components/shapes/BrainShape.tsx`
-- Example Implementation: `/components/examples/BrainShapeExample.tsx`
+- Core Hook: `@/lib/game/usePixSim7Core`
+- Shape Registry: `@lib/shapes/registry.ts` ✅ (All 5 shapes defined)
+- Sci-Fi Theme: `@/lib/theme/scifi-tokens.ts`
+
+**Implemented Components:**
+- Brain Shape Component: `@/components/shapes/BrainShape.tsx` ✅
+- Brain Shape Definition: `@/lib/shapes/brain.ts` ✅
+- Production Example: `features/brainTools/components/NpcBrainLab.tsx` ✅
+
+**Reference:**
+- Demo Example (outdated, uses mock data): `examples/components/BrainShapeExample.tsx`
+
+**To Implement:**
+- `PortalShape.tsx`, `PrismShape.tsx`, `MatrixShape.tsx`, `ConstellationShape.tsx` - Follow BrainShape pattern
 
 ## Support
 

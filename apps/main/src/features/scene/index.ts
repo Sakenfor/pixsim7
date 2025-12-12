@@ -28,4 +28,4 @@ export { ScenePlaybackPanel, type ScenePlaybackPanelProps } from './components/p
 // ============================================================================
 
 export { PlaybackTimeline, type PlaybackTimelineProps, type PlaybackEvent } from './components/player/PlaybackTimeline';
-export { MockStateEditor, type MockStateEditorProps } from './components/player/MockStateEditor';
+export { SceneStateEditor, type SceneStateEditorProps } from './components/player/SceneStateEditor';

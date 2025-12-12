@@ -1,26 +1,26 @@
 import { useState, useCallback } from 'react';
 import { Button, Input } from '@pixsim7/shared.ui';
 
-export interface MockStateEditorProps {
-  /** Current mock state */
+export interface SceneStateEditorProps {
+  /** Current scene testing state */
   state: Record<string, any>;
   /** Callback when state changes */
   onChange: (newState: Record<string, any>) => void;
 }
 
 /**
- * Mock State Editor - Configure game state for testing
+ * Scene State Editor - Configure game state for testing
  *
  * Allows setting flags, variables, and other state values to test
  * different scene branches and conditions without playing through the game.
  */
-export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
+export function SceneStateEditor({ state, onChange }: SceneStateEditorProps) {
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
   const [newValueType, setNewValueType] = useState<'string' | 'number' | 'boolean'>('string');
 
   /**
-   * Add a new key-value pair to the mock state
+   * Add a new key-value pair to the scene state
    */
   const handleAdd = useCallback(() => {
     if (!newKey.trim()) return;
@@ -45,7 +45,7 @@ export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
   }, [newKey, newValue, newValueType, state, onChange]);
 
   /**
-   * Remove a key from the mock state
+   * Remove a key from the scene state
    */
   const handleRemove = useCallback(
     (key: string) => {
@@ -78,7 +78,7 @@ export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
   );
 
   /**
-   * Clear all mock state
+   * Clear all scene state
    */
   const handleClearAll = useCallback(() => {
     onChange({});
@@ -88,7 +88,7 @@ export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
    * Load from JSON
    */
   const handleLoadJson = useCallback(() => {
-    const jsonString = prompt('Paste mock state JSON:');
+    const jsonString = prompt('Paste scene state JSON:');
     if (!jsonString) return;
 
     try {
@@ -110,7 +110,7 @@ export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
     const jsonString = JSON.stringify(state, null, 2);
     navigator.clipboard
       .writeText(jsonString)
-      .then(() => alert('Mock state copied to clipboard'))
+      .then(() => alert('Scene state copied to clipboard'))
       .catch(() => prompt('Copy this JSON:', jsonString));
   }, [state]);
 
@@ -120,7 +120,7 @@ export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-          Mock State Configuration
+          Scene State Configuration
         </h3>
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={handleLoadJson} title="Load from JSON">
@@ -185,7 +185,7 @@ export function MockStateEditor({ state, onChange }: MockStateEditorProps) {
         </div>
       ) : (
         <div className="text-center text-neutral-500 dark:text-neutral-400 py-6 bg-neutral-50 dark:bg-neutral-900/50 rounded">
-          <p className="text-sm">No mock state configured</p>
+          <p className="text-sm">No scene state configured</p>
           <p className="text-xs mt-1">Add flags and variables below</p>
         </div>
       )}
