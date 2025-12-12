@@ -30,6 +30,8 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 
 PixSim7 uses barrel exports (`index.ts`) to control public API surfaces and maintain clean import boundaries.
 
+**📖 See Also:** [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) - Comprehensive guide on how backend data flows to frontend, API patterns, and architectural boundaries.
+
 **Lib Aliases** (`@lib/*`) - All 29 lib modules now have barrels:
 
 *Core Registries & Systems:*
@@ -207,9 +209,13 @@ The core package is UI-agnostic and shared across engine/UI layers. The app laye
 - `main/services/automation/`, `main/domain/` — Automation loops, scenario runners, shared domain models.
 - `main/services/scenarios/` — Scenario runner used for deterministic tests.
 
+**📖 See Also:** [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) - Details on backend API structure, domain modules, and how data flows to the frontend.
+
 ## Documentation
 
 - `docs/` — Current specs (architecture, engine layering, subsystem plans). Use `docs/README.md` or this map to locate topics.
+- `docs/architecture/` — Architectural decision records and system boundary documentation.
+  - **[Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md)** — Comprehensive guide on API patterns, data flow, and architectural boundaries.
 - `docs/archive/` — Completed plans and historical references. Subfolders grouped by theme (meta, launcher, completed, etc.).
 - `claude-tasks/` — Task briefs and AI planning notes. Active work (e.g., Model Inspector plan, path alias refactor) lives here until completed.
 
