@@ -9,13 +9,26 @@ import { useState } from 'react';
 import type { WorldToolPlugin } from '../lib/types';
 import { Badge, ProgressBar } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
-import type { BrainState, BrainStatSnapshot } from '@/lib/registries';
-import {
-  getMood,
-  getConversationStyle,
-  getPersonaTags,
-  getIntimacyLevel,
-} from '@/lib/registries';
+import type { BrainState, BrainStatSnapshot } from '@/lib/core/types';
+
+/**
+ * Helper functions to extract values from BrainState
+ */
+function getMood(brain: BrainState): { valence: number; arousal: number; label: string } | null {
+  return brain.derived?.mood as any || null;
+}
+
+function getConversationStyle(brain: BrainState): string | null {
+  return brain.derived?.conversation_style as string || null;
+}
+
+function getPersonaTags(brain: BrainState): string[] {
+  return brain.derived?.persona_tags as string[] || [];
+}
+
+function getIntimacyLevel(brain: BrainState): string | null {
+  return brain.derived?.intimacy_level as string || null;
+}
 
 /**
  * Build a simple BrainState from session data for the debug view

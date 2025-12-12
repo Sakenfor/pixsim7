@@ -29,7 +29,12 @@
       "Bash(pnpm:*)",
       "Bash(cat:*)",
       "Bash(xargs sed -i \"s|from ''@/stores/graphStore''|from ''@features/graph''|g\")",
-      "Bash(xargs sed -i \"s|from ''@/stores/arcGraphStore''|from ''@features/graph''|g\")"
+      "Bash(xargs sed -i \"s|from ''@/stores/arcGraphStore''|from ''@features/graph''|g\")",
+      "Bash(python:*)",
+      "Bash(PYTHONPATH=. python:*)",
+      "Bash(git restore:*)",
+      "Bash(grep:*)",
+      "Bash(xargs sed -i \"s|from ''@/types''|from ''@/lib/registries''|g\")"
     ],
     "deny": [],
     "ask": []

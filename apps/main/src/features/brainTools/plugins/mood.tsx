@@ -7,7 +7,7 @@
 
 import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar } from '@pixsim7/shared.ui';
-import { getMood } from '@/lib/registries';
+import { getMood } from '@/lib/core/types';
 
 export const moodTool: BrainToolPlugin = {
   id: 'npc-mood',

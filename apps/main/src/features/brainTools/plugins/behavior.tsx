@@ -12,7 +12,7 @@ import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,
   type BehaviorUrge,
-} from '@/lib/registries';
+} from '@/lib/core/types';
 
 /**
  * Human-readable labels for behavior keys

@@ -10,7 +10,7 @@
 
 import type { BrainToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { hasStat, getDerived, getAxisValue } from '@/lib/registries';
+import { hasStat, getDerived, getAxisValue } from '@/lib/core/types';
 
 export const socialTool: BrainToolPlugin = {
   id: 'npc-social',

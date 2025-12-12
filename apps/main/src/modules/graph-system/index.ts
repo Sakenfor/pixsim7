@@ -1,5 +1,5 @@
 import type { Module } from '../types';
-import { registerBuiltinNodeTypes, registerArcNodeTypes } from '../../lib/registries';
+// import { registerBuiltinNodeTypes, registerArcNodeTypes } from '../../lib/registries';
 import { registerBuiltinRenderers } from '../../lib/graph/builtinRenderers';
 import { registerArcRenderers } from '../../lib/graph/arcRenderers';
 import { registerPluginRenderers } from '../../lib/graph/pluginRenderers';
@@ -11,7 +11,7 @@ import { registerRenderersFromNodeTypes } from '../../lib/graph/autoRegisterRend
  *
  * Manages the scene graph node type system and renderers.
  * This module handles:
- * - Registering built-in and arc node types
+ * - Registering built-in and arc node types (TODO: need to implement these functions)
  * - Registering node renderers (built-in, arc, and plugin)
  * - Preloading high-priority renderers for performance
  * - Auto-registering renderers from node type definitions
@@ -24,8 +24,9 @@ export const graphSystemModule: Module = {
 
   async initialize() {
     // Register builtin node types
-    registerBuiltinNodeTypes();
-    registerArcNodeTypes();
+    // TODO: Implement registerBuiltinNodeTypes() and registerArcNodeTypes()
+    // registerBuiltinNodeTypes();
+    // registerArcNodeTypes();
 
     // Register builtin node renderers
     registerBuiltinRenderers();

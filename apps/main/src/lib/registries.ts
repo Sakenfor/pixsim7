@@ -64,7 +64,6 @@ export type {
  */
 export { registerBuiltinHelpers } from '@pixsim7/game.engine';
 export { generateHelper } from '@pixsim7/game.engine';
-export { registerBuiltinNodeTypes, registerArcNodeTypes } from '@/lib/registries';
 
 /**
  * Registry summary for debugging

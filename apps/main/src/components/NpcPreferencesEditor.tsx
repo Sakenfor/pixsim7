@@ -18,7 +18,7 @@ import {
   removeFavoriteTool,
 } from '@/lib/game/npcPreferences';
 import type { NpcPersona } from '@pixsim7/game.engine';
-import type { BrainState, BrainStatSnapshot } from '@/lib/registries';
+import type { BrainState, BrainStatSnapshot } from '@/lib/core/types';
 import { BrainShape } from './shapes/BrainShape';
 import type { BrainFace } from '@pixsim7/scene.shapes';
 

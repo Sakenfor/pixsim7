@@ -9,7 +9,7 @@ import {
   NpcRelationshipState,
   CoreEventMap,
 } from './types';
-import type { BrainState, BrainStatSnapshot, DerivedBehaviorUrgency } from '@/lib/registries';
+import type { BrainState, BrainStatSnapshot, DerivedBehaviorUrgency } from '@/lib/core/types';
 
 type EventHandler<K extends keyof CoreEventMap> = (
   payload: CoreEventMap[K]
