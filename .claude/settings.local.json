@@ -50,7 +50,9 @@
       "Bash(else echo \"❌ $dirName\")",
       "Bash(then echo \"✅ $dir\")",
       "Bash(else echo \"❌ $dir\")",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(xargs -0 sed -i \"s|from ''@/hooks/useProviders''|from ''@features/providers''|g\")",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

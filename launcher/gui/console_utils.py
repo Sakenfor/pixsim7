@@ -94,13 +94,14 @@ def is_low_signal_line(line: str) -> bool:
 
 # Structured key=value highlights (best-effort for important fields)
 STRUCT_FIELD_REGEX = re.compile(
-    r'\b(provider_id|job_id|submission_id|generation_id|error_type)=(\S+)',
+    r'\b(provider_id|job_id|submission_id|generation_id|request_id|error_type)=(\S+)',
 )
 STRUCT_FIELD_COLORS = {
     "provider_id": "#4DD0E1",
     "job_id": "#FFB74D",
     "submission_id": "#FFB74D",
     "generation_id": "#FFB74D",
+    "request_id": "#FFB74D",
     "error_type": "#EF5350",
 }
 
@@ -150,7 +151,7 @@ def _apply_inline_highlighting(escaped_text: str) -> str:
         value = raw_value  # already HTML-escaped as part of escaped_text
         color = STRUCT_FIELD_COLORS.get(key, "#4DD0E1")
         # Make IDs clickable into DB log viewer via the launcher (dbfilter:// scheme)
-        if key in {"provider_id", "job_id", "submission_id", "generation_id"}:
+        if key in {"provider_id", "job_id", "submission_id", "generation_id", "request_id"}:
             href = f'dbfilter://{key}/{raw_value}'
             value_html = (
                 f'<a href="{href}" '
