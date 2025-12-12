@@ -5,9 +5,10 @@ Provides centralized log collection and querying.
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field
+from dataclasses import dataclass, asdict
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser
 from pixsim7.backend.main.infrastructure.database.session import get_log_db
@@ -17,6 +18,92 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 router = APIRouter()
+
+
+# ===== Console Field Definitions =====
+
+@dataclass
+class ConsoleFieldDefinition:
+    """Definition of a clickable log field for console rendering."""
+    name: str
+    color: str
+    clickable: bool
+    pattern: str
+    description: Optional[str] = None
+
+
+class ConsoleFieldRegistry:
+    """Registry for console field definitions that services can extend."""
+
+    def __init__(self):
+        self._fields: Dict[str, ConsoleFieldDefinition] = {}
+        self._register_defaults()
+
+    def _register_defaults(self):
+        """Register default clickable fields used across services."""
+        default_fields = [
+            ConsoleFieldDefinition(
+                name="request_id",
+                color="#FFB74D",
+                clickable=True,
+                pattern=r"request_id=(\S+)",
+                description="API request correlation ID"
+            ),
+            ConsoleFieldDefinition(
+                name="job_id",
+                color="#4DD0E1",
+                clickable=True,
+                pattern=r"job_id=(\S+)",
+                description="Background job identifier"
+            ),
+            ConsoleFieldDefinition(
+                name="submission_id",
+                color="#FFB74D",
+                clickable=True,
+                pattern=r"submission_id=(\S+)",
+                description="Provider submission identifier"
+            ),
+            ConsoleFieldDefinition(
+                name="generation_id",
+                color="#FFB74D",
+                clickable=True,
+                pattern=r"generation_id=(\S+)",
+                description="Asset generation identifier"
+            ),
+            ConsoleFieldDefinition(
+                name="provider_id",
+                color="#4DD0E1",
+                clickable=True,
+                pattern=r"provider_id=(\S+)",
+                description="AI provider identifier"
+            ),
+            ConsoleFieldDefinition(
+                name="error_type",
+                color="#EF5350",
+                clickable=False,
+                pattern=r"error_type=(\S+)",
+                description="Error classification"
+            ),
+        ]
+
+        for field in default_fields:
+            self._fields[field.name] = field
+
+    def register(self, field: ConsoleFieldDefinition):
+        """Register a new console field definition."""
+        self._fields[field.name] = field
+
+    def get_all(self) -> List[Dict]:
+        """Get all registered field definitions as dicts."""
+        return [asdict(field) for field in self._fields.values()]
+
+    def get_field(self, name: str) -> Optional[ConsoleFieldDefinition]:
+        """Get a specific field definition by name."""
+        return self._fields.get(name)
+
+
+# Global registry instance
+console_field_registry = ConsoleFieldRegistry()
 
 
 # ===== Request/Response Models =====
@@ -436,3 +523,39 @@ async def get_distinct(
     except Exception as e:
         logger.error("log_distinct_error", field=field, error=str(e), error_type=e.__class__.__name__, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get distinct values: {str(e)}")
+
+
+@router.get("/console-fields")
+async def get_console_fields():
+    """Get console field metadata for clickable log rendering.
+
+    Returns field definitions including:
+    - name: Field identifier (e.g., "job_id")
+    - color: Hex color code for rendering
+    - clickable: Whether field should be clickable
+    - pattern: Regex pattern to extract field value from logs
+    - description: Human-readable field description
+
+    This metadata is used by the launcher GUI and web UI to render
+    clickable badges in console logs. Services can register custom
+    fields via the console_field_registry.
+
+    Example response:
+    {
+        "fields": [
+            {
+                "name": "job_id",
+                "color": "#4DD0E1",
+                "clickable": true,
+                "pattern": "job_id=(\\S+)",
+                "description": "Background job identifier"
+            }
+        ]
+    }
+    """
+    try:
+        fields = console_field_registry.get_all()
+        return {"fields": fields}
+    except Exception as e:
+        logger.error("console_fields_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get console fields: {str(e)}")

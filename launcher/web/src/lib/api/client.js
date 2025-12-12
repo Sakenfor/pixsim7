@@ -103,3 +103,76 @@ export async function getStats() {
 export async function getEventStats() {
 	return request('/events/stats');
 }
+
+// ============================================================================
+// Console Field Metadata
+// ============================================================================
+
+/**
+ * Get console field metadata from backend API.
+ * This metadata defines which log fields should be clickable and how to render them.
+ *
+ * Falls back to default fields if backend is unavailable.
+ *
+ * @returns {Promise<Array>} Array of field definitions
+ */
+export async function getConsoleFields() {
+	try {
+		// Try to fetch from backend API
+		const backendUrl = 'http://localhost:8000';
+		const response = await fetch(`${backendUrl}/api/v1/logs/console-fields`);
+
+		if (response.ok) {
+			const data = await response.json();
+			return data.fields || [];
+		}
+	} catch (err) {
+		console.warn('Failed to fetch console fields from backend, using defaults:', err);
+	}
+
+	// Fallback to default fields
+	return [
+		{
+			name: 'request_id',
+			color: '#FFB74D',
+			clickable: true,
+			pattern: 'request_id=(\\S+)',
+			description: 'API request correlation ID'
+		},
+		{
+			name: 'job_id',
+			color: '#4DD0E1',
+			clickable: true,
+			pattern: 'job_id=(\\S+)',
+			description: 'Background job identifier'
+		},
+		{
+			name: 'submission_id',
+			color: '#FFB74D',
+			clickable: true,
+			pattern: 'submission_id=(\\S+)',
+			description: 'Provider submission identifier'
+		},
+		{
+			name: 'generation_id',
+			color: '#FFB74D',
+			clickable: true,
+			pattern: 'generation_id=(\\S+)',
+			description: 'Asset generation identifier'
+		},
+		{
+			name: 'provider_id',
+			color: '#4DD0E1',
+			clickable: true,
+			pattern: 'provider_id=(\\S+)',
+			description: 'AI provider identifier'
+		},
+		{
+			name: 'error_type',
+			color: '#EF5350',
+			clickable: false,
+			pattern: 'error_type=(\\S+)',
+			description: 'Error classification'
+		}
+	];
+}

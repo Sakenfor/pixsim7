@@ -47,6 +47,11 @@ A PySide6 desktop application for managing local development services for the Pi
 - **Filter**: Substring filter for log content
 - **Clear Display**: Clear the log view without deleting log files
 - **Open in Explorer**: Reveal the log file in Windows Explorer / file manager
+- **Clickable Log Fields**: Console logs render clickable badges for structured fields (job_id, request_id, etc.)
+  - Field metadata is fetched from backend API at `/api/v1/logs/console-fields`
+  - Falls back to hardcoded defaults if backend is unavailable
+  - Clicking a field ID opens the database log viewer filtered by that field
+  - Services can register custom clickable fields via the backend `console_field_registry`
 
 ### Process Management
 - **Graceful Shutdown**: Backend services get 5-second timeout for graceful shutdown before force-kill
@@ -186,6 +191,38 @@ Key fields:
 - `url`: URL to open in browser
 - `health_url`: URL for health checks (optional)
 - `required_tool`: Tool that must be in PATH (optional)
+
+### Registering Custom Console Fields
+
+Services can register custom clickable log fields by adding them to the backend's `console_field_registry` in `/api/v1/logs.py`:
+
+```python
+from pixsim7.backend.main.api.v1.logs import console_field_registry, ConsoleFieldDefinition
+
+# Register a custom field
+console_field_registry.register(ConsoleFieldDefinition(
+    name="my_custom_id",
+    color="#FF5722",
+    clickable=True,
+    pattern=r"my_custom_id=(\S+)",
+    description="My custom identifier"
+))
+```
+
+**Field Properties:**
+- `name`: Field identifier (e.g., "job_id")
+- `color`: Hex color code for rendering (e.g., "#4DD0E1")
+- `clickable`: Boolean - whether the field should be clickable
+- `pattern`: Regex pattern to extract field value (must have one capture group)
+- `description`: Human-readable description (optional)
+
+**Default Fields:**
+- `request_id` - API request correlation ID (orange, clickable)
+- `job_id` - Background job identifier (cyan, clickable)
+- `submission_id` - Provider submission identifier (orange, clickable)
+- `generation_id` - Asset generation identifier (orange, clickable)
+- `provider_id` - AI provider identifier (cyan, clickable)
+- `error_type` - Error classification (red, non-clickable)
 
 ## Future Enhancements (Stretch Goals)
 

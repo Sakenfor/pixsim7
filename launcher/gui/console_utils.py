@@ -1,12 +1,21 @@
 """Console log formatting utilities for the launcher."""
 import re
 from html import escape
+from typing import Optional, List, Dict, Any
 
 # Reuse shared header formatting where helpful to keep styles consistent
 try:
     from .log_formatter import build_log_header_html
 except ImportError:  # pragma: no cover - fallback for direct execution
     from log_formatter import build_log_header_html
+
+# Import API client for fetching field metadata
+try:
+    from launcher.core.api import get_console_field_metadata
+except ImportError:
+    # Fallback if import fails
+    def get_console_field_metadata(*args, **kwargs):
+        return None
 
 # Level detection patterns
 CONSOLE_LEVEL_PATTERNS = {
@@ -92,18 +101,98 @@ def is_low_signal_line(line: str) -> bool:
             return True
     return False
 
-# Structured key=value highlights (best-effort for important fields)
+# ===== Console Field Metadata (Dynamic) =====
+
+# Default fallback definitions (used if API is unavailable)
+DEFAULT_STRUCT_FIELDS = {
+    "provider_id": {"color": "#4DD0E1", "clickable": True},
+    "job_id": {"color": "#FFB74D", "clickable": True},
+    "submission_id": {"color": "#FFB74D", "clickable": True},
+    "generation_id": {"color": "#FFB74D", "clickable": True},
+    "request_id": {"color": "#FFB74D", "clickable": True},
+    "error_type": {"color": "#EF5350", "clickable": False},
+}
+
+# Cache for field metadata
+_field_metadata_cache: Optional[Dict[str, Any]] = None
+
+
+def load_console_field_metadata(api_url: str = "http://localhost:8000") -> Dict[str, Any]:
+    """
+    Load console field metadata from backend API with caching.
+
+    Fetches field definitions from /api/v1/logs/console-fields and builds
+    regex patterns and color maps. Falls back to hardcoded defaults if API fails.
+
+    Args:
+        api_url: Backend API URL
+
+    Returns:
+        Dict with 'regex', 'colors', and 'clickable_fields' keys
+    """
+    global _field_metadata_cache
+
+    # Return cached metadata if available
+    if _field_metadata_cache is not None:
+        return _field_metadata_cache
+
+    # Try to fetch from API
+    fields = get_console_field_metadata(api_url=api_url, use_cache=True, timeout=2)
+
+    if fields:
+        # Build metadata from API response
+        field_names = []
+        colors = {}
+        clickable_fields = set()
+
+        for field_def in fields:
+            name = field_def.get('name')
+            if not name:
+                continue
+
+            field_names.append(name)
+            colors[name] = field_def.get('color', '#4DD0E1')
+
+            if field_def.get('clickable', False):
+                clickable_fields.add(name)
+
+        # Build regex pattern for all fields
+        if field_names:
+            pattern = r'\b(' + '|'.join(field_names) + r')=(\S+)'
+            regex = re.compile(pattern)
+        else:
+            # Fallback to default
+            regex = re.compile(r'\b(provider_id|job_id|submission_id|generation_id|request_id|error_type)=(\S+)')
+            colors = {k: v["color"] for k, v in DEFAULT_STRUCT_FIELDS.items()}
+            clickable_fields = {k for k, v in DEFAULT_STRUCT_FIELDS.items() if v["clickable"]}
+    else:
+        # API failed, use defaults
+        field_names = list(DEFAULT_STRUCT_FIELDS.keys())
+        regex = re.compile(r'\b(' + '|'.join(field_names) + r')=(\S+)')
+        colors = {k: v["color"] for k, v in DEFAULT_STRUCT_FIELDS.items()}
+        clickable_fields = {k for k, v in DEFAULT_STRUCT_FIELDS.items() if v["clickable"]}
+
+    _field_metadata_cache = {
+        'regex': regex,
+        'colors': colors,
+        'clickable_fields': clickable_fields
+    }
+
+    return _field_metadata_cache
+
+
+def get_struct_field_metadata() -> Dict[str, Any]:
+    """Get cached or freshly loaded field metadata."""
+    if _field_metadata_cache is None:
+        return load_console_field_metadata()
+    return _field_metadata_cache
+
+
+# Legacy constants for backward compatibility (will use dynamic values)
 STRUCT_FIELD_REGEX = re.compile(
     r'\b(provider_id|job_id|submission_id|generation_id|request_id|error_type)=(\S+)',
 )
-STRUCT_FIELD_COLORS = {
-    "provider_id": "#4DD0E1",
-    "job_id": "#FFB74D",
-    "submission_id": "#FFB74D",
-    "generation_id": "#FFB74D",
-    "request_id": "#FFB74D",
-    "error_type": "#EF5350",
-}
+STRUCT_FIELD_COLORS = {k: v["color"] for k, v in DEFAULT_STRUCT_FIELDS.items()}
 
 # ANSI / SGR detection and stripping
 ANSI_SGR_REGEX = re.compile(r'(\x1b\[|\[)([0-9;]{1,5})m')
@@ -146,12 +235,19 @@ def _apply_inline_highlighting(escaped_text: str) -> str:
     )
 
     # Highlight structured key=value fields (provider_id, job_id, etc.)
+    # Use dynamic metadata from API
+    metadata = get_struct_field_metadata()
+    field_regex = metadata['regex']
+    field_colors = metadata['colors']
+    clickable_fields = metadata['clickable_fields']
+
     def _struct_repl(match: re.Match) -> str:
         key, raw_value = match.group(1), match.group(2)
         value = raw_value  # already HTML-escaped as part of escaped_text
-        color = STRUCT_FIELD_COLORS.get(key, "#4DD0E1")
-        # Make IDs clickable into DB log viewer via the launcher (dbfilter:// scheme)
-        if key in {"provider_id", "job_id", "submission_id", "generation_id", "request_id"}:
+        color = field_colors.get(key, "#4DD0E1")
+
+        # Make clickable fields into links via dbfilter:// scheme
+        if key in clickable_fields:
             href = f'dbfilter://{key}/{raw_value}'
             value_html = (
                 f'<a href="{href}" '
@@ -162,7 +258,7 @@ def _apply_inline_highlighting(escaped_text: str) -> str:
 
         return f'<span style="color: #888;">{key}=</span>{value_html}'
 
-    text = STRUCT_FIELD_REGEX.sub(_struct_repl, text)
+    text = field_regex.sub(_struct_repl, text)
 
     return text
 

@@ -83,6 +83,37 @@ python -m uvicorn launcher.api.main:app --port 8100
 curl http://localhost:8100/services
 ```
 
+## Features
+
+### Console Field Metadata API
+
+The launcher integrates with the backend's `/api/v1/logs/console-fields` endpoint to dynamically render clickable log fields in both the Qt GUI and web UI.
+
+**How it works:**
+1. Backend defines field metadata (name, color, pattern, clickability) in `pixsim7/backend/main/api/v1/logs.py`
+2. Launcher fetches metadata on startup and caches it locally (`data/cache/console_fields.json`)
+3. Console logs are parsed for field patterns (e.g., `job_id=123`)
+4. Matching fields are rendered as colored, clickable badges
+5. Clicking a field ID opens the database log viewer filtered by that field
+
+**Adding custom fields:**
+Services can register new clickable fields via the backend's `console_field_registry`:
+
+```python
+from pixsim7.backend.main.api.v1.logs import console_field_registry, ConsoleFieldDefinition
+
+console_field_registry.register(ConsoleFieldDefinition(
+    name="trace_id",
+    color="#9C27B0",
+    clickable=True,
+    pattern=r"trace_id=(\S+)",
+    description="Distributed trace identifier"
+))
+```
+
+**Fallback behavior:**
+If the backend API is unavailable, the launcher falls back to hardcoded default fields, ensuring the UI remains functional.
+
 ## Design Principles
 
 1. **Separation of Concerns** - Core logic decoupled from UI

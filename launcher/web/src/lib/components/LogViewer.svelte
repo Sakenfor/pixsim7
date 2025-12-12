@@ -18,6 +18,10 @@
 
 	const logLevels = ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG'];
 
+	// Console field metadata (fetched from backend)
+	let consoleFields = [];
+	let fieldPatterns = []; // Compiled regex patterns
+
 	// Load settings from localStorage
 	function loadSettings() {
 		try {
@@ -126,14 +130,59 @@
 		}
 	}
 
+	// Load console field metadata
+	async function loadConsoleFields() {
+		try {
+			consoleFields = await api.getConsoleFields();
+			// Compile regex patterns
+			fieldPatterns = consoleFields.map(field => ({
+				...field,
+				regex: new RegExp(field.pattern, 'g')
+			}));
+		} catch (err) {
+			console.error('Failed to load console fields:', err);
+			// Use empty array, will fall back to plain rendering
+			consoleFields = [];
+			fieldPatterns = [];
+		}
+	}
+
+	// Parse and highlight fields in a log line
+	function highlightFields(line) {
+		if (!fieldPatterns || fieldPatterns.length === 0) {
+			return line;
+		}
+
+		let result = line;
+
+		// Apply each field pattern
+		for (const field of fieldPatterns) {
+			const regex = field.regex;
+			result = result.replace(regex, (match, value) => {
+				if (field.clickable) {
+					// Create clickable badge
+					return `<span style="color: #888;">${field.name}=</span><a href="#" onclick="alert('Filter by ${field.name}: ${value}'); return false;" style="color: ${field.color}; font-weight: bold; text-decoration: underline;">${value}</a>`;
+				} else {
+					// Non-clickable highlight
+					return `<span style="color: #888;">${field.name}=</span><span style="color: ${field.color}; font-weight: bold;">${value}</span>`;
+				}
+			});
+		}
+
+		return result;
+	}
+
 	// Reload logs when service changes
 	$: if (serviceKey) {
 		loadLogs();
 	}
 
-	onMount(() => {
+	onMount(async () => {
 		// Load saved settings
 		loadSettings();
+
+		// Load console field metadata
+		await loadConsoleFields();
 
 		// Auto-refresh logs every 2 seconds
 		refreshInterval = setInterval(loadLogs, 2000);
@@ -222,8 +271,9 @@
 		{:else}
 			{#each logs as line}
 				{@const level = getLineLevel(line)}
+				{@const highlighted = highlightFields(line)}
 				<div class="py-1 px-2 rounded mb-1 {lineColors[level]}">
-					{line}
+					{@html highlighted}
 				</div>
 			{/each}
 		{/if}
