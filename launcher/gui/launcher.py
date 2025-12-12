@@ -485,14 +485,16 @@ class LauncherWindow(QWidget):
             # Switch to DB logs tab (keeps current service selection in sync)
             self._open_db_logs_for_current_service()
 
-            # Delegate actual filtering to DatabaseLogViewer using its existing handler
+            # Delay filter application to avoid threading race conditions during tab switch
             if hasattr(self, "db_log_viewer") and self.db_log_viewer:
-                try:
-                    filter_url = QUrl(f"filter://{field_name}/{value}")
-                    self.db_log_viewer._on_log_link_clicked(filter_url)
-                except Exception:
-                    # Best-effort; ignore if viewer isn't ready yet
-                    pass
+                def apply_filter():
+                    try:
+                        filter_url = QUrl(f"filter://{field_name}/{value}")
+                        self.db_log_viewer._on_log_link_clicked(filter_url)
+                    except Exception:
+                        # Best-effort; ignore if viewer isn't ready yet
+                        pass
+                QTimer.singleShot(100, apply_filter)
             return
 
         # Fallback: open regular web links in browser
