@@ -11,7 +11,6 @@ from pathlib import Path
 from pixsim7.backend.main.api.dependencies import CurrentUser
 from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import Provider
-from pixsim7.backend.main.services.generation.cost_extractor import PROVIDER_PRICING
 from pixsim7.backend.main.services.generation.pixverse_pricing import (
     get_image_credit_change,
     estimate_video_credit_change,
@@ -315,16 +314,6 @@ def extract_provider_capabilities(provider) -> dict:
                 )
             except Exception:
                 cost_hints = {}
-        # Fallback: rough USD per-second approximation if credit helper unavailable.
-        if not cost_hints:
-            pixverse_pricing = PROVIDER_PRICING.get("pixverse", {})
-            per_second_usd = pixverse_pricing.get("video", 0.0)
-            if per_second_usd:
-                cost_hints = {
-                    "per_second": per_second_usd,
-                    "currency": "USD",
-                    "estimation_note": "Approximate video cost per second; final credits may vary by model/options.",
-                }
         if cost_hints:
             base["cost_hints"] = cost_hints
     elif 'sora' in adapter_name:
@@ -392,16 +381,10 @@ async def estimate_pixverse_cost(
             estimated_cost_usd=None,
         )
 
-    # Optional USD approximation based on per-second pricing
-    estimated_usd: float | None = None
-    pixverse_pricing = PROVIDER_PRICING.get("pixverse", {})
-    per_second_usd = pixverse_pricing.get("video", 0.0)
-    if per_second_usd:
-        estimated_usd = per_second_usd * duration
-
+    # USD conversion not currently supported - credits are the primary currency
     return PixverseCostEstimateResponse(
         estimated_credits=float(credits),
-        estimated_cost_usd=estimated_usd,
+        estimated_cost_usd=None,
     )
 
 
