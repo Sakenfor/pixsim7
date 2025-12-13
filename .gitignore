@@ -116,3 +116,4 @@ tests/scenarios/
 
 # Launcher GUI state files
 launcher/gui/launcher.json
+.claude/settings.local.json

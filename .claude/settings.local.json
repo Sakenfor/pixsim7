@@ -71,7 +71,17 @@
       "Bash(timeout 30 npm run dev:*)",
       "Bash(__NEW_LINE__ grep -r \"settingsRegistry\\|settingsSchemaRegistry\" --include=\"*.ts\" --include=\"*.tsx\")",
       "Bash(then echo \"✓ $dir\")",
-      "Bash(else echo \"✗ $dir\")"
+      "Bash(else echo \"✗ $dir\")",
+      "Bash(__NEW_LINE__ echo \"=== Checking all barrel exports ===\")",
+      "Bash(__NEW_LINE__ echo \"Logging exports:\")",
+      "Bash(__NEW_LINE__ echo \"Debug exports:\")",
+      "Bash(__NEW_LINE__ echo \"Storage exports:\")",
+      "Bash(node check-exports.js:*)",
+      "Bash(powershell:*)",
+      "Bash(echo:*)",
+      "Bash(npm run dev:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: rename VideoStatus to ProviderStatus and fix generation metrics\n\nBackend fixes:\n- Rename VideoStatus to ProviderStatus throughout codebase\n  - VideoStatus was misleadingly named as it''s used for all generation types (images, videos, etc.)\n  - Updated enum class, docstring, and all usages across 18 files\n  - Updated all documentation references\n\n- Fix PromptVersion metrics AttributeError\n  - Change usage_count to generation_count in lifecycle_service.py\n  - Aligns with actual PromptVersion model field name\n\nFrontend fixes (already committed in 6506edba):\n- Fix SimulationPlayground import error (use @/lib/core instead of @/lib/registries)\n- Add idempotency check to initializePanels to prevent duplicate plugin loading\n- Fix duplicate gizmo console registration by setting flag immediately\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "ask": []
