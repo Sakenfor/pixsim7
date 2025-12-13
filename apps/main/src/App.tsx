@@ -31,7 +31,7 @@ import { PromptLabDev } from './routes/PromptLabDev';
 import { ActionBlockGraphDev } from './routes/ActionBlockGraphDev';
 import { BlockFitDev } from './routes/BlockFitDev';
 import { OverlayConfig } from './routes/OverlayConfig';
-import { ControlCenterManager } from './components/control/ControlCenterManager';
+import { ControlCenterManager } from '@features/controlCenter';
 import { FloatingPanelsManager } from '@/components/panels/shared/FloatingPanelsManager';
 import { PluginOverlays } from './components/PluginOverlays';
 import { PluginManagerUI } from './components/PluginManager';

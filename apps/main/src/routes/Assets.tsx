@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssetsController } from '@features/assets';
 import { useGenerationWebSocket } from '@features/generation';
-import { useControlCenterLayout } from '../hooks/useControlCenterLayout';
+import { useControlCenterLayout } from '@features/controlCenter';
 import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
