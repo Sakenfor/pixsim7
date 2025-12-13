@@ -246,9 +246,9 @@ def _apply_inline_highlighting(escaped_text: str) -> str:
         value = raw_value  # already HTML-escaped as part of escaped_text
         color = field_colors.get(key, "#4DD0E1")
 
-        # Make clickable fields into links via dbfilter:// scheme
+        # Make clickable fields into links via click:// scheme (shows dropdown menu)
         if key in clickable_fields:
-            href = f'dbfilter://{key}/{raw_value}'
+            href = f'click://{key}/{raw_value}'
             value_html = (
                 f'<a href="{href}" '
                 f'style="color: {color}; font-weight: bold; text-decoration: underline;">{value}</a>'

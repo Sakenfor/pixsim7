@@ -10,10 +10,10 @@ from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
-    QScrollArea, QFrame, QGridLayout, QTabWidget
+    QScrollArea, QFrame, QGridLayout, QTabWidget, QMenu
 )
 from PySide6.QtCore import Qt, QProcess, QTimer, Signal, QSize, QThread, QUrl
-from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence
+from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence, QAction, QCursor
 
 # Load .env file into environment BEFORE initializing logger
 from dotenv import load_dotenv
@@ -72,6 +72,11 @@ try:
     from .widgets.service_card import ServiceCard
 except Exception:
     from widgets.service_card import ServiceCard
+
+try:
+    from .clickable_fields import get_field, ActionType
+except Exception:
+    from clickable_fields import get_field, ActionType
 
 try:
     from .widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
@@ -472,10 +477,18 @@ class LauncherWindow(QWidget):
             self.log_view.verticalScrollBar().valueChanged.connect(self._on_console_scroll)
 
     def _on_console_link_clicked(self, url: QUrl):
-        """Handle clickable links in the console view (e.g., ID filters into DB logs)."""
+        """Handle clickable links in the console view (e.g., ID filters, show dropdown menu)."""
         scheme = url.scheme()
 
-        # Pivot into DB logs with a pre-applied field filter
+        # Show dropdown menu with field actions (same as DB logs)
+        if scheme == "click":
+            field_name = url.host()
+            field_value = url.path().lstrip("/")
+            if field_name and field_value:
+                self._show_console_field_action_popup(field_name, field_value)
+            return
+
+        # Legacy: Pivot into DB logs with a pre-applied field filter
         if scheme == "dbfilter":
             field_name = url.host()
             value = url.path().lstrip("/")
@@ -503,6 +516,121 @@ class LauncherWindow(QWidget):
                 webbrowser.open(url.toString())
             except Exception:
                 pass
+
+    def _show_console_field_action_popup(self, field_name: str, field_value: str):
+        """Show popup menu with actions for a clickable field in console logs."""
+        field_def = get_field(field_name)
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d2d2d;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 20px 6px 10px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #5a9fd4;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #555;
+                margin: 4px 8px;
+            }
+        """)
+
+        if field_def:
+            # Add header with field info
+            display_name = field_def.display_name
+            truncated = field_value[:20] + "..." if len(field_value) > 20 else field_value
+            header_action = QAction(f"{display_name}: {truncated}", self)
+            header_action.setEnabled(False)
+            header_font = header_action.font()
+            header_font.setBold(True)
+            header_action.setFont(header_font)
+            menu.addAction(header_action)
+            menu.addSeparator()
+
+            # Add actions from registry
+            for action_def in field_def.actions:
+                icon = action_def.icon + " " if action_def.icon else ""
+                action = QAction(f"{icon}{action_def.label}", self)
+
+                if action_def.tooltip:
+                    action.setToolTip(action_def.tooltip)
+
+                # Connect based on action type
+                if action_def.action_type == ActionType.FILTER:
+                    action.triggered.connect(
+                        lambda checked=False, fn=field_name, fv=field_value:
+                        self._apply_console_field_filter(fn, fv)
+                    )
+                elif action_def.action_type == ActionType.COPY:
+                    action.triggered.connect(
+                        lambda checked=False, v=field_value:
+                        self._copy_to_clipboard(v)
+                    )
+                elif action_def.action_type == ActionType.TRACE:
+                    action.triggered.connect(
+                        lambda checked=False, fn=field_name, fv=field_value:
+                        self._apply_console_trace_action(fn, fv)
+                    )
+
+                menu.addAction(action)
+        else:
+            # Fallback for unregistered fields
+            filter_action = QAction(f"🔍 Filter by {field_name}", self)
+            filter_action.triggered.connect(
+                lambda: self._apply_console_field_filter(field_name, field_value)
+            )
+            menu.addAction(filter_action)
+
+            copy_action = QAction(f"📋 Copy value", self)
+            copy_action.triggered.connect(
+                lambda: self._copy_to_clipboard(field_value)
+            )
+            menu.addAction(copy_action)
+
+        # Show menu at cursor position
+        menu.exec_(QCursor.pos())
+
+    def _apply_console_field_filter(self, field_name: str, field_value: str):
+        """Apply field filter by switching to DB logs tab."""
+        self._open_db_logs_for_current_service()
+
+        # Apply the filter in DB logs viewer
+        if hasattr(self, "db_log_viewer") and self.db_log_viewer:
+            def apply_filter():
+                try:
+                    filter_url = QUrl(f"filter://{field_name}/{field_value}")
+                    self.db_log_viewer._on_log_link_clicked(filter_url)
+                except Exception:
+                    pass
+            QTimer.singleShot(100, apply_filter)
+
+    def _apply_console_trace_action(self, field_name: str, field_value: str):
+        """Apply trace action by switching to DB logs and showing full trace."""
+        self._open_db_logs_for_current_service()
+
+        # Apply the filter in DB logs viewer
+        if hasattr(self, "db_log_viewer") and self.db_log_viewer:
+            def apply_trace():
+                try:
+                    # Use click:// to trigger the trace action in DB logs
+                    click_url = QUrl(f"click://{field_name}/{field_value}")
+                    self.db_log_viewer._on_log_link_clicked(click_url)
+                except Exception:
+                    pass
+            QTimer.singleShot(100, apply_trace)
+
+    def _copy_to_clipboard(self, text: str):
+        """Copy text to clipboard."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
 
     def _open_db_logs_for_current_service(self):
         """Switch to Database Logs tab and apply current service filter."""
