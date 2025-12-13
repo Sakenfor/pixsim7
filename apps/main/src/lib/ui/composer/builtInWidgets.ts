@@ -5,10 +5,10 @@
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
  */
 
-import { TextWidget } from '../../components/widgets/TextWidget';
-import { MetricWidget } from '../../components/widgets/MetricWidget';
-import { ListWidget } from '../../components/widgets/ListWidget';
-import { galleryGridWidgetDefinition } from '../../components/widgets/GalleryGridWidget';
+import { TextWidget } from '../../../components/widgets/TextWidget';
+import { MetricWidget } from '../../../components/widgets/MetricWidget';
+import { ListWidget } from '../../../components/widgets/ListWidget';
+import { galleryGridWidgetDefinition } from '../../../components/widgets/GalleryGridWidget';
 import type { WidgetDefinition } from './widgetRegistry';
 
 export const builtInWidgets: WidgetDefinition[] = [

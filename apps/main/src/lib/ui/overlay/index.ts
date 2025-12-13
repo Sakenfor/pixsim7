@@ -6,7 +6,7 @@
  *
  * @example
  * ```tsx
- * import { OverlayContainer, createBadgeWidget } from '@/lib/overlay';
+ * import { OverlayContainer, createBadgeWidget } from '@lib/ui/overlay';
  *
  * const config: OverlayConfiguration = {
  *   id: 'my-overlay',

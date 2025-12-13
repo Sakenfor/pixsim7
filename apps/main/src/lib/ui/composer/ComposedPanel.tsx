@@ -8,7 +8,7 @@
 import React from 'react';
 import type { PanelComposition } from './panelComposer';
 import { widgetRegistry } from './widgetRegistry';
-import { useBindingValues, dataSourceRegistry } from '../dataBinding';
+import { useBindingValues, dataSourceRegistry } from '../../dataBinding';
 
 interface ComposedPanelProps {
   composition: PanelComposition;

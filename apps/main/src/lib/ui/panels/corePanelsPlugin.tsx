@@ -6,19 +6,19 @@
  */
 
 import type { PanelPlugin } from './panelPlugin';
-import { registerBuiltinPanel } from '../plugins/registryBridge';
-import { AssetsRoute } from '../../routes/Assets';
+import { registerBuiltinPanel } from '../../plugins/registryBridge';
+import { AssetsRoute } from '../../../routes/Assets';
 import { SceneBuilderPanel, SceneManagementPanel } from '@features/scene';
 import { GraphEditorHost } from '@features/graph';
-import { InspectorPanel } from '../../components/inspector/InspectorPanel';
-import { HealthPanel } from '../../components/health/HealthPanel';
+import { InspectorPanel } from '../../../components/inspector/InspectorPanel';
+import { HealthPanel } from '../../../components/health/HealthPanel';
 import { ProviderSettingsPanel } from '@features/providers/components/ProviderSettingsPanel';
 import { SettingsPanel } from '@features/settings/components/SettingsPanel';
 import { GameThemingPanel } from '@/components/game/panels/GameThemingPanel';
-import { GizmoLab } from '../../routes/GizmoLab';
+import { GizmoLab } from '../../../routes/GizmoLab';
 import { NpcBrainLab } from '@features/brainTools';
 import { DevToolsPanel } from '@/components/panels/dev/DevToolsPanel';
-import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
+import { HudDesignerPanel } from '../../../components/panels/HudDesignerPanel';
 import { WorldVisualRolesPanel } from '@features/worldTools';
 import { GenerationsPanel } from '@features/generation';
 import { GameToolsPanel } from '@/components/panels/tools/GameToolsPanel';

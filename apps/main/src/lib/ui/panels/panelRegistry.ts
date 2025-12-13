@@ -7,8 +7,8 @@
 
 import type { PanelId } from '../../stores/workspaceStore';
 import type { ComponentType } from 'react';
-import { BaseRegistry } from '../core/BaseRegistry';
-import type { EditorContext } from '../context/editorContext';
+import { BaseRegistry } from '../../core/BaseRegistry';
+import type { EditorContext } from '../../context/editorContext';
 import type { PanelCategory } from './panelConstants';
 
 // Re-export PanelCategory for backwards compatibility

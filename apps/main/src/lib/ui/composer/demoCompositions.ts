@@ -6,7 +6,7 @@
  */
 
 import type { PanelComposition } from './panelComposer';
-import { createBinding } from '../dataBinding';
+import { createBinding } from '../../dataBinding';
 
 /**
  * Workspace Status Dashboard

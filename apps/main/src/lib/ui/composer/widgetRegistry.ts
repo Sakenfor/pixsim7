@@ -6,7 +6,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { BaseRegistry } from '../core/BaseRegistry';
+import { BaseRegistry } from '../../core/BaseRegistry';
 
 export type WidgetType =
   | 'text'

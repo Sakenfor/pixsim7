@@ -7,7 +7,7 @@
  * Integrates with Task 51 data binding system for live data.
  */
 
-import type { DataSourceBinding, DataSourceDefinition } from '../dataBinding';
+import type { DataSourceBinding, DataSourceDefinition } from '../../dataBinding';
 
 export interface GridLayout {
   type: 'grid';

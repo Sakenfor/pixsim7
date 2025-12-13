@@ -19,7 +19,7 @@ export {
   type PanelCategory,
 } from './panelConstants';
 
-export { type PanelPlugin, createPanelPlugin } from './panelPlugin';
+export { type PanelPlugin, PanelPluginManager, pluginManager } from './panelPlugin';
 export { corePanelsPlugin } from './corePanelsPlugin';
 export { initializePanels } from './initializePanels';
 

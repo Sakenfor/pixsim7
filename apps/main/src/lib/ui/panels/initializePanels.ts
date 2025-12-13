@@ -19,8 +19,10 @@ export async function initializePanels(): Promise<void> {
     // Register graph editor surfaces
     registerGraphEditors();
 
-    // Load core panels plugin
-    await pluginManager.loadPlugin(corePanelsPlugin);
+    // Load core panels plugin (skip if already loaded)
+    if (!pluginManager.isPluginLoaded(corePanelsPlugin.id)) {
+      await pluginManager.loadPlugin(corePanelsPlugin);
+    }
   } catch (error) {
     console.error('Failed to initialize panels:', error);
     throw error;
