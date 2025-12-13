@@ -57,10 +57,9 @@ export function useEditorContext(): EditorContext {
   const currentScene = useGraphStore((s: GraphState) => s.getCurrentScene());
   const { selectedNodeIds } = useSelectionStore();
   const gameContext = useGameStateStore((s) => s.context);
-  const { activePresetId, dockviewLayout } = useWorkspaceStore((s) => ({
-    activePresetId: s.activePresetId,
-    dockviewLayout: s.dockviewLayout,
-  }));
+  // Use separate selectors to avoid creating new objects on every call
+  const activePresetId = useWorkspaceStore((s) => s.activePresetId);
+  const dockviewLayout = useWorkspaceStore((s) => s.dockviewLayout);
 
   // Derive active panels from dockview layout
   const activePanels = useMemo(() => {

@@ -6,6 +6,7 @@
 
 import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
+import { getEnabledInteractions, getInteractionMetadata } from '@/lib/game/interactions/utils';
 
 export const npcPresenceDebugTool: WorldToolPlugin = {
   id: 'npc-presence-debug',
@@ -85,12 +86,14 @@ export const npcPresenceDebugTool: WorldToolPlugin = {
                     <div className="mt-2">
                       <div className="text-neutral-500 text-xs mb-1">Interactions:</div>
                       <div className="flex flex-wrap gap-1">
-                        {assignment.slot.interactions.canTalk && (
-                          <Badge color="green">Talk</Badge>
-                        )}
-                        {assignment.slot.interactions.canPickpocket && (
-                          <Badge color="red">Pickpocket</Badge>
-                        )}
+                        {getEnabledInteractions(assignment.slot.interactions).map((interactionId) => {
+                          const metadata = getInteractionMetadata(interactionId);
+                          return (
+                            <Badge key={interactionId} color={metadata.color}>
+                              {metadata.icon && `${metadata.icon} `}{metadata.name}
+                            </Badge>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

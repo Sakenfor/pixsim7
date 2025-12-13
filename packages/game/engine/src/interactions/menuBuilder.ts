@@ -323,25 +323,13 @@ export function hasSceneInteractions(menu: InteractionMenuResult): boolean {
 }
 
 /**
- * Migration helper: Convert old slot interactions to menu items
+ * Convert slot interactions to menu items
  */
 export function migrateSlotInteractionsToMenu(slotInteractions: Record<string, any>): UnifiedMenuItem[] {
   const items: UnifiedMenuItem[] = [];
 
-  // Legacy format: { canTalk: true, npcTalk: {...}, canPickpocket: true, pickpocket: {...} }
-  if (slotInteractions.canTalk || slotInteractions.talk) {
-    const config = slotInteractions.npcTalk || slotInteractions.talk || {};
-    items.push(slotPluginToMenuItem('talk', { enabled: true, ...config }, 'Talk', 100));
-  }
-
-  if (slotInteractions.canPickpocket || slotInteractions.pickpocket) {
-    const config = slotInteractions.pickpocket || {};
-    items.push(slotPluginToMenuItem('pickpocket', { enabled: true, ...config }, 'Pickpocket', 50));
-  }
-
-  // New format: { talk: { enabled: true, ... }, pickpocket: { enabled: true, ... } }
+  // Plugin-based format: { talk: { enabled: true, ... }, pickpocket: { enabled: true, ... } }
   for (const [key, value] of Object.entries(slotInteractions)) {
-    if (key.startsWith('can') || key === 'npcTalk') continue; // Skip legacy flags
     if (typeof value === 'object' && value !== null) {
       const config = value as Record<string, unknown>;
       if (config.enabled !== false) {

@@ -47,6 +47,15 @@ export type { SensualizeConfig } from './sensualize';
 // Export the config form component
 export { InteractionConfigForm } from './InteractionConfigForm';
 
+// Export utilities for working with interactions dynamically
+export {
+  getInteractionMetadata,
+  getEnabledInteractions,
+  hasEnabledInteractions,
+  getInteractionPlugin,
+  getAllInteractions,
+} from './utils';
+
 /**
  * Helper to execute an interaction by ID
  */

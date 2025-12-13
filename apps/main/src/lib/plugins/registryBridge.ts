@@ -571,6 +571,10 @@ export function unregisterPanelWithPlugin(id: string): boolean {
  * Register built-in panel with origin tracking
  */
 export function registerBuiltinPanel(panel: PanelDefinition): void {
+  // Skip if already registered (prevents duplicate warnings)
+  if (panelRegistry.has(panel.id as any)) {
+    return;
+  }
   registerPanelWithPlugin(panel, { origin: 'builtin', canDisable: false });
 }
 

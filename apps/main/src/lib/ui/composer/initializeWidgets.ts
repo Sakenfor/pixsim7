@@ -12,10 +12,10 @@ let initialized = false;
 
 /**
  * Initialize all built-in widgets
+ * Safe to call multiple times - will skip if already initialized
  */
 export function initializeWidgets(): void {
   if (initialized) {
-    console.warn('Widgets already initialized');
     return;
   }
 

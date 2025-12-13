@@ -69,6 +69,7 @@ import {
   registerBuiltinGamePlugins,
   unregisterBuiltinGamePlugins,
 } from '../lib/game/runtime';
+import { hasEnabledInteractions } from '../lib/game/interactions/utils';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
@@ -291,6 +292,33 @@ export function Game2D() {
     })();
   }, []);
 
+  // Define handleSelectWorld before it's used in useEffect
+  const handleSelectWorld = async (worldId: number | null) => {
+    if (!worldId) {
+      runtime.detachSession();
+      return;
+    }
+    try {
+      // Use runtime to ensure session for the selected world
+      await ensureSession(worldId);
+    } catch (e) {
+      console.error('Failed to select GameWorld for Game2D', e);
+    }
+  };
+
+  const handleCreateWorld = async () => {
+    const name = window.prompt('World name:', 'My World');
+    if (!name) return;
+    try {
+      const created = await createGameWorld(name, {});
+      const nextWorlds = [...worlds, { id: created.id, name: created.name }];
+      setWorlds(nextWorlds);
+      await handleSelectWorld(created.id);
+    } catch (e) {
+      console.error('Failed to create GameWorld', e);
+    }
+  };
+
   // Phase 5: Handle URL params for direct scene playback from editor
   useEffect(() => {
     const worldIdParam = searchParams.get('worldId');
@@ -346,32 +374,6 @@ export function Game2D() {
 
     return () => clearTimeout(timer);
   }, [searchParams, gameSession, selectedWorldId, selectedLocationId, ensureSession, handleSelectWorld, runtimeEnterScene]);
-
-  const handleSelectWorld = async (worldId: number | null) => {
-    if (!worldId) {
-      runtime.detachSession();
-      return;
-    }
-    try {
-      // Use runtime to ensure session for the selected world
-      await ensureSession(worldId);
-    } catch (e) {
-      console.error('Failed to select GameWorld for Game2D', e);
-    }
-  };
-
-  const handleCreateWorld = async () => {
-    const name = window.prompt('World name:', 'My World');
-    if (!name) return;
-    try {
-      const created = await createGameWorld(name, {});
-      const nextWorlds = [...worlds, { id: created.id, name: created.name }];
-      setWorlds(nextWorlds);
-      await handleSelectWorld(created.id);
-    } catch (e) {
-      console.error('Failed to create GameWorld', e);
-    }
-  };
 
   useEffect(() => {
     if (!selectedLocationId) {
@@ -935,14 +937,7 @@ export function Game2D() {
                   {npcSlotAssignments.map((assignment) => {
                     const slot = assignment.slot;
                     const hasNpc = assignment.npcId !== null;
-                    // Check for both old and new format interactions
-                    const interactions = slot.interactions || {};
-                    const hasInteractions =
-                      (interactions as any).canTalk ||
-                      (interactions as any).canPickpocket ||
-                      (interactions as any).talk?.enabled ||
-                      (interactions as any).pickpocket?.enabled ||
-                      Object.values(interactions).some((config: any) => config?.enabled);
+                    const hasInteractions = hasEnabledInteractions(slot.interactions);
 
                     return (
                       <button

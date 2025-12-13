@@ -36,11 +36,15 @@ export interface PickpocketConfig {
   onFailFlags?: string[];
 }
 
+/**
+ * NPC slot interactions using plugin-based format
+ * Each key is an interaction plugin ID (e.g., 'talk', 'pickpocket', 'persuade')
+ * Each value is the plugin's config with an 'enabled' flag
+ */
 export interface NpcSlotInteractions {
-  canTalk?: boolean;
-  npcTalk?: NpcTalkConfig;
-  canPickpocket?: boolean;
-  pickpocket?: PickpocketConfig;
+  talk?: { enabled: boolean; preferredSceneId?: number | null } & Partial<NpcTalkConfig>;
+  pickpocket?: { enabled: boolean } & Partial<PickpocketConfig>;
+  [interactionId: string]: { enabled: boolean; [key: string]: any } | undefined;
 }
 
 export interface NpcSlot2d {
