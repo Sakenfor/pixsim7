@@ -5,7 +5,7 @@
  * Modules register themselves and provide their own UI components.
  */
 import { useState, useEffect, Suspense } from 'react';
-import { settingsRegistry, type SettingsModule } from '@/lib/settingsRegistry';
+import { settingsRegistry, type SettingsModule } from '@features/settings';
 
 // Import modules to trigger registration
 import './modules';

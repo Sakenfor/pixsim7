@@ -4,7 +4,7 @@
  * Performance and storage settings for media handling.
  */
 
-import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from './settingsSchemaRegistry';
+import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '@features/settings/lib/core/settingsSchemaRegistry';
 import { useMediaSettingsStore } from '@/stores/mediaSettingsStore';
 
 const mediaGroups: SettingGroup[] = [

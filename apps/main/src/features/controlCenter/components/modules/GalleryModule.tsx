@@ -15,7 +15,7 @@ import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
 import { useAssets } from '@features/assets';
 import { mediaCardPresets } from '@/lib/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
-import { gallerySurfaceRegistry } from '@features/gallery/surfaceRegistry';
+import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
 import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 
 export function GalleryModule({ }: ControlCenterModuleProps) {

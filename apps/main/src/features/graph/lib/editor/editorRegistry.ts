@@ -7,7 +7,7 @@
  */
 
 import type { GraphEditorDefinition, GraphEditorId } from './types';
-import { BaseRegistry } from '../core/BaseRegistry';
+import { BaseRegistry } from '@lib/core/BaseRegistry';
 
 /**
  * GraphEditorRegistry - Centralized registry for graph editor surfaces

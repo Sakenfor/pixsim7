@@ -4,7 +4,7 @@
  * Functions for syncing Pixverse videos/images to local Assets
  * and rebuilding lineage from stored metadata.
  */
-import { apiClient } from './client';
+import { apiClient } from '@lib/api/client';
 
 // ============================================================================
 // Types

@@ -1,6 +1,6 @@
-import { apiClient } from './client';
+import { apiClient } from '@lib/api/client';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
-import { logEvent } from '../logging';
+import { logEvent } from '@lib/utils/logging';
 
 export interface UpdateAccountRequest {
   email?: string;

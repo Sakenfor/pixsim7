@@ -19,7 +19,7 @@ import {
   downloadFile,
   sanitizeFilename,
   type ImportResult,
-} from '@features/simulation/exportImport';
+} from '@features/simulation/lib/core/exportImport';
 
 interface ExportImportPanelProps {
   scenarios: SimulationScenario[];

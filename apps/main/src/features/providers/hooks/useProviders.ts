@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '../lib/api/client';
+import { apiClient } from '@lib/api/client';
 
 export interface ProviderInfo {
   provider_id: string;

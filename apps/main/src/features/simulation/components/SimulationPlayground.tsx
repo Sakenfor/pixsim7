@@ -49,7 +49,7 @@ import {
   unregisterBuiltinHooks,
   registerExamplePlugins as registerLegacyExamplePlugins,
   unregisterExamplePlugins as unregisterLegacyExamplePlugins,
-} from '@features/simulation/hooks';
+} from '@features/simulation/lib/core/hooks';
 import {
   createHistory,
   addSnapshot,
@@ -60,7 +60,7 @@ import {
   goToSnapshot,
   type SimulationHistory,
   type SimulationSnapshot,
-} from '@features/simulation/history';
+} from '@features/simulation/lib/core/history';
 import { LocationPresenceMap } from './LocationPresenceMap';
 import { TimelineScrubber } from './TimelineScrubber';
 import { ScenarioComparison } from './ScenarioComparison';

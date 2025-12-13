@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useApi } from './useApi';
+import { useApi } from '@/hooks/useApi';
 
 export interface AiProviderInfo {
   provider_id: string;

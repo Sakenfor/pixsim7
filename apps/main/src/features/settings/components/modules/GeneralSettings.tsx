@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { Select } from '@pixsim7/shared.ui';
-import { CubeSettingsPanel } from '../../control/CubeSettingsPanel';
+import { CubeSettingsPanel } from '@features/controlCenter/components/CubeSettingsPanel';
 import { useCubeSettingsStore, type LinkingGesture } from '@features/controlCenter/stores/cubeSettingsStore';
 import { panelActionRegistry } from '@/lib/panels';
 import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';

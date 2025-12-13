@@ -13,7 +13,7 @@
  */
 
 import { graphEditorRegistry } from './editorRegistry';
-import { GraphPanelWithProvider } from '../../components/legacy/GraphPanel';
+import { GraphPanelWithProvider } from '@/components/legacy/GraphPanel';
 import { ArcGraphPanel } from '@features/graph';
 import { debugFlags } from '@/lib/utils/debugFlags';
 

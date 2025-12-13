@@ -16,7 +16,7 @@ import type {
   SetAuthTokenMessage,
 } from './messageTypes';
 import { isGameToEditorMessage } from './messageTypes';
-import { logEvent } from '../logging';
+import { logEvent } from '@lib/utils/logging';
 
 export class PreviewBridge {
   private iframe: HTMLIFrameElement | null = null;

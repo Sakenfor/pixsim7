@@ -48,21 +48,21 @@ import {
   PluginDiscovery,
   pluginCatalog,
   type DiscoveredPlugin,
-} from './plugins/pluginSystem';
+} from './pluginSystem';
 import {
   registerHelper,
   registerInteraction,
   registerNodeType,
   registerGalleryTool,
   registerWorldTool,
-} from './plugins/registryBridge';
+} from './registryBridge';
 import {
   helperDiscoveryConfig,
   interactionDiscoveryConfig,
   galleryToolDiscoveryConfig,
   nodeTypeDiscoveryConfig,
   worldToolDiscoveryConfig,
-} from './plugins/discoveryConfigs';
+} from './discoveryConfigs';
 
 /**
  * Plugin loader configuration

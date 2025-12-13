@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '../lib/api/client';
+import { apiClient } from '@lib/api/client';
 
 interface RawProviderInfo {
   provider_id: string;

@@ -11,7 +11,7 @@
  * - React hooks for easy consumption
  */
 
-import { apiClient } from '../api/client';
+import { apiClient } from '@lib/api/client';
 import type { ProviderCapability, ProviderInfo, ProviderLimits, CostHints } from './types';
 
 export interface CapabilityRegistryConfig {

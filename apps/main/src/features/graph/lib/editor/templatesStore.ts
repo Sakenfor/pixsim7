@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GraphTemplate, TemplateSource, TemplatePack } from './graphTemplates';
-import { getGameWorld, saveGameWorldMeta } from '../api/game';
+import { getGameWorld, saveGameWorldMeta } from '@lib/api/game';
 import type { GameWorldDetail } from '@/lib/registries';
-import builtinTemplatesJson from '../../data/graphTemplates.json';
+import builtinTemplatesJson from './graphTemplates';
 
 /**
  * Template Store State

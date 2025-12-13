@@ -1,5 +1,5 @@
 import { DEFAULT_PROMPT_MAX_CHARS } from '../../config/prompt';
-import { providerCapabilityRegistry } from '../../lib/providers';
+import { providerCapabilityRegistry } from '@features/providers';
 
 /**
  * Resolve prompt character limit for a provider

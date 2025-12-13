@@ -13,7 +13,7 @@ import { GraphEditorHost } from '@features/graph';
 import { InspectorPanel } from '../../components/inspector/InspectorPanel';
 import { HealthPanel } from '../../components/health/HealthPanel';
 import { ProviderSettingsPanel } from '@features/providers/components/ProviderSettingsPanel';
-import { SettingsPanel } from '../../components/settings/SettingsPanel';
+import { SettingsPanel } from '@features/settings/components/SettingsPanel';
 import { GameThemingPanel } from '@/components/game/panels/GameThemingPanel';
 import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '@features/brainTools';

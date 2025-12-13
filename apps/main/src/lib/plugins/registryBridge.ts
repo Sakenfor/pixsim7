@@ -22,13 +22,13 @@ import { pluginCatalog } from './pluginSystem';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@/lib/registries';
-import { nodeRendererRegistry } from '../graph/nodeRendererRegistry';
+import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import type { GalleryToolPlugin } from '../gallery/types';
-import { graphEditorRegistry, type GraphEditorDefinition } from '../graph/editorRegistry';
+import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '../devtools';
 import { panelRegistry, type PanelDefinition } from '../panels/panelRegistry';
-import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '../gizmos/surfaceRegistry';
+import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos/lib/core/surfaceRegistry';
 
 // ============================================================================
 // Registry Bridge Base
