@@ -15,18 +15,18 @@ export { TemplateWizardPalette } from './components/graph/TemplateWizardPalette'
 export { GraphCubeExpansion } from './components/graph/GraphCubeExpansion';
 
 // Components - Node Renderers
-export { ArcNodeRenderer } from './components/graph/ArcNodeRenderer';
-export { ChoiceNodeRenderer } from './components/graph/ChoiceNodeRenderer';
-export { DefaultNodeRenderer } from './components/graph/DefaultNodeRenderer';
-export { IntimacyGenerationNodeRenderer } from './components/graph/IntimacyGenerationNodeRenderer';
-export { IntimacySceneNodeRenderer } from './components/graph/IntimacySceneNodeRenderer';
-export { MilestoneNodeRenderer } from './components/graph/MilestoneNodeRenderer';
-export { ProgressionStageNodeRenderer } from './components/graph/ProgressionStageNodeRenderer';
-export { QuestNodeRenderer } from './components/graph/QuestNodeRenderer';
-export { QuestTriggerRenderer } from './components/graph/QuestTriggerRenderer';
-export { RelationshipGateNodeRenderer } from './components/graph/RelationshipGateNodeRenderer';
-export { SeductionNodeRenderer } from './components/graph/SeductionNodeRenderer';
-export { VideoNodeRenderer } from './components/graph/VideoNodeRenderer';
+export { default as ArcNodeRenderer } from './components/graph/ArcNodeRenderer';
+export { default as ChoiceNodeRenderer } from './components/graph/ChoiceNodeRenderer';
+export { default as DefaultNodeRenderer } from './components/graph/DefaultNodeRenderer';
+export { default as IntimacyGenerationNodeRenderer } from './components/graph/IntimacyGenerationNodeRenderer';
+export { default as IntimacySceneNodeRenderer } from './components/graph/IntimacySceneNodeRenderer';
+export { default as MilestoneNodeRenderer } from './components/graph/MilestoneNodeRenderer';
+export { default as ProgressionStageNodeRenderer } from './components/graph/ProgressionStageNodeRenderer';
+export { default as QuestNodeRenderer } from './components/graph/QuestNodeRenderer';
+export { default as QuestTriggerRenderer } from './components/graph/QuestTriggerRenderer';
+export { default as RelationshipGateNodeRenderer } from './components/graph/RelationshipGateNodeRenderer';
+export { default as SeductionNodeRenderer } from './components/graph/SeductionNodeRenderer';
+export { default as VideoNodeRenderer } from './components/graph/VideoNodeRenderer';
 
 // Components - Arc Graph
 export { ArcGraphPanel } from './components/arc-graph/ArcGraphPanel';
@@ -64,15 +64,15 @@ export type { ArcGraphState } from './stores/arcGraphStore';
 // Hooks
 export { useLineageGraph } from './hooks/useLineageGraph';
 
-// Lib - Editor Registry & Renderers
-export {
-  editorRegistry,
-  type GraphEditorDefinition,
-} from './lib/editor/editorRegistry';
-export {
-  nodeRendererRegistry,
-  type NodeRendererDefinition,
-} from './lib/editor/nodeRendererRegistry';
+// Lib - Editor Core APIs (explicit - these are the main APIs)
+export { graphEditorRegistry, type GraphEditorDefinition } from './lib/editor/editorRegistry';
+export { nodeRendererRegistry, type NodeRendererDefinition } from './lib/editor/nodeRendererRegistry';
+export { useTemplateAnalyticsStore } from './lib/editor/templateAnalyticsStore';
+export { useTemplateStore } from './lib/editor/templatesStore';
+export { graphClipboard } from './lib/editor/clipboard';
+
+// Lib - Editor Utilities (wildcard - many helper functions)
+export * from './lib/editor/graphTemplates';
 export * from './lib/editor/types';
 
 // Lib - Graph Builders

@@ -75,25 +75,8 @@ export {
   type GenerateAssetResponse,
 } from './lib/api';
 
-// Cube system
-export {
-  cubeExpansionRegistry,
-  getExpansionSize,
-  DEFAULT_EXPANSION_SIZES,
-  type ExpansionType,
-  type ExpansionComponentProps,
-  type ExpansionProvider,
-} from './lib/cubes/cubeExpansionRegistry';
-
-export {
-  createFormation,
-  getFormationPositions,
-  DEFAULT_FORMATION_CONFIGS,
-  type FormationPattern,
-  type FormationConfig,
-} from './lib/cubes/cubeFormations';
-
-export { registerCubeExpansions } from './lib/cubes/registerCubeExpansions';
+// Cube system - re-export from cubes barrel
+export * from './lib/cubes';
 
 // Control center module registry
 export {

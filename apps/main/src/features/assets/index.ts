@@ -52,9 +52,22 @@ export { useAssetPickerStore } from './stores/assetPickerStore';
 
 export { useAssetSelectionStore } from './stores/assetSelectionStore';
 
-export { useAssetViewerStore } from './stores/assetViewerStore';
+export {
+  useAssetViewerStore,
+  selectIsViewerOpen,
+  selectCanNavigatePrev,
+  selectCanNavigateNext,
+  type ViewerAsset,
+  type ViewerMode,
+} from './stores/assetViewerStore';
 
-export { useLocalFoldersStore } from './stores/localFoldersStore';
+export {
+  useLocalFolders,
+  getLocalThumbnailBlob,
+  setLocalThumbnailBlob,
+  generateThumbnail,
+  type LocalAsset,
+} from './stores/localFoldersStore';
 
 // ============================================================================
 // Lib - Asset Actions & API
@@ -63,4 +76,11 @@ export { useLocalFoldersStore } from './stores/localFoldersStore';
 export { createAssetActions } from './lib/assetCardActions';
 export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
 
-export { deleteAsset, uploadAssetToProvider, getAsset, type AssetResponse } from './lib/api';
+export {
+  deleteAsset,
+  uploadAssetToProvider,
+  getAsset,
+  extractFrame,
+  type AssetResponse,
+  type ExtractFrameRequest,
+} from './lib/api';

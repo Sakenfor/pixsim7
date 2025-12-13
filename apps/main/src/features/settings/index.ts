@@ -49,5 +49,5 @@ export { settingsSchemaRegistry } from './lib/core/settingsSchemaRegistry';
 
 export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerMediaSettings } from './lib/schemas/media.settings';
-export { registerPromptsSettings } from './lib/schemas/prompts.settings';
+export { registerPromptSettings } from './lib/schemas/prompts.settings';
 export { registerUISettings } from './lib/schemas/ui.settings';

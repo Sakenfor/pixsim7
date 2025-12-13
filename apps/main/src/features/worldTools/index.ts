@@ -58,31 +58,73 @@ export type { WorldToolContext as Context } from './lib/context';
 // ============================================================================
 
 export {
-  resolveHudLayout,
-  type ResolveHudLayoutOptions,
+  getHudConfig,
+  buildHudLayout,
+  getToolsForRegion,
+  hasToolsInRegion,
+  type HudRegionTools,
+  type HudLayout,
 } from './lib/hudLayout';
 
 export {
-  applyHudLayoutVariant,
-  type HudLayoutVariant,
+  getActiveLayout,
+  resolveInheritedLayout,
+  getLayoutVariantNames,
+  getLayoutVariant,
+  setActiveLayoutVariant,
+  saveLayoutVariant,
+  deleteLayoutVariant,
+  setLayoutInheritance,
+  computeLayoutDiff,
+  switchLayoutVariant,
 } from './lib/hudLayoutVariants';
 
 export {
-  getHudPreset,
-  listHudPresets,
-  type HudPreset,
+  loadPresets,
+  getPreset,
+  createPreset,
+  updatePreset,
+  deletePreset,
+  getPresetNames,
+  exportPreset,
+  importPreset,
+  clearAllPresets,
+  getWorldPresets,
+  getAllPresets,
+  publishPresetToWorld,
+  copyWorldPresetToLocal,
+  deleteWorldPreset,
+  isWorldPreset,
+  type HudLayoutPreset,
+  type PresetScope,
 } from './lib/hudPresets';
 
 export {
-  getHudProfile,
-  listHudProfiles,
-  getDefaultHudProfile,
+  BUILTIN_PROFILES,
+  getActiveProfileId,
+  setActiveProfile,
+  getAvailableProfiles,
+  getProfile,
+  buildProfileLayoutKey,
+  parseProfileLayoutKey,
+  getProfileLayout,
+  saveProfileLayout,
+  deleteProfileLayout,
+  getProfileLayoutKeys,
+  hasProfileLayouts,
+  getProfilesWithLayouts,
 } from './lib/hudProfiles';
 
 export {
-  getPlayerHudPreferences,
-  setPlayerHudPreferences,
-  mergePlayerHudPreferences,
+  getPlayerPreferences,
+  updatePlayerPreferences,
+  toggleToolVisibility,
+  setViewModeOverride,
+  setToolOverride,
+  clearPlayerPreferences,
+  clearAllPlayerPreferences,
+  applyPlayerPreferences,
+  getEffectiveViewMode,
 } from './lib/playerHudPreferences';
 
 // ============================================================================

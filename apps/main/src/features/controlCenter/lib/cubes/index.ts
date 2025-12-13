@@ -21,9 +21,15 @@ export type {
   FormationConfig,
 } from './cubeFormations';
 export {
-  createFormation,
-  getFormationPositions,
-  DEFAULT_FORMATION_CONFIGS,
+  calculateFormation,
+  calculateDockFormation,
+  calculateGridFormation,
+  calculateCircleFormation,
+  calculateArcFormation,
+  calculateConstellationFormation,
+  calculateScatteredFormation,
+  interpolatePosition,
+  easeInOutCubic,
 } from './cubeFormations';
 
 // Registration
