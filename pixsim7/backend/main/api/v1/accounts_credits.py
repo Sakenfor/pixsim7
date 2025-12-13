@@ -289,6 +289,11 @@ async def sync_all_account_credits(
                     "retry_after": retry_after,
                 },
             )
+            # Rollback to clean session state
+            try:
+                await db.rollback()
+            except Exception:
+                pass
             # Back off briefly before processing further accounts to avoid
             # hammering a rate-limited provider.
             sleep_seconds = retry_after if isinstance(retry_after, (int, float)) and retry_after > 0 else 1
@@ -310,6 +315,11 @@ async def sync_all_account_credits(
                 "error": str(e)
             })
             logger.error(f"Failed to sync credits for account {account_id}: {e}")
+            # Rollback to clean session state and allow subsequent accounts to succeed
+            try:
+                await db.rollback()
+            except Exception:
+                pass  # Best effort rollback
 
     return BatchSyncCreditsResponse(
         success=True,

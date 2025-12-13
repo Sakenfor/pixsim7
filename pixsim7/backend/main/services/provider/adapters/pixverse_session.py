@@ -163,9 +163,14 @@ class PixverseSessionMixin:
         *,
         force_commit: bool = False,
     ) -> None:
-        """Persist refreshed credentials to the bound session if available."""
+        """Persist refreshed credentials to the bound session if available.
+
+        Note: force_commit is only supported for sync sessions. For async sessions
+        (AsyncSession), we can only flush - the caller must handle commits.
+        """
         try:
             from sqlalchemy.orm import object_session
+            from sqlalchemy.ext.asyncio import AsyncSession
 
             session = object_session(account)
             if not session:
@@ -175,30 +180,52 @@ class PixverseSessionMixin:
                 )
                 return
 
+            # Check if this is an async session - we can't do sync operations on it
+            is_async_session = isinstance(session, AsyncSession)
+
             # Mark as dirty if needed
             if session.is_modified(account):
                 session.add(account)
 
             if force_commit:
-                logger.debug(
-                    "pixverse_persist_sync_commit",
-                    account_id=account.id,
-                    has_jwt=bool(account.jwt_token),
-                    has_cookies=bool(account.cookies),
-                )
-
-                # Sync commit in thread pool
-                import asyncio
-                loop = asyncio.get_event_loop()
-
-                def _sync_persist():
+                if is_async_session:
+                    # For async sessions, we cannot commit from here - the session
+                    # requires greenlet context. Log a warning and skip.
+                    # The changes are already on the account object and will be
+                    # persisted when the outer transaction commits.
+                    logger.warning(
+                        "pixverse_persist_skip_async_commit",
+                        account_id=account.id,
+                        has_jwt=bool(account.jwt_token),
+                        has_cookies=bool(account.cookies),
+                        reason="async_session_cannot_force_commit",
+                    )
+                    # Try to flush at least (marks changes for commit)
+                    try:
+                        await session.flush()
+                        logger.debug(
+                            "pixverse_persist_async_flushed",
+                            account_id=account.id,
+                        )
+                    except Exception as flush_err:
+                        logger.warning(
+                            "pixverse_persist_async_flush_failed",
+                            account_id=account.id,
+                            error=str(flush_err),
+                        )
+                else:
+                    # Sync session - can commit directly
+                    logger.debug(
+                        "pixverse_persist_sync_commit",
+                        account_id=account.id,
+                        has_jwt=bool(account.jwt_token),
+                        has_cookies=bool(account.cookies),
+                    )
                     session.commit()
                     logger.debug(
                         "pixverse_persist_done",
                         account_id=account.id,
                     )
-
-                await loop.run_in_executor(None, _sync_persist)
             else:
                 # Just flush
                 logger.debug(
@@ -207,7 +234,10 @@ class PixverseSessionMixin:
                     has_jwt=bool(account.jwt_token),
                     has_cookies=bool(account.cookies),
                 )
-                session.flush()
+                if is_async_session:
+                    await session.flush()
+                else:
+                    session.flush()
 
         except Exception as e:  # pragma: no cover - defensive
             logger.error(
@@ -217,3 +247,15 @@ class PixverseSessionMixin:
                 error_type=type(e).__name__,
                 exc_info=True,
             )
+            # For async sessions, try to rollback to avoid session corruption
+            try:
+                from sqlalchemy.ext.asyncio import AsyncSession
+                session = object_session(account)
+                if session and isinstance(session, AsyncSession):
+                    await session.rollback()
+                    logger.debug(
+                        "pixverse_persist_rollback_after_error",
+                        account_id=account.id,
+                    )
+            except Exception:
+                pass  # Best effort rollback

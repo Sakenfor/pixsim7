@@ -235,12 +235,15 @@ class PixverseAuthMixin:
                 account.password = None
                 try:
                     await self._persist_account_credentials(account, force_commit=True)
-                except Exception:
+                except Exception as persist_exc:
                     # Best-effort; failure here should not mask the original error.
+                    # Note: With async sessions, force_commit may be skipped but changes
+                    # are still on the account object for the outer transaction.
                     logger.warning(
-                        "pixverse_mark_oauth_only_failed",
+                        "pixverse_mark_oauth_only_persist_failed",
                         account_id=account.id,
-                        error=str(exc),
+                        persist_error=str(persist_exc),
+                        original_error=str(exc),
                     )
                 logger.info(
                     "pixverse_detected_oauth_only_account",
