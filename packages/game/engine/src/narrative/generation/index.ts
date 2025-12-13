@@ -83,4 +83,8 @@ export { GenerationBridge, createGenerationBridge } from './GenerationBridge';
 // Re-export integrations
 // ============================================================================
 export { createBlockGenerationHooks } from './blockIntegration';
-export { createFusionGenerationHooks, shouldUseFusion } from './fusionIntegration';
+export {
+  createFusionGenerationHooks,
+  shouldUseFusion,
+  buildFusionRequestFromNode,
+} from './fusionIntegration';
