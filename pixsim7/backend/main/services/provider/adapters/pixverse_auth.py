@@ -233,23 +233,19 @@ class PixverseAuthMixin:
                 # Clear any stored password so that future auto-reauth attempts are
                 # definitively skipped even if auth_method metadata is missing.
                 account.password = None
-                try:
-                    await self._persist_account_credentials(account, force_commit=True)
-                except Exception as persist_exc:
-                    # Best-effort; failure here should not mask the original error.
-                    # Note: With async sessions, force_commit may be skipped but changes
-                    # are still on the account object for the outer transaction.
-                    logger.warning(
-                        "pixverse_mark_oauth_only_persist_failed",
-                        account_id=account.id,
-                        persist_error=str(persist_exc),
-                        original_error=str(exc),
-                    )
+                # Don't try to persist here - it can corrupt async sessions.
+                # The changes are on the account object and will be persisted
+                # when the outer transaction commits (if it succeeds).
                 logger.info(
                     "pixverse_detected_oauth_only_account",
                     account_id=account.id,
                     auth_method=PixverseAuthMethod.GOOGLE.value,
+                    note="changes_not_persisted_will_be_lost_on_rollback",
                 )
+
+            # Rollback the session to clean state after any auto-reauth failure
+            await self._rollback_session_if_needed(account)
+
             logger.error(
                 "pixverse_auto_reauth_error",
                 account_id=account.id,
@@ -257,6 +253,26 @@ class PixverseAuthMixin:
                 exc_info=True,
             )
             return False
+
+    async def _rollback_session_if_needed(self, account: ProviderAccount) -> None:
+        """Rollback the database session if it's in a bad state."""
+        try:
+            from sqlalchemy.orm import object_session
+            from sqlalchemy.ext.asyncio import AsyncSession
+
+            session = object_session(account)
+            if session and isinstance(session, AsyncSession):
+                await session.rollback()
+                logger.debug(
+                    "pixverse_session_rollback_after_error",
+                    account_id=account.id,
+                )
+        except Exception as rollback_exc:
+            logger.warning(
+                "pixverse_session_rollback_failed",
+                account_id=account.id,
+                error=str(rollback_exc),
+            )
 
 
     async def extract_account_data(self, raw_data: dict, *, fallback_email: str = None) -> dict:

@@ -96,12 +96,17 @@ class PixverseSessionManager:
                 and outcome.should_attempt_reauth
                 and outcome.is_session_error
             ):
+                # Rollback before raising to clean up session state
+                await self._rollback_db_session(account)
                 if outcome.is_session_error:
                     raise outcome.original_error or exc
                 raise exc
 
             reauth_success = await self._maybe_auto_reauth(account, outcome, context=op_name)
             if not reauth_success:
+                # Rollback before raising - auto_reauth already rolled back,
+                # but do it again to be safe
+                await self._rollback_db_session(account)
                 raise outcome.original_error or exc
 
         # Second (and final) attempt after successful re-auth
@@ -125,6 +130,26 @@ class PixverseSessionManager:
             context=op_name,
         )
         return result
+
+    async def _rollback_db_session(self, account: ProviderAccount) -> None:
+        """Rollback the database session to clean state."""
+        try:
+            from sqlalchemy.orm import object_session
+            from sqlalchemy.ext.asyncio import AsyncSession
+
+            db_session = object_session(account)
+            if db_session and isinstance(db_session, AsyncSession):
+                await db_session.rollback()
+                logger.debug(
+                    "pixverse_db_session_rollback",
+                    account_id=account.id,
+                )
+        except Exception as e:
+            logger.warning(
+                "pixverse_db_session_rollback_failed",
+                account_id=account.id,
+                error=str(e),
+            )
 
     def classify_error(
         self,

@@ -159,9 +159,26 @@ async def sync_all_account_credits(
     failed = 0
     details = []
 
-    for account in accounts:
-        account_id = account.id
-        account_email = account.email
+    # Pre-extract account info to avoid lazy loading issues after rollback
+    # When a rollback happens, account objects may be expired and accessing
+    # their attributes would trigger lazy loading which fails with async sessions
+    account_info_list = [
+        {
+            "account": acc,
+            "id": acc.id,
+            "email": acc.email,
+            "provider_id": acc.provider_id,
+            "cookies": acc.cookies,
+        }
+        for acc in accounts
+    ]
+
+    for acc_info in account_info_list:
+        account = acc_info["account"]
+        account_id = acc_info["id"]
+        account_email = acc_info["email"]
+        account_provider_id = acc_info["provider_id"]
+        account_cookies = acc_info["cookies"]
 
         # Check if should skip
         should_skip, skip_reason = should_skip_credit_sync(account, force=force)
@@ -179,13 +196,13 @@ async def sync_all_account_credits(
             # Get provider and sync credits
             from pixsim7.backend.main.domain import ProviderCredit
 
-            provider = registry.get(account.provider_id)
+            provider = registry.get(account_provider_id)
 
             # Try provider's get_credits method first
             credits_data = None
             if hasattr(provider, "get_credits"):
                 try:
-                    if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
+                    if account_provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
                         credits_data = await provider.get_credits_basic(account, retry_on_session_error=True)
                     else:
                         credits_data = await provider.get_credits(account)
@@ -194,15 +211,15 @@ async def sync_all_account_credits(
 
             # Fallback: extract from account data
             if not credits_data:
-                raw_data = {'cookies': account.cookies or {}}
-                extracted = await provider.extract_account_data(raw_data, fallback_email=account.email)
+                raw_data = {'cookies': account_cookies or {}}
+                extracted = await provider.extract_account_data(raw_data, fallback_email=account_email)
                 credits_data = extracted.get('credits')
 
             # Update credits if available
             if credits_data and isinstance(credits_data, dict):
                 updated_credits: Dict[str, int] = {}
 
-                if account.provider_id == "pixverse":
+                if account_provider_id == "pixverse":
                     # Pixverse has separate web and OpenAPI credit pools.
                     # Treat this sync as authoritative and clear any legacy
                     # credit buckets (e.g. old "package" rows) to avoid
