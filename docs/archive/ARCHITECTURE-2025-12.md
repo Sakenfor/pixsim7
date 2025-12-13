@@ -72,6 +72,26 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 
 ## 🔗 Import Alias System
 
+### ⚠️ Import Rules (Enforced via ESLint)
+
+**Three cardinal rules for all imports:**
+
+1. **✅ Use `@features/*` for ALL feature imports**
+   - ❌ Never: `import { X } from '@/features/controlCenter'`
+   - ✅ Always: `import { X } from '@features/controlCenter'`
+
+2. **✅ Use `@lib/*` for ALL lib module imports**
+   - ❌ Never: `import { apiClient } from '@/lib/api'`
+   - ✅ Always: `import { apiClient } from '@lib/api'`
+
+3. **✅ Use `@/` ONLY for root-level directories**
+   - ✅ Allowed: `@/components/*`, `@/stores/*`, `@/types/*`, `@/utils/*`
+   - ❌ Forbidden: `@/features/*`, `@/lib/*`
+
+**Relative imports (`../`) are acceptable ONLY within the same feature/lib module.**
+
+---
+
 ### Defined Aliases (vite.config.ts)
 
 **Domain-Specific Aliases:**
@@ -202,6 +222,30 @@ features/worldTools/
 
 **Recommendation:** Use Option A for commonly imported modules, Option B for feature internals.
 
+#### Must-Fix Deep Imports (Priority List)
+
+These 10 deep imports occur most frequently and should be fixed in Phase 2:
+
+| Deep Import Path | Occurrences | Fix Strategy | New Import |
+|------------------|-------------|--------------|------------|
+| `@features/worldTools/lib/hudLayout` | 8 files | Expand barrel | `@features/worldTools` |
+| `@features/generation/lib/core/generationStatusConfig` | 6 files | Expand barrel | `@features/generation` |
+| `@features/automation/lib/core/automationService` | 5 files | Expand barrel or mark internal | `@features/automation` |
+| `@features/gizmos/lib/core/surfaceRegistry` | 4 files | Expand barrel | `@features/gizmos` |
+| `@features/gallery/lib/core/assetRoles` | 3 files | Expand barrel | `@features/gallery` |
+| `@features/graph/lib/editor/nodeRendererRegistry` | 3 files | Mark as internal | Keep deep (editor internals) |
+| `@features/providers/lib/core/capabilityRegistry` | 3 files | Already in barrel | Use `@features/providers` |
+| `@features/simulation/lib/core/constraints` | 2 files | Expand barrel | `@features/simulation` |
+| `@features/hud/lib/core/types` | 2 files | Expand barrel | `@features/hud` |
+| `@features/settings/lib/core/settingsSchemaRegistry` | 2 files | Already in barrel | Use `@features/settings` |
+
+**Total files affected:** ~40 files (estimate based on frequency)
+
+**Action Items:**
+1. Add 7 exports to feature barrel files (15 min)
+2. Update ~40 import statements (30 min with find-replace)
+3. Mark 1 module as internal (`_internal/nodeRendererRegistry`)
+
 ### Issue 3: Feature Coupling
 
 **Identified coupling patterns:**
@@ -250,6 +294,34 @@ import { assetSelectionStore } from '@features/assets/stores/assetSelectionStore
 - `@features/assets` - Asset CRUD, storage, upload
 - `@features/gallery` - Gallery UI, filtering, display
 - Or consider merging if boundaries remain unclear
+
+### Feature Ownership Clarity
+
+**Clear ownership prevents future coupling.** For the three blurry areas identified above:
+
+| Feature Area | Primary Owner | Responsibilities | Secondary Owner | Responsibilities |
+|--------------|---------------|------------------|-----------------|------------------|
+| **Generation UI** | `@lib/generation-ui` (new) | Shared UI components (SettingsBar, StatusDisplay) | `@features/generation` | Generation logic & workflows |
+| **HUD System** | `@features/hud` | HUD layouts, profiles, presets, rendering | `@features/worldTools` | Non-HUD world management tools |
+| **Asset Management** | `@features/assets` | Asset CRUD, storage, upload, API integration | `@features/gallery` | Gallery UI, filtering, display, badges |
+
+**Decision Rules for Future Code:**
+
+**Q: Where does generation UI code go?**
+- ✅ Shared UI components → `@lib/generation-ui`
+- ✅ Generation-specific logic → `@features/generation`
+- ❌ Never put generation logic in `@features/controlCenter`
+
+**Q: Where does HUD code go?**
+- ✅ HUD layouts, profiles, configs → `@features/hud/lib/hudLayout`
+- ✅ World context (non-HUD) → `@features/worldTools`
+- ❌ Never split HUD concerns across features
+
+**Q: Where does asset code go?**
+- ✅ Asset CRUD, backend API → `@features/assets`
+- ✅ Gallery presentation, filters → `@features/gallery`
+- ✅ Asset roles & types → `@features/gallery/lib/core/assetRoles` (domain model)
+- ❌ Never duplicate asset logic across features
 
 ---
 
@@ -307,16 +379,39 @@ export const ShapeRegistry = new ShapeRegistryClass();
 - And 15+ more across other features
 
 **Recommendation:** Standardize on BaseRegistry pattern
+
+**📖 Reference:** See `apps/main/src/lib/core/BaseRegistry.ts` for the standard registry base class.
+
+BaseRegistry provides:
+- ✅ CRUD operations (`register`, `unregister`, `get`, `getAll`, `has`, `clear`)
+- ✅ Listener/subscription support (`subscribe`, `notifyListeners`)
+- ✅ Duplicate ID handling with configurable policies
+- ✅ Consistent interface across all registries
+
+**Migration Example:**
 ```typescript
-// Migrate all to extend BaseRegistry for consistency
-class ShapeRegistry extends BaseRegistry<SemanticShape> {
-  // Now consistent with other registries!
+// Before: Custom implementation
+class ShapeRegistryClass {
+  private shapes: Map<string, SemanticShape> = new Map();
+  register(shape: SemanticShape) { /* custom logic */ }
+  get(id: string) { /* custom logic */ }
 }
 
-class BrainToolRegistry extends BaseRegistry<BrainTool> {
-  // Consistent interface
+// After: Extend BaseRegistry
+import { BaseRegistry } from '@lib/core';
+
+class ShapeRegistry extends BaseRegistry<SemanticShape> {
+  // Inherits: register(), get(), getAll(), has(), clear(), subscribe()
+  // Add only feature-specific methods:
+  getByCategory(category: string): SemanticShape[] {
+    return this.getAll().filter(s => s.category === category);
+  }
 }
+
+export const shapeRegistry = new ShapeRegistry();
 ```
+
+**Action:** Migrate all 28+ registries to extend `BaseRegistry` for consistency (see Phase 4 below).
 
 ---
 
