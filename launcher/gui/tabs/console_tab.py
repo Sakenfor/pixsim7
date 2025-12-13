@@ -101,9 +101,12 @@ class ConsoleTab:
         launcher.btn_clear_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
         toolbar.addWidget(launcher.btn_clear_logs)
 
-        launcher.autoscroll_checkbox = QCheckBox('Auto-scroll')
-        launcher.autoscroll_checkbox.setChecked(False)  # Default OFF to allow manual scrolling
-        launcher.autoscroll_checkbox.setToolTip("Automatically scroll to bottom")
+        launcher.autoscroll_checkbox = QCheckBox('Force scroll')
+        launcher.autoscroll_checkbox.setChecked(False)  # Default OFF for smart scroll
+        launcher.autoscroll_checkbox.setToolTip(
+            "OFF: Smart scroll (follows logs only when you're at bottom)\n"
+            "ON: Force scroll (always jumps to bottom, even if you scrolled up)"
+        )
         launcher.autoscroll_checkbox.stateChanged.connect(launcher._on_autoscroll_changed)
         toolbar.addWidget(launcher.autoscroll_checkbox)
 

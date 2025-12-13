@@ -101,60 +101,28 @@ class DatabaseLogViewer(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Compact single-row filter bar
+        # === MAIN FILTER BAR (Clean, minimal) ===
         filter_bar = QHBoxLayout()
         filter_bar.setSpacing(8)
 
         # Service
-        filter_bar.addWidget(QLabel('Service:'))
         self.service_combo = self._styled_combo(['All', 'api', 'worker', 'game', 'test', 'launcher'])
         self.service_combo.setMinimumWidth(100)
+        self.service_combo.setToolTip("Filter by service")
         self.service_combo.currentTextChanged.connect(self._on_service_changed_fast)
         filter_bar.addWidget(self.service_combo)
 
         # Level
-        filter_bar.addWidget(QLabel('Level:'))
         self.level_combo = self._styled_combo(['All', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
         self.level_combo.setMinimumWidth(90)
+        self.level_combo.setToolTip("Filter by log level")
         self.level_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.level_combo)
 
-        # Provider
-        # Mirror common provider IDs used across the app; more can be added over time.
-        filter_bar.addWidget(QLabel('Provider:'))
-        self.provider_combo = self._styled_combo(['All', 'pixverse', 'runway', 'pika', 'sora'])
-        self.provider_combo.setMinimumWidth(110)
-        self.provider_combo.currentTextChanged.connect(self.refresh_logs)
-        filter_bar.addWidget(self.provider_combo)
-
-        # Time
-        filter_bar.addWidget(QLabel('Time:'))
-        self.time_combo = self._styled_combo(['Last 5 min', 'Last 15 min', 'Last hour', 'Last 6 hours', 'Last 24 hours', 'All time'])
-        self.time_combo.setCurrentText('Last hour')
-        self.time_combo.setMinimumWidth(110)
-        self.time_combo.currentTextChanged.connect(self.refresh_logs)
-        filter_bar.addWidget(self.time_combo)
-
-        # Stage quick-filter
-        filter_bar.addWidget(QLabel('Stage:'))
-        self.stage_combo = self._styled_combo(['All', 'pipeline:*', 'provider:*', 'pipeline:start', 'pipeline:artifact', 'provider:submit', 'provider:status', 'provider:complete', 'provider:error'])
-        self.stage_combo.setCurrentText('All')
-        self.stage_combo.setMinimumWidth(130)
-        self.stage_combo.currentTextChanged.connect(self.refresh_logs)
-        filter_bar.addWidget(self.stage_combo)
-
-        # Limit
-        filter_bar.addWidget(QLabel('Limit:'))
-        self.limit_combo = self._styled_combo(['50', '100', '200', '500', '1000'])
-        self.limit_combo.setCurrentText('100')
-        self.limit_combo.setMinimumWidth(70)
-        self.limit_combo.currentTextChanged.connect(self.refresh_logs)
-        filter_bar.addWidget(self.limit_combo)
-
-        # Search
+        # Search (larger, more prominent)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText('Search...')
-        self.search_input.setMinimumWidth(150)
+        self.search_input.setPlaceholderText('Search logs... (Ctrl+F)')
+        self.search_input.setMinimumWidth(220)
         self.search_input.returnPressed.connect(self.refresh_logs)
         self.search_input.setStyleSheet("""
             QLineEdit {
@@ -162,7 +130,8 @@ class DatabaseLogViewer(QWidget):
                 color: #e0e0e0;
                 border: 1px solid #555;
                 border-radius: 4px;
-                padding: 4px 8px;
+                padding: 6px 10px;
+                font-size: 9.5pt;
             }
             QLineEdit:focus {
                 border: 1px solid #5a9fd4;
@@ -170,23 +139,117 @@ class DatabaseLogViewer(QWidget):
         """)
         filter_bar.addWidget(self.search_input)
 
-        # Presets for common investigations (e.g., provider issues)
+        # Time
+        self.time_combo = self._styled_combo(['Last 5 min', 'Last 15 min', 'Last hour', 'Last 6 hours', 'Last 24 hours', 'All time'])
+        self.time_combo.setCurrentText('Last hour')
+        self.time_combo.setMinimumWidth(110)
+        self.time_combo.setToolTip("Filter by time range")
+        self.time_combo.currentTextChanged.connect(self.refresh_logs)
+        filter_bar.addWidget(self.time_combo)
+
+        # Refresh button (compact icon)
+        self.refresh_btn = QPushButton('🔄')
+        self.refresh_btn.clicked.connect(self.refresh_logs)
+        self.refresh_btn.setToolTip("Refresh logs with current filters (F5)")
+        self.refresh_btn.setFixedWidth(32)
+        self.refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #444;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 12pt;
+            }
+            QPushButton:hover {
+                background-color: #555;
+                border: 1px solid #5a9fd4;
+            }
+        """)
+        filter_bar.addWidget(self.refresh_btn)
+
+        # Advanced filters toggle button
+        self.advanced_filters_btn = QPushButton('🔽 Advanced')
+        self.advanced_filters_btn.setCheckable(True)
+        self.advanced_filters_btn.setChecked(False)
+        self.advanced_filters_btn.setToolTip("Show/hide advanced filters")
+        self.advanced_filters_btn.clicked.connect(self._toggle_advanced_filters)
+        self.advanced_filters_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #444;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #555;
+                border: 1px solid #5a9fd4;
+            }
+            QPushButton:checked {
+                background-color: #5a9fd4;
+                border: 1px solid #5a9fd4;
+            }
+        """)
+        filter_bar.addWidget(self.advanced_filters_btn)
+
+        filter_bar.addStretch()
+        layout.addLayout(filter_bar)
+
+        # === ADVANCED FILTERS (Collapsible) ===
+        self.advanced_filters_widget = QWidget()
+        advanced_layout = QHBoxLayout(self.advanced_filters_widget)
+        advanced_layout.setContentsMargins(0, 4, 0, 4)
+        advanced_layout.setSpacing(8)
+
+        # Provider
+        advanced_layout.addWidget(QLabel('Provider:'))
+        self.provider_combo = self._styled_combo(['All', 'pixverse', 'runway', 'pika', 'sora'])
+        self.provider_combo.setMinimumWidth(100)
+        self.provider_combo.setToolTip("Filter by AI provider")
+        self.provider_combo.currentTextChanged.connect(self.refresh_logs)
+        advanced_layout.addWidget(self.provider_combo)
+
+        # Stage
+        advanced_layout.addWidget(QLabel('Stage:'))
+        self.stage_combo = self._styled_combo(['All', 'pipeline:*', 'provider:*', 'pipeline:start', 'pipeline:artifact', 'provider:submit', 'provider:status', 'provider:complete', 'provider:error'])
+        self.stage_combo.setCurrentText('All')
+        self.stage_combo.setMinimumWidth(130)
+        self.stage_combo.setToolTip("Filter by pipeline stage")
+        self.stage_combo.currentTextChanged.connect(self.refresh_logs)
+        advanced_layout.addWidget(self.stage_combo)
+
+        # Limit
+        advanced_layout.addWidget(QLabel('Limit:'))
+        self.limit_combo = self._styled_combo(['50', '100', '200', '500', '1000'])
+        self.limit_combo.setCurrentText('100')
+        self.limit_combo.setMinimumWidth(70)
+        self.limit_combo.setToolTip("Maximum number of results")
+        self.limit_combo.currentTextChanged.connect(self.refresh_logs)
+        advanced_layout.addWidget(self.limit_combo)
+
+        # Presets
+        advanced_layout.addWidget(QLabel('Presets:'))
         self.preset_combo = self._styled_combo(
             [
-                'Presets',
+                'None',
                 'Pixverse timeouts (1h)',
                 'Pixverse errors (1h)',
                 'Sora errors (1h)',
                 'All provider errors (1h)',
             ]
         )
-        self.preset_combo.setCurrentText('Presets')
+        self.preset_combo.setCurrentText('None')
         self.preset_combo.setMinimumWidth(170)
+        self.preset_combo.setToolTip("Quick filter presets for common issues")
         self.preset_combo.currentTextChanged.connect(self._apply_preset)
-        filter_bar.addWidget(self.preset_combo)
+        advanced_layout.addWidget(self.preset_combo)
 
-        filter_bar.addStretch()
-        layout.addLayout(filter_bar)
+        advanced_layout.addStretch()
+
+        self.advanced_filters_widget.setVisible(False)  # Hidden by default
+        layout.addWidget(self.advanced_filters_widget)
 
         # Dynamic Service-Specific Filters
         self.service_filter_widget = QWidget()
@@ -213,41 +276,54 @@ class DatabaseLogViewer(QWidget):
         """)
         layout.addWidget(self.active_filters_label)
 
-        # Control buttons
+        # Control buttons (compact, clean)
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
 
-        self.refresh_btn = QPushButton('🔄 Refresh')
-        self.refresh_btn.clicked.connect(self.refresh_logs)
-        self.refresh_btn.setToolTip("Refresh logs with current filters (F5)")
-        btn_row.addWidget(self.refresh_btn)
-
-        self.reset_btn = QPushButton('↺ Reset Filters')
+        # Reset button (compact icon)
+        self.reset_btn = QPushButton('↺')
         self.reset_btn.clicked.connect(self._reset_filters)
         self.reset_btn.setToolTip("Reset all filters to default values (Ctrl+R)")
+        self.reset_btn.setFixedWidth(32)
         self.reset_btn.setStyleSheet("""
             QPushButton {
                 background-color: #555;
                 color: #e0e0e0;
                 border: 1px solid #666;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 12pt;
             }
             QPushButton:hover {
                 background-color: #666;
                 border: 1px solid #777;
             }
-            QPushButton:pressed {
-                background-color: #444;
-            }
         """)
         btn_row.addWidget(self.reset_btn)
 
-        self.clear_btn = QPushButton('🗑 Clear Display')
+        # Clear button (compact icon)
+        self.clear_btn = QPushButton('🗑')
         self.clear_btn.clicked.connect(self.clear_display)
         self.clear_btn.setToolTip("Clear the log display (Ctrl+L)")
+        self.clear_btn.setFixedWidth(32)
+        self.clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #444;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 11pt;
+            }
+            QPushButton:hover {
+                background-color: #555;
+                border: 1px solid #5a9fd4;
+            }
+        """)
         btn_row.addWidget(self.clear_btn)
 
-        btn_row.addSpacing(15)
-
-        self.auto_refresh_checkbox = QCheckBox('Auto-refresh (10s)')
+        # Auto-refresh checkbox
+        self.auto_refresh_checkbox = QCheckBox('Auto-refresh')
         self.auto_refresh_checkbox.setChecked(False)  # Disabled by default
         self.auto_refresh_checkbox.setToolTip("Automatically refresh logs every 10 seconds")
         self.auto_refresh_checkbox.stateChanged.connect(self._toggle_auto_refresh)
@@ -299,8 +375,21 @@ class DatabaseLogViewer(QWidget):
         self.search_focus_shortcut = QShortcut(QKeySequence('Ctrl+F'), self)
         self.search_focus_shortcut.activated.connect(lambda: self.search_input.setFocus())
 
+    def _toggle_advanced_filters(self, checked: bool):
+        """Toggle visibility of advanced filters."""
+        self.advanced_filters_widget.setVisible(checked)
+        # Update button text
+        if checked:
+            self.advanced_filters_btn.setText('🔼 Advanced')
+        else:
+            self.advanced_filters_btn.setText('🔽 Advanced')
+
     def _apply_preset(self, preset_name: str):
         """Apply a preset filter configuration for common investigations."""
+        # Skip if 'None' is selected
+        if preset_name == 'None':
+            return
+
         if preset_name == 'Pixverse timeouts (1h)':
             # Focus on API-level Pixverse timeouts in the last hour.
             self.service_combo.setCurrentText('api')
@@ -333,9 +422,9 @@ class DatabaseLogViewer(QWidget):
 
         # Reset preset selector back to neutral label so the user can see
         # which filters are active without the combo staying "stuck".
-        if preset_name != 'Presets':
+        if preset_name != 'None':
             self.preset_combo.blockSignals(True)
-            self.preset_combo.setCurrentText('Presets')
+            self.preset_combo.setCurrentText('None')
             self.preset_combo.blockSignals(False)
 
     def _toggle_auto_refresh(self, state):
