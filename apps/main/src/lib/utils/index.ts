@@ -15,7 +15,7 @@ export { debugFlags } from './debugFlags';
 export { createBackendStorage } from './storage';
 
 // Zustand persistence workaround
-export { createJSONStorage } from './zustandPersist';
+export { manuallyRehydrateStore, exposeStoreForDebugging } from './zustandPersist';
 
 // Time utilities
 export * from './time';
