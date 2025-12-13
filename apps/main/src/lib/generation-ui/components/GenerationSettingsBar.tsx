@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
-import type { ParamSpec } from './DynamicParamForm';
+import type { ParamSpec } from '../types';
 import { useCostHints } from '@features/providers';
 import { estimatePixverseCost } from '@features/providers';
 
@@ -492,7 +492,7 @@ export function GenerationSettingsBar({
                 +{advancedParams.length}
               </button>
               {expandedSetting === 'advanced' && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded shadow-lg p-2 min-w-[180px] max-h-[250px] overflow-y-auto space-y-2">
+                <div className="absolute right-0 top-full mt-1 z-[9999] bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded shadow-lg p-2 min-w-[180px] max-h-[250px] overflow-y-auto space-y-2">
                   {advancedParams.map((param) => (
                     <div key={param.name} className="flex items-center gap-2">
                       <span className="text-[10px] text-neutral-500 min-w-[60px]">

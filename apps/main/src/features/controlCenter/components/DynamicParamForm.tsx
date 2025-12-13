@@ -1,18 +1,13 @@
 import { useMemo } from 'react';
 import clsx from 'clsx';
 
-export interface ParamSpec {
-  name: string;
-  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
-  required?: boolean;
-  default?: any;
-  enum?: string[];
-  description?: string;
-  group?: string;
-  min?: number;
-  max?: number;
-  metadata?: Record<string, any>;
-}
+/**
+ * ParamSpec type has been moved to @lib/generation-ui for better reusability.
+ * Re-exported here for backward compatibility.
+ *
+ * @deprecated Import from '@lib/generation-ui' instead
+ */
+export type { ParamSpec } from '@lib/generation-ui';
 
 export interface DynamicParamFormProps {
   specs: ParamSpec[];

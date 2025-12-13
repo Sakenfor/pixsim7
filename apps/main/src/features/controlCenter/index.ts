@@ -20,11 +20,8 @@ export { CubeSpawnDock } from './components/CubeSpawnDock';
 export { ControlCube } from './components/ControlCube';
 export type { ControlCubeProps } from './components/ControlCube';
 
-// Generation-related components (used by generation feature)
-export { GenerationSettingsBar } from './components/GenerationSettingsBar';
-export { GenerationStatusDisplay } from './components/GenerationStatusDisplay';
-export { DynamicParamForm } from './components/DynamicParamForm';
-export type { ParamSpec } from './components/DynamicParamForm';
+// Generation-related components moved to @lib/generation-ui
+// Import from @lib/generation-ui instead
 
 // ============================================================================
 // Stores - State Management

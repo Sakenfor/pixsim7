@@ -1,9 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
-import { GenerationSettingsBar } from '@features/controlCenter/components/GenerationSettingsBar';
-import { GenerationStatusDisplay } from '@features/controlCenter/components/GenerationStatusDisplay';
+import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';
 import { ThemedIcon } from '@lib/icons';
-import type { ParamSpec } from '@features/controlCenter/components/DynamicParamForm';
 import { useGenerationsStore } from '@features/generation';
 import type { GenerationResponse } from '@lib/api/generations';
 

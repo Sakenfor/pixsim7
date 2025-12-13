@@ -24,6 +24,7 @@ export default defineConfig({
       { find: '@lib/ui/display', replacement: path.resolve(__dirname, './src/lib/ui/display') },
       { find: '@lib/ui', replacement: path.resolve(__dirname, './src/lib/ui') },
       // Lib modules - Infrastructure
+      { find: '@lib/generation-ui', replacement: path.resolve(__dirname, './src/lib/generation-ui') },
       { find: '@lib/utils', replacement: path.resolve(__dirname, './src/lib/utils') },
       { find: '@lib/auth', replacement: path.resolve(__dirname, './src/lib/auth') },
       { find: '@lib/theming', replacement: path.resolve(__dirname, './src/lib/theming') },
