@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import type { ParamSpec } from './DynamicParamForm';
-import { useCostHints } from '@features/providers/hooks';
+import { useCostHints } from '@features/providers';
 import { estimatePixverseCost } from '@features/providers';
 
 /**
