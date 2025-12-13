@@ -69,7 +69,9 @@
       "Bash(timeout 25 npm run dev:*)",
       "Bash(__NEW_LINE__ grep -r \"export.*providerCapabilityRegistry\" --include=\"*.ts\" --include=\"*.tsx\")",
       "Bash(timeout 30 npm run dev:*)",
-      "Bash(__NEW_LINE__ grep -r \"settingsRegistry\\|settingsSchemaRegistry\" --include=\"*.ts\" --include=\"*.tsx\")"
+      "Bash(__NEW_LINE__ grep -r \"settingsRegistry\\|settingsSchemaRegistry\" --include=\"*.ts\" --include=\"*.tsx\")",
+      "Bash(then echo \"✓ $dir\")",
+      "Bash(else echo \"✗ $dir\")"
     ],
     "deny": [],
     "ask": []

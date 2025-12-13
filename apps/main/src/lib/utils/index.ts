@@ -6,7 +6,7 @@
 export { initWebLogger, logEvent } from './logging';
 
 // UUID generation
-export { uuid, uuidv4 } from './uuid';
+export { generateUUID, generateShortUUID, generatePrefixedUUID } from './uuid';
 
 // Debug flags
 export { debugFlags } from './debugFlags';
