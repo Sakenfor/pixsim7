@@ -1,7 +1,7 @@
 import type { Module } from '../types';
 import { registerPluginsFeature } from '../../lib/capabilities/registerCoreFeatures';
 import { pluginManager } from '../../lib/plugins';
-import { PluginsModule as PluginsModuleComponent } from '../../components/control/modules/PluginsModule';
+import { PluginsModule as PluginsModuleComponent } from '@features/controlCenter/components/modules/PluginsModule';
 
 /**
  * Plugins Module

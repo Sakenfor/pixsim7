@@ -1,6 +1,6 @@
 import { apiClient } from './client';
-import { devValidateParams, devLogParams } from '../validation/devValidation';
-import { createGeneration, type CreateGenerationRequest } from './generations';
+import { devValidateParams, devLogParams } from '@lib/utils/validation/devValidation';
+import { createGeneration, type CreateGenerationRequest } from '@lib/api/generations';
 import type { OperationType } from '../../types/operations';
 
 export interface GenerateAssetRequest {
