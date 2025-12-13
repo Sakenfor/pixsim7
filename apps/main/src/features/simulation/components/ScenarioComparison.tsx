@@ -7,7 +7,7 @@
 
 import { Panel } from '@pixsim7/shared.ui';
 import { formatWorldTime } from '@pixsim7/game.engine';
-import type { SimulationScenario } from '@features/simulation/scenarios';
+import type { SimulationScenario } from '@features/simulation/lib/core/scenarios';
 import type { SimulationSnapshot } from '@features/simulation/history';
 
 interface ScenarioComparisonProps {

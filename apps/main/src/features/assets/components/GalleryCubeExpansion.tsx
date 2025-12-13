@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useLocalFolders } from '../stores/localFoldersStore';
-import { useAssetSelectionStore } from '@/stores/assetSelectionStore';
+import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import type { ExpansionComponentProps } from '@features/controlCenter/lib/cubes/cubeExpansionRegistry';
 
 /**

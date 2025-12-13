@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type Dispatch, type SetStateAction } from 'react';
-import { useAssetSelectionStore, type SelectedAsset } from '@/stores/assetSelectionStore';
+import { useAssetSelectionStore, type SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import {
   useGenerationQueueStore,
   type GenerationQueueState,

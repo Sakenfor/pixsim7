@@ -1,4 +1,4 @@
-import type { SelectedAsset } from '@/stores/assetSelectionStore';
+import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import type { QueuedAsset } from '@features/generation';
 import { normalizeProviderParams } from '@features/generation/lib/core/normalizeProviderParams';
 import type { OperationType } from '@/types/operations';

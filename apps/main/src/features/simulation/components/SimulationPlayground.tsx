@@ -35,7 +35,7 @@ import {
   deleteScenario,
   createDefaultScenario,
   type SimulationScenario,
-} from '@features/simulation/scenarios';
+} from '@features/simulation/lib/core/scenarios';
 import {
   gameHooksRegistry,
   registerBuiltinGamePlugins,
@@ -74,8 +74,8 @@ import {
   saveSimulationRun,
   deleteSavedRun,
   type SavedSimulationRun,
-} from '@features/simulation/multiRunStorage';
-import type { ConstraintEvaluationContext } from '@features/simulation/constraints';
+} from '@features/simulation/lib/core/multiRunStorage';
+import type { ConstraintEvaluationContext } from '@features/simulation/lib/core/constraints';
 import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,

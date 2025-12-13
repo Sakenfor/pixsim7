@@ -12,7 +12,7 @@ import { SceneBuilderPanel, SceneManagementPanel } from '@features/scene';
 import { GraphEditorHost } from '@features/graph';
 import { InspectorPanel } from '../../components/inspector/InspectorPanel';
 import { HealthPanel } from '../../components/health/HealthPanel';
-import { ProviderSettingsPanel } from '../../components/provider/ProviderSettingsPanel';
+import { ProviderSettingsPanel } from '@features/providers/components/ProviderSettingsPanel';
 import { SettingsPanel } from '../../components/settings/SettingsPanel';
 import { GameThemingPanel } from '@/components/game/panels/GameThemingPanel';
 import { GizmoLab } from '../../routes/GizmoLab';

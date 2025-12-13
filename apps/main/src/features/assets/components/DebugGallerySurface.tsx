@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
-import { galleryToolRegistry } from '@features/gallery/types';
+import { galleryToolRegistry } from '@features/gallery/lib/core/types';
 import { useAssets } from '../hooks/useAssets';
 
 export function DebugGallerySurface() {

@@ -8,13 +8,13 @@
 import { useState, useMemo } from 'react';
 import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { formatWorldTime } from '@pixsim7/game.engine';
-import type { SavedSimulationRun } from '@features/simulation/multiRunStorage';
+import type { SavedSimulationRun } from '@features/simulation/lib/core/multiRunStorage';
 import {
   alignSnapshotsByWorldTime,
   alignSnapshotsByIndex,
   calculateSnapshotDeltas,
   getRunSummary,
-} from '@features/simulation/multiRunStorage';
+} from '@features/simulation/lib/core/multiRunStorage';
 
 interface MultiRunComparisonProps {
   runs: SavedSimulationRun[];

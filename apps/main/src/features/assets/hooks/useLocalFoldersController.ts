@@ -14,7 +14,7 @@ import {
   type LocalAsset,
 } from '../stores/localFoldersStore';
 import { usePersistentState } from '@/hooks/usePersistentState';
-import { useViewer } from './useViewer';
+import { useViewer } from '@/hooks/useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
 
 const LOCAL_SOURCE: SourceInfo = {

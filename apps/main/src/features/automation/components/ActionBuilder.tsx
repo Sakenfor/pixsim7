@@ -12,7 +12,7 @@ import {
   getConditionResult,
   getActionTestStatus,
 } from './actionUtils';
-import { automationService } from '@features/automation/automationService';
+import { automationService } from '@features/automation/lib/core/automationService';
 
 // Cache for preset previews to avoid repeated fetches
 const presetCache = new Map<number, AppActionPreset>();

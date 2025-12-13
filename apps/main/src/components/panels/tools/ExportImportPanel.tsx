@@ -7,8 +7,8 @@
 
 import { useState, useRef } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
-import type { SimulationScenario } from '@features/simulation/scenarios';
-import type { SavedSimulationRun } from '@features/simulation/multiRunStorage';
+import type { SimulationScenario } from '@features/simulation/lib/core/scenarios';
+import type { SavedSimulationRun } from '@features/simulation/lib/core/multiRunStorage';
 import {
   exportScenario,
   exportRun,

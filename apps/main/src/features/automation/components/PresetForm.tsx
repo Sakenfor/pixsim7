@@ -5,7 +5,7 @@ import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';
 import { getAccounts } from '@features/providers';
 import type { ProviderAccount } from '@features/providers';
-import { automationService } from '@features/automation/automationService';
+import { automationService } from '@features/automation/lib/core/automationService';
 import { API_BASE_URL } from '@/lib/api/client';
 
 interface PresetFormProps {
