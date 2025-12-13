@@ -200,3 +200,9 @@ export * from './narrative'
 // ===================
 
 export * from './brain'
+
+// ===================
+// Asset Provider Types
+// ===================
+
+export * from './assetProvider'

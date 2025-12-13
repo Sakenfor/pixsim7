@@ -1,0 +1,312 @@
+/**
+ * Generated Asset Provider
+ *
+ * Wraps the /api/v1/generations API with polling for completion.
+ * Handles generation requests, status polling, and asset creation.
+ */
+
+import type {
+  Asset,
+  AssetRequest,
+  AssetAvailability,
+  IAssetProvider,
+} from '@pixsim7/shared.types';
+import {
+  AssetNotFoundError,
+  AssetGenerationError,
+  AssetTimeoutError,
+} from '@pixsim7/shared.types';
+import {
+  createGeneration,
+  getGeneration,
+  type GenerationResponse,
+  type CreateGenerationRequest,
+  type GenerationConfig,
+} from '@/lib/api/generations';
+import { getAsset as getAssetApi } from '@/features/assets/lib/api';
+import { pollUntil } from '@/lib/utils/polling/pollUntil';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface GeneratedAssetProviderConfig {
+  /** Default provider ID for generation (default: 'pixverse') */
+  defaultProvider: string;
+  /** Default max wait time for generation in ms (default: 120000) */
+  defaultMaxWaitTime: number;
+  /** Base polling interval in ms (default: 3000) */
+  pollIntervalMs: number;
+  /** Max polling interval in ms (default: 30000) */
+  pollMaxIntervalMs: number;
+}
+
+const DEFAULT_CONFIG: GeneratedAssetProviderConfig = {
+  defaultProvider: 'pixverse',
+  defaultMaxWaitTime: 120000,
+  pollIntervalMs: 3000,
+  pollMaxIntervalMs: 30000,
+};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+function isTerminalStatus(status: string): boolean {
+  return ['completed', 'failed', 'cancelled'].includes(status);
+}
+
+function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_model' {
+  switch (mediaType) {
+    case 'video':
+      return 'video';
+    case 'image':
+      return 'image';
+    case 'audio':
+      return 'audio';
+    case '3d_model':
+      return '3d_model';
+    default:
+      return 'video';
+  }
+}
+
+function buildGenerationConfig(request: AssetRequest): GenerationConfig {
+  const config: GenerationConfig = {
+    generationType: 'transition',
+    purpose: 'gap_fill',
+    strategy: request.strategy ?? 'per_playthrough',
+    enabled: true,
+    version: 1,
+    style: {
+      pacing: 'medium',
+    },
+    duration: {
+      target: request.duration ?? 5,
+    },
+    constraints: {
+      rating: 'PG-13',
+    },
+    fallback: {
+      mode: 'skip',
+    },
+  };
+
+  // Add prompt if provided
+  if (request.prompt) {
+    config.prompt = request.prompt;
+  }
+
+  // Add image URL for img2vid
+  if (request.imageUrl) {
+    config.image_url = request.imageUrl;
+  }
+
+  // Add video URL for video extend
+  if (request.videoUrl) {
+    config.video_url = request.videoUrl;
+  }
+
+  // Add any provider-specific params
+  if (request.providerParams) {
+    Object.assign(config, request.providerParams);
+  }
+
+  return config;
+}
+
+// ============================================================================
+// GeneratedAssetProvider
+// ============================================================================
+
+/**
+ * Asset provider that generates assets via the backend generation API.
+ *
+ * Handles:
+ * - Building generation requests from AssetRequest
+ * - Submitting to /api/v1/generations
+ * - Polling for completion
+ * - Mapping results to Asset interface
+ */
+export class GeneratedAssetProvider implements IAssetProvider {
+  private config: GeneratedAssetProviderConfig;
+
+  constructor(config: Partial<GeneratedAssetProviderConfig> = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * Get an asset by ID
+   *
+   * Fetches from the assets API (not generation-specific).
+   */
+  async getAsset(assetId: string): Promise<Asset> {
+    try {
+      const response = await getAssetApi(parseInt(assetId, 10));
+
+      return {
+        id: String(response.id),
+        url: response.remote_url ?? response.file_url ?? '',
+        type: mapMediaType(response.media_type),
+        source: 'generated',
+        metadata: {
+          thumbnailUrl: response.thumbnail_url ?? undefined,
+          mimeType: response.mime_type ?? undefined,
+        },
+      };
+    } catch (error) {
+      throw new AssetNotFoundError(assetId);
+    }
+  }
+
+  /**
+   * Request asset generation
+   *
+   * Creates a generation job and polls until completion.
+   */
+  async requestAsset(request: AssetRequest): Promise<Asset> {
+    const maxWaitTime = request.maxWaitTime ?? this.config.defaultMaxWaitTime;
+    const providerId = request.providerId ?? this.config.defaultProvider;
+
+    // Build generation request
+    const generationRequest: CreateGenerationRequest = {
+      config: buildGenerationConfig(request),
+      provider_id: providerId,
+      force_new: request.preferCached === false,
+    };
+
+    // Add scene context if provided
+    if (request.sceneId) {
+      generationRequest.from_scene = {
+        id: request.sceneId,
+        location: request.locationId,
+      };
+    }
+
+    // Submit generation
+    let generation: GenerationResponse;
+    try {
+      generation = await createGeneration(generationRequest);
+    } catch (error) {
+      throw new AssetGenerationError(
+        request,
+        error instanceof Error ? error : undefined,
+        'Failed to submit generation request'
+      );
+    }
+
+    // If already completed (cache hit), return immediately
+    if (generation.status === 'completed' && generation.asset_id) {
+      return this.getAsset(String(generation.asset_id));
+    }
+
+    // If already failed, throw immediately
+    if (generation.status === 'failed') {
+      throw new AssetGenerationError(
+        request,
+        undefined,
+        generation.error_message ?? 'Generation failed'
+      );
+    }
+
+    // Poll for completion
+    return this.pollForCompletion(generation.id, request, maxWaitTime);
+  }
+
+  /**
+   * Check if generation is available (always returns not available since we generate on-demand)
+   */
+  async checkAvailability(request: AssetRequest): Promise<AssetAvailability> {
+    // GeneratedAssetProvider doesn't have pre-existing assets
+    // It always generates on-demand
+    return {
+      available: false,
+      estimatedGenerationTimeMs: 30000, // Rough estimate
+    };
+  }
+
+  /**
+   * Poll for generation completion
+   */
+  private pollForCompletion(
+    generationId: number,
+    request: AssetRequest,
+    maxWaitTime: number
+  ): Promise<Asset> {
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+      let resolved = false;
+
+      const cancel = pollUntil(
+        () => getGeneration(generationId),
+        (data) => isTerminalStatus(data.status),
+        {
+          base: this.config.pollIntervalMs,
+          max: this.config.pollMaxIntervalMs,
+          backoffStartMs: 60000,
+          onFetch: async (data: GenerationResponse) => {
+            if (resolved) return;
+
+            // Check timeout
+            if (Date.now() - startTime > maxWaitTime) {
+              resolved = true;
+              cancel();
+              reject(new AssetTimeoutError(request, maxWaitTime));
+              return;
+            }
+
+            // Check for completion
+            if (data.status === 'completed' && data.asset_id) {
+              resolved = true;
+              cancel();
+              try {
+                const asset = await this.getAsset(String(data.asset_id));
+                resolve({
+                  ...asset,
+                  metadata: {
+                    ...asset.metadata,
+                    generationId: data.id,
+                  },
+                });
+              } catch (error) {
+                reject(
+                  new AssetGenerationError(
+                    request,
+                    error instanceof Error ? error : undefined,
+                    'Failed to fetch generated asset'
+                  )
+                );
+              }
+            }
+
+            // Check for failure
+            if (data.status === 'failed' || data.status === 'cancelled') {
+              resolved = true;
+              cancel();
+              reject(
+                new AssetGenerationError(
+                  request,
+                  undefined,
+                  data.error_message ?? `Generation ${data.status}`
+                )
+              );
+            }
+          },
+          onError: (error: unknown) => {
+            // Don't reject on poll errors, let polling continue
+            console.warn('[GeneratedAssetProvider] Poll error:', error);
+          },
+        }
+      );
+
+      // Set up timeout fallback
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cancel();
+          reject(new AssetTimeoutError(request, maxWaitTime));
+        }
+      }, maxWaitTime);
+    });
+  }
+}
