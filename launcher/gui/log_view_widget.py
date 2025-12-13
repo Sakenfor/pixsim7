@@ -2,10 +2,16 @@
 Unified Log View Widget
 
 A reusable QTextBrowser-based log viewer with:
-- Smart scroll position preservation
-- Auto-scroll behavior
-- Pause/resume functionality
+- Smart auto-scroll (scrolls only if you're at bottom, preserves position if scrolled up)
+- Force scroll option (always scroll to bottom, override smart behavior)
+- Pause/resume functionality (freeze updates completely)
+- Scroll position preservation (maintains your reading position)
 - Consistent styling
+
+Smart scroll behavior:
+- If you're at bottom (within 50px) → follows new logs automatically
+- If you scrolled up → preserves your position (lets you read old logs)
+- Never jumps unexpectedly when new logs arrive
 
 Used by both Console Logs and Database Logs for unified behavior.
 """
@@ -44,7 +50,13 @@ class LogViewWidget(QTextBrowser):
         self._pending_scroll_restore = None
 
     def set_autoscroll(self, enabled: bool):
-        """Enable/disable auto-scrolling to bottom."""
+        """
+        Enable/disable force scroll mode.
+
+        Args:
+            enabled: If True, always scroll to bottom (override smart scroll)
+                    If False, use smart scroll (scroll only if at bottom)
+        """
         self._autoscroll_enabled = enabled
 
     def set_paused(self, paused: bool):
@@ -82,6 +94,11 @@ class LogViewWidget(QTextBrowser):
 
         Uses QTimer.singleShot to defer scroll restoration until after
         Qt's event loop has finished processing the document change.
+
+        Smart scroll behavior:
+        - If user is at bottom (within threshold) → scroll to bottom (follow new logs)
+        - If user has scrolled up → preserve position (let them read)
+        - Threshold is 50px to account for minor scroll variations
         """
         scrollbar = self.verticalScrollBar()
 
@@ -89,8 +106,9 @@ class LogViewWidget(QTextBrowser):
         old_scroll_value = scrollbar.value()
         old_scroll_max = scrollbar.maximum()
 
-        # Check if user was at bottom (within 10 pixels)
-        was_at_bottom = (old_scroll_value >= old_scroll_max - 10) if old_scroll_max > 0 else True
+        # Check if user was at bottom (within 50 pixels for better UX)
+        # Larger threshold accounts for font rendering variations
+        was_at_bottom = (old_scroll_value >= old_scroll_max - 50) if old_scroll_max > 0 else True
 
         # Apply HTML content
         self.blockSignals(True)
@@ -101,17 +119,30 @@ class LogViewWidget(QTextBrowser):
 
         # Defer scroll restoration until Qt processes the document change
         def restore_scroll():
-            if self._autoscroll_enabled or was_at_bottom:
-                # Auto-scroll to bottom
+            # SMART AUTO-SCROLL with optional force override
+            # If autoscroll checkbox is ON: always scroll (force mode)
+            # If autoscroll checkbox is OFF: smart scroll (position-based)
+            should_scroll = False
+
+            if self._autoscroll_enabled:
+                # Force mode: always scroll to bottom (checkbox is ON)
+                should_scroll = True
+            elif was_at_bottom:
+                # Smart mode: only scroll if user was at bottom (checkbox is OFF)
+                should_scroll = True
+
+            if should_scroll:
+                # Scroll to new bottom (follow logs)
                 cursor = self.textCursor()
                 cursor.movePosition(QTextCursor.End)
                 self.setTextCursor(cursor)
                 scrollbar.setValue(scrollbar.maximum())
             else:
-                # Preserve exact scroll position
+                # User scrolled up → preserve their reading position
                 if saved_scroll_state is not None:
                     scrollbar.setValue(saved_scroll_state)
                 else:
+                    # Try to preserve relative position
                     scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
 
             self.content_updated.emit()
