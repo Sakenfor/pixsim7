@@ -24,6 +24,120 @@ Comic panels are a **lightweight presentation layer** for visualizing story beat
 
 ---
 
+## Import Rules of Thumb
+
+Following the new architecture, **always use path aliases** to make ownership clear:
+
+### ✅ Correct Import Patterns
+
+```typescript
+// Features: Always use @features/*
+import { SceneManagementPanel } from '@features/scene';
+import { InteractionMenu } from '@features/interactions';
+import { GalleryGrid } from '@features/gallery';
+
+// Shared libraries: Always use @lib/*
+import { useAssetProvider } from '@lib/assetProvider';
+import { createBindingFromValue } from '@lib/editing-core';
+import { OverlayWidget } from '@lib/ui/overlay';
+
+// Root-level: Use @/ only when no narrower alias exists
+import { gameStore } from '@/stores/gameStore';
+import { MainLayout } from '@/components/layout/MainLayout';
+```
+
+### ❌ Anti-Patterns (Avoid These)
+
+```typescript
+// DON'T use @/ for features that have their own alias
+import { SceneManagementPanel } from '@/features/scene';  // ❌ Use @features/scene
+
+// DON'T use @/ for libs that have their own alias
+import { useAssetProvider } from '@/lib/assetProvider';  // ❌ Use @lib/assetProvider
+
+// DON'T use relative imports across features
+import { InteractionMenu } from '../../../interactions';  // ❌ Use @features/interactions
+
+// DON'T use deep imports into other features
+import { getActiveComicPanels } from '@features/scene/ui/comicPanels/selection';  // ❌ Use barrel export
+import { getActiveComicPanels } from '@features/scene';  // ✅ Import from feature root
+```
+
+### Why This Matters
+
+- **Clear ownership:** `@features/scene` tells you the scene feature owns this code
+- **Refactor-safe:** Moving files within a feature doesn't break external imports if barrel exports are maintained
+- **Circular dependency prevention:** Features can't accidentally depend on each other if they use explicit aliases
+- **Readable diffs:** Path aliases make code review easier ("this imports from the gallery feature")
+
+---
+
+## Feature Ownership Boundaries
+
+To prevent the feature-coupling issues identified in the architecture audit, here are **explicit ownership statements** for related features:
+
+### Assets vs. Gallery
+- **`@features/assets`** owns:
+  - Asset CRUD operations (create, update, delete)
+  - Asset storage and organization (folders, collections)
+  - Upload/import workflows
+  - Asset metadata management
+- **`@features/gallery`** owns:
+  - Asset display and filtering UI
+  - Gallery grid/list views
+  - Asset preview and selection
+  - Visual asset browsing
+
+**Rule:** If it's about *storing* assets, use `@features/assets`. If it's about *showing* assets, use `@features/gallery`.
+
+### HUD vs. World Tools
+- **`@features/hud`** owns:
+  - HUD layout engine and rendering
+  - HUD widget system (health bars, minimaps, etc.)
+  - In-game overlay UI
+  - HUD editor and customization
+- **`@features/worldTools`** owns:
+  - World-level configuration tools (not gameplay UI)
+  - NPC/location management panels
+  - World visual roles binding
+  - Campaign/world editing workflows
+
+**Rule:** If it's displayed *during gameplay*, use `@features/hud`. If it's a *world authoring tool*, use `@features/worldTools`.
+
+### Control Center vs. Generation
+- **`@features/controlCenter`** owns:
+  - Centralized settings/preferences UI
+  - Quick access panels and launchers
+  - User workspace configuration
+  - Global app controls
+- **`@features/generation`** (or `@lib/generation-ui`) owns:
+  - Generation request forms and settings
+  - Provider-specific UI (Pixverse, Runway, etc.)
+  - Generation history and status
+  - Template/prompt builders
+
+**Rule:** If it's about *app-wide settings*, use `@features/controlCenter`. If it's about *creating/generating content*, use generation feature/lib.
+
+### Scene vs. Interactions vs. Comic Panels
+- **`@features/scene`** owns:
+  - Scene graph structure and nodes
+  - Scene playback and transitions
+  - Comic panels (scene visualization)
+  - Scene-level metadata
+- **`@features/interactions`** owns:
+  - NPC dialogue menus
+  - Interaction history/chains
+  - Turn-by-turn interaction UI
+  - Character mood/relationship displays
+- **Comic panels** (owned by `@features/scene`) are for:
+  - Scene-level story beats (before/after gameplay)
+  - Cutscene-style sequences
+  - **NOT** for dialogue visualization (that's interactions)
+
+**Rule:** If it shows *scene structure*, use `@features/scene`. If it shows *NPC conversations*, use `@features/interactions`. Comic panels are scene transitions, not interaction UI.
+
+---
+
 ## 1. Code Inventory
 
 ### 1.1. Core Comic Panel Files
