@@ -37,7 +37,7 @@ import type {
   ChoiceNode,
   ActionNode,
   ActionBlockNode,
-  SceneNode,
+  SceneTransitionNode,
   BranchNode,
   WaitNode,
   ExternalCallNode,
@@ -354,7 +354,7 @@ export const actionBlockHandler: NodeHandler = {
  */
 export const sceneHandler: NodeHandler = {
   execute(context: NodeExecutionContext): NodeHandlerResult {
-    const node = context.node as SceneNode;
+    const node = context.node as SceneTransitionNode;
 
     if (node.mode === 'transition' && node.sceneId !== undefined) {
       return {

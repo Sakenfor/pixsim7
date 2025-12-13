@@ -275,9 +275,14 @@ export interface ActionBlockNode extends NarrativeNodeBase {
 }
 
 /**
- * Scene node - transitions to a different scene or sets scene intent
+ * Scene transition node - transitions to a different scene or sets scene intent.
+ * Part of the narrative node system (DialogueNode, ChoiceNode, ActionNode, SceneTransitionNode).
+ *
+ * NOTE: This is different from SceneContentNode (index.ts) which represents
+ * nodes WITHIN a scene's internal graph/flow.
  */
-export interface SceneNode extends NarrativeNodeBase {
+export interface SceneTransitionNode extends NarrativeNodeBase {
+  nodeType: 'scene_transition'; // Discriminator
   type: 'scene';
 
   /** Scene transition mode */
@@ -301,6 +306,7 @@ export interface SceneNode extends NarrativeNodeBase {
     duration?: number;
   };
 }
+
 
 /**
  * Branch node - conditional branching without player input
@@ -395,7 +401,7 @@ export type NarrativeNode =
   | ChoiceNode
   | ActionNode
   | ActionBlockNode
-  | SceneNode
+  | SceneTransitionNode
   | BranchNode
   | WaitNode
   | ExternalCallNode

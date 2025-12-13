@@ -63,7 +63,15 @@ export type PlaybackMode =
   | { kind: 'loopSegment'; segmentId?: string; start?: number; end?: number }
   | { kind: 'progression'; segments: Array<{ label: string; segmentIds?: string[] }>; miniGame?: { id: string; config?: Record<string, any> } }
 
-export interface SceneNode {
+/**
+ * Scene content node - represents a node within a scene's internal graph/flow.
+ * Used for interactive scenes with media, choices, conditions, etc.
+ *
+ * NOTE: This is different from SceneTransitionNode (narrative.ts) which handles
+ * transitions BETWEEN scenes in a narrative program.
+ */
+export interface SceneContentNode {
+  nodeType: 'scene_content'; // Discriminator
   id: string
   type: SceneNodeType
   label?: string
@@ -122,7 +130,7 @@ export interface SceneEdge {
 export interface Scene {
   id: string
   title?: string
-  nodes: SceneNode[]
+  nodes: SceneContentNode[]
   edges: SceneEdge[]
   startNodeId: string
 }

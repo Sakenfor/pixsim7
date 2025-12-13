@@ -15,7 +15,7 @@
 import type {
   GameSessionDTO,
   Scene,
-  SceneNode as SceneMediaNode,
+  SceneContentNode as SceneMediaNode,
   SceneRuntimeState,
   NarrativeProgram,
   NarrativeNode,

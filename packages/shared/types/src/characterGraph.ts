@@ -101,9 +101,10 @@ export interface GameNPCNode extends CharacterGraphNode {
 }
 
 /**
- * Scene node - game scene or content scene
+ * Character graph scene node - represents a scene as a node in the character relationship graph.
+ * This is different from SceneContentNode (scene flow) and SceneTransitionNode (narrative transitions).
  */
-export interface SceneNode extends CharacterGraphNode {
+export interface CharacterGraphSceneNode extends CharacterGraphNode {
   type: "scene";
   /** Scene ID (could be game_scenes.id or scenes.id) */
   sceneId: number;
@@ -221,7 +222,7 @@ export type CharacterGraphNodeUnion =
   | CharacterTemplateNode
   | CharacterInstanceNode
   | GameNPCNode
-  | SceneNode
+  | CharacterGraphSceneNode
   | SceneRoleNode
   | AssetNode
   | CharGenNode

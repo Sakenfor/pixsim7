@@ -7,7 +7,7 @@
 
 import type {
   Scene,
-  SceneNode,
+  SceneContentNode,
   SceneEdge,
   SceneRuntimeState,
   PlaybackMode,
@@ -97,7 +97,7 @@ export function advanceProgression(
  * Honors progression segmentIds first, then applies selection strategy
  */
 export function selectMediaSegment(args: {
-  node: SceneNode | undefined;
+  node: SceneContentNode | undefined;
   state: SceneRuntimeState;
 }): MediaSegment | undefined {
   const { node, state } = args;
