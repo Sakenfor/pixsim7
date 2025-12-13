@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
+import { useLocalFoldersController } from '@features/assets/hooks/useLocalFoldersController';
 import { useProviders } from '@features/providers';
 import { useAssetViewer } from '../hooks/useAssetViewer';
 import { TreeFolderView } from './TreeFolderView';
