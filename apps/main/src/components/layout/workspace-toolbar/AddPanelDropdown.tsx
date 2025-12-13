@@ -1,5 +1,5 @@
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 import { panelRegistry } from '@lib/ui/panels';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@lib/ui/panels';
 

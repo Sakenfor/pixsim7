@@ -13,7 +13,7 @@ import type {
   ContentRatingCheck,
   RelationshipGate,
   RelationshipProgressionArc,
-} from '@/lib/registries';
+} from '@lib/registries';
 
 /**
  * Content rating hierarchy (ordered from least to most permissive)

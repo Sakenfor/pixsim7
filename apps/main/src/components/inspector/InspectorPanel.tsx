@@ -4,8 +4,8 @@ import { type DraftSceneNode } from '@/modules/scene-builder';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useToast } from '@pixsim7/shared.ui';
-import { nodeTypeRegistry } from '@/lib/registries';
-import { nodeEditorRegistry } from '@/lib/nodeEditorRegistry';
+import { nodeTypeRegistry } from '@lib/registries';
+import { nodeEditorRegistry } from '@lib/nodeEditorRegistry';
 
 /**
  * Dynamic Editor Loader Component

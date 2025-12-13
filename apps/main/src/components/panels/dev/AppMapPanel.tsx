@@ -6,7 +6,7 @@ import {
   type FeatureCapability,
   type RouteCapability,
   type ActionCapability,
-} from '@/lib/capabilities';
+} from '@lib/capabilities';
 import {
   listAllPlugins,
   filterByKind,
@@ -19,7 +19,7 @@ import {
   type PluginMeta,
   type PluginKind,
   type PluginOrigin,
-} from '@/lib/plugins/catalog';
+} from '@lib/plugins/catalog';
 import { DependencyGraphPanel } from './DependencyGraphPanel';
 import { CapabilityTestingPanel } from './CapabilityTestingPanel';
 import { BackendArchitecturePanel } from './BackendArchitecturePanel';

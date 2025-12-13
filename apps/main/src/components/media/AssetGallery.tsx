@@ -32,7 +32,7 @@ import { MediaCard } from './MediaCard';
 import type { MediaCardActions, MediaCardBadgeConfig } from './MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import { useLazyPreview } from '@/hooks/useLazyPreview';
-import { Icons } from '@/lib/icons';
+import { Icons } from '@lib/icons';
 
 /**
  * Upload state for an asset.

@@ -12,8 +12,8 @@ import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
 import { ValidationPanel } from './ValidationPanel';
-import { getWidget, createWidget } from '@/lib/editing-core/registry/widgetRegistry';
-import type { UnifiedWidgetConfig } from '@/lib/editing-core';
+import { getWidget, createWidget } from '@lib/editing-core/registry/widgetRegistry';
+import type { UnifiedWidgetConfig } from '@lib/editing-core';
 import { SurfaceWorkbench } from '../surface-workbench';
 
 export interface OverlayEditorProps {

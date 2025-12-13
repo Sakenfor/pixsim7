@@ -5,7 +5,7 @@
  * Reads layout configuration from GameWorld.meta.ui.hud and organizes tools by region.
  */
 
-import type { GameWorldDetail } from '@/lib/api/game';
+import type { GameWorldDetail } from '@lib/api/game';
 import type {
   WorldToolPlugin,
   WorldToolContext,

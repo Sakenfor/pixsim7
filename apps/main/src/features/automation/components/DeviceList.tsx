@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { DeviceCard } from './DeviceCard';
 import { automationService } from '@features/automation/lib/core/automationService';
 import { type AndroidDevice, DeviceStatus } from '../types';
-import { logEvent } from '@/lib/utils/logging';
+import { logEvent } from '@lib/utils/logging';
 
 export function DeviceList() {
   const [devices, setDevices] = useState<AndroidDevice[]>([]);

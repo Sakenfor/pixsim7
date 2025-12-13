@@ -238,7 +238,7 @@ const AnimationTabPlaceholder: React.FC<InspectorTabProps> = ({ selectedId }) =>
  *
  * @example
  * ```ts
- * import { moduleRegistry } from '@/lib/console';
+ * import { moduleRegistry } from '@lib/console';
  * import { modelInspectorModule } from './inspectorModule';
  *
  * // Register the model inspector

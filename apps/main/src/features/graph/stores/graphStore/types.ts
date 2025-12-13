@@ -8,7 +8,7 @@ import type {
   SceneMetadata,
   NodeGroupData,
 } from '@/modules/scene-builder';
-import type { Scene } from '@/lib/registries';
+import type { Scene } from '@lib/registries';
 import type { StateCreator as ZustandStateCreator } from 'zustand';
 
 /**

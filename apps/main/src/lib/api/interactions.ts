@@ -10,7 +10,7 @@ import type {
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
   NpcInteractionInstance,
-} from '@/lib/registries';
+} from '@lib/registries';
 import { apiClient } from './client';
 
 /**

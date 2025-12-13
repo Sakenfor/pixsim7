@@ -6,7 +6,7 @@
  */
 
 import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
-import type { SeductionNodeData, SeductionStage } from '@/lib/plugins/seductionNode';
+import type { SeductionNodeData, SeductionStage } from '@lib/plugins/seductionNode';
 
 /**
  * Seduction Node Renderer Component

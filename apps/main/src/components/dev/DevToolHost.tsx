@@ -6,8 +6,8 @@
  */
 
 import { useMemo } from 'react';
-import { devToolRegistry } from '@/lib/devtools/devToolRegistry';
-import type { DevToolId } from '@/lib/devtools/types';
+import { devToolRegistry } from '@lib/devtools/devToolRegistry';
+import type { DevToolId } from '@lib/devtools/types';
 
 export interface DevToolHostProps {
   /** ID of the dev tool to render */

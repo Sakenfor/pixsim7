@@ -11,7 +11,7 @@ import {
   selectCanNavigatePrev,
   selectCanNavigateNext,
 } from '@features/assets';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 import { Button } from '@pixsim7/shared.ui';
 import { ViewerQuickGenerate } from './ViewerQuickGenerate';
 

@@ -6,7 +6,7 @@
  */
 
 import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
-import type { QuestTriggerNodeData, QuestObjective } from '@/lib/plugins/questTriggerNode';
+import type { QuestTriggerNodeData, QuestObjective } from '@lib/plugins/questTriggerNode';
 
 /**
  * Quest Trigger Node Renderer Component

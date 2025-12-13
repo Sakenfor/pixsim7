@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
-import type { GameNpcDetail } from '@/lib/api/game';
+import type { GameNpcDetail } from '@lib/api/game';
 import type { NpcPreferences, ToolPreference, PatternPreference } from '@pixsim7/scene.gizmos';
 import { PREFERENCE_PRESETS, createDefaultPreferences } from '@pixsim7/scene.gizmos';
 import { getAllTools } from '@/gizmos/loadDefaultPacks';
@@ -16,9 +16,9 @@ import {
   setPatternPreference,
   addFavoriteTool,
   removeFavoriteTool,
-} from '@/lib/game/npcPreferences';
+} from '@lib/game/npcPreferences';
 import type { NpcPersona } from '@pixsim7/game.engine';
-import type { BrainState, BrainStatSnapshot } from '@/lib/core/types';
+import type { BrainState, BrainStatSnapshot } from '@lib/core/types';
 import { BrainShape } from './shapes/BrainShape';
 import type { BrainFace } from '@pixsim7/scene.shapes';
 

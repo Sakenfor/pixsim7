@@ -1,9 +1,9 @@
 import type { ComponentType } from 'react';
 import { nodeRendererRegistry, type NodeRendererProps } from './nodeRendererRegistry';
-import { nodeTypeRegistry } from '@/lib/registries';
-import { registerRenderer } from '@/lib/plugins/registryBridge';
-import { pluginCatalog } from '@/lib/plugins/pluginSystem';
-import { debugFlags } from '@/lib/utils/debugFlags';
+import { nodeTypeRegistry } from '@lib/registries';
+import { registerRenderer } from '@lib/plugins/registryBridge';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
+import { debugFlags } from '@lib/utils/debugFlags';
 
 /**
  * Auto-wire renderers from node type definitions

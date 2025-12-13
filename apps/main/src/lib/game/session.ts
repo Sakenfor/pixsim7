@@ -1,4 +1,4 @@
-import type { SessionFlags, WorldMode } from '@/lib/registries';
+import type { SessionFlags, WorldMode } from '@lib/registries';
 
 export interface WorldSessionState {
   /**

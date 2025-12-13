@@ -10,8 +10,8 @@
 
 import * as React from 'react';
 import { create } from 'zustand';
-import { debugFlags } from '@/lib/utils/debugFlags';
-import { logEvent } from '@/lib/utils/logging';
+import { debugFlags } from '@lib/utils/debugFlags';
+import { logEvent } from '@lib/utils/logging';
 
 // Re-export modules
 export * from './routeConstants';

@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import type { IntimacySceneConfig, RelationshipProgressionArc } from '@/lib/registries';
+import type { IntimacySceneConfig, RelationshipProgressionArc } from '@lib/registries';
 import {
   getAllSceneTemplates,
   getAllArcTemplates,

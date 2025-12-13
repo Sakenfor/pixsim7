@@ -1,5 +1,5 @@
 // Simple web logger posting to backend ingestion API (batched).
-// Usage: import { initWebLogger, logEvent } from '@/lib/utils/logging'; initWebLogger('frontend');
+// Usage: import { initWebLogger, logEvent } from '@lib/utils/logging'; initWebLogger('frontend');
 
 import { API_BASE_URL } from '../api/client';
 

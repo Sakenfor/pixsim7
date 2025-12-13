@@ -8,7 +8,7 @@
 import { useMemo } from 'react';
 import { Panel, Badge } from '@pixsim7/shared.ui';
 import { formatWorldTime } from '@pixsim7/game.engine';
-import type { GameSessionDTO, GameWorldDetail, NpcPresenceDTO } from '@/lib/api/game';
+import type { GameSessionDTO, GameWorldDetail, NpcPresenceDTO } from '@lib/api/game';
 
 interface WorldStateOverviewProps {
   worldDetail: GameWorldDetail | null;

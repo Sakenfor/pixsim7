@@ -8,7 +8,7 @@ import { Select } from '@pixsim7/shared.ui';
 import { CubeSettingsPanel } from '@features/controlCenter/components/CubeSettingsPanel';
 import { useCubeSettingsStore, type LinkingGesture } from '@features/controlCenter/stores/cubeSettingsStore';
 import { panelActionRegistry } from '@lib/ui/panels';
-import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
+import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 import { settingsRegistry } from '../../lib/core/registry';
 
 export function GeneralSettings() {

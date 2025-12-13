@@ -7,7 +7,7 @@
  */
 
 import type { HudProfile, HudToolPlacement, ViewMode } from './types';
-import type { GameWorldDetail } from '@/lib/api/game';
+import type { GameWorldDetail } from '@lib/api/game';
 import {
   getPlayerPreferences,
   updatePlayerPreferences,

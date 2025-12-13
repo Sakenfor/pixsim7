@@ -1,4 +1,4 @@
-import { ThemedIcon } from '@/lib/icons';
+import { ThemedIcon } from '@lib/icons';
 
 interface GalleryLayoutControlsProps {
   layout: 'masonry' | 'grid';

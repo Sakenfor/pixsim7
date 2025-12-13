@@ -6,7 +6,7 @@
  */
 
 import { cubeRegistry } from './cubeRegistry';
-import { debugFlags } from '@/lib/utils/debugFlags';
+import { debugFlags } from '@lib/utils/debugFlags';
 
 /**
  * Register default cubes

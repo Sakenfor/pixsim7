@@ -85,6 +85,23 @@ export default defineConfig([
 
       // Ensure imports resolve (but allow type imports to be unresolved for now)
       'import/no-unresolved': ['error', { ignore: ['^@types/'] }],
+
+      // Enforce specific import aliases (Phase 1: Import Standardization)
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/features/*', '@/features'],
+              message: 'Use @features/* instead of @/features/*. Example: import { X } from "@features/controlCenter"',
+            },
+            {
+              group: ['@/lib/*', '@/lib'],
+              message: 'Use @lib/* instead of @/lib/*. Example: import { apiClient } from "@lib/api"',
+            },
+          ],
+        },
+      ],
     },
   },
 

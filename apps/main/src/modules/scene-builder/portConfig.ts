@@ -1,5 +1,5 @@
 import type { DraftSceneNode } from './index';
-import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@/lib/registries';
+import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@lib/registries';
 
 // Re-export DSL helpers and types for convenience
 export {

@@ -6,14 +6,14 @@
  * @example
  * ```tsx
  * // Setup in app root
- * import { AssetProviderProvider } from '@/lib/assetProvider';
+ * import { AssetProviderProvider } from '@lib/assetProvider';
  *
  * <AssetProviderProvider config={{ generationEnabled: true }}>
  *   <App />
  * </AssetProviderProvider>
  *
  * // Usage in game component
- * import { useAssetProvider } from '@/lib/assetProvider';
+ * import { useAssetProvider } from '@lib/assetProvider';
  *
  * function ScenePlayer({ sceneId }) {
  *   const assetProvider = useAssetProvider();

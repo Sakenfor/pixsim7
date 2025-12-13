@@ -14,8 +14,8 @@ import type {
   Tool3DModel,
   AnimationClipInfo,
   ModelParseResult,
-} from '@/lib/models/types';
-import { DEFAULT_ZONE_PROPERTIES } from '@/lib/models/types';
+} from '@lib/models/types';
+import { DEFAULT_ZONE_PROPERTIES } from '@lib/models/types';
 
 /**
  * Settings persisted to localStorage.

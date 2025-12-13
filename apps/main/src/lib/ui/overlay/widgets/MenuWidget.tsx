@@ -7,7 +7,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 
 export interface MenuItem {
   /** Unique item ID */

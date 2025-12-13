@@ -9,7 +9,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useNodeEditor } from './useNodeEditor';
 import type { NodeEditorProps, SeductionStage, SeductionConfig } from './editorTypes';
 import { validateSeductionConfig, logValidationError } from './editorValidation';
-import { DEFAULT_SEDUCTION_STAGES } from '@/lib/plugins/seductionNode';
+import { DEFAULT_SEDUCTION_STAGES } from '@lib/plugins/seductionNode';
 
 export function SeductionNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const { formState, setFormState, handleApply } = useNodeEditor<SeductionConfig>({

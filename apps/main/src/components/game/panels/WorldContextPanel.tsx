@@ -1,5 +1,5 @@
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
-import { useEditorContext } from '@/lib/context/editorContext';
+import { useEditorContext } from '@lib/context/editorContext';
 
 /**
  * WorldContextPanel

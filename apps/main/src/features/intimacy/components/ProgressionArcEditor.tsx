@@ -15,7 +15,7 @@ import type {
   ProgressionStage,
   ProgressionArcState,
   RelationshipGate,
-} from '@/lib/registries';
+} from '@lib/registries';
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateProgressionArc } from '../lib/validation';
 import { RelationshipStateEditor } from './RelationshipStateEditor';

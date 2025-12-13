@@ -8,8 +8,8 @@
 
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding } from '@/lib/editing-core';
+import type { DataBinding } from '@lib/editing-core';
+import { resolveDataBinding } from '@lib/editing-core';
 import type { SceneMetaComicPanel } from '@/modules/scene-builder';
 
 export type ComicPanelLayout = 'single' | 'strip' | 'grid2';

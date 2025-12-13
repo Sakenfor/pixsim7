@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { Icon, type IconName } from '@/lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 export interface Shortcut {
   id: string;

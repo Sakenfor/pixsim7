@@ -21,7 +21,7 @@ import { pluginCatalog } from './pluginSystem';
 // Import existing registries
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
-import { nodeTypeRegistry, type NodeTypeDefinition } from '@/lib/registries';
+import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import type { GalleryToolPlugin } from '../gallery/types';

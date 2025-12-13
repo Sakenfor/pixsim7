@@ -5,7 +5,7 @@
  * Replaces the legacy jobsStore.
  */
 import { create } from 'zustand';
-import type { GenerationResponse } from '@/lib/api/generations';
+import type { GenerationResponse } from '@lib/api/generations';
 
 export interface GenerationsState {
   // Generations map (by ID)

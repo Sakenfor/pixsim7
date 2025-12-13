@@ -1,10 +1,10 @@
 import React from 'react';
 import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
-import { ThemedIcon } from '@/lib/icons';
+import { ThemedIcon } from '@lib/icons';
 import { useGenerationsStore } from '../stores/generationsStore';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
-import type { GenerationResponse } from '@/lib/api/generations';
+import type { GenerationResponse } from '@lib/api/generations';
 
 const STATUS_BADGE: Record<GenerationResponse['status'] | 'default', string> = {
   pending:

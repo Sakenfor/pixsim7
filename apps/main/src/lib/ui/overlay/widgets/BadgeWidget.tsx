@@ -8,9 +8,9 @@
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Badge } from '@pixsim7/shared.ui';
-import { Icon } from '@/lib/icons';
-import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
+import { Icon } from '@lib/icons';
+import type { DataBinding } from '@lib/editing-core';
+import { resolveDataBinding, createBindingFromValue } from '@lib/editing-core';
 
 export interface BadgeWidgetConfig {
   /** Widget ID */

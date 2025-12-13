@@ -9,7 +9,7 @@ import { useCubeSettingsStore } from '@features/controlCenter/stores/cubeSetting
 import { cubeExpansionRegistry } from '../lib/cubes/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { CubeTooltip, useTooltipDismissal } from '@pixsim7/shared.ui';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 import { BASE_CUBE_SIZE } from '@/config/cubeConstants';
 
 export interface DraggableCubeProps {

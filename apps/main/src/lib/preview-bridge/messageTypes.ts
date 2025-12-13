@@ -5,7 +5,7 @@
  * and the Game Player (game-frontend) via postMessage.
  */
 
-import type { Scene } from '@/lib/registries';
+import type { Scene } from '@lib/registries';
 
 // ============================================================================
 // Editor → Game Messages

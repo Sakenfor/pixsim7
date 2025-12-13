@@ -2,7 +2,7 @@ import type { CubeType } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFace } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFaceContent } from './ControlCube';
 import { panelActionRegistry } from '@lib/ui/panels';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 
 /**
  * Contextual face content based on cube type and docked panel

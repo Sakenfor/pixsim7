@@ -12,13 +12,13 @@
  */
 
 import type { ReactNode } from 'react';
-import { debugFlags } from '@/lib/utils/debugFlags';
+import { debugFlags } from '@lib/utils/debugFlags';
 import type {
   GameSessionDTO,
   GameWorldDetail,
   GameLocationDetail,
   NpcPresenceDTO,
-} from '@/lib/api/game';
+} from '@lib/api/game';
 import type { NpcSlotAssignment } from '@pixsim7/game.engine';
 
 /**
@@ -152,7 +152,7 @@ export const worldToolRegistry = new WorldToolRegistry();
  * Re-export HudVisibilityCondition from gameplay-ui-core (circular dependency now resolved)
  */
 
-export type { HudVisibilityCondition } from '@/lib/gameplay-ui-core/hudVisibility';
+export type { HudVisibilityCondition } from '@lib/gameplay-ui-core/hudVisibility';
 
 /**
  * Region where a tool can be placed in the HUD

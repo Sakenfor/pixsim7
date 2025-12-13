@@ -5,7 +5,7 @@
  */
 
 import type { OverlayPreset, OverlayConfiguration, PresetCategory } from '../types';
-import type { UnifiedSurfaceConfig } from '@/lib/editing-core';
+import type { UnifiedSurfaceConfig } from '@lib/editing-core';
 import { toUnifiedSurfaceConfig, fromUnifiedSurfaceConfig } from '../overlayConfig';
 import { mediaCardPresets } from './mediaCard';
 

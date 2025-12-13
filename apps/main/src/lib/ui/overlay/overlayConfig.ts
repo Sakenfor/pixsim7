@@ -25,7 +25,7 @@ import type {
   UnifiedVisibility,
   SimpleVisibilityTrigger,
   UnifiedStyle,
-} from '@/lib/editing-core';
+} from '@lib/editing-core';
 
 // ============================================================================
 // Type Converters - Overlay → Unified
@@ -454,7 +454,7 @@ export function isOverlayConfig(config: UnifiedSurfaceConfig): boolean {
 // Registry-Based Reconstruction (Task 94.1)
 // ============================================================================
 
-import { createWidget, type WidgetRuntimeOptions } from '@/lib/editing-core/registry/widgetRegistry';
+import { createWidget, type WidgetRuntimeOptions } from '@lib/editing-core/registry/widgetRegistry';
 
 /**
  * Build fully functional OverlayWidget instances from a UnifiedSurfaceConfig

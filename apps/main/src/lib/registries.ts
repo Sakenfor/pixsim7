@@ -7,7 +7,7 @@
  * @example
  * ```typescript
  * // ✅ DO: Import from centralized registries
- * import { sessionHelperRegistry, interactionRegistry, nodeTypeRegistry } from '@/lib/registries';
+ * import { sessionHelperRegistry, interactionRegistry, nodeTypeRegistry } from '@lib/registries';
  *
  * // ❌ DON'T: Import from multiple sources
  * import { sessionHelperRegistry } from '@pixsim7/game.engine';

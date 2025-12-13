@@ -7,7 +7,7 @@ import { panelRegistry, initializePanels, type ContextLabelStrategy, type CoreEd
 import { initializeWidgets } from '@lib/ui/composer';
 import type { PanelHeaderCategory } from '@/components/panels/shared/PanelHeader';
 import { PanelHeader } from '@/components/panels/shared/PanelHeader';
-import { useEditorContext, type EditorContext, type EditorMode } from '@/lib/context/editorContext';
+import { useEditorContext, type EditorContext, type EditorMode } from '@lib/context/editorContext';
 
 /**
  * Get a human-readable mode label for display in panel headers.

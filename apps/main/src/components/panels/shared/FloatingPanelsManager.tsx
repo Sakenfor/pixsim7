@@ -4,7 +4,7 @@ import { useControlCubeStore } from '@features/controlCenter/stores/controlCubeS
 import { panelRegistry } from '@lib/ui/panels';
 import { BASE_CUBE_SIZE } from '@/config/cubeConstants';
 import { DevToolDynamicPanel } from '@/components/dev/DevToolDynamicPanel';
-import { devToolRegistry } from '@/lib/devtools/devToolRegistry';
+import { devToolRegistry } from '@lib/devtools/devToolRegistry';
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);

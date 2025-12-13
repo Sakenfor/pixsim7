@@ -7,7 +7,7 @@ import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench
 import { useQuickGenerateController } from '@features/prompts';
 import { CompactAssetCard } from './CompactAssetCard';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
-import { ThemedIcon } from '@/lib/icons';
+import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
 
 /** Operation type categories for layout and behavior */

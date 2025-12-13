@@ -15,7 +15,7 @@ import {
   type ActionCapability,
   type RouteCapability,
   type StateCapability,
-} from '@/lib/capabilities';
+} from '@lib/capabilities';
 
 type CapabilityView = 'features' | 'actions' | 'routes' | 'states';
 

@@ -10,7 +10,7 @@ import { useGLTF, useAnimations } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useModel3DStore } from '@/stores/model3DStore';
-import { parseModelForZones } from '@/lib/models/zoneUtils';
+import { parseModelForZones } from '@lib/models/zoneUtils';
 
 export interface ModelLoaderProps {
   /** URL to the glTF/GLB model */

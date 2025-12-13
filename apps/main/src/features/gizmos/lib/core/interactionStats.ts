@@ -12,7 +12,7 @@
  * - Zones have multipliers for each stat
  */
 
-import type { NpcBodyZone } from '@/lib/registries';
+import type { NpcBodyZone } from '@lib/registries';
 
 // ============================================================================
 // Core Types

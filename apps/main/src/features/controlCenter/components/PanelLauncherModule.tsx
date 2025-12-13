@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
-import { ThemedIcon } from '@/lib/icons';
+import { ThemedIcon } from '@lib/icons';
 import { panelRegistry } from '@lib/ui/panels';
 
 export function PanelLauncherModule() {

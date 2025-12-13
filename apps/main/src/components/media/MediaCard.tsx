@@ -30,7 +30,7 @@ import {
 } from '@lib/ui/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import { ThemedIcon } from '@/lib/icons';
+import { ThemedIcon } from '@lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 

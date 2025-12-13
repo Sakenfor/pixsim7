@@ -12,8 +12,8 @@ import type {
   IAssetProvider,
 } from '@pixsim7/shared.types';
 import { AssetNotFoundError } from '@pixsim7/shared.types';
-import { apiClient } from '@/lib/api/client';
-import { getAsset as getAssetApi } from '@/features/assets/lib/api';
+import { apiClient } from '@lib/api/client';
+import { getAsset as getAssetApi } from '@features/assets/lib/api';
 
 // ============================================================================
 // Types

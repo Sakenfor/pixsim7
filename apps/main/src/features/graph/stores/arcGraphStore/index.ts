@@ -5,7 +5,7 @@ import { createArcGraphSlice } from './arcGraphSlice';
 import { createArcNodeSlice } from './arcNodeSlice';
 import { createArcNavigationSlice } from './arcNavigationSlice';
 import { createArcImportExportSlice } from './arcImportExportSlice';
-import { createBackendStorage } from '@/lib/backendStorage';
+import { createBackendStorage } from '@lib/backendStorage';
 import { createTemporalStore, arcGraphStorePartialize } from '@/stores/_shared/temporal';
 
 /**

@@ -10,8 +10,8 @@
 
 import { useState, useEffect } from 'react';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
-import { pluginManager } from '@/lib/plugins';
-import type { PluginEntry } from '@/lib/plugins/types';
+import { pluginManager } from '@lib/plugins';
+import type { PluginEntry } from '@lib/plugins/types';
 
 export function PluginManagerUI() {
   const [plugins, setPlugins] = useState<PluginEntry[]>([]);

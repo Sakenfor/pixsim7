@@ -6,7 +6,7 @@
  * with automatic reactivity via Zustand.
  */
 
-import { useFeatures, useFeatureRoutes, useActions } from '@/lib/capabilities';
+import { useFeatures, useFeatureRoutes, useActions } from '@lib/capabilities';
 
 /**
  * Example component showing how to use capability hooks

@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react';
-import type { RelationshipProgressionArc } from '@/lib/registries';
+import type { RelationshipProgressionArc } from '@lib/registries';
 import {
   startPlaytestSession,
   advanceStage,

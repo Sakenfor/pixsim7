@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameContext, GameMode } from '@/lib/registries';
+import { GameContext, GameMode } from '@lib/registries';
 
 /**
  * Game State Store (Task 22)

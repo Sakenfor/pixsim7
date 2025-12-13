@@ -12,7 +12,7 @@ import type {
   RelationshipProgressionArc,
   ProgressionStage,
   RelationshipGate,
-} from '@/lib/registries';
+} from '@lib/registries';
 import { checkGate, type SimulatedRelationshipState } from './gateChecking';
 
 // ============================================================================

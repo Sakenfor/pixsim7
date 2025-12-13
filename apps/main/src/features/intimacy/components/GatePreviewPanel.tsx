@@ -9,7 +9,7 @@
  */
 
 import React, { useMemo } from 'react';
-import type { RelationshipGate } from '@/lib/registries';
+import type { RelationshipGate } from '@lib/registries';
 import type { SimulatedRelationshipState } from '../lib/gateChecking';
 import { checkAllGates } from '../lib/gateChecking';
 import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';

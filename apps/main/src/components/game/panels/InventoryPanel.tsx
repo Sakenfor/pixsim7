@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Panel, Badge, Button } from '@pixsim7/shared.ui';
-import { listInventoryItems, getInventoryStats, type InventoryItemDTO, type GameSessionDTO } from '@/lib/api/game';
+import { listInventoryItems, getInventoryStats, type InventoryItemDTO, type GameSessionDTO } from '@lib/api/game';
 
 interface InventoryPanelProps {
   session: GameSessionDTO | null;

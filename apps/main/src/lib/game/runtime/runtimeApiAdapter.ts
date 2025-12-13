@@ -6,7 +6,7 @@
  */
 
 import type { GameApiClient, SessionStorage } from '@pixsim7/game.engine';
-import type { GameSessionDTO, GameWorldDetail } from '@/lib/registries';
+import type { GameSessionDTO, GameWorldDetail } from '@lib/registries';
 import {
   getGameSession,
   updateGameSession,

@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import { Panel, Button } from '@pixsim7/shared.ui';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 
 export interface WidgetListProps {
   widgets: OverlayWidget[];

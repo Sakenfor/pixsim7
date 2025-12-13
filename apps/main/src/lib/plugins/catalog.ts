@@ -12,11 +12,11 @@
  * **Migration Guide:**
  * ```typescript
  * // Old (legacy catalog)
- * import { listAllPlugins } from '@/lib/plugins/catalog';
+ * import { listAllPlugins } from '@lib/plugins/catalog';
  * const plugins = listAllPlugins();
  *
  * // New (unified plugin system)
- * import { pluginCatalog } from '@/lib/plugins/pluginSystem';
+ * import { pluginCatalog } from '@lib/plugins/pluginSystem';
  * const plugins = pluginCatalog.getAll();
  * const helpers = pluginCatalog.getByFamily('helper');
  * ```
@@ -34,7 +34,7 @@
  *
  * Usage:
  * ```typescript
- * import { listAllPlugins, listHelperPlugins } from '@/lib/plugins/catalog';
+ * import { listAllPlugins, listHelperPlugins } from '@lib/plugins/catalog';
  *
  * // Get all plugins across all systems
  * const allPlugins = listAllPlugins();

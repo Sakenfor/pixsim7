@@ -5,8 +5,8 @@
  * Features: arc, circle, grid, constellation, dock, scattered formations.
  */
 
-import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@/lib/plugins/controlCenterPlugin';
-import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
+import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@lib/plugins/controlCenterPlugin';
+import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 import { CubeFormationControlCenter } from '@features/controlCenter/components/CubeFormationControlCenter';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 

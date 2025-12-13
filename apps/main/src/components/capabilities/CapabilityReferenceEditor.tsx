@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { useFeatures, useActions, useStates } from '@/lib/capabilities';
+import { useFeatures, useActions, useStates } from '@lib/capabilities';
 
 interface CapabilityReferenceEditorProps {
   references: string[];

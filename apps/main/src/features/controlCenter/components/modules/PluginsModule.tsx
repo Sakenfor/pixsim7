@@ -10,7 +10,7 @@
 
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { pluginCatalog } from '@/lib/plugins/pluginSystem';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
 import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 
 export function PluginsModule({ }: ControlCenterModuleProps) {

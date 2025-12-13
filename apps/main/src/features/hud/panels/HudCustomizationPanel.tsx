@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { Panel, Button, Select, Modal } from '@pixsim7/shared.ui';
-import type { GameWorldDetail } from '@/lib/api/game';
+import type { GameWorldDetail } from '@lib/api/game';
 import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 import {
   getPlayerPreferences,

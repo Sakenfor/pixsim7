@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { OperationType } from '@/lib/registries';
+import type { OperationType } from '@lib/registries';
 
 interface Generation {
   id: number;

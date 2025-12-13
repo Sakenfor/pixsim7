@@ -2,10 +2,10 @@ import React from 'react';
 import clsx from 'clsx';
 import { GenerationSettingsBar } from '@features/controlCenter/components/GenerationSettingsBar';
 import { GenerationStatusDisplay } from '@features/controlCenter/components/GenerationStatusDisplay';
-import { ThemedIcon } from '@/lib/icons';
+import { ThemedIcon } from '@lib/icons';
 import type { ParamSpec } from '@features/controlCenter/components/DynamicParamForm';
 import { useGenerationsStore } from '@features/generation';
-import type { GenerationResponse } from '@/lib/api/generations';
+import type { GenerationResponse } from '@lib/api/generations';
 
 /**
  * Context provided to render props for accessing workbench state.

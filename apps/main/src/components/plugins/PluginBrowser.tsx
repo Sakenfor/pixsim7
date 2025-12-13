@@ -7,9 +7,9 @@
  * This is a simplified version focused on browsing within the Plugin Workspace.
  */
 
-import { type PluginMeta, type PluginKind } from '@/lib/plugins/catalog';
+import { type PluginMeta, type PluginKind } from '@lib/plugins/catalog';
 import { PluginDependencies } from '../capabilities/PluginDependencies';
-import type { ExtendedPluginMetadata } from '@/lib/plugins/pluginSystem';
+import type { ExtendedPluginMetadata } from '@lib/plugins/pluginSystem';
 import { usePluginBrowserController } from '@/hooks/usePluginBrowserController';
 import type { PanelCategory, PanelOrigin } from '@/hooks/usePluginBrowserController';
 

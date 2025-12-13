@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef } from 'react';
 import { Button, Panel, Input, Select, Badge } from '@pixsim7/shared.ui';
-import type { GameWorldDetail } from '@/lib/api/game';
-import { saveGameWorldMeta } from '@/lib/api/game';
-import { interactionRegistry } from '@/lib/registries';
-import { InteractionConfigForm } from '@/lib/game/interactions/InteractionConfigForm';
+import type { GameWorldDetail } from '@lib/api/game';
+import { saveGameWorldMeta } from '@lib/api/game';
+import { interactionRegistry } from '@lib/registries';
+import { InteractionConfigForm } from '@lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
   setWorldInteractionPresets,
@@ -17,7 +17,7 @@ import {
   type InteractionPreset,
   type PresetWithScope,
   type ConflictResolution,
-} from '@/lib/game/interactions/presets';
+} from '@lib/game/interactions/presets';
 
 interface InteractionPresetEditorProps {
   world: GameWorldDetail;

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@/lib/registries';
+import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@lib/registries';
 import {
   getWorldUiConfig,
   setWorldUiConfig,
@@ -24,7 +24,7 @@ import {
   type WorldUiThemePreset,
 } from '@pixsim7/game.engine';
 import { Button, Select, Badge, Panel, Modal, FormField, Input } from '@pixsim7/shared.ui';
-import { getViewModeOptions } from '@/lib/theming/useViewMode';
+import { getViewModeOptions } from '@lib/theming/useViewMode';
 
 interface WorldThemeEditorProps {
   worldDetail: GameWorldDetail;

@@ -7,8 +7,8 @@
 import { useEffect, useState } from 'react';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '@features/settings/lib/core/settingsSchemaRegistry';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
-import { listPromptAnalyzers, type AnalyzerInfo } from '@/lib/api/analyzers';
-import { FALLBACK_PROMPT_ANALYZERS } from '@/lib/analyzers/constants';
+import { listPromptAnalyzers, type AnalyzerInfo } from '@lib/api/analyzers';
+import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers/constants';
 
 /**
  * Custom component for analyzer selection (needs async data)

@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { pluginManager } from '@/lib/plugins';
-import type { PluginOverlay, PluginMenuItem, PluginNotification } from '@/lib/plugins/types';
+import { pluginManager } from '@lib/plugins';
+import type { PluginOverlay, PluginMenuItem, PluginNotification } from '@lib/plugins/types';
 
 export function PluginOverlays() {
   const [overlays, setOverlays] = useState<PluginOverlay[]>([]);

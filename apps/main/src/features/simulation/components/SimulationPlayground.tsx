@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { Panel, Button, Select, Input } from '@pixsim7/shared.ui';
-import { usePixSim7Core } from '@/lib/game/usePixSim7Core';
+import { usePixSim7Core } from '@lib/game/usePixSim7Core';
 import {
   listGameWorlds,
   listGameNpcs,
@@ -17,14 +17,14 @@ import {
   type GameNpcSummary,
   type GameLocationSummary,
   type NpcPresenceDTO,
-} from '@/lib/api/game';
+} from '@lib/api/game';
 import {
   parseWorldTime,
   formatWorldTime,
   SECONDS_PER_HOUR,
   SECONDS_PER_DAY,
 } from '@pixsim7/game.engine';
-import { useGameRuntime, useActorPresence } from '@/lib/game/runtime';
+import { useGameRuntime, useActorPresence } from '@lib/game/runtime';
 import { WorldToolsPanel, worldToolRegistry, type WorldToolContext } from '@features/worldTools';
 import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
 import { brainToolRegistry } from '@features/brainTools/lib/registry';
@@ -41,7 +41,7 @@ import {
   registerBuiltinGamePlugins,
   unregisterBuiltinGamePlugins,
   type GameEvent,
-} from '@/lib/game/runtime';
+} from '@lib/game/runtime';
 // Legacy simulation hooks - kept for backward compatibility with existing plugins
 import {
   simulationHooksRegistry,
@@ -79,7 +79,7 @@ import type { ConstraintEvaluationContext } from '@features/simulation/lib/core/
 import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,
-} from '@/lib/core';
+} from '@lib/core';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();

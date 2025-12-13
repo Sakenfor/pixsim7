@@ -2,9 +2,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { panelRegistry } from '@lib/ui/panels';
 import { widgetRegistry } from '@lib/ui/composer';
 import { worldToolRegistry } from '@features/worldTools';
-import { interactionRegistry } from '@/lib/registries';
-import { pluginCatalog } from '@/lib/plugins/pluginSystem';
-import { useEditorContext, type EditorPrimaryView, type EditorMode } from '@/lib/context/editorContext';
+import { interactionRegistry } from '@lib/registries';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
+import { useEditorContext, type EditorPrimaryView, type EditorMode } from '@lib/context/editorContext';
 
 type CategoryFilter = 'all' | 'world' | 'flow' | 'interactions' | 'hud' | 'tools' | 'debug';
 

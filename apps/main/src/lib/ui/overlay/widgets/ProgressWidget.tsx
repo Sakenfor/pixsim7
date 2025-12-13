@@ -7,9 +7,9 @@
 
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import { Icon } from '@/lib/icons';
-import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding } from '@/lib/editing-core';
+import { Icon } from '@lib/icons';
+import type { DataBinding } from '@lib/editing-core';
+import { resolveDataBinding } from '@lib/editing-core';
 
 export interface ProgressWidgetConfig {
   /** Widget ID */

@@ -5,7 +5,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DEFAULT_PROMPT_ANALYZER_ID } from '@/lib/analyzers/constants';
+import { DEFAULT_PROMPT_ANALYZER_ID } from '@lib/analyzers/constants';
 
 export interface PromptSettings {
   // Analysis settings

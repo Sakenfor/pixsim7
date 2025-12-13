@@ -6,7 +6,7 @@
 
 import type { WorldToolPlugin } from '../lib/types';
 import { Badge } from '@pixsim7/shared.ui';
-import { getEnabledInteractions, getInteractionMetadata } from '@/lib/game/interactions/utils';
+import { getEnabledInteractions, getInteractionMetadata } from '@lib/game/interactions/utils';
 
 export const npcPresenceDebugTool: WorldToolPlugin = {
   id: 'npc-presence-debug',

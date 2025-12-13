@@ -15,7 +15,7 @@
 import { graphEditorRegistry } from './editorRegistry';
 import { GraphPanelWithProvider } from '@/components/legacy/GraphPanel';
 import { ArcGraphPanel } from '@features/graph';
-import { debugFlags } from '@/lib/utils/debugFlags';
+import { debugFlags } from '@lib/utils/debugFlags';
 
 /**
  * Register all built-in graph editors

@@ -11,7 +11,7 @@
  */
 
 // Re-export core resolvePath from editing-core
-export { resolvePath } from '@/lib/editing-core';
+export { resolvePath } from '@lib/editing-core';
 
 /**
  * Create a resolver function from a value or property path

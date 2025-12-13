@@ -22,7 +22,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Scene, SessionFlags } from '@/lib/registries';
+import type { Scene, SessionFlags } from '@lib/registries';
 import { ScenePlayer } from '@pixsim7/game.components';
 import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';

@@ -18,7 +18,7 @@
  * - onSceneStarted / onSceneEnded - Scene lifecycle
  */
 
-import type { GameSessionDTO, GameWorldDetail } from '@/lib/registries';
+import type { GameSessionDTO, GameWorldDetail } from '@lib/registries';
 
 // ============================================
 // Event Types

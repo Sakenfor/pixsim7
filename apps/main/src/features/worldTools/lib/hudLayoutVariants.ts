@@ -6,7 +6,7 @@
  */
 
 import type { HudToolPlacement, WorldUiConfig } from './types';
-import type { GameWorldDetail } from '@/lib/api/game';
+import type { GameWorldDetail } from '@lib/api/game';
 import { getPreset } from './hudPresets';
 
 /**

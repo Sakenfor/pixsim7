@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { NpcInteractionInstance, InteractionSurface } from '@/lib/registries';
+import type { NpcInteractionInstance, InteractionSurface } from '@lib/registries';
 import {
   getRemainingCooldown,
   formatCooldownSmart,

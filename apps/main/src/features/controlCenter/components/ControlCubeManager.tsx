@@ -8,7 +8,7 @@ import type { CubeFace } from '@features/controlCenter/stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '@features/controlCenter/hooks/useCubeDocking';
 import { panelActionRegistry } from '@lib/ui/panels';
 import type { PanelActionsConfig } from '@lib/ui/panels';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 import { useToast } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
 

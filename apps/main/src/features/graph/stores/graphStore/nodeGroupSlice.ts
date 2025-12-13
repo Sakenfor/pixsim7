@@ -1,6 +1,6 @@
 import type { StateCreator, GraphState } from './types';
 import type { NodeGroupData, DraftSceneNode } from '@/modules/scene-builder';
-import { logEvent } from '@/lib/utils/logging';
+import { logEvent } from '@lib/utils/logging';
 import { useToastStore } from '@pixsim7/shared.ui';
 
 /**

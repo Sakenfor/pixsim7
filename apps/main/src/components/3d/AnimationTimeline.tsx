@@ -8,7 +8,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { Button, Select } from '@pixsim7/shared.ui';
 import { useModel3DStore } from '@/stores/model3DStore';
-import type { AnimationClipInfo } from '@/lib/models/types';
+import type { AnimationClipInfo } from '@lib/models/types';
 
 /**
  * Format seconds to MM:SS display.

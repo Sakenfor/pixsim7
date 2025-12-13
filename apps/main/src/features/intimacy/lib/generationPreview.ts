@@ -14,7 +14,7 @@ import type {
   GenerationSocialContext,
   GenerateContentRequest,
   GeneratedContentPayload,
-} from '@/lib/registries';
+} from '@lib/registries';
 import type { SimulatedRelationshipState } from './gateChecking';
 import { deriveSocialContext } from './socialContextDerivation';
 import { createGeneration, getGeneration, type GenerationResponse } from '../api/generations';

@@ -6,11 +6,11 @@
  */
 
 import { useState, useMemo } from 'react';
-import { devToolRegistry } from '@/lib/devtools/devToolRegistry';
-import type { DevToolDefinition, DevToolCategory } from '@/lib/devtools/types';
+import { devToolRegistry } from '@lib/devtools/devToolRegistry';
+import type { DevToolDefinition, DevToolCategory } from '@lib/devtools/types';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { useDevToolContext } from '@/lib/devtools/devToolContext';
-import { Icon, IconBadge, type IconName } from '@/lib/icons';
+import { useDevToolContext } from '@lib/devtools/devToolContext';
+import { Icon, IconBadge, type IconName } from '@lib/icons';
 
 const CATEGORY_LABELS: Record<DevToolCategory, string> = {
   session: 'Session & World',

@@ -10,7 +10,7 @@ import type {
   CharacterGraphNodeUnion,
   CharacterGraphEdge,
   CharacterUsageStats,
-} from '@/lib/registries';
+} from '@lib/registries';
 
 interface CharacterGraphBrowserProps {
   /** Character UUID to display */

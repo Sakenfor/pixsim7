@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
-import type { GenerationResponse } from '@/lib/api/generations';
+import type { GenerationResponse } from '@lib/api/generations';
 import { parseWebSocketMessage } from '@/types/websocket';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/api/v1/ws/generations';

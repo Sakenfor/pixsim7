@@ -5,7 +5,7 @@
  * Mirrors backend `services/prompt_parser/registry.py`.
  */
 
-import type { AnalyzerInfo } from '@/lib/api/analyzers';
+import type { AnalyzerInfo } from '@lib/api/analyzers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt Analyzer IDs

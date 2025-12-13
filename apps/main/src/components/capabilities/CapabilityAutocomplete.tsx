@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { useFeatures, useActions, useStates } from '@/lib/capabilities';
+import { useFeatures, useActions, useStates } from '@lib/capabilities';
 
 interface CapabilityAutocompleteProps {
   value: string;

@@ -8,7 +8,7 @@ import React, { useMemo } from 'react';
 import type { OverlayConfiguration, ValidationError } from '@lib/ui/overlay';
 import { validateConfiguration, lintConfiguration } from '@lib/ui/overlay';
 import { Panel } from '@pixsim7/shared.ui';
-import { Icon } from '@/lib/icons';
+import { Icon } from '@lib/icons';
 
 export interface ValidationPanelProps {
   /** Current overlay configuration to validate */

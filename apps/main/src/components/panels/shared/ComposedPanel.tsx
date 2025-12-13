@@ -14,7 +14,7 @@ import {
   dataSourceRegistry,
   useBindingValues,
   initializeCoreDataSources,
-} from '@/lib/dataBinding';
+} from '@lib/dataBinding';
 
 export interface ComposedPanelProps {
   composition: PanelComposition;

@@ -5,7 +5,7 @@ import { useProviders } from '../hooks/useProviders';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
 import type { UpdateAccountRequest } from '../lib/api/accounts';
-import { apiClient } from '@/lib/api/client';
+import { apiClient } from '@lib/api/client';
 import { EditAccountModal } from './EditAccountModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompactAccountCard } from './CompactAccountCard';

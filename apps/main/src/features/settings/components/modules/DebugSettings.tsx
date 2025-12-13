@@ -7,8 +7,8 @@
  * NOTE: Only visible in development mode.
  */
 import { useState, useEffect } from 'react';
-import { debugFlags } from '@/lib/utils/debugFlags';
-import { getUserPreferences, updatePreferenceKey, type DebugPreferences } from '@/lib/api/userPreferences';
+import { debugFlags } from '@lib/utils/debugFlags';
+import { getUserPreferences, updatePreferenceKey, type DebugPreferences } from '@lib/api/userPreferences';
 import { settingsRegistry } from '../../lib/core/registry';
 
 interface DebugCategory {

@@ -11,7 +11,7 @@
 import type {
   RelationshipGate,
   GateCheckResult,
-} from '@/lib/registries';
+} from '@lib/registries';
 
 /**
  * Simulated relationship state for preview

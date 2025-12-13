@@ -7,8 +7,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding } from '@/lib/editing-core';
+import type { DataBinding } from '@lib/editing-core';
+import { resolveDataBinding } from '@lib/editing-core';
 
 export interface VideoScrubWidgetConfig {
   /** Widget ID */

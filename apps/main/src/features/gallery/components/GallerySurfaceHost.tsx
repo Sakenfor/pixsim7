@@ -6,7 +6,7 @@
 
 import { useMemo, useEffect } from 'react';
 import { gallerySurfaceRegistry, type GallerySurfaceId } from '../lib/core/surfaceRegistry';
-import { logEvent } from '@/lib/utils/logging';
+import { logEvent } from '@lib/utils/logging';
 
 interface GallerySurfaceHostProps {
   /** Surface ID to render (if not provided, uses URL param or default) */

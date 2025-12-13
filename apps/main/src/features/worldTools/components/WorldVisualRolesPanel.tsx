@@ -23,7 +23,7 @@ import {
   type GameWorldDetail,
   type GameNpcSummary,
   type GameLocationSummary,
-} from '@/lib/api/game';
+} from '@lib/api/game';
 import { useAssetPickerStore, type SelectedAsset } from '@features/assets';
 
 /**

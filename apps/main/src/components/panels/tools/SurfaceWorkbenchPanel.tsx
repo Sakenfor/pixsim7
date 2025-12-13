@@ -4,7 +4,7 @@ import {
   SurfaceWorkbench,
   type SurfaceWorkbenchStatus,
 } from '@/components/surface-workbench';
-import { useEditorContext } from '@/lib/context/editorContext';
+import { useEditorContext } from '@lib/context/editorContext';
 import {
   gizmoSurfaceRegistry,
   type GizmoSurfaceContext,

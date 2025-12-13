@@ -7,7 +7,7 @@
  * 2. Import and register it here
  *
  * NOTE: For canonical registry imports, use:
- * import { interactionRegistry } from '@/lib/registries';
+ * import { interactionRegistry } from '@lib/registries';
  */
 
 import { interactionRegistry } from './types';

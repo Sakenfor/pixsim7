@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import type { RelationshipGate, GateCheckResult } from '@/lib/registries';
+import type { RelationshipGate, GateCheckResult } from '@lib/registries';
 
 interface RelationshipGateVisualizerProps {
   /** The gate to visualize */

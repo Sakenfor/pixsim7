@@ -13,8 +13,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
-import type { GameWorldDetail } from '@/lib/api/game';
-import { updateGameWorldMeta } from '@/lib/api/game';
+import type { GameWorldDetail } from '@lib/api/game';
+import { updateGameWorldMeta } from '@lib/api/game';
 import { worldToolRegistry, type HudToolPlacement, type HudRegion, type WorldUiConfig } from '@features/worldTools';
 import { getHudConfig } from '@features/worldTools/lib/hudLayout';
 import {
@@ -36,14 +36,14 @@ import {
   type HudProfile,
 } from '@features/worldTools/lib/hudProfiles';
 // Editing Core - Shared undo/redo hook
-import { useUndoRedo } from '@/lib/editing-core';
+import { useUndoRedo } from '@lib/editing-core';
 // Gameplay UI Core - HUD-specific config layer
 import {
   type HudSurfaceConfig,
   type HudWidgetConfig,
   fromHudToolPlacements,
   toHudToolPlacements,
-} from '@/lib/gameplay-ui-core';
+} from '@lib/gameplay-ui-core';
 import { SurfaceWorkbench, type SurfaceWorkbenchStatus } from '@/components/surface-workbench';
 
 export interface HudLayoutEditorProps {

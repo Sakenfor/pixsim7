@@ -7,7 +7,7 @@
  *
  * Usage:
  * ```tsx
- * import { useGameRuntime, useActorPresence } from '@/lib/game/runtime';
+ * import { useGameRuntime, useActorPresence } from '@lib/game/runtime';
  *
  * function MyGameComponent() {
  *   const runtime = useGameRuntime();

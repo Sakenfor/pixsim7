@@ -9,7 +9,7 @@
 
 import type { ComponentType } from 'react';
 import { BaseRegistry } from '@lib/core/BaseRegistry';
-import { debugFlags } from '@/lib/utils/debugFlags';
+import { debugFlags } from '@lib/utils/debugFlags';
 
 /**
  * Control Center Module Definition

@@ -7,7 +7,7 @@ import {
   listGameLocations,
   type GameWorldSummary,
   type GameLocationSummary,
-} from '@/lib/api/game';
+} from '@lib/api/game';
 
 export function WorldContextSelector() {
   const toast = useToast();

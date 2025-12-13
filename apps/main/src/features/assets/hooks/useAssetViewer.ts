@@ -7,7 +7,7 @@
 
 import { useCallback } from 'react';
 import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
-import type { AssetSummary } from '@/lib/api/assets';
+import type { AssetSummary } from '@lib/api/assets';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 interface UseAssetViewerOptions {

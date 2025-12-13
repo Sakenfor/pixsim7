@@ -10,8 +10,8 @@ import ReactFlow, {
   type NodeTypes,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { type FeatureCapability } from '@/lib/capabilities';
-import { type PluginMeta } from '@/lib/plugins/catalog';
+import { type FeatureCapability } from '@lib/capabilities';
+import { type PluginMeta } from '@lib/plugins/catalog';
 
 interface DependencyGraphPanelProps {
   features: FeatureCapability[];

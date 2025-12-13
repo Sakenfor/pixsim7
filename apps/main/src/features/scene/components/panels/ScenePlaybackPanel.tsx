@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { ScenePlayer } from '@pixsim7/game.components';
 import { Button, Panel, Tabs } from '@pixsim7/shared.ui';
 import { useGraphStore } from '@features/graph';
-import type { SceneRuntimeState } from '@/lib/registries';
+import type { SceneRuntimeState } from '@lib/registries';
 import { PlaybackTimeline, type PlaybackEvent } from '../player/PlaybackTimeline';
 import { SceneStateEditor } from '../player/SceneStateEditor';
 

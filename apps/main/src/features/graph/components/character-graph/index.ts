@@ -14,4 +14,4 @@ export type {
   CharacterGraphEdge,
   CharacterUsageStats,
   CharacterGraphQueryOptions,
-} from '@/lib/registries';
+} from '@lib/registries';

@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { NpcInteractionInstance } from '@/lib/registries';
+import type { NpcInteractionInstance } from '@lib/registries';
 import { listNpcInteractions } from '../api/interactions';
 
 export interface UseNpcInteractionsOptions {

@@ -10,8 +10,8 @@ import {
   registerWidget,
   type WidgetFactory,
   type WidgetRuntimeOptions,
-} from '@/lib/editing-core/registry/widgetRegistry';
-import type { UnifiedWidgetConfig } from '@/lib/editing-core';
+} from '@lib/editing-core/registry/widgetRegistry';
+import type { UnifiedWidgetConfig } from '@lib/editing-core';
 import type { OverlayWidget } from './types';
 import { fromUnifiedPosition, fromUnifiedVisibility, fromUnifiedStyle } from './overlayConfig';
 import { createBadgeWidget, type BadgeWidgetConfig } from './widgets/BadgeWidget';
@@ -23,7 +23,7 @@ import { createTooltipWidget, type TooltipWidgetConfig } from './widgets/Tooltip
 import { createVideoScrubWidget, type VideoScrubWidgetConfig } from './widgets/VideoScrubWidget';
 import { createProgressWidget, type ProgressWidgetConfig } from './widgets/ProgressWidget';
 import { createComicPanelWidget, type ComicPanelWidgetConfig } from './widgets/ComicPanelWidget';
-import { createBindingFromValue, type DataBinding } from '@/lib/editing-core';
+import { createBindingFromValue, type DataBinding } from '@lib/editing-core';
 
 /**
  * Helper to extract DataBinding from unified config bindings array

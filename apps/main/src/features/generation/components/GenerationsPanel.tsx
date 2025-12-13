@@ -7,8 +7,8 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
-import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
-import { Icons, ThemedIcon } from '@/lib/icons';
+import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@lib/api/generations';
+import { Icons, ThemedIcon } from '@lib/icons';
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
 
 type StatusFilter = 'all' | 'active' | 'failed' | 'completed';

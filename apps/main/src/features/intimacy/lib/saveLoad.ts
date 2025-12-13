@@ -10,7 +10,7 @@
 import type {
   IntimacySceneConfig,
   RelationshipProgressionArc,
-} from '@/lib/registries';
+} from '@lib/registries';
 import type { SimulatedRelationshipState } from './gateChecking';
 
 /**
