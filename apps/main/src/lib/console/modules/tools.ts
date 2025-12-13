@@ -20,7 +20,7 @@ export const toolsModule: ConsoleModule = {
   register: () => {
     // Delegate to gizmos feature's registration
     // Use dynamic import to avoid circular dependency
-    import('@/lib/gizmos/console').then(({ registerGizmoConsoleSync }) => {
+    import('@/gizmos/console').then(({ registerGizmoConsoleSync }) => {
       registerGizmoConsoleSync(opsRegistry, dataRegistry);
     });
   },

@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
 import { SceneGizmoMiniGame } from '../components/minigames/SceneGizmoMiniGame';
-import { InteractiveTool } from '@/gizmos/components/InteractiveTool';
+import { InteractiveTool } from '@features/gizmos';
 import type {
   GizmoDefinition,
   InteractiveTool as ToolType,
@@ -20,7 +20,7 @@ import type {
 import {
   getAllGizmos,
   getAllTools,
-} from '@/gizmos/loadDefaultPacks';
+} from '@features/gizmos';
 
 export interface GizmoLabProps {
   sceneId?: number;

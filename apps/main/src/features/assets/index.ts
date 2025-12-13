@@ -63,4 +63,4 @@ export { useLocalFoldersStore } from './stores/localFoldersStore';
 export { createAssetActions } from './lib/assetCardActions';
 export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
 
-export { deleteAsset, uploadAssetToProvider } from './lib/api';
+export { deleteAsset, uploadAssetToProvider, getAsset, type AssetResponse } from './lib/api';

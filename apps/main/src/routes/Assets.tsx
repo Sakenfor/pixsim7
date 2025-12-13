@@ -2,19 +2,24 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssetsController } from '@features/assets';
 import { useGenerationWebSocket } from '@features/generation';
-import { useControlCenterLayout } from '@features/controlCenter';
+import { useControlCenterLayout, useControlCenterStore } from '@features/controlCenter';
 import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
-import { GallerySurfaceSwitcher, GalleryLayoutControls } from '@features/gallery';
-import { mergeBadgeConfig, deriveOverlayPresetIdFromBadgeConfig } from '../lib/gallery/badgeConfigMerge';
+import {
+  GallerySurfaceSwitcher,
+  GalleryLayoutControls,
+  mergeBadgeConfig,
+  deriveOverlayPresetIdFromBadgeConfig,
+  getAssetSource,
+  getAllAssetSources,
+  registerAssetSources,
+  type AssetSourceId,
+} from '@features/gallery';
 import { mediaCardPresets } from '@/lib/overlay';
 import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
-import { useControlCenterStore } from '../stores/controlCenterStore';
 import type { GalleryPanelSettings } from '../stores/panelConfigStore';
-import { getAssetSource, getAllAssetSources, type AssetSourceId } from '../lib/gallery/assetSources';
-import { registerAssetSources } from '../lib/gallery/registerAssetSources';
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
 
 // Register all sources once

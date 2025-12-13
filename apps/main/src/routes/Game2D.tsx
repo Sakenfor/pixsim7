@@ -47,7 +47,7 @@ import {
   type GameWorldSummary,
   type NpcSlot2d,
 } from '../lib/api/game';
-import { getAsset, type AssetResponse } from '../lib/api/assets';
+import { getAsset, type AssetResponse } from '@features/assets';
 import {
   assignNpcsToSlots,
   parseHotspotAction,

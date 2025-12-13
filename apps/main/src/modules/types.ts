@@ -1,5 +1,5 @@
-import { logEvent } from '../lib/logging';
-import type { ControlCenterModule } from '../lib/control/controlCenterModuleRegistry';
+import { logEvent } from '@lib/utils';
+import type { ControlCenterModule } from '@features/controlCenter';
 
 /**
  * Page Categories
@@ -180,7 +180,7 @@ class ModuleRegistry {
     // Auto-register any Control Center modules
     if (module.controlCenterModules && module.controlCenterModules.length > 0) {
       // Dynamic import to avoid circular dependency
-      import('../lib/control/controlCenterModuleRegistry').then(({ controlCenterModuleRegistry }) => {
+      import('@features/controlCenter').then(({ controlCenterModuleRegistry }) => {
         module.controlCenterModules!.forEach(ccModule => {
           controlCenterModuleRegistry.register(ccModule);
           logEvent('INFO', 'cc_module_registered_from_module', {

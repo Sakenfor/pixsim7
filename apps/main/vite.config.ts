@@ -10,7 +10,7 @@ export default defineConfig({
       // Domain-based path aliases (must come before generic '@' to take precedence)
       { find: '@/narrative', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
       { find: '@/scene', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
-      { find: '@/gizmos', replacement: path.resolve(__dirname, './src/lib/gizmos') },
+      { find: '@/gizmos', replacement: path.resolve(__dirname, './src/features/gizmos/lib/core') },
       { find: '@/types', replacement: path.resolve(__dirname, './src/types') },
       { find: '@shared/types', replacement: path.resolve(__dirname, '../../packages/shared/types/src') },
       // Lib modules - Core registries & systems

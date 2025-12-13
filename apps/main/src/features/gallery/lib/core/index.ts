@@ -16,3 +16,10 @@ export * from './registerGalleryTools';
 
 // Asset roles and tag utilities (Task 99.1)
 export * from './assetRoles';
+
+// Asset sources
+export * from './assetSources';
+export * from './registerAssetSources';
+
+// Badge config utilities
+export * from './badgeConfigMerge';
