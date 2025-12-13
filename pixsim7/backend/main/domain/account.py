@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Relationship
 from sqlalchemy import JSON, UniqueConstraint
+from pydantic import field_validator
 
 from .enums import AccountStatus
 
@@ -322,3 +323,16 @@ class ProviderAccount(SQLModel, table=True):
         if total == 0:
             return 1.0
         return self.total_videos_generated / total
+
+
+# ===== EMAIL NORMALIZATION =====
+# Auto-normalize email on set to prevent case-sensitive duplicates
+
+from sqlalchemy import event
+
+@event.listens_for(ProviderAccount, 'before_insert', propagate=True)
+@event.listens_for(ProviderAccount, 'before_update', propagate=True)
+def normalize_email_before_save(mapper, connection, target):
+    """Normalize email to lowercase before insert/update"""
+    if target.email:
+        target.email = target.email.lower().strip()
