@@ -3,7 +3,7 @@ import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@features/providers';
 import { useAssetViewer } from '../hooks/useAssetViewer';
 import { TreeFolderView } from './TreeFolderView';
-import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '../media/AssetGallery';
+import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
 import type { LocalAsset } from '../stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
 

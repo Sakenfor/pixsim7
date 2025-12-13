@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '../lib/api/client';
+import { apiClient } from '@lib/api/client';
 import type { AssetSummary } from './useAssets';
 
 export function useAsset(id: number | string | null) {

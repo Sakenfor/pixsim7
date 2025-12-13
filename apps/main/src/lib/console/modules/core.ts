@@ -17,7 +17,7 @@ import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { useGenerationsStore, useGenerationSettingsStore } from '@features/generation';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useAssetSelectionStore } from '@/stores/assetSelectionStore';
+import { useAssetSelectionStore } from '@features/assets';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useGraphStore } from '@features/graph';

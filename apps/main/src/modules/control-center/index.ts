@@ -2,7 +2,7 @@ import type { Module } from '../types';
 import { registerCubeExpansions } from '@features/controlCenter';
 import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
 import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
-import { ProviderOverviewModule } from '@features/controlCenter/components/ProviderOverviewModule';
+import { ProviderOverviewModule } from '@features/providers';
 import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
 
 /**

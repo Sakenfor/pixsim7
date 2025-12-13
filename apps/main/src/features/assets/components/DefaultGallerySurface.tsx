@@ -4,7 +4,7 @@
  * Wraps the standard AssetsRoute as a gallery surface.
  */
 
-import { AssetsRoute } from '../../routes/Assets';
+import { AssetsRoute } from '@/routes/Assets';
 
 /**
  * Default gallery surface component

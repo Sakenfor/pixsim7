@@ -1,4 +1,4 @@
-import { apiClient, BACKEND_BASE } from './client';
+import { apiClient, BACKEND_BASE } from '@lib/api/client';
 
 export interface AssetResponse {
   id: number;
