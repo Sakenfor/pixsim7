@@ -174,7 +174,7 @@ export {
   type CameraFramingId,
   type SurfaceTypeId,
   type OntologyProvider,
-} from './generationIntegration';
+} from './generation';
 
 // Runtime integration (bridges narrative with GameRuntime)
 export {
