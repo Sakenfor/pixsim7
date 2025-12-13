@@ -49,7 +49,7 @@ from .enums import (
     GenerationStatus,
     OperationType,
     AccountStatus,
-    VideoStatus,
+    ProviderStatus,
     ContentDomain,
     BillingState,
 )
@@ -101,7 +101,7 @@ __all__ = [
     "GenerationStatus",
     "OperationType",
     "AccountStatus",
-    "VideoStatus",
+    "ProviderStatus",
     "ContentDomain",
     "BillingState",
     "UserRole",

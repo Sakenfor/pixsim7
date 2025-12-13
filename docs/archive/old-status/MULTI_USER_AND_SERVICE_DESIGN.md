@@ -457,7 +457,7 @@ class JobService:
 ```python
 class ProviderService:
     async def execute_job(job, account) -> ProviderSubmission
-    async def check_status(submission) -> VideoStatusResult
+    async def check_status(submission) -> ProviderStatusResult
     async def cancel_job(submission) -> bool
 ```
 

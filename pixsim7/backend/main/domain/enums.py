@@ -49,8 +49,8 @@ class AccountStatus(str, Enum):
     RATE_LIMITED = "rate_limited"
 
 
-class VideoStatus(str, Enum):
-    """Universal video status across providers"""
+class ProviderStatus(str, Enum):
+    """Universal provider operation status (for images, videos, and all generation types)"""
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

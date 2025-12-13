@@ -14,7 +14,7 @@ class Provider(ABC):
     async def execute(operation_type, account, params) -> GenerationResult
 
     @abstractmethod
-    async def check_status(account, provider_job_id) -> VideoStatusResult
+    async def check_status(account, provider_job_id) -> ProviderStatusResult
 ```
 
 ### 2. **Pixverse Adapter** - `services/provider/adapters/pixverse.py`
@@ -172,7 +172,7 @@ status = await provider.check_status(
     provider_job_id="video_123456"
 )
 
-if status.status == VideoStatus.COMPLETED:
+if status.status == ProviderStatus.COMPLETED:
     print(f"Video ready: {status.video_url}")
     print(f"Thumbnail: {status.thumbnail_url}")
     print(f"Size: {status.width}x{status.height}")
@@ -340,7 +340,7 @@ result = await provider.execute(
 )
 
 assert result.provider_job_id
-assert result.status == VideoStatus.PROCESSING
+assert result.status == ProviderStatus.PROCESSING
 ```
 
 ### Health Check

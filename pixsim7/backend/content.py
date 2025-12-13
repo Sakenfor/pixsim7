@@ -28,7 +28,7 @@ from pixsim7.backend.main.domain import (
     GenerationStatus,
     OperationType,
     AccountStatus,
-    VideoStatus,
+    ProviderStatus,
     ContentDomain,
     # Core models
     Asset,
@@ -90,7 +90,7 @@ __all__ = [
     "GenerationStatus",
     "OperationType",
     "AccountStatus",
-    "VideoStatus",
+    "ProviderStatus",
     "ContentDomain",
     # Core Models
     "Asset",

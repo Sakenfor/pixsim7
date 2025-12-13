@@ -197,7 +197,7 @@ class Provider(ABC):
     @abstractmethod
     async def execute(operation_type, account, params) -> GenerationResult
     @abstractmethod
-    async def check_status(account, provider_job_id) -> VideoStatusResult
+    async def check_status(account, provider_job_id) -> ProviderStatusResult
 ```
 
 **Game Engine:** `packages/game/engine/src/generation/requestBuilder.ts`

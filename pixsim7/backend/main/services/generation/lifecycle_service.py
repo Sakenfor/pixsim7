@@ -278,5 +278,5 @@ class GenerationLifecycleService:
         prompt_version = result.scalar_one_or_none()
 
         if prompt_version:
-            prompt_version.usage_count = (prompt_version.usage_count or 0) + 1
+            prompt_version.generation_count = (prompt_version.generation_count or 0) + 1
             await self.db.commit()

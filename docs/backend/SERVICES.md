@@ -197,7 +197,7 @@ Orchestrates provider operations via adapter pattern.
 **Key Methods:**
 ```python
 async def execute_job(provider_id: str, account: ProviderAccount, operation_type: OperationType, params: dict) -> GenerationResult
-async def check_status(provider_id: str, account: ProviderAccount, provider_job_id: str) -> VideoStatusResult
+async def check_status(provider_id: str, account: ProviderAccount, provider_job_id: str) -> ProviderStatusResult
 async def upload_asset(provider_id: str, account: ProviderAccount, file_path: str) -> str
 async def get_provider(provider_id: str) -> BaseProvider
 async def list_providers() -> list[dict]

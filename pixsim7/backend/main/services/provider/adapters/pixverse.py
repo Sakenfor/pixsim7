@@ -42,13 +42,13 @@ except ImportError:  # pragma: no cover
 
 from pixsim7.backend.main.domain import (
     OperationType,
-    VideoStatus,
+    ProviderStatus,
     ProviderAccount,
 )
 from pixsim7.backend.main.services.provider.base import (
     Provider,
     GenerationResult,
-    VideoStatusResult,
+    ProviderStatusResult,
     ProviderError,
     AuthenticationError,
     QuotaExceededError,

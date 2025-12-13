@@ -12,14 +12,14 @@ from pixsim7.backend.main.domain import (
     Generation,
     ProviderSubmission,
     ProviderAccount,
-    VideoStatus,
+    ProviderStatus,
     OperationType,
 )
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis
 from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import (
     GenerationResult,
-    VideoStatusResult,
+    ProviderStatusResult,
     ProviderError,
 )
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError, ResourceNotFoundError
@@ -239,7 +239,7 @@ class ProviderService:
                 result = GenerationResult(
                     provider_job_id=f"analysis-{analysis.id}",
                     provider_video_id=None,
-                    status=VideoStatus.COMPLETED,
+                    status=ProviderStatus.COMPLETED,
                     video_url=None,
                     thumbnail_url=None,
                     metadata={"pending_implementation": True},
@@ -288,7 +288,7 @@ class ProviderService:
         self,
         submission: ProviderSubmission,
         account: ProviderAccount,
-    ) -> VideoStatusResult:
+    ) -> ProviderStatusResult:
         """
         Check analysis job status on provider
 
@@ -297,7 +297,7 @@ class ProviderService:
             account: Provider account to use
 
         Returns:
-            VideoStatusResult with current status
+            ProviderStatusResult with current status
         """
         # Get provider from registry
         provider = registry.get(submission.provider_id)
@@ -326,7 +326,7 @@ class ProviderService:
         }
 
         # Include result if completed
-        if status_result.status == VideoStatus.COMPLETED and status_result.metadata:
+        if status_result.status == ProviderStatus.COMPLETED and status_result.metadata:
             updated_response["result"] = status_result.metadata
 
         submission.response = updated_response
@@ -341,7 +341,7 @@ class ProviderService:
         submission: ProviderSubmission,
         account: ProviderAccount,
         operation_type: Optional[OperationType] = None,
-    ) -> VideoStatusResult:
+    ) -> ProviderStatusResult:
         """
         Check job status on provider
 
@@ -351,7 +351,7 @@ class ProviderService:
             operation_type: Optional operation type (needed for IMAGE_TO_IMAGE)
 
         Returns:
-            VideoStatusResult with current status
+            ProviderStatusResult with current status
 
         Raises:
             ProviderNotFoundError: Provider not registered
@@ -402,7 +402,7 @@ class ProviderService:
         await self.db.refresh(submission)
 
         # Emit event if completed
-        if status_result.status == VideoStatus.COMPLETED:
+        if status_result.status == ProviderStatus.COMPLETED:
             # Update account's EMA with actual generation time
             if submission.duration_ms:
                 actual_time_sec = submission.duration_ms / 1000.0
@@ -414,7 +414,7 @@ class ProviderService:
                 "job_id": submission.generation_id,  # Keep key for backward compat
                 "video_url": status_result.video_url,
             })
-        elif status_result.status == VideoStatus.FAILED:
+        elif status_result.status == ProviderStatus.FAILED:
             await event_bus.publish(PROVIDER_FAILED, {
                 "submission_id": submission.id,
                 "job_id": submission.generation_id,  # Keep key for backward compat

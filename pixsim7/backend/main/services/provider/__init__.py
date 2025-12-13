@@ -6,7 +6,7 @@ Provider abstraction and registry
 from .base import (
     Provider,
     GenerationResult,
-    VideoStatusResult,
+    ProviderStatusResult,
     ProviderError,
     AuthenticationError,
     QuotaExceededError,
@@ -23,7 +23,7 @@ __all__ = [
     # Base classes
     "Provider",
     "GenerationResult",
-    "VideoStatusResult",
+    "ProviderStatusResult",
     # Errors
     "ProviderError",
     "AuthenticationError",

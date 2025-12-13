@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pixsim7.backend.main.domain import (
     OperationType,
-    VideoStatus,
+    ProviderStatus,
     ProviderAccount,
 )
 
@@ -20,7 +20,7 @@ class GenerationResult:
     """Result from a video generation request"""
     provider_job_id: str  # Provider's internal job ID
     provider_video_id: str | None = None  # Provider's video ID (if immediate)
-    status: VideoStatus = VideoStatus.PENDING
+    status: ProviderStatus = ProviderStatus.PENDING
     video_url: str | None = None
     thumbnail_url: str | None = None
     estimated_completion: datetime | None = None
@@ -33,9 +33,9 @@ class GenerationResult:
 
 
 @dataclass
-class VideoStatusResult:
+class ProviderStatusResult:
     """Result from checking video status"""
-    status: VideoStatus
+    status: ProviderStatus
     video_url: str | None = None
     thumbnail_url: str | None = None
     progress: float | None = None  # 0.0 to 1.0
@@ -149,7 +149,7 @@ class Provider(ABC):
         account: ProviderAccount,
         provider_job_id: str,
         operation_type: Optional[OperationType] = None,
-    ) -> VideoStatusResult:
+    ) -> ProviderStatusResult:
         """
         Check job status
 
@@ -159,7 +159,7 @@ class Provider(ABC):
             operation_type: Optional operation type (needed for IMAGE_TO_IMAGE)
 
         Returns:
-            VideoStatusResult with current status and URLs
+            ProviderStatusResult with current status and URLs
 
         Raises:
             ProviderError: Provider-specific error
@@ -365,7 +365,7 @@ from pixsim7.backend.main.shared.errors import (
 __all__ = [
     "Provider",
     "GenerationResult", 
-    "VideoStatusResult",
+    "ProviderStatusResult",
     "ProviderError",
     "AuthenticationError",
     "QuotaExceededError",

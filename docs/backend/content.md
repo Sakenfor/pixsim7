@@ -11,7 +11,7 @@ from pixsim7.backend.content import (
     ProviderAccount, ProviderCredit,
     # Enums
     MediaType, GenerationStatus, OperationType,
-    AccountStatus, VideoStatus, ContentDomain,
+    AccountStatus, ProviderStatus, ContentDomain,
     # Generation Services
     GenerationService, GenerationCreationService,
     GenerationLifecycleService, GenerationQueryService,
@@ -126,7 +126,7 @@ class ProviderSubmission(SQLModel, table=True):
     generation_id: int
     provider: str
     provider_job_id: str       # Provider's internal job ID
-    status: VideoStatus        # Provider-specific status
+    status: ProviderStatus        # Provider-specific status
     submitted_at: datetime
     polled_at: datetime
     raw_response: dict         # Full provider response

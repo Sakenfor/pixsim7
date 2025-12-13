@@ -9,10 +9,10 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import OperationType, VideoStatus, ProviderAccount
+from pixsim7.backend.main.domain import OperationType, ProviderStatus, ProviderAccount
 from pixsim7.backend.main.services.provider.base import (
     GenerationResult,
-    VideoStatusResult,
+    ProviderStatusResult,
     ProviderError,
     ContentFilteredError,
     JobNotFoundError,
@@ -473,7 +473,7 @@ class PixverseOperationsMixin:
         account: ProviderAccount,
         provider_job_id: str,
         operation_type: Optional[OperationType] = None,
-    ) -> VideoStatusResult:
+    ) -> ProviderStatusResult:
         """
         Check video or image status
 
@@ -483,7 +483,7 @@ class PixverseOperationsMixin:
             operation_type: Optional operation type to determine if this is an image
 
         Returns:
-            VideoStatusResult with current status
+            ProviderStatusResult with current status
 
         Raises:
             JobNotFoundError: Video/image not found
@@ -496,8 +496,8 @@ class PixverseOperationsMixin:
                 msg="missing_provider_job_id_waiting",
                 operation_type=operation_type.value if operation_type else None,
             )
-            return VideoStatusResult(
-                status=VideoStatus.PROCESSING,  # Keep waiting, don't fail
+            return ProviderStatusResult(
+                status=ProviderStatus.PROCESSING,  # Keep waiting, don't fail
                 error_message=None,
             )
 
@@ -508,7 +508,7 @@ class PixverseOperationsMixin:
         image_ops = get_image_operations()
         is_image_operation = operation_type in image_ops if operation_type else False
 
-        async def _operation(session: PixverseSessionData) -> VideoStatusResult:
+        async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
             client = self._create_client(account)
 
             # Handle both dict and object access (SDK may return either)
@@ -536,18 +536,18 @@ class PixverseOperationsMixin:
                     image_url = get_field(result, "image_url", "url")
                     # Map numeric status to enum
                     if raw_status == 1 or raw_status == "completed":
-                        status = VideoStatus.COMPLETED
+                        status = ProviderStatus.COMPLETED
                     elif (
                         raw_status == -1
                         or raw_status in ("failed", "filtered")
                         or raw_status in (7, 8)
                     ):
                         # Treat flagged/rejected images as terminal failures
-                        status = VideoStatus.FAILED
+                        status = ProviderStatus.FAILED
                     else:
-                        status = VideoStatus.PROCESSING
+                        status = ProviderStatus.PROCESSING
 
-                    return VideoStatusResult(
+                    return ProviderStatusResult(
                         status=status,
                         video_url=image_url,  # Image URL
                         thumbnail_url=image_url,  # Use image as thumbnail
@@ -564,7 +564,7 @@ class PixverseOperationsMixin:
                     )
                     status = self._map_pixverse_status(video)
 
-                    return VideoStatusResult(
+                    return ProviderStatusResult(
                         status=status,
                         video_url=get_field(video, "url"),
                         thumbnail_url=get_field(video, "first_frame", "thumbnail_url"),
@@ -846,15 +846,15 @@ class PixverseOperationsMixin:
             return []
 
 
-    def _map_pixverse_status(self, pv_video) -> VideoStatus:
+    def _map_pixverse_status(self, pv_video) -> ProviderStatus:
         """
-        Map Pixverse video status to universal VideoStatus
+        Map Pixverse video status to universal ProviderStatus
 
         Args:
             pv_video: Pixverse video object or dict from pixverse-py
 
         Returns:
-            Universal VideoStatus
+            Universal ProviderStatus
         """
         # Get status from dict or object
         if isinstance(pv_video, dict):
@@ -864,7 +864,7 @@ class PixverseOperationsMixin:
         elif hasattr(pv_video, 'status'):
             status = pv_video.status
         else:
-            return VideoStatus.PROCESSING
+            return ProviderStatus.PROCESSING
 
         # Handle integer status codes (Pixverse API uses integers)
         # 1 = completed, 0 = processing, 2 = failed, 3 = filtered
@@ -872,35 +872,35 @@ class PixverseOperationsMixin:
         # 7, 8 = flagged/rejected content → treat as filtered
         if isinstance(status, int):
             if status == 1:
-                return VideoStatus.COMPLETED
+                return ProviderStatus.COMPLETED
             elif status == 0:
-                return VideoStatus.PROCESSING
+                return ProviderStatus.PROCESSING
             elif status == 2:
-                return VideoStatus.FAILED
+                return ProviderStatus.FAILED
             elif status == 3:
-                return VideoStatus.FILTERED
+                return ProviderStatus.FILTERED
             elif status in (7, 8):
                 # Provider has definitively decided the content is not allowed
-                return VideoStatus.FILTERED
+                return ProviderStatus.FILTERED
             else:
-                return VideoStatus.PROCESSING
+                return ProviderStatus.PROCESSING
 
         # Handle string status codes
         if isinstance(status, str):
             status = status.lower()
             if status in ['completed', 'success']:
-                return VideoStatus.COMPLETED
+                return ProviderStatus.COMPLETED
             elif status in ['processing', 'pending', 'queued']:
-                return VideoStatus.PROCESSING
+                return ProviderStatus.PROCESSING
             elif status == 'failed':
-                return VideoStatus.FAILED
+                return ProviderStatus.FAILED
             elif status in ['filtered', 'rejected']:
-                return VideoStatus.FILTERED
+                return ProviderStatus.FILTERED
             elif status == 'cancelled':
-                return VideoStatus.CANCELLED
+                return ProviderStatus.CANCELLED
 
         # Default to processing until terminal state
-        return VideoStatus.PROCESSING
+        return ProviderStatus.PROCESSING
 
 
     def _is_session_invalid_error(self, error: Exception) -> bool:

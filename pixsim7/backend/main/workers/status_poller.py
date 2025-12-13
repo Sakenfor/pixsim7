@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation, ProviderSubmission, ProviderAccount
-from pixsim7.backend.main.domain.enums import GenerationStatus, VideoStatus, OperationType
+from pixsim7.backend.main.domain.enums import GenerationStatus, ProviderStatus, OperationType
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.generation import GenerationService, GenerationBillingService
 from pixsim7.backend.main.services.analysis import AnalysisService
@@ -176,7 +176,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         )
 
                         # Handle status
-                        if status_result.status == VideoStatus.COMPLETED:
+                        if status_result.status == ProviderStatus.COMPLETED:
                             # Refresh submission to get updated response from check_status
                             await db.refresh(submission)
                             # Create asset from submission
@@ -219,9 +219,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             completed += 1
 
                         elif status_result.status in {
-                            VideoStatus.FAILED,
-                            VideoStatus.FILTERED,
-                            VideoStatus.CANCELLED,
+                            ProviderStatus.FAILED,
+                            ProviderStatus.FILTERED,
+                            ProviderStatus.CANCELLED,
                         }:
                             # Mark this attempt as failed
                             logger.warning(
@@ -312,7 +312,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     exc_info=True,
                                 )
 
-                        elif status_result.status == VideoStatus.PROCESSING:
+                        elif status_result.status == ProviderStatus.PROCESSING:
                             still_processing += 1
 
                         else:
@@ -409,7 +409,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         )
 
                         # Handle status
-                        if status_result.status == VideoStatus.COMPLETED:
+                        if status_result.status == ProviderStatus.COMPLETED:
                             # Extract result from submission response
                             await db.refresh(submission)
                             result_data = submission.response.get("result", {})
@@ -424,9 +424,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             analyses_completed += 1
 
                         elif status_result.status in {
-                            VideoStatus.FAILED,
-                            VideoStatus.FILTERED,
-                            VideoStatus.CANCELLED,
+                            ProviderStatus.FAILED,
+                            ProviderStatus.FILTERED,
+                            ProviderStatus.CANCELLED,
                         }:
                             logger.warning(
                                 "analysis_failed_provider",
@@ -446,7 +446,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                             analyses_failed += 1
 
-                        elif status_result.status == VideoStatus.PROCESSING:
+                        elif status_result.status == ProviderStatus.PROCESSING:
                             analyses_still_processing += 1
 
                         else:

@@ -298,7 +298,7 @@ await job_service.mark_started(job.id)
 # 4. Status poller checks completion (every 10 seconds)
 status = await provider_service.check_status(submission, account)
 
-if status.status == VideoStatus.COMPLETED:
+if status.status == ProviderStatus.COMPLETED:
     # Create asset
     asset = await asset_service.create_from_submission(submission, job)
     # → Asset created

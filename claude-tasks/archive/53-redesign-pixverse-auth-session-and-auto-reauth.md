@@ -125,7 +125,7 @@ Related but likely not to be heavily modified (read-only, but keep behavior in m
 - `status_poller.py`:
   - For each PROCESSING `Generation`, fetches `ProviderSubmission` and `ProviderAccount`.
   - Calls `ProviderService.check_status(submission, account)`.
-  - On `VideoStatus.COMPLETED`, uses `AssetService.create_from_submission(...)` to create a video asset and marks generation completed.
+  - On `ProviderStatus.COMPLETED`, uses `AssetService.create_from_submission(...)` to create a video asset and marks generation completed.
   - Assumes `account.jwt_token` / `cookies` are valid; if not, provider errors bubble up.
 
 ## Problems / Pain Points

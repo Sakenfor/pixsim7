@@ -215,7 +215,7 @@ class Provider(ABC):
     @abstractmethod
     async def check_status(
         self, account: ProviderAccount, provider_job_id: str
-    ) -> VideoStatusResult: ...
+    ) -> ProviderStatusResult: ...
 ```
 
 ---

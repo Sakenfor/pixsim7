@@ -27,13 +27,13 @@ except ImportError:  # pragma: no cover - keep adapter importable without SDK
 
 from pixsim7.backend.main.domain import (
     OperationType,
-    VideoStatus,
+    ProviderStatus,
     ProviderAccount,
 )
 from pixsim7.backend.main.services.provider.base import (
     Provider,
     GenerationResult,
-    VideoStatusResult,
+    ProviderStatusResult,
     ProviderError,
     AuthenticationError,
     QuotaExceededError,
@@ -111,26 +111,26 @@ class SoraProvider(Provider):
             max_poll_attempts=120,  # 10 minutes
         )
 
-    def _map_sora_status(self, task) -> VideoStatus:
+    def _map_sora_status(self, task) -> ProviderStatus:
         """
-        Map Sora task status to universal VideoStatus
+        Map Sora task status to universal ProviderStatus
 
         Args:
             task: Sora task object
 
         Returns:
-            Universal VideoStatus
+            Universal ProviderStatus
         """
         status = task.status.lower()
 
         if status == "succeeded":
-            return VideoStatus.COMPLETED
+            return ProviderStatus.COMPLETED
         elif status in ["pending", "processing"]:
-            return VideoStatus.PROCESSING
+            return ProviderStatus.PROCESSING
         elif status == "failed":
-            return VideoStatus.FAILED
+            return ProviderStatus.FAILED
         else:
-            return VideoStatus.PROCESSING
+            return ProviderStatus.PROCESSING
 
     def map_parameters(
         self,
@@ -373,7 +373,7 @@ class SoraProvider(Provider):
         self,
         account: ProviderAccount,
         provider_job_id: str
-    ) -> VideoStatusResult:
+    ) -> ProviderStatusResult:
         """
         Check status of a Sora task
 
@@ -382,7 +382,7 @@ class SoraProvider(Provider):
             provider_job_id: Task ID from Sora
 
         Returns:
-            VideoStatusResult with current status
+            ProviderStatusResult with current status
 
         Raises:
             JobNotFoundError: If task not found
@@ -413,12 +413,12 @@ class SoraProvider(Provider):
             progress = 0.0
             if task.progress_pct is not None:
                 progress = task.progress_pct
-            elif status == VideoStatus.COMPLETED:
+            elif status == ProviderStatus.COMPLETED:
                 progress = 100.0
-            elif status == VideoStatus.PROCESSING:
+            elif status == ProviderStatus.PROCESSING:
                 progress = 50.0  # Estimate
 
-            return VideoStatusResult(
+            return ProviderStatusResult(
                 status=status,
                 video_url=video_urls[0] if video_urls else None,
                 thumbnail_url=thumbnail_urls[0] if thumbnail_urls else None,
