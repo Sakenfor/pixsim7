@@ -27,5 +27,11 @@ export { ScenePlaybackPanel, type ScenePlaybackPanelProps } from './components/p
 // Components - Player
 // ============================================================================
 
-export { PlaybackTimeline, type PlaybackTimelineProps, type PlaybackEvent } from './components/player/PlaybackTimeline';
+export { PlaybackTimeline, type PlaybackTimelineProps } from './components/player/PlaybackTimeline';
 export { SceneStateEditor, type SceneStateEditorProps } from './components/player/SceneStateEditor';
+
+// ============================================================================
+// Lib - Scene Core
+// ============================================================================
+
+export type { PlaybackEvent } from './lib/core';
