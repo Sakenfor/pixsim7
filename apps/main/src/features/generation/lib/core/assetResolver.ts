@@ -11,7 +11,7 @@
  */
 
 import type { GalleryAsset } from '../gallery/types';
-import type { AssetCharacterId, AssetLocationId, AssetRole } from '@features/gallery/lib/core/assetRoles';
+import type { AssetCharacterId, AssetLocationId, AssetRole } from '@features/gallery';
 import {
   filterAssetsByRole,
   filterAssetsByCharacter,
@@ -20,7 +20,7 @@ import {
   hasAssetLocation,
   hasAssetCharacter,
   hasAssetRole,
-} from '@features/gallery/lib/core/assetRoles';
+} from '@features/gallery';
 
 /**
  * Asset resolution request

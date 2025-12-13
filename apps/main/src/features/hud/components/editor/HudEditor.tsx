@@ -15,8 +15,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
 import type { GameWorldDetail } from '@lib/api/game';
 import { updateGameWorldMeta } from '@lib/api/game';
-import { worldToolRegistry, type HudToolPlacement, type HudRegion, type WorldUiConfig } from '@features/worldTools';
-import { getHudConfig } from '@features/worldTools/lib/hudLayout';
+import { worldToolRegistry, type HudToolPlacement, type HudRegion, type WorldUiConfig, getHudConfig } from '@features/worldTools';
 import {
   createPreset,
   deletePreset,

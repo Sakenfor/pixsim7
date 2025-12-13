@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ActionType, MatchMode, VariableType, type PresetVariable, type AppActionPreset } from '../types';
-import { automationService } from '@features/automation/lib/core/automationService';
+import { ActionType, MatchMode, VariableType, type PresetVariable, type AppActionPreset, automationService } from '../types';
 
 interface ActionParamsEditorProps {
   actionType: ActionType;

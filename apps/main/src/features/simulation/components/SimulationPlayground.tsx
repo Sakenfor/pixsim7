@@ -75,7 +75,7 @@ import {
   deleteSavedRun,
   type SavedSimulationRun,
 } from '@features/simulation/lib/core/multiRunStorage';
-import type { ConstraintEvaluationContext } from '@features/simulation/lib/core/constraints';
+import type { ConstraintEvaluationContext } from '@features/simulation';
 import {
   getTopBehaviorUrges,
   hasBehaviorUrgency,

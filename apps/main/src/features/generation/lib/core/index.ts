@@ -4,3 +4,6 @@
 
 // Asset resolver for ActionBlocks / DSL → Assets (Task 99.2)
 export * from './assetResolver';
+
+// Generation status configuration
+export * from './generationStatusConfig';

@@ -4,7 +4,7 @@
  * Configure retry behavior and defaults for generation tools.
  */
 
-import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '@features/settings/lib/core/settingsSchemaRegistry';
+import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '@features/settings';
 import { useGenerationSettingsStore } from '@features/generation';
 
 const generationGroups: SettingGroup[] = [

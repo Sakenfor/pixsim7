@@ -28,7 +28,7 @@ import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '../devtools';
 import { panelRegistry, type PanelDefinition } from '@lib/ui/panels';
-import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos/lib/core/surfaceRegistry';
+import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 
 // ============================================================================
 // Registry Bridge Base

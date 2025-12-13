@@ -11,8 +11,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useHudLayoutStore } from '../stores/hudLayoutStore';
 import { ComposedPanel } from '@/components/panels/shared/ComposedPanel';
 import { initializeWidgets } from '@lib/ui/composer/initializeWidgets';
-import type { HudRegionId, WorldHudLayout, HudRegionLayout } from '@features/hud/lib/core/types';
-import { DEFAULT_REGION_POSITIONS } from '@features/hud/lib/core/types';
+import type { HudRegionId, WorldHudLayout, HudRegionLayout } from '@features/hud';
+import { DEFAULT_REGION_POSITIONS } from '@features/hud';
 
 export interface HudRendererProps {
   worldId: number | string;
