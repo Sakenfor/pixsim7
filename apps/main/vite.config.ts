@@ -15,10 +15,14 @@ export default defineConfig({
       { find: '@shared/types', replacement: path.resolve(__dirname, '../../packages/shared/types/src') },
       // Lib modules - Core registries & systems
       { find: '@lib/core', replacement: path.resolve(__dirname, './src/lib/core') },
-      { find: '@lib/panels', replacement: path.resolve(__dirname, './src/lib/panels') },
       { find: '@lib/shapes', replacement: path.resolve(__dirname, './src/lib/shapes') },
-      { find: '@lib/widgets', replacement: path.resolve(__dirname, './src/lib/widgets') },
       { find: '@lib/api', replacement: path.resolve(__dirname, './src/lib/api') },
+      // Lib modules - UI (consolidated)
+      { find: '@lib/ui/panels', replacement: path.resolve(__dirname, './src/lib/ui/panels') },
+      { find: '@lib/ui/composer', replacement: path.resolve(__dirname, './src/lib/ui/composer') },
+      { find: '@lib/ui/overlay', replacement: path.resolve(__dirname, './src/lib/ui/overlay') },
+      { find: '@lib/ui/display', replacement: path.resolve(__dirname, './src/lib/ui/display') },
+      { find: '@lib/ui', replacement: path.resolve(__dirname, './src/lib/ui') },
       // Lib modules - Infrastructure
       { find: '@lib/utils', replacement: path.resolve(__dirname, './src/lib/utils') },
       { find: '@lib/auth', replacement: path.resolve(__dirname, './src/lib/auth') },
@@ -27,7 +31,6 @@ export default defineConfig({
       { find: '@lib/hooks', replacement: path.resolve(__dirname, './src/lib/hooks') },
       { find: '@lib/analyzers', replacement: path.resolve(__dirname, './src/lib/analyzers') },
       { find: '@lib/context', replacement: path.resolve(__dirname, './src/lib/context') },
-      { find: '@lib/display', replacement: path.resolve(__dirname, './src/lib/display') },
       // Feature modules
       { find: '@features/gizmos', replacement: path.resolve(__dirname, './src/features/gizmos') },
       { find: '@features/intimacy', replacement: path.resolve(__dirname, './src/features/intimacy') },
