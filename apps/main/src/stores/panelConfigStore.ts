@@ -4,7 +4,7 @@ import { createBackendStorage, manuallyRehydrateStore, exposeStoreForDebugging, 
 import type { PanelId } from './workspaceStore';
 import { pluginCatalog } from '../lib/plugins/pluginSystem';
 import type { MediaCardBadgeConfig } from '../components/media/MediaCard';
-import type { PanelCategory } from '../lib/panels/panelConstants';
+import type { PanelCategory } from '../lib/ui/panels/panelConstants';
 
 /**
  * Panel Configuration Store

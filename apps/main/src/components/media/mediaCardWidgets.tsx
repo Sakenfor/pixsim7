@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import type { OverlayWidget } from '@/lib/overlay';
+import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
   createMenuWidget,
@@ -14,7 +14,7 @@ import {
   createUploadWidget,
   createTooltipWidget,
   type MenuItem,
-} from '@/lib/overlay';
+} from '@lib/ui/overlay';
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation/lib/core/generationStatusConfig';

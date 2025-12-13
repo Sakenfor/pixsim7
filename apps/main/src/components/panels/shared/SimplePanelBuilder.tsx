@@ -7,20 +7,20 @@
  */
 
 import { useState } from 'react';
-import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
+import { widgetRegistry } from '@lib/ui/composer/widgetRegistry';
 import {
   createComposition,
   addWidget,
   exportComposition,
   importComposition,
   type PanelComposition,
-} from '@/lib/widgets/panelComposer';
+} from '@lib/ui/composer/panelComposer';
 import { ComposedPanel } from './ComposedPanel';
 import {
   demoCompositions,
   getDemoComposition,
   getDemoCompositionIds,
-} from '@/lib/widgets/demoCompositions';
+} from '@lib/ui/composer/demoCompositions';
 
 export function SimplePanelBuilder() {
   const [composition, setComposition] = useState<PanelComposition>(() =>

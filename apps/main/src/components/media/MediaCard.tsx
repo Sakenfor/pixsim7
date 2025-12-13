@@ -27,8 +27,8 @@ import {
   getMediaCardPreset,
   getDefaultMediaCardConfig,
   mergeConfigurations,
-} from '@/lib/overlay';
-import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
+} from '@lib/ui/overlay';
+import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import { ThemedIcon } from '@/lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
@@ -117,7 +117,7 @@ export interface MediaCardProps {
    * Automatically populated from the preset when overlayPresetId is provided.
    * Can be overridden for custom behavior.
    */
-  presetCapabilities?: import('@/lib/overlay').PresetCapabilities;
+  presetCapabilities?: import('@lib/ui/overlay').PresetCapabilities;
 }
 
 export function MediaCard(props: MediaCardProps) {

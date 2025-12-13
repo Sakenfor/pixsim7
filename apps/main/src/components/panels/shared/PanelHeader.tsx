@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { PanelCategory } from '@lib/panels';
+import type { PanelCategory } from '@lib/ui/panels';
 
 // Re-export for backwards compatibility
 export type PanelHeaderCategory = PanelCategory;

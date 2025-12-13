@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import type { OverlayWidget } from '@/lib/overlay';
+import type { OverlayWidget } from '@lib/ui/overlay';
 
 export interface TypeSpecificPropertiesProps {
   widget: OverlayWidget;

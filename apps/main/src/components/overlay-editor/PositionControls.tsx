@@ -5,8 +5,8 @@
  */
 
 import React from 'react';
-import type { WidgetPosition, OverlayAnchor } from '@/lib/overlay';
-import { isOverlayPosition } from '@/lib/overlay';
+import type { WidgetPosition, OverlayAnchor } from '@lib/ui/overlay';
+import { isOverlayPosition } from '@lib/ui/overlay';
 
 export interface PositionControlsProps {
   position: WidgetPosition;

@@ -8,10 +8,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { OverlayEditor } from '@/components/overlay-editor';
 import { MediaCard } from '@/components/media/MediaCard';
-import type { OverlayConfiguration } from '@/lib/overlay';
-import { mediaCardPresets, PresetManager } from '@/lib/overlay';
-import { LocalStoragePresetStorage } from '@/lib/overlay/presets/presetManager';
-import { APIPresetStorage, IndexedDBPresetStorage } from '@/lib/overlay/presets/storage';
+import type { OverlayConfiguration } from '@lib/ui/overlay';
+import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
+import { LocalStoragePresetStorage } from '@lib/ui/overlay/presets/presetManager';
+import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay/presets/storage';
 import { Button, Select } from '@pixsim7/shared.ui';
 
 // Sample media data for preview

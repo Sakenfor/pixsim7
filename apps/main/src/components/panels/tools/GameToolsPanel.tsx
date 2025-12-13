@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
-import { panelRegistry } from '@lib/panels';
-import { widgetRegistry } from '@lib/widgets';
+import { panelRegistry } from '@lib/ui/panels';
+import { widgetRegistry } from '@lib/ui/composer';
 import { worldToolRegistry } from '@features/worldTools';
 import { interactionRegistry } from '@/lib/registries';
 import { pluginCatalog } from '@/lib/plugins/pluginSystem';

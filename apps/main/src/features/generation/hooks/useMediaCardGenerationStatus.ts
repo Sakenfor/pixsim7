@@ -10,7 +10,7 @@ import { useGenerationsStore, generationsSelectors, isGenerationActive } from '.
 import { mapAssetToGeneration } from '@features/generation/lib/core/generationAssetMapping';
 import { createGenerationStatusWidget } from '@/components/media/mediaCardWidgets';
 import type { MediaCardProps } from '@/components/media/MediaCard';
-import type { OverlayWidget } from '@/lib/overlay';
+import type { OverlayWidget } from '@lib/ui/overlay';
 import type { MediaCardOverlayData } from '@/components/media/mediaCardWidgets';
 
 export interface GenerationStatusResult {

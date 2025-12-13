@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGallerySurfaceController } from '@features/gallery';
 import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
-import type { WidgetProps, WidgetDefinition } from '@/lib/widgets/widgetRegistry';
+import type { WidgetProps, WidgetDefinition } from '@lib/ui/composer/widgetRegistry';
 
 export interface GalleryGridWidgetConfig {
   title?: string;

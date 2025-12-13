@@ -8,8 +8,8 @@
  */
 
 import { useMemo, useEffect } from 'react';
-import type { PanelComposition } from '@/lib/widgets/panelComposer';
-import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
+import type { PanelComposition } from '@lib/ui/composer/panelComposer';
+import { widgetRegistry } from '@lib/ui/composer/widgetRegistry';
 import {
   dataSourceRegistry,
   useBindingValues,

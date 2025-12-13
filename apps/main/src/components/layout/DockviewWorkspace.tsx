@@ -3,10 +3,9 @@ import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
 import 'dockview/dist/styles/dockview.css';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
-import { panelRegistry, type ContextLabelStrategy, type CoreEditorRole } from '@lib/panels';
+import { panelRegistry, initializePanels, type ContextLabelStrategy, type CoreEditorRole } from '@lib/ui/panels';
+import { initializeWidgets } from '@lib/ui/composer';
 import type { PanelHeaderCategory } from '@/components/panels/shared/PanelHeader';
-import { initializePanels } from '@/lib/panels/initializePanels';
-import { initializeWidgets } from '@/lib/widgets/initializeWidgets';
 import { PanelHeader } from '@/components/panels/shared/PanelHeader';
 import { useEditorContext, type EditorContext, type EditorMode } from '@/lib/context/editorContext';
 

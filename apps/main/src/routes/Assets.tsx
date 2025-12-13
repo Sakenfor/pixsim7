@@ -17,7 +17,7 @@ import {
   registerAssetSources,
   type AssetSourceId,
 } from '@features/gallery';
-import { mediaCardPresets } from '@/lib/overlay';
+import { mediaCardPresets } from '@lib/ui/overlay';
 import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
 import type { GalleryPanelSettings } from '../stores/panelConfigStore';
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';

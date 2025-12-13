@@ -9,7 +9,7 @@ import { GalleryToolsPanel } from '@features/gallery';
 import { Button } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@/lib/icons';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
-import { getMediaCardPreset } from '@/lib/overlay';
+import { getMediaCardPreset } from '@lib/ui/overlay';
 
 
 interface RemoteGallerySourceProps {

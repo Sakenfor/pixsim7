@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useControlCubeStore, type CubeType } from '@features/controlCenter/stores/controlCubeStore';
 import { useCubeSettingsStore, type LinkingGesture } from '@features/controlCenter/stores/cubeSettingsStore';
-import { panelActionRegistry } from '@/lib/panels';
+import { panelActionRegistry } from '@lib/ui/panels';
 import { Button } from '@pixsim7/shared.ui';
 
 type CubeSettingsTab = 'cubes' | 'actions' | 'input';

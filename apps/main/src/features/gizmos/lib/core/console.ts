@@ -63,6 +63,7 @@ let registered = false;
  */
 export function registerGizmoConsole(): void {
   if (registered) return;
+  registered = true; // Set immediately to prevent double registration
 
   // Lazy import to avoid circular dependencies
   import('@/lib/console').then(({ opsRegistry, dataRegistry, isConsoleInitialized }) => {
@@ -73,7 +74,6 @@ export function registerGizmoConsole(): void {
     registerToolOps(opsRegistry);
     registerGizmoOps(opsRegistry);
     registerDataStore(dataRegistry);
-    registered = true;
   }).catch(() => {
     // Console not available, skip registration
   });

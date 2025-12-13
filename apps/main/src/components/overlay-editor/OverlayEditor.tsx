@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
+import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { Panel } from '@pixsim7/shared.ui';
 import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';

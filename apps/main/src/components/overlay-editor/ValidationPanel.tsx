@@ -5,8 +5,8 @@
  */
 
 import React, { useMemo } from 'react';
-import type { OverlayConfiguration, ValidationError } from '@/lib/overlay';
-import { validateConfiguration, lintConfiguration } from '@/lib/overlay';
+import type { OverlayConfiguration, ValidationError } from '@lib/ui/overlay';
+import { validateConfiguration, lintConfiguration } from '@lib/ui/overlay';
 import { Panel } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
 

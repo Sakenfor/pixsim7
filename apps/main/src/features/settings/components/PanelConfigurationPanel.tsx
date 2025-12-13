@@ -10,7 +10,7 @@ import { usePanelConfigStore } from '@/stores/panelConfigStore';
 import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { pluginCatalog } from '@/lib/plugins/pluginSystem';
-import { mediaCardPresets } from '@/lib/overlay';
+import { mediaCardPresets } from '@lib/ui/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
 
 type ViewMode = 'grid' | 'list';

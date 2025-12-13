@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
 import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
 import { useAssets } from '@features/assets';
-import { mediaCardPresets } from '@/lib/overlay';
+import { mediaCardPresets } from '@lib/ui/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
 import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
 import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
