@@ -7,7 +7,7 @@
 
 import { pluginManager } from './panelPlugin';
 import { corePanelsPlugin } from './corePanelsPlugin';
-import { registerGraphEditors } from '../graph/registerEditors';
+import { registerGraphEditors } from '@features/graph/lib/editor/registerEditors';
 import { panelRegistry } from './panelRegistry';
 
 /**

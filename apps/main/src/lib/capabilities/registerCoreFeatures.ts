@@ -9,7 +9,7 @@
  */
 
 import { registerCompleteFeature, useCapabilityStore } from './index';
-import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { ROUTES, navigateTo } from './routeConstants';
 

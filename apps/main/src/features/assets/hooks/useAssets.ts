@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { apiClient } from '../lib/api/client';
+import { apiClient } from '@lib/api/client';
 
 export interface AssetSummary {
   id: number;

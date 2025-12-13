@@ -43,7 +43,7 @@
  * ```
  */
 
-import { sessionHelperRegistry, interactionRegistry } from './registries';
+import { sessionHelperRegistry, interactionRegistry } from '../registries';
 import {
   PluginDiscovery,
   pluginCatalog,

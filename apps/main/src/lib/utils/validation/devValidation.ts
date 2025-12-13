@@ -8,7 +8,7 @@
  * It does NOT block requests.
  */
 
-import { validateOperationParams } from '../../types/operations';
+import { validateOperationParams } from '@/types/operations';
 
 /**
  * Check if dev validation is enabled

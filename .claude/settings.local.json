@@ -55,7 +55,17 @@
       "Bash(xargs:*)",
       "Bash(git stash:*)",
       "Bash(node:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(__NEW_LINE__ echo \"@/components/3d/AnimationTimeline\")",
+      "Bash(__NEW_LINE__ echo \"@/components/overlay-editor\")",
+      "Bash(__NEW_LINE__ echo \"@/config/cubeConstants\")",
+      "Bash(__NEW_LINE__ echo \"@/gizmos\")",
+      "Bash(__NEW_LINE__ echo \"@/lib/editing-core\")",
+      "Bash(timeout 10 npm run dev:*)",
+      "Bash(__NEW_LINE__ echo \"=== Checking @/lib/cubeFormations ===\")",
+      "Bash(__NEW_LINE__ echo \"=== Checking @features/providers/hooks ===\")",
+      "Bash(timeout 15 npm run dev:*)",
+      "Bash(timeout 20 npm run dev:*)"
     ],
     "deny": [],
     "ask": []

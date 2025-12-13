@@ -13,7 +13,7 @@ import {
   generateThumbnail,
   type LocalAsset,
 } from '../stores/localFoldersStore';
-import { usePersistentState } from './usePersistentState';
+import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from './useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
 

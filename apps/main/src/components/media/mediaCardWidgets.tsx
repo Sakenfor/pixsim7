@@ -17,7 +17,7 @@ import {
 } from '@/lib/overlay';
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
-import { getStatusConfig, getStatusBadgeClasses } from '@features/generation/generationStatusConfig';
+import { getStatusConfig, getStatusBadgeClasses } from '@features/generation/lib/core/generationStatusConfig';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { Icon } from '@/lib/icons';
 import type { OperationType } from '@/types/operations';
