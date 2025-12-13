@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useState, useRef } from 'react';
 import { useControlCubeStore } from '../stores/controlCubeStore';
-import { BASE_CUBE_SIZE, DOCK_SNAP_DISTANCE } from '../config/cubeConstants';
+import { BASE_CUBE_SIZE, DOCK_SNAP_DISTANCE } from '@/config/cubeConstants';
 
 export interface PanelRect {
   id: string;

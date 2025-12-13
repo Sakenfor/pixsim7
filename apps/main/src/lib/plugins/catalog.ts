@@ -54,10 +54,10 @@ import {
   type BaseInteractionConfig,
   type NodeTypeDefinition,
 } from '../registries';
-import { galleryToolRegistry, type GalleryToolPlugin } from '../gallery/types';
+import { galleryToolRegistry, type GalleryToolPlugin } from '@features/gallery';
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import { pluginManager } from './PluginManager';
-import { generationUIPluginRegistry, type GenerationUIPlugin } from '../providers/generationPlugins';
+import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/providers';
 import { isPluginEnabled } from '../../stores/pluginConfigStore';
 import type { PluginEntry } from './types';
 import {

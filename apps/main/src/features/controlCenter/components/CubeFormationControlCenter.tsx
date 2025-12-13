@@ -14,7 +14,7 @@ import {
 import { clsx } from 'clsx';
 import { QuickGenerateModule } from './QuickGenerateModule';
 import { PresetsModule } from './PresetsModule';
-import { ProviderOverviewModule } from './ProviderOverviewModule';
+import { ProviderOverviewModule } from '@features/providers';
 import { PanelLauncherModule } from './PanelLauncherModule';
 import { CubeSettingsPanel } from './CubeSettingsPanel';
 

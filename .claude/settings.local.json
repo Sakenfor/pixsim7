@@ -54,7 +54,8 @@
       "Bash(xargs -0 sed -i \"s|from ''@/hooks/useProviders''|from ''@features/providers''|g\")",
       "Bash(xargs:*)",
       "Bash(git stash:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git check-ignore:*)"
     ],
     "deny": [],
     "ask": []
