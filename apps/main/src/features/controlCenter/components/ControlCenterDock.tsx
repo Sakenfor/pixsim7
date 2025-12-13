@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import { useControlCenterStore, type ControlModule } from '@features/controlCenter/stores/controlCenterStore';
-import { controlCenterModuleRegistry } from '@/lib/control/controlCenterModuleRegistry';
+import { controlCenterModuleRegistry } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 import { useNavigate } from 'react-router-dom';
 import { useDockBehavior } from './hooks/useDockBehavior';
 import { DockToolbar } from './DockToolbar';

@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useGenerationsStore, isGenerationTerminal } from '@features/generation';
 import { logEvent } from '@/lib/utils/logging';
-import { getStatusContainerClasses } from '@features/generation/generationStatusConfig';
+import { getStatusContainerClasses } from '@features/generation/lib/core/generationStatusConfig';
 import { extractErrorMessage } from '@/lib/api/errorHandling';
 
 /** Polling interval for backup status checks (ms) */

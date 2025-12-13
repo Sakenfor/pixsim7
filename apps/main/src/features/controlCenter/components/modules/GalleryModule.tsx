@@ -16,7 +16,7 @@ import { useAssets } from '@features/assets';
 import { mediaCardPresets } from '@/lib/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/badgeConfigMerge';
 import { gallerySurfaceRegistry } from '@features/gallery/surfaceRegistry';
-import type { ControlCenterModuleProps } from '@/lib/control/controlCenterModuleRegistry';
+import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 
 export function GalleryModule({ }: ControlCenterModuleProps) {
   const navigate = useNavigate();

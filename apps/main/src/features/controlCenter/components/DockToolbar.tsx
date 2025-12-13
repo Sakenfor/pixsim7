@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import type { ControlModule, DockPosition } from '@features/controlCenter/stores/controlCenterStore';
-import type { ControlCenterModule } from '@/lib/control/controlCenterModuleRegistry';
+import type { ControlCenterModule } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
 
 /** Quick navigation item configuration */

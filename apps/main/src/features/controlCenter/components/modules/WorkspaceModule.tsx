@@ -10,7 +10,7 @@
 
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
-import type { ControlCenterModuleProps } from '@/lib/control/controlCenterModuleRegistry';
+import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 
 export function WorkspaceModule({ }: ControlCenterModuleProps) {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
