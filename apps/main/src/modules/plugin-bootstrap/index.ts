@@ -1,6 +1,6 @@
 import type { Module } from '../types';
 import { pluginManager, bootstrapExamplePlugins } from '../../lib/plugins';
-import { loadAllPlugins } from '../../lib/pluginLoader';
+import { loadAllPlugins } from '../../lib/plugins/loader';
 import { bootstrapControlCenters } from '../../lib/plugins/bootstrapControlCenters';
 
 /**

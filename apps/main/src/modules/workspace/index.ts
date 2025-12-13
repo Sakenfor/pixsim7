@@ -1,7 +1,7 @@
 import type { Module } from '../types';
 import { registerWorkspaceFeature } from '../../lib/capabilities/registerCoreFeatures';
 import { initializePanels } from '../../lib/panels/initializePanels';
-import { WorkspaceModule as WorkspaceModuleComponent } from '../../components/control/modules/WorkspaceModule';
+import { WorkspaceModule as WorkspaceModuleComponent } from '@features/controlCenter/components/modules/WorkspaceModule';
 
 /**
  * Workspace Module

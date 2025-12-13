@@ -270,8 +270,8 @@ export interface ZoneCorrespondenceMap {
  * Complete tracking data for an NPC's zones
  */
 export interface NpcZoneTrackingData {
-  /** NPC identifier */
-  npcId: string;
+  /** NPC identifier (game_npcs.id) */
+  npcId: number;
 
   /** Reference frame where zones were initially defined */
   reference: ZoneReferenceFrame;
@@ -331,8 +331,8 @@ export interface PersistedZoneTrackingData {
   /** Format version */
   version: '1.0.0';
 
-  /** NPC identifier */
-  npcId: string;
+  /** NPC identifier (game_npcs.id) */
+  npcId: number;
 
   /** Reference frame */
   reference: ZoneReferenceFrame;
@@ -378,8 +378,8 @@ export interface PersistedZoneTrackingData {
  * Request to track zones in a specific segment
  */
 export interface TrackZonesRequest {
-  /** NPC ID */
-  npcId: string;
+  /** NPC ID (game_npcs.id) */
+  npcId: number;
 
   /** Target segment ID */
   targetSegmentId: string;

@@ -1,8 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { createBackendStorage } from '../lib/backendStorage';
-import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
-import { debugFlags } from '../lib/debugFlags';
+import { createBackendStorage, manuallyRehydrateStore, exposeStoreForDebugging, debugFlags } from '@lib/utils';
 import type { PanelId } from './workspaceStore';
 import { pluginCatalog } from '../lib/plugins/pluginSystem';
 import type { MediaCardBadgeConfig } from '../components/media/MediaCard';

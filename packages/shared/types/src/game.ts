@@ -3,6 +3,8 @@
  * Shared between frontend and game-core
  */
 
+import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
+
 // ===================
 // Location Types
 // ===================
@@ -548,10 +550,11 @@ export interface Actor {
   inventory?: InventorySlot[];
 
   /**
-   * Relationships to other actors (by actor ID)
+   * Relationships to other actors (by actor ref, e.g., "npc:123")
    * Uses the same RelationshipCoreComponent structure
+   * Keyed by NpcRef for consistency with session relationship storage
    */
-  relationships?: Record<number, RelationshipCoreComponent>;
+  relationships?: Record<string, RelationshipCoreComponent>;
 
   // ---- Generic flags ----
   /**
@@ -1760,15 +1763,15 @@ export interface GameContext {
   /** Current game mode */
   mode: GameMode;
   /** Current world ID */
-  worldId: number;
+  worldId: WorldId;
   /** Current session ID */
-  sessionId: number;
-  /** Current location ID (e.g., "location:market_square") when in room mode */
-  locationId?: string;
+  sessionId: SessionId;
+  /** Current location ID (game_locations.id) when in room mode */
+  locationId?: LocationId;
   /** Active scene ID when in scene mode */
-  sceneId?: number;
+  sceneId?: SceneId;
   /** Focused NPC ID (in conversation/room) */
-  npcId?: number;
+  npcId?: NpcId;
   /** Active narrative program ID, if any */
   narrativeProgramId?: string;
 }

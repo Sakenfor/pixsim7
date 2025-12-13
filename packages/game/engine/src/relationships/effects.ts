@@ -9,28 +9,30 @@
  * avoiding new backend tables while maintaining clean semantics.
  */
 
+import { Ref, NpcId, NpcRef, extractNpcId } from '@pixsim7/shared.types';
+
 // ===== Key Builders =====
 
 /**
  * Relationship key builders for namespaced keys in GameSession.relationships
  */
 export const relationshipKeys = {
-  /** NPC ↔ Player relationship key */
-  npc: (npcId: number | string) => `npc:${npcId}`,
+  /** NPC ↔ Player relationship key (uses canonical Ref.npc from @pixsim7/shared.types) */
+  npc: Ref.npc,
 
   /** NPC ↔ NPC pair relationship key */
-  npcPair: (npc1: number | string, npc2: number | string) => {
+  npcPair: (npc1: NpcId | number, npc2: NpcId | number): string => {
     // Normalize order to ensure consistent keys
     const [a, b] = [npc1, npc2].sort();
     return `npcPair:${a}:${b}`;
   },
 
   /** Player ↔ Player relationship key (future multiplayer) */
-  player: (playerId: string) => `player:${playerId}`,
+  player: (playerId: string): string => `player:${playerId}`,
 
   /** Network graph path for NPC relationships */
-  network: (fromNpcId: number | string, toNpcId: number | string) =>
-    `network.npc:${fromNpcId}.npc:${toNpcId}`,
+  network: (fromNpcId: NpcId | number, toNpcId: NpcId | number): string =>
+    `network.${Ref.npc(fromNpcId)}.${Ref.npc(toNpcId)}`,
 };
 
 /**
@@ -78,7 +80,7 @@ export interface EdgeEffect {
  * Create a relationship effect for NPC affinity/trust
  */
 export function createRelationshipEffect(
-  npcId: number | string,
+  npcId: NpcId | number,
   field: 'affinity' | 'trust',
   op: 'inc' | 'dec' | 'set',
   value: number,
@@ -96,7 +98,7 @@ export function createRelationshipEffect(
  * Create an NPC relationship flag effect (e.g., "saved_from_accident")
  */
 export function createRelationshipFlagEffect(
-  npcId: number | string,
+  npcId: NpcId | number,
   flag: string,
   op: 'push' | 'remove' = 'push',
   description?: string
@@ -113,8 +115,8 @@ export function createRelationshipFlagEffect(
  * Create an NPC pair relationship effect
  */
 export function createNpcPairEffect(
-  npc1: number | string,
-  npc2: number | string,
+  npc1: NpcId | number,
+  npc2: NpcId | number,
   field: 'rivalry' | 'friendship' | string,
   op: 'inc' | 'dec' | 'set',
   value: number,
@@ -213,10 +215,11 @@ export function createEventEffect(
 /**
  * Parse a relationship key to extract NPC ID
  * Returns null if not a valid npc key
+ *
+ * Uses canonical extractNpcId from @pixsim7/shared.types
  */
-export function parseNpcKey(key: string): number | null {
-  const match = key.match(/^npc:(\d+)$/);
-  return match ? Number(match[1]) : null;
+export function parseNpcKey(key: string): NpcId | null {
+  return extractNpcId(key);
 }
 
 /**

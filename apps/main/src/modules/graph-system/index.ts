@@ -1,10 +1,10 @@
 import type { Module } from '../types';
 // import { registerBuiltinNodeTypes, registerArcNodeTypes } from '../../lib/registries';
-import { registerBuiltinRenderers } from '../../lib/graph/builtinRenderers';
-import { registerArcRenderers } from '../../lib/graph/arcRenderers';
-import { registerPluginRenderers } from '../../lib/graph/pluginRenderers';
-import { preloadHighPriorityRenderers } from '../../lib/graph/rendererBootstrap';
-import { registerRenderersFromNodeTypes } from '../../lib/graph/autoRegisterRenderers';
+import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
+import { registerArcRenderers } from '@features/graph/lib/editor/arcRenderers';
+import { registerPluginRenderers } from '@features/graph/lib/editor/pluginRenderers';
+import { preloadHighPriorityRenderers } from '@features/graph/lib/editor/rendererBootstrap';
+import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoRegisterRenderers';
 
 /**
  * Graph System Module

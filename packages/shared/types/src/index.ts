@@ -1,5 +1,11 @@
 // Shared types exported by @pixsim7/types
 
+// ===================
+// Canonical Entity IDs
+// ===================
+
+export * from './ids';
+
 // Character Identity Graph
 export * from './characterGraph';
 

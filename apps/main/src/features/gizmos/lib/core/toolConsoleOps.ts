@@ -31,7 +31,7 @@
  */
 
 import type { InteractiveTool } from '@pixsim7/scene.gizmos';
-import { opsRegistry, type Operation } from '../console/opsRegistry';
+import { opsRegistry, type Operation } from '@/lib/console/opsRegistry';
 import { useToolConfigStore } from '@/stores/toolConfigStore';
 
 /**

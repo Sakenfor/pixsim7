@@ -1,8 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { createBackendStorage } from '@/lib/backendStorage';
-import { manuallyRehydrateStore, exposeStoreForDebugging } from '@/lib/zustandPersistWorkaround';
-import { debugFlags } from '@/lib/utils/debugFlags';
+import { createBackendStorage, manuallyRehydrateStore, exposeStoreForDebugging, debugFlags } from '@lib/utils';
 
 export interface GenerationSettingsState {
   /**

@@ -1,9 +1,9 @@
 import type { Module } from '../types';
-import { registerCubeExpansions } from '../../lib/registerCubeExpansions';
-import { QuickGenerateModule } from '../../components/control/QuickGenerateModule';
-import { PresetsModule } from '../../components/control/PresetsModule';
-import { ProviderOverviewModule } from '../../components/control/ProviderOverviewModule';
-import { PanelLauncherModule } from '../../components/control/PanelLauncherModule';
+import { registerCubeExpansions } from '@features/controlCenter';
+import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
+import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
+import { ProviderOverviewModule } from '@features/controlCenter/components/ProviderOverviewModule';
+import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
 
 /**
  * Control Center Module

@@ -9,7 +9,7 @@
  */
 
 import type * as React from 'react';
-import { BaseRegistry } from '../core/BaseRegistry';
+import { BaseRegistry } from '@lib/core/BaseRegistry';
 
 // ============================================================================
 // Gizmo Surface Types

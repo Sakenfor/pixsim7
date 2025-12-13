@@ -1,7 +1,7 @@
 import type { Module } from '../types';
 import type { Asset } from '../../types';
-import { logEvent } from '../../lib/logging';
-import { GalleryModule as GalleryModuleComponent } from '../../components/control/modules/GalleryModule';
+import { logEvent } from '@lib/utils';
+import { GalleryModule as GalleryModuleComponent } from '@features/controlCenter/components/modules/GalleryModule';
 
 /**
  * Gallery Module

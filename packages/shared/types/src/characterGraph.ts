@@ -12,6 +12,9 @@
  * This provides a queryable abstraction over existing tables without requiring schema changes.
  */
 
+import type { NpcId, WorldId, SceneId, AssetId, GenerationId, CharacterId, InstanceId } from './ids';
+import { Ref, parseRef } from './ids';
+
 // ============================================================================
 // Node Types
 // ============================================================================
@@ -47,7 +50,7 @@ export interface CharacterGraphNode {
 export interface CharacterTemplateNode extends CharacterGraphNode {
   type: "character_template";
   /** UUID from characters.id */
-  characterId: string;
+  characterId: CharacterId;
   /** String ID like "gorilla_01" */
   characterStringId: string;
   name: string | null;
@@ -71,11 +74,11 @@ export interface CharacterTemplateNode extends CharacterGraphNode {
 export interface CharacterInstanceNode extends CharacterGraphNode {
   type: "character_instance";
   /** UUID from character_instances.id */
-  instanceId: string;
+  instanceId: InstanceId;
   /** Parent character template UUID */
-  characterId: string;
+  characterId: CharacterId;
   /** World this instance belongs to */
-  worldId: number | null;
+  worldId: WorldId | null;
   characterVersion: number;
   instanceName: string | null;
   isActive: boolean;
@@ -91,7 +94,7 @@ export interface CharacterInstanceNode extends CharacterGraphNode {
 export interface GameNPCNode extends CharacterGraphNode {
   type: "game_npc";
   /** Integer ID from game_npcs.id */
-  npcId: number;
+  npcId: NpcId;
   name: string;
   homeLocationId: number | null;
   /** Number of linked character instances */
@@ -107,7 +110,7 @@ export interface GameNPCNode extends CharacterGraphNode {
 export interface CharacterGraphSceneNode extends CharacterGraphNode {
   type: "scene";
   /** Scene ID (could be game_scenes.id or scenes.id) */
-  sceneId: number;
+  sceneId: SceneId;
   /** Scene type: "game_scene" or "content_scene" */
   sceneType: "game_scene" | "content_scene";
   title: string;
@@ -131,7 +134,7 @@ export interface SceneRoleNode extends CharacterGraphNode {
   /** Role identifier: scene_id:role_name */
   roleId: string;
   /** Parent scene ID */
-  sceneId: number;
+  sceneId: SceneId;
   /** Role name (e.g., "protagonist", "love_interest") */
   roleName: string;
   /** Role importance: "primary", "secondary", "background" */
@@ -146,7 +149,7 @@ export interface SceneRoleNode extends CharacterGraphNode {
 export interface AssetNode extends CharacterGraphNode {
   type: "asset";
   /** Integer ID from assets.id */
-  assetId: number;
+  assetId: AssetId;
   mediaType: "video" | "image" | "audio" | "model";
   description: string | null;
   tags: string[];
@@ -467,17 +470,30 @@ export interface SceneUsageStats {
 
 /**
  * Node ID builder helpers
+ *
+ * @deprecated Use canonical `Ref.*` builders from @pixsim7/shared.types instead.
+ * These are maintained for backward compatibility but delegate to the canonical implementations.
+ *
+ * @example
+ * ```ts
+ * // Old (deprecated):
+ * CharacterGraphNodeId.gameNpc(123)
+ *
+ * // New (recommended):
+ * import { Ref } from '@pixsim7/shared.types';
+ * Ref.npc(123)
+ * ```
  */
 export const CharacterGraphNodeId = {
-  characterTemplate: (id: string) => `character:${id}`,
-  characterInstance: (id: string) => `instance:${id}`,
-  gameNpc: (id: number) => `npc:${id}`,
-  scene: (id: number, type: "game" | "content" = "game") => `scene:${type}:${id}`,
-  sceneRole: (sceneId: number, roleName: string) => `role:${sceneId}:${roleName}`,
-  asset: (id: number) => `asset:${id}`,
-  generation: (id: number) => `generation:${id}`,
-  promptVersion: (id: string) => `prompt:${id}`,
-  actionBlock: (id: string) => `action:${id}`,
+  characterTemplate: Ref.character,
+  characterInstance: Ref.instance,
+  gameNpc: Ref.npc,
+  scene: Ref.scene,
+  sceneRole: Ref.role,
+  asset: Ref.asset,
+  generation: Ref.generation,
+  promptVersion: Ref.prompt,
+  actionBlock: Ref.action,
 };
 
 /**
@@ -491,39 +507,53 @@ export interface ParsedNodeId {
 
 /**
  * Parse a character graph node ID
+ *
+ * @deprecated Use canonical `parseRef()` from @pixsim7/shared.types instead.
+ * This wrapper maps the canonical parsed result to the legacy ParsedNodeId format.
+ *
+ * @example
+ * ```ts
+ * // Old (deprecated):
+ * const parsed = parseCharacterGraphNodeId("npc:123")
+ *
+ * // New (recommended):
+ * import { parseRef } from '@pixsim7/shared.types';
+ * const parsed = parseRef("npc:123")
+ * if (parsed?.type === 'npc') {
+ *   console.log(parsed.id) // Typed as NpcId
+ * }
+ * ```
  */
 export function parseCharacterGraphNodeId(nodeId: string): ParsedNodeId | null {
-  const parts = nodeId.split(":");
-  if (parts.length < 2) return null;
+  const parsed = parseRef(nodeId);
+  if (!parsed) return null;
 
-  const [typeStr, ...idParts] = parts;
-
-  switch (typeStr) {
+  switch (parsed.type) {
     case "character":
-      return { type: "character_template", id: idParts.join(":") };
+      return { type: "character_template", id: parsed.id };
     case "instance":
-      return { type: "character_instance", id: idParts.join(":") };
+      return { type: "character_instance", id: parsed.id };
     case "npc":
-      return { type: "game_npc", id: parseInt(idParts[0], 10) };
+      return { type: "game_npc", id: parsed.id };
     case "scene":
       return {
         type: "scene",
-        subType: idParts[0],
-        id: parseInt(idParts[1], 10),
+        subType: parsed.sceneType,
+        id: parsed.id,
       };
     case "role":
       return {
         type: "scene_role",
-        id: `${idParts[0]}:${idParts.slice(1).join(":")}`,
+        id: `${parsed.sceneId}:${parsed.roleName}`,
       };
     case "asset":
-      return { type: "asset", id: parseInt(idParts[0], 10) };
+      return { type: "asset", id: parsed.id };
     case "generation":
-      return { type: "generation", id: parseInt(idParts[0], 10) };
+      return { type: "generation", id: parsed.id };
     case "prompt":
-      return { type: "prompt_version", id: idParts.join(":") };
+      return { type: "prompt_version", id: parsed.id };
     case "action":
-      return { type: "action_block", id: idParts.join(":") };
+      return { type: "action_block", id: parsed.id };
     default:
       return null;
   }
