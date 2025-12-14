@@ -191,42 +191,109 @@ class PromptContextService:
 
 #### ⚠️ Stateless Engine Instantiation
 
-**Example:** `StatEngine()` is created ad-hoc in many places:
-- `prompt_context_service.py:359`
-- `stat_service.py` (not shown but likely)
-- Throughout services that need stat computation
+**Current call sites creating `StatEngine()` ad-hoc:**
+1. `services/characters/prompt_context_service.py:359` - In `_register_default_npc_resolver()`
+2. `domain/brain/engine.py:60` - In `BrainEngine.__init__()`
 
 **Current assumption:** StatEngine is stateless (no config needed)
 
 **Future risk:** If StatEngine needs configuration (e.g., custom derivation rules, caching), current pattern breaks.
 
 **Recommendation:**
+
+**Step 1: Create factory in `domain/stats/factory.py`** (keeps domain logic together)
+
+Create new file: `pixsim7/backend/main/domain/stats/factory.py`
 ```python
-# Option A: Factory pattern (if engine remains simple)
-def get_stat_engine() -> StatEngine:
-    """Get a configured StatEngine instance."""
-    return StatEngine()
+"""
+StatEngine factory for centralized engine creation and configuration.
 
-# Option B: Singleton pattern (if engine becomes stateful)
-_stat_engine: Optional[StatEngine] = None
+Why a factory:
+- Centralizes engine instantiation
+- Future-proof for configuration injection
+- Single source of truth for engine creation
+"""
+from typing import Optional
+from .engine import StatEngine
 
-def get_stat_engine() -> StatEngine:
-    """Get the global StatEngine instance."""
-    global _stat_engine
-    if _stat_engine is None:
-        _stat_engine = StatEngine()
-    return _stat_engine
 
-# Option C: Full DI (for maximum testability)
-# Inject StatEngine via FastAPI Depends() at route level
+def create_stat_engine(config: Optional[dict] = None) -> StatEngine:
+    """
+    Create a configured StatEngine instance.
+
+    Args:
+        config: Optional configuration dict for custom behavior
+                (e.g., {"enable_caching": True, "derivation_mode": "strict"})
+
+    Returns:
+        StatEngine: Configured engine instance
+
+    Example:
+        # Default engine
+        engine = create_stat_engine()
+
+        # Configured engine (future)
+        engine = create_stat_engine({"enable_caching": True})
+    """
+    # For now, just create default engine
+    # Future: apply config, set up caching, register custom derivations, etc.
+    engine = StatEngine()
+
+    if config:
+        # Future: apply configuration
+        # engine.enable_caching = config.get("enable_caching", False)
+        pass
+
+    return engine
 ```
+
+**Step 2: Export factory from domain.stats**
+
+Update `pixsim7/backend/main/domain/stats/__init__.py`:
+```python
+from .factory import create_stat_engine
+
+__all__ = [
+    # ... existing exports ...
+    "create_stat_engine",
+]
+```
+
+**Step 3: Update all call sites** (2 files to change)
+
+*File 1:* `services/characters/prompt_context_service.py:359`
+```python
+# OLD:
+stat_engine = StatEngine()
+
+# NEW:
+from pixsim7.backend.main.domain.stats import create_stat_engine
+stat_engine = create_stat_engine()
+```
+
+*File 2:* `domain/brain/engine.py:60`
+```python
+# OLD:
+self.stat_engine = StatEngine()
+
+# NEW:
+from pixsim7.backend.main.domain.stats import create_stat_engine
+self.stat_engine = create_stat_engine()
+```
+
+**Why `domain/stats/factory.py` and not a generic `factories/` module?**
+- Factory is part of stats domain logic (not infrastructure)
+- Keeps stats-related code together for easier navigation
+- Consistent with domain-driven design: "how do I create a StatEngine?" → look in `domain/stats`
+- Allows future stats-specific factory logic (e.g., pre-registering derivations)
 
 ### Specific DI Recommendations by Service
 
 | Service | Current Pattern | Recommendation | Priority |
 |---------|----------------|----------------|----------|
-| `PromptContextService` | Creates `CharacterInstanceService`, `CharacterNPCSyncService`, `StatEngine` internally | Accept as optional constructor params | Medium |
-| `StatService` | Only takes `db` and `redis` | Consider accepting `StatEngine` | Low (if engine stays stateless) |
+| `PromptContextService` | Creates `CharacterInstanceService`, `CharacterNPCSyncService`, `StatEngine()` internally | Accept as optional constructor params | Medium |
+| `BrainEngine` | Creates `StatEngine()` in `__init__` | Use `create_stat_engine()` factory | Medium |
+| All services using `StatEngine` | Create ad-hoc `StatEngine()` instances | Use `create_stat_engine()` factory (2 call sites) | Medium |
 | `GenerationRetryService` | Takes `creation_service` in constructor ✅ | Good pattern, keep it | N/A |
 
 ---
@@ -384,60 +451,63 @@ The current structure is sound. All recommendations are **refinements**, not res
 #### A. Clarify Shared Schemas Boundary
 **File:** `pixsim7/backend/main/shared/schemas/__init__.py`
 
-**Current:** Empty file
+**Current:** Empty file (no exports, no guidance)
 
-**Proposed:**
+**Problem:** Without clear boundaries, teams may add domain-specific schemas to `shared/schemas/` that should live in their domains.
+
+**Proposed:** Add docstring with pattern guidance (safer than prescribing specific exports)
+
 ```python
 """
-Cross-cutting API schemas.
+Cross-cutting API schemas and contracts.
 
-IMPORTANT: Only add schemas here if they are:
+BOUNDARY RULES - Only export schemas from this module if they meet ALL criteria:
 1. Used by multiple domains (not domain-specific)
-2. Part of external API contracts (request/response types)
-3. Cross-cutting infrastructure (telemetry, auth, etc.)
+2. Part of external API contracts (request/response DTOs)
+3. Cross-cutting infrastructure concerns (telemetry, auth, billing, etc.)
 
-Domain-specific schemas belong in their domain:
-- Game schemas → domain.game.schemas
-- Stat schemas → domain.stats.schemas
-- Narrative schemas → domain.narrative.schemas
+EXAMPLES of what belongs here:
+✅ GenerationRequest/Response - Used by multiple domains for API contracts
+✅ TelemetryEvent - Cross-cutting observability infrastructure
+✅ AuthClaims/TokenPayload - Cross-cutting authentication infrastructure
+
+EXAMPLES of what does NOT belong here:
+❌ NPCPromptContext - Domain-specific to game/NPC domain
+❌ StatDefinition - Domain-specific to stats domain
+❌ NarrativeProgram - Domain-specific to narrative domain
+
+Domain-specific schemas belong in their domain modules:
+- Game/NPC schemas → pixsim7.backend.main.domain.game.schemas
+- Stat schemas → pixsim7.backend.main.domain.stats (no separate schemas submodule)
+- Narrative schemas → pixsim7.backend.main.domain.narrative.schema
+
+When in doubt: Keep it in the domain. Moving to shared/ later is easier than
+extracting domain-specific code from shared/.
+
+---
+
+If you do export schemas here, organize by category and document why each
+schema is cross-cutting:
+
+# Example (only add if schemas are truly cross-cutting):
+# from .generation_schemas import GenerationRequest  # Multi-domain API contract
+# from .telemetry_schemas import TelemetryEvent      # Cross-cutting observability
+#
+# __all__ = [
+#     "GenerationRequest",
+#     "TelemetryEvent",
+# ]
 """
 
-# Cross-cutting request/response schemas
-from .generation_schemas import (
-    GenerationRequest,
-    GenerationResponse,
-    SceneRefSchema,
-    PlayerContextSnapshotSchema,
-)
-
-# Cross-cutting infrastructure schemas
-from .telemetry_schemas import (
-    TelemetryEvent,
-    MetricSnapshot,
-)
-
-# Cross-cutting auth schemas
-from .auth_schemas import (
-    AuthRequest,
-    AuthResponse,
-    TokenClaims,
-)
-
-__all__ = [
-    # Generation (cross-cutting)
-    "GenerationRequest",
-    "GenerationResponse",
-    "SceneRefSchema",
-    "PlayerContextSnapshotSchema",
-    # Telemetry (cross-cutting)
-    "TelemetryEvent",
-    "MetricSnapshot",
-    # Auth (cross-cutting)
-    "AuthRequest",
-    "AuthResponse",
-    "TokenClaims",
-]
+# Currently no exports - add only when cross-cutting schemas are identified
+__all__ = []
 ```
+
+**Why pattern guidance instead of specific exports?**
+- Safer: Doesn't prescribe schemas that may not be truly cross-cutting
+- Educational: Teams learn the boundary rules, not just copy exports
+- Flexible: Adapts to future schema evolution without report updates
+- Explicit: Empty `__all__` signals "think before adding here"
 
 #### B. Add Explicit Stat Package Registration to Startup
 **File:** `pixsim7/backend/main/startup.py`
@@ -556,43 +626,18 @@ def _register_default_npc_resolver(self):
 - **Backward compatible**: Existing code works unchanged
 - **Future-proof**: Can inject configured StatEngine if needed
 
-### Medium-Priority: StatEngine Factory
+### Medium-Priority: Use StatEngine Factory Everywhere
 
-**File:** `pixsim7/backend/main/domain/stats/engine.py` (or new `factory.py`)
+**See detailed StatEngine factory recommendation in section 3** (DI patterns above).
 
-**Add factory function:**
-```python
-def create_stat_engine(config: Optional[StatEngineConfig] = None) -> StatEngine:
-    """
-    Create a configured StatEngine instance.
+Summary of required changes:
+- Create `domain/stats/factory.py` with `create_stat_engine()` function
+- Export factory from `domain/stats/__init__.py`
+- Update 2 call sites:
+  - `services/characters/prompt_context_service.py:359`
+  - `domain/brain/engine.py:60`
 
-    Args:
-        config: Optional configuration for custom behavior
-
-    Returns:
-        StatEngine: Configured engine instance
-
-    Why a factory:
-    - Centralizes engine creation
-    - Allows future configuration injection
-    - Makes testing easier (can mock factory)
-    """
-    if config:
-        # Future: apply custom configuration
-        pass
-
-    return StatEngine()
-```
-
-**Export in `domain/stats/__init__.py`:**
-```python
-from .engine import StatEngine, create_stat_engine
-
-__all__ = [
-    # ... existing exports ...
-    "create_stat_engine",
-]
-```
+This ensures all `StatEngine` creation goes through a single factory, enabling future configuration without changing call sites.
 
 ---
 
@@ -601,9 +646,8 @@ __all__ = [
 ### Phase 1: Documentation and Guardrails (1-2 hours, high value)
 ✅ **Safe, no code changes**
 
-1. Add boundary documentation to `shared/schemas/__init__.py`
-2. Add explicit exports to `shared/schemas/__init__.py` (only cross-cutting types)
-3. Document DI patterns in `DEVELOPMENT_GUIDE.md`
+1. Add boundary pattern documentation to `shared/schemas/__init__.py` (docstring only, no specific exports)
+2. Document DI patterns in `DEVELOPMENT_GUIDE.md`
 
 ### Phase 2: Explicit Registry Initialization (2-3 hours, medium risk)
 ⚠️ **Requires testing**
@@ -613,15 +657,24 @@ __all__ = [
 3. Add observability (log package count, package IDs)
 4. Test that stat packages are registered correctly
 
-### Phase 3: DI Improvements (4-6 hours, requires careful testing)
-⚠️ **Medium risk, high value for testing**
+### Phase 3: StatEngine Factory (2-3 hours, low risk)
+✅ **Safe, backward compatible**
+
+1. Create `domain/stats/factory.py` with `create_stat_engine()` function
+2. Export factory from `domain/stats/__init__.py`
+3. Update 2 call sites:
+   - `services/characters/prompt_context_service.py:359`
+   - `domain/brain/engine.py:60`
+4. Test that factory works correctly
+
+### Phase 4: PromptContextService DI (3-4 hours, medium risk)
+⚠️ **Requires careful testing**
 
 1. Update `PromptContextService.__init__()` to accept optional dependencies
 2. Update tests to use dependency injection
-3. Add `create_stat_engine()` factory
-4. Update documentation with DI examples
+3. Update documentation with DI examples
 
-### Phase 4: Event Handler Registry Clarity (optional, 2-3 hours)
+### Phase 5: Event Handler Registry Clarity (optional, 2-3 hours)
 ⚠️ **Low priority, cosmetic improvement**
 
 1. Create `event_handlers/registry.py` with explicit handler list
@@ -651,12 +704,12 @@ __all__ = [
 
 ### DO (High Priority)
 1. ✅ **Add explicit stat package registration** to startup flow
-2. ✅ **Document shared schema boundaries** to prevent future drift
-3. ✅ **Make PromptContextService DI explicit** for better testability
+2. ✅ **Document shared schema boundaries** with pattern guidance (not specific exports)
+3. ✅ **Create `create_stat_engine()` factory** and update 2 call sites
+4. ✅ **Make PromptContextService DI explicit** for better testability
 
 ### CONSIDER (Medium Priority)
-4. Add `create_stat_engine()` factory for future configurability
-5. Add explicit event handler registry
+5. Add explicit event handler registry (vs auto-discovery)
 
 ### DON'T (Anti-Patterns to Avoid)
 6. ❌ Don't add domain-specific types to `shared/schemas`
