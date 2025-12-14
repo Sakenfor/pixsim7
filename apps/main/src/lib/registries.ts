@@ -59,6 +59,12 @@ export type {
   PortConfig,
 } from '@features/graph';
 
+// Node type registration helpers (for plugins)
+export {
+  registerBuiltinNodeTypes,
+  registerArcNodeTypes,
+} from '@features/graph';
+
 /**
  * Re-export registration helper functions
  */
