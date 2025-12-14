@@ -511,7 +511,7 @@ export function QuickGenerateModule() {
       const isLastAsset = (idx: number) => idx === displayAssets.length - 1;
 
       return (
-        <div className="flex gap-3 flex-1 min-h-[180px]">
+        <div className="flex gap-3 flex-1 min-h-0">
           {/* Left: Asset sequence - hover shows badge overlay */}
           <div className="flex-shrink-0 flex items-stretch">
             {displayAssets.length > 0 ? (
@@ -589,7 +589,7 @@ export function QuickGenerateModule() {
           </div>
 
           {/* Center: Prompt for selected transition */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {displayAssets.length > 1 ? (
               <textarea
                 value={prompts[selectedTransitionIndex] || ''}
@@ -619,9 +619,9 @@ export function QuickGenerateModule() {
       // Asset + prompt mode: [Asset | Prompt | Settings] with resizable dividers
       const hasAsset = displayAssets.length > 0;
       return (
-        <div ref={containerRef} className="flex flex-1 min-h-0">
+        <div ref={containerRef} className="flex flex-1 min-h-0 h-full">
           {/* Left: Asset (optional for flexible operations like image_to_video) */}
-          <div className="flex-shrink-0 overflow-hidden" style={{ width: widths[0] }}>
+          <div className="flex-shrink-0 overflow-hidden h-full min-h-0" style={{ width: widths[0] }}>
             {hasAsset ? (
               <div className="flex flex-col gap-1 h-full">
                 <CompactAssetCard
@@ -682,7 +682,7 @@ export function QuickGenerateModule() {
           />
 
           {/* Center: Prompt */}
-          <div className="flex-1 min-w-0 overflow-hidden" style={{ width: widths[1] }}>
+          <div className="flex-1 min-w-0 overflow-hidden h-full min-h-0" style={{ width: widths[1] }}>
             <PromptInput
               value={prompt}
               onChange={setPrompt}
@@ -718,9 +718,9 @@ export function QuickGenerateModule() {
 
     // Text-only mode (text_to_image, text_to_video, fusion): prompt + settings
     return (
-      <div ref={containerRef} className="flex flex-1 min-h-0">
+      <div ref={containerRef} className="flex flex-1 min-h-0 h-full">
         {/* Left: Prompt */}
-        <div className="flex-1 min-w-0 overflow-hidden" style={{ width: widths[0] }}>
+        <div className="flex-1 min-w-0 overflow-hidden h-full min-h-0" style={{ width: widths[0] }}>
           <PromptInput
             value={prompt}
             onChange={setPrompt}

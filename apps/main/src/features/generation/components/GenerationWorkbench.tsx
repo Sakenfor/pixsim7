@@ -296,7 +296,7 @@ export function GenerationWorkbench({
 
       {/* Main content area */}
       {renderContent && (
-        <div className="flex-1 flex flex-col gap-3">{renderContent(context)}</div>
+        <div className="flex-1 flex flex-col gap-3 min-h-0">{renderContent(context)}</div>
       )}
 
       {/* Error display */}
