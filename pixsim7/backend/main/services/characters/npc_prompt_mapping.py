@@ -5,13 +5,17 @@ Declares which fields come from CharacterInstance vs GameNPC,
 which fields map to stat axes, and fallback behavior.
 """
 
-from typing import Dict, Any, Optional, Literal
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, Literal, Callable
+from dataclasses import dataclass, field
 
 
 @dataclass
 class FieldMapping:
-    """Mapping for a single field in prompt context (entity-agnostic)."""
+    """Mapping for a single field in prompt context (entity-agnostic).
+
+    Supports optional transforms for per-field reshaping (enum mapping, clamping, formatting)
+    without requiring resolver changes.
+    """
 
     # Target path in snapshot (dot notation, e.g., "name", "traits.openness", "state.mood")
     target_path: str
@@ -27,6 +31,11 @@ class FieldMapping:
     # Stat engine integration
     stat_axis: Optional[str] = None      # If this field is a stat axis, name of axis
     stat_package_id: Optional[str] = None   # Stat package ID (e.g., "core.personality") - resolved via registry
+
+    # Transform hook for per-field reshaping
+    # Signature: transform(value: Any, context: Dict[str, Any]) -> Any
+    # Context includes: instance, npc, npc_state, prefer_live
+    transform: Optional[Callable[[Any, Dict[str, Any]], Any]] = field(default=None, repr=False)
 
     # Note: normalize flag is optional - if stat_axis is present, normalization happens automatically
 
@@ -135,6 +144,37 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
 def get_npc_field_mapping() -> Dict[str, FieldMapping]:
     """Get the NPC field mapping configuration."""
     return NPC_FIELD_MAPPING
+
+
+def merge_field_mappings(
+    base: Dict[str, FieldMapping],
+    overlay: Optional[Dict[str, FieldMapping]] = None
+) -> Dict[str, FieldMapping]:
+    """
+    Merge overlay mappings with base mappings.
+
+    Overlay mappings take precedence over base mappings.
+    This allows plugins or links to extend/override target paths
+    without editing the base configuration.
+
+    Args:
+        base: Base field mapping configuration
+        overlay: Optional overlay mappings (from plugins, links, etc.)
+
+    Returns:
+        Merged field mapping dictionary
+
+    Example:
+        base_map = get_npc_field_mapping()
+        plugin_map = {"custom_field": FieldMapping(...)}
+        merged = merge_field_mappings(base_map, plugin_map)
+    """
+    if not overlay:
+        return dict(base)
+
+    merged = dict(base)
+    merged.update(overlay)
+    return merged
 
 
 def set_nested_value(data: Dict[str, Any], path: str, value: Any) -> None:

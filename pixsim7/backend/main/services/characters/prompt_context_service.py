@@ -34,6 +34,7 @@ from pixsim7.backend.main.services.characters.npc_sync_service import (
 from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
     FieldMapping,
     get_npc_field_mapping,
+    merge_field_mappings,
     set_nested_value,
     get_nested_value,
 )
@@ -116,12 +117,16 @@ class _NpcContextResolver:
         sync_service: CharacterNPCSyncService,
         stat_engine: StatEngine,
         field_mapping: Optional[Dict[str, FieldMapping]] = None,
+        mapping_overlay: Optional[Dict[str, FieldMapping]] = None,
     ):
         self.db = db
         self.instance_service = instance_service
         self.sync_service = sync_service
         self.stat_engine = stat_engine
-        self.field_mapping = field_mapping or get_npc_field_mapping()
+
+        # Merge base mapping with optional overlay (plugins, links, etc.)
+        base_mapping = field_mapping or get_npc_field_mapping()
+        self.field_mapping = merge_field_mappings(base_mapping, mapping_overlay)
 
     async def resolve(self, request: PromptContextRequest) -> PromptContextSnapshot:
         instance_id: Optional[UUID] = (
@@ -172,6 +177,16 @@ class _NpcContextResolver:
             )
 
             if value is not None:
+                # Apply transform if provided
+                if mapping.transform:
+                    context = {
+                        "instance": instance,
+                        "npc": npc,
+                        "npc_state": npc_state,
+                        "prefer_live": request.prefer_live,
+                    }
+                    value = mapping.transform(value, context)
+
                 # Set value at target path (entity-agnostic)
                 set_nested_value(snapshot_data, mapping.target_path, value)
 
