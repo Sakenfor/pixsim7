@@ -111,6 +111,15 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
         fallback="none",
         npc_path="current_location_id",  # From NPCState
     ),
+
+    # Spatial transform: NPC authoritative (runtime)
+    # Contains position, orientation, scale within world/location
+    "transform": FieldMapping(
+        target_path="spatial.transform",
+        source="npc",
+        fallback="none",
+        npc_path="transform",  # From NPCState.transform (JSON field)
+    ),
 }
 
 

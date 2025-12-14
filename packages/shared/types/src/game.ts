@@ -6,6 +6,157 @@
 import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
 
 // ===================
+// Spatial Model Types
+// ===================
+
+/**
+ * 3D position coordinates
+ * z is optional to support 2D-first workflows
+ */
+export interface Position3D {
+  x: number;
+  y: number;
+  z?: number;
+}
+
+/**
+ * 3D orientation using Euler angles (in degrees)
+ * All fields optional to support 2D (yaw-only) and partial rotations
+ */
+export interface Orientation {
+  /** Rotation around Y axis (heading) - primary rotation for 2D */
+  yaw?: number;
+  /** Rotation around X axis (elevation) */
+  pitch?: number;
+  /** Rotation around Z axis (tilt/bank) */
+  roll?: number;
+}
+
+/**
+ * 3D scale factors
+ * Defaults to uniform scale of 1.0 if not specified
+ */
+export interface Scale {
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+/**
+ * Coordinate space identifier
+ * Helps renderers and editors treat transforms differently
+ * - 'world_2d': 2D top-down or side-view (z=0 or ignored)
+ * - 'world_3d': Full 3D space with all axes
+ * - 'ui_2d': UI overlay coordinates (screen space)
+ */
+export type CoordinateSpace = 'world_2d' | 'world_3d' | 'ui_2d';
+
+/**
+ * Transform - generic spatial component
+ *
+ * Represents position, orientation, and scale of an object in space.
+ * Designed to be 2D-first (just x, y, yaw) but 3D-capable (add z, pitch, roll).
+ *
+ * Design notes:
+ * - 2D workflows: use x, y, and optionally yaw; leave z, pitch, roll undefined
+ * - 3D workflows: use x, y, z and full orientation
+ * - Location context: worldId or locationId determines which space we're in
+ * - Future: could add parentId for hierarchical transforms (relative positioning)
+ *
+ * @example
+ * // 2D NPC placement
+ * const transform2d: Transform = {
+ *   worldId: WorldId(1),
+ *   locationId: LocationId(42),
+ *   position: { x: 100, y: 50 },
+ *   orientation: { yaw: 90 }, // facing right
+ *   space: 'world_2d'
+ * };
+ *
+ * @example
+ * // 3D prop placement
+ * const transform3d: Transform = {
+ *   worldId: WorldId(1),
+ *   locationId: LocationId(42),
+ *   position: { x: 10, y: 2, z: 5 },
+ *   orientation: { yaw: 45, pitch: -15, roll: 0 },
+ *   scale: { x: 1.5, y: 1.5, z: 1.5 },
+ *   space: 'world_3d'
+ * };
+ */
+export interface Transform {
+  /** World this transform belongs to */
+  worldId: WorldId;
+  /** Location within the world (optional - use for local coordinates) */
+  locationId?: LocationId;
+  /** Position in 3D space (z optional for 2D) */
+  position: Position3D;
+  /** Orientation in 3D space (all optional) */
+  orientation?: Orientation;
+  /** Scale factors (all optional, default 1.0) */
+  scale?: Scale;
+  /** Coordinate space hint for renderers */
+  space?: CoordinateSpace;
+}
+
+/**
+ * Entity kind discriminator for spatial objects
+ * Extensible - add new kinds as needed without schema changes
+ */
+export type SpatialObjectKind =
+  | 'npc'
+  | 'player'
+  | 'item'
+  | 'prop'
+  | 'trigger'
+  | 'spawn'
+  | 'camera'
+  | 'light'
+  | (string & {}); // Allow custom kinds
+
+/**
+ * SpatialObject - base shape for placeable objects
+ *
+ * Not a runtime class - just a shared shape/interface that NPCs, items, props, etc.
+ * can embed or map to. Think of it as a "spatial component" pattern.
+ *
+ * Design notes:
+ * - This is NOT inheritance - it's a component/shape that entities can adopt
+ * - NPC/Item/Prop DTOs can include a `spatial: SpatialObject` field
+ * - Or they can directly embed these fields in their own structure
+ * - Tags help editors filter and categorize objects (e.g., ["interactive", "decoration"])
+ *
+ * Future: Could extend with physics properties (collider, rigidbody, etc.)
+ *
+ * @example
+ * // NPC with spatial data
+ * interface NpcWithSpatial extends GameNpcDetail {
+ *   spatial: SpatialObject;
+ * }
+ *
+ * @example
+ * // Item as spatial object
+ * const coin: SpatialObject = {
+ *   id: 123,
+ *   kind: 'item',
+ *   transform: { worldId: WorldId(1), position: { x: 50, y: 30 } },
+ *   tags: ['collectible', 'treasure']
+ * };
+ */
+export interface SpatialObject {
+  /** Entity ID (use branded IDs like NpcId, ItemId, etc.) */
+  id: number;
+  /** Kind of object for filtering and behavior */
+  kind: SpatialObjectKind;
+  /** Spatial transform (position, rotation, scale) */
+  transform: Transform;
+  /** Optional tags for editor filtering and categorization */
+  tags?: string[];
+  /** Optional metadata for extensions */
+  meta?: Record<string, unknown>;
+}
+
+// ===================
 // Location Types
 // ===================
 
@@ -109,6 +260,8 @@ export interface NpcPresenceDTO {
   npc_id: NpcId;
   location_id: LocationId;
   state: Record<string, unknown>;
+  /** Optional spatial transform (position, rotation, scale within location) */
+  transform?: Transform;
 }
 
 /**
