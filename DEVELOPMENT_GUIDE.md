@@ -439,6 +439,74 @@ class WorkerSettings:
     ]
 ```
 
+### **Dependency Injection Pattern**
+
+Services should accept dependencies as constructor parameters for better testability and flexibility.
+
+**✅ Good: Optional DI (backward compatible)**
+```python
+from typing import Optional
+from pixsim7.backend.main.domain.stats import StatEngine, create_stat_engine
+
+class MyService:
+    def __init__(
+        self,
+        db: AsyncSession,
+        stat_engine: Optional[StatEngine] = None,
+    ):
+        """
+        Initialize service with optional dependency injection.
+
+        Args:
+            db: Database session (required)
+            stat_engine: Stat engine (created if not provided)
+        """
+        self.db = db
+        # Default to factory if not injected
+        self.stat_engine = stat_engine or create_stat_engine()
+
+    async def process(self, data: dict) -> Result:
+        # Use self.stat_engine
+        pass
+
+# In tests: inject mocks
+def test_my_service():
+    mock_engine = MockStatEngine()
+    service = MyService(db, stat_engine=mock_engine)
+    assert service.process({"key": "value"})
+
+# In production: use defaults
+service = MyService(db)
+```
+
+**✅ Good: Use factories for stateless utilities**
+```python
+# Instead of:
+engine = StatEngine()  # ❌ Ad-hoc creation
+
+# Use:
+from pixsim7.backend.main.domain.stats import create_stat_engine
+engine = create_stat_engine()  # ✅ Factory allows future configuration
+```
+
+**❌ Bad: Hard-coded internal dependencies**
+```python
+class BadService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        # ❌ Creates dependencies internally - hard to test
+        self.other_service = OtherService(db)
+        self.stat_engine = StatEngine()
+
+# Can't mock dependencies in tests!
+```
+
+**Why DI matters:**
+- **Testability**: Inject mocks/fakes for isolated unit tests
+- **Flexibility**: Swap implementations without changing code
+- **Configuration**: Future-proof for different configs
+- **Explicitness**: Dependencies are visible in constructor
+
 ---
 
 ## 📝 Code Style & Conventions

@@ -235,6 +235,38 @@ def setup_ecs_components() -> int:
     return count
 
 
+def setup_stat_packages() -> int:
+    """
+    Register core stat packages.
+
+    Stat packages are plugin-extensible bundles of StatDefinition objects
+    (relationships, personality, mood, etc.) that worlds can discover and use.
+
+    Returns:
+        int: Number of packages registered
+
+    Why this is a separate function:
+    - Makes registration explicit in startup flow
+    - Returns count for observability
+    - Testable in isolation
+    """
+    from pixsim7.backend.main.domain.stats import (
+        register_core_stat_packages,
+        list_stat_packages,
+    )
+
+    register_core_stat_packages()
+    packages = list_stat_packages()
+
+    logger.info(
+        "stat_packages_registered",
+        count=len(packages),
+        packages=[p.id for p in packages]
+    )
+
+    return len(packages)
+
+
 async def setup_plugins(
     app: FastAPI,
     plugins_dir: str | Path,

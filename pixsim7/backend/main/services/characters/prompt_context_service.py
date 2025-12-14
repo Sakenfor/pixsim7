@@ -24,7 +24,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.game import GameNPC, NPCState
-from pixsim7.backend.main.domain.stats import StatEngine
+from pixsim7.backend.main.domain.stats import StatEngine, create_stat_engine
 from pixsim7.backend.main.services.characters.instance_service import (
     CharacterInstanceService,
 )
@@ -342,29 +342,49 @@ class PromptContextService:
       calling register_resolver().
     """
 
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession,
+        *,
+        instance_service: Optional[CharacterInstanceService] = None,
+        sync_service: Optional[CharacterNPCSyncService] = None,
+        stat_engine: Optional[StatEngine] = None,
+    ):
+        """
+        Initialize prompt context service with optional dependency injection.
+
+        Args:
+            db: Database session (required)
+            instance_service: Character instance service (created if not provided)
+            sync_service: NPC sync service (created if not provided)
+            stat_engine: Stat computation engine (created if not provided)
+
+        Why DI is optional:
+        - Backward compatible with existing code
+        - Tests can inject mocks for isolation
+        - Allows future configuration (e.g., custom stat engine)
+        """
         self.db = db
         self._resolvers: Dict[str, EntityContextResolver] = {}
         self._enrichers: Dict[str, List[EnricherFn]] = {}
+
+        # Store injected or default dependencies
+        self._instance_service = instance_service or CharacterInstanceService(db)
+        self._sync_service = sync_service or CharacterNPCSyncService(db)
+        self._stat_engine = stat_engine or create_stat_engine()
 
         # Register built-in resolver for NPCs with DI
         self._register_default_npc_resolver()
 
     def _register_default_npc_resolver(self):
-        """Register NPC resolver with dependency injection."""
-        instance_service = CharacterInstanceService(self.db)
-        sync_service = CharacterNPCSyncService(self.db)
-
-        # StatEngine is stateless - no dependencies
-        stat_engine = StatEngine()
-
+        """Register NPC resolver using injected dependencies."""
         field_mapping = get_npc_field_mapping()
 
         npc_resolver = _NpcContextResolver(
             db=self.db,
-            instance_service=instance_service,
-            sync_service=sync_service,
-            stat_engine=stat_engine,
+            instance_service=self._instance_service,
+            sync_service=self._sync_service,
+            stat_engine=self._stat_engine,
             field_mapping=field_mapping,
         )
 

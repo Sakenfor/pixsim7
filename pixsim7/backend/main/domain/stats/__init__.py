@@ -41,6 +41,7 @@ from .derivation_schemas import (
     SEMANTIC_TYPES,
 )
 from .engine import StatEngine
+from .factory import create_stat_engine
 from .mixins import HasStats, HasStatsWithMetadata
 from .package_registry import (
     StatPackage,
@@ -170,6 +171,7 @@ __all__ = [
     "SEMANTIC_TYPES",
     # Engine
     "StatEngine",
+    "create_stat_engine",
     # Derivation engine
     "DerivationEngine",
     "DerivationResult",

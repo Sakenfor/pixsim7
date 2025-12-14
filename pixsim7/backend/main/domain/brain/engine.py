@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.stats import (
     StatEngine,
+    create_stat_engine,
     WorldStatsConfig,
     StatDefinition,
     get_derivation_engine,
@@ -57,7 +58,7 @@ class BrainEngine:
 
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.stat_engine = StatEngine()
+        self.stat_engine = create_stat_engine()
         self.derivation_engine = get_derivation_engine()
 
     async def compute_brain_state(

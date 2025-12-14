@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
         setup_ai_models,
         setup_event_handlers,
         setup_ecs_components,
+        setup_stat_packages,
         setup_plugins,
         setup_behavior_registry_lock,
         configure_admin_diagnostics,
@@ -83,6 +84,9 @@ async def lifespan(app: FastAPI):
     setup_ai_models()
     setup_event_handlers()
     ecs_count = setup_ecs_components()
+
+    # Setup stat packages
+    stat_packages_count = setup_stat_packages()
 
     # Setup plugins
     plugin_manager, routes_manager = await setup_plugins(
