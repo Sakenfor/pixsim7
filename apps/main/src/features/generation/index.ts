@@ -45,4 +45,4 @@ export * from './lib/core';
 export * from './lib/generationTypes';
 
 // Namespace export for generation types
-export * as Types from './lib/generationTypes';
+export * as Generation from './lib/generationTypes';

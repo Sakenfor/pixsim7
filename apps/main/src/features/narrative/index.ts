@@ -10,8 +10,8 @@
  * import { NarrativeProgramId, DialogueNode } from '@features/narrative';
  *
  * // Or use namespace pattern
- * import { Types } from '@features/narrative';
- * const programId: Types.NarrativeProgramId = 'intro_scene';
+ * import { Narrative } from '@features/narrative';
+ * const programId: Narrative.NarrativeProgramId = 'intro_scene';
  * ```
  */
 
@@ -25,4 +25,4 @@ export * from './lib/types';
 // Namespace Export (for clean imports)
 // ============================================================================
 
-export * as Types from './lib/types';
+export * as Narrative from './lib/types';
