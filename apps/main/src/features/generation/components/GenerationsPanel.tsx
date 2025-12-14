@@ -7,6 +7,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
+import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@lib/api/generations';
 import { Icons, ThemedIcon } from '@lib/icons';
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
@@ -22,6 +23,9 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // WebSocket for real-time updates
+  const { isConnected: wsConnected } = useGenerationWebSocket();
 
   // Fetch recent generations (shared hook)
   const { isLoading, refresh: handleRefresh } = useRecentGenerations({ limit: 200 });
@@ -131,7 +135,33 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 px-6 pt-4 pb-3 border-b border-neutral-200 dark:border-neutral-800">
-        <h2 className="text-lg font-semibold mb-3">Generations</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Generations</h2>
+          <div className="flex items-center gap-2">
+            {/* WebSocket status */}
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
+              wsConnected
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+            }`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-neutral-400'}`} />
+              {wsConnected ? 'Live' : 'Offline'}
+            </div>
+            {/* Manual refresh */}
+            <button
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
+              title="Refresh generations"
+            >
+              <ThemedIcon
+                name="refresh"
+                size={16}
+                className={`text-neutral-600 dark:text-neutral-400 ${isLoading ? 'animate-spin' : ''}`}
+              />
+            </button>
+          </div>
+        </div>
 
         {/* Filters row */}
         <div className="flex gap-2 items-center flex-wrap">
@@ -326,10 +356,18 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset }
           </p>
 
           {/* Metadata row */}
-          <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+          <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 flex-wrap">
             <span className="font-medium">{generation.provider_id}</span>
             <span className="text-neutral-400 dark:text-neutral-600">•</span>
             <span>{generation.operation_type}</span>
+            {generation.account_email && (
+              <>
+                <span className="text-neutral-400 dark:text-neutral-600">•</span>
+                <span className="text-blue-600 dark:text-blue-400 font-medium" title={`Account: ${generation.account_email}`}>
+                  {generation.account_email.split('@')[0]}
+                </span>
+              </>
+            )}
             <span className="text-neutral-400 dark:text-neutral-600">•</span>
             <span>{timeAgo}</span>
             {generation.retry_count > 0 && (

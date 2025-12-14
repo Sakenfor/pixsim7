@@ -62,6 +62,10 @@ export interface GenerationResponse {
   // Result
   asset_id?: number | null;
 
+  // Account info
+  account_id?: number | null;
+  account_email?: string | null;
+
   // Metadata
   name?: string | null;
   description?: string | null;
