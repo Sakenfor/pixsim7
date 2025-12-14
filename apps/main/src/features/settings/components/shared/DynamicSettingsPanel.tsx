@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { settingsSchemaRegistry } from '@features/settings';
+import { settingsSchemaRegistry } from '../../lib/core';
 import { SettingFieldRenderer } from './SettingFieldRenderer';
 import type { SettingGroup, SettingTab } from './types';
 

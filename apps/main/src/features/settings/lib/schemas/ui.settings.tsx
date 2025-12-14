@@ -5,7 +5,7 @@
  * This demonstrates how modules can expose settings declaratively.
  */
 
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '@features/settings';
+import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 import { useAssetViewerStore } from '@features/assets';
 import { useControlCenterStore, type LayoutBehavior, type DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 
