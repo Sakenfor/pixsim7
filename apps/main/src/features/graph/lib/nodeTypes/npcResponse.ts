@@ -4,7 +4,7 @@
  * Integrates with existing scene graph system and AI video generation
  */
 
-import { nodeTypeRegistry, type NodeTypeDefinition } from './nodeTypeRegistry';
+import { nodeTypeRegistry, type NodeTypeDefinition } from './registry';
 import type { NpcZoneConfiguration } from './npcZones';
 
 // ============================================================================

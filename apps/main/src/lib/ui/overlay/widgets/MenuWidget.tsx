@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Icon } from '@lib/icons';
 
@@ -106,10 +107,18 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
     render: (data: any) => {
       const [isOpen, setIsOpen] = useState(false);
       const [openSubMenus, setOpenSubMenus] = useState<Set<string>>(new Set());
+      const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
       const menuRef = useRef<HTMLDivElement>(null);
       const triggerRef = useRef<HTMLButtonElement>(null);
 
       const menuItems = typeof items === 'function' ? items(data) : items;
+
+      // Update trigger position when menu opens
+      useEffect(() => {
+        if (isOpen && triggerRef.current) {
+          setTriggerRect(triggerRef.current.getBoundingClientRect());
+        }
+      }, [isOpen]);
 
       // Close menu when clicking outside
       useEffect(() => {
@@ -329,12 +338,12 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
         <div className={`relative ${className}`}>
           {renderTrigger()}
 
-          {/* Menu dropdown */}
-          {isOpen && menuItems.length > 0 && (
+          {/* Menu dropdown - rendered via portal to avoid clipping */}
+          {isOpen && menuItems.length > 0 && triggerRect && createPortal(
             <div
               ref={menuRef}
               className={`
-                absolute ${placementClasses[placement]}
+                fixed
                 min-w-[180px] max-w-[280px]
                 bg-white dark:bg-neutral-800
                 border border-neutral-200 dark:border-neutral-700
@@ -342,6 +351,17 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
                 py-1 z-50
                 overflow-hidden
               `}
+              style={{
+                top: placement.includes('bottom')
+                  ? triggerRect.bottom + 4
+                  : triggerRect.top - 4,
+                left: placement.includes('right')
+                  ? triggerRect.right
+                  : triggerRect.left,
+                transform: placement.includes('right')
+                  ? 'translateX(-100%)'
+                  : undefined,
+              }}
               onMouseEnter={() => {
                 if (triggerType === 'hover') {
                   setIsOpen(true);
@@ -349,7 +369,8 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
               }}
             >
               {menuItems.map((item) => renderMenuItem(item))}
-            </div>
+            </div>,
+            document.body
           )}
         </div>
       );

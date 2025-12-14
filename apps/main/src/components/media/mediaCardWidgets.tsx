@@ -84,12 +84,11 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
     return null;
   }
 
-  if (!providerStatus) {
-    return null;
-  }
+  // Default to 'unknown' status if not provided (for broken/missing assets)
+  const effectiveStatus = providerStatus || 'unknown';
 
   // Map external providerStatus ("ok", "local_only", etc.) to internal keys
-  const statusKey = providerStatus === 'ok' ? 'provider_ok' : providerStatus;
+  const statusKey = effectiveStatus === 'ok' ? 'provider_ok' : effectiveStatus;
   const statusMeta = MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON];
   if (!statusMeta) {
     return null;

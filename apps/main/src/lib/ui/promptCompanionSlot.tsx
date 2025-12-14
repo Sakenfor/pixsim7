@@ -19,7 +19,7 @@
  * ```tsx
  * <PromptSurfaceProvider surface="quick-generate">
  *   <PromptInput value={prompt} onChange={setPrompt} />
- *   {/* Companion auto-injected at bottom of provider */}
+ *   // Companion auto-injected at bottom of provider
  * </PromptSurfaceProvider>
  * ```
  *
@@ -34,7 +34,7 @@
  * return (
  *   <div>
  *     <textarea {...bind} />
- *     <CompanionSlot /> {/* Or omit - renders via portal */}
+ *     <CompanionSlot /> // Or omit - renders via portal
  *   </div>
  * );
  * ```
