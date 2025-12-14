@@ -145,7 +145,7 @@ export function DockToolbar({
 
       {/* Module tabs */}
       <div
-        className="flex gap-1"
+        className="flex gap-1 flex-wrap"
         role="tablist"
         aria-label="Control center modules"
         onKeyDown={(e) => {
