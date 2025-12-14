@@ -179,7 +179,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             if generation.account_id:
                 try:
                     prev_account = await db.get(ProviderAccount, generation.account_id)
-                    if prev_account and prev_account.is_active and not prev_account.is_rate_limited:
+                    if prev_account and prev_account.is_available():
                         # Try to reserve the same account
                         await account_service.reserve_account(prev_account.id)
                         credits_data = await refresh_account_credits(prev_account, account_service, gen_logger)
