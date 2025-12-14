@@ -20,6 +20,15 @@ class NpcSpatialService:
     - Fallback: NPCState.current_location_id (for backward compatibility)
     - 2D-first: Most transforms will only use x, y, yaw
     - 3D-ready: z, pitch, roll available when needed
+    - GameObject alignment: Transform dicts match the GameObject.transform schema
+
+    Generic pattern:
+    This service demonstrates the pattern for spatial services. Other entity types
+    (items, props, players) should follow the same approach:
+    - Store transform in entity state table as JSON
+    - Provide get_transform/update_transform methods
+    - Accept/return Transform dicts matching shared types
+    - Support batch operations for efficiency
 
     Example transform structure:
     {
