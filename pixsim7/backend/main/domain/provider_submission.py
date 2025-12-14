@@ -36,7 +36,8 @@ class ProviderSubmission(SQLModel, table=True):
         default=None,
         foreign_key="generations.id",
         index=True,
-        description="Link to generation (mutually exclusive with analysis_id)"
+        description="Link to generation (mutually exclusive with analysis_id)",
+        sa_column_kwargs={"ondelete": "CASCADE"}
     )
     analysis_id: Optional[int] = Field(
         default=None,
