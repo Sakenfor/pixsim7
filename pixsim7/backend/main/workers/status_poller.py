@@ -27,6 +27,7 @@ from pixsim7.backend.main.shared.debug import (
     load_global_debug_from_env,
 )
 from pixsim7.backend.main.shared.errors import ProviderError
+from pixsim7.backend.main.workers.job_processor import refresh_account_credits
 
 logger = configure_logging("worker")
 _poller_debug_initialized = False
@@ -216,6 +217,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             if account.current_processing_jobs > 0:
                                 account.current_processing_jobs -= 1
 
+                            # Refresh credits from provider to sync actual balance
+                            await refresh_account_credits(account, account_service, logger)
+
                             completed += 1
 
                         elif status_result.status in {
@@ -258,6 +262,10 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:
                                 account.current_processing_jobs -= 1
+
+                            # Refresh credits from provider to sync actual balance
+                            # (Pixverse auto-refunds for failed/filtered generations)
+                            await refresh_account_credits(account, account_service, logger)
 
                             failed += 1
 
