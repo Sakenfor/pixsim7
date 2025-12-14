@@ -58,8 +58,8 @@ const EXTERNAL_DEPS = [
 interface PluginBuildConfig {
   pluginPath: string;      // Relative path like "scene/comic-panel-view"
   entryPoint: string;      // Full path to entry file
-  outputDir: string;       // Full path to output directory
-  family: string;          // Plugin family (e.g., "scene")
+  outputDir: string;       // Initial output directory (overridden by manifest family)
+  family: string;          // Directory family (e.g., "scene")
   id: string;              // Plugin ID (e.g., "comic-panel-view")
 }
 
@@ -141,9 +141,6 @@ async function buildPlugin(config: PluginBuildConfig): Promise<BuildResult> {
   console.log(`\n  Building ${pluginPath}...`);
 
   try {
-    // Ensure output directory exists
-    await fs.mkdir(outputDir, { recursive: true });
-
     // Load manifest
     const pluginDir = path.dirname(entryPoint);
     const manifest = await loadManifest(pluginDir);
@@ -152,13 +149,30 @@ async function buildPlugin(config: PluginBuildConfig): Promise<BuildResult> {
       throw new Error('No manifest.ts found');
     }
 
+    const manifestFamily = (
+      typeof manifest.family === 'string' ? manifest.family : null
+    );
+
+    if (!manifestFamily) {
+      throw new Error('Plugin manifest must include a `family` string (e.g., "scene", "ui", "tool").');
+    }
+
+    if (manifestFamily !== family) {
+      console.warn(
+        `    [warn] Manifest family "${manifestFamily}" differs from folder "${family}". Using manifest-defined family.`
+      );
+    }
+
+    const finalOutputDir = path.join(PLUGINS_DIST_DIR, manifestFamily, id);
+    await fs.mkdir(finalOutputDir, { recursive: true });
+
     // Update manifest with bundle-specific values
     manifest.main = 'plugin.js';
 
     // Write manifest.json
-    const manifestPath = path.join(outputDir, 'manifest.json');
+    const manifestPath = path.join(finalOutputDir, 'manifest.json');
     await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
-    console.log(`    ✓ manifest.json`);
+    console.log(`    [ok] manifest.json`);
 
     // Build plugin bundle
     const buildOptions: BuildOptions = {
@@ -168,7 +182,7 @@ async function buildPlugin(config: PluginBuildConfig): Promise<BuildResult> {
       format: 'esm',
       platform: 'browser',
       target: 'es2022',
-      outfile: path.join(outputDir, 'plugin.js'),
+      outfile: path.join(finalOutputDir, 'plugin.js'),
       sourcemap: true,
       minify: false, // Keep readable for debugging
       alias: PATH_ALIASES,
@@ -192,21 +206,21 @@ async function buildPlugin(config: PluginBuildConfig): Promise<BuildResult> {
     };
 
     await build(buildOptions);
-    console.log(`    ✓ plugin.js`);
+    console.log(`    [ok] plugin.js`);
 
     // Also copy source map
-    console.log(`    ✓ plugin.js.map`);
+    console.log(`    [ok] plugin.js.map`);
 
     return {
       success: true,
       pluginPath,
-      outputDir,
+      outputDir: finalOutputDir,
       manifestPath,
-      bundlePath: path.join(outputDir, 'plugin.js'),
+      bundlePath: path.join(finalOutputDir, 'plugin.js'),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`    ✗ Error: ${message}`);
+    console.error(`    [error] ${message}`);
 
     return {
       success: false,

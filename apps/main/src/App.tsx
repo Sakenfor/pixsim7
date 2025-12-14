@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
 import { useToast } from '@pixsim7/shared.ui';
 import { registerModules, moduleRegistry } from './modules';
 import { Login } from './routes/Login';
@@ -43,6 +44,8 @@ import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const initializePlugins = usePluginCatalogStore((s) => s.initialize);
+  const loadEnabledBundles = usePluginCatalogStore((s) => s.loadEnabledBundles);
   const toast = useToast();
 
   // Initialize theme (applies saved theme or system preference)
@@ -69,6 +72,18 @@ function App() {
       moduleRegistry.cleanupAll();
     };
   }, [initialize, toast]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    initializePlugins()
+      .then(() => loadEnabledBundles())
+      .catch((error) => {
+        console.warn('[Plugins] Failed to initialize plugin catalog:', error);
+      });
+  }, [isAuthenticated, initializePlugins, loadEnabledBundles]);
 
   return (
     <BrowserRouter>

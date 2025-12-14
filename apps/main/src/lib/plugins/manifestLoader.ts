@@ -31,7 +31,7 @@ import type { PluginManifest } from './types';
 /**
  * Plugin family identifiers for bundle loading
  */
-export type BundlePluginFamily = 'scene' | 'ui' | 'tool';
+export type BundlePluginFamily = 'scene' | 'ui' | 'tool' | 'control-center';
 
 /**
  * Extended manifest with bundle-specific fields
@@ -95,7 +95,7 @@ const DEFAULT_BUNDLE_DIR = '/dist/plugins';
 /**
  * Supported plugin families and their expected manifest extensions
  */
-const PLUGIN_FAMILIES: BundlePluginFamily[] = ['scene', 'ui', 'tool'];
+const PLUGIN_FAMILIES: BundlePluginFamily[] = ['scene', 'ui', 'tool', 'control-center'];
 
 // ===== Discovery =====
 
@@ -117,22 +117,23 @@ async function discoverBundles(): Promise<DiscoveredBundle[]> {
 
   for (const [manifestPath, loader] of Object.entries(manifestModules)) {
     try {
-      // Extract family from path (e.g., "/dist/plugins/scene/comic-panel-view/manifest.json" -> "scene")
-      const pathParts = manifestPath.split('/');
-      const familyIndex = pathParts.indexOf('plugins') + 1;
-      const family = pathParts[familyIndex] as BundlePluginFamily;
-
-      if (!PLUGIN_FAMILIES.includes(family)) {
-        console.warn(`[ManifestLoader] Unknown plugin family: ${family} in ${manifestPath}`);
-        continue;
-      }
-
-      // Load the manifest
       const manifestModule = await loader();
       const manifest = manifestModule.default;
 
       if (!manifest || !manifest.id) {
         console.warn(`[ManifestLoader] Invalid manifest at ${manifestPath}`);
+        continue;
+      }
+
+      const family = manifest.family as BundlePluginFamily | undefined;
+
+      if (!family) {
+        console.warn(`[ManifestLoader] Manifest missing family: ${manifest.id}`);
+        continue;
+      }
+
+      if (!PLUGIN_FAMILIES.includes(family)) {
+        console.warn(`[ManifestLoader] Unknown plugin family '${family}' in manifest ${manifest.id}`);
         continue;
       }
 
@@ -173,9 +174,9 @@ async function discoverBundlesFromPublic(baseDir: string): Promise<DiscoveredBun
           if (!manifestResponse.ok) continue;
 
           const manifest = await manifestResponse.json() as BundleManifest;
-          const family = pluginPath.split('/')[0] as BundlePluginFamily;
+          const family = manifest.family as BundlePluginFamily | undefined;
 
-          if (!PLUGIN_FAMILIES.includes(family)) continue;
+          if (!family || !PLUGIN_FAMILIES.includes(family)) continue;
 
           discovered.push({
             manifestPath,
@@ -451,6 +452,7 @@ export async function getAvailablePluginManifests(): Promise<BundleManifest[]> {
 export interface RemotePluginDescriptor {
   pluginId: string;
   bundleUrl: string;
+  /** Backend-reported family; should match manifest.family and is used as a fallback */
   family: BundlePluginFamily;
   manifest?: Partial<BundleManifest>;
 }
@@ -468,6 +470,7 @@ export async function loadRemotePluginBundle(
   descriptor: RemotePluginDescriptor
 ): Promise<BundleLoadResult> {
   const { pluginId, bundleUrl, family, manifest: partialManifest } = descriptor;
+  let resolvedFamily: BundlePluginFamily | undefined = family;
 
   try {
     // Resolve the bundle URL (handle relative URLs)
@@ -479,21 +482,47 @@ export async function loadRemotePluginBundle(
     const pluginModule = await import(/* @vite-ignore */ resolvedUrl);
 
     // Extract manifest and plugin from the module
-    const manifest: BundleManifest = pluginModule.manifest || partialManifest || {
-      id: pluginId,
-      name: pluginId,
-      version: '1.0.0',
-      author: 'Unknown',
-      description: '',
-      type: 'ui-overlay',
-      permissions: [],
-      main: 'plugin.js',
-    };
+    let manifest: BundleManifest | undefined = pluginModule.manifest;
+
+    if (!manifest && partialManifest) {
+      manifest = partialManifest as BundleManifest;
+    }
+
+    if (!manifest) {
+      manifest = {
+        id: pluginId,
+        name: pluginId,
+        version: '1.0.0',
+        author: 'Unknown',
+        description: '',
+        type: 'ui-overlay',
+        permissions: [],
+        main: 'plugin.js',
+        family,
+      };
+    } else if (!manifest.family && family) {
+      manifest.family = family;
+    }
+
+    const manifestFamily = manifest.family as BundlePluginFamily | undefined;
+    resolvedFamily = manifestFamily ?? family;
+
+    if (!resolvedFamily) {
+      throw new Error(`Plugin ${pluginId} missing family metadata`);
+    }
+
+    if (manifestFamily && family && manifestFamily !== family) {
+      console.warn(
+        `[ManifestLoader] Family mismatch for ${pluginId}: manifest=${manifestFamily}, descriptor=${family}. Using manifest value.`
+      );
+    }
+
+    manifest.family = resolvedFamily;
 
     const plugin = pluginModule.plugin || pluginModule.default?.plugin;
 
     // Register based on family
-    switch (family) {
+    switch (resolvedFamily) {
       case 'scene':
         if (manifest.sceneView && plugin && typeof plugin.render === 'function') {
           const fullManifest: SceneViewPluginManifest = {
@@ -520,26 +549,26 @@ export async function loadRemotePluginBundle(
         break;
 
       default:
-        throw new Error(`Unknown plugin family: ${family}`);
+        throw new Error(`Unknown plugin family: ${resolvedFamily}`);
     }
 
-    console.log(`[ManifestLoader] ✓ Remote plugin ${pluginId} loaded successfully`);
+    console.log(`[ManifestLoader] ?" Remote plugin ${pluginId} loaded successfully`);
 
     return {
       success: true,
       manifestPath: resolvedUrl,
       pluginId,
-      family,
+      family: resolvedFamily,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[ManifestLoader] ✗ Failed to load remote plugin ${pluginId}:`, message);
+    console.error(`[ManifestLoader] ?- Failed to load remote plugin ${pluginId}:`, message);
 
     return {
       success: false,
       manifestPath: bundleUrl,
       pluginId,
-      family,
+      family: resolvedFamily ?? family,
       error: message,
     };
   }
@@ -635,7 +664,6 @@ export function unregisterPlugin(pluginId: string, family: BundlePluginFamily): 
     case 'scene':
       sceneViewRegistry.unregister(pluginId);
       return true;
-    // Add other registries as needed
     default:
       console.warn(`[ManifestLoader] Cannot unregister plugin family: ${family}`);
       return false;

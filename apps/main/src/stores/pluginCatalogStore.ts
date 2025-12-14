@@ -13,6 +13,11 @@ import {
   enablePlugin as apiEnablePlugin,
   disablePlugin as apiDisablePlugin,
 } from '../lib/api/plugins';
+import {
+  loadRemotePluginBundles,
+  unregisterPlugin,
+  type BundlePluginFamily,
+} from '@lib/plugins/manifestLoader';
 
 // ===== TYPES =====
 
@@ -38,6 +43,7 @@ interface PluginCatalogState {
   getEnabledByFamily: (family: string) => PluginInfo[];
   isPluginEnabled: (pluginId: string) => boolean;
   isPending: (pluginId: string) => boolean;
+  loadEnabledBundles: () => Promise<void>;
 }
 
 // ===== STORE =====
@@ -74,6 +80,8 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
         isLoading: false,
       });
 
+      await loadBundlesForPlugins(enabled);
+
       console.log('[PluginCatalog] Initialized with', allPlugins.length, 'plugins,', enabled.length, 'enabled');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load plugins';
@@ -103,6 +111,8 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
         enabledPlugins: enabled,
         isLoading: false,
       });
+
+      await loadBundlesForPlugins(enabled);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to refresh plugins';
       console.error('[PluginCatalog] Refresh failed:', error);
@@ -134,6 +144,11 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
     try {
       await apiEnablePlugin(pluginId);
       console.log('[PluginCatalog] Enabled plugin:', pluginId);
+
+      const refreshedPlugin = get().plugins.find(p => p.plugin_id === pluginId);
+      if (refreshedPlugin) {
+        await loadBundlesForPlugins([refreshedPlugin]);
+      }
 
       // Remove from pending
       const pending = new Set(get().pendingOperations);
@@ -176,6 +191,11 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
     try {
       await apiDisablePlugin(pluginId);
       console.log('[PluginCatalog] Disabled plugin:', pluginId);
+
+      const targetPlugin = get().plugins.find(p => p.plugin_id === pluginId);
+      if (targetPlugin) {
+        unregisterPlugin(pluginId, targetPlugin.family as BundlePluginFamily);
+      }
 
       // Remove from pending
       const pending = new Set(get().pendingOperations);
@@ -224,7 +244,39 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
   isPending: (pluginId: string) => {
     return get().pendingOperations.has(pluginId);
   },
+
+  /**
+   * Load bundles for currently enabled plugins
+   */
+  loadEnabledBundles: async () => {
+    await loadBundlesForPlugins(get().enabledPlugins);
+  },
 }));
+
+async function loadBundlesForPlugins(plugins: PluginInfo[]) {
+  if (!plugins.length) return;
+
+  const descriptors = plugins
+    .filter(plugin => !!plugin.bundle_url)
+    .map(plugin => ({
+      pluginId: plugin.plugin_id,
+      bundleUrl: plugin.bundle_url,
+      family: plugin.family as BundlePluginFamily,
+      manifest: {
+        id: plugin.plugin_id,
+        name: plugin.name,
+        version: plugin.version,
+        description: plugin.description ?? '',
+        type: plugin.plugin_type,
+        main: 'plugin.js',
+        family: plugin.family as BundlePluginFamily,
+      },
+    }));
+
+  if (!descriptors.length) return;
+
+  await loadRemotePluginBundles(descriptors);
+}
 
 // ===== SELECTORS =====
 

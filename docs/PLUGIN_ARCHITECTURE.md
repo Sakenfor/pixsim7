@@ -38,7 +38,7 @@ It is important to distinguish between how plugins are organized **in this repo 
 
 - **Runtime layout (what the launcher/app sees)**
   - All plugins are surfaced through a **single logical plugin catalog** driven by `@lib/plugins`.
-  - Downloaded/installed plugins share a unified storage location (for example a `plugins/` directory on disk or a plugins table in the database), but are distinguished by a `featureKind` and manifest metadata.
+  - Downloaded/installed plugins share a unified storage location (for example a `plugins/` directory on disk or a plugins table in the database), but are distinguished by their manifest-declared `family` (e.g., `scene`, `ui`, `tool`) and metadata.
   - The global plugin manager is responsible for:
     - Loading manifests from runtime storage
     - Validating plugin kinds and versions
@@ -86,7 +86,7 @@ Each feature owns:
 
 All plugins are surfaced through a **single logical plugin catalog** driven by `@lib/plugins`:
 
-- **Downloaded/installed plugins** share a unified storage location (e.g., a `plugins/` directory on disk or a plugins table in the database), but are distinguished by a `featureKind` and manifest metadata.
+- **Downloaded/installed plugins** share a unified storage location (e.g., a `plugins/` directory on disk or a plugins table in the database), but are distinguished by the manifest's `family` classification (e.g., `scene`, `ui`, `tool`) and metadata.
 - The **global plugin manager** (`PluginManager.ts`) is responsible for:
   - Loading manifests from runtime storage
   - Validating plugin kinds and versions
@@ -102,6 +102,10 @@ All plugins are surfaced through a **single logical plugin catalog** driven by `
 | **Registry** | Feature-local registries | Global `pluginCatalog` |
 
 This lets us keep **feature-first ownership in the codebase**, while still having a **single place** for users to browse, download, and manage plugins at runtime.
+
+> **Manifest family is canonical**
+>
+> Every plugin manifest must declare a `family` string (e.g., `scene`, `ui`, `tool`, `control-center`). The build tooling fails if the field is missing, and runtime loaders rely on the manifest value instead of directory names. Folder layout in the repo is purely for developer convenience; classification always comes from the manifest metadata.
 
 ---
 
@@ -292,6 +296,7 @@ Every plugin must have:
 
 | Field | Required | Description |
 |-------|----------|-------------|
+| `family` | Yes | Canonical classification used by the loader (`scene`, `ui`, `tool`, `control-center`) |
 | `id` | Yes | Unique identifier (kebab-case, e.g., `"relationship-dashboard"`) |
 | `name` | Yes | Human-readable display name |
 | `description` | Recommended | Short description of functionality |
@@ -631,6 +636,7 @@ export const manifest: SceneViewPluginManifest = {
   id: 'scene-view:my-plugin',
   name: 'My Scene View',
   version: '1.0.0',
+  family: 'scene',
   type: 'ui-overlay',
   sceneView: {
     id: 'scene-view:my-plugin',
@@ -716,6 +722,9 @@ dist/plugins/{family}/{plugin-id}/
 └── plugin.js        # Bundled ES module
 ```
 
+> The directory name under `dist/plugins/` is derived from the manifest's `family` field. The loader always relies on the manifest value, so moving bundles between folders does not change routing.
+
+
 ### Building Plugin Bundles
 
 Use the build script to create plugin bundles:
@@ -737,6 +746,7 @@ Plugin manifests are JSON files that describe the plugin:
   "id": "scene-view:comic-panels",
   "name": "Comic Panel View",
   "version": "1.0.0",
+  "family": "scene",
   "type": "ui-overlay",
   "main": "plugin.js",
   "sceneView": {
@@ -819,7 +829,7 @@ GET  /api/v1/plugins/enabled/list       List only enabled plugins
 
 ### Frontend Integration
 
-The plugin catalog is managed via a Zustand store:
+The plugin catalog is managed via a Zustand store that also handles loading/unloading plugin bundles at runtime:
 
 ```typescript
 import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
@@ -833,12 +843,17 @@ function PluginManager() {
   // Disable a plugin
   await disablePlugin('scene-view:comic-panels');
 }
+}
 ```
+
+When the catalog initializes (after the user is authenticated), the store automatically loads
+all enabled plugin bundles via the manifest loader. Enabling/disabling a plugin in the UI
+dynamically loads/unloads the bundle without requiring a page refresh.
 
 ### Settings UI
 
-Plugins can be managed in Settings > Plugins. Users can enable/disable plugins,
-and changes take effect after page reload.
+Plugins can be managed in Settings > Plugins. Users can enable/disable plugins and
+bundles load/unload immediately; no page reload is required.
 
 ### Database Migration
 

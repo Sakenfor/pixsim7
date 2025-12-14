@@ -13,6 +13,7 @@ export const manifest: SceneViewPluginManifest = {
   author: 'PixSim7 Team',
   description: 'Displays scene beats as sequential comic frames with optional captions',
   type: 'ui-overlay',
+  family: 'scene',
   icon: '📚',
   permissions: ['ui:overlay', 'read:session', 'read:world'],
   main: 'plugin.js', // Build output entry point

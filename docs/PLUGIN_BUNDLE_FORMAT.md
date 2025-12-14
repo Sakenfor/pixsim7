@@ -37,6 +37,8 @@ dist/plugins/scene/comic-panel-view/
 ## Manifest Schema
 
 The manifest file (`manifest.json`) contains all metadata needed to load and register the plugin.
+The `family` field is required and is the single source of truth for routing a plugin to the correct registry. Folder
+names (e.g., `dist/plugins/scene/...`) are a convenience for local development—the loader always trusts the manifest.
 
 ### Base Manifest Fields
 
@@ -46,6 +48,7 @@ interface PluginManifest {
   id: string;              // Unique identifier (kebab-case with family prefix)
   name: string;            // Human-readable display name
   version: string;         // Semantic version (e.g., "1.0.0")
+  family: 'scene' | 'ui' | 'tool' | 'control-center'; // Canonical plugin family classification
 
   // Required - Plugin metadata
   type: PluginType;        // Plugin type identifier
@@ -106,6 +109,8 @@ interface SceneViewPluginManifest extends PluginManifest {
     default?: boolean;       // Is this the default scene view?
   };
 }
+
+Scene view bundles must set `family: "scene"` so the loader can route them to the scene-view registry.
 ```
 
 ### Example Manifest
@@ -115,6 +120,7 @@ interface SceneViewPluginManifest extends PluginManifest {
   "id": "scene-view:comic-panels",
   "name": "Comic Panel View",
   "version": "1.0.0",
+  "family": "scene",
   "author": "PixSim7 Team",
   "description": "Displays scene beats as sequential comic frames with optional captions",
   "type": "ui-overlay",
@@ -215,6 +221,9 @@ When a plugin bundle is loaded:
 3. **Loading**: Plugin bundle is loaded via dynamic `import()`
 4. **Registration**: Plugin is registered with the appropriate registry
 
+The loader trusts the manifest's `family` to decide which registry should handle the plugin. Directory names or backend
+metadata that disagree with the manifest trigger a warning, but the manifest always wins.
+
 ```typescript
 // Example registration flow
 async function loadPluginBundle(manifestPath: string) {
@@ -250,6 +259,9 @@ pnpm build:plugin scene/comic-panel-view
 # Build all plugins
 pnpm build:plugins
 ```
+
+> The build script validates that `manifest.family` is set and uses that value (not the source folder) to determine the
+> final `dist/plugins/{family}/{plugin-id}` output path.
 
 ### Build Configuration
 
