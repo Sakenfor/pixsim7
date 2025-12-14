@@ -314,7 +314,7 @@ class PluginCatalogService:
         is_enabled: bool,
     ) -> PluginResponse:
         """Convert catalog entry to response model"""
-        metadata = entry.metadata or {}
+        metadata = entry.meta or {}
 
         return PluginResponse(
             plugin_id=entry.plugin_id,

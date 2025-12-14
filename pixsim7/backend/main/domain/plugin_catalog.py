@@ -88,7 +88,7 @@ class PluginCatalogEntry(SQLModel, table=True):
     )
 
     # ===== METADATA =====
-    metadata: dict = Field(
+    meta: dict = Field(
         default_factory=dict,
         sa_column=Column(JSON),
         description="Additional plugin metadata (permissions, surfaces, etc.)"
