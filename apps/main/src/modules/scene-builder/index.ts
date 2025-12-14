@@ -1,4 +1,5 @@
 import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@lib/registries';
+import type { AssetRef, NpcRef, LocationRef } from '@pixsim7/shared.types';
 
 /**
  * Scene Builder Types - Scene as Function Architecture
@@ -183,13 +184,28 @@ export interface SceneMetaComicPanel {
   id: string;
 
   /** Gallery asset ID or provider asset ID for the panel image */
-  assetId: string;
+  assetId: AssetRef | string;
 
   /** Optional text caption displayed under the panel */
   caption?: string;
 
   /** Optional tags for categorization (mood, location, etc.) */
   tags?: string[];
+
+  /** Canonical NPC references featured in this panel */
+  characters?: NpcRef[];
+
+  /** Canonical location reference depicted in this panel */
+  location?: LocationRef | string;
+
+  /** Optional mood or tone descriptor (e.g., 'tense', 'romantic') */
+  mood?: string;
+
+  /** Optional freeform metadata for custom consumers */
+  metadata?: Record<string, unknown>;
+
+  /** Whether viewers may request/generate fallback art if asset is missing */
+  allowDynamicGeneration?: boolean;
 }
 
 /**

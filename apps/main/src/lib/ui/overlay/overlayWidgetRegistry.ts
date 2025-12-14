@@ -22,7 +22,7 @@ import { createMenuWidget, type MenuWidgetConfig } from './widgets/MenuWidget';
 import { createTooltipWidget, type TooltipWidgetConfig } from './widgets/TooltipWidget';
 import { createVideoScrubWidget, type VideoScrubWidgetConfig } from './widgets/VideoScrubWidget';
 import { createProgressWidget, type ProgressWidgetConfig } from './widgets/ProgressWidget';
-import { createComicPanelWidget, type ComicPanelWidgetConfig } from './widgets/ComicPanelWidget';
+import { createSceneViewHost, type SceneViewHostConfig } from './widgets/SceneViewHost';
 import { createBindingFromValue, type DataBinding } from '@lib/editing-core';
 
 /**
@@ -233,13 +233,17 @@ const progressFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) =
 };
 
 /**
- * Comic panel widget factory
+ * Scene view widget factory
+ *
+ * Creates a generic scene view host that delegates to registered scene view plugins.
+ * The default plugin is 'scene-view:comic-panels' which renders comic-style frames.
  */
-const comicPanelFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
-  const comicPanelConfig: ComicPanelWidgetConfig = {
+const sceneViewFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
+  const sceneViewConfig: SceneViewHostConfig = {
     id: config.id,
     position: fromUnifiedPosition(config.position),
     visibility: fromUnifiedVisibility(config.visibility),
+    sceneViewId: config.props?.sceneViewId as string | undefined,
     panelIdsBinding: extractBinding(config.bindings, 'panelIds'),
     assetIdsBinding: extractBinding(config.bindings, 'assetIds'),
     panelsBinding: extractBinding(config.bindings, 'panels'),
@@ -248,9 +252,10 @@ const comicPanelFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions)
     className: config.style?.className,
     priority: config.position.order,
     onClick: runtimeOptions?.onClick,
+    requestContextBinding: extractBinding(config.bindings, 'requestContext'),
   };
 
-  return createComicPanelWidget(comicPanelConfig);
+  return createSceneViewHost(sceneViewConfig);
 };
 
 /**
@@ -430,11 +435,34 @@ export function registerOverlayWidgets(): void {
     },
   });
 
+  // Register scene-view widget (generic host for scene view plugins)
+  registerWidget({
+    type: 'scene-view',
+    displayName: 'Scene View',
+    icon: 'image',
+    factory: sceneViewFactory,
+    defaultConfig: {
+      type: 'scene-view',
+      componentType: 'overlay',
+      position: { mode: 'anchor', anchor: 'center' },
+      visibility: { simple: 'always' },
+      props: {
+        layout: 'single',
+        showCaption: true,
+        sceneViewId: 'scene-view:comic-panels', // Default to comic panel plugin
+      },
+      bindings: [],
+      version: 1,
+    },
+  });
+
+  // Register comic-panel as an alias for backward compatibility
+  // This uses the same factory but keeps the old type name
   registerWidget({
     type: 'comic-panel',
     displayName: 'Comic Panel',
     icon: 'image',
-    factory: comicPanelFactory,
+    factory: sceneViewFactory,
     defaultConfig: {
       type: 'comic-panel',
       componentType: 'overlay',

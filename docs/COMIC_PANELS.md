@@ -18,11 +18,17 @@ The Comic Panels system provides a simple way to present story beats as sequenti
 Scenes can declare comic panels in their metadata. Each panel references a gallery asset and can include optional captions and tags.
 
 ```typescript
+// Uses canonical AssetRef identifiers (asset:{id}) from @pixsim7/shared.types
 interface SceneMetaComicPanel {
-  id: string;              // Unique panel ID within this scene
-  assetId: string;         // Gallery asset ID or provider asset ID
-  caption?: string;        // Optional text displayed under the image
-  tags?: string[];         // Optional tags (mood, location, etc.)
+  id: string;                     // Unique panel ID within this scene
+  assetId: AssetRef | string;     // Prefer canonical AssetRef identifiers
+  caption?: string;               // Optional text displayed under the image
+  tags?: string[];                // Optional tags (mood, location, etc.)
+  characters?: NpcRef[];          // Canonical NPCs depicted in the panel
+  location?: LocationRef | string;// Canonical or legacy location reference
+  mood?: string;                  // Free-form descriptor ("tense", "romantic", etc.)
+  metadata?: Record<string, any>; // Feature-specific metadata (e.g., scripted captions)
+  allowDynamicGeneration?: boolean; // Defaults to true; disable if panel must never auto-generate
 }
 
 // On DraftScene or SceneMetadata
@@ -109,6 +115,9 @@ interface ComicPanelWidgetConfig {
   layout?: 'single' | 'strip' | 'grid2';
   showCaption?: boolean;
 
+  // Optional asset request context (defaults inferred from scene/session)
+  requestContextBinding?: DataBinding<ComicPanelRequestContext>;
+
   className?: string;
   priority?: number;
 }
@@ -186,14 +195,37 @@ const assetIds = getComicPanelAssetIds(panels);
 ## Implementation Checklist
 
 - [x] TypeScript types for `SceneMetaComicPanel` and `ComicSessionFlags`
-- [x] `ComicPanelWidget` component with layout variants
+- [x] `ComicPanelWidget` component with layout variants (now via `SceneViewHost`)
 - [x] Registry integration for `comic-panel` widget type
 - [x] Overlay editor support (widget list + properties)
 - [x] Gameplay helper functions in `gameplay-ui-core`
 - [x] Documentation (this file)
+- [x] Plugin architecture - comic panel view as self-contained plugin
 - [ ] HUD editor integration (pending Task 97)
 - [ ] Example scene with comic panels
 - [ ] Transition orchestration integration
+
+## Plugin Architecture
+
+The comic panel rendering is now implemented as a self-contained scene view plugin:
+
+```
+plugins/scene/comic-panel-view/
+├── manifest.ts          # Plugin metadata
+├── PluginSceneView.tsx  # Render component
+├── index.ts             # Entry point + registration
+└── README.md            # Plugin docs
+```
+
+The plugin:
+- Imports only from stable SDK modules (`@features/scene`, `@lib/assetProvider`, `@pixsim7/shared.types`)
+- Self-registers with `sceneViewRegistry` on import
+- Can be bundled/distributed independently
+
+The overlay widget system uses `SceneViewHost` which delegates to registered scene view plugins.
+The `comic-panel` widget type is an alias for backward compatibility.
+
+See [Plugin Architecture](./PLUGIN_ARCHITECTURE.md#scene-view-plugins) for details on creating custom scene view plugins.
 
 ## Examples
 
@@ -274,6 +306,17 @@ const happyPanels = getComicPanelsByTags(sceneMeta, ['happy']);
 
 1. **Asset Management**: Store panel images in the gallery system for proper versioning and access control
 2. **Performance**: Preload panel assets before displaying them using `getComicPanelAssetIds()`
+
+## Dynamic Asset Resolution & Generation
+
+When a panel references a canonical `AssetRef`, the UI resolves it via the shared `AssetProvider`. If the referenced asset is missing (or a legacy scene still points at a numeric ID), the system can optionally fall back to **dynamic generation**:
+
+- Each `SceneMetaComicPanel` can declare `allowDynamicGeneration?: boolean` (defaults to `true`).
+- Additional context (`characters`, `location`, `mood`, `tags`, captions) is used to build a generation prompt.
+- The overlay widget may supply extra context through `requestContextBinding` (scene ID, choice ID, etc.).
+- When no asset is found (or generation fails), the widget falls back to the older `/api/assets/{id}` path or a placeholder image.
+
+This keeps legacy content functional while enabling new scenes to rely entirely on canonical IDs and on-demand generation.
 3. **Captions**: Keep captions short (1-2 sentences) for better readability
 4. **Tags**: Use consistent tag naming (lowercase, descriptive) for easier filtering
 5. **Layout Selection**:

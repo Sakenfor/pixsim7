@@ -302,5 +302,4 @@ export function GenerationWorkbench({
 /**
  * Re-export for convenience
  */
-export { GenerationSettingsBar } from '@features/controlCenter/components/GenerationSettingsBar';
-export { GenerationStatusDisplay } from '@features/controlCenter/components/GenerationStatusDisplay';
+export { GenerationSettingsBar, GenerationStatusDisplay } from '@lib/generation-ui';

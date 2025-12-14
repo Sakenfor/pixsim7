@@ -117,6 +117,7 @@ This lets us keep **feature-first ownership in the codebase**, while still havin
 | **gizmo-surface** | `features/gizmos/lib/core/surfaceRegistry.ts` | `features/gizmos/plugins/*` | gizmoSurfaceRegistry → registryBridge → catalog |
 | **workspace-panel** | `lib/ui/panels/panelRegistry.ts` | Various (components, features) | panelRegistry → registryBridge → catalog |
 | **dev-tool** | `lib/devtools/types.ts` | `features/devtools/plugins/*` | devToolRegistry → registryBridge → catalog |
+| **scene-view** | `lib/plugins/sceneViewPlugin.ts` | `plugins/scene/*` | sceneViewRegistry (standalone) |
 | **session-helper** | `@pixsim7/game.engine` | `plugins/`, `lib/game/customHelpers.ts` | sessionHelperRegistry → registryBridge → catalog |
 | **interaction** | `lib/game/interactions/types.ts` | `lib/game/interactions/` | interactionRegistry → registryBridge → catalog |
 | **node-type** | `@pixsim7/shared.types` | `lib/plugins/*Node.ts`, features/graph | nodeTypeRegistry → registryBridge → catalog |
@@ -580,6 +581,121 @@ When adding a new plugin kind:
 
 ---
 
+---
+
+## Scene View Plugins
+
+Scene view plugins provide different presentation modes for scene content in overlays and HUD. They follow the standard plugin architecture but use a specialized registry for rendering scene data.
+
+### Architecture
+
+```
+lib/plugins/
+├── sceneViewPlugin.ts       # SceneViewRegistry, types
+└── bootstrapSceneViews.ts   # Plugin loading
+
+plugins/scene/               # Scene view plugin implementations
+└── comic-panel-view/
+    ├── manifest.ts          # Plugin metadata
+    ├── PluginSceneView.tsx  # Render component
+    ├── index.ts             # Entry point + registration
+    └── README.md            # Plugin docs
+
+lib/ui/overlay/widgets/
+└── SceneViewHost.tsx        # Generic host widget
+```
+
+### SDK Surface
+
+Scene view plugins import from these stable modules:
+
+- `@features/scene` - Types and helpers:
+  - `SceneMetaComicPanel`, `ComicPanelRequestContext`, `ComicPanelLayout`
+  - `getActiveComicPanels`, `getComicPanelById`, `getComicPanelsByTags`
+  - `ensureAssetRef`, `extractNumericAssetId`
+- `@lib/assetProvider` - Asset resolution via `useAssetProvider`
+- `@lib/plugins/sceneViewPlugin` - Plugin types and registry
+- `@pixsim7/shared.types` - Canonical reference types
+
+### Creating a Scene View Plugin
+
+1. Create plugin folder under `plugins/scene/{plugin-name}/`
+
+2. Define manifest:
+
+```typescript
+// manifest.ts
+import type { SceneViewPluginManifest } from '@lib/plugins/sceneViewPlugin';
+
+export const manifest: SceneViewPluginManifest = {
+  id: 'scene-view:my-plugin',
+  name: 'My Scene View',
+  version: '1.0.0',
+  type: 'ui-overlay',
+  sceneView: {
+    id: 'scene-view:my-plugin',
+    displayName: 'My View',
+    surfaces: ['overlay', 'hud'],
+    default: false,
+  },
+};
+```
+
+3. Create render component:
+
+```typescript
+// PluginSceneView.tsx
+import type { SceneViewRenderProps } from '@lib/plugins/sceneViewPlugin';
+
+export function MySceneView({ panels, layout, showCaption }: SceneViewRenderProps) {
+  // Render panels using SDK helpers and types
+  return <div>{/* Custom rendering */}</div>;
+}
+```
+
+4. Register on import:
+
+```typescript
+// index.ts
+import { sceneViewRegistry } from '@lib/plugins/sceneViewPlugin';
+import { manifest } from './manifest';
+import { MySceneView } from './PluginSceneView';
+
+export const plugin = {
+  render: (props) => <MySceneView {...props} />,
+};
+
+sceneViewRegistry.register(manifest, plugin);
+```
+
+5. Add to bootstrap:
+
+```typescript
+// lib/plugins/bootstrapSceneViews.ts
+await import('../../plugins/scene/my-plugin');
+```
+
+### Using Scene View Widgets
+
+The `SceneViewHost` widget delegates to registered plugins:
+
+```typescript
+import { createSceneViewHost } from '@lib/ui/overlay/widgets/SceneViewHost';
+
+const widget = createSceneViewHost({
+  id: 'my-scene-widget',
+  position: { anchor: 'center' },
+  visibility: { trigger: 'always' },
+  sceneViewId: 'scene-view:comic-panels', // Or omit for default
+  layout: 'strip',
+  showCaption: true,
+});
+```
+
+The `comic-panel` widget type in overlay configs uses `SceneViewHost` internally.
+
+---
+
 ## Related Documentation
 
 - [Gallery Tools Plugin](./GALLERY_TOOLS_PLUGIN.md)
@@ -588,3 +704,4 @@ When adding a new plugin kind:
 - [Session Helper Reference](./SESSION_HELPER_REFERENCE.md)
 - [Interaction Authoring Guide](./INTERACTION_AUTHORING_GUIDE.md)
 - [App Capability Registry](./APP_CAPABILITY_REGISTRY.md)
+- [Comic Panels System](./COMIC_PANELS.md)

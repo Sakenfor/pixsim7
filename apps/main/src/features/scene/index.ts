@@ -35,3 +35,28 @@ export { SceneStateEditor, type SceneStateEditorProps } from './components/playe
 // ============================================================================
 
 export type { PlaybackEvent } from './lib/core';
+
+// ============================================================================
+// UI Helpers
+// ============================================================================
+
+export {
+  ComicPanelView,
+  type ComicPanelViewProps,
+  type ComicPanelLayout,
+  getActiveComicPanels,
+  getComicPanelById,
+  getComicPanelsByTags,
+  getComicPanelAssetIds,
+  setCurrentComicPanel,
+  clearCurrentComicPanel,
+  type ComicPanelSession,
+  type ComicPanelSceneMeta,
+  type ComicPanelRequestContext,
+  type ComicPanelDerivedContext,
+  type SceneMetaComicPanel,
+  type ComicSessionFlags,
+  // Utilities for scene view plugins
+  ensureAssetRef,
+  extractNumericAssetId,
+} from './ui/comicPanels';

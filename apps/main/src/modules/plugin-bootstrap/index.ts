@@ -2,6 +2,7 @@ import type { Module } from '../types';
 import { pluginManager, bootstrapExamplePlugins } from '../../lib/plugins';
 import { loadAllPlugins } from '../../lib/plugins/loader';
 import { bootstrapControlCenters } from '../../lib/plugins/bootstrapControlCenters';
+import { bootstrapSceneViewPlugins } from '../../lib/plugins/bootstrapSceneViews';
 
 /**
  * Plugin Bootstrap Module
@@ -26,6 +27,9 @@ export const pluginBootstrapModule: Module = {
 
     // Bootstrap control center implementations (dock, cubes v1, cubes v2)
     await bootstrapControlCenters();
+
+    // Bootstrap scene view plugins (comic panel view, etc.)
+    await bootstrapSceneViewPlugins();
 
     // Load all sandboxed plugins (node types, helpers, interactions) from plugins directory
     // Note: This automatically discovers and registers:
