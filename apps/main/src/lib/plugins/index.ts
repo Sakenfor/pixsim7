@@ -12,4 +12,7 @@ export { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 // Plugin loader
 export * from './loader';
 
+// Manifest-based bundle loader
+export * from './manifestLoader';
+
 export type * from './types';

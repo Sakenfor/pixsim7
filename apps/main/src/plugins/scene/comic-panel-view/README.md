@@ -16,7 +16,29 @@ This plugin provides a comic-style presentation mode for scenes, displaying pane
 
 The plugin is automatically loaded during application bootstrap via `bootstrapSceneViewPlugins()`.
 
-For manual registration:
+### Option 1: Hardcoded Import (Default)
+
+The plugin is loaded via direct import in the bootstrap module. No additional configuration needed.
+
+### Option 2: Bundle-Driven Loading
+
+Build the plugin as a standalone bundle:
+
+```bash
+# From workspace root
+pnpm build:plugin scene/comic-panel-view
+```
+
+This outputs:
+```
+dist/plugins/scene/comic-panel-view/
+├── manifest.json
+└── plugin.js
+```
+
+The plugin bootstrap will automatically discover and load the bundle.
+
+### Option 3: Manual Registration
 
 ```typescript
 import { manifest, plugin } from '@plugins/scene/comic-panel-view';
@@ -83,5 +105,6 @@ comic-panel-view/
 ## Related Documentation
 
 - [Plugin Architecture](../../../../docs/PLUGIN_ARCHITECTURE.md)
+- [Plugin Bundle Format](../../../../docs/PLUGIN_BUNDLE_FORMAT.md)
 - [Comic Panels System](../../../../docs/COMIC_PANELS.md)
 - [Scene View Plugin Types](../../../lib/plugins/sceneViewPlugin.ts)
