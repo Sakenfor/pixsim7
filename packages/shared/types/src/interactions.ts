@@ -347,6 +347,13 @@ export interface NpcInteractionDefinition {
   /** @deprecated Use targetRolesOrIds */
   targetNpcIds?: number[];
 
+  /** Template/Link target references (additive, backward compatible)
+   * Allows interactions to target template entities that resolve to runtime entities via ObjectLink
+   */
+  targetTemplateKind?: string;  // e.g., 'character', 'itemTemplate'
+  targetTemplateId?: string;    // Template entity ID (usually UUID)
+  targetLinkId?: string;        // Optional explicit link ID
+
   /** Which surface this interaction uses */
   surface: NpcInteractionSurface;
 

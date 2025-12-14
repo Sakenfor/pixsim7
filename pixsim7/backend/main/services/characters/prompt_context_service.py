@@ -146,20 +146,47 @@ class _NpcContextResolver:
 
         merged_traits = await self.instance_service.get_merged_traits(instance_id)
 
-        # 2. Resolve NPC
+        # 2. Resolve NPC (supports both CharacterNPCLink and generic ObjectLink)
         npc: Optional[GameNPC] = None
         npc_state: Optional[NPCState] = None
         resolved_npc_id = npc_id
 
         if resolved_npc_id:
+            # Direct runtime ID provided
             npc = await self.db.get(GameNPC, resolved_npc_id)
         else:
+            # Resolve via links (try CharacterNPCLink first, then ObjectLink)
+            # 1. Try CharacterNPCLink (legacy/existing)
             links = await self.sync_service.get_links_for_instance(instance_id)
             active_links = [l for l in links if l.sync_enabled]
+
             if active_links:
                 active_links.sort(key=lambda l: l.priority or 0, reverse=True)
                 resolved_npc_id = active_links[0].npc_id
                 npc = await self.db.get(GameNPC, resolved_npc_id)
+            else:
+                # 2. Try generic ObjectLink
+                try:
+                    from services.links.link_service import LinkService
+                    link_service = LinkService(self.db)
+
+                    # Get active link for this character template
+                    object_links = await link_service.get_links_for_template(
+                        'character',
+                        str(instance_id)
+                    )
+
+                    # Filter to NPC links only
+                    npc_links = [l for l in object_links if l.runtime_kind == 'npc' and l.sync_enabled]
+
+                    if npc_links:
+                        # Sort by priority, pick highest
+                        npc_links.sort(key=lambda l: l.priority or 0, reverse=True)
+                        resolved_npc_id = npc_links[0].runtime_id
+                        npc = await self.db.get(GameNPC, resolved_npc_id)
+                except ImportError:
+                    # ObjectLink system not available yet, skip
+                    pass
 
         if npc:
             npc_state = await self.db.get(NPCState, npc.id)
@@ -440,3 +467,113 @@ class PromptContextService:
                 prefer_live=prefer_live,
             )
         )
+
+    async def get_prompt_context_from_template(
+        self,
+        template_kind: str,
+        template_id: str,
+        *,
+        runtime_id: Optional[str] = None,
+        link_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        prefer_live: bool = True,
+    ) -> PromptContextSnapshot:
+        """
+        Resolve prompt context from a template reference using ObjectLink.
+
+        This method resolves template→runtime via ObjectLink and produces a snapshot
+        using the generic resolver. Supports context-based link activation.
+
+        Args:
+            template_kind: Template entity kind (e.g., 'character', 'itemTemplate')
+            template_id: Template entity ID (usually UUID)
+            runtime_id: Optional explicit runtime ID (bypasses link resolution)
+            link_id: Optional explicit link ID to use
+            context: Runtime context for link activation (e.g., location, time)
+            prefer_live: Prefer runtime values over template values
+
+        Returns:
+            PromptContextSnapshot with link-resolved data
+
+        Example:
+            # Resolve character template to active NPC
+            snapshot = await service.get_prompt_context_from_template(
+                template_kind='character',
+                template_id='abc-123-uuid',
+                context={'location': {'zone': 'downtown'}}
+            )
+        """
+        try:
+            from services.links.link_service import LinkService
+            from services.links.mapping_registry import get_mapping_registry
+
+            link_service = LinkService(self.db)
+            mapping_registry = get_mapping_registry()
+
+            # 1. Determine runtime entity kind from mapping ID
+            # Try to find a registered mapping for this template kind
+            runtime_kind = None
+            for mapping_id in mapping_registry.list_mappings().keys():
+                if mapping_id.startswith(f"{template_kind}->"):
+                    # Extract runtime kind from "templateKind->runtimeKind"
+                    runtime_kind = mapping_id.split('->')[-1]
+                    break
+
+            if not runtime_kind:
+                raise ValueError(
+                    f"No mapping found for template kind '{template_kind}'. "
+                    f"Available mappings: {list(mapping_registry.list_mappings().keys())}"
+                )
+
+            # 2. Resolve runtime ID via ObjectLink (if not explicitly provided)
+            resolved_runtime_id = runtime_id
+
+            if not resolved_runtime_id:
+                if link_id:
+                    # Use explicit link ID
+                    from uuid import UUID as UUIDType
+                    link = await link_service.get_link(UUIDType(link_id))
+                    if link:
+                        resolved_runtime_id = str(link.runtime_id)
+                else:
+                    # Find active link for this template
+                    if context:
+                        # Context-aware resolution
+                        # Get all links for template, filter by activation
+                        links = await link_service.get_links_for_template(
+                            template_kind,
+                            template_id
+                        )
+                        # TODO: Use activation.filter_active_links once imported
+                        # For now, just pick highest priority link
+                        active_links = [l for l in links if l.sync_enabled]
+                        if active_links:
+                            active_links.sort(key=lambda l: l.priority or 0, reverse=True)
+                            resolved_runtime_id = str(active_links[0].runtime_id)
+                    else:
+                        # Simple highest-priority resolution
+                        links = await link_service.get_links_for_template(
+                            template_kind,
+                            template_id
+                        )
+                        active_links = [l for l in links if l.sync_enabled]
+                        if active_links:
+                            active_links.sort(key=lambda l: l.priority or 0, reverse=True)
+                            resolved_runtime_id = str(active_links[0].runtime_id)
+
+            # 3. Build request for generic resolver
+            request = PromptContextRequest(
+                entity_type=runtime_kind,
+                template_id=template_id,
+                runtime_id=resolved_runtime_id,
+                prefer_live=prefer_live,
+            )
+
+            # 4. Resolve via registered resolver
+            return await self.get_prompt_context(request)
+
+        except ImportError:
+            raise ValueError(
+                "Generic ObjectLink system not available. "
+                "Use get_npc_prompt_context() for NPC resolution."
+            )

@@ -97,6 +97,13 @@ export interface SceneContentNode {
   endType?: 'success' | 'failure' | 'neutral'
   endMessage?: string
 
+  // Template/Link references (additive, backward compatible)
+  // Allows nodes to reference template entities (character, itemTemplate, etc.)
+  // that resolve to runtime entities (npc, item) via ObjectLink at execution time
+  templateKind?: string  // e.g., 'character', 'itemTemplate', 'propTemplate'
+  templateId?: string    // Template entity ID (usually UUID)
+  linkId?: string        // Optional explicit link ID for specific link resolution
+
   // optional prompt or metadata
   meta?: Record<string, any>
 }

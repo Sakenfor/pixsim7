@@ -300,6 +300,12 @@ export interface SceneTransitionNode extends NarrativeNodeBase {
   /** Role bindings for scene (NPC assignments) */
   roleBindings?: Record<string, number>; // role -> npc_id
 
+  /** Template-based role bindings (additive, backward compatible)
+   * Maps role to template reference that resolves to runtime entity via ObjectLink
+   * Format: { role: { templateKind: 'character', templateId: 'uuid' } }
+   */
+  templateRoleBindings?: Record<string, { templateKind: string; templateId: string; linkId?: string }>;
+
   /** Transition effects */
   transition?: {
     type?: 'fade' | 'cut' | 'wipe';
