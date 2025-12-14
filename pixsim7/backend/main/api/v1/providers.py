@@ -470,3 +470,111 @@ async def update_provider_settings(
     _save_provider_settings(settings)
 
     return current
+
+# ===== AI PROVIDER (LLM) SETTINGS =====
+
+class AIProviderSettings(BaseModel):
+    """AI Provider configuration for LLM services"""
+    openai_api_key: Optional[str] = Field(None, description="OpenAI API key")
+    anthropic_api_key: Optional[str] = Field(None, description="Anthropic API key")
+    llm_provider: str = Field("anthropic", description="Default LLM provider")
+    llm_default_model: Optional[str] = Field(None, description="Default model to use")
+
+
+@router.get("/ai-providers/settings", response_model=AIProviderSettings)
+async def get_ai_provider_settings(user: CurrentUser):
+    """
+    Get AI provider (LLM) settings for current user
+
+    Returns user-specific API keys and default provider configuration for prompt editing and AI features.
+    """
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
+    from sqlalchemy import select
+
+    db = DatabaseSession()
+
+    # Get user settings from database
+    result = await db.execute(
+        select(UserAISettings).where(UserAISettings.user_id == user.id)
+    )
+    user_settings = result.scalar_one_or_none()
+
+    # Mask API keys for security (show only last 4 characters)
+    def mask_key(key: Optional[str]) -> Optional[str]:
+        if not key or len(key) < 8:
+            return None
+        return f"{'*' * (len(key) - 4)}{key[-4:]}"
+
+    if user_settings:
+        return AIProviderSettings(
+            openai_api_key=mask_key(user_settings.openai_api_key),
+            anthropic_api_key=mask_key(user_settings.anthropic_api_key),
+            llm_provider=user_settings.llm_provider,
+            llm_default_model=user_settings.llm_default_model,
+        )
+    else:
+        # Return defaults if no settings exist
+        return AIProviderSettings(
+            openai_api_key=None,
+            anthropic_api_key=None,
+            llm_provider="anthropic",
+            llm_default_model=None,
+        )
+
+
+@router.patch("/ai-providers/settings", response_model=AIProviderSettings)
+async def update_ai_provider_settings(
+    updates: AIProviderSettings,
+    user: CurrentUser,
+):
+    """
+    Update AI provider settings for current user
+
+    Updates user-specific API keys and default provider configuration.
+    Settings are stored per-user in the database.
+    """
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
+    from sqlalchemy import select
+
+    db = DatabaseSession()
+
+    # Get or create user settings
+    result = await db.execute(
+        select(UserAISettings).where(UserAISettings.user_id == user.id)
+    )
+    user_settings = result.scalar_one_or_none()
+
+    if not user_settings:
+        user_settings = UserAISettings(user_id=user.id)
+        db.add(user_settings)
+
+    # Update settings (only non-masked values)
+    if updates.openai_api_key and not updates.openai_api_key.startswith('*'):
+        user_settings.openai_api_key = updates.openai_api_key
+
+    if updates.anthropic_api_key and not updates.anthropic_api_key.startswith('*'):
+        user_settings.anthropic_api_key = updates.anthropic_api_key
+
+    if updates.llm_provider:
+        user_settings.llm_provider = updates.llm_provider
+
+    if updates.llm_default_model is not None:
+        user_settings.llm_default_model = updates.llm_default_model
+
+    await db.commit()
+    await db.refresh(user_settings)
+
+    # Return masked keys
+    def mask_key(key: Optional[str]) -> Optional[str]:
+        if not key or len(key) < 8:
+            return None
+        return f"{'*' * (len(key) - 4)}{key[-4:]}"
+
+    return AIProviderSettings(
+        openai_api_key=mask_key(user_settings.openai_api_key),
+        anthropic_api_key=mask_key(user_settings.anthropic_api_key),
+        llm_provider=user_settings.llm_provider,
+        llm_default_model=user_settings.llm_default_model,
+    )
