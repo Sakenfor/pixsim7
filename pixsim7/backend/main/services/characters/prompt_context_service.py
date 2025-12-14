@@ -34,6 +34,8 @@ from pixsim7.backend.main.services.characters.npc_sync_service import (
 from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
     FieldMapping,
     get_npc_field_mapping,
+    set_nested_value,
+    get_nested_value,
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -155,12 +157,10 @@ class _NpcContextResolver:
         if npc:
             npc_state = await self.db.get(NPCState, npc.id)
 
-        # 3. Build snapshot via field mapping
-        traits = {}
-        state = {}
-        location_id = None
-        name = instance.name  # Default
+        # 3. Build snapshot via generic field mapping
+        snapshot_data: Dict[str, Any] = {}
 
+        # Apply field mappings using generic setter
         for field_key, mapping in self.field_mapping.items():
             value = await self._resolve_field(
                 mapping,
@@ -172,27 +172,16 @@ class _NpcContextResolver:
             )
 
             if value is not None:
-                # Store in appropriate section
-                if field_key == "name":
-                    name = value
-                elif field_key == "location_id":
-                    location_id = value
-                elif field_key.startswith("personality."):
-                    axis_name = field_key.split(".", 1)[1]
-                    traits[axis_name] = value
-                elif field_key.startswith("visual_traits."):
-                    trait_name = field_key.split(".", 1)[1]
-                    if "visual" not in traits:
-                        traits["visual"] = {}
-                    traits["visual"][trait_name] = value
-                elif field_key.startswith("state."):
-                    state_name = field_key.split(".", 1)[1]
-                    state[state_name] = value
+                # Set value at target path (entity-agnostic)
+                set_nested_value(snapshot_data, mapping.target_path, value)
 
         # 4. Normalize personality via StatEngine
+        traits = snapshot_data.get("traits", {})
         if traits:
             personality_stats = await self._normalize_personality(traits)
+            # Merge normalized stats back into traits
             traits.update(personality_stats)
+            snapshot_data["traits"] = traits
 
         # 5. Determine source
         if npc and request.prefer_live:
@@ -202,14 +191,15 @@ class _NpcContextResolver:
         else:
             source = "snapshot"
 
+        # 6. Build snapshot from accumulator
         return PromptContextSnapshot(
             entity_type="npc",
             template_id=str(instance_id),
             runtime_id=str(npc.id) if npc else None,
-            name=name,
-            traits=traits,
-            state=state,
-            location_id=location_id,
+            name=snapshot_data.get("name", instance.name),
+            traits=snapshot_data.get("traits", {}),
+            state=snapshot_data.get("state", {}),
+            location_id=snapshot_data.get("location_id"),
             source=source,
             world_id=getattr(instance, "world_id", None),
         )
@@ -239,33 +229,33 @@ class _NpcContextResolver:
         # Try primary source
         value = None
         if primary_source == "instance" and mapping.instance_path:
-            value = self._get_nested_value(merged_traits, mapping.instance_path)
+            value = get_nested_value(merged_traits, mapping.instance_path)
         elif primary_source == "npc" and mapping.npc_path:
             if npc:
                 if mapping.npc_path == "current_location_id" and npc_state:
                     value = getattr(npc_state, "current_location_id", None)
                 elif mapping.npc_path.startswith("state.") and npc_state:
                     state_key = mapping.npc_path.split(".", 1)[1]
-                    value = self._get_nested_value(npc_state.state or {}, state_key)
+                    value = get_nested_value(npc_state.state or {}, state_key)
                 elif mapping.npc_path == "name":
                     value = getattr(npc, "name", None)
                 else:
-                    value = self._get_nested_value(npc.personality or {}, mapping.npc_path)
+                    value = get_nested_value(npc.personality or {}, mapping.npc_path)
 
         # Try fallback if primary failed
         if value is None and fallback_source != "none":
             if fallback_source == "instance" and mapping.instance_path:
-                value = self._get_nested_value(merged_traits, mapping.instance_path)
+                value = get_nested_value(merged_traits, mapping.instance_path)
             elif fallback_source == "npc" and mapping.npc_path and npc:
                 if mapping.npc_path == "current_location_id" and npc_state:
                     value = getattr(npc_state, "current_location_id", None)
                 elif mapping.npc_path.startswith("state.") and npc_state:
                     state_key = mapping.npc_path.split(".", 1)[1]
-                    value = self._get_nested_value(npc_state.state or {}, state_key)
+                    value = get_nested_value(npc_state.state or {}, state_key)
                 elif mapping.npc_path == "name":
                     value = getattr(npc, "name", None)
                 else:
-                    value = self._get_nested_value(npc.personality or {}, mapping.npc_path)
+                    value = get_nested_value(npc.personality or {}, mapping.npc_path)
 
         return value
 
@@ -319,18 +309,6 @@ class _NpcContextResolver:
             })
 
         return normalized_results
-
-    def _get_nested_value(self, data: Dict, path: str) -> Any:
-        """Get value from nested dict using dot notation."""
-        keys = path.split(".")
-        value = data
-        for key in keys:
-            if not isinstance(value, dict):
-                return None
-            value = value.get(key)
-            if value is None:
-                return None
-        return value
 
 
 # -------------------------------------------------------------------------------------------------

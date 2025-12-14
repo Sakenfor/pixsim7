@@ -11,7 +11,10 @@ from dataclasses import dataclass
 
 @dataclass
 class FieldMapping:
-    """Mapping for a single field in NPC prompt context."""
+    """Mapping for a single field in prompt context (entity-agnostic)."""
+
+    # Target path in snapshot (dot notation, e.g., "name", "traits.openness", "state.mood")
+    target_path: str
 
     # Source authority
     source: Literal["instance", "npc", "both"]  # Which entity owns this field
@@ -23,7 +26,7 @@ class FieldMapping:
 
     # Stat engine integration
     stat_axis: Optional[str] = None      # If this field is a stat axis, name of axis
-    stat_package_id: Optional[str] = None   # Stat package ID (e.g., "personality") - resolved via registry
+    stat_package_id: Optional[str] = None   # Stat package ID (e.g., "core.personality") - resolved via registry
 
     # Note: normalize flag is optional - if stat_axis is present, normalization happens automatically
 
@@ -32,6 +35,7 @@ class FieldMapping:
 NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
     # Name: Instance authoritative, fallback to NPC
     "name": FieldMapping(
+        target_path="name",
         source="instance",
         fallback="npc",
         instance_path="name",
@@ -41,6 +45,7 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
     # Personality axes: Instance authoritative, normalize via StatEngine
     # Note: stat_axis presence triggers automatic normalization
     "personality.openness": FieldMapping(
+        target_path="traits.openness",
         source="instance",
         fallback="npc",
         instance_path="personality_traits.openness",
@@ -49,6 +54,7 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
         stat_package_id="core.personality",
     ),
     "personality.conscientiousness": FieldMapping(
+        target_path="traits.conscientiousness",
         source="instance",
         fallback="npc",
         instance_path="personality_traits.conscientiousness",
@@ -57,6 +63,7 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
         stat_package_id="core.personality",
     ),
     "personality.extraversion": FieldMapping(
+        target_path="traits.extraversion",
         source="instance",
         fallback="npc",
         instance_path="personality_traits.extraversion",
@@ -65,6 +72,7 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
         stat_package_id="core.personality",
     ),
     "personality.agreeableness": FieldMapping(
+        target_path="traits.agreeableness",
         source="instance",
         fallback="npc",
         instance_path="personality_traits.agreeableness",
@@ -73,6 +81,7 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
         stat_package_id="core.personality",
     ),
     "personality.neuroticism": FieldMapping(
+        target_path="traits.neuroticism",
         source="instance",
         fallback="npc",
         instance_path="personality_traits.neuroticism",
@@ -83,12 +92,14 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
 
     # Visual traits: Instance authoritative
     "visual_traits.scars": FieldMapping(
+        target_path="traits.visual.scars",
         source="instance",
         fallback="none",
         instance_path="visual_overrides.scars",
         npc_path="personality.appearance.scars",
     ),
     "visual_traits.build": FieldMapping(
+        target_path="traits.visual.build",
         source="instance",
         fallback="none",
         instance_path="visual_overrides.build",
@@ -97,12 +108,14 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
 
     # State: NPC authoritative (runtime state)
     "state.mood": FieldMapping(
+        target_path="state.mood",
         source="npc",
         fallback="instance",
         instance_path="current_state.mood",
         npc_path="state.mood",
     ),
     "state.health": FieldMapping(
+        target_path="state.health",
         source="npc",
         fallback="instance",
         instance_path="current_state.health",
@@ -111,6 +124,7 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
 
     # Location: NPC authoritative (runtime)
     "location_id": FieldMapping(
+        target_path="location_id",
         source="npc",
         fallback="none",
         npc_path="current_location_id",  # From NPCState
@@ -121,3 +135,47 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
 def get_npc_field_mapping() -> Dict[str, FieldMapping]:
     """Get the NPC field mapping configuration."""
     return NPC_FIELD_MAPPING
+
+
+def set_nested_value(data: Dict[str, Any], path: str, value: Any) -> None:
+    """
+    Set value in nested dict using dot notation.
+
+    Creates intermediate dicts as needed.
+
+    Example:
+        data = {}
+        set_nested_value(data, "traits.visual.scars", ["scar1"])
+        # Result: {"traits": {"visual": {"scars": ["scar1"]}}}
+    """
+    keys = path.split(".")
+    target = data
+
+    # Navigate/create path to target
+    for key in keys[:-1]:
+        if key not in target:
+            target[key] = {}
+        target = target[key]
+
+    # Set the final value
+    target[keys[-1]] = value
+
+
+def get_nested_value(data: Dict, path: str) -> Any:
+    """
+    Get value from nested dict using dot notation.
+
+    Example:
+        data = {"traits": {"visual": {"scars": ["scar1"]}}}
+        get_nested_value(data, "traits.visual.scars")
+        # Result: ["scar1"]
+    """
+    keys = path.split(".")
+    value = data
+    for key in keys:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+        if value is None:
+            return None
+    return value
