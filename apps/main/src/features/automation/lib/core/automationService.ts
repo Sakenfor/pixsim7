@@ -5,7 +5,7 @@ import type {
   AutomationExecution,
   ExecutionLoop,
   DeviceScanResult,
-} from '../../types/automation';
+} from '../../types';
 
 class AutomationService {
   // ===== Device Management =====

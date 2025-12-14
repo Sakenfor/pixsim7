@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { type AutomationExecution, AutomationStatus, automationService } from '../types';
+import { type AutomationExecution, AutomationStatus } from '../types';
+import { automationService } from '../lib/core';
 import { Button, Panel } from '@pixsim7/shared.ui';
 import { ExecutionCard } from './ExecutionCard';
 
