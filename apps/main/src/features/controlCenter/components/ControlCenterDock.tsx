@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDockBehavior } from './hooks/useDockBehavior';
 import { DockToolbar } from './DockToolbar';
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
+import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 
 // Note: Control Center modules are now auto-registered when their parent modules
 // register with the global module registry (see modules/index.ts)
@@ -19,6 +20,7 @@ export function ControlCenterDock() {
   const activeModule = useControlCenterStore(s => s.activeModule);
   const enabledModules = useControlCenterStore(s => s.enabledModules);
   const dockPosition = useControlCenterStore(s => s.dockPosition);
+  const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
   const floatingPosition = useControlCenterStore(s => s.floatingPosition);
   const floatingSize = useControlCenterStore(s => s.floatingSize);
   const setOpen = useControlCenterStore(s => s.setOpen);
@@ -29,6 +31,11 @@ export function ControlCenterDock() {
   const setFloatingPosition = useControlCenterStore(s => s.setFloatingPosition);
   const setFloatingSize = useControlCenterStore(s => s.setFloatingSize);
   const toggleMode = useControlCenterStore(s => s.toggleMode);
+
+  // Asset viewer state for conformToOtherPanels behavior
+  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
+  const viewerMode = useAssetViewerStore((s) => s.mode);
+  const viewerSettings = useAssetViewerStore((s) => s.settings);
 
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
@@ -67,14 +74,37 @@ export function ControlCenterDock() {
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
 
+  // Calculate layout adjustments when conforming to other panels
+  const layoutAdjustment = useMemo(() => {
+    if (!conformToOtherPanels || isFloating || !isViewerOpen || viewerMode !== 'side') {
+      return { offsetRight: 0, widthReduction: 0 };
+    }
+
+    // Media viewer is open in side mode, calculate the width it occupies
+    const viewerWidthPercent = viewerSettings.panelWidth;
+    const viewerWidthPx = (window.innerWidth * viewerWidthPercent) / 100;
+
+    // For horizontal docks (top/bottom), reduce width to not overlap with viewer
+    if (dockPosition === 'bottom' || dockPosition === 'top') {
+      return { offsetRight: 0, widthReduction: viewerWidthPx };
+    }
+
+    // For right dock, offset it to the left by the viewer width
+    if (dockPosition === 'right') {
+      return { offsetRight: viewerWidthPx, widthReduction: 0 };
+    }
+
+    return { offsetRight: 0, widthReduction: 0 };
+  }, [conformToOtherPanels, isFloating, isViewerOpen, viewerMode, viewerSettings.panelWidth, dockPosition]);
+
   // Position classes (for docked modes)
   const positionClasses = clsx(
     'fixed z-40 select-none transition-all duration-300 ease-out',
     {
-      'left-0 right-0 bottom-0': dockPosition === 'bottom',
+      'left-0 bottom-0': dockPosition === 'bottom',
       'left-0 top-0 bottom-0': dockPosition === 'left',
-      'right-0 top-0 bottom-0': dockPosition === 'right',
-      'left-0 right-0 top-0': dockPosition === 'top',
+      'top-0 bottom-0': dockPosition === 'right',
+      'left-0 top-0': dockPosition === 'top',
     }
   );
 
@@ -90,9 +120,21 @@ export function ControlCenterDock() {
     'opacity-90': !open,
   });
 
-  const containerStyle = isVertical
-    ? { width: `${height}px` }
-    : { height: `${height}px` };
+  const containerStyle: React.CSSProperties = useMemo(() => {
+    const baseStyle = isVertical
+      ? { width: `${height}px` }
+      : { height: `${height}px` };
+
+    // Apply layout adjustments for conformToOtherPanels
+    if (dockPosition === 'bottom' || dockPosition === 'top') {
+      const adjustedWidth = `calc(100% - ${layoutAdjustment.widthReduction}px)`;
+      return { ...baseStyle, width: adjustedWidth, right: `${layoutAdjustment.offsetRight}px` };
+    } else if (dockPosition === 'right') {
+      return { ...baseStyle, right: `${layoutAdjustment.offsetRight}px` };
+    }
+
+    return baseStyle;
+  }, [isVertical, height, dockPosition, layoutAdjustment]);
 
   // Render content (shared between floating and docked)
   const renderContent = () => (

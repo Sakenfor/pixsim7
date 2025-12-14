@@ -118,6 +118,14 @@ const controlCenterTab: SettingTab = {
           defaultValue: 'overlay',
           disabled: (values) => values.dockPosition === 'floating',
         },
+        {
+          id: 'conformToOtherPanels',
+          type: 'toggle',
+          label: 'Conform to Other Panels',
+          description: 'Adjusts control center layout when other panels (like Media Viewer) are open.',
+          defaultValue: false,
+          disabled: (values) => values.dockPosition === 'floating',
+        },
       ],
     },
   ],
@@ -137,8 +145,10 @@ function useUISettingsStore(): SettingStoreAdapter {
 
   const dockPosition = useControlCenterStore((s) => s.dockPosition);
   const layoutBehavior = useControlCenterStore((s) => s.layoutBehavior);
+  const conformToOtherPanels = useControlCenterStore((s) => s.conformToOtherPanels);
   const setDockPosition = useControlCenterStore((s) => s.setDockPosition);
   const setLayoutBehavior = useControlCenterStore((s) => s.setLayoutBehavior);
+  const setConformToOtherPanels = useControlCenterStore((s) => s.setConformToOtherPanels);
 
   return {
     get: (fieldId: string) => {
@@ -152,6 +162,7 @@ function useUISettingsStore(): SettingStoreAdapter {
       // Control center settings
       if (fieldId === 'dockPosition') return dockPosition;
       if (fieldId === 'layoutBehavior') return layoutBehavior;
+      if (fieldId === 'conformToOtherPanels') return conformToOtherPanels;
 
       return undefined;
     },
@@ -166,6 +177,7 @@ function useUISettingsStore(): SettingStoreAdapter {
       // Control center settings
       if (fieldId === 'dockPosition') setDockPosition(value as DockPosition);
       if (fieldId === 'layoutBehavior') setLayoutBehavior(value as LayoutBehavior);
+      if (fieldId === 'conformToOtherPanels') setConformToOtherPanels(value as boolean);
     },
     getAll: () => ({
       defaultMode: viewerSettings.defaultMode,
@@ -175,6 +187,7 @@ function useUISettingsStore(): SettingStoreAdapter {
       showMetadata: viewerSettings.showMetadata,
       dockPosition,
       layoutBehavior,
+      conformToOtherPanels,
     }),
   };
 }

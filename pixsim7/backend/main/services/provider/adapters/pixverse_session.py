@@ -121,6 +121,53 @@ class PixverseSessionMixin:
         self._client_cache[cache_key] = client
         return client
 
+    def _create_client_from_session(
+        self,
+        session_data: "PixverseSessionData",
+        account: ProviderAccount,
+        use_method: str | None = None
+    ) -> Any:
+        """
+        Create Pixverse client from session data (for use with run_with_session)
+
+        Args:
+            session_data: Session data dict (jwt_token, cookies, etc.)
+            account: Provider account (for email and api_key)
+            use_method: Optional API method override (web-api, open-api, auto)
+
+        Returns:
+            Configured PixverseClient
+        """
+        try:
+            from pixverse import PixverseClient  # type: ignore
+        except ImportError:  # pragma: no cover
+            PixverseClient = None  # type: ignore
+
+        if not PixverseClient:
+            raise Exception('pixverse-py not installed')
+
+        session: Dict[str, Any] = {
+            "jwt_token": session_data.get("jwt_token"),
+            "cookies": session_data.get("cookies", {}),
+            "api_key": account.api_key,
+        }
+
+        # Include OpenAPI key if available
+        if "openapi_key" in session_data:
+            session["openapi_key"] = session_data["openapi_key"]
+
+        # Add use_method if specified
+        if use_method:
+            session["use_method"] = use_method
+
+        # Note: We don't cache here because run_with_session may refresh credentials
+        # and we want to use the latest session data on retry
+        client = PixverseClient(
+            email=account.email,
+            session=session
+        )
+        return client
+
     def _get_cached_api(self, account: ProviderAccount) -> Any:
         """
         Get cached PixverseAPI instance for account to reuse session.

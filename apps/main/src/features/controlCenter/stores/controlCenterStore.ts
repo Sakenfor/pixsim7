@@ -35,6 +35,7 @@ export interface ControlCenterState {
   mode: ControlCenterMode;  // 'dock' or 'cubes' mode
   dockPosition: DockPosition; // where the dock is positioned
   layoutBehavior: LayoutBehavior; // 'overlay' (float over content) or 'push' (resize content)
+  conformToOtherPanels: boolean; // if true, adjusts layout when other panels (like Media Viewer) are open
   open: boolean;            // whether dock is expanded
   pinned: boolean;          // if true, stays open
   height: number;           // height/width in px when expanded (used for vertical/horizontal sizing)
@@ -56,6 +57,7 @@ export interface ControlCenterActions {
   toggleMode: () => void;
   setDockPosition: (position: DockPosition) => void;
   setLayoutBehavior: (behavior: LayoutBehavior) => void;
+  setConformToOtherPanels: (conform: boolean) => void;
   toggleOpen: () => void;
   setOpen: (v: boolean) => void;
   setPinned: (v: boolean) => void;
@@ -84,6 +86,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         mode: 'dock',
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
+        conformToOtherPanels: false,
         open: false,
         pinned: false,
         height: 300, // Increased from 180px
@@ -106,6 +109,10 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       setLayoutBehavior: (behavior) => {
         if (get().layoutBehavior === behavior) return;
         set({ layoutBehavior: behavior });
+      },
+      setConformToOtherPanels: (conform) => {
+        if (get().conformToOtherPanels === conform) return;
+        set({ conformToOtherPanels: conform });
       },
       setDockPosition: (position) => {
         if (get().dockPosition === position) return;
@@ -187,6 +194,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         mode: 'dock',
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
+        conformToOtherPanels: false,
         open: false,
         pinned: false,
         height: 300,
@@ -212,6 +220,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         mode: s.mode,
         dockPosition: s.dockPosition,
         layoutBehavior: s.layoutBehavior,
+        conformToOtherPanels: s.conformToOtherPanels,
         open: s.open,
         pinned: s.pinned,
         height: s.height,
@@ -226,7 +235,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         presetParams: s.presetParams,
         assets: s.assets,
       }),
-      version: 7,
+      version: 8,
       migrate: (persistedState: any, version: number) => {
         let migrated = { ...persistedState };
 
@@ -261,6 +270,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         // Migrate from version 6 to 7: add layoutBehavior
         if (version < 7) {
           migrated.layoutBehavior = migrated.layoutBehavior || 'overlay';
+        }
+
+        // Migrate from version 7 to 8: add conformToOtherPanels
+        if (version < 8) {
+          migrated.conformToOtherPanels = migrated.conformToOtherPanels ?? false;
         }
 
         return migrated;

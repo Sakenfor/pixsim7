@@ -95,18 +95,14 @@ class PixverseOperationsMixin:
         image_ops = get_image_operations()
         is_image_operation = operation_type in image_ops
 
-        # Extract use_method if provided
+        # Extract use_method if provided (do this outside the session closure)
         use_method = params.pop("use_method", None)
-        previous_jwt = account.jwt_token
-        previous_cookies = account.cookies
-        client = self._create_client(account, use_method=use_method)
-        await self._persist_if_credentials_changed(
-            account,
-            previous_jwt=previous_jwt,
-            previous_cookies=previous_cookies,
-        )
 
-        try:
+        # Define the generation operation closure
+        async def _operation(session: PixverseSessionData) -> GenerationResult:
+            # Create client from session data
+            client = self._create_client_from_session(session, account, use_method=use_method)
+
             # Log params being sent to Pixverse for debugging
             logger.info(
                 "provider:execute",
@@ -148,7 +144,7 @@ class PixverseOperationsMixin:
                 quality = params.get("quality", "720p")
                 aspect_ratio = params.get("aspect_ratio")
                 width, height = infer_video_dimensions(quality, aspect_ratio)
-            
+
             # Use adaptive ETA from account if available
             estimated_seconds = account.get_estimated_completion_time()
             estimated_completion = datetime.utcnow() + timedelta(seconds=estimated_seconds)
@@ -180,9 +176,16 @@ class PixverseOperationsMixin:
                 metadata=metadata,
             )
 
+        # Wrap with session manager for auto-reauth support
+        try:
+            return await self.session_manager.run_with_session(
+                account=account,
+                op_name="execute",
+                operation=_operation,
+                retry_on_session_error=True,
+            )
         except Exception as e:
-            if self._is_session_invalid_error(e):
-                self._evict_account_cache(account)
+            # Log the error (session manager already handles cache eviction)
             log_provider_error(
                 provider_id="pixverse",
                 operation=operation_type.value,
