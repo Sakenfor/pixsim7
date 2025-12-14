@@ -91,7 +91,11 @@ docs/
 
 ## 📌 Canonical Docs by Topic
 
-This section points to the authoritative documentation for each major system. For a complete audit with deprecation status, see [DOCUMENTATION_AUDIT_REPORT.md](./DOCUMENTATION_AUDIT_REPORT.md).
+This section points to the authoritative documentation for each major system.
+
+**Audit Reports:**
+- [DOCUMENTATION_AUDIT_REPORT.md](./DOCUMENTATION_AUDIT_REPORT.md) - Complete audit of 243 docs with categorization
+- [DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md](./DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md) - **⚠️ HIGH-PRIORITY**: Deep analysis of 118 root-level docs identifying content overlaps and consolidation opportunities
 
 ### Architecture & Design
 - **[architecture/CURRENT.md](./architecture/CURRENT.md)** - Current architecture state (Dec 2025)
