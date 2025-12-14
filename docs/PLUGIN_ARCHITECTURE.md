@@ -774,6 +774,198 @@ See [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md) for detailed documentation
 
 ---
 
+## Plugin Naming Conventions
+
+To maintain consistency across the codebase and avoid duplication drift, follow these conventions when creating new plugins.
+
+### Folder Structure
+
+```
+apps/main/src/plugins/{family}/{plugin-name}/
+```
+
+**Rules:**
+- `{family}` - Plugin category (e.g., `scene`, `world`, `brain`)
+- `{plugin-name}` - Kebab-case folder name (e.g., `comic-panel-view`, `relationship-tracker`)
+
+**Examples:**
+```
+plugins/scene/comic-panel-view/
+plugins/scene/storyboard-view/
+plugins/world/location-browser/
+```
+
+### Plugin ID Format
+
+Plugin IDs use the format: `{family}:{kebab-case-name}`
+
+**Rules:**
+- Family prefix matches the folder structure
+- Use colon (`:`) separator
+- Use kebab-case for the name portion
+- IDs must be unique across all plugins
+
+**Examples:**
+```
+scene-view:comic-panels
+scene-view:storyboard-view
+world-tool:location-browser
+```
+
+**Note:** The folder name and ID name don't have to match exactly (e.g., folder `comic-panel-view` vs ID `scene-view:comic-panels`), but consistency is recommended.
+
+### Manifest Field Standards
+
+Source manifests (`manifest.ts`) should use these values:
+
+```typescript
+export const manifest: SceneViewPluginManifest = {
+  id: 'scene-view:my-plugin',           // Family:name format
+  name: 'My Plugin',                     // Display name (title case)
+  version: '1.0.0',                      // Semantic version
+  type: 'ui-overlay',                    // Plugin type
+  main: 'plugin.js',                     // Build output (not index.ts)
+  // ... other fields
+};
+```
+
+**Important:** The `main` field should reference the build output (`plugin.js`), not the source file (`index.ts`). The build script will bundle `index.ts` into `plugin.js`.
+
+### Loading Strategy
+
+PixSim7 uses two plugin loading mechanisms:
+
+#### 1. Hardcoded Imports (Development)
+
+Built-in plugins are loaded via hardcoded imports in bootstrap files:
+
+```typescript
+// lib/plugins/bootstrapSceneViews.ts
+await import('../../plugins/scene/comic-panel-view');
+```
+
+**When to use:**
+- Built-in plugins shipped with the application
+- Plugins under active development
+- Plugins that need to be available immediately
+
+**Advantages:**
+- Faster load times (bundled with main app)
+- TypeScript type checking
+- Hot module reloading in dev mode
+
+#### 2. Bundle Discovery (Distribution)
+
+Plugins can be built as bundles and discovered at runtime:
+
+```typescript
+// Scans dist/plugins/**/manifest.json
+const bundles = await loadPluginBundles();
+```
+
+**When to use:**
+- Third-party plugins
+- Optional plugins
+- Plugins that can be added/removed without rebuilding
+
+**Advantages:**
+- Drop-in installation
+- Independent versioning
+- Can be distributed separately
+
+#### Loading Order
+
+1. Hardcoded imports load first during app initialization
+2. Bundle discovery runs after hardcoded plugins
+3. Duplicate plugin IDs are detected and logged (first registration wins)
+
+**Note:** Currently, built-in plugins use hardcoded imports. The bundle system is infrastructure for future third-party plugins. To build bundles for testing, run `pnpm build:plugin {family}/{plugin-name}` (requires dependencies installed).
+
+---
+
+## Using Scene View Widgets in Overlay Editor
+
+Scene view widgets display scene content (comic panels, storyboards, etc.) in overlays and HUD. The `scene-view` widget type replaced the legacy `comic-panel` type.
+
+### Widget Type Migration
+
+| Old Type (Deprecated) | New Type | Notes |
+|-----------------------|----------|-------|
+| `comic-panel` | `scene-view` | Backward compatible alias |
+
+**Recommended configuration:**
+
+```typescript
+{
+  type: 'scene-view',
+  sceneViewId: 'scene-view:comic-panels', // Which scene view plugin to use
+  layout: 'strip',                         // single, strip, grid2
+  showCaption: true,                       // Show/hide captions
+  // ... other overlay widget fields
+}
+```
+
+**Legacy configuration (still supported):**
+
+```typescript
+{
+  type: 'comic-panel',  // Maps to scene-view internally
+  layout: 'strip',
+  showCaption: true,
+}
+```
+
+### Selecting Different Scene Views
+
+The `sceneViewId` field determines which plugin renders the content:
+
+```typescript
+// Use comic panel view
+{ type: 'scene-view', sceneViewId: 'scene-view:comic-panels' }
+
+// Use future storyboard view
+{ type: 'scene-view', sceneViewId: 'scene-view:storyboard' }
+
+// Use default view (first registered)
+{ type: 'scene-view' } // sceneViewId defaults to first available
+```
+
+### Overlay Editor Support
+
+The overlay editor provides type-specific properties for scene-view widgets:
+
+- **Layout**: Choose between single panel, strip, or grid layouts
+- **Show Captions**: Toggle caption display
+- **Scene View ID**: (Future) Select which scene view plugin to use
+
+**Implementation:**
+- Component: `apps/main/src/components/overlay-editor/TypeSpecificProperties.tsx`
+- Handler: `SceneViewProperties` (renamed from `ComicPanelProperties`)
+- Supported types: Both `'scene-view'` and `'comic-panel'` (backward compat)
+
+### Host-Plugin Architecture
+
+Scene view widgets use a host-plugin delegation pattern:
+
+```
+SceneViewHost (Generic Widget)
+      ↓
+  sceneViewRegistry.get(sceneViewId)
+      ↓
+  Plugin Render Component
+      ↓
+  Scene Content (panels, etc.)
+```
+
+**Key files:**
+- `apps/main/src/lib/ui/overlay/widgets/SceneViewHost.tsx` - Generic host widget
+- `apps/main/src/lib/plugins/sceneViewPlugin.ts` - Plugin registry and types
+- `apps/main/src/plugins/scene/comic-panel-view/` - Example plugin implementation
+
+This architecture allows new scene view modes to be added as plugins without modifying the core widget system.
+
+---
+
 ## Related Documentation
 
 - [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md)

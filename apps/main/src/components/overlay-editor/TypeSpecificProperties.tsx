@@ -426,9 +426,10 @@ function VideoScrubProperties({ widget, onUpdate }: TypeSpecificPropertiesProps)
 }
 
 /**
- * Comic panel widget specific properties
+ * Scene view widget specific properties
+ * (Handles both scene-view and legacy comic-panel types)
  */
-function ComicPanelProperties({ widget, onUpdate }: TypeSpecificPropertiesProps) {
+function SceneViewProperties({ widget, onUpdate }: TypeSpecificPropertiesProps) {
   const widgetAny = widget as any;
 
   return (
@@ -598,8 +599,9 @@ export function TypeSpecificProperties({ widget, onUpdate }: TypeSpecificPropert
       return <VideoScrubProperties widget={widget} onUpdate={onUpdate} />;
     case 'progress':
       return <ProgressProperties widget={widget} onUpdate={onUpdate} />;
-    case 'comic-panel':
-      return <ComicPanelProperties widget={widget} onUpdate={onUpdate} />;
+    case 'scene-view':
+    case 'comic-panel': // Backward compatibility
+      return <SceneViewProperties widget={widget} onUpdate={onUpdate} />;
     default:
       return (
         <p className="text-xs text-neutral-500 dark:text-neutral-400">

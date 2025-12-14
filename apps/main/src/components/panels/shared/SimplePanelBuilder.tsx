@@ -15,7 +15,7 @@ import {
   importComposition,
   type PanelComposition,
 } from '@lib/ui/composer/panelComposer';
-import { ComposedPanel } from './ComposedPanel';
+import { ComposedPanel } from '@lib/ui/composer';
 import {
   demoCompositions,
   getDemoComposition,

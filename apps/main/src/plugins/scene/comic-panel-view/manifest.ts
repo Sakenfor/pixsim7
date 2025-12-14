@@ -15,7 +15,7 @@ export const manifest: SceneViewPluginManifest = {
   type: 'ui-overlay',
   icon: '📚',
   permissions: ['ui:overlay', 'read:session', 'read:world'],
-  main: 'index.ts',
+  main: 'plugin.js', // Build output entry point
   sceneView: {
     id: 'scene-view:comic-panels',
     displayName: 'Comic Panels',
