@@ -229,6 +229,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 debug.worker("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
                 raise AccountExhaustedError(0, generation.provider_id)
 
+            # Save account_id on generation so UI can show which account is being used
+            if generation.account_id != account.id:
+                generation.account_id = account.id
+                db.add(generation)
+                await db.commit()
+                await db.refresh(generation)
+
             # Mark generation as started
             await generation_service.mark_started(generation_id)
             gen_logger.info("generation_started")
