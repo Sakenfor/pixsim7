@@ -696,8 +696,87 @@ The `comic-panel` widget type in overlay configs uses `SceneViewHost` internally
 
 ---
 
+## Bundle-Driven Plugin System
+
+PixSim7 supports a bundle-driven plugin system that allows plugins to be built independently and loaded at runtime via manifest discovery. This is in addition to the traditional hardcoded import approach.
+
+### Overview
+
+The bundle system provides:
+- **Drop-in plugins**: Place a bundle in the plugins directory and it's automatically loaded
+- **Independent builds**: Each plugin can be built and versioned separately
+- **Third-party plugins**: External developers can create plugins without modifying the main codebase
+- **Hot reloading**: Plugins can be updated without rebuilding the entire application
+
+### Bundle Structure
+
+```
+dist/plugins/{family}/{plugin-id}/
+├── manifest.json    # Plugin metadata (JSON)
+└── plugin.js        # Bundled ES module
+```
+
+### Building Plugin Bundles
+
+Use the build script to create plugin bundles:
+
+```bash
+# Build a specific plugin
+pnpm build:plugin scene/comic-panel-view
+
+# Build all plugins
+pnpm build:plugins
+```
+
+### Manifest Format
+
+Plugin manifests are JSON files that describe the plugin:
+
+```json
+{
+  "id": "scene-view:comic-panels",
+  "name": "Comic Panel View",
+  "version": "1.0.0",
+  "type": "ui-overlay",
+  "main": "plugin.js",
+  "sceneView": {
+    "id": "scene-view:comic-panels",
+    "displayName": "Comic Panels",
+    "surfaces": ["overlay", "hud", "panel"],
+    "default": true
+  }
+}
+```
+
+### Loading Flow
+
+1. **Bootstrap**: During app initialization, `pluginBootstrapModule` runs
+2. **Hardcoded imports**: Traditional plugin imports are loaded first
+3. **Bundle discovery**: `loadPluginBundles()` scans `dist/plugins/**/manifest.json`
+4. **Dynamic loading**: Plugin bundles are loaded via ES module imports
+5. **Registration**: Plugins are registered with appropriate registries
+
+### Backward Compatibility
+
+The bundle system is additive:
+- Existing hardcoded plugin imports continue to work
+- Bundle-loaded plugins are loaded in addition to hardcoded ones
+- No breaking changes to existing plugin APIs
+
+### Creating a Bundleable Plugin
+
+1. Create plugin directory under `src/plugins/{family}/{plugin-id}/`
+2. Add `manifest.ts` with plugin metadata
+3. Add `index.tsx` as the entry point
+4. Build with `pnpm build:plugin {family}/{plugin-id}`
+
+See [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md) for detailed documentation.
+
+---
+
 ## Related Documentation
 
+- [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md)
 - [Gallery Tools Plugin](./GALLERY_TOOLS_PLUGIN.md)
 - [Graph Renderer Plugins](./GRAPH_RENDERER_PLUGINS.md)
 - [Gizmo Surfaces and Debug Dashboards](./GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)

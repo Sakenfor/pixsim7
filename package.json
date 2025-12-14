@@ -10,12 +10,15 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "build:deps": "pnpm --filter @pixsim7/types build && pnpm --filter @pixsim7/ui build && pnpm --filter @pixsim7/game-core build && pnpm --filter @pixsim7/game-ui build && pnpm --filter @pixsim7/semantic-shapes build && pnpm --filter @pixsim7/scene-gizmos build",
+    "build:plugin": "tsx scripts/build-plugin.ts",
+    "build:plugins": "tsx scripts/build-plugin.ts --all",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "lint": "echo 'add lint script per package'",
     "generate-docs": "tsx packages/game-core/src/utils/generatePluginDocs.ts",
     "generate-registry-docs": "tsx scripts/generate-registry-docs.ts"
   },
   "devDependencies": {
+    "esbuild": "^0.24.0",
     "tsx": "^4.20.6"
   }
 }

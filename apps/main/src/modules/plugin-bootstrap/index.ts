@@ -1,6 +1,7 @@
 import type { Module } from '../types';
 import { pluginManager, bootstrapExamplePlugins } from '../../lib/plugins';
 import { loadAllPlugins } from '../../lib/plugins/loader';
+import { loadPluginBundles } from '../../lib/plugins/manifestLoader';
 import { bootstrapControlCenters } from '../../lib/plugins/bootstrapControlCenters';
 import { bootstrapSceneViewPlugins } from '../../lib/plugins/bootstrapSceneViews';
 
@@ -10,6 +11,8 @@ import { bootstrapSceneViewPlugins } from '../../lib/plugins/bootstrapSceneViews
  * Handles plugin system initialization including:
  * - Loading plugin registry from localStorage
  * - Bootstrapping example/default plugins
+ * - Loading hardcoded plugin imports (backward compatibility)
+ * - Loading plugin bundles from manifest files (bundle-driven system)
  * - Auto-discovering and loading plugins from the plugins directory
  *   (node types, helpers, and interactions)
  */
@@ -29,7 +32,20 @@ export const pluginBootstrapModule: Module = {
     await bootstrapControlCenters();
 
     // Bootstrap scene view plugins (comic panel view, etc.)
+    // This loads the hardcoded plugin imports for backward compatibility
     await bootstrapSceneViewPlugins();
+
+    // Load plugin bundles from manifest files (bundle-driven system)
+    // This discovers and loads plugins from dist/plugins/**/manifest.json
+    // The manifest loader is additive - it won't duplicate already-registered plugins
+    try {
+      await loadPluginBundles({
+        verbose: true,
+        strict: false,
+      });
+    } catch (error) {
+      console.warn('[PluginBootstrap] Failed to load plugin bundles:', error);
+    }
 
     // Load all sandboxed plugins (node types, helpers, interactions) from plugins directory
     // Note: This automatically discovers and registers:
