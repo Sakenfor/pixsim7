@@ -5,6 +5,7 @@ This document describes the standardized plugin architecture for PixSim7, coveri
 ## Table of Contents
 
 - [Overview](#overview)
+- [Source Layout vs Runtime Layout](#source-layout-vs-runtime-layout)
 - [Current State Audit](#current-state-audit)
 - [Standard Plugin Pattern](#standard-plugin-pattern)
 - [Registration & Discovery Rules](#registration--discovery-rules)
@@ -61,6 +62,49 @@ apps/main/src/lib/plugins/
 
 ---
 
+## Source Layout vs Runtime Layout
+
+It is important to distinguish between how plugins are organized **in this repo (source)** and how they are treated **at runtime (installed/downloaded)**:
+
+### Source (Monorepo) Layout
+
+Plugin implementations live under their owning feature:
+
+```
+apps/main/src/features/worldTools/plugins/*
+apps/main/src/features/brainTools/plugins/*
+apps/main/src/features/scene/plugins/*      (e.g., scene view / comic panel plugins)
+apps/main/src/features/gallery/plugins/*    (future)
+```
+
+Each feature owns:
+- Its **plugin contracts** in `features/<feature>/lib/types.ts`
+- Its **local registry** in `features/<feature>/lib/registry.ts`
+- A **`builtIn<FeatureName>Plugins`** list in `features/<feature>/plugins/index.ts`
+
+### Runtime Layout (What the App Sees)
+
+All plugins are surfaced through a **single logical plugin catalog** driven by `@lib/plugins`:
+
+- **Downloaded/installed plugins** share a unified storage location (e.g., a `plugins/` directory on disk or a plugins table in the database), but are distinguished by a `featureKind` and manifest metadata.
+- The **global plugin manager** (`PluginManager.ts`) is responsible for:
+  - Loading manifests from runtime storage
+  - Validating plugin kinds and versions
+  - Dispatching plugins to the appropriate feature registries
+
+### Why This Separation Matters
+
+| Aspect | Source Layout | Runtime Layout |
+|--------|---------------|----------------|
+| **Purpose** | Developer experience, maintainability | User experience, discoverability |
+| **Organization** | Feature-first (ownership boundaries) | Unified (single browse/manage UI) |
+| **Location** | `features/*/plugins/` | `plugins/` directory or database |
+| **Registry** | Feature-local registries | Global `pluginCatalog` |
+
+This lets us keep **feature-first ownership in the codebase**, while still having a **single place** for users to browse, download, and manage plugins at runtime.
+
+---
+
 ## Current State Audit
 
 ### Plugin Kinds Summary
@@ -69,10 +113,10 @@ apps/main/src/lib/plugins/
 |------|-----------------|-------------------------|-------------------|
 | **world-tool** | `features/worldTools/lib/types.ts` | `features/worldTools/plugins/*` | worldToolRegistry → registryBridge → catalog |
 | **brain-tool** | `features/brainTools/lib/types.ts` | `features/brainTools/plugins/*` | brainToolRegistry (standalone) |
-| **gallery-tool** | `features/gallery/lib/core/types.ts` | `features/gallery/lib/core/tools/*` | galleryToolRegistry → registryBridge → catalog |
-| **gizmo-surface** | `features/gizmos/lib/core/surfaceRegistry.ts` | `features/gizmos/lib/core/registry-*.ts` | gizmoSurfaceRegistry → registryBridge → catalog |
+| **gallery-tool** | `features/gallery/lib/core/types.ts` | `features/gallery/plugins/*` | galleryToolRegistry → registryBridge → catalog |
+| **gizmo-surface** | `features/gizmos/lib/core/surfaceRegistry.ts` | `features/gizmos/plugins/*` | gizmoSurfaceRegistry → registryBridge → catalog |
 | **workspace-panel** | `lib/ui/panels/panelRegistry.ts` | Various (components, features) | panelRegistry → registryBridge → catalog |
-| **dev-tool** | `lib/devtools/types.ts` | `lib/devtools/` | devToolRegistry → registryBridge → catalog |
+| **dev-tool** | `lib/devtools/types.ts` | `features/devtools/plugins/*` | devToolRegistry → registryBridge → catalog |
 | **session-helper** | `@pixsim7/game.engine` | `plugins/`, `lib/game/customHelpers.ts` | sessionHelperRegistry → registryBridge → catalog |
 | **interaction** | `lib/game/interactions/types.ts` | `lib/game/interactions/` | interactionRegistry → registryBridge → catalog |
 | **node-type** | `@pixsim7/shared.types` | `lib/plugins/*Node.ts`, features/graph | nodeTypeRegistry → registryBridge → catalog |
@@ -83,14 +127,14 @@ apps/main/src/lib/plugins/
 
 ### Pattern Analysis
 
-**Well-structured (reference pattern):**
+**Following standard pattern:**
 - `worldTools` - Clean separation: `lib/types.ts` → `lib/registry.ts` → `plugins/index.ts`
 - `brainTools` - Similar pattern, consistent structure
+- `gallery` - Uses `plugins/` folder with `builtInGalleryTools` export
+- `gizmos` - Surface definitions in `plugins/surfaces.ts` with `builtInGizmoSurfaces` export
+- `devtools` - Tool definitions in `features/devtools/plugins/` with `builtInDevTools` export
 
 **Needs improvement:**
-- `gallery` - Tools embedded in `lib/core/tools/`, not a dedicated `plugins/` folder
-- `gizmos` - Multiple registry files (`registry-*.ts`), surface registry separate from gizmo registry
-- `devtools` - Lives in `lib/devtools/` not `features/devtools/`
 - `workspace-panel` - Implementations scattered across components/features
 
 ---
@@ -429,86 +473,85 @@ features/worldTools/
 
 Brain tools also follow the pattern. No changes needed.
 
-### Phase 4: Migrate Gallery Tools
+### Phase 4: Migrate Gallery Tools ✅
 
-**Current:** Tools in `features/gallery/lib/core/tools/`
+Gallery tools now follow the standard pattern:
 
-**Target:**
 ```
 features/gallery/
 ├── lib/
-│   ├── types.ts        # GalleryToolPlugin (already exists in lib/core/types.ts)
-│   └── registry.ts     # Move from lib/core/types.ts
+│   ├── core/types.ts   ✅ GalleryToolPlugin interface + registry
+│   └── registry.ts     ✅ Auto-registers builtInGalleryTools
 ├── plugins/
-│   ├── index.ts        # New: export builtInGalleryTools
-│   └── *.tsx           # Move from lib/core/tools/
+│   ├── index.ts        ✅ Exports builtInGalleryTools array
+│   └── bulkTagTool.tsx ✅ Individual plugin file
+└── index.ts            ✅ Public API
 ```
 
-**Steps:**
-1. Create `features/gallery/plugins/` directory
-2. Move tool files from `lib/core/tools/` to `plugins/`
-3. Create `plugins/index.ts` with exports
-4. Update `lib/core/registerGalleryTools.ts` to use new location
+### Phase 5: Migrate Gizmo Surfaces ✅
 
-### Phase 5: Migrate Gizmo Surfaces
+Gizmo surfaces now follow the standard pattern:
 
-**Current:** Multiple `registry-*.ts` files in `features/gizmos/lib/core/`
-
-**Target:**
 ```
 features/gizmos/
-├── lib/
-│   ├── types.ts        # Re-exports from @pixsim7/scene.gizmos
-│   ├── surfaceTypes.ts # GizmoSurfaceDefinition
-│   └── surfaceRegistry.ts
+├── lib/core/
+│   ├── surfaceRegistry.ts   ✅ GizmoSurfaceDefinition + registry
+│   ├── registerGizmoSurfaces.ts ✅ Uses builtInGizmoSurfaces
+│   └── registry-*.ts        (Unchanged - gizmo packs are configs, not plugins)
 ├── plugins/
-│   ├── index.ts        # Export all surface definitions
-│   ├── rings.tsx
-│   ├── orb.tsx
-│   └── ...
+│   ├── index.ts             ✅ Exports builtInGizmoSurfaces array
+│   └── surfaces.ts          ✅ Individual surface definitions
+└── index.ts                 ✅ Public API
 ```
 
-**Steps:**
-1. Create `features/gizmos/plugins/` directory
-2. Convert registry-*.ts files to plugin format
-3. Create unified `plugins/index.ts`
+Note: Gizmo *packs* (`registry-rings.ts`, `registry-romance.ts`, etc.) remain unchanged
+as they define gizmo configurations, not UI plugins.
 
-### Phase 6: Move Dev Tools to Features
+### Phase 6: Move Dev Tools to Features ✅
 
-**Current:** `lib/devtools/`
+Dev tools now follow the standard pattern:
 
-**Target:** `features/devtools/` (optional, lower priority)
-
-**Steps:**
-1. Create `features/devtools/` with standard structure
-2. Move files from `lib/devtools/`
-3. Update imports across codebase
-
-### Phase 7: Add Consistency Checks (Optional)
-
-Add a simple lint rule or script to verify:
-
-```typescript
-// scripts/checkPluginStructure.ts
-
-const PLUGIN_FEATURES = ['worldTools', 'brainTools', 'gallery', 'gizmos'];
-
-for (const feature of PLUGIN_FEATURES) {
-  const pluginsDir = `apps/main/src/features/${feature}/plugins`;
-  const indexFile = `${pluginsDir}/index.ts`;
-
-  // Check plugins/index.ts exists
-  if (!fs.existsSync(indexFile)) {
-    console.warn(`Missing: ${indexFile}`);
-  }
-
-  // Check for builtIn*Plugins export
-  const content = fs.readFileSync(indexFile, 'utf-8');
-  if (!content.includes('builtIn')) {
-    console.warn(`Missing builtIn*Plugins export in ${indexFile}`);
-  }
-}
 ```
+features/devtools/
+├── plugins/
+│   ├── index.ts        ✅ Exports builtInDevTools array (13 tools)
+│   └── tools.ts        ✅ Individual tool definitions
+└── index.ts            ✅ Feature entry point
+
+lib/devtools/           (Infrastructure remains here)
+├── types.ts            DevToolDefinition, DevToolId, DevToolCategory
+├── devToolRegistry.ts  DevToolRegistry class + singleton
+├── devToolContext.tsx  DevToolProvider and useDevToolContext
+├── registerDevTools.ts Uses builtInDevTools from features/devtools/plugins
+└── index.ts            Re-exports
+```
+
+### Phase 7: Add Consistency Checks ✅
+
+A consistency check script verifies plugin structure:
+
+```bash
+node scripts/checkPluginStructure.js
+```
+
+Output:
+```
+Plugin Structure Consistency Check
+==================================
+
+✅ worldTools - plugins/index.ts exports builtInWorldTools
+✅ brainTools - plugins/index.ts exports builtInBrainTools
+✅ gallery    - plugins/index.ts exports builtInGalleryTools
+✅ gizmos     - plugins/index.ts exports builtInGizmoSurfaces
+✅ devtools   - plugins/index.ts exports builtInDevTools
+
+Summary: 5/5 passing
+```
+
+The script checks:
+- `features/{feature}/plugins/` directory exists
+- `plugins/index.ts` file exists
+- `index.ts` exports the expected `builtIn*Plugins` array
 
 ---
 

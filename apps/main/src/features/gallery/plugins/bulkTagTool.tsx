@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import type { GalleryToolPlugin, GalleryToolContext } from '../types';
+import type { GalleryToolPlugin, GalleryToolContext } from '../lib/core/types';
 
 function BulkTagToolUI({ context }: { context: GalleryToolContext }) {
   const [tagInput, setTagInput] = useState('');
