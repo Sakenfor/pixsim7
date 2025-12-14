@@ -7,4 +7,3 @@
 
 export * from './hudConfig';
 export * from './hudVisibility';
-export * from './comicPanels';

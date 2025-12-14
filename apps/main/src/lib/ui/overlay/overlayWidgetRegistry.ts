@@ -456,24 +456,4 @@ export function registerOverlayWidgets(): void {
     },
   });
 
-  // Register comic-panel as an alias for backward compatibility
-  // This uses the same factory but keeps the old type name
-  registerWidget({
-    type: 'comic-panel',
-    displayName: 'Comic Panel',
-    icon: 'image',
-    factory: sceneViewFactory,
-    defaultConfig: {
-      type: 'comic-panel',
-      componentType: 'overlay',
-      position: { mode: 'anchor', anchor: 'center' },
-      visibility: { simple: 'always' },
-      props: {
-        layout: 'single',
-        showCaption: true,
-      },
-      bindings: [],
-      version: 1,
-    },
-  });
 }

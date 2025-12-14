@@ -96,20 +96,23 @@ interface GameSession {
 
 ## Widget Integration
 
-### Comic Panel Widget
+### Scene View Widget (Comic Panel Plugin)
 
-The `comic-panel` widget displays one or more comic frames. It can be used in both overlay and HUD systems.
+Scenes render inside the generic `scene-view` widget, which hosts whichever scene-view plugin you select. The built-in `scene-view:comic-panels` plugin renders sequential comic frames.
 
 ```typescript
-interface ComicPanelWidgetConfig {
+interface SceneViewWidgetConfig {
   id: string;
   position: WidgetPosition;
   visibility: VisibilityConfig;
 
+  // Which scene-view plugin to use (defaults to scene-view:comic-panels)
+  sceneViewId?: string;
+
   // Data inputs (via bindings or static props)
-  panelIds?: string[];           // IDs within Scene.meta.comicPanels
-  assetIds?: string[];           // Direct gallery asset IDs (fallback)
-  panels?: SceneMetaComicPanel[]; // Full panel data
+  panelIds?: string[];             // IDs within Scene.meta.comicPanels
+  assetIds?: string[];             // Direct gallery asset IDs (fallback)
+  panels?: SceneMetaComicPanel[];  // Full panel data
 
   // Layout options
   layout?: 'single' | 'strip' | 'grid2';
@@ -125,7 +128,7 @@ interface ComicPanelWidgetConfig {
 
 ### Usage in Overlay Editor
 
-1. Add a `comic-panel` widget from the widget palette
+1. Add a `scene-view` widget from the widget palette (the default plugin renders comic panels)
 2. Configure layout and caption visibility in type-specific properties
 3. Bind panel data using:
    - Static `panelIds` to reference scene panels
@@ -140,7 +143,7 @@ Once HUD is integrated with unified configs (Task 97), `comic-panel` widgets can
 
 ### Helper Functions
 
-The `gameplay-ui-core/comicPanels` module provides utilities for connecting panels to gameplay:
+Utilities for selecting and mutating panel state live under `@features/scene/ui/comicPanels`:
 
 ```typescript
 import {
@@ -150,7 +153,7 @@ import {
   setCurrentComicPanel,
   clearCurrentComicPanel,
   getComicPanelAssetIds,
-} from '@/lib/gameplay-ui-core';
+} from '@features/scene';
 
 // Get panels to display based on session state
 const panels = getActiveComicPanels(session, sceneMeta);
@@ -167,8 +170,8 @@ const updatedSession = setCurrentComicPanel(session, 'panel_2');
 // Clear panel state
 const clearedSession = clearCurrentComicPanel(session);
 
-// Get asset IDs for preloading
-const assetIds = getComicPanelAssetIds(panels);
+// Get asset refs for preloading
+const assetRefs = getComicPanelAssetIds(panels);
 ```
 
 ### Transition Workflow
@@ -195,7 +198,7 @@ const assetIds = getComicPanelAssetIds(panels);
 ## Implementation Checklist
 
 - [x] TypeScript types for `SceneMetaComicPanel` and `ComicSessionFlags`
-- [x] `ComicPanelWidget` component with layout variants (now via `SceneViewHost`)
+- [x] Scene-view widget host + comic panel plugin
 - [x] Registry integration for `comic-panel` widget type
 - [x] Overlay editor support (widget list + properties)
 - [x] Gameplay helper functions in `gameplay-ui-core`
