@@ -24,11 +24,16 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.game import GameNPC, NPCState
+from pixsim7.backend.main.domain.stats import StatEngine
 from pixsim7.backend.main.services.characters.instance_service import (
     CharacterInstanceService,
 )
 from pixsim7.backend.main.services.characters.npc_sync_service import (
     CharacterNPCSyncService,
+)
+from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
+    FieldMapping,
+    get_npc_field_mapping,
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -100,12 +105,21 @@ EnricherFn = Callable[[PromptContextSnapshot, PromptContextRequest], Awaitable[P
 
 
 class _NpcContextResolver:
-    """Resolve prompt context for NPCs by combining CharacterInstance + GameNPC state."""
+    """Resolve prompt context for NPCs using declarative field mapping and StatEngine."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession,
+        instance_service: CharacterInstanceService,
+        sync_service: CharacterNPCSyncService,
+        stat_engine: StatEngine,
+        field_mapping: Optional[Dict[str, FieldMapping]] = None,
+    ):
         self.db = db
-        self.instance_service = CharacterInstanceService(db)
-        self.sync_service = CharacterNPCSyncService(db)
+        self.instance_service = instance_service
+        self.sync_service = sync_service
+        self.stat_engine = stat_engine
+        self.field_mapping = field_mapping or get_npc_field_mapping()
 
     async def resolve(self, request: PromptContextRequest) -> PromptContextSnapshot:
         instance_id: Optional[UUID] = (
@@ -116,18 +130,18 @@ class _NpcContextResolver:
         if not instance_id:
             raise ValueError("NPC prompt context requires template_id (CharacterInstance id)")
 
-        # 1) Load instance + merged traits (authoring authority / snapshot)
+        # 1. Load instance + NPC
         instance = await self.instance_service.get_instance(instance_id)
         if not instance:
             raise ValueError(f"CharacterInstance {instance_id} not found")
 
         merged_traits = await self.instance_service.get_merged_traits(instance_id)
 
-        # 2) Resolve NPC (explicit ID or highest-priority active link)
+        # 2. Resolve NPC
         npc: Optional[GameNPC] = None
         npc_state: Optional[NPCState] = None
-
         resolved_npc_id = npc_id
+
         if resolved_npc_id:
             npc = await self.db.get(GameNPC, resolved_npc_id)
         else:
@@ -138,25 +152,49 @@ class _NpcContextResolver:
                 resolved_npc_id = active_links[0].npc_id
                 npc = await self.db.get(GameNPC, resolved_npc_id)
 
-        # 3) Pull runtime state from NPCState when we have an NPC
         if npc:
             npc_state = await self.db.get(NPCState, npc.id)
 
-        # 4) Build snapshot with authoritative sources
-        traits: Dict[str, Any] = {}
-        if merged_traits:
-            traits = merged_traits
-        elif npc and npc.personality:
-            traits = npc.personality
+        # 3. Build snapshot via field mapping
+        traits = {}
+        state = {}
+        location_id = None
+        name = instance.name  # Default
 
-        name = npc.name if npc and getattr(npc, "name", None) else instance.name
+        for field_key, mapping in self.field_mapping.items():
+            value = await self._resolve_field(
+                mapping,
+                instance,
+                merged_traits,
+                npc,
+                npc_state,
+                request.prefer_live
+            )
 
-        state: Dict[str, Any] = {}
-        location_id: Optional[int] = None
-        if npc_state:
-            state = npc_state.state or {}
-            location_id = getattr(npc_state, "current_location_id", None)
+            if value is not None:
+                # Store in appropriate section
+                if field_key == "name":
+                    name = value
+                elif field_key == "location_id":
+                    location_id = value
+                elif field_key.startswith("personality."):
+                    axis_name = field_key.split(".", 1)[1]
+                    traits[axis_name] = value
+                elif field_key.startswith("visual_traits."):
+                    trait_name = field_key.split(".", 1)[1]
+                    if "visual" not in traits:
+                        traits["visual"] = {}
+                    traits["visual"][trait_name] = value
+                elif field_key.startswith("state."):
+                    state_name = field_key.split(".", 1)[1]
+                    state[state_name] = value
 
+        # 4. Normalize personality via StatEngine
+        if traits:
+            personality_stats = await self._normalize_personality(traits)
+            traits.update(personality_stats)
+
+        # 5. Determine source
         if npc and request.prefer_live:
             source: Literal["live", "snapshot", "merged"] = "live"
         elif npc:
@@ -175,6 +213,124 @@ class _NpcContextResolver:
             source=source,
             world_id=getattr(instance, "world_id", None),
         )
+
+    async def _resolve_field(
+        self,
+        mapping: FieldMapping,
+        instance: Any,
+        merged_traits: Dict[str, Any],
+        npc: Optional[GameNPC],
+        npc_state: Optional[NPCState],
+        prefer_live: bool,
+    ) -> Any:
+        """Resolve a single field using mapping authority and fallback."""
+
+        # Determine primary and fallback sources based on mapping
+        if mapping.source == "instance":
+            primary_source = "instance"
+            fallback_source = mapping.fallback
+        elif mapping.source == "npc":
+            primary_source = "npc"
+            fallback_source = mapping.fallback
+        else:  # "both"
+            primary_source = "npc" if (npc and prefer_live) else "instance"
+            fallback_source = "npc" if primary_source == "instance" else "instance"
+
+        # Try primary source
+        value = None
+        if primary_source == "instance" and mapping.instance_path:
+            value = self._get_nested_value(merged_traits, mapping.instance_path)
+        elif primary_source == "npc" and mapping.npc_path:
+            if npc:
+                if mapping.npc_path == "current_location_id" and npc_state:
+                    value = getattr(npc_state, "current_location_id", None)
+                elif mapping.npc_path.startswith("state.") and npc_state:
+                    state_key = mapping.npc_path.split(".", 1)[1]
+                    value = self._get_nested_value(npc_state.state or {}, state_key)
+                elif mapping.npc_path == "name":
+                    value = getattr(npc, "name", None)
+                else:
+                    value = self._get_nested_value(npc.personality or {}, mapping.npc_path)
+
+        # Try fallback if primary failed
+        if value is None and fallback_source != "none":
+            if fallback_source == "instance" and mapping.instance_path:
+                value = self._get_nested_value(merged_traits, mapping.instance_path)
+            elif fallback_source == "npc" and mapping.npc_path and npc:
+                if mapping.npc_path == "current_location_id" and npc_state:
+                    value = getattr(npc_state, "current_location_id", None)
+                elif mapping.npc_path.startswith("state.") and npc_state:
+                    state_key = mapping.npc_path.split(".", 1)[1]
+                    value = self._get_nested_value(npc_state.state or {}, state_key)
+                elif mapping.npc_path == "name":
+                    value = getattr(npc, "name", None)
+                else:
+                    value = self._get_nested_value(npc.personality or {}, mapping.npc_path)
+
+        return value
+
+    async def _normalize_personality(self, traits: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize personality traits via StatEngine using package registry."""
+        from pixsim7.backend.main.domain.stats import get_stat_package
+
+        # Collect stat axes that need normalization
+        axes_by_package: Dict[str, List[str]] = {}
+
+        for field_key, mapping in self.field_mapping.items():
+            if mapping.stat_axis and mapping.stat_package_id:
+                if mapping.stat_package_id not in axes_by_package:
+                    axes_by_package[mapping.stat_package_id] = []
+                axes_by_package[mapping.stat_package_id].append(mapping.stat_axis)
+
+        # Normalize per package
+        normalized_results = {}
+
+        for package_id, axes in axes_by_package.items():
+            # Resolve package via registry
+            stat_package = get_stat_package(package_id)
+            if not stat_package:
+                # Handle missing package gracefully - skip normalization
+                continue
+
+            # Get the stat definition from the package
+            # For personality package, the definition id is "personality"
+            stat_def_id = package_id.split(".")[-1]  # e.g., "core.personality" -> "personality"
+            stat_definition = stat_package.definitions.get(stat_def_id)
+            if not stat_definition:
+                continue
+
+            # Extract raw axis values for this package
+            raw_stats = {
+                axis: traits[axis]
+                for axis in axes
+                if axis in traits and isinstance(traits[axis], (int, float))
+            }
+
+            if not raw_stats:
+                continue
+
+            # Normalize via StatEngine
+            normalized = self.stat_engine.normalize_entity_stats(raw_stats, stat_definition)
+
+            # Collect computed tier IDs (e.g., opennessTierId: "openness_high")
+            normalized_results.update({
+                k: v for k, v in normalized.items()
+                if k.endswith("TierId") or k == "levelId"
+            })
+
+        return normalized_results
+
+    def _get_nested_value(self, data: Dict, path: str) -> Any:
+        """Get value from nested dict using dot notation."""
+        keys = path.split(".")
+        value = data
+        for key in keys:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(key)
+            if value is None:
+                return None
+        return value
 
 
 # -------------------------------------------------------------------------------------------------
@@ -196,8 +352,28 @@ class PromptContextService:
         self._resolvers: Dict[str, EntityContextResolver] = {}
         self._enrichers: Dict[str, List[EnricherFn]] = {}
 
-        # Register built-in resolver for NPCs
-        self.register_resolver("npc", _NpcContextResolver(db))
+        # Register built-in resolver for NPCs with DI
+        self._register_default_npc_resolver()
+
+    def _register_default_npc_resolver(self):
+        """Register NPC resolver with dependency injection."""
+        instance_service = CharacterInstanceService(self.db)
+        sync_service = CharacterNPCSyncService(self.db)
+
+        # StatEngine is stateless - no dependencies
+        stat_engine = StatEngine()
+
+        field_mapping = get_npc_field_mapping()
+
+        npc_resolver = _NpcContextResolver(
+            db=self.db,
+            instance_service=instance_service,
+            sync_service=sync_service,
+            stat_engine=stat_engine,
+            field_mapping=field_mapping,
+        )
+
+        self.register_resolver("npc", npc_resolver)
 
     def register_resolver(self, entity_type: str, resolver: EntityContextResolver) -> None:
         """Register or override a resolver for an entity type."""
