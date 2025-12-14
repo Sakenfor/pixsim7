@@ -11,6 +11,11 @@ Use Cases:
 - NPC health drops in game → Character instance state updates
 - Character evolves (gets scars) → NPC appearance updates
 - Context-based appearance (day vs night, location-based)
+
+Field authority guidance (for future delta-based sync):
+- CharacterInstance -> GameNPC: name (when not overridden at runtime), base/visual traits, long-lived personality settings.
+- GameNPC -> CharacterInstance: runtime state (location, health/mood) when checkpointing.
+- Two-way/conditional: link.field_mappings can opt specific paths into two-way sync; caller decides direction when invoking sync_link().
 """
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
@@ -25,7 +30,31 @@ from pixsim7.backend.main.services.characters.instance_service import CharacterI
 
 
 class CharacterNPCSyncService:
-    """Service for syncing character instances with NPCs"""
+    """
+    Service for syncing character instances with NPCs.
+
+    Field Authority (who owns what):
+
+    CharacterInstance → GameNPC (push):
+    - name (if not overridden)
+    - personality.base_traits
+    - personality.background
+    - personality.conversationStyle
+    - visual_traits (appearance, clothing)
+
+    GameNPC → CharacterInstance (pull/checkpoint):
+    - state (runtime state flags)
+    - stats (via stat engine)
+    - location (current_location_id from NPCState)
+    - relationship_snapshots (if checkpointing)
+
+    Two-way (configurable via CharacterNPCLink):
+    - personality.mood (can drift in runtime, can be reset from template)
+    - custom fields defined in link.field_mapping
+
+    Note: Sync is selective and declarative. Only fields in CharacterNPCLink.field_mapping
+    are synchronized. Direction and priority are controlled per-link.
+    """
 
     def __init__(self, db: AsyncSession):
         self.db = db

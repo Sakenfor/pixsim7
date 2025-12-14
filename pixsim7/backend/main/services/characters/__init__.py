@@ -17,6 +17,12 @@ from pixsim7.backend.main.services.characters.instance_service import CharacterI
 from pixsim7.backend.main.services.characters.npc_sync_service import CharacterNPCSyncService
 from pixsim7.backend.main.services.characters.capability_service import CharacterCapabilityService
 from pixsim7.backend.main.services.characters.scene_manifest_service import SceneCharacterManifestService
+from pixsim7.backend.main.services.characters.prompt_context_service import (
+    EnricherFn,
+    PromptContextRequest,
+    PromptContextService,
+    PromptContextSnapshot,
+)
 
 __all__ = [
     'CharacterService',
@@ -25,4 +31,8 @@ __all__ = [
     'CharacterNPCSyncService',
     'CharacterCapabilityService',
     'SceneCharacterManifestService',
+    'EnricherFn',
+    'PromptContextRequest',
+    'PromptContextService',
+    'PromptContextSnapshot',
 ]
