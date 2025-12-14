@@ -5,7 +5,7 @@
  * stat packages a world uses. No hardcoded stat names or structures.
  */
 
-import type { NpcId, WorldId } from './ids';
+import type { IDs } from './index';
 
 /**
  * Snapshot of a single stat definition for one NPC.
@@ -30,8 +30,8 @@ export interface BrainStatSnapshot {
  * Access stats via brain.stats[statDefId] and derived values via brain.derived[key].
  */
 export interface BrainState {
-  npcId: NpcId;
-  worldId: WorldId;
+  npcId: IDs.NpcId;
+  worldId: IDs.WorldId;
 
   /** Stat snapshots keyed by definition ID */
   stats: Record<string, BrainStatSnapshot>;

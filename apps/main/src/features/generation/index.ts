@@ -40,3 +40,9 @@ export {
 export type { GenerationsState, GenerationStatus } from './stores/generationsStore';
 // Lib - Generation Core
 export * from './lib/core';
+
+// Lib - Generation Types (from @shared/types)
+export * from './lib/generationTypes';
+
+// Namespace export for generation types
+export * as Types from './lib/generationTypes';

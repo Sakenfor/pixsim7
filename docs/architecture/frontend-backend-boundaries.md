@@ -192,6 +192,138 @@ import type { SceneNode } from '@shared/types';
 
 **Backend Equivalent:** Backend defines similar models in Python (e.g., `domain/session.py`), but the TypeScript types in `@shared/types` are the **source of truth** for the API contract.
 
+#### **Namespace Import Patterns**
+
+**Package:** `@shared/types` provides namespace exports for major type groups:
+
+**Available Namespaces:**
+- `IDs` - ID constructors and ref helpers
+- `Scene` - Scene graph types (nodes, edges, runtime state)
+- `Game` - Game DTOs (locations, NPCs, sessions, etc.)
+
+**When to Use Namespaces:**
+- **Use namespace** - For files that use multiple types from the same group (3+ types)
+- **Use direct imports** - For files that only use 1-2 specific types
+
+**Namespace Patterns:**
+
+##### IDs Namespace (ID Types)
+
+```typescript
+// ✅ RECOMMENDED - Clean namespace imports
+import { IDs } from '@shared/types';
+
+export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
+  // ...
+}
+
+export async function createGameSession(
+  sceneId: IDs.SceneId,
+  flags?: Record<string, unknown>
+): Promise<GameSessionDTO> {
+  // Create IDs using namespace
+  const sessionId = IDs.SessionId(response.id);
+  const npcRef = IDs.Ref.npc(npcId);
+  // ...
+}
+```
+
+##### Scene Namespace (Scene Graph Types)
+```typescript
+// ✅ RECOMMENDED - Namespace for scene graph code
+import { Scene } from '@shared/types';
+
+function buildScene(): Scene.Scene {
+  const startNode: Scene.ContentNode = {
+    nodeType: 'scene_content',
+    id: 'start',
+    type: 'video',
+    media: [{ id: 'intro', url: '/video.mp4' }],
+    selection: { kind: 'ordered' }
+  };
+
+  const edge: Scene.Edge = {
+    id: 'edge1',
+    from: 'start',
+    to: 'next'
+  };
+
+  return {
+    id: 'my_scene',
+    nodes: [startNode],
+    edges: [edge],
+    startNodeId: 'start'
+  };
+}
+```
+
+##### Game Namespace (Game DTOs)
+```typescript
+// ✅ RECOMMENDED - Namespace for game API code
+import { Game, IDs } from '@shared/types';
+
+async function createLocation(
+  worldId: IDs.WorldId,
+  data: Partial<Game.LocationDetail>
+): Promise<Game.LocationDetail> {
+  const npc: Game.NpcDetail = await fetchNpc(data.npcId);
+  // ...
+}
+```
+
+**Direct Import Pattern (Alternative for focused files):**
+```typescript
+// ✅ ALSO VALID - Direct imports for specific types
+import { LocationId, SessionId, SceneContentNode } from '@shared/types';
+
+export async function updateLocation(locationId: LocationId) {
+  // ...
+}
+```
+
+**What's Available Under `IDs`:**
+
+| Category | Examples | Usage |
+|----------|----------|-------|
+| **ID Types** | `IDs.NpcId`, `IDs.LocationId`, `IDs.SessionId`, `IDs.CharacterId` | Type annotations for function parameters |
+| **ID Constructors** | `IDs.NpcId(123)`, `IDs.SessionId(456)` | Create branded IDs from primitives |
+| **Ref Builders** | `IDs.Ref.npc(id)`, `IDs.Ref.location(id)` | Build canonical string refs (`"npc:123"`) |
+| **Type Guards** | `IDs.isNpcRef(str)`, `IDs.isLocationRef(str)` | Runtime validation of ref strings |
+| **Parsers** | `IDs.parseRef(str)`, `IDs.extractNpcId(str)` | Parse ref strings into typed IDs |
+
+**Examples:**
+
+```typescript
+// Using namespace for multiple ID types
+import { IDs } from '@shared/types';
+
+function processInteraction(
+  worldId: IDs.WorldId,
+  sessionId: IDs.SessionId,
+  npcId: IDs.NpcId,
+  locationId?: IDs.LocationId
+) {
+  // Build refs for session storage
+  const npcRef = IDs.Ref.npc(npcId);
+  const locationRef = locationId ? IDs.Ref.location(locationId) : null;
+
+  // Use type guards
+  if (IDs.isNpcRef(someString)) {
+    const parsed = IDs.parseRef(someString);
+    // ...
+  }
+}
+```
+
+**Benefits:**
+- **Discoverability** - All ID utilities visible via `IDs.` autocomplete
+- **Reduces line noise** - One import instead of listing many types
+- **Clear intent** - `IDs.LocationId` explicitly shows it's an ID type
+- **Backward compatible** - Direct imports still work for existing code
+
+**Migration Guide:**
+Existing code using direct imports continues to work unchanged. Gradually migrate files to the namespace pattern when they're modified for other reasons.
+
 ---
 
 ## 2. Backend → Frontend Data Flow

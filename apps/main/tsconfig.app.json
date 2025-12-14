@@ -37,6 +37,7 @@
       "@features/gizmos": ["./src/features/gizmos/index.ts"],
       "@features/controlCenter/*": ["./src/features/controlCenter/*"],
       "@features/controlCenter": ["./src/features/controlCenter/index.ts"],
+      "@features/narrative": ["./src/features/narrative/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

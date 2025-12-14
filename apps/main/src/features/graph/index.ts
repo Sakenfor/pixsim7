@@ -78,3 +78,12 @@ export * from './lib/editor/types';
 // Lib - Graph Builders
 export * from './lib/builders/actionGraphBuilder';
 export * from './lib/builders/promptGraphBuilder';
+
+// Lib - Node Types (from @shared/types migration)
+export * from './lib/nodeTypes/npcResponse';
+export * from './lib/nodeTypes/registry';
+export * from './lib/nodeTypes/arc';
+export * from './lib/nodeTypes/builtin';
+
+// Namespace export for node types
+export * as NodeTypes from './lib/nodeTypes/registry';

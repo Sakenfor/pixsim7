@@ -5,6 +5,24 @@
  * in the system. It ensures compile-time safety when working with different
  * entity types while remaining compatible with plain primitives at runtime.
  *
+ * ## Import Patterns
+ *
+ * This module is exported both as **named exports** (legacy) and as a **namespace** (recommended):
+ *
+ * ```typescript
+ * // ✅ RECOMMENDED - Namespace import (clean, discoverable)
+ * import { IDs } from '@shared/types';
+ * const locationId: IDs.LocationId = IDs.LocationId(123);
+ * const ref = IDs.Ref.location(locationId);
+ *
+ * // ✅ ALSO VALID - Direct imports (legacy compatibility)
+ * import { LocationId } from '@shared/types';
+ * const locationId: LocationId = LocationId(123);
+ * ```
+ *
+ * Use the namespace pattern (`IDs.*`) for files that use multiple ID types.
+ * Use direct imports for files that only use 1-2 specific types.
+ *
  * ## Design Principles
  *
  * 1. **Branded types are purely type-level** - No runtime overhead or instanceof checks.

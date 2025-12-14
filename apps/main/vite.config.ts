@@ -66,6 +66,7 @@ export default defineConfig({
       { find: '@features/assets', replacement: path.resolve(__dirname, './src/features/assets') },
       { find: '@features/controlCenter', replacement: path.resolve(__dirname, './src/features/controlCenter') },
       { find: '@features/devtools', replacement: path.resolve(__dirname, './src/features/devtools') },
+      { find: '@features/narrative', replacement: path.resolve(__dirname, './src/features/narrative') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

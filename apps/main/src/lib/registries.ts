@@ -50,14 +50,14 @@ export type {
 
 // ===== Node Type Registry =====
 // Manages scene graph node types
-// Source: @pixsim7/shared.types
-export { nodeTypeRegistry, NodeTypeRegistry } from '@pixsim7/shared.types';
+// Source: @features/graph (moved from @pixsim7/shared.types in migration)
+export { nodeTypeRegistry, NodeTypeRegistry } from '@features/graph';
 
 export type {
   NodeTypeDefinition,
   PortDefinition,
   PortConfig,
-} from '@pixsim7/shared.types';
+} from '@features/graph';
 
 /**
  * Re-export registration helper functions

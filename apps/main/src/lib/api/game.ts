@@ -23,7 +23,7 @@ import type {
   InventoryItemDTO,
   WorldManifest,
 } from '@lib/registries';
-import { LocationId, SessionId, SceneId, NpcId, WorldId } from '@shared/types';
+import { IDs } from '@shared/types';
 
 // Re-export types for backward compatibility
 export type {
@@ -55,13 +55,13 @@ export async function listGameLocations(): Promise<GameLocationSummary[]> {
   return res.data;
 }
 
-export async function getGameLocation(locationId: LocationId): Promise<GameLocationDetail> {
+export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
   const res = await apiClient.get<GameLocationDetail>(`/game/locations/${locationId}`);
   return res.data;
 }
 
 export async function saveGameLocationHotspots(
-  locationId: LocationId,
+  locationId: IDs.LocationId,
   hotspots: GameHotspotDTO[],
 ): Promise<GameLocationDetail> {
   const res = await apiClient.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, {
@@ -71,7 +71,7 @@ export async function saveGameLocationHotspots(
 }
 
 export async function saveGameLocationMeta(
-  locationId: LocationId,
+  locationId: IDs.LocationId,
   meta: Record<string, unknown>,
 ): Promise<GameLocationDetail> {
   const res = await apiClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
@@ -136,7 +136,7 @@ export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest
   };
 }
 
-export async function getGameScene(sceneId: SceneId): Promise<Scene> {
+export async function getGameScene(sceneId: IDs.SceneId): Promise<Scene> {
   const res = await apiClient.get<Scene>(`/game/scenes/${sceneId}`);
   return res.data;
 }
@@ -152,8 +152,8 @@ export async function attemptSensualTouch(req: SensualTouchRequest): Promise<Sen
 }
 
 export interface GameSessionSummary {
-  id: SessionId;
-  scene_id: SceneId;
+  id: IDs.SessionId;
+  scene_id: IDs.SceneId;
   world_time: number;
   created_at: string;
 }
@@ -164,7 +164,7 @@ export async function listGameSessions(): Promise<GameSessionSummary[]> {
 }
 
 export async function createGameSession(
-  sceneId: SceneId,
+  sceneId: IDs.SceneId,
   flags?: Record<string, unknown>
 ): Promise<GameSessionDTO> {
   const res = await apiClient.post<GameSessionDTO>('/game/sessions', {
@@ -174,7 +174,7 @@ export async function createGameSession(
   return res.data;
 }
 
-export async function getGameSession(sessionId: SessionId): Promise<GameSessionDTO> {
+export async function getGameSession(sessionId: IDs.SessionId): Promise<GameSessionDTO> {
   const res = await apiClient.get<GameSessionDTO>(`/game/sessions/${sessionId}`);
   return res.data;
 }
@@ -186,7 +186,7 @@ export interface SessionUpdateResponse {
 }
 
 export async function updateGameSession(
-  sessionId: SessionId,
+  sessionId: IDs.SessionId,
   payload: SessionUpdatePayload,
 ): Promise<SessionUpdateResponse> {
   try {
