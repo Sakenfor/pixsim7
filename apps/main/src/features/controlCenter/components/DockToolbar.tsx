@@ -124,8 +124,6 @@ export function DockToolbar({
       {/* News ticker for generation events */}
       <NotificationTicker />
 
-      <div className="flex-1" />
-
       {/* Quick Navigation Shortcuts */}
       {showQuickNav && quickNavItems.length > 0 && (
         <div className="flex items-center gap-0.5 mr-2">
