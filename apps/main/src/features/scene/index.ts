@@ -37,26 +37,43 @@ export { SceneStateEditor, type SceneStateEditorProps } from './components/playe
 export type { PlaybackEvent } from './lib/core';
 
 // ============================================================================
-// UI Helpers
+// Plugin SDK - Stable Exports for Scene View Plugins
 // ============================================================================
+//
+// These exports form the stable API for scene view plugins.
+// Breaking changes to these exports require a major version bump.
+//
+// Plugin developers should import from '@features/scene' for:
+// - Comic panel data access (getActiveComicPanels, getComicPanelById, etc.)
+// - Comic panel types (SceneMetaComicPanel, ComicPanelLayout, etc.)
+// - Asset utilities (ensureAssetRef, extractNumericAssetId)
+// - React components (ComicPanelView)
+//
+// See: docs/PLUGIN_ARCHITECTURE.md § Scene View Plugins
 
 export {
+  // Components
   ComicPanelView,
   type ComicPanelViewProps,
-  type ComicPanelLayout,
+
+  // Data Access Functions (Stable Plugin SDK)
   getActiveComicPanels,
   getComicPanelById,
   getComicPanelsByTags,
   getComicPanelAssetIds,
   setCurrentComicPanel,
   clearCurrentComicPanel,
+
+  // Types (Stable Plugin SDK)
+  type ComicPanelLayout,
   type ComicPanelSession,
   type ComicPanelSceneMeta,
   type ComicPanelRequestContext,
   type ComicPanelDerivedContext,
   type SceneMetaComicPanel,
   type ComicSessionFlags,
-  // Utilities for scene view plugins
+
+  // Asset Utilities (Stable Plugin SDK)
   ensureAssetRef,
   extractNumericAssetId,
 } from './ui/comicPanels';

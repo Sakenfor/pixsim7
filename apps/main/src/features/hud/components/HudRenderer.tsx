@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useHudLayoutStore } from '../stores/hudLayoutStore';
-import { ComposedPanel } from '@/components/panels/shared/ComposedPanel';
+import { ComposedPanel } from '@lib/ui/composer';
 import { initializeWidgets } from '@lib/ui/composer/initializeWidgets';
 import type { HudRegionId, WorldHudLayout, HudRegionLayout } from '@features/hud';
 import { DEFAULT_REGION_POSITIONS } from '@features/hud';
