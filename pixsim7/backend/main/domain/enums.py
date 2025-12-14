@@ -31,6 +31,26 @@ def enum_column(enum_cls: Type[Enum], name: str, index: bool = False) -> Column:
     )
 
 
+def normalize_enum(v, enum_cls: Type[Enum]):
+    """Normalize enum value - handles both uppercase DB values and enum instances.
+
+    Use this in Pydantic field_validators or SQLAlchemy model validators to
+    handle legacy uppercase enum values stored in the database.
+
+    Args:
+        v: The value to normalize (can be enum instance, string, or None)
+        enum_cls: The target enum class
+
+    Returns:
+        The enum member, or the original value if already correct type or None
+    """
+    if v is None or isinstance(v, enum_cls):
+        return v
+    if isinstance(v, str):
+        return enum_cls(v.lower())
+    return v
+
+
 class MediaType(str, Enum):
     """Asset media type"""
     VIDEO = "video"

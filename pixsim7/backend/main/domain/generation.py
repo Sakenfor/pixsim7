@@ -21,16 +21,7 @@ from pydantic import field_validator
 import hashlib
 import json
 
-from .enums import OperationType, GenerationStatus, BillingState, enum_column
-
-
-def _normalize_enum(v, enum_cls):
-    """Normalize enum value - handles uppercase DB values."""
-    if v is None or isinstance(v, enum_cls):
-        return v
-    if isinstance(v, str):
-        return enum_cls(v.lower())
-    return v
+from .enums import OperationType, GenerationStatus, BillingState, enum_column, normalize_enum
 
 
 class Generation(SQLModel, table=True):
@@ -195,17 +186,17 @@ class Generation(SQLModel, table=True):
     @field_validator("operation_type", mode="before")
     @classmethod
     def normalize_operation_type(cls, v):
-        return _normalize_enum(v, OperationType)
+        return normalize_enum(v, OperationType)
 
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, v):
-        return _normalize_enum(v, GenerationStatus)
+        return normalize_enum(v, GenerationStatus)
 
     @field_validator("billing_state", mode="before")
     @classmethod
     def normalize_billing_state(cls, v):
-        return _normalize_enum(v, BillingState)
+        return normalize_enum(v, BillingState)
 
     def __repr__(self) -> str:
         return (

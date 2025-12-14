@@ -90,6 +90,20 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     estimate_video_credit_change,
 )
 
+# Operation type sets for Pixverse (used in map_parameters, credit estimation, etc.)
+_VIDEO_OPERATIONS = frozenset({
+    OperationType.TEXT_TO_VIDEO,
+    OperationType.IMAGE_TO_VIDEO,
+    OperationType.VIDEO_EXTEND,
+    OperationType.VIDEO_TRANSITION,
+    OperationType.FUSION,
+})
+
+_IMAGE_OPERATIONS = frozenset({
+    OperationType.TEXT_TO_IMAGE,
+    OperationType.IMAGE_TO_IMAGE,
+})
+
 
 def _decode_pixverse_url(value: Any) -> Any:
     """Best-effort decode of Pixverse media URLs."""
@@ -155,23 +169,11 @@ class PixverseProvider(
         Returns:
             Pixverse-specific parameters
         """
-        # Categorize operations
-        VIDEO_OPERATIONS = {
-            OperationType.TEXT_TO_VIDEO,
-            OperationType.IMAGE_TO_VIDEO,
-            OperationType.VIDEO_EXTEND,
-            OperationType.VIDEO_TRANSITION,
-            OperationType.FUSION,
-        }
-        IMAGE_OPERATIONS = {
-            OperationType.TEXT_TO_IMAGE,
-            OperationType.IMAGE_TO_IMAGE,
-        }
         VIDEO_MODELS = {"v3.5", "v4", "v5", "v5.5"}
         IMAGE_MODELS = {"qwen-image", "gemini-3.0", "gemini-2.5-flash", "seedream-4.0"}
 
-        is_video_op = operation_type in VIDEO_OPERATIONS
-        is_image_op = operation_type in IMAGE_OPERATIONS
+        is_video_op = operation_type in _VIDEO_OPERATIONS
+        is_image_op = operation_type in _IMAGE_OPERATIONS
 
         mapped: Dict[str, Any] = {}
 
@@ -746,25 +748,13 @@ class PixverseProvider(
 
         Uses pixverse_pricing helpers for accurate estimates.
         """
-        VIDEO_OPERATIONS = {
-            OperationType.TEXT_TO_VIDEO,
-            OperationType.IMAGE_TO_VIDEO,
-            OperationType.VIDEO_EXTEND,
-            OperationType.VIDEO_TRANSITION,
-            OperationType.FUSION,
-        }
-        IMAGE_OPERATIONS = {
-            OperationType.TEXT_TO_IMAGE,
-            OperationType.IMAGE_TO_IMAGE,
-        }
-
         model = params.get("model") or "v5"
         quality = params.get("quality") or "360p"
 
-        if operation_type in IMAGE_OPERATIONS:
+        if operation_type in _IMAGE_OPERATIONS:
             return get_image_credit_change(str(model), str(quality))
 
-        if operation_type in VIDEO_OPERATIONS:
+        if operation_type in _VIDEO_OPERATIONS:
             duration = params.get("duration")
             if not isinstance(duration, (int, float)) or duration <= 0:
                 duration = 5  # Default duration
@@ -794,26 +784,14 @@ class PixverseProvider(
 
         Uses actual duration from provider when available.
         """
-        VIDEO_OPERATIONS = {
-            OperationType.TEXT_TO_VIDEO,
-            OperationType.IMAGE_TO_VIDEO,
-            OperationType.VIDEO_EXTEND,
-            OperationType.VIDEO_TRANSITION,
-            OperationType.FUSION,
-        }
-        IMAGE_OPERATIONS = {
-            OperationType.TEXT_TO_IMAGE,
-            OperationType.IMAGE_TO_IMAGE,
-        }
-
         params = generation.canonical_params or generation.raw_params or {}
         model = params.get("model") or "v5"
         quality = params.get("quality") or "360p"
 
-        if generation.operation_type in IMAGE_OPERATIONS:
+        if generation.operation_type in _IMAGE_OPERATIONS:
             return get_image_credit_change(str(model), str(quality))
 
-        if generation.operation_type in VIDEO_OPERATIONS:
+        if generation.operation_type in _VIDEO_OPERATIONS:
             # Prefer actual duration from provider
             duration = actual_duration
             if duration is None or duration <= 0:
