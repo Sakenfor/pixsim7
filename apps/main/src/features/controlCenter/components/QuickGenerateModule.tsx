@@ -10,6 +10,7 @@ import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
 import { useResizablePanels, type PanelConfig } from './hooks/useResizablePanels';
+import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -774,6 +775,15 @@ export function QuickGenerateModule() {
       hideGenerateButton
       // Render props - no header, just content with inline settings
       renderContent={renderContent}
+      // Prompt Companion slot
+      renderFooter={() => (
+        <PromptCompanionHost
+          surface="quick-generate"
+          promptValue={prompt}
+          setPromptValue={setPrompt}
+          metadata={{ operationType, providerId }}
+        />
+      )}
     />
   );
 }

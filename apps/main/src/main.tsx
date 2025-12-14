@@ -11,6 +11,7 @@ import { registerGallerySurfaces } from './features/gallery/lib/core/registerGal
 import { registerGalleryTools } from './features/gallery/lib/core/registerGalleryTools'
 import { registerGizmoSurfaces } from './features/gizmos'
 import { DevToolProvider } from './lib/devtools/devToolContext'
+import { registerPromptCompanion } from './plugins/ui/prompt-companion'
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
 import './lib/utils/debugFlags' // Debug flags system for toggleable logging
 import { initializeConsole } from './lib/console'
@@ -32,6 +33,9 @@ registerGalleryTools()
 
 // Register gizmo surfaces
 registerGizmoSurfaces()
+
+// Register prompt companion plugin
+registerPromptCompanion()
 
 // Initialize console namespace (pixsim.*)
 initializeConsole()

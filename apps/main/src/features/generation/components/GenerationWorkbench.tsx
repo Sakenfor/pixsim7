@@ -1,3 +1,29 @@
+/**
+ * GenerationWorkbench Component
+ *
+ * A reusable generation UI wrapper that provides settings bar, generate button,
+ * error display, and status tracking. Consumers customize the layout through
+ * render props (renderHeader, renderContent, renderFooter).
+ *
+ * For prompt companion integration, use the `renderFooter` prop to add a
+ * PromptCompanionHost:
+ *
+ * ```tsx
+ * import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
+ *
+ * <GenerationWorkbench
+ *   // ... other props
+ *   renderFooter={() => (
+ *     <PromptCompanionHost
+ *       surface="generation-workbench"
+ *       promptValue={prompt}
+ *       setPromptValue={setPrompt}
+ *     />
+ *   )}
+ * />
+ * ```
+ */
+
 import React from 'react';
 import clsx from 'clsx';
 import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';

@@ -23,3 +23,8 @@ export * from './panels';
 // Display System - Display space management
 // ============================================================================
 export * from './display';
+
+// ============================================================================
+// Prompt Companion Slot - Extension slot for prompt input surfaces
+// ============================================================================
+export * from './promptCompanionSlot';

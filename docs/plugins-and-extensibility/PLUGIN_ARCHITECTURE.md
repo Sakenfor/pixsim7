@@ -870,8 +870,102 @@ alembic upgrade head
 
 ---
 
+## Prompt Companion Slots
+
+Prompt companion slots provide an extension mechanism for injecting interactive toolbars alongside prompt input surfaces. This pattern enables plugins to augment the prompt editing experience without modifying core components.
+
+### Architecture
+
+```
+lib/ui/
+└── promptCompanionSlot.tsx    # Slot system: registry, context, host component
+
+plugins/ui/prompt-companion/   # Built-in companion plugin
+├── manifest.ts                # Plugin metadata
+├── register.ts                # Registration function
+├── index.ts                   # Entry point
+└── components/
+    ├── PromptCompanionPanel.tsx    # Main toolbar
+    ├── BlockBreakdownDrawer.tsx    # Analysis results
+    ├── VariantSuggestionsDrawer.tsx
+    ├── PackHintsDrawer.tsx
+    └── BlockBuilderModal.tsx
+```
+
+### Slot System Components
+
+1. **Registry** (`promptCompanionRegistry`)
+   - Tracks registered companion plugins
+   - Filters by surface and dev mode
+   - Notifies listeners on changes
+
+2. **Context** (`PromptCompanionContext`)
+   ```typescript
+   interface PromptCompanionContext {
+     promptValue: string;
+     setPromptValue: (next: string) => void;
+     surface: 'prompt-lab' | 'quick-generate' | 'generation-workbench';
+     metadata?: Record<string, unknown>;
+     isDevMode: boolean;
+   }
+   ```
+
+3. **Host Component** (`PromptCompanionHost`)
+   - Renders registered plugins for the current surface
+   - Provides context to plugin components
+
+### Usage in Prompt Surfaces
+
+```tsx
+import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
+
+function MyPromptSurface() {
+  const [prompt, setPrompt] = useState('');
+
+  return (
+    <div>
+      <textarea value={prompt} onChange={e => setPrompt(e.target.value)} />
+      <PromptCompanionHost
+        surface="prompt-lab"
+        promptValue={prompt}
+        setPromptValue={setPrompt}
+        metadata={{ custom: 'data' }}
+      />
+    </div>
+  );
+}
+```
+
+### Creating Custom Companions
+
+```typescript
+import { promptCompanionRegistry } from '@lib/ui/promptCompanionSlot';
+
+promptCompanionRegistry.register({
+  id: 'my-companion',
+  name: 'My Companion',
+  priority: 50,
+  component: MyCompanionComponent,
+  supportedSurfaces: ['prompt-lab'],
+  devOnly: false,
+});
+```
+
+### Built-in Companion Features
+
+The default `prompt-companion` plugin provides:
+- **Explain Blocks**: Analyze prompt structure into segments
+- **Suggest Variants**: Generate AI-powered prompt variations
+- **Pack Hints**: Discover semantic categories (dev mode)
+- **Block Builder**: Compose new blocks from segments
+
+See [Prompt Companion Plugin](../plugins/prompt-companion.md) for detailed documentation.
+
+---
+
 ## Related Documentation
 
+- [Prompt Companion Plugin](../plugins/prompt-companion.md)
 - [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md)
 - [Gallery Tools Plugin](./GALLERY_TOOLS_PLUGIN.md)
 - [Graph Renderer Plugins](./GRAPH_RENDERER_PLUGINS.md)

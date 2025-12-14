@@ -12,6 +12,7 @@ import { DevPromptImporter } from './DevPromptImporter';
 import { PromptSegmentsViewer, type PromptSegment } from '@features/prompts';
 import { PromptBlockGraphSurface } from '@features/graph';
 import { useApi } from '../hooks/useApi';
+import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
 
 // ===== Types =====
 
@@ -271,6 +272,15 @@ function AnalyzeTab({ onSendToImport, onSendToCategories }: AnalyzeTabProps) {
               disabled={loading}
             />
           </div>
+
+          {/* Prompt Companion Slot */}
+          <PromptCompanionHost
+            surface="prompt-lab"
+            promptValue={promptText}
+            setPromptValue={setPromptText}
+            metadata={{ analysisResult: analysis }}
+            className="mt-2"
+          />
 
           {error && (
             <div className="p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded text-red-800 dark:text-red-200">
