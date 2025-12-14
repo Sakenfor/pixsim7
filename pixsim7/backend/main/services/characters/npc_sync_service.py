@@ -485,3 +485,67 @@ class CharacterNPCSyncService:
 
         # Return highest priority link's character instance
         return links[0].character_instance_id
+
+    async def create_link_via_generic_service(
+        self,
+        character_instance_id: UUID,
+        npc_id: int,
+        priority: int = 0,
+        sync_direction: str = 'bidirectional',
+        activation_conditions: Optional[Dict[str, Any]] = None,
+        meta: Optional[Dict[str, Any]] = None
+    ):
+        """Create link using the generic ObjectLink pattern (alternative path)
+
+        This method demonstrates how to use the generic link service for
+        character-NPC linking. It's an alternative to create_link() that uses
+        the new generic link infrastructure.
+
+        This is additive and non-breaking - the existing create_link() method
+        continues to work with CharacterNPCLink.
+
+        Args:
+            character_instance_id: Character instance UUID
+            npc_id: NPC ID
+            priority: Link priority (higher wins)
+            sync_direction: 'bidirectional', 'template_to_runtime', 'runtime_to_template'
+            activation_conditions: Context-based activation (e.g., location, time)
+            meta: Extensible metadata
+
+        Returns:
+            Created ObjectLink instance
+
+        Example:
+            link = await service.create_link_via_generic_service(
+                character_instance_id=uuid4(),
+                npc_id=123,
+                priority=10,
+                activation_conditions={'location.zone': 'downtown'}
+            )
+        """
+        from services.links.link_service import LinkService
+
+        # Validate instance and NPC exist
+        instance = await self.instance_service.get_instance(character_instance_id)
+        if not instance:
+            raise ValueError(f"Instance {character_instance_id} not found")
+
+        npc = await self.db.get(GameNPC, npc_id)
+        if not npc:
+            raise ValueError(f"NPC {npc_id} not found")
+
+        # Create link using generic service
+        link_service = LinkService(self.db)
+
+        return await link_service.create_link(
+            template_kind='character',
+            template_id=str(character_instance_id),
+            runtime_kind='npc',
+            runtime_id=npc_id,
+            mapping_id='character->npc',  # Format: "templateKind->runtimeKind"
+            sync_enabled=True,
+            sync_direction=sync_direction,
+            priority=priority,
+            activation_conditions=activation_conditions,
+            meta=meta
+        )
