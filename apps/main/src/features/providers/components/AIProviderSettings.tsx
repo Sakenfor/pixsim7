@@ -116,6 +116,7 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
                 placeholder="sk-..."
                 className={inputClass}
+                autoComplete="off"
               />
             </div>
 
@@ -127,6 +128,7 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, anthropic_api_key: e.target.value })}
                 placeholder="sk-ant-..."
                 className={inputClass}
+                autoComplete="off"
               />
             </div>
 
@@ -166,6 +168,7 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
                 placeholder="sk-..."
                 size="sm"
+                autoComplete="off"
               />
             </FormField>
 
@@ -180,6 +183,7 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, anthropic_api_key: e.target.value })}
                 placeholder="sk-ant-..."
                 size="sm"
+                autoComplete="off"
               />
             </FormField>
 
