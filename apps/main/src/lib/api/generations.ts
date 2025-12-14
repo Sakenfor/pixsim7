@@ -14,6 +14,7 @@ import type {
   SceneRef,
   PlayerContextSnapshot,
 } from '@lib/registries';
+import { GenerationId } from '@shared/types';
 
 // Re-export types from @pixsim7/shared.types for convenience
 export type {
@@ -27,7 +28,7 @@ export type {
 
 // Backend response types (match backend schemas)
 export interface GenerationResponse {
-  id: number;
+  id: GenerationId;
   user_id: number;
   workspace_id?: number | null;
 
@@ -57,7 +58,7 @@ export interface GenerationResponse {
   completed_at?: string | null;
   error_message?: string | null;
   retry_count: number;
-  parent_generation_id?: number | null;
+  parent_generation_id?: GenerationId | null;
 
   // Result
   asset_id?: number | null;
@@ -162,7 +163,7 @@ export async function createGeneration(
 /**
  * Get generation by ID
  */
-export async function getGeneration(id: number): Promise<GenerationResponse> {
+export async function getGeneration(id: GenerationId): Promise<GenerationResponse> {
   const res = await apiClient.get<GenerationResponse>(`/generations/${id}?_=details`);
   return res.data;
 }
@@ -184,7 +185,7 @@ export async function listGenerations(params?: {
 /**
  * Cancel a generation
  */
-export async function cancelGeneration(id: number): Promise<GenerationResponse> {
+export async function cancelGeneration(id: GenerationId): Promise<GenerationResponse> {
   const res = await apiClient.post<GenerationResponse>(`/generations/${id}/cancel?_=cancel`);
   return res.data;
 }
@@ -195,7 +196,7 @@ export async function cancelGeneration(id: number): Promise<GenerationResponse> 
  * Creates a new generation with the same parameters.
  * Useful for content filter rejections or temporary errors.
  */
-export async function retryGeneration(id: number): Promise<GenerationResponse> {
+export async function retryGeneration(id: GenerationId): Promise<GenerationResponse> {
   const res = await apiClient.post<GenerationResponse>(`/generations/${id}/retry?_=retry`);
   return res.data;
 }
@@ -206,7 +207,7 @@ export async function retryGeneration(id: number): Promise<GenerationResponse> {
  * Permanently removes a generation from the database.
  * Only terminal generations (completed, failed, cancelled) can be deleted.
  */
-export async function deleteGeneration(id: number): Promise<void> {
+export async function deleteGeneration(id: GenerationId): Promise<void> {
   await apiClient.delete(`/generations/${id}?_=delete`);
 }
 

@@ -10,7 +10,7 @@ import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
 // ===================
 
 export interface GameLocationSummary {
-  id: number;
+  id: LocationId;
   name: string;
   asset_id?: number | null;
   default_spawn?: string | null;
@@ -57,7 +57,7 @@ export interface NpcSlot2d {
 }
 
 export interface GameLocationDetail {
-  id: number;
+  id: LocationId;
   name: string;
   asset_id?: number | null;
   default_spawn?: string | null;
@@ -77,7 +77,7 @@ export interface GameLocationDetail {
  * These types will be aligned in a future refactor.
  */
 export interface GameNpcSummary {
-  id: number;
+  id: NpcId;
   name: string;
 }
 
@@ -106,8 +106,8 @@ export interface NpcExpressionDTO {
 }
 
 export interface NpcPresenceDTO {
-  npc_id: number;
-  location_id: number;
+  npc_id: NpcId;
+  location_id: LocationId;
   state: Record<string, unknown>;
 }
 
@@ -129,12 +129,12 @@ export interface NpcSurfacePackage {
 // ===================
 
 export interface GameWorldSummary {
-  id: number;
+  id: WorldId;
   name: string;
 }
 
 export interface GameWorldDetail {
-  id: number;
+  id: WorldId;
   name: string;
   meta?: Record<string, unknown> | null;
   world_time: number;
@@ -755,9 +755,9 @@ export interface SessionFlags {
 }
 
 export interface GameSessionDTO {
-  id: number;
+  id: SessionId;
   user_id: number;
-  scene_id: number;
+  scene_id: SceneId;
   current_node_id: number;
   flags: Record<string, unknown>;
 
@@ -804,12 +804,12 @@ export interface SessionUpdatePayload {
 // ===================
 
 export interface PickpocketRequest {
-  npc_id: number;
+  npc_id: NpcId;
   slot_id: string;
   base_success_chance: number;
   detection_chance: number;
-  world_id?: number | null;
-  session_id: number;
+  world_id?: WorldId | null;
+  session_id: SessionId;
 }
 
 export interface PickpocketResponse {
@@ -821,14 +821,14 @@ export interface PickpocketResponse {
 
 // Romance/Sensual Touch Types
 export interface SensualTouchRequest {
-  npc_id: number;
+  npc_id: NpcId;
   slot_id: string;
   tool_id: string; // 'touch', 'caress', 'feather', 'silk', etc.
   pattern: string; // 'circular', 'linear', 'spiral', 'wave', 'pulse'
   base_intensity: number; // 0-1
   duration: number; // seconds
-  world_id?: number | null;
-  session_id: number;
+  world_id?: WorldId | null;
+  session_id: SessionId;
 }
 
 export interface SensualTouchResponse {

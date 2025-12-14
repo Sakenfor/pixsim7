@@ -12,6 +12,7 @@ import type {
   NpcInteractionInstance,
 } from '@lib/registries';
 import { apiClient } from './client';
+import { WorldId, SessionId, NpcId, LocationId } from '@shared/types';
 
 /**
  * List available interactions for an NPC
@@ -43,10 +44,10 @@ export async function executeNpcInteraction(
  * Get available interactions (convenience wrapper)
  */
 export async function getAvailableInteractions(
-  worldId: number,
-  sessionId: number,
-  npcId: number,
-  locationId?: number
+  worldId: WorldId,
+  sessionId: SessionId,
+  npcId: NpcId,
+  locationId?: LocationId
 ): Promise<NpcInteractionInstance[]> {
   const response = await listNpcInteractions({
     worldId,
@@ -62,10 +63,10 @@ export async function getAvailableInteractions(
  * Get all interactions including unavailable (for debugging)
  */
 export async function getAllInteractions(
-  worldId: number,
-  sessionId: number,
-  npcId: number,
-  locationId?: number
+  worldId: WorldId,
+  sessionId: SessionId,
+  npcId: NpcId,
+  locationId?: LocationId
 ): Promise<NpcInteractionInstance[]> {
   const response = await listNpcInteractions({
     worldId,
@@ -81,9 +82,9 @@ export async function getAllInteractions(
  * Execute an interaction (convenience wrapper)
  */
 export async function executeInteraction(
-  worldId: number,
-  sessionId: number,
-  npcId: number,
+  worldId: WorldId,
+  sessionId: SessionId,
+  npcId: NpcId,
   interactionId: string,
   playerInput?: string,
   context?: Record<string, unknown>
@@ -102,10 +103,10 @@ export async function executeInteraction(
  * Get pending dialogue requests from a session
  */
 export async function getPendingDialogue(
-  sessionId: number
+  sessionId: SessionId
 ): Promise<Array<{
   requestId: string;
-  npcId: number;
+  npcId: NpcId;
   programId: string;
   systemPrompt?: string;
   llmPrompt: string;
@@ -126,7 +127,7 @@ export async function getPendingDialogue(
  * Execute a pending dialogue request via LLM
  */
 export async function executePendingDialogue(
-  sessionId: number,
+  sessionId: SessionId,
   requestId: string
 ): Promise<{
   text: string;
@@ -161,7 +162,7 @@ export async function executePendingDialogue(
  * Clear a pending dialogue request from session
  */
 export async function clearPendingDialogue(
-  sessionId: number,
+  sessionId: SessionId,
   requestId: string
 ): Promise<void> {
   // This would need a backend endpoint to modify session flags
