@@ -6,10 +6,11 @@ Welcome to the PixSim7 documentation! This guide helps you navigate the document
 
 ## 📍 Quick Navigation
 
-### 🏗️ **Architecture** → [architecture/](./architecture/)
-Current architecture, design decisions, and refactoring plans.
+### 🚀 **Getting Started** → [getting-started/](./getting-started/)
+Setup, configuration, launcher, and initial usage.
 
-**Start here:** [architecture/CURRENT.md](./architecture/CURRENT.md) - Latest architecture snapshot with action items
+### 🏗️ **Infrastructure** → [infrastructure/](./infrastructure/)
+Backend architecture, deployment, and operations.
 
 ### 📖 **Narrative & Dialogue** → [narrative/](./narrative/)
 Complete dialogue and story systems documentation.
@@ -20,8 +21,36 @@ Complete dialogue and story systems documentation.
 ### ⚙️ **Action Blocks** → [actions/](./actions/)
 Video generation and scene action systems.
 
-### 🎮 **Game Systems** → [game/](./game/)
-NPCs, interactions, zones, and relationship mechanics.
+### 🎮 **Game Systems** → [game-systems/](./game-systems/)
+Game mechanics, graphs, editors, and world design.
+
+### 🎪 **Features** → [features/](./features/)
+Feature specifications (intimacy, romance, generation, etc).
+
+### 🔌 **Plugins & Extensibility** → [plugins-and-extensibility/](./plugins-and-extensibility/)
+Plugin architecture, capability registry, and extensions.
+
+### 💾 **Database & Logging** → [database-and-logging/](./database-and-logging/)
+Database migrations, logging, and monitoring setup.
+
+### 🔐 **Authentication** → [authentication/](./authentication/)
+Authentication, security, and device automation.
+
+### 🎨 **Frontend** → [frontend/](./frontend/)
+Component system, UI guides, and development practices.
+
+### 📊 **Audits & Analysis** → [audits-and-analysis/](./audits-and-analysis/)
+Documentation audits, system analysis, and planning reports.
+
+### 📚 **Reference** → [reference/](./reference/)
+API references, technical specifications, and guides.
+
+### 🚶 **Walkthroughs** → [walkthroughs/](./walkthroughs/)
+Step-by-step examples and power user guides.
+
+---
+
+### 🏛️ **Legacy Organized Sections**
 
 ### 📊 **Game Mechanics** → [stats-and-systems/](./stats-and-systems/)
 Stats, social metrics, and game mechanics systems.
@@ -38,8 +67,9 @@ Prompt versioning, management, and best practices.
 ### 🎭 **Comic Panels** → [comedy-panels/](./comedy-panels/)
 Comic panel display system.
 
-### 📚 **Reference** → [reference/](./reference/)
-API references and technical specifications.
+### 🏗️ **Architecture** → [architecture/](./architecture/)
+Current architecture, design decisions, and refactoring plans.
+**Start here:** [architecture/CURRENT.md](./architecture/CURRENT.md) - Latest architecture snapshot
 
 ### 🔧 **Systems** → [systems/](./systems/)
 Plugin architecture and AI generation system.
@@ -54,79 +84,114 @@ How-to guides and best practices.
 ```
 docs/
 ├── README.md                       # This file
+├── APP_MAP.md                      # Canonical system overview
+├── repo-map.md                     # Repository structure
+├── AGENTS.md                       # Agent guidelines
+├── TASK_TRACKING_OVERVIEW.md       # Task status tracking
 ├── REORGANIZATION_PLAN.md          # Reorganization details
-├── DOCUMENTATION_AUDIT_REPORT*.md  # Audit reports
 │
-├── narrative/                      # 🆕 Dialogue & story systems
+├── getting-started/                # 🆕 Initial setup
 │   ├── README.md
-│   ├── ENGINE_SPECIFICATION.md     # Consolidated spec
-│   ├── ENGINE_USAGE.md
-│   ├── RUNTIME.md
-│   ├── RUNTIME_MIGRATION.md
-│   └── INTERACTION_AUTHORING_GUIDE.md
+│   ├── SETUP.md
+│   ├── LAUNCHER.md
+│   ├── PORT_CONFIGURATION.md
+│   └── ADMIN_PANEL.md
 │
-├── actions/                        # 🆕 Action blocks
+├── game-systems/                   # 🆕 Game mechanics & design
 │   ├── README.md
-│   ├── ACTION_BLOCKS_UNIFIED_SYSTEM.md
-│   ├── ACTION_BLOCKS_I2I_EXTENSION.md
-│   ├── ACTION_ENGINE_USAGE.md
-│   └── ACTION_PROMPT_ENGINE_SPEC.md
+│   ├── SYSTEM_OVERVIEW.md
+│   ├── GRAPH_SYSTEM.md
+│   ├── EDITOR_2D_WORLD_LAYOUT_SPEC.md
+│   └── ... (9 files)
 │
-├── game/                           # 🆕 Game systems
+├── features/                       # 🆕 Feature specs
 │   ├── README.md
-│   ├── NPC_INTERACTIVE_ZONES_DESIGN.md
-│   ├── NPC_ZONE_TRACKING_SYSTEM.md
-│   ├── NPC_RESPONSE_GRAPH_DESIGN.md
-│   ├── NPC_RESPONSE_USAGE.md
-│   ├── NPC_RESPONSE_VIDEO_INTEGRATION.md
-│   ├── INTERACTION_*.md
-│   └── RELATIONSHIPS_AND_ARCS.md
+│   ├── INTIMACY_SCENE_COMPOSER.md
+│   ├── ROMANCE_PLUGIN.md
+│   └── ... (7 files)
 │
-├── stats-and-systems/              # 🆕 Game mechanics
+├── plugins-and-extensibility/      # 🆕 Plugin system
 │   ├── README.md
-│   ├── ABSTRACT_STAT_SYSTEM.md
-│   ├── STAT_SYSTEM_INTEGRATION_PLAN.md
-│   ├── ENTITY_STATS_EXAMPLES.md
-│   ├── SOCIAL_METRICS.md
+│   ├── PLUGIN_ARCHITECTURE.md
+│   ├── PLUGIN_BUNDLE_FORMAT.md
+│   └── ... (5 files)
+│
+├── database-and-logging/           # 🆕 Database & ops
+│   ├── README.md
+│   ├── DATABASE.md
+│   ├── TIMESCALEDB_SETUP.md
+│   └── ... (5 files)
+│
+├── authentication/                 # 🆕 Auth & security
+│   ├── README.md
+│   ├── PASSWORD_SUPPORT_FOR_AUTO_REFRESH.md
+│   ├── ANDROID_LOGIN_AUTOMATION.md
+│   └── EXTENSION_FLOWS.md
+│
+├── frontend/                       # 🆕 UI development
+│   ├── README.md
+│   ├── FRONTEND_COMPONENT_GUIDE.md
+│   ├── MICROFRONTENDS_SETUP.md
+│   └── ... (5 files)
+│
+├── infrastructure/                 # 🆕 Backend architecture
+│   ├── README.md
+│   ├── BACKEND_ORGANIZATION.md
+│   ├── BACKEND_MODERNIZATION.md
+│   ├── LAUNCHER_INTEGRATION_TESTING.md
+│   └── ... (10 files)
+│
+├── audits-and-analysis/            # 🆕 Audit reports
+│   ├── README.md
+│   ├── DOCUMENTATION_AUDIT_REPORT.md
+│   ├── DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md
+│   └── ... (6 files)
+│
+├── reference/                      # 🆕 Technical reference
+│   ├── README.md
+│   ├── CACHING_GUIDE.md
+│   ├── event-bus-and-spatial-queries.md
+│   └── ... (reference docs)
+│
+├── walkthroughs/                   # 🆕 Examples & guides
+│   ├── README.md
+│   └── power-user-simulation.md
+│
+├── narrative/                      # Dialogue & story systems
+│   ├── README.md
+│   ├── ENGINE_SPECIFICATION.md
 │   └── ...
 │
-├── ui/                             # 🆕 UI systems
+├── actions/                        # Action blocks
 │   ├── README.md
-│   ├── HUD_LAYOUT_DESIGNER.md
-│   ├── OVERLAY_POSITIONING_SYSTEM.md
-│   ├── OVERLAY_DATA_BINDING.md
-│   ├── GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md
 │   └── ...
 │
-├── controls/                       # 🆕 Control systems
+├── game/                           # NPCs & interactions
 │   ├── README.md
-│   ├── CONTROL_CUBES.md
-│   ├── CUBE_SYSTEM_V2_PLUGIN.md
-│   ├── CUBE_SYSTEM_DYNAMIC_REGISTRATION.md
-│   └── CONTROL_CENTER_PLUGIN_MIGRATION.md
+│   └── ...
 │
-├── prompts/                        # 🆕 Prompt management
+├── stats-and-systems/              # Game mechanics
 │   ├── README.md
-│   ├── PROMPT_SYSTEM_REVIEW.md
-│   ├── PROMPT_VERSIONING_SYSTEM.md
-│   ├── PROMPTS_GIT_FEATURES.md
-│   └── SONNET_PROMPT_INJECTION_GUIDE.md
+│   └── ...
 │
-├── comedy-panels/                  # 🆕 Scene display
+├── ui/                             # UI systems
 │   ├── README.md
-│   └── COMIC_PANELS.md
+│   └── ...
 │
-├── reference/                      # 🆕 API references
+├── controls/                       # Control systems
 │   ├── README.md
-│   ├── SESSION_HELPER_REFERENCE.md
-│   ├── CHARACTER_*.md
-│   ├── DYNAMIC_*.md
-│   └── NODE_*.md
+│   └── ...
+│
+├── prompts/                        # Prompt management
+│   ├── README.md
+│   └── ...
+│
+├── comedy-panels/                  # Scene display
+│   ├── README.md
+│   └── ...
 │
 ├── architecture/                   # Architecture docs
 │   ├── CURRENT.md
-│   ├── frontend.md
-│   ├── decisions/
 │   └── ...
 │
 ├── systems/                        # Domain systems
@@ -137,18 +202,11 @@ docs/
 │   └── ...
 │
 ├── guides/                         # How-to guides
-│   └── registry-patterns.md
-│
-├── archive/                        # Archived docs
-│   ├── deprecated-narrative/
-│   ├── deprecated-sessions/
-│   ├── deprecated-navigation/
 │   └── ...
 │
-└── reference/                      # Core reference
-    ├── APP_MAP.md
-    ├── PLUGIN_ARCHITECTURE.md
-    ├── repo-map.md
+└── archive/                        # Archived docs
+    ├── deprecated-narrative/
+    ├── deprecated-sessions/
     └── ...
 ```
 
@@ -158,46 +216,62 @@ docs/
 
 This section points to the authoritative documentation for each major system.
 
-**Audit Reports:**
-- [DOCUMENTATION_AUDIT_REPORT.md](./DOCUMENTATION_AUDIT_REPORT.md) - Complete audit of 243 docs with categorization
-- [DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md](./DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md) - **⚠️ HIGH-PRIORITY**: Deep analysis of 118 root-level docs identifying content overlaps and consolidation opportunities
+### Audits & Analysis
+- **[audits-and-analysis/DOCUMENTATION_AUDIT_REPORT.md](./audits-and-analysis/DOCUMENTATION_AUDIT_REPORT.md)** - Complete audit of 243 docs with categorization
+- **[audits-and-analysis/DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md](./audits-and-analysis/DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md)** - **⚠️ HIGH-PRIORITY**: Deep analysis of 118 root-level docs
+
+### Getting Started
+- **[getting-started/SETUP.md](./getting-started/SETUP.md)** - Complete setup guide
+- **[getting-started/LAUNCHER.md](./getting-started/LAUNCHER.md)** - Launcher usage guide
+- **[APP_MAP.md](./APP_MAP.md)** - Canonical system overview
 
 ### Architecture & Design
 - **[architecture/CURRENT.md](./architecture/CURRENT.md)** - Current architecture state (Dec 2025)
 - **[architecture/frontend-backend-boundaries.md](./architecture/frontend-backend-boundaries.md)** - API patterns and boundaries
 - **[architecture/spatial-model.md](./architecture/spatial-model.md)** - Spatial positioning system
-- **[architecture/generic-game-objects.md](./architecture/generic-game-objects.md)** - Entity composition system
-- **[architecture/generic-links.md](./architecture/generic-links.md)** - Template/runtime linking
 - **[repo-map.md](./repo-map.md)** - Repository structure and path aliases
 
-### Plugin System
-- **[PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md)** - Plugin system overview (canonical, Dec 14)
-- **[PLUGIN_BUNDLE_FORMAT.md](./PLUGIN_BUNDLE_FORMAT.md)** - Plugin bundle specification (Dec 14)
+### Plugin System & Extensibility
+- **[plugins-and-extensibility/PLUGIN_ARCHITECTURE.md](./plugins-and-extensibility/PLUGIN_ARCHITECTURE.md)** - Plugin system overview
+- **[plugins-and-extensibility/PLUGIN_BUNDLE_FORMAT.md](./plugins-and-extensibility/PLUGIN_BUNDLE_FORMAT.md)** - Plugin bundle specification
+- **[plugins-and-extensibility/APP_CAPABILITY_REGISTRY.md](./plugins-and-extensibility/APP_CAPABILITY_REGISTRY.md)** - Capability registry system
 - **[systems/plugins/PLUGIN_DEVELOPER_GUIDE.md](./systems/plugins/PLUGIN_DEVELOPER_GUIDE.md)** - Step-by-step development
-- **[systems/plugins/UNIFIED_PLUGIN_SYSTEM.md](./systems/plugins/UNIFIED_PLUGIN_SYSTEM.md)** - Registration patterns
+
+### Backend & Infrastructure
+- **[infrastructure/BACKEND_ORGANIZATION.md](./infrastructure/BACKEND_ORGANIZATION.md)** - Backend domain organization
+- **[infrastructure/backend-domain-map.md](./infrastructure/backend-domain-map.md)** - Backend domain structure
+- **[infrastructure/BACKEND_MODERNIZATION.md](./infrastructure/BACKEND_MODERNIZATION.md)** - Refactoring goals
+- **[database-and-logging/DATABASE.md](./database-and-logging/DATABASE.md)** - Database migrations guide
 
 ### Generation System
 - **[systems/generation/overview.md](./systems/generation/overview.md)** - System architecture overview
 - **[systems/generation/GENERATION_GUIDE.md](./systems/generation/GENERATION_GUIDE.md)** - Developer guide
-- **[systems/generation/GENERATION_ALIAS_CONVENTIONS.md](./systems/generation/GENERATION_ALIAS_CONVENTIONS.md)** - Naming conventions
-- **[systems/generation/provider-capabilities.md](./systems/generation/provider-capabilities.md)** - Provider matrix
+- **[systems/generation/APP_MAP_GENERATION.md](./systems/generation/APP_MAP_GENERATION.md)** - Generation pipeline overview
+- **[systems/generation/ASSET_ROLES_AND_RESOLVER.md](./systems/generation/ASSET_ROLES_AND_RESOLVER.md)** - Asset roles system
 
-### Game Systems
-- **[event-bus-and-spatial-queries.md](./event-bus-and-spatial-queries.md)** - Event/query system (Dec 14)
-- **[NARRATIVE_ENGINE_USAGE.md](./NARRATIVE_ENGINE_USAGE.md)** - Narrative runtime usage
-- **[ACTION_BLOCKS_UNIFIED_SYSTEM.md](./ACTION_BLOCKS_UNIFIED_SYSTEM.md)** - Action system architecture
-- **[INTERACTION_AUTHORING_GUIDE.md](./INTERACTION_AUTHORING_GUIDE.md)** - Interaction creation guide
+### Game Systems & World Design
+- **[game-systems/SYSTEM_OVERVIEW.md](./game-systems/SYSTEM_OVERVIEW.md)** - Game systems overview
+- **[game-systems/GRAPH_SYSTEM.md](./game-systems/GRAPH_SYSTEM.md)** - Multi-layer graph architecture
+- **[game-systems/EDITOR_2D_WORLD_LAYOUT_SPEC.md](./game-systems/EDITOR_2D_WORLD_LAYOUT_SPEC.md)** - 2D world layout editor design
+- **[reference/event-bus-and-spatial-queries.md](./reference/event-bus-and-spatial-queries.md)** - Event/query system
 
-### Backend & Services
-- **[backend-domain-map.md](./backend-domain-map.md)** - Backend domain structure (canonical reference)
-- **[BACKEND_ORGANIZATION.md](./BACKEND_ORGANIZATION.md)** - Domain organization summary
-- **[backend/SERVICES.md](./backend/SERVICES.md)** - Service API reference
+### Narrative & Dialogue
+- **[narrative/ENGINE_SPECIFICATION.md](./narrative/ENGINE_SPECIFICATION.md)** - Consolidated narrative engine spec
+- **[narrative/ENGINE_USAGE.md](./narrative/ENGINE_USAGE.md)** - Narrative runtime usage
+- **[narrative/INTERACTION_AUTHORING_GUIDE.md](./narrative/INTERACTION_AUTHORING_GUIDE.md)** - Interaction creation guide
 
-### UI & Gameplay
-- **[INTIMACY_SCENE_COMPOSER.md](./INTIMACY_SCENE_COMPOSER.md)** - Scene composition system (2269 lines)
-- **[COMIC_PANELS.md](./COMIC_PANELS.md)** - Comic panel display system (Dec 14)
-- **[power-user-simulation.md](./power-user-simulation.md)** - Complete workflow walkthrough (Dec 14)
-- **[GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md](./GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)** - Gizmo system
+### Features & Content
+- **[features/INTIMACY_SCENE_COMPOSER.md](./features/INTIMACY_SCENE_COMPOSER.md)** - Scene composition system
+- **[features/ROMANCE_PLUGIN.md](./features/ROMANCE_PLUGIN.md)** - Romance plugin system
+- **[features/SIMULATION_AUTOMATION.md](./features/SIMULATION_AUTOMATION.md)** - Automation API
+
+### Frontend & UI
+- **[frontend/FRONTEND_COMPONENT_GUIDE.md](./frontend/FRONTEND_COMPONENT_GUIDE.md)** - Component system and conventions
+- **[frontend/MICROFRONTENDS_SETUP.md](./frontend/MICROFRONTENDS_SETUP.md)** - Monorepo workspace setup
+- **[ui/GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md](./ui/GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)** - Gizmo system
+
+### Examples & Walkthroughs
+- **[walkthroughs/power-user-simulation.md](./walkthroughs/power-user-simulation.md)** - Complete workflow example: "The Harbor District" world
 
 ---
 
