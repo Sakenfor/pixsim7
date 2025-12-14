@@ -157,7 +157,59 @@ class EventBus:
 event_bus = EventBus()
 
 
-# ===== COMMON EVENT TYPES =====
+# ===== EVENT REGISTRY =====
+# Services can register their event types here for documentation/discovery
+# This is optional - services can emit events without registration
+
+_event_registry: Dict[str, Dict[str, Any]] = {}
+
+
+def register_event_type(
+    event_type: str,
+    description: str,
+    payload_schema: Dict[str, Any] | None = None,
+    source: str | None = None
+) -> None:
+    """
+    Register an event type for documentation and discovery.
+
+    This is optional but helps with tooling, documentation, and debugging.
+
+    Args:
+        event_type: Event type string (e.g., "game:entity_moved")
+        description: Human-readable description
+        payload_schema: Optional dict describing expected payload fields
+        source: Optional source module/service name
+
+    Example:
+        register_event_type(
+            "game:entity_moved",
+            "Emitted when an entity's transform changes",
+            payload_schema={
+                "entity_type": "str (npc, item, prop, etc.)",
+                "entity_id": "int",
+                "transform": "Transform dict",
+                "link_id": "optional str"
+            },
+            source="NpcSpatialService"
+        )
+    """
+    _event_registry[event_type] = {
+        "description": description,
+        "payload_schema": payload_schema or {},
+        "source": source
+    }
+    logger.debug(f"Registered event type: {event_type}")
+
+
+def get_registered_events() -> Dict[str, Dict[str, Any]]:
+    """Get all registered event types (for documentation/tooling)"""
+    return _event_registry.copy()
+
+
+# ===== LEGACY EVENT CONSTANTS (Deprecated) =====
+# These are kept for backward compatibility but new code should just use strings
+# and optionally call register_event_type() for documentation
 
 # Job events
 JOB_CREATED = "job:created"
@@ -182,6 +234,6 @@ ACCOUNT_SELECTED = "account:selected"
 ACCOUNT_EXHAUSTED = "account:exhausted"
 ACCOUNT_ERROR = "account:error"
 
-# Scene events (Phase 2)
+# Scene events
 SCENE_CREATED = "scene:created"
 SCENE_UPDATED = "scene:updated"

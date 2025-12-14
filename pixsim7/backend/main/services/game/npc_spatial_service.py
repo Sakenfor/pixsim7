@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
 from pixsim7.backend.main.domain.game.models import NPCState, GameNPC
+from pixsim7.backend.main.services.game.spatial_query_service import get_spatial_service
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
 
 
 class NpcSpatialService:
@@ -80,7 +82,8 @@ class NpcSpatialService:
         self,
         npc_id: int,
         transform: Dict[str, Any],
-        sync_location_id: bool = True
+        sync_location_id: bool = True,
+        emit_events: bool = True
     ) -> Dict[str, Any]:
         """
         Update an NPC's spatial transform.
@@ -89,6 +92,7 @@ class NpcSpatialService:
             npc_id: NPC to update
             transform: Transform dict matching the shared Transform type
             sync_location_id: If True, also update current_location_id from transform.locationId
+            emit_events: If True, emit game:entity_moved event and update spatial index
 
         Returns:
             The updated transform dict
@@ -99,6 +103,11 @@ class NpcSpatialService:
         # Validate transform has required fields
         if "position" not in transform:
             raise ValueError("Transform must include 'position' field")
+
+        # Get previous transform for event payload
+        previous_transform = None
+        if emit_events:
+            previous_transform = await self.get_npc_transform(npc_id)
 
         # Get or create NPCState
         result = await self.db.execute(
@@ -127,6 +136,39 @@ class NpcSpatialService:
 
         await self.db.commit()
         await self.db.refresh(npc_state)
+
+        # Update spatial index and emit events
+        if emit_events:
+            spatial_service = get_spatial_service()
+
+            # Create spatial object
+            spatial_object = {
+                "id": npc_id,
+                "kind": "npc",
+                "transform": transform,
+                "tags": []  # Could fetch from NPC metadata if available
+            }
+
+            # Update or register in spatial index (this also emits events)
+            try:
+                await spatial_service.update_entity_transform(
+                    kind="npc",
+                    entity_id=npc_id,
+                    transform=transform,
+                    emit_event=False  # We'll emit manually with more context
+                )
+            except ValueError:
+                # Entity not in index yet, register it
+                await spatial_service.register_entity(spatial_object, emit_event=False)
+
+            # Emit event with additional context
+            await event_bus.publish("game:entity_moved", {
+                "entity_type": "npc",
+                "entity_id": npc_id,
+                "transform": transform,
+                "previous_transform": previous_transform,
+                # TODO: Add link_id when ObjectLink integration is available
+            })
 
         return npc_state.transform
 
