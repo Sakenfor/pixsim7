@@ -21,6 +21,32 @@ API references and technical specifications for core systems.
 - **[NODE_PLUGIN_AUTO_LOADING.md](./NODE_PLUGIN_AUTO_LOADING.md)** - Automatic plugin loading for nodes
 - **[CAPABILITY_HOOKS.md](./CAPABILITY_HOOKS.md)** - Capability hooks system
 
+## Performance & Optimization
+
+- **[CACHING_GUIDE.md](./CACHING_GUIDE.md)** - Generation caching strategies
+  - Caching types (once, per_playthrough, per_player, always)
+  - Implementation patterns
+  - Performance optimization
+
+## System Design & Specification
+
+- **[event-bus-and-spatial-queries.md](./event-bus-and-spatial-queries.md)** - Event bus and spatial query system design
+  - Event system architecture
+  - Spatial queries
+  - System integration
+
+- **[port-config-dsl.md](./port-config-dsl.md)** - Port configuration DSL for scene graph node ports
+  - DSL specification
+  - Port configuration
+  - Scene graph integration
+
+## Implementation Guides
+
+- **[optimistic-updates-implementation.md](./optimistic-updates-implementation.md)** - Optimistic session updates with versioning
+  - Optimistic updates
+  - Version management
+  - Conflict resolution
+
 ---
 
-**Reference material** - Use this for API details and type information.
+**Reference material** - Use this for API details, type information, and system specifications.

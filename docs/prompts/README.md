@@ -18,6 +18,14 @@ Documentation for prompt versioning, management, and generation.
   - Branching strategies
   - Collaboration patterns
 
+## Semantic Packs
+
+- **[SEMANTIC_PACKS_IMPLEMENTATION.md](./SEMANTIC_PACKS_IMPLEMENTATION.md)** - Shareable semantic packs for prompt vocabulary
+  - Semantic pack schema and storage
+  - Parser hint integration
+  - API endpoints and usage examples
+  - Pack creation, publishing, and export workflows
+
 ## Best Practices
 
 - **[SONNET_PROMPT_INJECTION_GUIDE.md](./SONNET_PROMPT_INJECTION_GUIDE.md)** - Security and best practices for Sonnet prompts
