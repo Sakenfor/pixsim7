@@ -535,14 +535,17 @@ class PixverseOperationsMixin:
                     raw_status = get_field(result, "image_status", "status", default=0)
                     image_url = get_field(result, "image_url", "url")
                     # Map numeric status to enum
+                    # Status codes: 1=completed, 5=processing, 7=filtered, 8,9,10=failed
+                    # Note: status 10 = "completed but no image saved" (URL returns 404, refunded)
                     if raw_status == 1 or raw_status == "completed":
                         status = ProviderStatus.COMPLETED
+                    elif raw_status == 7 or raw_status == "filtered":
+                        status = ProviderStatus.FILTERED
                     elif (
                         raw_status == -1
-                        or raw_status in ("failed", "filtered")
-                        or raw_status in (7, 8)
+                        or raw_status == "failed"
+                        or raw_status in (8, 9, 10)
                     ):
-                        # Treat flagged/rejected images as terminal failures
                         status = ProviderStatus.FAILED
                     else:
                         status = ProviderStatus.PROCESSING
