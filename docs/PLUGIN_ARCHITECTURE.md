@@ -20,6 +20,31 @@ PixSim7 uses a plugin architecture to extend functionality in a modular, maintai
 1. **Global infrastructure lives in `@lib/plugins`** - Core types, catalog, activation management, and registry bridge
 2. **Plugin implementations live close to their features** - `features/*/plugins/` directories
 
+### Source Layout vs Runtime Layout
+
+It is important to distinguish between how plugins are organized **in this repo (source)** and how they are treated **at runtime (installed/downloaded)**:
+
+- **Source (monorepo) layout**
+  - Plugin implementations live under their owning feature:
+    - `apps/main/src/features/worldTools/plugins/*`
+    - `apps/main/src/features/scene/plugins/*` (e.g. scene view / comic panel plugins)
+    - `apps/main/src/features/brainTools/plugins/*`
+    - Other feature-local plugin folders following the same pattern.
+  - Each feature owns:
+    - Its plugin contracts in `features/<feature>/lib/types.ts`
+    - Its local registry in `features/<feature>/lib/registry.ts`
+    - A `builtIn<FeatureName>Plugins` list in `features/<feature>/plugins/index.ts`.
+
+- **Runtime layout (what the launcher/app sees)**
+  - All plugins are surfaced through a **single logical plugin catalog** driven by `@lib/plugins`.
+  - Downloaded/installed plugins share a unified storage location (for example a `plugins/` directory on disk or a plugins table in the database), but are distinguished by a `featureKind` and manifest metadata.
+  - The global plugin manager is responsible for:
+    - Loading manifests from runtime storage
+    - Validating plugin kinds and versions
+    - Dispatching plugins to the appropriate feature registries.
+
+This lets us keep **feature-first ownership in the codebase**, while still having a **single place** for users to browse, download, and manage plugins at runtime.
+
 ### Key Components
 
 ```
