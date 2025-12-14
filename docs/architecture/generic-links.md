@@ -420,6 +420,326 @@ mutation CreateLink($input: CreateObjectLinkInput!) {
 }
 ```
 
+## Practical Use Cases
+
+The ObjectLink system enables powerful content authoring patterns that were difficult or impossible before. Here are the top use case scenarios:
+
+### 1. Author Once, Deploy Everywhere
+
+**Challenge:** Creating separate interactions/scenes for each NPC instance in each world.
+
+**Solution:** Author content using character templates, automatically works in any world.
+
+```typescript
+// Quest definition (authored once)
+{
+  id: "quest:save_the_village",
+  nodes: [{
+    type: 'scene',
+    templateKind: 'character',
+    templateId: 'koba-uuid',  // Koba character template
+    // At runtime: resolves to npc:42 in world_1, npc:89 in world_2
+  }]
+}
+```
+
+**Benefit:** Create content once, works across all worlds/playthroughs automatically. Character relationships and progress tracked on template, not runtime NPC.
+
+---
+
+### 2. Dynamic Character Appearances (Day/Night, Location-Based)
+
+**Challenge:** Same character should appear differently based on time or location.
+
+**Solution:** Multiple links with activation conditions.
+
+```python
+# Link 1: Daytime Koba (friendly merchant)
+await link_service.create_link(
+    template_kind='character',
+    template_id='koba-uuid',
+    runtime_kind='npc',
+    runtime_id=42,  # Merchant NPC
+    priority=5,
+    activation_conditions={'time.period': 'day'}
+)
+
+# Link 2: Nighttime Koba (mysterious informant)
+await link_service.create_link(
+    template_kind='character',
+    template_id='koba-uuid',
+    runtime_kind='npc',
+    runtime_id=99,  # Informant NPC
+    priority=10,
+    activation_conditions={'time.period': 'night'}
+)
+```
+
+**Result:**
+- **Day**: Player sees Koba as a merchant at the market
+- **Night**: Same "Koba" character appears as mysterious informant in dark alley
+- **Character memory/relationships**: Tracked on character template, persists across appearances
+- **Visual appearance/location**: Changes based on context
+- **Authored content**: Single set of interactions/dialogue works for both
+
+---
+
+### 3. Location-Specific Character Variants
+
+**Challenge:** Character should appear differently in different districts but maintain identity.
+
+**Solution:** Location-based activation conditions.
+
+```python
+# Uptown Koba (sophisticated, well-dressed)
+ObjectLink(
+    template_id='koba-uuid',
+    runtime_id=npc_uptown,
+    activation_conditions={'location.zone': 'uptown'},
+    priority=10
+)
+
+# Downtown Koba (casual, street-smart)
+ObjectLink(
+    template_id='koba-uuid',
+    runtime_id=npc_downtown,
+    activation_conditions={'location.zone': 'downtown'},
+    priority=10
+)
+```
+
+**Benefit:** Character personality/relationships stay consistent, appearance/dialogue style adapts to context. Single character progression across all variants.
+
+---
+
+### 4. Cross-Save Character Continuity
+
+**Challenge:** Player's relationship with a character should carry across different playthroughs.
+
+**Solution:** Stats stored on CharacterInstance, links resolve to new NPCs automatically.
+
+```python
+# Playthrough 1: Player builds relationship with "Koba"
+# Relationship data stored on character_instance, not NPC
+
+# Playthrough 2: New world, new NPC instances
+# Same character template automatically links to new NPCs via ObjectLink
+# Relationship data transfers seamlessly
+```
+
+**Benefit:** Character development persists across saves/worlds without manual migration or data duplication.
+
+---
+
+### 5. Multi-Role Characters in Scenes
+
+**Challenge:** Scenes need to work with different NPC instances across worlds.
+
+**Solution:** Template-based role bindings.
+
+```typescript
+// Scene definition
+{
+  templateRoleBindings: {
+    'mentor': {
+      templateKind: 'character',
+      templateId: 'obi-wan-uuid'
+    },
+    'student': {
+      templateKind: 'character',
+      templateId: 'luke-uuid'
+    }
+  }
+}
+```
+
+**At runtime:**
+- **World 1**: Resolves to `npc:42` (old Obi-Wan) and `npc:43` (young Luke)
+- **World 2**: Resolves to `npc:88` (different Obi-Wan visual) and `npc:89` (different Luke)
+- **Same scene script**, different visual representations
+- **Character relationships**: Tracked on templates, consistent across worlds
+
+---
+
+### 6. Context-Aware Interaction Availability
+
+**Challenge:** Romantic interaction should only be available in appropriate context.
+
+**Solution:** Template targeting + activation conditions.
+
+```typescript
+// Interaction definition
+{
+  id: "interaction:intimate_conversation",
+  targetTemplateKind: 'character',
+  targetTemplateId: 'love-interest-uuid',
+  // Resolves via link with activation conditions
+}
+
+// Link setup
+{
+  template_id: 'love-interest-uuid',
+  runtime_id: npc_42,
+  activation_conditions: {
+    'location.id': 5,  // Home location
+    'time.period': 'evening'
+  }
+}
+```
+
+**Result:** Interaction only appears when character is home in the evening, creating more intimate/appropriate context.
+
+---
+
+### 7. Seasonal/Event-Based Transformations
+
+**Challenge:** Holiday events should change character appearances temporarily.
+
+**Solution:** High-priority time-limited links.
+
+```python
+# Normal link (priority 0)
+ObjectLink(
+    template_id='santa-uuid',
+    runtime_id=npc_normal,
+    priority=0
+)
+
+# Holiday link (priority 100, time-limited)
+ObjectLink(
+    template_id='santa-uuid',
+    runtime_id=npc_holiday_outfit,
+    priority=100,
+    activation_conditions={'event.holiday': 'christmas'}
+)
+```
+
+**Behavior:**
+- **During event**: Higher priority + active conditions = holiday appearance
+- **After event**: Falls back to normal appearance
+- **Character data**: Unchanged throughout (relationships, quests, etc.)
+
+---
+
+### 8. Prompt Context with Live + Template Data
+
+**Challenge:** AI-generated dialogue needs both stable character traits AND dynamic state.
+
+**Solution:** Link-resolved snapshots combine template and runtime data.
+
+```python
+# Get snapshot with link-resolved data
+snapshot = await prompt_service.get_prompt_context_from_template(
+    template_kind='character',
+    template_id='koba-uuid',
+    context={'location': {'zone': 'downtown'}}
+)
+
+# Snapshot automatically includes:
+# - Template data: personality, background, relationships (stable/authoritative)
+# - Runtime data: current mood, location, recent events (live/dynamic)
+# - Spatial data: transform for rendering position
+# - Merged via FieldMapping configuration
+```
+
+**Benefit:** AI-generated content has both stable character identity AND dynamic state, no manual data merging required.
+
+---
+
+### 9. Plugin/Mod Character Integration
+
+**Challenge:** Mods should add characters that work with existing content systems.
+
+**Solution:** Register template + create ObjectLink using standard mappings.
+
+```python
+# Mod registers new character template
+mod_character_id = 'mod:custom-companion-uuid'
+
+# Mod creates ObjectLink using standard mapping
+await link_service.create_link(
+    template_kind='character',
+    template_id=mod_character_id,
+    runtime_kind='npc',
+    runtime_id=mod_npc_id,
+    mapping_id='character->npc'  # Uses standard mapping
+)
+
+# All existing systems automatically work:
+# - Quest targeting
+# - Interaction availability
+# - Scene role bindings
+# - Prompt context resolution
+# No code changes needed - just data configuration
+```
+
+**Benefit:** Extensibility without code modification. Mods integrate seamlessly with core systems.
+
+---
+
+### 10. Real-World Example: "The Informant"
+
+**Scenario:** "Shadow" is an informant who uses multiple covers. Player discovers they're the same person.
+
+**Setup:**
+```python
+# Daytime: appears as beggar in market
+ObjectLink(
+    template_id='shadow-uuid',
+    runtime_id=npc_beggar,
+    activation_conditions={'time.period': 'morning'},
+    priority=10
+)
+
+# Evening: appears as bartender in tavern
+ObjectLink(
+    template_id='shadow-uuid',
+    runtime_id=npc_bartender,
+    activation_conditions={
+        'time.period': 'evening',
+        'location.zone': 'tavern'
+    },
+    priority=10
+)
+
+# Night: appears as hacker in hideout
+ObjectLink(
+    template_id='shadow-uuid',
+    runtime_id=npc_hacker,
+    activation_conditions={'time.period': 'night'},
+    priority=10
+)
+```
+
+**Gameplay:**
+- Player builds trust with "Shadow" over time (tracked on character template)
+- Each meeting feels different (different NPCs, different locations)
+- Relationship progress/quest progress is consistent across all encounters
+- Player doesn't realize it's the same person until a dramatic reveal
+- All quest dialogue/interactions authored once, work across all three NPCs
+
+**Without ObjectLink:** Would need to:
+- Manually sync relationship state between 3 separate NPCs
+- Author content 3 times (once per NPC)
+- Manage complex state transfer logic
+- Risk inconsistencies in character development
+
+**With ObjectLink:**
+- Author once
+- Links handle runtime resolution automatically
+- State tracked on character template, consistent everywhere
+- Zero risk of desync
+
+---
+
+### Key Patterns Summary
+
+1. **Template-First Authoring**: Reference templates, not runtime IDs
+2. **Context-Aware Resolution**: Use activation conditions for dynamic behavior
+3. **Priority-Based Fallback**: Layer behaviors with priority levels
+4. **Declarative Mapping**: Configure sync behavior via FieldMapping
+5. **Separation of Concerns**: Template = identity/progression, Runtime = presentation/state
+
 ## Design Principles
 
 1. **Composition over inheritance** - No base classes, pure data structures
