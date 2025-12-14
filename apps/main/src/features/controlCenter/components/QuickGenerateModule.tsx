@@ -359,37 +359,41 @@ export function QuickGenerateModule() {
 
   // Render the settings panel (right side) - used by all operation types
   const renderSettingsPanel = () => (
-    <div className="h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl overflow-y-auto">
-      {/* Operation type */}
-      <select
-        value={operationType}
-        onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
-        disabled={generating}
-        className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
-      >
-        <option value="image_to_image">→ Image</option>
-        <option value="image_to_video">→ Video</option>
-        <option value="video_extend">Extend</option>
-        <option value="video_transition">Transition</option>
-        <option value="fusion">Fusion</option>
-      </select>
+    <div className="h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl">
+      {/* Fixed top section - Operation type & Provider */}
+      <div className="flex-shrink-0 flex flex-col gap-1.5">
+        {/* Operation type */}
+        <select
+          value={operationType}
+          onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
+          disabled={generating}
+          className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
+        >
+          <option value="image_to_image">→ Image</option>
+          <option value="image_to_video">→ Video</option>
+          <option value="video_extend">Extend</option>
+          <option value="video_transition">Transition</option>
+          <option value="fusion">Fusion</option>
+        </select>
 
-      {/* Provider */}
-      <select
-        value={providerId || ''}
-        onChange={(e) => setProvider(e.target.value || undefined)}
-        disabled={generating}
-        className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-        title="Provider"
-      >
-        <option value="">Auto</option>
-        {workbench.providers.map(p => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </select>
+        {/* Provider */}
+        <select
+          value={providerId || ''}
+          onChange={(e) => setProvider(e.target.value || undefined)}
+          disabled={generating}
+          className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
+          title="Provider"
+        >
+          <option value="">Auto</option>
+          {workbench.providers.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
 
-      {/* Dynamic params - filter out non-UI params */}
-      {filteredParamSpecs
+      {/* Scrollable middle section - Dynamic params */}
+      <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 min-h-0">
+        {filteredParamSpecs
         .filter(p => !['image_url', 'image_urls', 'negative_prompt', 'prompt'].includes(p.name))
         .map(param => {
           if (param.type === 'boolean') return null;
@@ -460,9 +464,10 @@ export function QuickGenerateModule() {
             </select>
           );
         })}
+      </div>
 
-      {/* Go button with advanced settings */}
-      <div className="flex gap-1.5 mt-auto">
+      {/* Fixed bottom section - Go button with advanced settings */}
+      <div className="flex-shrink-0 flex gap-1.5 mt-auto">
         {/* Advanced settings gear icon */}
         <AdvancedSettingsPopover
           params={advancedParams}
