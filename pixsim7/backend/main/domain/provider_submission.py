@@ -13,7 +13,7 @@ Asset and Job models don't duplicate this data.
 from typing import Optional, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Integer, ForeignKey
 
 
 class ProviderSubmission(SQLModel, table=True):
@@ -34,10 +34,8 @@ class ProviderSubmission(SQLModel, table=True):
     # Either generation_id OR analysis_id should be set, not both
     generation_id: Optional[int] = Field(
         default=None,
-        foreign_key="generations.id",
-        index=True,
-        description="Link to generation (mutually exclusive with analysis_id)",
-        sa_column_kwargs={"ondelete": "CASCADE"}
+        sa_column=Column(Integer, ForeignKey("generations.id", ondelete="CASCADE"), index=True),
+        description="Link to generation (mutually exclusive with analysis_id)"
     )
     analysis_id: Optional[int] = Field(
         default=None,
