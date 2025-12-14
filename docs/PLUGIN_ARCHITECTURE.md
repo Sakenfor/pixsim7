@@ -5,6 +5,7 @@ This document describes the standardized plugin architecture for PixSim7, coveri
 ## Table of Contents
 
 - [Overview](#overview)
+- [Source Layout vs Runtime Layout](#source-layout-vs-runtime-layout)
 - [Current State Audit](#current-state-audit)
 - [Standard Plugin Pattern](#standard-plugin-pattern)
 - [Registration & Discovery Rules](#registration--discovery-rules)
@@ -33,6 +34,49 @@ apps/main/src/lib/plugins/
 ├── loader.ts             # Plugin loading utilities
 └── sandbox.ts            # Plugin sandboxing for user code
 ```
+
+---
+
+## Source Layout vs Runtime Layout
+
+It is important to distinguish between how plugins are organized **in this repo (source)** and how they are treated **at runtime (installed/downloaded)**:
+
+### Source (Monorepo) Layout
+
+Plugin implementations live under their owning feature:
+
+```
+apps/main/src/features/worldTools/plugins/*
+apps/main/src/features/brainTools/plugins/*
+apps/main/src/features/scene/plugins/*      (e.g., scene view / comic panel plugins)
+apps/main/src/features/gallery/plugins/*    (future)
+```
+
+Each feature owns:
+- Its **plugin contracts** in `features/<feature>/lib/types.ts`
+- Its **local registry** in `features/<feature>/lib/registry.ts`
+- A **`builtIn<FeatureName>Plugins`** list in `features/<feature>/plugins/index.ts`
+
+### Runtime Layout (What the App Sees)
+
+All plugins are surfaced through a **single logical plugin catalog** driven by `@lib/plugins`:
+
+- **Downloaded/installed plugins** share a unified storage location (e.g., a `plugins/` directory on disk or a plugins table in the database), but are distinguished by a `featureKind` and manifest metadata.
+- The **global plugin manager** (`PluginManager.ts`) is responsible for:
+  - Loading manifests from runtime storage
+  - Validating plugin kinds and versions
+  - Dispatching plugins to the appropriate feature registries
+
+### Why This Separation Matters
+
+| Aspect | Source Layout | Runtime Layout |
+|--------|---------------|----------------|
+| **Purpose** | Developer experience, maintainability | User experience, discoverability |
+| **Organization** | Feature-first (ownership boundaries) | Unified (single browse/manage UI) |
+| **Location** | `features/*/plugins/` | `plugins/` directory or database |
+| **Registry** | Feature-local registries | Global `pluginCatalog` |
+
+This lets us keep **feature-first ownership in the codebase**, while still having a **single place** for users to browse, download, and manage plugins at runtime.
 
 ---
 
