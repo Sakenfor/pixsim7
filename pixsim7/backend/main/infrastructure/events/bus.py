@@ -93,7 +93,8 @@ class EventBus:
         self,
         event_type: str,
         data: Dict[str, Any],
-        wait: bool = False
+        wait: bool = False,
+        strict: bool = False
     ) -> None:
         """
         Publish an event
@@ -102,10 +103,28 @@ class EventBus:
             event_type: Event type (e.g., "job:created")
             data: Event data
             wait: If True, wait for all handlers to complete (default: False)
+            strict: If True, raise error if event type not registered (default: False)
 
         Usage:
             await event_bus.publish("job:created", {"job_id": 123})
+
+        Validation:
+            If the event type is not registered in the event registry, a warning
+            will be logged to help catch typos. Use register_event_type() to
+            register your event types.
         """
+        # Validate event type is registered (helps catch typos)
+        if event_type not in _event_registry:
+            message = (
+                f"Publishing unregistered event type: '{event_type}'. "
+                f"Consider calling register_event_type() to document this event. "
+                f"This helps catch typos and improves discoverability."
+            )
+            if strict:
+                raise ValueError(message)
+            else:
+                logger.warning(message)
+
         event = Event(event_type=event_type, data=data)
 
         # Get handlers for this event type
@@ -210,6 +229,38 @@ def get_registered_events() -> Dict[str, Dict[str, Any]]:
 # ===== LEGACY EVENT CONSTANTS (Deprecated) =====
 # These are kept for backward compatibility but new code should just use strings
 # and optionally call register_event_type() for documentation
+
+def _register_legacy_events():
+    """Register legacy event constants to prevent warnings"""
+    # Job events
+    register_event_type("job:created", "Job/generation created", source="Legacy")
+    register_event_type("job:started", "Job/generation started", source="Legacy")
+    register_event_type("job:completed", "Job/generation completed", source="Legacy")
+    register_event_type("job:failed", "Job/generation failed", source="Legacy")
+    register_event_type("job:cancelled", "Job/generation cancelled", source="Legacy")
+
+    # Asset events
+    register_event_type("asset:created", "Asset created", source="Legacy")
+    register_event_type("asset:downloaded", "Asset downloaded", source="Legacy")
+    register_event_type("asset:download_failed", "Asset download failed", source="Legacy")
+    register_event_type("asset:deleted", "Asset deleted", source="Legacy")
+
+    # Provider events
+    register_event_type("provider:submitted", "Provider submission", source="Legacy")
+    register_event_type("provider:completed", "Provider completed", source="Legacy")
+    register_event_type("provider:failed", "Provider failed", source="Legacy")
+
+    # Account events
+    register_event_type("account:selected", "Account selected", source="Legacy")
+    register_event_type("account:exhausted", "Account exhausted", source="Legacy")
+    register_event_type("account:error", "Account error", source="Legacy")
+
+    # Scene events
+    register_event_type("scene:created", "Scene created", source="Legacy")
+    register_event_type("scene:updated", "Scene updated", source="Legacy")
+
+
+_register_legacy_events()
 
 # Job events
 JOB_CREATED = "job:created"

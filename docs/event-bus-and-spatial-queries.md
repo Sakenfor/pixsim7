@@ -15,6 +15,89 @@ Both are designed to be:
 - **Minimal**: Simple APIs for MVP use cases
 - **Server authoritative**: Backend-side with WebSocket forwarding hooks
 
+## Naming and Typing Conventions
+
+### Event Type Naming
+Event types use a namespaced format: `{namespace}:{action}`
+
+**Conventions:**
+- Use lowercase with underscores: `game:entity_moved` ✅ not `game:EntityMoved` ❌
+- Namespace by domain: `game:`, `job:`, `asset:`, `scene:`
+- Use past tense for completed actions: `entity_moved`, not `entity_move`
+- Be specific: `entity_moved` is better than `update`
+
+**Examples:**
+- `game:entity_moved` - Entity transform changed
+- `game:entity_spawned` - Entity added to world
+- `game:interaction_started` - Interaction began
+- `job:created` - Generation job created
+
+### ID Types
+Entity IDs support **both `int` and `str` (UUID)** to accommodate different entity types:
+
+- **NPCs**: Currently use `int` (NpcId branded type)
+- **Items/Props**: May use `str` (UUID) in the future
+- **Players**: May use `str` (user UUID)
+- **Templates**: May use `int` or `str`
+
+**Type signature:**
+```python
+EntityId = Union[int, str]
+```
+
+**In events:**
+```python
+{
+    "entity_id": 123,  # int for NPCs
+    # or
+    "entity_id": "550e8400-e29b-41d4-a716-446655440000"  # UUID for items/players
+}
+```
+
+### Transform Format
+All transforms must follow the shared `Transform` type from `packages/shared/types/src/game.ts`:
+
+**Required fields:**
+- `worldId: int` - World identifier
+- `position: {x: float, y: float, z?: float}` - Position (z optional for 2D)
+
+**Optional fields:**
+- `locationId: int` - Location within world
+- `orientation: {yaw?, pitch?, roll?}` - Rotation in degrees
+- `scale: {x?, y?, z?}` - Scale factors (default 1.0)
+- `space: 'world_2d' | 'world_3d' | 'ui_2d'` - Coordinate space hint
+
+**Example:**
+```python
+transform = {
+    "worldId": 1,
+    "locationId": 42,
+    "position": {"x": 100.0, "y": 50.0},
+    "orientation": {"yaw": 90.0},
+    "space": "world_2d"
+}
+```
+
+### Link IDs and Template Context
+When entities are linked to templates (via ObjectLink system), events include:
+
+- `template_kind: str` - Template type (e.g., `"npc_template"`)
+- `template_id: int | str` - Template identifier
+- `link_id: str` - Formatted as `"{template_kind}:{template_id}"`
+
+**Example:**
+```python
+{
+    "entity_type": "npc",
+    "entity_id": 123,
+    "template_kind": "npc_template",
+    "template_id": 456,
+    "link_id": "npc_template:456"  # convenience field
+}
+```
+
+This allows consumers to resolve back to templates without extra queries.
+
 ## Event Bus
 
 ### Architecture
@@ -167,6 +250,40 @@ await event_bus.publish("game:entity_moved", {
 
 # Wait for all handlers to complete
 await event_bus.publish("game:entity_moved", {...}, wait=True)
+```
+
+### Event Type Validation
+
+The event bus validates that published events are registered, helping catch typos:
+
+```python
+# ❌ This will log a warning (typo in event name)
+await event_bus.publish("game:entity_movd", {...})
+# WARNING: Publishing unregistered event type: 'game:entity_movd'
+
+# ✅ Registered event - no warning
+await event_bus.publish("game:entity_moved", {...})
+```
+
+**Strict mode (raises error):**
+```python
+await event_bus.publish("game:typo", {...}, strict=True)
+# Raises: ValueError: Publishing unregistered event type: 'game:typo'
+```
+
+**To silence warnings, register your events:**
+```python
+from pixsim7.backend.main.infrastructure.events.bus import register_event_type
+
+register_event_type(
+    "my_plugin:custom_event",
+    "My custom event description",
+    payload_schema={"foo": "int", "bar": "str"},
+    source="MyPlugin"
+)
+
+# Now this won't warn
+await event_bus.publish("my_plugin:custom_event", {"foo": 123, "bar": "baz"})
 ```
 
 ### Discovering Events
@@ -461,22 +578,74 @@ nearby_items = await spatial_service.query_by_radius(
 ## Performance Considerations
 
 ### Current Implementation (MVP)
-- **Data structure**: Simple dictionaries and sets
-- **Query complexity**:
-  - By location: O(1) lookup + O(n) filtering
-  - By bounds: O(n) linear scan within location
-  - By radius: O(n) distance checks
-- **Memory**: O(entities) - one entry per entity
-- **Concurrency**: Async locks for thread safety
+
+**Query Complexity:**
+- `query_by_location()`: **O(n)** linear scan within location
+- `query_by_bounds()`: **O(n)** linear scan within location + bounds check
+- `query_by_radius()`: **O(n)** linear scan + distance calculation
+- `get_entity()`: **O(1)** direct lookup by kind and ID
+
+Where **n** = number of entities at that location/world.
+
+**Memory:**
+- **O(entities)** - One `IndexedEntity` per registered entity
+- Secondary indexes by location add **O(entities)** overhead
+- Spatial index is **in-memory only** and rebuildable from authoritative state
+
+**Concurrency:**
+- Single async lock protects all index operations
+- Updates block queries (and vice versa) during lock hold time
+- **Batch operations recommended** for many concurrent changes
+
+**When to Optimize:**
+For worlds with:
+- **< 100 entities/location**: Current implementation is fine
+- **100-1000 entities/location**: Consider grid partitioning
+- **> 1000 entities/location**: Implement R-tree or KD-tree
+
+### Batch Operations
+
+**Use batch methods for better performance:**
+
+```python
+# ❌ Slow: N lock acquisitions
+for entity in entities:
+    await spatial_service.register_entity(entity)
+
+# ✅ Fast: 1 lock acquisition
+await spatial_service.batch_register_entities(entities)
+```
+
+**Batch methods:**
+- `batch_register_entities(spatial_objects)` - Register multiple entities
+- `batch_update_transforms(updates)` - Update multiple transforms
+
+Benefits:
+- Single lock acquisition (reduced contention)
+- Events emitted after all updates complete
+- Better throughput for bulk operations
 
 ### Future Optimizations
+
 If needed for larger worlds:
-- **Spatial indexing**: R-tree or KD-tree for faster bounds/radius queries
-- **Grid-based**: Partition locations into grid cells
+- **Spatial indexing**: R-tree or KD-tree for faster bounds/radius queries (O(log n))
+- **Grid-based**: Partition locations into grid cells for spatial hashing
 - **Redis backing**: Persist spatial index across restarts
 - **Spatial databases**: PostGIS for complex geometric queries
+- **Lock-free structures**: For higher concurrency (if profiling shows lock contention)
 
-For MVP with hundreds of entities per location, the current implementation is sufficient.
+### Validation Overhead
+
+Transform validation is performed on every register/update:
+- Validates required fields (`worldId`, `position`)
+- Logs warnings for missing optional fields
+- Catches malformed transforms early
+
+**Disable validation if needed:**
+```python
+# Validation is always on - no opt-out yet
+# If this becomes a bottleneck, we can add a flag
+```
 
 ## Testing
 
