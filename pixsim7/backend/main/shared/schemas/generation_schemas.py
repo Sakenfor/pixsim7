@@ -4,12 +4,21 @@ Pydantic schemas for Generation API
 These schemas map the frontend GenerationNodeConfig types to backend
 Generation model and provide request/response validation.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
 from pixsim7.backend.main.domain.enums import GenerationStatus, OperationType
+
+
+def _normalize_enum(v, enum_cls):
+    """Normalize enum value - handles both uppercase DB values and enum instances."""
+    if isinstance(v, enum_cls):
+        return v
+    if isinstance(v, str):
+        return enum_cls(v.lower())
+    return v
 
 
 # ===== GENERATION CONFIG SCHEMAS =====
@@ -267,6 +276,17 @@ class GenerationResponse(BaseModel):
     description: Optional[str]
     created_at: datetime
     updated_at: datetime
+
+    # Validators to handle uppercase DB values
+    @field_validator("operation_type", mode="before")
+    @classmethod
+    def normalize_operation_type(cls, v):
+        return _normalize_enum(v, OperationType)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v):
+        return _normalize_enum(v, GenerationStatus)
 
     # Computed fields
     @property

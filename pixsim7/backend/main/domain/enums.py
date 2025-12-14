@@ -2,6 +2,33 @@
 Shared enums for PixSim7 domain models
 """
 from enum import Enum
+from typing import Type
+
+from sqlalchemy import Column, Enum as SAEnum
+
+
+def enum_column(enum_cls: Type[Enum], name: str, index: bool = False) -> Column:
+    """Create SQLAlchemy Enum column that properly maps str,Enum values.
+
+    Uses values_callable to ensure lowercase enum values are used for storage.
+    The enum name is prefixed with underscore to avoid conflicts with any
+    cached enum types that may have been created with wrong values.
+
+    Args:
+        enum_cls: The Python Enum class (must inherit from str, Enum)
+        name: The database enum type name
+        index: Whether to create an index on this column
+    """
+    return Column(
+        SAEnum(
+            enum_cls,
+            name=f"_{name}",  # Prefix to avoid cache conflicts with old types
+            native_enum=False,
+            create_constraint=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        index=index,
+    )
 
 
 class MediaType(str, Enum):

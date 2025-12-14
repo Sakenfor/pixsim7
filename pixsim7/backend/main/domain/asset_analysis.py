@@ -8,8 +8,10 @@ from __future__ import annotations
 from typing import Optional, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON, Enum as SAEnum
+from sqlalchemy import JSON
 from enum import Enum
+
+from .enums import enum_column
 
 
 class AnalysisStatus(str, Enum):
@@ -50,15 +52,7 @@ class AssetAnalysis(SQLModel, table=True):
 
     # Analysis configuration
     analyzer_type: AnalyzerType = Field(
-        sa_column=Column(
-            SAEnum(
-                AnalyzerType,
-                name="analyzer_type_enum",
-                native_enum=False,
-                values_callable=lambda x: [e.value for e in x],
-            ),
-            index=True,
-        )
+        sa_column=enum_column(AnalyzerType, "analyzer_type_enum", index=True)
     )
     analyzer_version: Optional[str] = Field(
         default=None,
@@ -85,15 +79,7 @@ class AssetAnalysis(SQLModel, table=True):
     # Lifecycle
     status: AnalysisStatus = Field(
         default=AnalysisStatus.PENDING,
-        sa_column=Column(
-            SAEnum(
-                AnalysisStatus,
-                name="analysis_status_enum",
-                native_enum=False,
-                values_callable=lambda x: [e.value for e in x],
-            ),
-            index=True,
-        )
+        sa_column=enum_column(AnalysisStatus, "analysis_status_enum", index=True)
     )
     priority: int = Field(default=5, index=True)
     started_at: Optional[datetime] = None

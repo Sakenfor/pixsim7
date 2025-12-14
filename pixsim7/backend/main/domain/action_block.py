@@ -11,10 +11,11 @@ Supports unified block lifecycle:
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON, Text, Enum as SAEnum
+from sqlalchemy import JSON, Text
 from uuid import UUID, uuid4
 
 from pixsim7.backend.main.services.prompt_parser.simple import PromptSegmentRole
+from .enums import enum_column
 
 
 class ActionBlockDB(SQLModel, table=True):
@@ -164,14 +165,7 @@ class ActionBlockDB(SQLModel, table=True):
     # Block Classification (for unified lifecycle)
     role: Optional[PromptSegmentRole] = Field(
         default=None,
-        sa_column=Column(
-            SAEnum(
-                PromptSegmentRole,
-                native_enum=False,
-                values_callable=lambda x: [e.value for e in x],
-            ),
-            index=True,
-        ),
+        sa_column=enum_column(PromptSegmentRole, "prompt_segment_role_enum", index=True),
         description="Coarse classification: character, action, setting, mood, romance, other"
     )
 

@@ -16,11 +16,21 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON, Enum as SAEnum
+from sqlalchemy import JSON
+from pydantic import field_validator
 import hashlib
 import json
 
-from .enums import OperationType, GenerationStatus, BillingState
+from .enums import OperationType, GenerationStatus, BillingState, enum_column
+
+
+def _normalize_enum(v, enum_cls):
+    """Normalize enum value - handles uppercase DB values."""
+    if v is None or isinstance(v, enum_cls):
+        return v
+    if isinstance(v, str):
+        return enum_cls(v.lower())
+    return v
 
 
 class Generation(SQLModel, table=True):
@@ -51,15 +61,7 @@ class Generation(SQLModel, table=True):
 
     # Operation
     operation_type: OperationType = Field(
-        sa_column=Column(
-            SAEnum(
-                OperationType,
-                name="operation_type_enum",
-                native_enum=False,
-                values_callable=lambda x: [e.value for e in x],
-            ),
-            index=True,
-        )
+        sa_column=enum_column(OperationType, "operation_type_enum", index=True)
     )
     provider_id: str = Field(max_length=50, index=True)
 
@@ -121,15 +123,7 @@ class Generation(SQLModel, table=True):
     # Lifecycle
     status: GenerationStatus = Field(
         default=GenerationStatus.PENDING,
-        sa_column=Column(
-            SAEnum(
-                GenerationStatus,
-                name="generation_status_enum",
-                native_enum=False,
-                values_callable=lambda x: [e.value for e in x],
-            ),
-            index=True,
-        ),
+        sa_column=enum_column(GenerationStatus, "generation_status_enum", index=True),
         description="Generation status (you can introduce GenerationStatus later)",
     )
     priority: int = Field(default=5, index=True)
@@ -173,15 +167,7 @@ class Generation(SQLModel, table=True):
     )
     billing_state: BillingState = Field(
         default=BillingState.PENDING,
-        sa_column=Column(
-            SAEnum(
-                BillingState,
-                name="billing_state_enum",
-                native_enum=False,
-                values_callable=lambda x: [e.value for e in x],
-            ),
-            index=True,
-        ),
+        sa_column=enum_column(BillingState, "billing_state_enum", index=True),
         description="Billing state: pending, charged, skipped, failed"
     )
     charged_at: Optional[datetime] = Field(
@@ -204,6 +190,22 @@ class Generation(SQLModel, table=True):
         Index("idx_generation_status_created", "status", "created_at"),
         Index("idx_generation_priority_created", "priority", "created_at"),
     )
+
+    # Validators to handle uppercase DB values (legacy data)
+    @field_validator("operation_type", mode="before")
+    @classmethod
+    def normalize_operation_type(cls, v):
+        return _normalize_enum(v, OperationType)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v):
+        return _normalize_enum(v, GenerationStatus)
+
+    @field_validator("billing_state", mode="before")
+    @classmethod
+    def normalize_billing_state(cls, v):
+        return _normalize_enum(v, BillingState)
 
     def __repr__(self) -> str:
         return (
