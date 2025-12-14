@@ -1,7 +1,10 @@
 # Recent System Changes - January 2025
 
+> ⚠️ **Deprecated**: This document is outdated (January 2025).
+> For current documentation, see [README.md](./README.md).
+
 **Last Updated**: 2025-01-21
-**Status**: Active Development
+**Status**: Archived (superseded by newer documentation)
 
 ---
 

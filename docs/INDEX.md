@@ -1,5 +1,8 @@
 # Documentation Index
 
+> ⚠️ **Deprecated**: This index has been superseded by [`README.md`](./README.md).
+> Please use the main [README.md](./README.md) for navigation to documentation.
+
 **Last Updated**: 2025-12-06
 
 Quick reference guide to all PixSim7 documentation. This index organizes 400+ documentation files by category for easy navigation.

@@ -1,5 +1,8 @@
 # Generation System Documentation
 
+> ⚠️ **Deprecated**: This index is superseded by
+> [`systems/generation/overview.md`](./overview.md).
+
 Documentation for PixSim7's AI generation system (images, videos, audio).
 
 ---

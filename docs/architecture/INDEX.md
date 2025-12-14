@@ -1,5 +1,8 @@
 # Architecture Documentation
 
+> ⚠️ **Deprecated**: This index has been superseded by [`README.md`](./README.md).
+> Please use [architecture/README.md](./README.md) for navigation.
+
 Navigation guide for PixSim7 architecture documentation.
 
 ---

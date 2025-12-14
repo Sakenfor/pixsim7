@@ -1,5 +1,9 @@
 # Plugin System Documentation
 
+> ⚠️ **Deprecated**: This navigation file is superseded by the root-level
+> [`PLUGIN_ARCHITECTURE.md`](../../PLUGIN_ARCHITECTURE.md).
+> For system-specific information, see the other files in this directory.
+
 This directory contains all core plugin system documentation for PixSim7.
 
 ## Documentation Files

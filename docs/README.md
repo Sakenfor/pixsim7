@@ -89,6 +89,49 @@ docs/
 
 ---
 
+## 📌 Canonical Docs by Topic
+
+This section points to the authoritative documentation for each major system. For a complete audit with deprecation status, see [DOCUMENTATION_AUDIT_REPORT.md](./DOCUMENTATION_AUDIT_REPORT.md).
+
+### Architecture & Design
+- **[architecture/CURRENT.md](./architecture/CURRENT.md)** - Current architecture state (Dec 2025)
+- **[architecture/frontend-backend-boundaries.md](./architecture/frontend-backend-boundaries.md)** - API patterns and boundaries
+- **[architecture/spatial-model.md](./architecture/spatial-model.md)** - Spatial positioning system
+- **[architecture/generic-game-objects.md](./architecture/generic-game-objects.md)** - Entity composition system
+- **[architecture/generic-links.md](./architecture/generic-links.md)** - Template/runtime linking
+- **[repo-map.md](./repo-map.md)** - Repository structure and path aliases
+
+### Plugin System
+- **[PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md)** - Plugin system overview (canonical, Dec 14)
+- **[PLUGIN_BUNDLE_FORMAT.md](./PLUGIN_BUNDLE_FORMAT.md)** - Plugin bundle specification (Dec 14)
+- **[systems/plugins/PLUGIN_DEVELOPER_GUIDE.md](./systems/plugins/PLUGIN_DEVELOPER_GUIDE.md)** - Step-by-step development
+- **[systems/plugins/UNIFIED_PLUGIN_SYSTEM.md](./systems/plugins/UNIFIED_PLUGIN_SYSTEM.md)** - Registration patterns
+
+### Generation System
+- **[systems/generation/overview.md](./systems/generation/overview.md)** - System architecture overview
+- **[systems/generation/GENERATION_GUIDE.md](./systems/generation/GENERATION_GUIDE.md)** - Developer guide
+- **[systems/generation/GENERATION_ALIAS_CONVENTIONS.md](./systems/generation/GENERATION_ALIAS_CONVENTIONS.md)** - Naming conventions
+- **[systems/generation/provider-capabilities.md](./systems/generation/provider-capabilities.md)** - Provider matrix
+
+### Game Systems
+- **[event-bus-and-spatial-queries.md](./event-bus-and-spatial-queries.md)** - Event/query system (Dec 14)
+- **[NARRATIVE_ENGINE_USAGE.md](./NARRATIVE_ENGINE_USAGE.md)** - Narrative runtime usage
+- **[ACTION_BLOCKS_UNIFIED_SYSTEM.md](./ACTION_BLOCKS_UNIFIED_SYSTEM.md)** - Action system architecture
+- **[INTERACTION_AUTHORING_GUIDE.md](./INTERACTION_AUTHORING_GUIDE.md)** - Interaction creation guide
+
+### Backend & Services
+- **[backend-domain-map.md](./backend-domain-map.md)** - Backend domain structure (canonical reference)
+- **[BACKEND_ORGANIZATION.md](./BACKEND_ORGANIZATION.md)** - Domain organization summary
+- **[backend/SERVICES.md](./backend/SERVICES.md)** - Service API reference
+
+### UI & Gameplay
+- **[INTIMACY_SCENE_COMPOSER.md](./INTIMACY_SCENE_COMPOSER.md)** - Scene composition system (2269 lines)
+- **[COMIC_PANELS.md](./COMIC_PANELS.md)** - Comic panel display system (Dec 14)
+- **[power-user-simulation.md](./power-user-simulation.md)** - Complete workflow walkthrough (Dec 14)
+- **[GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md](./GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)** - Gizmo system
+
+---
+
 ## 🎯 Common Tasks
 
 ### I want to understand the current architecture

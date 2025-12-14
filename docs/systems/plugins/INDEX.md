@@ -1,5 +1,8 @@
 # Plugin System Documentation
 
+> ⚠️ **Deprecated**: This index is superseded by the root-level
+> [`PLUGIN_ARCHITECTURE.md`](../../PLUGIN_ARCHITECTURE.md).
+
 Documentation for PixSim7's unified plugin system.
 
 ---
