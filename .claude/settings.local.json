@@ -121,7 +121,8 @@
       "Bash(pixsim7/backend/main/api/v1/generations.py )",
       "Bash(pixsim7/backend/main/workers/job_processor.py)",
       "Bash(apps/main/src/features/generation/components/GenerationsPanel.tsx )",
-      "Bash(apps/main/src/lib/api/generations.ts)"
+      "Bash(apps/main/src/lib/api/generations.ts)",
+      "Bash(npm run type-check:*)"
     ],
     "deny": [],
     "ask": []
