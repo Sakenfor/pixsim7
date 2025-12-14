@@ -42,19 +42,19 @@ import { debugFlags } from '@lib/utils/debugFlags';
  * Maps filename (without extension) to lazy-loaded component
  *
  * Pattern matches:
- * - /src/components/graph/SeductionNodeRenderer.tsx → 'SeductionNodeRenderer'
- * - /src/components/graph/QuestTriggerRenderer.tsx → 'QuestTriggerRenderer'
+ * - /src/features/graph/components/graph/SeductionNodeRenderer.tsx → 'SeductionNodeRenderer'
+ * - /src/features/graph/components/graph/QuestTriggerRenderer.tsx → 'QuestTriggerRenderer'
  * - etc.
  */
 const rendererModules = import.meta.glob<{
   default: ComponentType<NodeRendererProps>;
-}>('/src/components/graph/**/*Renderer.{tsx,ts}', { eager: false });
+}>('/src/features/graph/components/graph/**/*Renderer.{tsx,ts}', { eager: false });
 
 /**
  * Extract renderer name from file path
  *
  * @example
- * getRendererNameFromPath('/src/components/graph/SeductionNodeRenderer.tsx')
+ * getRendererNameFromPath('/src/features/graph/components/graph/SeductionNodeRenderer.tsx')
  * // Returns: 'SeductionNodeRenderer'
  */
 function getRendererNameFromPath(path: string): string {
