@@ -88,8 +88,8 @@ This lets us keep **feature-first ownership in the codebase**, while still havin
 |------|-----------------|-------------------------|-------------------|
 | **world-tool** | `features/worldTools/lib/types.ts` | `features/worldTools/plugins/*` | worldToolRegistry → registryBridge → catalog |
 | **brain-tool** | `features/brainTools/lib/types.ts` | `features/brainTools/plugins/*` | brainToolRegistry (standalone) |
-| **gallery-tool** | `features/gallery/lib/core/types.ts` | `features/gallery/lib/core/tools/*` | galleryToolRegistry → registryBridge → catalog |
-| **gizmo-surface** | `features/gizmos/lib/core/surfaceRegistry.ts` | `features/gizmos/lib/core/registry-*.ts` | gizmoSurfaceRegistry → registryBridge → catalog |
+| **gallery-tool** | `features/gallery/lib/core/types.ts` | `features/gallery/plugins/*` | galleryToolRegistry → registryBridge → catalog |
+| **gizmo-surface** | `features/gizmos/lib/core/surfaceRegistry.ts` | `features/gizmos/plugins/*` | gizmoSurfaceRegistry → registryBridge → catalog |
 | **workspace-panel** | `lib/ui/panels/panelRegistry.ts` | Various (components, features) | panelRegistry → registryBridge → catalog |
 | **dev-tool** | `lib/devtools/types.ts` | `lib/devtools/` | devToolRegistry → registryBridge → catalog |
 | **session-helper** | `@pixsim7/game.engine` | `plugins/`, `lib/game/customHelpers.ts` | sessionHelperRegistry → registryBridge → catalog |
@@ -102,13 +102,13 @@ This lets us keep **feature-first ownership in the codebase**, while still havin
 
 ### Pattern Analysis
 
-**Well-structured (reference pattern):**
+**Following standard pattern:**
 - `worldTools` - Clean separation: `lib/types.ts` → `lib/registry.ts` → `plugins/index.ts`
 - `brainTools` - Similar pattern, consistent structure
+- `gallery` - Now uses `plugins/` folder with `builtInGalleryTools` export
+- `gizmos` - Surface definitions in `plugins/surfaces.ts` with `builtInGizmoSurfaces` export
 
 **Needs improvement:**
-- `gallery` - Tools embedded in `lib/core/tools/`, not a dedicated `plugins/` folder
-- `gizmos` - Multiple registry files (`registry-*.ts`), surface registry separate from gizmo registry
 - `devtools` - Lives in `lib/devtools/` not `features/devtools/`
 - `workspace-panel` - Implementations scattered across components/features
 
@@ -448,49 +448,39 @@ features/worldTools/
 
 Brain tools also follow the pattern. No changes needed.
 
-### Phase 4: Migrate Gallery Tools
+### Phase 4: Migrate Gallery Tools ✅
 
-**Current:** Tools in `features/gallery/lib/core/tools/`
+Gallery tools now follow the standard pattern:
 
-**Target:**
 ```
 features/gallery/
 ├── lib/
-│   ├── types.ts        # GalleryToolPlugin (already exists in lib/core/types.ts)
-│   └── registry.ts     # Move from lib/core/types.ts
+│   ├── core/types.ts   ✅ GalleryToolPlugin interface + registry
+│   └── registry.ts     ✅ Auto-registers builtInGalleryTools
 ├── plugins/
-│   ├── index.ts        # New: export builtInGalleryTools
-│   └── *.tsx           # Move from lib/core/tools/
+│   ├── index.ts        ✅ Exports builtInGalleryTools array
+│   └── bulkTagTool.tsx ✅ Individual plugin file
+└── index.ts            ✅ Public API
 ```
 
-**Steps:**
-1. Create `features/gallery/plugins/` directory
-2. Move tool files from `lib/core/tools/` to `plugins/`
-3. Create `plugins/index.ts` with exports
-4. Update `lib/core/registerGalleryTools.ts` to use new location
+### Phase 5: Migrate Gizmo Surfaces ✅
 
-### Phase 5: Migrate Gizmo Surfaces
+Gizmo surfaces now follow the standard pattern:
 
-**Current:** Multiple `registry-*.ts` files in `features/gizmos/lib/core/`
-
-**Target:**
 ```
 features/gizmos/
-├── lib/
-│   ├── types.ts        # Re-exports from @pixsim7/scene.gizmos
-│   ├── surfaceTypes.ts # GizmoSurfaceDefinition
-│   └── surfaceRegistry.ts
+├── lib/core/
+│   ├── surfaceRegistry.ts   ✅ GizmoSurfaceDefinition + registry
+│   ├── registerGizmoSurfaces.ts ✅ Uses builtInGizmoSurfaces
+│   └── registry-*.ts        (Unchanged - gizmo packs are configs, not plugins)
 ├── plugins/
-│   ├── index.ts        # Export all surface definitions
-│   ├── rings.tsx
-│   ├── orb.tsx
-│   └── ...
+│   ├── index.ts             ✅ Exports builtInGizmoSurfaces array
+│   └── surfaces.ts          ✅ Individual surface definitions
+└── index.ts                 ✅ Public API
 ```
 
-**Steps:**
-1. Create `features/gizmos/plugins/` directory
-2. Convert registry-*.ts files to plugin format
-3. Create unified `plugins/index.ts`
+Note: Gizmo *packs* (`registry-rings.ts`, `registry-romance.ts`, etc.) remain unchanged
+as they define gizmo configurations, not UI plugins.
 
 ### Phase 6: Move Dev Tools to Features
 
