@@ -442,3 +442,202 @@ export async function getAvailablePluginManifests(): Promise<BundleManifest[]> {
   const discovered = await discoverBundles();
   return discovered.map(b => b.manifest);
 }
+
+// ===== Remote Bundle Loading =====
+
+/**
+ * Remote plugin descriptor from the backend catalog API
+ */
+export interface RemotePluginDescriptor {
+  pluginId: string;
+  bundleUrl: string;
+  family: BundlePluginFamily;
+  manifest?: Partial<BundleManifest>;
+}
+
+/**
+ * Load a single plugin bundle from a remote URL
+ *
+ * This is used to load plugins from the backend catalog when enabled.
+ * The bundle URL can be absolute or relative to the backend.
+ *
+ * @param descriptor Plugin information from the backend
+ * @returns Load result
+ */
+export async function loadRemotePluginBundle(
+  descriptor: RemotePluginDescriptor
+): Promise<BundleLoadResult> {
+  const { pluginId, bundleUrl, family, manifest: partialManifest } = descriptor;
+
+  try {
+    // Resolve the bundle URL (handle relative URLs)
+    const resolvedUrl = resolveBundleUrl(bundleUrl);
+
+    console.log(`[ManifestLoader] Loading remote plugin ${pluginId} from ${resolvedUrl}`);
+
+    // Dynamic import the plugin bundle
+    const pluginModule = await import(/* @vite-ignore */ resolvedUrl);
+
+    // Extract manifest and plugin from the module
+    const manifest: BundleManifest = pluginModule.manifest || partialManifest || {
+      id: pluginId,
+      name: pluginId,
+      version: '1.0.0',
+      author: 'Unknown',
+      description: '',
+      type: 'ui-overlay',
+      permissions: [],
+      main: 'plugin.js',
+    };
+
+    const plugin = pluginModule.plugin || pluginModule.default?.plugin;
+
+    // Register based on family
+    switch (family) {
+      case 'scene':
+        if (manifest.sceneView && plugin && typeof plugin.render === 'function') {
+          const fullManifest: SceneViewPluginManifest = {
+            ...manifest,
+            type: 'ui-overlay',
+            sceneView: manifest.sceneView,
+          };
+          sceneViewRegistry.register(fullManifest, plugin);
+        } else {
+          throw new Error('Scene plugin missing sceneView descriptor or render function');
+        }
+        break;
+
+      case 'ui':
+        if (typeof pluginModule.register === 'function') {
+          pluginModule.register();
+        }
+        break;
+
+      case 'tool':
+        if (typeof pluginModule.register === 'function') {
+          pluginModule.register();
+        }
+        break;
+
+      default:
+        throw new Error(`Unknown plugin family: ${family}`);
+    }
+
+    console.log(`[ManifestLoader] ✓ Remote plugin ${pluginId} loaded successfully`);
+
+    return {
+      success: true,
+      manifestPath: resolvedUrl,
+      pluginId,
+      family,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[ManifestLoader] ✗ Failed to load remote plugin ${pluginId}:`, message);
+
+    return {
+      success: false,
+      manifestPath: bundleUrl,
+      pluginId,
+      family,
+      error: message,
+    };
+  }
+}
+
+/**
+ * Load multiple plugin bundles from remote URLs
+ *
+ * Used by the plugin catalog store to load enabled plugins.
+ *
+ * @param descriptors Array of plugin descriptors
+ * @returns Array of load results
+ */
+export async function loadRemotePluginBundles(
+  descriptors: RemotePluginDescriptor[]
+): Promise<BundleLoadResult[]> {
+  const results: BundleLoadResult[] = [];
+
+  console.log(`[ManifestLoader] Loading ${descriptors.length} remote plugin(s)...`);
+
+  for (const descriptor of descriptors) {
+    // Skip plugins that are already registered
+    if (isPluginRegistered(descriptor.pluginId, descriptor.family)) {
+      console.log(`[ManifestLoader] Plugin ${descriptor.pluginId} already registered, skipping`);
+      results.push({
+        success: true,
+        manifestPath: descriptor.bundleUrl,
+        pluginId: descriptor.pluginId,
+        family: descriptor.family,
+      });
+      continue;
+    }
+
+    const result = await loadRemotePluginBundle(descriptor);
+    results.push(result);
+  }
+
+  const successful = results.filter(r => r.success).length;
+  const failed = results.filter(r => !r.success).length;
+  console.log(`[ManifestLoader] Remote loading complete: ${successful} succeeded, ${failed} failed`);
+
+  return results;
+}
+
+/**
+ * Check if a plugin is already registered
+ */
+function isPluginRegistered(pluginId: string, family: BundlePluginFamily): boolean {
+  switch (family) {
+    case 'scene':
+      return sceneViewRegistry.getEntry(pluginId) !== null;
+    // Add other registries as needed
+    default:
+      return false;
+  }
+}
+
+/**
+ * Resolve a bundle URL (handle relative paths)
+ */
+function resolveBundleUrl(url: string): string {
+  // Absolute URL - use as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // Relative to backend - prepend backend URL
+  if (url.startsWith('/plugins/') || url.startsWith('/api/')) {
+    // Get backend URL from environment or infer from current location
+    const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+    if (backendUrl) {
+      return `${backendUrl.replace(/\/$/, '')}${url}`;
+    }
+
+    // Fallback: assume same origin with backend port
+    if (typeof window !== 'undefined') {
+      const { protocol, hostname } = window.location;
+      return `${protocol}//${hostname}:8000${url}`;
+    }
+  }
+
+  // Relative path - use as-is (Vite will resolve)
+  return url;
+}
+
+/**
+ * Unregister a plugin by ID
+ *
+ * Used when disabling a plugin at runtime.
+ */
+export function unregisterPlugin(pluginId: string, family: BundlePluginFamily): boolean {
+  switch (family) {
+    case 'scene':
+      sceneViewRegistry.unregister(pluginId);
+      return true;
+    // Add other registries as needed
+    default:
+      console.warn(`[ManifestLoader] Cannot unregister plugin family: ${family}`);
+      return false;
+  }
+}

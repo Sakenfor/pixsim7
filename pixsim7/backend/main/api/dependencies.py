@@ -24,6 +24,7 @@ from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
 from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.game import GameSessionService, GameLocationService, NpcExpressionService, GameWorldService
+from pixsim7.backend.main.services.plugin import PluginCatalogService
 
 # Narrative engine imports (lazy-loaded)
 from pixsim7.backend.main.domain.narrative import NarrativeEngine
@@ -121,6 +122,11 @@ async def get_game_world_service(
 ) -> GameWorldService:
     """Get GameWorldService instance with Redis support"""
     return GameWorldService(db, redis)
+
+
+def get_plugin_catalog_service(db: AsyncSession = Depends(get_database)) -> PluginCatalogService:
+    """Get PluginCatalogService instance"""
+    return PluginCatalogService(db)
 
 
 # ===== NARRATIVE ENGINE SINGLETONS =====
@@ -350,6 +356,7 @@ GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
 NpcExpressionSvc = Annotated[NpcExpressionService, Depends(get_npc_expression_service)]
 GameWorldSvc = Annotated[GameWorldService, Depends(get_game_world_service)]
+PluginCatalogSvc = Annotated[PluginCatalogService, Depends(get_plugin_catalog_service)]
 
 # Narrative engine type aliases
 NarrativeEng = Annotated[NarrativeEngine, Depends(get_narrative_engine)]
