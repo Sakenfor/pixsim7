@@ -144,6 +144,16 @@ class NPCState(SQLModel, HasStats, table=True):
     npc_id: Optional[int] = Field(primary_key=True)
     current_location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id")
     state: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    transform: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description=(
+            "Spatial transform (position, orientation, scale) matching the shared Transform type. "
+            "Example: {worldId: 1, locationId: 42, position: {x: 100, y: 50, z: 0}, "
+            "orientation: {yaw: 90}, space: 'world_2d'}. "
+            "This is optional and additive - if null, only current_location_id is used."
+        )
+    )
     version: int = Field(default=0)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     # stats field inherited from HasStats - runtime stat overrides (damage, buffs, etc.)

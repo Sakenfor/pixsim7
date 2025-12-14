@@ -6,6 +6,426 @@
 import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
 
 // ===================
+// Spatial Model Types
+// ===================
+
+/**
+ * 3D position coordinates
+ * z is optional to support 2D-first workflows
+ */
+export interface Position3D {
+  x: number;
+  y: number;
+  z?: number;
+}
+
+/**
+ * 3D orientation using Euler angles (in degrees)
+ * All fields optional to support 2D (yaw-only) and partial rotations
+ */
+export interface Orientation {
+  /** Rotation around Y axis (heading) - primary rotation for 2D */
+  yaw?: number;
+  /** Rotation around X axis (elevation) */
+  pitch?: number;
+  /** Rotation around Z axis (tilt/bank) */
+  roll?: number;
+}
+
+/**
+ * 3D scale factors
+ * Defaults to uniform scale of 1.0 if not specified
+ */
+export interface Scale {
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+/**
+ * Coordinate space identifier
+ * Helps renderers and editors treat transforms differently
+ * - 'world_2d': 2D top-down or side-view (z=0 or ignored)
+ * - 'world_3d': Full 3D space with all axes
+ * - 'ui_2d': UI overlay coordinates (screen space)
+ */
+export type CoordinateSpace = 'world_2d' | 'world_3d' | 'ui_2d';
+
+/**
+ * Transform - generic spatial component
+ *
+ * Represents position, orientation, and scale of an object in space.
+ * Designed to be 2D-first (just x, y, yaw) but 3D-capable (add z, pitch, roll).
+ *
+ * Design notes:
+ * - 2D workflows: use x, y, and optionally yaw; leave z, pitch, roll undefined
+ * - 3D workflows: use x, y, z and full orientation
+ * - Location context: worldId or locationId determines which space we're in
+ * - Future: could add parentId for hierarchical transforms (relative positioning)
+ *
+ * @example
+ * // 2D NPC placement
+ * const transform2d: Transform = {
+ *   worldId: WorldId(1),
+ *   locationId: LocationId(42),
+ *   position: { x: 100, y: 50 },
+ *   orientation: { yaw: 90 }, // facing right
+ *   space: 'world_2d'
+ * };
+ *
+ * @example
+ * // 3D prop placement
+ * const transform3d: Transform = {
+ *   worldId: WorldId(1),
+ *   locationId: LocationId(42),
+ *   position: { x: 10, y: 2, z: 5 },
+ *   orientation: { yaw: 45, pitch: -15, roll: 0 },
+ *   scale: { x: 1.5, y: 1.5, z: 1.5 },
+ *   space: 'world_3d'
+ * };
+ */
+export interface Transform {
+  /** World this transform belongs to */
+  worldId: WorldId;
+  /** Location within the world (optional - use for local coordinates) */
+  locationId?: LocationId;
+  /** Position in 3D space (z optional for 2D) */
+  position: Position3D;
+  /** Orientation in 3D space (all optional) */
+  orientation?: Orientation;
+  /** Scale factors (all optional, default 1.0) */
+  scale?: Scale;
+  /** Coordinate space hint for renderers */
+  space?: CoordinateSpace;
+}
+
+/**
+ * Entity kind discriminator for spatial objects
+ * Extensible - add new kinds as needed without schema changes
+ */
+export type SpatialObjectKind =
+  | 'npc'
+  | 'player'
+  | 'item'
+  | 'prop'
+  | 'trigger'
+  | 'spawn'
+  | 'camera'
+  | 'light'
+  | (string & {}); // Allow custom kinds
+
+/**
+ * SpatialObject - base shape for placeable objects
+ *
+ * Not a runtime class - just a shared shape/interface that NPCs, items, props, etc.
+ * can embed or map to. Think of it as a "spatial component" pattern.
+ *
+ * Design notes:
+ * - This is NOT inheritance - it's a component/shape that entities can adopt
+ * - NPC/Item/Prop DTOs can include a `spatial: SpatialObject` field
+ * - Or they can directly embed these fields in their own structure
+ * - Tags help editors filter and categorize objects (e.g., ["interactive", "decoration"])
+ *
+ * Future: Could extend with physics properties (collider, rigidbody, etc.)
+ *
+ * @example
+ * // NPC with spatial data
+ * interface NpcWithSpatial extends GameNpcDetail {
+ *   spatial: SpatialObject;
+ * }
+ *
+ * @example
+ * // Item as spatial object
+ * const coin: SpatialObject = {
+ *   id: 123,
+ *   kind: 'item',
+ *   transform: { worldId: WorldId(1), position: { x: 50, y: 30 } },
+ *   tags: ['collectible', 'treasure']
+ * };
+ */
+export interface SpatialObject {
+  /** Entity ID (use branded IDs like NpcId, ItemId, etc.) */
+  id: number;
+  /** Kind of object for filtering and behavior */
+  kind: SpatialObjectKind;
+  /** Spatial transform (position, rotation, scale) */
+  transform: Transform;
+  /** Optional tags for editor filtering and categorization */
+  tags?: string[];
+  /** Optional metadata for extensions */
+  meta?: Record<string, unknown>;
+}
+
+// ===================
+// Generic GameObject Types
+// ===================
+
+/**
+ * GameObjectBase - shared composition shape for all game entities
+ *
+ * This is the foundation for a data-driven, entity-agnostic object system.
+ * All game entities (NPCs, items, props, players, triggers) compose this shape.
+ *
+ * Design principles:
+ * - Composition, not inheritance
+ * - Discriminated unions for type safety
+ * - Entity-agnostic mapping and services
+ * - 2D-first, 3D-ready via Transform
+ *
+ * @example
+ * // NPC object
+ * const npc: NpcObject = {
+ *   kind: 'npc',
+ *   id: 123,
+ *   name: 'Alex',
+ *   transform: { worldId: 1, position: { x: 50, y: 100 } },
+ *   tags: ['friendly', 'shopkeeper'],
+ *   npcData: { personaId: 'alex', expressionState: 'idle' }
+ * };
+ *
+ * @example
+ * // Item object
+ * const item: ItemObject = {
+ *   kind: 'item',
+ *   id: 456,
+ *   name: 'Health Potion',
+ *   transform: { worldId: 1, position: { x: 10, y: 20 } },
+ *   tags: ['consumable', 'healing'],
+ *   itemData: { itemDefId: 'potion_health', quantity: 1 }
+ * };
+ */
+export interface GameObjectBase {
+  /** Discriminator for type narrowing */
+  kind: 'npc' | 'item' | 'prop' | 'player' | 'trigger' | (string & {});
+  /** Entity ID (use branded IDs like NpcId, ItemId, etc.) */
+  id: number;
+  /** Display name */
+  name: string;
+  /** Spatial transform (position, rotation, scale) */
+  transform: Transform;
+  /** Optional tags for filtering and categorization */
+  tags?: string[];
+  /** Optional metadata for extensions */
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * NPC-specific fields
+ * Extends GameObjectBase with NPC-related data
+ */
+export interface NpcObjectData {
+  /** Persona ID for brain/dialogue system */
+  personaId?: string;
+  /** Schedule/routine graph ID */
+  scheduleId?: string;
+  /** Current expression/emotion state */
+  expressionState?: string;
+  /** Default portrait asset ID */
+  portraitAssetId?: number;
+  /** Role in the world (shopkeeper, guard, etc.) */
+  role?: string;
+  /** Current brain state snapshot */
+  brainState?: Record<string, unknown>;
+}
+
+/**
+ * NpcObject - GameObject variant for NPCs
+ */
+export interface NpcObject extends GameObjectBase {
+  kind: 'npc';
+  id: NpcId;
+  /** NPC-specific data */
+  npcData?: NpcObjectData;
+}
+
+/**
+ * Item-specific fields
+ * Extends GameObjectBase with item-related data
+ */
+export interface ItemObjectData {
+  /** Item definition ID (from content/templates) */
+  itemDefId: string;
+  /** Stack quantity */
+  quantity: number;
+  /** Durability (0-1, optional) */
+  durability?: number;
+  /** Item-specific state (enchantments, modifications, etc.) */
+  state?: Record<string, unknown>;
+}
+
+/**
+ * ItemObject - GameObject variant for items
+ */
+export interface ItemObject extends GameObjectBase {
+  kind: 'item';
+  /** Item-specific data */
+  itemData: ItemObjectData;
+}
+
+/**
+ * Prop-specific fields
+ * Extends GameObjectBase with prop-related data
+ */
+export interface PropObjectData {
+  /** Prop definition ID (from content/templates) */
+  propDefId: string;
+  /** Asset ID for visual representation */
+  assetId?: number;
+  /** Interactive state (open/closed, on/off, etc.) */
+  interactionState?: string;
+  /** Prop-specific configuration */
+  config?: Record<string, unknown>;
+}
+
+/**
+ * PropObject - GameObject variant for props (furniture, decorations, etc.)
+ */
+export interface PropObject extends GameObjectBase {
+  kind: 'prop';
+  /** Prop-specific data */
+  propData: PropObjectData;
+}
+
+/**
+ * Player-specific fields
+ * Extends GameObjectBase with player-related data
+ */
+export interface PlayerObjectData {
+  /** User ID (from auth system) */
+  userId: string;
+  /** Control type */
+  controlType: 'local' | 'remote';
+  /** Multiplayer session ID (for remote players) */
+  multiplayerSessionId?: string;
+  /** Connection status (for remote players) */
+  connectionStatus?: 'connected' | 'disconnected' | 'reconnecting';
+  /** Camera target/focus */
+  cameraTarget?: {
+    type: 'actor' | 'location' | 'position';
+    targetId?: number | string;
+    position?: Position3D;
+  };
+  /** Current input state (for multiplayer sync) */
+  inputState?: Record<string, unknown>;
+}
+
+/**
+ * PlayerObject - GameObject variant for players
+ */
+export interface PlayerObject extends GameObjectBase {
+  kind: 'player';
+  /** Player-specific data */
+  playerData: PlayerObjectData;
+}
+
+/**
+ * Trigger-specific fields
+ * Extends GameObjectBase with trigger-related data
+ */
+export interface TriggerObjectData {
+  /** Trigger type (zone, proximity, interaction, etc.) */
+  triggerType: 'zone' | 'proximity' | 'interaction' | 'event';
+  /** Event ID to fire when triggered */
+  eventId?: string;
+  /** Trigger bounds/shape */
+  bounds?: {
+    type: 'circle' | 'rect' | 'polygon';
+    radius?: number;
+    width?: number;
+    height?: number;
+    points?: Position3D[];
+  };
+  /** Trigger conditions */
+  conditions?: Record<string, unknown>;
+  /** Whether trigger can fire multiple times */
+  repeatable?: boolean;
+  /** Cooldown in seconds */
+  cooldownSeconds?: number;
+}
+
+/**
+ * TriggerObject - GameObject variant for triggers
+ */
+export interface TriggerObject extends GameObjectBase {
+  kind: 'trigger';
+  /** Trigger-specific data */
+  triggerData: TriggerObjectData;
+}
+
+/**
+ * GameObject - discriminated union of all game object variants
+ *
+ * Use this for functions/services that work with any game object type.
+ * TypeScript will narrow the type based on the 'kind' discriminator.
+ *
+ * @example
+ * function renderObject(obj: GameObject) {
+ *   // Common rendering for all types
+ *   renderTransform(obj.transform);
+ *
+ *   // Type-specific rendering
+ *   switch (obj.kind) {
+ *     case 'npc':
+ *       renderNpcSprite(obj); // obj is narrowed to NpcObject
+ *       break;
+ *     case 'item':
+ *       renderItemIcon(obj); // obj is narrowed to ItemObject
+ *       break;
+ *     case 'prop':
+ *       renderPropModel(obj); // obj is narrowed to PropObject
+ *       break;
+ *     case 'player':
+ *       renderPlayerAvatar(obj); // obj is narrowed to PlayerObject
+ *       break;
+ *     case 'trigger':
+ *       if (DEBUG_MODE) renderTriggerBounds(obj); // obj is narrowed to TriggerObject
+ *       break;
+ *   }
+ * }
+ */
+export type GameObject =
+  | NpcObject
+  | ItemObject
+  | PropObject
+  | PlayerObject
+  | TriggerObject;
+
+/**
+ * Type guard to check if a GameObject is an NpcObject
+ */
+export function isNpcObject(obj: GameObject): obj is NpcObject {
+  return obj.kind === 'npc';
+}
+
+/**
+ * Type guard to check if a GameObject is an ItemObject
+ */
+export function isItemObject(obj: GameObject): obj is ItemObject {
+  return obj.kind === 'item';
+}
+
+/**
+ * Type guard to check if a GameObject is a PropObject
+ */
+export function isPropObject(obj: GameObject): obj is PropObject {
+  return obj.kind === 'prop';
+}
+
+/**
+ * Type guard to check if a GameObject is a PlayerObject
+ */
+export function isPlayerObject(obj: GameObject): obj is PlayerObject {
+  return obj.kind === 'player';
+}
+
+/**
+ * Type guard to check if a GameObject is a TriggerObject
+ */
+export function isTriggerObject(obj: GameObject): obj is TriggerObject {
+  return obj.kind === 'trigger';
+}
+
+// ===================
 // Location Types
 // ===================
 
@@ -109,6 +529,8 @@ export interface NpcPresenceDTO {
   npc_id: NpcId;
   location_id: LocationId;
   state: Record<string, unknown>;
+  /** Optional spatial transform (position, rotation, scale within location) */
+  transform?: Transform;
 }
 
 /**

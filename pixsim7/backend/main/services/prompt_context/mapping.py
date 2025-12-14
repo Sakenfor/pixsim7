@@ -19,28 +19,59 @@ class FieldMapping:
     - Optional per-field transforms
     - Stat engine integration
     - Plugin/link overlays
+    - Multiple source types (template, runtime, config, etc.)
 
-    Example:
+    Design:
+    - Generic source names work for any entity type
+    - source_paths dict allows flexible source naming
+    - Backward compatible with instance_path/npc_path for NPCs
+
+    Example (NPC - backward compatible):
         FieldMapping(
             target_path="traits.mood",
             source="instance",
             fallback="npc",
             instance_path="current_state.mood",
             npc_path="state.mood",
-            transform=lambda value, ctx: value.upper()
+        )
+
+    Example (Item - generic):
+        FieldMapping(
+            target_path="state.durability",
+            source="runtime",
+            fallback="template",
+            source_paths={
+                "template": "default_durability",
+                "runtime": "state.durability"
+            }
+        )
+
+    Example (Prop - generic with transform):
+        FieldMapping(
+            target_path="visual.assetId",
+            source="template",
+            fallback="none",
+            source_paths={"template": "asset_id"},
+            transform=lambda value, ctx: f"asset:{value}"
         )
     """
 
     # Target path in snapshot (dot notation, e.g., "name", "traits.openness", "state.mood")
     target_path: str
 
-    # Source authority
-    source: Literal["instance", "npc", "both"]  # Which entity owns this field
-    fallback: Literal["instance", "npc", "none"]  # Fallback if primary source unavailable
+    # Source authority (generic names work for any entity)
+    # Common values: "template", "runtime", "config", "instance", "npc", "both"
+    source: str
+    fallback: str = "none"  # Fallback if primary source unavailable
 
-    # Paths (dot notation)
-    instance_path: Optional[str] = None  # Path in source entity (e.g., "personality_traits.openness")
-    npc_path: Optional[str] = None       # Path in runtime entity (e.g., "personality.openness")
+    # Generic source paths (dict allows any source names)
+    # Example: {"template": "personality.mood", "runtime": "state.mood", "config": "defaults.mood"}
+    source_paths: Optional[Dict[str, str]] = None
+
+    # Backward compatibility: NPC-specific path fields
+    # These are auto-added to source_paths if provided
+    instance_path: Optional[str] = None  # Path in template/instance (backward compat)
+    npc_path: Optional[str] = None       # Path in runtime NPC state (backward compat)
 
     # Stat engine integration
     stat_axis: Optional[str] = None      # If this field is a stat axis, name of axis
@@ -48,8 +79,23 @@ class FieldMapping:
 
     # Transform hook for per-field reshaping
     # Signature: transform(value: Any, context: Dict[str, Any]) -> Any
-    # Context varies by entity type but typically includes: instance, runtime entity, state, flags
+    # Context varies by entity type but typically includes sources, state, flags
     transform: Optional[Callable[[Any, Dict[str, Any]], Any]] = field(default=None, repr=False)
+
+    def __post_init__(self):
+        """Initialize source_paths from legacy instance_path/npc_path if needed."""
+        if self.source_paths is None:
+            self.source_paths = {}
+
+        # Backward compatibility: add instance_path and npc_path to source_paths
+        if self.instance_path and "instance" not in self.source_paths:
+            self.source_paths["instance"] = self.instance_path
+        if self.npc_path and "npc" not in self.source_paths:
+            self.source_paths["npc"] = self.npc_path
+
+        # Ensure fallback "none" is normalized
+        if self.fallback.lower() == "none":
+            self.fallback = "none"
 
 
 def merge_field_mappings(

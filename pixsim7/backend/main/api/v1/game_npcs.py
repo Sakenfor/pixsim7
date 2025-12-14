@@ -31,6 +31,7 @@ class NpcPresenceDTO(BaseModel):
     npc_id: int
     location_id: int
     state: Dict[str, Any]
+    transform: Optional[Dict[str, Any]] = None  # Optional spatial transform
 
 
 class UpdateNpcStatsRequest(BaseModel):
@@ -82,19 +83,25 @@ def _build_presence_entry(sched: NPCSchedule, npc_state: Optional[NPCState]) -> 
     Build a presence entry for an NPC based on schedule and state.
 
     The state can override the location_id from the schedule.
+    Includes optional spatial transform data if present.
     """
     location_id = sched.location_id
     state_dict = {}
+    transform = None
+
     if npc_state is not None:
         if npc_state.current_location_id is not None:
             location_id = npc_state.current_location_id
         if npc_state.state:
             state_dict = npc_state.state
+        if npc_state.transform:
+            transform = npc_state.transform
 
     return NpcPresenceDTO(
         npc_id=sched.npc_id,
         location_id=location_id,
         state=state_dict,
+        transform=transform,
     )
 
 
