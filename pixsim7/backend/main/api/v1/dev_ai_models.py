@@ -45,7 +45,7 @@ class SetDefaultsRequest(BaseModel):
         schema_extra = {
             "example": {
                 "defaults": {
-                    "prompt_edit": "openai:gpt-4.1-mini",
+                    "prompt_edit": "openai:gpt-4o-mini",
                     "prompt_parse": "prompt-dsl:simple"
                 }
             }
@@ -96,7 +96,7 @@ async def get_defaults(
 
     Returns:
         Dict mapping capability to model_id
-        Example: {"prompt_edit": "openai:gpt-4.1-mini", "prompt_parse": "prompt-dsl:simple"}
+        Example: {"prompt_edit": "openai:gpt-4o-mini", "prompt_parse": "prompt-dsl:simple"}
     """
     try:
         defaults = await get_all_defaults(db, scope_type="global", scope_id=None)

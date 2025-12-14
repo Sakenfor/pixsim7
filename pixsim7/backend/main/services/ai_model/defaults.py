@@ -29,7 +29,7 @@ class AiModelDefault(Base):
     scope_type = Column(String(20), nullable=False)  # "global", "user", "workspace"
     scope_id = Column(String(100), nullable=True)    # ID for user/workspace, NULL for global
     capability = Column(String(50), nullable=False)  # "prompt_edit", "prompt_parse", etc.
-    model_id = Column(String(100), nullable=False)   # "openai:gpt-4.1-mini", etc.
+    model_id = Column(String(100), nullable=False)   # "openai:gpt-4o-mini", etc.
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -41,9 +41,9 @@ class AiModelDefault(Base):
 
 # In-memory fallback defaults (used if database is unavailable or no entry exists)
 FALLBACK_DEFAULTS = {
-    AiModelCapability.PROMPT_EDIT: "openai:gpt-4.1-mini",
+    AiModelCapability.PROMPT_EDIT: "openai:gpt-4o-mini",
     AiModelCapability.PROMPT_PARSE: "prompt-dsl:simple",
-    AiModelCapability.TAG_SUGGEST: "openai:gpt-4.1-mini",
+    AiModelCapability.TAG_SUGGEST: "openai:gpt-4o-mini",
 }
 
 
@@ -63,7 +63,7 @@ async def get_default_model(
         scope_id: ID for user/workspace scope, None for global
 
     Returns:
-        Model ID string (e.g., "openai:gpt-4.1-mini")
+        Model ID string (e.g., "openai:gpt-4o-mini")
     """
     try:
         # Query database for default

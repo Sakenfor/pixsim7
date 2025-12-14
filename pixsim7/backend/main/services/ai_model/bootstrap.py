@@ -49,11 +49,11 @@ def initialize_ai_models() -> None:
 
     # === LLM Models ===
 
-    # OpenAI GPT-4.1 Mini (default for prompt editing)
+    # OpenAI GPT-4o Mini (default for prompt editing)
     ai_model_registry.register(
         AiModel(
-            id="openai:gpt-4.1-mini",
-            label="GPT-4.1 Mini",
+            id="openai:gpt-4o-mini",
+            label="GPT-4o Mini",
             provider_id="openai-llm",
             kind=AiModelKind.LLM,
             capabilities=[
@@ -61,7 +61,7 @@ def initialize_ai_models() -> None:
                 AiModelCapability.TAG_SUGGEST,
             ],
             default_for=[AiModelCapability.PROMPT_EDIT],
-            description="OpenAI GPT-4.1 Mini for prompt editing and tag suggestions",
+            description="OpenAI GPT-4o Mini for prompt editing and tag suggestions",
         )
     )
 
