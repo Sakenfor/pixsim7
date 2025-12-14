@@ -13,28 +13,12 @@ from pixsim7.backend.main.domain import (
     Generation,
     GenerationStatus,
     BillingState,
-    OperationType,
     ProviderSubmission,
     ProviderAccount,
 )
 from pixsim7.backend.main.services.account import AccountService
 
 logger = logging.getLogger(__name__)
-
-
-# Operation type sets for pricing logic
-IMAGE_OPERATIONS = {
-    OperationType.TEXT_TO_IMAGE,
-    OperationType.IMAGE_TO_IMAGE,
-}
-
-VIDEO_OPERATIONS = {
-    OperationType.TEXT_TO_VIDEO,
-    OperationType.IMAGE_TO_VIDEO,
-    OperationType.VIDEO_EXTEND,
-    OperationType.VIDEO_TRANSITION,
-    OperationType.FUSION,
-}
 
 
 class GenerationBillingService:
@@ -243,7 +227,7 @@ class GenerationBillingService:
         """
         Compute actual credits for a completed generation.
 
-        Uses pixverse_pricing helpers with actual values from completion.
+        Delegates to the provider adapter for provider-specific pricing logic.
 
         Note: This method handles provider-specific pricing logic (how many credits
         a generation costs based on quality, duration, etc.). The credit type
@@ -257,46 +241,15 @@ class GenerationBillingService:
         Returns:
             Actual credit cost or None if cannot be determined
         """
-        # Provider-specific pricing: only Pixverse is currently implemented.
-        # Other providers return None (no billing).
-        if generation.provider_id != "pixverse":
-            return None
+        from pixsim7.backend.main.services.provider.registry import registry
 
-        from pixsim7.backend.main.services.generation.pixverse_pricing import (
-            get_image_credit_change,
-            estimate_video_credit_change,
-        )
-
-        params = generation.canonical_params or generation.raw_params or {}
-        model = params.get("model") or "v5"
-        quality = params.get("quality") or "360p"
-
-        # Image operations: static table lookup
-        if generation.operation_type in IMAGE_OPERATIONS:
-            return get_image_credit_change(str(model), str(quality))
-
-        # Video operations: dynamic calculation with actual duration
-        if generation.operation_type in VIDEO_OPERATIONS:
-            # Prefer actual duration from provider, fall back to params
-            duration = actual_duration
-            if duration is None or duration <= 0:
-                duration = params.get("duration")
-
-            if not isinstance(duration, (int, float)) or duration <= 0:
-                # Fall back to estimated credits if we have them
-                return generation.estimated_credits
-
-            motion_mode = params.get("motion_mode")
-            multi_shot = bool(params.get("multi_shot"))
-            audio = bool(params.get("audio"))
-
-            return estimate_video_credit_change(
-                quality=str(quality),
-                duration=int(duration),
-                model=str(model),
-                motion_mode=motion_mode,
-                multi_shot=multi_shot,
-                audio=audio,
+        try:
+            provider = registry.get(generation.provider_id)
+            return provider.compute_actual_credits(generation, actual_duration)
+        except KeyError:
+            logger.warning(
+                "provider_not_found_for_billing",
+                provider_id=generation.provider_id,
+                generation_id=generation.id,
             )
-
-        return None
+            return None

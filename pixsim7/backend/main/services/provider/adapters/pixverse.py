@@ -44,6 +44,7 @@ from pixsim7.backend.main.domain import (
     OperationType,
     ProviderStatus,
     ProviderAccount,
+    Generation,
 )
 from pixsim7.backend.main.services.provider.base import (
     Provider,
@@ -731,6 +732,110 @@ class PixverseProvider(
         for entry in (getattr(account, "api_keys", None) or []):
             if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
                 return str(entry["value"])
+        return None
+
+    # ===== CREDIT ESTIMATION (Provider Interface) =====
+
+    def estimate_credits(
+        self,
+        operation_type: OperationType,
+        params: Dict[str, Any],
+    ) -> Optional[int]:
+        """
+        Estimate Pixverse credits required for a generation.
+
+        Uses pixverse_pricing helpers for accurate estimates.
+        """
+        VIDEO_OPERATIONS = {
+            OperationType.TEXT_TO_VIDEO,
+            OperationType.IMAGE_TO_VIDEO,
+            OperationType.VIDEO_EXTEND,
+            OperationType.VIDEO_TRANSITION,
+            OperationType.FUSION,
+        }
+        IMAGE_OPERATIONS = {
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
+        }
+
+        model = params.get("model") or "v5"
+        quality = params.get("quality") or "360p"
+
+        if operation_type in IMAGE_OPERATIONS:
+            return get_image_credit_change(str(model), str(quality))
+
+        if operation_type in VIDEO_OPERATIONS:
+            duration = params.get("duration")
+            if not isinstance(duration, (int, float)) or duration <= 0:
+                duration = 5  # Default duration
+
+            motion_mode = params.get("motion_mode")
+            multi_shot = bool(params.get("multi_shot"))
+            audio = bool(params.get("audio"))
+
+            return estimate_video_credit_change(
+                quality=str(quality),
+                duration=int(duration),
+                model=str(model),
+                motion_mode=motion_mode,
+                multi_shot=multi_shot,
+                audio=audio,
+            )
+
+        return None
+
+    def compute_actual_credits(
+        self,
+        generation: Generation,
+        actual_duration: Optional[float] = None,
+    ) -> Optional[int]:
+        """
+        Compute actual Pixverse credits for a completed generation.
+
+        Uses actual duration from provider when available.
+        """
+        VIDEO_OPERATIONS = {
+            OperationType.TEXT_TO_VIDEO,
+            OperationType.IMAGE_TO_VIDEO,
+            OperationType.VIDEO_EXTEND,
+            OperationType.VIDEO_TRANSITION,
+            OperationType.FUSION,
+        }
+        IMAGE_OPERATIONS = {
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
+        }
+
+        params = generation.canonical_params or generation.raw_params or {}
+        model = params.get("model") or "v5"
+        quality = params.get("quality") or "360p"
+
+        if generation.operation_type in IMAGE_OPERATIONS:
+            return get_image_credit_change(str(model), str(quality))
+
+        if generation.operation_type in VIDEO_OPERATIONS:
+            # Prefer actual duration from provider
+            duration = actual_duration
+            if duration is None or duration <= 0:
+                duration = params.get("duration")
+
+            if not isinstance(duration, (int, float)) or duration <= 0:
+                # Fall back to estimated credits if we have them
+                return generation.estimated_credits
+
+            motion_mode = params.get("motion_mode")
+            multi_shot = bool(params.get("multi_shot"))
+            audio = bool(params.get("audio"))
+
+            return estimate_video_credit_change(
+                quality=str(quality),
+                duration=int(duration),
+                model=str(model),
+                motion_mode=motion_mode,
+                multi_shot=multi_shot,
+                audio=audio,
+            )
+
         return None
 
     def _handle_error(self, error: Exception) -> None:

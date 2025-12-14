@@ -944,7 +944,7 @@ class GenerationCreationService:
         """
         Estimate credits required for a generation based on params.
 
-        Uses pixverse_pricing helpers for Pixverse provider.
+        Delegates to the provider adapter for provider-specific pricing logic.
 
         Args:
             operation_type: Operation type
@@ -954,50 +954,17 @@ class GenerationCreationService:
         Returns:
             Estimated credits or None if cannot be determined
         """
-        if provider_id != "pixverse":
-            return None
+        from pixsim7.backend.main.services.provider.registry import registry
 
-        from pixsim7.backend.main.services.generation.pixverse_pricing import (
-            get_image_credit_change,
-            estimate_video_credit_change,
-        )
-
-        model = canonical_params.get("model") or "v5"
-        quality = canonical_params.get("quality") or "360p"
-
-        # Image operations: static table lookup
-        if operation_type in {
-            OperationType.TEXT_TO_IMAGE,
-            OperationType.IMAGE_TO_IMAGE,
-        }:
-            return get_image_credit_change(str(model), str(quality))
-
-        # Video operations: dynamic calculation
-        if operation_type in {
-            OperationType.TEXT_TO_VIDEO,
-            OperationType.IMAGE_TO_VIDEO,
-            OperationType.VIDEO_EXTEND,
-            OperationType.VIDEO_TRANSITION,
-            OperationType.FUSION,
-        }:
-            duration = canonical_params.get("duration")
-            if not isinstance(duration, (int, float)) or duration <= 0:
-                return None
-
-            motion_mode = canonical_params.get("motion_mode")
-            multi_shot = bool(canonical_params.get("multi_shot"))
-            audio = bool(canonical_params.get("audio"))
-
-            return estimate_video_credit_change(
-                quality=str(quality),
-                duration=int(duration),
-                model=str(model),
-                motion_mode=motion_mode,
-                multi_shot=multi_shot,
-                audio=audio,
+        try:
+            provider = registry.get(provider_id)
+            return provider.estimate_credits(operation_type, canonical_params)
+        except KeyError:
+            logger.warning(
+                "provider_not_found_for_credit_estimation",
+                provider_id=provider_id,
             )
-
-        return None
+            return None
 
     async def _check_sufficient_credits(
         self,

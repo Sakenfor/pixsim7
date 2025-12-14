@@ -12,6 +12,7 @@ from pixsim7.backend.main.domain import (
     OperationType,
     ProviderStatus,
     ProviderAccount,
+    Generation,
 )
 
 
@@ -312,6 +313,48 @@ class Provider(ABC):
                 f"Operation {operation_type.value} not supported by {self.provider_id}. "
                 f"Supported: {[op.value for op in self.supported_operations]}"
             )
+
+    # ===== CREDIT ESTIMATION =====
+
+    def estimate_credits(
+        self,
+        operation_type: OperationType,
+        params: Dict[str, Any],
+    ) -> Optional[int]:
+        """
+        Estimate credits required for a generation before submission.
+
+        Used by creation_service to set estimated_credits on the Generation.
+        Override in provider implementations to provide accurate estimates.
+
+        Args:
+            operation_type: Operation type (text_to_video, image_to_video, etc.)
+            params: Canonical parameters for the generation
+
+        Returns:
+            Estimated credit cost, or None if estimation not supported
+        """
+        return None
+
+    def compute_actual_credits(
+        self,
+        generation: Generation,
+        actual_duration: Optional[float] = None,
+    ) -> Optional[int]:
+        """
+        Compute actual credits for a completed generation.
+
+        Used by billing_service to determine final credit charge.
+        Override in provider implementations to compute based on actual results.
+
+        Args:
+            generation: The completed generation
+            actual_duration: Actual duration from provider (for videos)
+
+        Returns:
+            Actual credit cost, or None if computation not supported
+        """
+        return None
 
     async def extract_account_data(self, raw_data: dict, *, fallback_email: str = None) -> dict:
         """
