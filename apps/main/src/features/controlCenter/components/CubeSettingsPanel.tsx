@@ -3,8 +3,9 @@ import { useControlCubeStore, type CubeType } from '@features/controlCenter/stor
 import { useCubeSettingsStore, type LinkingGesture } from '@features/controlCenter/stores/cubeSettingsStore';
 import { panelActionRegistry } from '@lib/ui/panels';
 import { Button } from '@pixsim7/shared.ui';
+import { AIProviderSettings } from '@features/providers';
 
-type CubeSettingsTab = 'cubes' | 'actions' | 'input';
+type CubeSettingsTab = 'cubes' | 'actions' | 'input' | 'ai-providers';
 
 export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<CubeSettingsTab>('cubes');
@@ -211,6 +212,27 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
     </div>
   );
 
+  const renderAIProvidersTab = () => {
+    return (
+      <div className="flex-1 overflow-auto px-3 py-3">
+        <AIProviderSettings
+          compact
+          onSaveSuccess={() => {
+            // Show brief success message
+            const tempSuccess = document.createElement('div');
+            tempSuccess.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+            tempSuccess.textContent = 'AI settings saved successfully';
+            document.body.appendChild(tempSuccess);
+            setTimeout(() => tempSuccess.remove(), 2000);
+          }}
+          onSaveError={() => {
+            alert('Failed to save AI provider settings');
+          }}
+        />
+      </div>
+    );
+  };
+
   return (
     <div className="fixed bottom-20 right-4 z-[9999] w-96 max-h-[70vh] bg-black/85 text-white text-xs rounded-lg border border-white/20 shadow-2xl backdrop-blur-md flex flex-col">
       <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
@@ -257,10 +279,22 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
         >
           Input
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('ai-providers')}
+          className={`px-2 py-1 rounded-t text-[10px] border-b-2 ${
+            activeTab === 'ai-providers'
+              ? 'border-blue-400 text-white'
+              : 'border-transparent text-white/60 hover:text-white'
+          }`}
+        >
+          AI Providers
+        </button>
       </div>
       {activeTab === 'cubes' && renderCubesTab()}
       {activeTab === 'actions' && renderActionsTab()}
       {activeTab === 'input' && renderInputTab()}
+      {activeTab === 'ai-providers' && renderAIProvidersTab()}
     </div>
   );
 }

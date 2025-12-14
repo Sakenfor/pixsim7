@@ -9,6 +9,7 @@ import { apiClient } from '@lib/api/client';
 import { EditAccountModal } from './EditAccountModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompactAccountCard } from './CompactAccountCard';
+import { AIProviderSettings } from './AIProviderSettings';
 import {
   getPixverseSyncDryRun,
   syncPixverseAssets,
@@ -38,6 +39,9 @@ export function ProviderSettingsPanel() {
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(true);
+
+  // AI Provider settings
+  const [aiExpanded, setAiExpanded] = useState(false);
   const toast = useToast();
 
   const handleSaveAccount = async (accountId: number, data: UpdateAccountRequest) => {
@@ -99,6 +103,7 @@ export function ProviderSettingsPanel() {
       setSavingSettings(false);
     }
   };
+
 
   // Get provider names map
   const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
@@ -278,6 +283,42 @@ export function ProviderSettingsPanel() {
           </div>
         ) : providerData ? (
           <div className="p-4">
+            {/* AI Providers Section */}
+            <div className="mb-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setAiExpanded(!aiExpanded)}
+                className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-between hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+              >
+                <span className="font-medium text-blue-900 dark:text-blue-100">
+                  AI Providers (Prompt Editing & Features)
+                </span>
+                <span className="text-blue-600 dark:text-blue-400">
+                  {aiExpanded ? '▼' : '▶'}
+                </span>
+              </button>
+
+              {aiExpanded && (
+                <div className="p-4 bg-white dark:bg-neutral-900">
+                  <AIProviderSettings
+                    onSaveSuccess={() => {
+                      toast?.({
+                        title: 'Settings saved',
+                        description: 'AI provider settings updated successfully',
+                        variant: 'success',
+                      });
+                    }}
+                    onSaveError={(error) => {
+                      toast?.({
+                        title: 'Error',
+                        description: 'Failed to save AI provider settings',
+                        variant: 'error',
+                      });
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Provider Configuration Section */}
             {providerSettings && (
               <div className="mb-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">

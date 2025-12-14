@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import { useProviders } from '../hooks/useProviders';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { AIProviderSettings } from './AIProviderSettings';
 
 export function ProviderOverviewModule() {
+  const [showAiSettings, setShowAiSettings] = useState(false);
   const { providers } = useProviders();
   const { capacity, loading, error } = useProviderCapacity();
   const openFloatingPanel = useWorkspaceStore(s => s.openFloatingPanel);
@@ -42,13 +45,46 @@ export function ProviderOverviewModule() {
         <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
           Provider Capacity
         </h3>
-        <button
-          onClick={openFullSettings}
-          className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          Open Full Settings
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAiSettings(!showAiSettings)}
+            className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            {showAiSettings ? 'Hide AI Settings' : 'AI Settings'}
+          </button>
+          <button
+            onClick={openFullSettings}
+            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Open Full Settings
+          </button>
+        </div>
       </div>
+
+      {/* AI Provider Settings (collapsible) */}
+      {showAiSettings && (
+        <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-purple-50/30 dark:bg-purple-900/10">
+          <AIProviderSettings
+            compact
+            onSaveSuccess={() => {
+              // Show brief success message
+              const tempSuccess = document.createElement('div');
+              tempSuccess.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+              tempSuccess.textContent = 'AI settings saved successfully';
+              document.body.appendChild(tempSuccess);
+              setTimeout(() => tempSuccess.remove(), 2000);
+            }}
+            onSaveError={() => {
+              // Show brief error message
+              const tempError = document.createElement('div');
+              tempError.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg z-50';
+              tempError.textContent = 'Failed to save AI settings';
+              document.body.appendChild(tempError);
+              setTimeout(() => tempError.remove(), 2000);
+            }}
+          />
+        </div>
+      )}
 
       {/* Provider capacity cards */}
       {capacity.length === 0 ? (

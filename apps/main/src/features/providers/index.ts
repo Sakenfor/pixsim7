@@ -15,6 +15,8 @@ export { CompactAccountCard } from './components/CompactAccountCard';
 export { EditAccountModal } from './components/EditAccountModal';
 export { DeleteConfirmModal } from './components/DeleteConfirmModal';
 export { ProviderOverviewModule } from './components/ProviderOverviewModule';
+export { AIProviderSettings } from './components/AIProviderSettings';
+export type { AIProviderSettingsData } from './components/AIProviderSettings';
 
 // ============================================================================
 // Hooks - Provider Data
