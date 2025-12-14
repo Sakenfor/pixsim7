@@ -1,5 +1,9 @@
 # Narrative Prompt Program Schema
 
+> ⚠️ **Deprecated**: This schema documentation is being consolidated into a unified specification.
+> See [`NARRATIVE_ENGINE_SPECIFICATION.md`](./NARRATIVE_ENGINE_SPECIFICATION.md) (planned) for the complete system documentation.
+> For current usage, see [`NARRATIVE_ENGINE_USAGE.md`](./NARRATIVE_ENGINE_USAGE.md).
+
 ## Overview
 
 This document defines the JSON/AST schema for narrative prompt programs that drive NPC dialogue and cinematic generation in PixSim7. These programs are data-driven templates that combine NPC persona, relationship state, and contextual information to produce prompts for LLM dialogue generation.

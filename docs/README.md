@@ -11,40 +11,41 @@ Current architecture, design decisions, and refactoring plans.
 
 **Start here:** [architecture/CURRENT.md](./architecture/CURRENT.md) - Latest architecture snapshot with action items
 
-- Current architecture state
-- Import patterns and module structure
-- **Refactoring action plan (Phases 1-5)**
-- Feature boundaries and coupling analysis
-- Registry standardization
+### 📖 **Narrative & Dialogue** → [narrative/](./narrative/)
+Complete dialogue and story systems documentation.
+- Engine specification and schema
+- Interaction authoring guide
+- Runtime implementation
+
+### ⚙️ **Action Blocks** → [actions/](./actions/)
+Video generation and scene action systems.
+
+### 🎮 **Game Systems** → [game/](./game/)
+NPCs, interactions, zones, and relationship mechanics.
+
+### 📊 **Game Mechanics** → [stats-and-systems/](./stats-and-systems/)
+Stats, social metrics, and game mechanics systems.
+
+### 🎨 **UI & Display** → [ui/](./ui/)
+HUD, overlays, gizmos, and display systems.
+
+### 🎮 **Control Systems** → [controls/](./controls/)
+Cube controls and control center systems.
+
+### 💬 **Prompts** → [prompts/](./prompts/)
+Prompt versioning, management, and best practices.
+
+### 🎭 **Comic Panels** → [comedy-panels/](./comedy-panels/)
+Comic panel display system.
+
+### 📚 **Reference** → [reference/](./reference/)
+API references and technical specifications.
 
 ### 🔧 **Systems** → [systems/](./systems/)
-Domain-specific system documentation.
-
-#### **Plugins** → [systems/plugins/](./systems/plugins/)
-Plugin system architecture and development guides.
-- Plugin types and registration
-- Extension points
-- Development workflow
-
-#### **Generation** → [systems/generation/](./systems/generation/)
-AI generation system (images, videos, audio).
-- Provider abstraction
-- Job management
-- Status tracking
-
-#### **Game** → [systems/game/](./systems/game/) *(planned)*
-Game runtime, NPCs, behaviors, interactions.
-
-#### **UI** → [systems/ui/](./systems/ui/) *(planned)*
-UI components, panels, HUD system.
+Plugin architecture and AI generation system.
 
 ### 📚 **Guides** → [guides/](./guides/)
 How-to guides and best practices.
-
-- [guides/registry-patterns.md](./guides/registry-patterns.md) - Registry pattern migration guide
-
-### 📖 **Reference** → [reference/](./reference/) *(planned)*
-API references and technical specifications.
 
 ---
 
@@ -52,40 +53,151 @@ API references and technical specifications.
 
 ```
 docs/
-├── README.md                    # This file - navigation guide
+├── README.md                       # This file
+├── REORGANIZATION_PLAN.md          # Reorganization details
+├── DOCUMENTATION_AUDIT_REPORT*.md  # Audit reports
 │
-├── architecture/                # Architecture documentation
-│   ├── INDEX.md                # Architecture navigation
-│   ├── CURRENT.md              # Latest architecture (Dec 2025)
-│   ├── frontend.md             # Frontend architecture
-│   ├── plugins.md              # Plugin architecture (ADR)
-│   ├── decisions/              # Architecture Decision Records
-│   ├── subsystems/             # Subsystem architectures
-│   └── historical/             # Previous architecture versions
+├── narrative/                      # 🆕 Dialogue & story systems
+│   ├── README.md
+│   ├── ENGINE_SPECIFICATION.md     # Consolidated spec
+│   ├── ENGINE_USAGE.md
+│   ├── RUNTIME.md
+│   ├── RUNTIME_MIGRATION.md
+│   └── INTERACTION_AUTHORING_GUIDE.md
 │
-├── systems/                    # Domain-specific systems
-│   ├── plugins/               # Plugin system
-│   │   ├── INDEX.md
-│   │   ├── architecture.md
-│   │   └── reference.md
-│   │
-│   ├── generation/            # AI generation system
-│   │   ├── INDEX.md
-│   │   ├── overview.md
-│   │   └── provider-*.md
-│   │
-│   ├── game/                  # Game systems
-│   └── ui/                    # UI systems
+├── actions/                        # 🆕 Action blocks
+│   ├── README.md
+│   ├── ACTION_BLOCKS_UNIFIED_SYSTEM.md
+│   ├── ACTION_BLOCKS_I2I_EXTENSION.md
+│   ├── ACTION_ENGINE_USAGE.md
+│   └── ACTION_PROMPT_ENGINE_SPEC.md
 │
-├── guides/                     # How-to guides
+├── game/                           # 🆕 Game systems
+│   ├── README.md
+│   ├── NPC_INTERACTIVE_ZONES_DESIGN.md
+│   ├── NPC_ZONE_TRACKING_SYSTEM.md
+│   ├── NPC_RESPONSE_GRAPH_DESIGN.md
+│   ├── NPC_RESPONSE_USAGE.md
+│   ├── NPC_RESPONSE_VIDEO_INTEGRATION.md
+│   ├── INTERACTION_*.md
+│   └── RELATIONSHIPS_AND_ARCS.md
+│
+├── stats-and-systems/              # 🆕 Game mechanics
+│   ├── README.md
+│   ├── ABSTRACT_STAT_SYSTEM.md
+│   ├── STAT_SYSTEM_INTEGRATION_PLAN.md
+│   ├── ENTITY_STATS_EXAMPLES.md
+│   ├── SOCIAL_METRICS.md
+│   └── ...
+│
+├── ui/                             # 🆕 UI systems
+│   ├── README.md
+│   ├── HUD_LAYOUT_DESIGNER.md
+│   ├── OVERLAY_POSITIONING_SYSTEM.md
+│   ├── OVERLAY_DATA_BINDING.md
+│   ├── GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md
+│   └── ...
+│
+├── controls/                       # 🆕 Control systems
+│   ├── README.md
+│   ├── CONTROL_CUBES.md
+│   ├── CUBE_SYSTEM_V2_PLUGIN.md
+│   ├── CUBE_SYSTEM_DYNAMIC_REGISTRATION.md
+│   └── CONTROL_CENTER_PLUGIN_MIGRATION.md
+│
+├── prompts/                        # 🆕 Prompt management
+│   ├── README.md
+│   ├── PROMPT_SYSTEM_REVIEW.md
+│   ├── PROMPT_VERSIONING_SYSTEM.md
+│   ├── PROMPTS_GIT_FEATURES.md
+│   └── SONNET_PROMPT_INJECTION_GUIDE.md
+│
+├── comedy-panels/                  # 🆕 Scene display
+│   ├── README.md
+│   └── COMIC_PANELS.md
+│
+├── reference/                      # 🆕 API references
+│   ├── README.md
+│   ├── SESSION_HELPER_REFERENCE.md
+│   ├── CHARACTER_*.md
+│   ├── DYNAMIC_*.md
+│   └── NODE_*.md
+│
+├── architecture/                   # Architecture docs
+│   ├── CURRENT.md
+│   ├── frontend.md
+│   ├── decisions/
+│   └── ...
+│
+├── systems/                        # Domain systems
+│   ├── plugins/
+│   └── generation/
+│
+├── backend/                        # Backend docs
+│   └── ...
+│
+├── guides/                         # How-to guides
 │   └── registry-patterns.md
 │
-├── reference/                  # API references
+├── archive/                        # Archived docs
+│   ├── deprecated-narrative/
+│   ├── deprecated-sessions/
+│   ├── deprecated-navigation/
+│   └── ...
 │
-└── archive/                    # Archived/obsolete docs
-    ├── completed-tasks/
-    └── old-designs/
+└── reference/                      # Core reference
+    ├── APP_MAP.md
+    ├── PLUGIN_ARCHITECTURE.md
+    ├── repo-map.md
+    └── ...
 ```
+
+---
+
+## 📌 Canonical Docs by Topic
+
+This section points to the authoritative documentation for each major system.
+
+**Audit Reports:**
+- [DOCUMENTATION_AUDIT_REPORT.md](./DOCUMENTATION_AUDIT_REPORT.md) - Complete audit of 243 docs with categorization
+- [DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md](./DOCUMENTATION_AUDIT_REPORT_ROOT_LEVEL.md) - **⚠️ HIGH-PRIORITY**: Deep analysis of 118 root-level docs identifying content overlaps and consolidation opportunities
+
+### Architecture & Design
+- **[architecture/CURRENT.md](./architecture/CURRENT.md)** - Current architecture state (Dec 2025)
+- **[architecture/frontend-backend-boundaries.md](./architecture/frontend-backend-boundaries.md)** - API patterns and boundaries
+- **[architecture/spatial-model.md](./architecture/spatial-model.md)** - Spatial positioning system
+- **[architecture/generic-game-objects.md](./architecture/generic-game-objects.md)** - Entity composition system
+- **[architecture/generic-links.md](./architecture/generic-links.md)** - Template/runtime linking
+- **[repo-map.md](./repo-map.md)** - Repository structure and path aliases
+
+### Plugin System
+- **[PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md)** - Plugin system overview (canonical, Dec 14)
+- **[PLUGIN_BUNDLE_FORMAT.md](./PLUGIN_BUNDLE_FORMAT.md)** - Plugin bundle specification (Dec 14)
+- **[systems/plugins/PLUGIN_DEVELOPER_GUIDE.md](./systems/plugins/PLUGIN_DEVELOPER_GUIDE.md)** - Step-by-step development
+- **[systems/plugins/UNIFIED_PLUGIN_SYSTEM.md](./systems/plugins/UNIFIED_PLUGIN_SYSTEM.md)** - Registration patterns
+
+### Generation System
+- **[systems/generation/overview.md](./systems/generation/overview.md)** - System architecture overview
+- **[systems/generation/GENERATION_GUIDE.md](./systems/generation/GENERATION_GUIDE.md)** - Developer guide
+- **[systems/generation/GENERATION_ALIAS_CONVENTIONS.md](./systems/generation/GENERATION_ALIAS_CONVENTIONS.md)** - Naming conventions
+- **[systems/generation/provider-capabilities.md](./systems/generation/provider-capabilities.md)** - Provider matrix
+
+### Game Systems
+- **[event-bus-and-spatial-queries.md](./event-bus-and-spatial-queries.md)** - Event/query system (Dec 14)
+- **[NARRATIVE_ENGINE_USAGE.md](./NARRATIVE_ENGINE_USAGE.md)** - Narrative runtime usage
+- **[ACTION_BLOCKS_UNIFIED_SYSTEM.md](./ACTION_BLOCKS_UNIFIED_SYSTEM.md)** - Action system architecture
+- **[INTERACTION_AUTHORING_GUIDE.md](./INTERACTION_AUTHORING_GUIDE.md)** - Interaction creation guide
+
+### Backend & Services
+- **[backend-domain-map.md](./backend-domain-map.md)** - Backend domain structure (canonical reference)
+- **[BACKEND_ORGANIZATION.md](./BACKEND_ORGANIZATION.md)** - Domain organization summary
+- **[backend/SERVICES.md](./backend/SERVICES.md)** - Service API reference
+
+### UI & Gameplay
+- **[INTIMACY_SCENE_COMPOSER.md](./INTIMACY_SCENE_COMPOSER.md)** - Scene composition system (2269 lines)
+- **[COMIC_PANELS.md](./COMIC_PANELS.md)** - Comic panel display system (Dec 14)
+- **[power-user-simulation.md](./power-user-simulation.md)** - Complete workflow walkthrough (Dec 14)
+- **[GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md](./GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)** - Gizmo system
 
 ---
 

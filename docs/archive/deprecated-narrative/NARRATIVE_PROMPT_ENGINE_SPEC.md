@@ -1,16 +1,14 @@
-&nbsp; # PixSim7 Narrative Prompt Engine – Spec for Implementation
+# PixSim7 Narrative Prompt Engine – Spec for Implementation
 
+> ⚠️ **Deprecated**: This component documentation is being consolidated into a unified specification.
+> See [`NARRATIVE_ENGINE_SPECIFICATION.md`](./NARRATIVE_ENGINE_SPECIFICATION.md) (planned) for the complete system documentation.
+> For current usage, see [`NARRATIVE_ENGINE_USAGE.md`](./NARRATIVE_ENGINE_USAGE.md).
 
+## 0. Context
 
-&nbsp; ## 0. Context
+PixSim7 is a modular monolith with:
 
-
-
-&nbsp; PixSim7 is a modular monolith with:
-
-
-
-&nbsp; - Backend: FastAPI / SQLModel (Python).
+- Backend: FastAPI / SQLModel (Python).
 
 &nbsp; - Frontend: React/TS, with:
 

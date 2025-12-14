@@ -1,5 +1,9 @@
 # Generation System Documentation
 
+> ⚠️ **Deprecated**: This navigation file is superseded by
+> [`systems/generation/overview.md`](./overview.md).
+> For specific topics, see the files in this directory.
+
 This directory contains all generation system documentation for PixSim7's content generation pipeline.
 
 ## Documentation Files

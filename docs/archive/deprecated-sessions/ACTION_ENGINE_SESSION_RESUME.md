@@ -1,5 +1,8 @@
 # Action Engine Session Resume & Extension Guide
 
+> ⚠️ **Deprecated**: This session notes document has been superseded by [`ACTION_ENGINE_USAGE.md`](./ACTION_ENGINE_USAGE.md).
+> Use the main ACTION_ENGINE_USAGE.md for all API reference and examples.
+
 ## Current State Summary
 
 ### What We've Built
