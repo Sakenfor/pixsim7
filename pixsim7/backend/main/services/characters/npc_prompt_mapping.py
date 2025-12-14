@@ -1,43 +1,16 @@
 """
-NPC prompt context field mapping configuration.
+NPC-specific prompt context field mapping configuration.
 
 Declares which fields come from CharacterInstance vs GameNPC,
 which fields map to stat axes, and fallback behavior.
+
+This is one implementation example. The generic infrastructure lives in
+services.prompt_context.mapping and can be reused for other entity types
+(locations, props, buildings, etc.).
 """
 
-from typing import Dict, Any, Optional, Literal, Callable
-from dataclasses import dataclass, field
-
-
-@dataclass
-class FieldMapping:
-    """Mapping for a single field in prompt context (entity-agnostic).
-
-    Supports optional transforms for per-field reshaping (enum mapping, clamping, formatting)
-    without requiring resolver changes.
-    """
-
-    # Target path in snapshot (dot notation, e.g., "name", "traits.openness", "state.mood")
-    target_path: str
-
-    # Source authority
-    source: Literal["instance", "npc", "both"]  # Which entity owns this field
-    fallback: Literal["instance", "npc", "none"]  # Fallback if primary source unavailable
-
-    # Paths (dot notation)
-    instance_path: Optional[str] = None  # Path in CharacterInstance (e.g., "personality_traits.openness")
-    npc_path: Optional[str] = None       # Path in GameNPC (e.g., "personality.openness")
-
-    # Stat engine integration
-    stat_axis: Optional[str] = None      # If this field is a stat axis, name of axis
-    stat_package_id: Optional[str] = None   # Stat package ID (e.g., "core.personality") - resolved via registry
-
-    # Transform hook for per-field reshaping
-    # Signature: transform(value: Any, context: Dict[str, Any]) -> Any
-    # Context includes: instance, npc, npc_state, prefer_live
-    transform: Optional[Callable[[Any, Dict[str, Any]], Any]] = field(default=None, repr=False)
-
-    # Note: normalize flag is optional - if stat_axis is present, normalization happens automatically
+from typing import Dict
+from pixsim7.backend.main.services.prompt_context.mapping import FieldMapping
 
 
 # NPC Prompt Context Mapping Configuration
@@ -142,80 +115,5 @@ NPC_FIELD_MAPPING: Dict[str, FieldMapping] = {
 
 
 def get_npc_field_mapping() -> Dict[str, FieldMapping]:
-    """Get the NPC field mapping configuration."""
+    """Get the NPC-specific field mapping configuration."""
     return NPC_FIELD_MAPPING
-
-
-def merge_field_mappings(
-    base: Dict[str, FieldMapping],
-    overlay: Optional[Dict[str, FieldMapping]] = None
-) -> Dict[str, FieldMapping]:
-    """
-    Merge overlay mappings with base mappings.
-
-    Overlay mappings take precedence over base mappings.
-    This allows plugins or links to extend/override target paths
-    without editing the base configuration.
-
-    Args:
-        base: Base field mapping configuration
-        overlay: Optional overlay mappings (from plugins, links, etc.)
-
-    Returns:
-        Merged field mapping dictionary
-
-    Example:
-        base_map = get_npc_field_mapping()
-        plugin_map = {"custom_field": FieldMapping(...)}
-        merged = merge_field_mappings(base_map, plugin_map)
-    """
-    if not overlay:
-        return dict(base)
-
-    merged = dict(base)
-    merged.update(overlay)
-    return merged
-
-
-def set_nested_value(data: Dict[str, Any], path: str, value: Any) -> None:
-    """
-    Set value in nested dict using dot notation.
-
-    Creates intermediate dicts as needed.
-
-    Example:
-        data = {}
-        set_nested_value(data, "traits.visual.scars", ["scar1"])
-        # Result: {"traits": {"visual": {"scars": ["scar1"]}}}
-    """
-    keys = path.split(".")
-    target = data
-
-    # Navigate/create path to target
-    for key in keys[:-1]:
-        if key not in target:
-            target[key] = {}
-        target = target[key]
-
-    # Set the final value
-    target[keys[-1]] = value
-
-
-def get_nested_value(data: Dict, path: str) -> Any:
-    """
-    Get value from nested dict using dot notation.
-
-    Example:
-        data = {"traits": {"visual": {"scars": ["scar1"]}}}
-        get_nested_value(data, "traits.visual.scars")
-        # Result: ["scar1"]
-    """
-    keys = path.split(".")
-    value = data
-    for key in keys:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-        if value is None:
-            return None
-    return value

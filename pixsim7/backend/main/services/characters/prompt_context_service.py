@@ -31,12 +31,14 @@ from pixsim7.backend.main.services.characters.instance_service import (
 from pixsim7.backend.main.services.characters.npc_sync_service import (
     CharacterNPCSyncService,
 )
-from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
+from pixsim7.backend.main.services.prompt_context.mapping import (
     FieldMapping,
-    get_npc_field_mapping,
     merge_field_mappings,
     set_nested_value,
     get_nested_value,
+)
+from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
+    get_npc_field_mapping,
 )
 
 # -------------------------------------------------------------------------------------------------

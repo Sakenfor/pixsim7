@@ -11,7 +11,9 @@ from pixsim7.backend.main.services.characters.prompt_context_service import (
     PromptContextService,
     PromptContextSnapshot,
 )
-from pixsim7.backend.main.services.characters.npc_prompt_mapping import get_npc_field_mapping
+from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
+    get_npc_field_mapping,
+)
 
 
 @pytest.fixture
