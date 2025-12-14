@@ -76,6 +76,12 @@ export {
 export { createAssetActions } from './lib/assetCardActions';
 export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
 
+// ============================================================================
+// Lib - Asset Events
+// ============================================================================
+
+export { assetEvents } from './lib/assetEvents';
+
 export {
   deleteAsset,
   uploadAssetToProvider,

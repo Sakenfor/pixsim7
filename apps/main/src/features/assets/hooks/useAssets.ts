@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient } from '@lib/api/client';
+import { assetEvents } from '../lib/assetEvents';
 
 export interface AssetSummary {
   id: number;
@@ -121,6 +122,38 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     setError(null);
     initialLoadRequestedRef.current = false;
   }, []);
+
+  // Prepend a new asset (used when generation completes)
+  const prependAsset = useCallback((asset: AssetSummary) => {
+    setItems((prev) => {
+      // Avoid duplicates
+      if (prev.some((a) => a.id === asset.id)) {
+        return prev;
+      }
+      return [asset, ...prev];
+    });
+  }, []);
+
+  // Subscribe to new asset events (from generation completions)
+  useEffect(() => {
+    const unsubscribe = assetEvents.subscribe((asset) => {
+      // Only prepend if it matches current filters (or no filters)
+      const matchesFilters =
+        (!filterParams.media_type || asset.media_type === filterParams.media_type) &&
+        (!filterParams.provider_id || asset.provider_id === filterParams.provider_id) &&
+        (!filterParams.provider_status || asset.provider_status === filterParams.provider_status) &&
+        (!filterParams.tag || asset.tags?.includes(filterParams.tag)) &&
+        (!filterParams.q ||
+          asset.description?.toLowerCase().includes(filterParams.q.toLowerCase()) ||
+          asset.tags?.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
+
+      if (matchesFilters) {
+        prependAsset(asset);
+      }
+    });
+
+    return unsubscribe;
+  }, [filterParams, prependAsset]);
 
   // Reset when filters change
   useEffect(() => {

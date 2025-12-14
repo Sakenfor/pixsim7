@@ -2,11 +2,15 @@
  * WebSocket hook for real-time generation updates
  *
  * Replaces polling with WebSocket for more efficient real-time updates.
+ * Also notifies the asset system when generations complete so galleries
+ * can auto-refresh.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
 import type { GenerationResponse } from '@lib/api/generations';
 import { parseWebSocketMessage } from '@/types/websocket';
+import { assetEvents } from '@features/assets';
+import { apiClient } from '@lib/api/client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/api/v1/ws/generations';
 
@@ -67,9 +71,21 @@ export function useGenerationWebSocket() {
               if (generationId) {
                 // Fetch full generation data from API to get complete info
                 import('@/lib/api/generations').then(({ getGeneration }) => {
-                  getGeneration(generationId).then(fullGeneration => {
+                  getGeneration(generationId).then(async (fullGeneration) => {
                     console.log('[WebSocket] Fetched full generation:', fullGeneration.id, fullGeneration.status);
                     addOrUpdateGeneration(fullGeneration);
+
+                    // If generation completed and has an output asset, notify the gallery
+                    if (fullGeneration.status === 'completed' && fullGeneration.output_asset_id) {
+                      try {
+                        const assetResponse = await apiClient.get(`/assets/${fullGeneration.output_asset_id}`);
+                        const asset = assetResponse.data;
+                        console.log('[WebSocket] Generation completed, new asset:', asset.id);
+                        assetEvents.emitAssetCreated(asset);
+                      } catch (assetErr) {
+                        console.warn('[WebSocket] Failed to fetch completed asset:', assetErr);
+                      }
+                    }
                   }).catch(err => {
                     console.warn('[WebSocket] Failed to fetch generation:', err);
                     // Fallback: use partial data from WebSocket
