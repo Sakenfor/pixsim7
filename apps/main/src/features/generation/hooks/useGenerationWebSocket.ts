@@ -76,9 +76,9 @@ export function useGenerationWebSocket() {
                     addOrUpdateGeneration(fullGeneration);
 
                     // If generation completed and has an output asset, notify the gallery
-                    if (fullGeneration.status === 'completed' && fullGeneration.output_asset_id) {
+                    if (fullGeneration.status === 'completed' && fullGeneration.asset_id) {
                       try {
-                        const assetResponse = await apiClient.get(`/assets/${fullGeneration.output_asset_id}`);
+                        const assetResponse = await apiClient.get(`/assets/${fullGeneration.asset_id}`);
                         const asset = assetResponse.data;
                         console.log('[WebSocket] Generation completed, new asset:', asset.id);
                         assetEvents.emitAssetCreated(asset);

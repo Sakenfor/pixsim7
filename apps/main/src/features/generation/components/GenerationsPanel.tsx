@@ -380,8 +380,8 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset }
             )}
           </div>
 
-          {/* Error message (when collapsed) */}
-          {!isExpanded && generation.error_message && (
+          {/* Error message (when collapsed) - only show for failed status */}
+          {!isExpanded && generation.status === 'failed' && generation.error_message && (
             <p className="text-xs text-red-600 dark:text-red-400 mt-1 truncate">
               {generation.error_message}
             </p>
@@ -499,8 +499,8 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset }
             </div>
           )}
 
-          {/* Error message (full) */}
-          {generation.error_message && (
+          {/* Error message (full) - only show for failed status */}
+          {generation.status === 'failed' && generation.error_message && (
             <div>
               <div className="text-xs font-medium text-red-700 dark:text-red-300 mb-1">
                 Error

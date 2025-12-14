@@ -81,6 +81,9 @@ class GenerationLifecycleService:
         # Update error message
         if error_message:
             generation.error_message = error_message
+        elif status == GenerationStatus.COMPLETED:
+            # Clear error_message on success (may have leftover from retry attempts)
+            generation.error_message = None
 
         await self.db.commit()
         await self.db.refresh(generation)

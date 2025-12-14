@@ -30,15 +30,11 @@ async def broadcast_generation_event(event: Event):
         "timestamp": event.timestamp.isoformat(),
     }
 
-    # Broadcast to specific user
-    user_id = event_data.get("user_id")
-    if user_id:
-        await connection_manager.broadcast_to_user(message, user_id)
-        logger.debug(f"Broadcast {event.event_type} to user {user_id}")
-    else:
-        # If no user_id, broadcast to all (shouldn't happen normally)
-        await connection_manager.broadcast(message)
-        logger.debug(f"Broadcast {event.event_type} to all clients")
+    # Broadcast to all connected clients
+    # NOTE: Currently WebSocket auth is not implemented, so user_id is hardcoded.
+    # Once proper auth is added, we can use broadcast_to_user() for filtering.
+    await connection_manager.broadcast(message)
+    logger.debug(f"Broadcast {event.event_type} to all clients (gen_id={message.get('generation_id')})")
 
 
 def register_websocket_handlers():
