@@ -48,7 +48,7 @@ export function NotificationTicker() {
         let event: TickerEvent | null = null;
 
         if (!prevStatus && isGenerationActive(currentStatus)) {
-          // New generation started
+          // New generation started (skip separate processing event for new gens)
           event = {
             id: `${id}-started-${now}`,
             generationId: id,
@@ -56,7 +56,8 @@ export function NotificationTicker() {
             message: `#${id} started`,
             timestamp: now,
           };
-        } else if (currentStatus === 'processing' && prevStatus !== 'processing') {
+        } else if (prevStatus && currentStatus === 'processing' && prevStatus !== 'processing') {
+          // Existing generation moved to processing (not a new generation)
           event = {
             id: `${id}-processing-${now}`,
             generationId: id,
