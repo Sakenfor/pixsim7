@@ -271,6 +271,10 @@ class GenerationResponse(BaseModel):
     # Result
     asset_id: Optional[int]
 
+    # Account info (for UI display)
+    account_id: Optional[int] = None
+    account_email: Optional[str] = None
+
     # Metadata
     name: Optional[str]
     description: Optional[str]

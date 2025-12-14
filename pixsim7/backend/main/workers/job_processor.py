@@ -171,37 +171,58 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
 
             # Select and reserve account atomically (prevents race conditions)
-            # Retry up to 10 times to find an account with credits
+            # If generation already has an account_id (from previous attempt), try to reuse it
             MAX_ACCOUNT_RETRIES = 10
             account = None
 
-            for attempt in range(MAX_ACCOUNT_RETRIES):
+            # Try to reuse previous account on retry
+            if generation.account_id:
                 try:
-                    account = await account_service.select_and_reserve_account(
-                        provider_id=generation.provider_id,
-                        user_id=generation.user_id
-                    )
-                    gen_logger.info("account_selected", account_id=account.id, provider_id=generation.provider_id, attempt=attempt + 1)
-                    debug.worker("account_selected", account_id=account.id, provider_id=generation.provider_id, attempt=attempt + 1)
-                except (NoAccountAvailableError, AccountCooldownError) as e:
-                    gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__, attempt=attempt + 1)
-                    debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__, attempt=attempt + 1)
-                    # No more accounts to try - let ARQ retry later
-                    raise
+                    prev_account = await db.get(ProviderAccount, generation.account_id)
+                    if prev_account and prev_account.is_active and not prev_account.is_rate_limited:
+                        # Try to reserve the same account
+                        await account_service.reserve_account(prev_account.id)
+                        credits_data = await refresh_account_credits(prev_account, account_service, gen_logger)
+                        if credits_data and has_sufficient_credits(credits_data):
+                            account = prev_account
+                            gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                            debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                        else:
+                            # Previous account has no credits, release and try another
+                            await account_service.release_account(prev_account.id)
+                            gen_logger.info("account_reuse_no_credits", account_id=prev_account.id)
+                except Exception as e:
+                    gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
 
-                # Refresh credits BEFORE generation to verify account has credits
-                credits_data = await refresh_account_credits(account, account_service, gen_logger)
-                if credits_data and not has_sufficient_credits(credits_data):
-                    gen_logger.warning("account_no_credits", account_id=account.id, credits=credits_data, attempt=attempt + 1)
-                    debug.worker("account_no_credits", account_id=account.id, credits=credits_data, attempt=attempt + 1)
-                    # Release this account and mark as exhausted, then try another
-                    await account_service.release_account(account.id)
-                    await account_service.mark_exhausted(account.id)
-                    account = None
-                    continue  # Try next account
+            # If no account yet (first attempt or reuse failed), select a new one
+            if not account:
+                for attempt in range(MAX_ACCOUNT_RETRIES):
+                    try:
+                        account = await account_service.select_and_reserve_account(
+                            provider_id=generation.provider_id,
+                            user_id=generation.user_id
+                        )
+                        gen_logger.info("account_selected", account_id=account.id, provider_id=generation.provider_id, attempt=attempt + 1)
+                        debug.worker("account_selected", account_id=account.id, provider_id=generation.provider_id, attempt=attempt + 1)
+                    except (NoAccountAvailableError, AccountCooldownError) as e:
+                        gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__, attempt=attempt + 1)
+                        debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__, attempt=attempt + 1)
+                        # No more accounts to try - let ARQ retry later
+                        raise
 
-                # Found an account with credits
-                break
+                    # Refresh credits BEFORE generation to verify account has credits
+                    credits_data = await refresh_account_credits(account, account_service, gen_logger)
+                    if credits_data and not has_sufficient_credits(credits_data):
+                        gen_logger.warning("account_no_credits", account_id=account.id, credits=credits_data, attempt=attempt + 1)
+                        debug.worker("account_no_credits", account_id=account.id, credits=credits_data, attempt=attempt + 1)
+                        # Release this account and mark as exhausted, then try another
+                        await account_service.release_account(account.id)
+                        await account_service.mark_exhausted(account.id)
+                        account = None
+                        continue  # Try next account
+
+                    # Found an account with credits
+                    break
 
             if not account:
                 gen_logger.error("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)

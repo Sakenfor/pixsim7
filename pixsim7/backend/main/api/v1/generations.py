@@ -296,6 +296,7 @@ async def get_generation(
 async def list_generations(
     user: CurrentUser,
     generation_service: GenerationSvc,
+    db: DatabaseSession,
     workspace_id: Optional[int] = Query(None),
     status: Optional[GenerationStatus] = Query(None),
     operation_type: Optional[OperationType] = Query(None),
@@ -313,6 +314,9 @@ async def list_generations(
 
     Returns generations ordered by priority and creation time.
     """
+    from sqlmodel import select
+    from pixsim7.backend.main.domain import ProviderAccount
+
     try:
         generations = await generation_service.list_generations(
             user=user,
@@ -330,8 +334,26 @@ async def list_generations(
             operation_type=operation_type,
         )
 
+        # Build account email lookup for UI display
+        account_ids = {g.account_id for g in generations if g.account_id}
+        account_emails = {}
+        if account_ids:
+            result = await db.execute(
+                select(ProviderAccount.id, ProviderAccount.email)
+                .where(ProviderAccount.id.in_(account_ids))
+            )
+            account_emails = {row[0]: row[1] for row in result.fetchall()}
+
+        # Convert to response with account_email populated
+        responses = []
+        for g in generations:
+            resp = GenerationResponse.model_validate(g)
+            if g.account_id and g.account_id in account_emails:
+                resp.account_email = account_emails[g.account_id]
+            responses.append(resp)
+
         return GenerationListResponse(
-            generations=[GenerationResponse.model_validate(g) for g in generations],
+            generations=responses,
             total=total,
             limit=limit,
             offset=offset,
