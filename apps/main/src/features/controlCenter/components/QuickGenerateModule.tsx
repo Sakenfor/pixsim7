@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
-import { PromptInput } from '@pixsim7/shared.ui';
+import { PromptInput, ResizeDivider } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
@@ -9,6 +9,7 @@ import { CompactAssetCard } from './CompactAssetCard';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
+import { useResizablePanels, type PanelConfig } from './hooks/useResizablePanels';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -60,6 +61,34 @@ export function QuickGenerateModule() {
   // Credit estimation for Go button
   const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
   const [creditLoading, setCreditLoading] = useState(false);
+
+  // Resizable panels for Asset | Prompt | Settings layout
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
+  const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
+  const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
+
+  // Panel configs change based on operation type
+  const panelConfigs = useMemo<PanelConfig[]>(() => {
+    if (showAssetPanelInLayout) {
+      return [
+        { id: 'asset', defaultWidth: 128, minWidth: 80, maxWidth: 200 },
+        { id: 'prompt', defaultWidth: 400, minWidth: 200 },
+        { id: 'settings', defaultWidth: 144, minWidth: 120, maxWidth: 200 },
+      ];
+    }
+    // Text-only: just prompt + settings
+    return [
+      { id: 'prompt', defaultWidth: 500, minWidth: 200 },
+      { id: 'settings', defaultWidth: 144, minWidth: 120, maxWidth: 200 },
+    ];
+  }, [showAssetPanelInLayout]);
+
+  const { widths, dragging, draggingIndex, startResize } = useResizablePanels({
+    panels: panelConfigs,
+    storageKey: `quickgen-layout-${showAssetPanelInLayout ? '3col' : '2col'}`,
+    containerRef,
+  });
 
   // Infer pixverse provider from model
   const inferredProviderId = useMemo(() => {
@@ -329,7 +358,7 @@ export function QuickGenerateModule() {
 
   // Render the settings panel (right side) - used by all operation types
   const renderSettingsPanel = () => (
-    <div className="flex-shrink-0 w-36 flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl overflow-y-auto">
+    <div className="h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl overflow-y-auto">
       {/* Operation type */}
       <select
         value={operationType}
@@ -581,12 +610,12 @@ export function QuickGenerateModule() {
     }
 
     if (showAssetPanel) {
-      // Asset + prompt mode: [Asset (optional for flexible)] [Prompt] [Settings]
+      // Asset + prompt mode: [Asset | Prompt | Settings] with resizable dividers
       const hasAsset = displayAssets.length > 0;
       return (
-        <div className="flex gap-3 flex-1 min-h-0">
+        <div ref={containerRef} className="flex flex-1 min-h-0">
           {/* Left: Asset (optional for flexible operations like image_to_video) */}
-          <div className="flex-shrink-0 w-32">
+          <div className="flex-shrink-0 overflow-hidden" style={{ width: widths[0] }}>
             {hasAsset ? (
               <div className="flex flex-col gap-1 h-full">
                 <CompactAssetCard
@@ -640,8 +669,14 @@ export function QuickGenerateModule() {
             )}
           </div>
 
+          {/* Divider: Asset | Prompt */}
+          <ResizeDivider
+            onMouseDown={startResize(0)}
+            isDragging={draggingIndex === 0}
+          />
+
           {/* Center: Prompt */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-hidden" style={{ width: widths[1] }}>
             <PromptInput
               value={prompt}
               onChange={setPrompt}
@@ -661,17 +696,25 @@ export function QuickGenerateModule() {
             />
           </div>
 
+          {/* Divider: Prompt | Settings */}
+          <ResizeDivider
+            onMouseDown={startResize(1)}
+            isDragging={draggingIndex === 1}
+          />
+
           {/* Right: Settings */}
-          {renderSettingsPanel()}
+          <div className="flex-shrink-0 overflow-hidden" style={{ width: widths[2] }}>
+            {renderSettingsPanel()}
+          </div>
         </div>
       );
     }
 
     // Text-only mode (text_to_image, text_to_video, fusion): prompt + settings
     return (
-      <div className="flex gap-3 flex-1 min-h-0">
+      <div ref={containerRef} className="flex flex-1 min-h-0">
         {/* Left: Prompt */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden" style={{ width: widths[0] }}>
           <PromptInput
             value={prompt}
             onChange={setPrompt}
@@ -691,8 +734,16 @@ export function QuickGenerateModule() {
           />
         </div>
 
+        {/* Divider: Prompt | Settings */}
+        <ResizeDivider
+          onMouseDown={startResize(0)}
+          isDragging={draggingIndex === 0}
+        />
+
         {/* Right: Settings */}
-        {renderSettingsPanel()}
+        <div className="flex-shrink-0 overflow-hidden" style={{ width: widths[1] }}>
+          {renderSettingsPanel()}
+        </div>
       </div>
     );
   };

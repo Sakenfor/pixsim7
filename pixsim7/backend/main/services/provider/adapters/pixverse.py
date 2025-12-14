@@ -812,12 +812,16 @@ class PixverseProvider(
             )
 
             # Content moderation / safety errors
+            # 500063 = prompt/text rejected (not retryable - same prompt = same rejection)
+            # 500054 = output content rejected (retryable - AI output varies)
             if err_code in {500054, 500063}:
                 friendly = (
                     "Pixverse rejected the content for safety or policy reasons "
                     f"(ErrCode {err_code}: {err_msg or 'content moderation failed'})."
                 )
-                raise ContentFilteredError("pixverse", friendly)
+                # Prompt rejections (500063) are not retryable
+                retryable = err_code != 500063
+                raise ContentFilteredError("pixverse", friendly, retryable=retryable)
 
             # Insufficient balance / quota
             # 500090: generic insufficient balance

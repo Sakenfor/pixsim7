@@ -50,7 +50,12 @@ class AssetLineage(SQLModel, table=True):
     # What operation created the child
     operation_type: OperationType = Field(
         sa_column=Column(
-            SAEnum(OperationType, name="asset_lineage_operation_enum", native_enum=False)
+            SAEnum(
+                OperationType,
+                name="asset_lineage_operation_enum",
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            )
         ),
         description="VIDEO_EXTEND, VIDEO_TRANSITION, IMAGE_TO_VIDEO, etc."
     )

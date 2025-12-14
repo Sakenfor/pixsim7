@@ -116,14 +116,22 @@ class ProviderRateLimitError(ProviderError):
 
 
 class ProviderContentFilteredError(ProviderError):
-    """Content filtered by provider policy"""
-    def __init__(self, provider_id: str, reason: str | None = None):
+    """Content filtered by provider policy
+
+    Args:
+        provider_id: The provider that filtered the content
+        reason: Human-readable reason for filtering
+        retryable: Whether retrying might succeed (False for prompt rejections,
+                   True for output rejections where AI might generate different content)
+    """
+    def __init__(self, provider_id: str, reason: str | None = None, *, retryable: bool = True):
         msg = f"Content filtered by provider '{provider_id}'"
         if reason:
             msg += f": {reason}"
         super().__init__(msg, code="PROVIDER_CONTENT_FILTERED")
         self.provider_id = provider_id
         self.reason = reason
+        self.retryable = retryable
 
 
 class ProviderJobNotFoundError(ProviderError):

@@ -124,8 +124,7 @@ export function useQuickGenerateController() {
         presetParams,
       });
 
-      // Clear prompt and show generation ID
-      setPrompt('');
+      // Keep prompt for easy re-generation with tweaks
       const genId = result.job_id;
       setGenerationId(genId);
       setWatchingGeneration(genId);

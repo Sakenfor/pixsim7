@@ -20,6 +20,18 @@ from pixsim7.backend.main.shared.errors import (
     AccountExhaustedError,
     ProviderError,
     ProviderQuotaExceededError,
+    ProviderContentFilteredError,
+    ProviderRateLimitError,
+)
+
+# Expected errors that don't need stack traces - these are business logic, not bugs
+EXPECTED_ERRORS = (
+    ProviderContentFilteredError,
+    ProviderQuotaExceededError,
+    ProviderRateLimitError,
+    NoAccountAvailableError,
+    AccountExhaustedError,
+    AccountCooldownError,
 )
 from pixsim7.backend.main.shared.debug import (
     DebugLogger,
@@ -240,7 +252,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 }
 
             except ProviderError as e:
-                gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
+                # Log expected errors as warning, unexpected as error
+                if isinstance(e, EXPECTED_ERRORS):
+                    gen_logger.warning("provider:error", error=str(e), error_type=e.__class__.__name__)
+                else:
+                    gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
                 debug.provider(
                     "provider_error",
                     error=str(e),
@@ -307,6 +323,59 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         # Fall through to mark as failed if requeue fails
 
+                # Content filtered - retry only if retryable (output rejection, not prompt rejection)
+                elif isinstance(e, ProviderContentFilteredError) and getattr(e, 'retryable', True):
+                    # Release account reservation
+                    try:
+                        await account_service.release_account(account.id)
+                    except Exception as release_err:
+                        gen_logger.warning("account_release_failed", error=str(release_err))
+
+                    # Check retry count - don't retry forever
+                    MAX_CONTENT_FILTER_RETRIES = 3
+                    current_retries = getattr(generation, 'retry_count', 0) or 0
+
+                    if current_retries < MAX_CONTENT_FILTER_RETRIES:
+                        try:
+                            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                            # Increment retry count and reset to pending
+                            generation = await generation_service.increment_retry(generation.id)
+
+                            arq_pool = await get_arq_pool()
+                            await arq_pool.enqueue_job(
+                                "process_generation",
+                                generation_id=generation.id,
+                            )
+
+                            gen_logger.info(
+                                "generation_requeued_content_filter_retry",
+                                generation_id=generation.id,
+                                retry_attempt=generation.retry_count,
+                                max_retries=MAX_CONTENT_FILTER_RETRIES,
+                            )
+
+                            return {
+                                "status": "requeued",
+                                "reason": "content_filtered_retry",
+                                "generation_id": generation_id,
+                                "retry_attempt": generation.retry_count,
+                            }
+                        except Exception as requeue_err:
+                            gen_logger.error(
+                                "generation_requeue_failed",
+                                error=str(requeue_err),
+                                generation_id=generation.id,
+                            )
+                            # Fall through to mark as failed if requeue fails
+                    else:
+                        gen_logger.warning(
+                            "content_filter_max_retries_exceeded",
+                            generation_id=generation.id,
+                            retry_count=current_retries,
+                        )
+                        # Fall through to mark as failed
+
                 await generation_service.mark_failed(generation_id, str(e))
 
                 # Release account reservation on failure
@@ -323,7 +392,21 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 raise
 
         except Exception as e:
-            gen_logger.error("generation_processing_failed", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+            # Expected errors (content filtered, quota, etc) - warn without stack trace
+            # Unexpected errors - error with full stack trace for debugging
+            if isinstance(e, EXPECTED_ERRORS):
+                gen_logger.warning(
+                    "generation_processing_failed",
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                )
+            else:
+                gen_logger.error(
+                    "generation_processing_failed",
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    exc_info=True,
+                )
             worker_debug.worker(
                 "generation_processing_failed",
                 error=str(e),

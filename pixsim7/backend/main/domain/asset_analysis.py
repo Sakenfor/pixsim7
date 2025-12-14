@@ -51,7 +51,12 @@ class AssetAnalysis(SQLModel, table=True):
     # Analysis configuration
     analyzer_type: AnalyzerType = Field(
         sa_column=Column(
-            SAEnum(AnalyzerType, name="analyzer_type_enum", native_enum=False),
+            SAEnum(
+                AnalyzerType,
+                name="analyzer_type_enum",
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            ),
             index=True,
         )
     )
@@ -81,7 +86,12 @@ class AssetAnalysis(SQLModel, table=True):
     status: AnalysisStatus = Field(
         default=AnalysisStatus.PENDING,
         sa_column=Column(
-            SAEnum(AnalysisStatus, name="analysis_status_enum", native_enum=False),
+            SAEnum(
+                AnalysisStatus,
+                name="analysis_status_enum",
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            ),
             index=True,
         )
     )

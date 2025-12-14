@@ -52,7 +52,12 @@ class Generation(SQLModel, table=True):
     # Operation
     operation_type: OperationType = Field(
         sa_column=Column(
-            SAEnum(OperationType, name="operation_type_enum", native_enum=False),
+            SAEnum(
+                OperationType,
+                name="operation_type_enum",
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            ),
             index=True,
         )
     )
@@ -117,7 +122,12 @@ class Generation(SQLModel, table=True):
     status: GenerationStatus = Field(
         default=GenerationStatus.PENDING,
         sa_column=Column(
-            SAEnum(GenerationStatus, name="generation_status_enum", native_enum=False),
+            SAEnum(
+                GenerationStatus,
+                name="generation_status_enum",
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            ),
             index=True,
         ),
         description="Generation status (you can introduce GenerationStatus later)",
@@ -164,7 +174,12 @@ class Generation(SQLModel, table=True):
     billing_state: BillingState = Field(
         default=BillingState.PENDING,
         sa_column=Column(
-            SAEnum(BillingState, name="billing_state_enum", native_enum=False),
+            SAEnum(
+                BillingState,
+                name="billing_state_enum",
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            ),
             index=True,
         ),
         description="Billing state: pending, charged, skipped, failed"

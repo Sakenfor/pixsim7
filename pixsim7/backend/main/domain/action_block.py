@@ -164,7 +164,14 @@ class ActionBlockDB(SQLModel, table=True):
     # Block Classification (for unified lifecycle)
     role: Optional[PromptSegmentRole] = Field(
         default=None,
-        sa_column=Column(SAEnum(PromptSegmentRole, native_enum=False), index=True),
+        sa_column=Column(
+            SAEnum(
+                PromptSegmentRole,
+                native_enum=False,
+                values_callable=lambda x: [e.value for e in x],
+            ),
+            index=True,
+        ),
         description="Coarse classification: character, action, setting, mood, romance, other"
     )
 

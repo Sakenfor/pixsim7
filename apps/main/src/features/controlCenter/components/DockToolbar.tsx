@@ -11,6 +11,7 @@ import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import type { ControlModule, DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 import type { ControlCenterModule } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
+import { NotificationTicker } from './NotificationTicker';
 
 /** Quick navigation item configuration */
 export interface QuickNavItem {
@@ -119,6 +120,9 @@ export function DockToolbar({
           {pinned ? '📌' : '📍'}
         </button>
       </div>
+
+      {/* News ticker for generation events */}
+      <NotificationTicker />
 
       <div className="flex-1" />
 
