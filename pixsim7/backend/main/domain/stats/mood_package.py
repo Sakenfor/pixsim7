@@ -407,7 +407,7 @@ def get_mood_derivation_from_sentiment() -> DerivationCapability:
     """
     return DerivationCapability(
         id="mood_from_sentiment",
-        from_semantic_types=["positive_sentiment"],  # Minimum requirement
+        from_semantic_types=["positive_sentiment", "arousal_source"],
         to_stat_definition="mood",
         formulas=[
             # Valence: positive sentiment increases
@@ -453,7 +453,7 @@ def get_mood_derivation_with_negative() -> DerivationCapability:
     """
     return DerivationCapability(
         id="mood_from_sentiment_full",
-        from_semantic_types=["positive_sentiment", "negative_sentiment"],
+        from_semantic_types=["positive_sentiment", "negative_sentiment", "arousal_source"],
         to_stat_definition="mood",
         formulas=[
             # Valence: balance of positive and negative

@@ -261,7 +261,7 @@ def setup_stat_packages() -> int:
     logger.info(
         "stat_packages_registered",
         count=len(packages),
-        packages=[p.id for p in packages]
+        packages=[p.id for p in packages.values()]
     )
 
     return len(packages)

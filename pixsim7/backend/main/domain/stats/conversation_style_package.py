@@ -198,7 +198,7 @@ def get_style_from_personality_derivation() -> DerivationCapability:
     """
     return DerivationCapability(
         id="style_from_personality",
-        from_semantic_types=["extraversion_trait", "agreeableness_trait"],
+        from_semantic_types=["extraversion_trait", "agreeableness_trait", "conscientiousness_trait"],
         to_stat_definition="conversation_style",
         formulas=[
             # Warmth from agreeableness + extraversion

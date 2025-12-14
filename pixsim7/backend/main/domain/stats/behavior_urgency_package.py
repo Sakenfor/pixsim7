@@ -190,7 +190,7 @@ def get_urgency_from_resources_derivation() -> DerivationCapability:
     """
     return DerivationCapability(
         id="urgency_from_resources",
-        from_semantic_types=["energy_resource"],  # Minimum: energy
+        from_semantic_types=["energy_resource", "satiation_resource", "stress_indicator"],
         to_stat_definition="behavior_urgency",
         formulas=[
             # Rest urgency from energy (inverted: low energy = high urgency)
@@ -267,7 +267,7 @@ def get_urgency_from_drives_derivation() -> DerivationCapability:
     """
     return DerivationCapability(
         id="urgency_from_drives",
-        from_semantic_types=["social_drive"],  # Minimum: social drive
+        from_semantic_types=["social_drive", "rest_drive", "novelty_drive", "achievement_drive"],
         to_stat_definition="behavior_urgency",
         formulas=[
             # Socialize urgency from social drive (direct mapping)

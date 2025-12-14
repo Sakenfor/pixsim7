@@ -4,7 +4,7 @@ Action Block type definitions for visual generation.
 
 from typing import Dict, Any, List, Optional, Union, Literal
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class BranchIntent(str, Enum):
@@ -126,6 +126,8 @@ class TransitionBlock(BaseActionBlock):
     Action block for transitions between multiple reference images.
     Morphs smoothly between 2-7 stills to show movement.
     """
+    model_config = ConfigDict(populate_by_name=True)
+
     kind: Literal["transition"] = "transition"
 
     # Endpoints

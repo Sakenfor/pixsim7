@@ -17,9 +17,9 @@ L StatDefinition - Domain-specific to stats domain
 L NarrativeProgram - Domain-specific to narrative domain
 
 Domain-specific schemas belong in their domain modules:
-- Game/NPC schemas ’ pixsim7.backend.main.domain.game.schemas
-- Stat schemas ’ pixsim7.backend.main.domain.stats (no separate schemas submodule)
-- Narrative schemas ’ pixsim7.backend.main.domain.narrative.schema
+- Game/NPC schemas -> pixsim7.backend.main.domain.game.schemas
+- Stat schemas -> pixsim7.backend.main.domain.stats (no separate schemas submodule)
+- Narrative schemas -> pixsim7.backend.main.domain.narrative.schema
 
 When in doubt: Keep it in the domain. Moving to shared/ later is easier than
 extracting domain-specific code from shared/.
