@@ -91,7 +91,7 @@ This lets us keep **feature-first ownership in the codebase**, while still havin
 | **gallery-tool** | `features/gallery/lib/core/types.ts` | `features/gallery/plugins/*` | galleryToolRegistry → registryBridge → catalog |
 | **gizmo-surface** | `features/gizmos/lib/core/surfaceRegistry.ts` | `features/gizmos/plugins/*` | gizmoSurfaceRegistry → registryBridge → catalog |
 | **workspace-panel** | `lib/ui/panels/panelRegistry.ts` | Various (components, features) | panelRegistry → registryBridge → catalog |
-| **dev-tool** | `lib/devtools/types.ts` | `lib/devtools/` | devToolRegistry → registryBridge → catalog |
+| **dev-tool** | `lib/devtools/types.ts` | `features/devtools/plugins/*` | devToolRegistry → registryBridge → catalog |
 | **session-helper** | `@pixsim7/game.engine` | `plugins/`, `lib/game/customHelpers.ts` | sessionHelperRegistry → registryBridge → catalog |
 | **interaction** | `lib/game/interactions/types.ts` | `lib/game/interactions/` | interactionRegistry → registryBridge → catalog |
 | **node-type** | `@pixsim7/shared.types` | `lib/plugins/*Node.ts`, features/graph | nodeTypeRegistry → registryBridge → catalog |
@@ -105,11 +105,11 @@ This lets us keep **feature-first ownership in the codebase**, while still havin
 **Following standard pattern:**
 - `worldTools` - Clean separation: `lib/types.ts` → `lib/registry.ts` → `plugins/index.ts`
 - `brainTools` - Similar pattern, consistent structure
-- `gallery` - Now uses `plugins/` folder with `builtInGalleryTools` export
+- `gallery` - Uses `plugins/` folder with `builtInGalleryTools` export
 - `gizmos` - Surface definitions in `plugins/surfaces.ts` with `builtInGizmoSurfaces` export
+- `devtools` - Tool definitions in `features/devtools/plugins/` with `builtInDevTools` export
 
 **Needs improvement:**
-- `devtools` - Lives in `lib/devtools/` not `features/devtools/`
 - `workspace-panel` - Implementations scattered across components/features
 
 ---
@@ -482,42 +482,51 @@ features/gizmos/
 Note: Gizmo *packs* (`registry-rings.ts`, `registry-romance.ts`, etc.) remain unchanged
 as they define gizmo configurations, not UI plugins.
 
-### Phase 6: Move Dev Tools to Features
+### Phase 6: Move Dev Tools to Features ✅
 
-**Current:** `lib/devtools/`
+Dev tools now follow the standard pattern:
 
-**Target:** `features/devtools/` (optional, lower priority)
-
-**Steps:**
-1. Create `features/devtools/` with standard structure
-2. Move files from `lib/devtools/`
-3. Update imports across codebase
-
-### Phase 7: Add Consistency Checks (Optional)
-
-Add a simple lint rule or script to verify:
-
-```typescript
-// scripts/checkPluginStructure.ts
-
-const PLUGIN_FEATURES = ['worldTools', 'brainTools', 'gallery', 'gizmos'];
-
-for (const feature of PLUGIN_FEATURES) {
-  const pluginsDir = `apps/main/src/features/${feature}/plugins`;
-  const indexFile = `${pluginsDir}/index.ts`;
-
-  // Check plugins/index.ts exists
-  if (!fs.existsSync(indexFile)) {
-    console.warn(`Missing: ${indexFile}`);
-  }
-
-  // Check for builtIn*Plugins export
-  const content = fs.readFileSync(indexFile, 'utf-8');
-  if (!content.includes('builtIn')) {
-    console.warn(`Missing builtIn*Plugins export in ${indexFile}`);
-  }
-}
 ```
+features/devtools/
+├── plugins/
+│   ├── index.ts        ✅ Exports builtInDevTools array (13 tools)
+│   └── tools.ts        ✅ Individual tool definitions
+└── index.ts            ✅ Feature entry point
+
+lib/devtools/           (Infrastructure remains here)
+├── types.ts            DevToolDefinition, DevToolId, DevToolCategory
+├── devToolRegistry.ts  DevToolRegistry class + singleton
+├── devToolContext.tsx  DevToolProvider and useDevToolContext
+├── registerDevTools.ts Uses builtInDevTools from features/devtools/plugins
+└── index.ts            Re-exports
+```
+
+### Phase 7: Add Consistency Checks ✅
+
+A consistency check script verifies plugin structure:
+
+```bash
+node scripts/checkPluginStructure.js
+```
+
+Output:
+```
+Plugin Structure Consistency Check
+==================================
+
+✅ worldTools - plugins/index.ts exports builtInWorldTools
+✅ brainTools - plugins/index.ts exports builtInBrainTools
+✅ gallery    - plugins/index.ts exports builtInGalleryTools
+✅ gizmos     - plugins/index.ts exports builtInGizmoSurfaces
+✅ devtools   - plugins/index.ts exports builtInDevTools
+
+Summary: 5/5 passing
+```
+
+The script checks:
+- `features/{feature}/plugins/` directory exists
+- `plugins/index.ts` file exists
+- `index.ts` exports the expected `builtIn*Plugins` array
 
 ---
 
