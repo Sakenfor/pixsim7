@@ -359,7 +359,7 @@ export function QuickGenerateModule() {
 
   // Render the settings panel (right side) - used by all operation types
   const renderSettingsPanel = () => (
-    <div className="h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl">
+    <div className="h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0">
       {/* Fixed top section - Operation type & Provider */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
         {/* Operation type */}
@@ -709,7 +709,7 @@ export function QuickGenerateModule() {
           />
 
           {/* Right: Settings */}
-          <div className="flex-shrink-0 overflow-hidden" style={{ width: widths[2] }}>
+          <div className="flex-shrink-0 overflow-hidden h-full min-h-0" style={{ width: widths[2] }}>
             {renderSettingsPanel()}
           </div>
         </div>
@@ -747,7 +747,7 @@ export function QuickGenerateModule() {
         />
 
         {/* Right: Settings */}
-        <div className="flex-shrink-0 overflow-hidden" style={{ width: widths[1] }}>
+        <div className="flex-shrink-0 overflow-hidden h-full min-h-0" style={{ width: widths[1] }}>
           {renderSettingsPanel()}
         </div>
       </div>
