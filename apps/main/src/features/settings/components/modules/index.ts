@@ -13,4 +13,5 @@ import './PromptsSettings';
 import './ProfilesSettings';
 import './MediaSettings';
 import './GenerationSettings';
+import './PluginsSettings';
 import './DebugSettings';

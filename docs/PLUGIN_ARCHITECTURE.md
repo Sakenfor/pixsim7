@@ -774,6 +774,87 @@ See [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md) for detailed documentation
 
 ---
 
+## Plugin Catalog API
+
+The backend provides a REST API for managing plugin availability and user preferences.
+
+### Endpoints
+
+```
+GET  /api/v1/plugins                    List all available plugins
+GET  /api/v1/plugins/{id}               Get a specific plugin
+POST /api/v1/plugins/{id}/enable        Enable plugin for current user
+POST /api/v1/plugins/{id}/disable       Disable plugin for current user
+GET  /api/v1/plugins/enabled/list       List only enabled plugins
+```
+
+### Response Format
+
+```json
+{
+  "plugins": [
+    {
+      "plugin_id": "scene-view:comic-panels",
+      "name": "Comic Panel View",
+      "description": "Displays scene beats as sequential comic frames",
+      "version": "1.0.0",
+      "author": "PixSim7 Team",
+      "icon": "📚",
+      "family": "scene",
+      "plugin_type": "ui-overlay",
+      "tags": ["scene", "comic", "overlay"],
+      "bundle_url": "/plugins/scene/comic-panel-view/plugin.js",
+      "is_builtin": true,
+      "is_enabled": true,
+      "metadata": {
+        "permissions": ["ui:overlay", "read:session"],
+        "surfaces": ["overlay", "hud", "panel"],
+        "default": true
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+### Frontend Integration
+
+The plugin catalog is managed via a Zustand store:
+
+```typescript
+import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
+
+function PluginManager() {
+  const { plugins, enablePlugin, disablePlugin } = usePluginCatalogStore();
+
+  // Enable a plugin
+  await enablePlugin('scene-view:comic-panels');
+
+  // Disable a plugin
+  await disablePlugin('scene-view:comic-panels');
+}
+```
+
+### Settings UI
+
+Plugins can be managed in Settings > Plugins. Users can enable/disable plugins,
+and changes take effect after page reload.
+
+### Database Migration
+
+The plugin catalog requires two database tables:
+- `plugin_catalog`: Stores available plugins
+- `user_plugin_states`: Stores per-user enabled/disabled state
+
+Run migrations to create these tables:
+```bash
+cd pixsim7/backend/main
+alembic revision --autogenerate -m "add plugin catalog tables"
+alembic upgrade head
+```
+
+---
+
 ## Related Documentation
 
 - [Plugin Bundle Format](./PLUGIN_BUNDLE_FORMAT.md)
