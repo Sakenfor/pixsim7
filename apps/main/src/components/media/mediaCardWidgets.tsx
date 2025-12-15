@@ -337,33 +337,38 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCar
 }
 
 /**
- * Create generation actions menu widget
+ * Build generation menu items based on media type and available actions
  */
-export function createGenerationMenu(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, mediaType, actions, badgeConfig, presetCapabilities } = props;
-
-  // Only show the generation menu if preset capabilities enable it
-  if (!presetCapabilities?.showsGenerationMenu) {
-    return null;
-  }
-
-  const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
-
-  if (!showGenerationBadge || !actions) {
-    return null;
-  }
+function buildGenerationMenuItems(
+  id: number,
+  mediaType: MediaCardProps['mediaType'],
+  actions: MediaCardProps['actions']
+): MenuItem[] {
+  if (!actions) return [];
 
   const menuItems: MenuItem[] = [];
 
-  if (mediaType === 'image' && actions.onImageToVideo) {
-    menuItems.push({
-      id: 'img2vid',
-      label: 'Image to Video',
-      icon: 'video',
-      onClick: () => actions.onImageToVideo?.(id),
-    });
+  // Image operations
+  if (mediaType === 'image') {
+    if (actions.onImageToImage) {
+      menuItems.push({
+        id: 'img2img',
+        label: 'Image to Image',
+        icon: 'image',
+        onClick: () => actions.onImageToImage?.(id),
+      });
+    }
+    if (actions.onImageToVideo) {
+      menuItems.push({
+        id: 'img2vid',
+        label: 'Image to Video',
+        icon: 'video',
+        onClick: () => actions.onImageToVideo?.(id),
+      });
+    }
   }
 
+  // Video operations
   if (mediaType === 'video' && actions.onVideoExtend) {
     menuItems.push({
       id: 'extend',
@@ -373,6 +378,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
     });
   }
 
+  // Universal operations
   if (actions.onAddToTransition) {
     menuItems.push({
       id: 'transition',
@@ -390,6 +396,28 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
       onClick: () => actions.onAddToGenerate?.(id),
     });
   }
+
+  return menuItems;
+}
+
+/**
+ * Create generation actions menu widget
+ */
+export function createGenerationMenu(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { id, mediaType, actions, badgeConfig, presetCapabilities } = props;
+
+  // Only show the generation menu if preset capabilities enable it
+  if (!presetCapabilities?.showsGenerationMenu) {
+    return null;
+  }
+
+  const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
+
+  if (!showGenerationBadge || !actions) {
+    return null;
+  }
+
+  const menuItems = buildGenerationMenuItems(id, mediaType, actions);
 
   if (menuItems.length === 0) {
     return null;
@@ -424,10 +452,13 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
 function getSmartAction(
   mediaType: 'image' | 'video',
   ccMode: OperationType
-): { action: 'image_to_video' | 'video_extend' | 'video_transition'; label: string } {
+): { action: 'image_to_video' | 'image_to_image' | 'video_extend' | 'video_transition'; label: string } {
   // If mode matches asset type, use it directly
   if (mediaType === 'image' && ccMode === 'image_to_video') {
     return { action: 'image_to_video', label: 'Add to Image-to-Video' };
+  }
+  if (mediaType === 'image' && ccMode === 'image_to_image') {
+    return { action: 'image_to_image', label: 'Add to Image Generation' };
   }
   if (mediaType === 'video' && ccMode === 'video_extend') {
     return { action: 'video_extend', label: 'Add to Extend' };
@@ -461,49 +492,6 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
     return null;
   }
 
-  // Build menu items (same as createGenerationMenu)
-  const buildMenuItems = (): MenuItem[] => {
-    const menuItems: MenuItem[] = [];
-
-    if (mediaType === 'image' && actions.onImageToVideo) {
-      menuItems.push({
-        id: 'img2vid',
-        label: 'Image to Video',
-        icon: 'video',
-        onClick: () => actions.onImageToVideo?.(id),
-      });
-    }
-
-    if (mediaType === 'video' && actions.onVideoExtend) {
-      menuItems.push({
-        id: 'extend',
-        label: 'Extend Video',
-        icon: 'arrowRight',
-        onClick: () => actions.onVideoExtend?.(id),
-      });
-    }
-
-    if (actions.onAddToTransition) {
-      menuItems.push({
-        id: 'transition',
-        label: 'Add to Transition',
-        icon: 'shuffle',
-        onClick: () => actions.onAddToTransition?.(id),
-      });
-    }
-
-    if (actions.onAddToGenerate) {
-      menuItems.push({
-        id: 'generate',
-        label: 'Add to Generation',
-        icon: 'zap',
-        onClick: () => actions.onAddToGenerate?.(id),
-      });
-    }
-
-    return menuItems;
-  };
-
   return {
     id: 'generation-button-group',
     type: 'custom',
@@ -518,7 +506,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
       const triggerRef = useRef<HTMLButtonElement>(null);
       const ccMode = useControlCenterStore((s) => s.operationType);
 
-      const menuItems = buildMenuItems();
+      const menuItems = buildGenerationMenuItems(id, mediaType, actions);
       const smartAction = getSmartAction(mediaType, ccMode);
 
       // Close menu when clicking outside
@@ -558,6 +546,9 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         switch (smartAction.action) {
           case 'image_to_video':
             actions.onImageToVideo?.(id);
+            break;
+          case 'image_to_image':
+            actions.onImageToImage?.(id);
             break;
           case 'video_extend':
             actions.onVideoExtend?.(id);

@@ -32,6 +32,7 @@ export function useAssetsController() {
 
   // Media generation actions
   const {
+    queueImageToImage,
     queueImageToVideo,
     queueVideoExtend,
     queueAddToTransition,
@@ -211,12 +212,14 @@ export function useAssetsController() {
   const actionHandlers = useMemo(() => ({
     onOpenDetails: setDetailAssetId,
     onShowMetadata: setDetailAssetId,
+    onImageToImage: queueImageToImage,
     onImageToVideo: queueImageToVideo,
     onVideoExtend: queueVideoExtend,
     onAddToTransition: queueAddToTransition,
     onAddToGenerate: queueAutoGenerate,
     onDelete: handleDeleteAsset,
   }), [
+    queueImageToImage,
     queueImageToVideo,
     queueVideoExtend,
     queueAddToTransition,

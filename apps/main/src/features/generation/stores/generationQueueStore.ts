@@ -13,7 +13,7 @@ import type { AssetSummary } from '@features/assets';
 
 export interface QueuedAsset {
   asset: AssetSummary;
-  operation?: 'image_to_video' | 'video_extend' | 'add_to_transition';
+  operation?: 'image_to_image' | 'image_to_video' | 'video_extend' | 'add_to_transition';
   queuedAt: string;
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
 }
@@ -24,7 +24,7 @@ export interface GenerationQueueState {
   transitionQueue: QueuedAsset[];     // Assets queued for video transition
 
   // Actions
-  addToQueue: (asset: AssetSummary, operation?: 'image_to_video' | 'video_extend') => void;
+  addToQueue: (asset: AssetSummary, operation?: 'image_to_image' | 'image_to_video' | 'video_extend') => void;
   addToTransitionQueue: (asset: AssetSummary) => void;
   removeFromQueue: (assetId: number, queueType?: 'main' | 'transition') => void;
   clearQueue: (queueType?: 'main' | 'transition' | 'all') => void;

@@ -68,6 +68,7 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
 
   // Media generation actions
   const {
+    queueImageToImage,
     queueImageToVideo,
     queueVideoExtend,
     queueAddToTransition,
@@ -86,11 +87,12 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
 
   // Asset action handlers
   const actionHandlers = useMemo(() => ({
+    onImageToImage: queueImageToImage,
     onImageToVideo: queueImageToVideo,
     onVideoExtend: queueVideoExtend,
     onAddToTransition: queueAddToTransition,
     onAddToGenerate: queueAutoGenerate,
-  }), [queueImageToVideo, queueVideoExtend, queueAddToTransition, queueAutoGenerate]);
+  }), [queueImageToImage, queueImageToVideo, queueVideoExtend, queueAddToTransition, queueAutoGenerate]);
 
   // Get per-asset actions
   const getAssetActions = useCallback((asset: AssetSummary) => {

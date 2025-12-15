@@ -18,6 +18,8 @@ export interface AssetActionHandlers {
   onOpenDetails?: (id: number) => void;
   /** Show asset metadata panel */
   onShowMetadata?: (id: number) => void;
+  /** Queue asset for image-to-image generation */
+  onImageToImage?: (asset: AssetSummary) => void;
   /** Queue asset for image-to-video generation */
   onImageToVideo?: (asset: AssetSummary) => void;
   /** Queue asset for video extend generation */
@@ -41,6 +43,7 @@ export interface AssetActionHandlers {
 export interface AssetActions {
   onOpenDetails?: () => void;
   onShowMetadata?: () => void;
+  onImageToImage?: () => void;
   onImageToVideo?: () => void;
   onVideoExtend?: () => void;
   onAddToTransition?: () => void;
@@ -76,57 +79,46 @@ export interface AssetActions {
  * />
  * ```
  */
+// Handlers that receive asset.id instead of the full asset
+const ID_BASED_HANDLERS = new Set(['onOpenDetails', 'onShowMetadata']);
+
+// Standard handlers (excluding special cases like onReupload)
+const STANDARD_HANDLERS = [
+  'onOpenDetails',
+  'onShowMetadata',
+  'onImageToImage',
+  'onImageToVideo',
+  'onVideoExtend',
+  'onAddToTransition',
+  'onAddToGenerate',
+  'onDelete',
+] as const;
+
 export function createAssetActions(
   asset: AssetSummary,
   handlers: AssetActionHandlers
 ): AssetActions {
   const actions: AssetActions = {};
 
-  // Only include actions that have handlers
-  if (handlers.onOpenDetails) {
-    actions.onOpenDetails = () => handlers.onOpenDetails!(asset.id);
+  // Bind standard handlers
+  for (const key of STANDARD_HANDLERS) {
+    const handler = handlers[key];
+    if (handler) {
+      actions[key] = ID_BASED_HANDLERS.has(key)
+        ? () => (handler as (id: number) => void)(asset.id)
+        : () => (handler as (asset: AssetSummary) => void)(asset);
+    }
   }
 
-  if (handlers.onShowMetadata) {
-    actions.onShowMetadata = () => handlers.onShowMetadata!(asset.id);
-  }
-
-  if (handlers.onImageToVideo) {
-    actions.onImageToVideo = () => handlers.onImageToVideo!(asset);
-  }
-
-  if (handlers.onVideoExtend) {
-    actions.onVideoExtend = () => handlers.onVideoExtend!(asset);
-  }
-
-  if (handlers.onAddToTransition) {
-    actions.onAddToTransition = () => handlers.onAddToTransition!(asset);
-  }
-
-  if (handlers.onAddToGenerate) {
-    actions.onAddToGenerate = () => handlers.onAddToGenerate!(asset);
-  }
-
-  if (handlers.onDelete) {
-    actions.onDelete = () => handlers.onDelete!(asset);
-  }
-
+  // Special case: onReupload takes an extra providerId argument
   if (handlers.onReupload) {
     actions.onReupload = (providerId: string) => handlers.onReupload!(asset, providerId);
   }
 
-  // Include any custom handlers
+  // Include any custom handlers not in the standard list
+  const knownKeys = new Set([...STANDARD_HANDLERS, 'onReupload']);
   for (const key in handlers) {
-    if (
-      key !== 'onOpenDetails' &&
-      key !== 'onShowMetadata' &&
-      key !== 'onImageToVideo' &&
-      key !== 'onVideoExtend' &&
-      key !== 'onAddToTransition' &&
-      key !== 'onAddToGenerate' &&
-      key !== 'onDelete' &&
-      key !== 'onReupload'
-    ) {
+    if (!knownKeys.has(key)) {
       const handler = handlers[key];
       if (typeof handler === 'function') {
         actions[key] = () => handler(asset);
