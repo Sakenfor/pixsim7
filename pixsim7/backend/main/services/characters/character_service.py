@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlmodel import col
 
-from pixsim7.backend.main.domain.character import (
+from pixsim7.backend.main.domain.game.entities import (
     Character,
     CharacterRelationship,
     CharacterUsage

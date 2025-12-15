@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from pixsim7.backend.main.infrastructure.database.session import get_sync_session
-from pixsim7.backend.main.domain.game.models import GameSession
+from pixsim7.backend.main.domain.game import GameSession
 from pixsim7.backend.main.services.game.inventory_service import InventoryService, InventoryItem
 
 router = APIRouter(prefix="/game/inventory", tags=["game-inventory"])

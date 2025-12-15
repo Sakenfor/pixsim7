@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, func
 
-from pixsim7.backend.main.domain.npc_memory import (
+from pixsim7.backend.main.domain.game.entities.npc_memory import (
     ConversationMemory,
     NPCEmotionalState,
     ConversationTopic,

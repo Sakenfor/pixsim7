@@ -17,7 +17,7 @@ except ImportError:
     REDIS_AVAILABLE = False
     Redis = None  # type: ignore
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameWorldState, GameSession
+from pixsim7.backend.main.domain.game import GameWorld, GameWorldState, GameSession
 from pixsim7.backend.main.domain.game.schemas.relationship import WorldMetaSchemas
 
 

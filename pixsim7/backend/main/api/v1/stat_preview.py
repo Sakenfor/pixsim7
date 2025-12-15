@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import get_database
-from pixsim7.backend.main.domain.game.models import GameWorld
-from pixsim7.backend.main.domain.stats import StatEngine, WorldStatsConfig
-from pixsim7.backend.main.domain.stats.migration import (
+from pixsim7.backend.main.domain.game import GameWorld
+from pixsim7.backend.main.domain.game.stats import StatEngine, WorldStatsConfig
+from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
     get_default_relationship_definition,

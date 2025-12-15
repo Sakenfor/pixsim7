@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, Set
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.character import Character
+from pixsim7.backend.main.domain.game.entities import Character
 from pixsim7.backend.main.services.characters.character_service import CharacterService
 
 

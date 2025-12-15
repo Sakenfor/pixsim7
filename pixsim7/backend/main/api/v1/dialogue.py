@@ -19,7 +19,7 @@ from pixsim7.backend.main.api.dependencies import (
     NarrativeEng,
     LLMSvc
 )
-from pixsim7.backend.main.domain.game.models import GameSession, GameWorld, GameNPC
+from pixsim7.backend.main.domain.game import GameSession, GameWorld, GameNPC
 from pixsim7.backend.main.domain.narrative import NarrativeEngine
 from pixsim7.backend.main.services.llm import LLMService, LLMRequest
 

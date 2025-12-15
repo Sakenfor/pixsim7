@@ -87,7 +87,7 @@ async def list_worlds(
         limit: Maximum records to return (default: 100, max: 1000)
     """
     from sqlalchemy import select, func
-    from pixsim7.backend.main.domain.game.models import GameWorld
+    from pixsim7.backend.main.domain.game import GameWorld
 
     # Clamp limit to reasonable range
     limit = min(max(1, limit), 1000)

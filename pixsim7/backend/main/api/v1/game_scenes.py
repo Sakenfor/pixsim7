@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
-from pixsim7.backend.main.domain.game.models import GameScene, GameSceneNode, GameSceneEdge
+from pixsim7.backend.main.domain.game import GameScene, GameSceneNode, GameSceneEdge
 
 
 router = APIRouter()

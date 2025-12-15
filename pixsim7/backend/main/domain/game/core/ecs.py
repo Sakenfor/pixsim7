@@ -44,7 +44,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from pixsim7.backend.main.domain.game.schemas import (
+from ..schemas import (
     BehaviorStateComponentSchema,
     InteractionStateComponentSchema,
     MoodStateComponentSchema,

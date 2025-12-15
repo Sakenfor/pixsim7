@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, NpcExpressionSvc
-from pixsim7.backend.main.domain.game.models import GameNPC, NPCSchedule, NPCState, GameWorldState
-from pixsim7.backend.main.services.game.npc_stat_service import NPCStatService
+from pixsim7.backend.main.domain.game import GameNPC, NPCSchedule, NPCState, GameWorldState
+from pixsim7.backend.main.services.npc.npc_stat_service import NPCStatService
 
 
 router = APIRouter()

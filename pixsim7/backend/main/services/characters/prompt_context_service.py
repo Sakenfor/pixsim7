@@ -23,8 +23,8 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.game import GameNPC, NPCState
-from pixsim7.backend.main.domain.stats import StatEngine, create_stat_engine
+from pixsim7.backend.main.domain.game import GameNPC, NPCState
+from pixsim7.backend.main.domain.game.stats import StatEngine, create_stat_engine
 from pixsim7.backend.main.services.characters.instance_service import (
     CharacterInstanceService,
 )
@@ -305,7 +305,7 @@ class _NpcContextResolver:
 
     async def _normalize_personality(self, traits: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize personality traits via StatEngine using package registry."""
-        from pixsim7.backend.main.domain.stats import get_stat_package
+        from pixsim7.backend.main.domain.game.stats import get_stat_package
 
         # Collect stat axes that need normalization
         axes_by_package: Dict[str, List[str]] = {}

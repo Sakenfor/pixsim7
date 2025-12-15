@@ -23,9 +23,9 @@ except ImportError:
     REDIS_AVAILABLE = False
     Redis = None  # type: ignore
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
-from pixsim7.backend.main.domain.stats import StatEngine, WorldStatsConfig, StatDefinition
-from pixsim7.backend.main.domain.stats.migration import (
+from pixsim7.backend.main.domain.game import GameWorld, GameSession
+from pixsim7.backend.main.domain.game.stats import StatEngine, WorldStatsConfig, StatDefinition
+from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
 )

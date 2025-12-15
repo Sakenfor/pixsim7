@@ -98,8 +98,10 @@ from pixsim7.backend.main.domain.game import (
 from pixsim7.backend.main.services.game import (
     GameSessionService,
     GameLocationService,
-    NpcExpressionService,
     GameWorldService,
+)
+from pixsim7.backend.main.services.npc import (
+    NpcExpressionService,
 )
 
 # =============================================================================

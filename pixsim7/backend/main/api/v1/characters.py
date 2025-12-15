@@ -18,7 +18,7 @@ from pixsim7.backend.main.services.characters import (
     CharacterService,
     CharacterTemplateEngine
 )
-from pixsim7.backend.main.domain.character import Character
+from pixsim7.backend.main.domain.game.entities import Character
 from pixsim7.backend.main.domain.user import User
 
 router = APIRouter(prefix="/characters", tags=["characters"])

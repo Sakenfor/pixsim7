@@ -5,8 +5,8 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
-from pixsim7.backend.main.domain.game.models import NpcExpression
-from pixsim7.backend.main.domain.npc_surfaces import validate_expression_meta
+from pixsim7.backend.main.domain.game import NpcExpression
+from pixsim7.backend.main.domain.game.entities.npc_surfaces import validate_expression_meta
 
 
 class NpcExpressionService:

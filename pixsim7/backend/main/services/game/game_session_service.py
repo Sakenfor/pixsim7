@@ -17,7 +17,7 @@ except ImportError:
     REDIS_AVAILABLE = False
     Redis = None  # type: ignore
 
-from pixsim7.backend.main.domain.game.models import (
+from pixsim7.backend.main.domain.game import (
     GameSession,
     GameScene,
     GameSceneEdge,

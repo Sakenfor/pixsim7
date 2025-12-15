@@ -15,7 +15,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.character_integrations import SceneCharacterManifest
+from pixsim7.backend.main.domain.game.entities import SceneCharacterManifest
 from pixsim7.backend.main.services.characters.character_service import CharacterService
 from pixsim7.backend.main.services.characters.capability_service import CharacterCapabilityService
 

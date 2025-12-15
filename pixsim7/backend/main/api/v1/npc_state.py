@@ -14,7 +14,7 @@ from pixsim7.backend.main.services.npc import (
     MemoryService, EmotionalStateService, MilestoneService,
     WorldAwarenessService, PersonalityEvolutionService
 )
-from pixsim7.backend.main.domain.npc_memory import MemoryImportance, MemoryType
+from pixsim7.backend.main.domain.game.entities.npc_memory import MemoryImportance, MemoryType
 
 
 router = APIRouter()
@@ -169,7 +169,7 @@ async def set_npc_emotion(
 
     Triggers a new emotion with specified intensity and duration
     """
-    from pixsim7.backend.main.domain.npc_memory import EmotionType
+    from pixsim7.backend.main.domain.game.entities.npc_memory import EmotionType
 
     # Validate emotion type
     try:
@@ -331,7 +331,7 @@ async def register_world_event(
 
     This allows NPCs to reference recent events in dialogue
     """
-    from pixsim7.backend.main.domain.npc_memory import WorldEventType
+    from pixsim7.backend.main.domain.game.entities.npc_memory import WorldEventType
 
     # Validate event type
     try:
@@ -487,7 +487,7 @@ async def get_trait_trajectory(
     """
     Get trajectory/trend for a specific personality trait
     """
-    from pixsim7.backend.main.domain.npc_memory import PersonalityTrait
+    from pixsim7.backend.main.domain.game.entities.npc_memory import PersonalityTrait
 
     # Validate trait
     try:

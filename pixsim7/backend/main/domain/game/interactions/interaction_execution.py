@@ -19,8 +19,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.game.models import GameSession, GameWorld, GameNPC
-from pixsim7.backend.main.domain.game.npc_interactions import (
+from ..core.models import GameSession, GameWorld, GameNPC
+from .npc_interactions import (
     NpcInteractionDefinition,
     InteractionOutcome,
     RelationshipDelta,
@@ -33,7 +33,7 @@ from pixsim7.backend.main.domain.game.npc_interactions import (
     ExecuteInteractionResponse,
     InventoryChangeSummary,
 )
-from pixsim7.backend.main.domain.stats import (
+from ..stats import (
     StatEngine,
     get_default_relationship_definition,
 )
@@ -638,7 +638,7 @@ async def execute_interaction(
         from pixsim7.backend.main.domain.narrative.integration_helpers import (
             launch_narrative_program_from_interaction
         )
-        from pixsim7.backend.main.domain.game.models import GameWorld
+        from ..core.models import GameWorld
 
         # Load world
         world = await db.get(GameWorld, session.world_id)

@@ -1,24 +1,50 @@
 """
-Game domain models
+Unified Game Domain Package
 
-This module contains all game-related domain models that were consolidated
-from the standalone game service into the main backend.
+This package consolidates all game-related domain logic:
+- Core: GameWorld, GameSession, GameLocation, GameScene, ECS
+- Entities: Character templates, instances, NPCs, memory models
+- Stats: Abstract stat system with packages (relationships, mood, etc.)
+- Behavior: Activity simulation, scoring, conditions, effects
+- Brain: Cognitive modeling and derivations
+- Interactions: NPC interaction mechanics
+- Schemas: Pydantic validation schemas
+
+Import patterns:
+    # High-level imports (most common)
+    from pixsim7.backend.main.domain.game import (
+        GameWorld, GameSession, GameNPC,
+        Character, CharacterInstance,
+        StatEngine, BrainEngine,
+    )
+
+    # Subpackage imports (for specialized use)
+    from pixsim7.backend.main.domain.game.stats import (
+        get_default_mood_definition,
+        StatPackage,
+    )
+    from pixsim7.backend.main.domain.game.behavior import (
+        evaluate_condition,
+        choose_npc_activity,
+    )
 """
-from pixsim7.backend.main.domain.game.models import (
-    GameScene,
-    GameSceneNode,
-    GameSceneEdge,
+
+# Core models and ECS
+from .core import (
+    GameWorld,
+    GameWorldState,
     GameSession,
     GameSessionEvent,
     GameLocation,
+    GameScene,
+    GameSceneNode,
+    GameSceneEdge,
     GameNPC,
     NPCSchedule,
     NPCState,
-    # World models (for simulation domain)
-    GameWorld,
-    GameWorldState,
-)
-from pixsim7.backend.main.domain.game.ecs import (
+    NpcExpression,
+    GameHotspot,
+    # ECS
     get_npc_entity,
     set_npc_entity,
     get_npc_component,
@@ -35,7 +61,6 @@ from pixsim7.backend.main.domain.game.ecs import (
     set_npc_metadata,
     update_npc_metadata,
     validate_entity,
-    # Metric registry
     get_metric_registry,
     resolve_metric,
     get_npc_metric,
@@ -43,8 +68,8 @@ from pixsim7.backend.main.domain.game.ecs import (
     update_npc_metric,
     list_metrics_for_category,
     get_metric_definition,
-)
-from pixsim7.backend.main.domain.game.game_state import (
+    register_core_components,
+    # Game state
     get_game_state,
     set_game_state,
     update_game_state,
@@ -60,39 +85,100 @@ from pixsim7.backend.main.domain.game.game_state import (
     get_current_location,
     get_current_scene,
 )
-from pixsim7.backend.main.domain.game.schemas import (
-    GameStateSchema,
-    WorldSchedulerConfigSchema,
-    get_default_world_scheduler_config,
+
+# Entities (characters and NPCs)
+from .entities import (
+    Character,
+    CharacterRelationship,
+    CharacterUsage,
+    CharacterInstance,
+    CharacterNPCLink,
+    CharacterCapability,
+    SceneCharacterManifest,
+    CharacterDialogueProfile,
+    get_character_graph,
+    find_characters_for_npc,
+    find_scenes_for_character,
+    find_assets_for_character,
+    get_character_usage_stats,
+    format_character_ref,
+    format_instance_ref,
+    parse_character_ref,
+    set_scene_role_binding,
+    get_scene_role_binding,
+    get_all_scene_roles,
+    set_asset_character_linkage,
+    get_asset_character_linkage,
+    ConversationMemory,
+    NPCEmotionalState,
+    ConversationTopic,
+    RelationshipMilestone,
+    NPCWorldContext,
+    PersonalityEvolutionEvent,
+    DialogueAnalytics,
 )
-# Interaction types (for narrative domain)
-from pixsim7.backend.main.domain.game.npc_interactions import (
+
+# Interactions
+from .interactions import (
     RelationshipDelta,
     StatDelta,
     FlagChanges,
     InventoryChanges,
-)
-from pixsim7.backend.main.domain.game.interaction_execution import (
     apply_relationship_deltas,
     apply_stat_deltas,
     apply_flag_changes,
     apply_inventory_changes,
 )
 
+# Schemas
+from .schemas import (
+    GameStateSchema,
+    WorldSchedulerConfigSchema,
+    get_default_world_scheduler_config,
+)
+
+# Stats (selective exports - most use subpackage imports)
+from .stats import (
+    StatEngine,
+    create_stat_engine,
+    WorldStatsConfig,
+    StatDefinition,
+    StatAxis,
+    StatTier,
+    StatLevel,
+    register_core_stat_packages,
+)
+
+# Behavior (selective exports)
+from .behavior import (
+    evaluate_condition,
+    choose_npc_activity,
+    apply_activity_to_npc,
+    determine_simulation_tier,
+)
+
+# Brain (selective exports)
+from .brain import (
+    BrainEngine,
+    BrainState,
+)
+
 __all__ = [
-    "GameScene",
-    "GameSceneNode",
-    "GameSceneEdge",
+    # Core models
+    "GameWorld",
+    "GameWorldState",
     "GameSession",
     "GameSessionEvent",
     "GameLocation",
+    "GameScene",
+    "GameSceneNode",
+    "GameSceneEdge",
     "GameNPC",
     "NPCSchedule",
     "NPCState",
-    # World models (for simulation domain)
-    "GameWorld",
-    "GameWorldState",
-    # ECS helpers
+    "NpcExpression",
+    "GameHotspot",
+    # ECS
     "get_npc_entity",
     "set_npc_entity",
     "get_npc_component",
@@ -109,7 +195,6 @@ __all__ = [
     "set_npc_metadata",
     "update_npc_metadata",
     "validate_entity",
-    # Metric registry
     "get_metric_registry",
     "resolve_metric",
     "get_npc_metric",
@@ -117,9 +202,9 @@ __all__ = [
     "update_npc_metric",
     "list_metrics_for_category",
     "get_metric_definition",
-    # Game state (Task 22)
+    "register_core_components",
+    # Game state
     "GameStateSchema",
-    # Scheduler config (for simulation domain)
     "WorldSchedulerConfigSchema",
     "get_default_world_scheduler_config",
     "get_game_state",
@@ -136,7 +221,37 @@ __all__ = [
     "get_active_narrative_program",
     "get_current_location",
     "get_current_scene",
-    # Interaction types (for narrative domain)
+    # Entities - Characters
+    "Character",
+    "CharacterRelationship",
+    "CharacterUsage",
+    "CharacterInstance",
+    "CharacterNPCLink",
+    "CharacterCapability",
+    "SceneCharacterManifest",
+    "CharacterDialogueProfile",
+    "get_character_graph",
+    "find_characters_for_npc",
+    "find_scenes_for_character",
+    "find_assets_for_character",
+    "get_character_usage_stats",
+    "format_character_ref",
+    "format_instance_ref",
+    "parse_character_ref",
+    "set_scene_role_binding",
+    "get_scene_role_binding",
+    "get_all_scene_roles",
+    "set_asset_character_linkage",
+    "get_asset_character_linkage",
+    # Entities - NPC Memory
+    "ConversationMemory",
+    "NPCEmotionalState",
+    "ConversationTopic",
+    "RelationshipMilestone",
+    "NPCWorldContext",
+    "PersonalityEvolutionEvent",
+    "DialogueAnalytics",
+    # Interactions
     "RelationshipDelta",
     "StatDelta",
     "FlagChanges",
@@ -145,4 +260,21 @@ __all__ = [
     "apply_stat_deltas",
     "apply_flag_changes",
     "apply_inventory_changes",
+    # Stats (selective)
+    "StatEngine",
+    "create_stat_engine",
+    "WorldStatsConfig",
+    "StatDefinition",
+    "StatAxis",
+    "StatTier",
+    "StatLevel",
+    "register_core_stat_packages",
+    # Behavior (selective)
+    "evaluate_condition",
+    "choose_npc_activity",
+    "apply_activity_to_npc",
+    "determine_simulation_tier",
+    # Brain (selective)
+    "BrainEngine",
+    "BrainState",
 ]

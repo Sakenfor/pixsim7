@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 from sqlalchemy.sql import func
-from pixsim7.backend.main.domain.stats import HasStats
+from ..stats import HasStats
 
 # Scene graph
 class GameScene(SQLModel, table=True):

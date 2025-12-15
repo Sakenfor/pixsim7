@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
-from pixsim7.backend.main.domain.game.models import NPCState, GameNPC
+from pixsim7.backend.main.domain.game import NPCState, GameNPC
 from pixsim7.backend.main.services.game.spatial_query_service import get_spatial_service
 from pixsim7.backend.main.infrastructure.events.bus import event_bus
 

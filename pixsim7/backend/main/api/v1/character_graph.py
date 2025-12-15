@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.infrastructure.database.session import get_async_session
-from pixsim7.backend.main.domain.character_graph import (
+from pixsim7.backend.main.domain.game.entities import (
     get_character_graph,
     find_characters_for_npc,
     find_scenes_for_character,

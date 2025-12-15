@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, desc
 
-from pixsim7.backend.main.domain.npc_memory import DialogueAnalytics
+from pixsim7.backend.main.domain.game.entities.npc_memory import DialogueAnalytics
 
 
 class DialogueAnalyticsService:

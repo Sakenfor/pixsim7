@@ -24,7 +24,7 @@ from pixsim7.backend.main.domain.game.schemas import (
     NpcPreferencesSchema,
     auto_migrate_behavior_config,
 )
-from pixsim7.backend.main.domain.behavior import (
+from pixsim7.backend.main.domain.game.behavior import (
     calculate_activity_score,
     score_and_filter_activities,
     choose_activity,

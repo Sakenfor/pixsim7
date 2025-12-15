@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
-from pixsim7.backend.main.domain.game.models import GameLocation, GameHotspot
+from pixsim7.backend.main.domain.game import GameLocation, GameHotspot
 
 
 class GameLocationService:

@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 
-from pixsim7.backend.main.domain.npc_memory import (
+from pixsim7.backend.main.domain.game.entities.npc_memory import (
     RelationshipMilestone,
     MilestoneType,
     EmotionType

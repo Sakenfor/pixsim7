@@ -4,7 +4,7 @@ Task 22 - Game Mode & ViewState Model
 """
 
 from typing import Optional
-from pixsim7.backend.main.domain.game.schemas import GameStateSchema
+from ..schemas import GameStateSchema
 
 
 def get_game_state(session_flags: dict) -> Optional[GameStateSchema]:
