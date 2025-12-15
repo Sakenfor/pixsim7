@@ -110,7 +110,7 @@ export function useProviderCapacity(refreshKey?: number) {
 
     // Calculate capacity per provider
     const capacityData: ProviderCapacity[] = Object.entries(grouped).map(([providerId, providerAccounts]) => {
-      const activeAccounts = providerAccounts.filter(acc => acc.status === 'ACTIVE');
+      const activeAccounts = providerAccounts.filter(acc => acc.status === 'active');
       const currentJobs = activeAccounts.reduce((sum, acc) => sum + acc.current_processing_jobs, 0);
       const maxJobs = activeAccounts.reduce((sum, acc) => sum + acc.max_concurrent_jobs, 0);
       const totalCredits = activeAccounts.reduce((sum, acc) => sum + acc.total_credits, 0);

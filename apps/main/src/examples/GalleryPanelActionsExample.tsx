@@ -6,7 +6,7 @@
  */
 
 import { useRegisterPanelActions } from '../hooks/useRegisterPanelActions';
-import { useWorkspaceStore } from '../stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 
 /**
  * Example integration for the Gallery/Assets panel

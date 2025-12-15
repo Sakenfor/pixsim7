@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
+import { useWorkspaceStore, type PanelId } from '@features/workspace';
 import { ThemedIcon } from '@lib/icons';
-import { panelRegistry } from '@lib/ui/panels';
+import { panelRegistry } from '@features/panels';
 
 export function PanelLauncherModule() {
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);

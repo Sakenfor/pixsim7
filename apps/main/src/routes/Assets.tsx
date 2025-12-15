@@ -5,7 +5,7 @@ import { useGenerationWebSocket } from '@features/generation';
 import { useControlCenterLayout, useControlCenterStore } from '@features/controlCenter';
 import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
-import { useWorkspaceStore } from '../stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
 import {
   GallerySurfaceSwitcher,

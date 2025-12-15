@@ -3,7 +3,7 @@ import { useWorldContextStore } from '@/stores/worldContextStore';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import {
   derivePrimaryView,
   deriveEditorMode,

@@ -1,5 +1,5 @@
-import { Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
-import type { WorkspacePreset } from '@/stores/workspaceStore';
+import { Dropdown, DropdownItem, DropdownDivider } from "@pixsim7/shared.ui";
+import type { WorkspacePreset } from "../../stores/workspaceStore";
 
 interface PresetsDropdownProps {
   isOpen: boolean;
@@ -31,7 +31,7 @@ export function PresetsDropdown({
           >
             {preset.name}
           </DropdownItem>
-          {!['default', 'minimal', 'creative'].includes(preset.id) && (
+          {!["default", "minimal", "creative"].includes(preset.id) && (
             <button
               className="text-xs px-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
               onClick={() => onDeletePreset(preset.id)}

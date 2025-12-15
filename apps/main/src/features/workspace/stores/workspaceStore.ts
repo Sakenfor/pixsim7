@@ -1,37 +1,37 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { createBackendStorage } from '../lib/backendStorage';
-import { pluginCatalog } from '../lib/plugins/pluginSystem';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { createBackendStorage } from "../lib/backendStorage";
+import { pluginCatalog } from "../lib/plugins/pluginSystem";
 
 export type PanelId =
-  | 'gallery'
-  | 'scene'
-  | 'graph'
-  | 'inspector'
-  | 'health'
-  | 'game'
-  | 'providers'
-  | 'settings'
-  | 'gizmo-lab'
-  | 'npc-brain-lab'
-  | 'game-theming'
-  | 'scene-management'
-  | 'dev-tools'
-  | 'hud-designer'
-  | 'world-visual-roles'
-  | 'generations'
-  | 'game-tools'
-  | 'surface-workbench'
-  | 'world-context'
-  | 'edge-effects'
-  | 'console'
-  | 'model-inspector';
+  | "gallery"
+  | "scene"
+  | "graph"
+  | "inspector"
+  | "health"
+  | "game"
+  | "providers"
+  | "settings"
+  | "gizmo-lab"
+  | "npc-brain-lab"
+  | "game-theming"
+  | "scene-management"
+  | "dev-tools"
+  | "hud-designer"
+  | "world-visual-roles"
+  | "generations"
+  | "game-tools"
+  | "surface-workbench"
+  | "world-context"
+  | "edge-effects"
+  | "console"
+  | "model-inspector";
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;
 
 export interface LayoutBranch<T> {
-  direction: 'row' | 'column';
+  direction: "row" | "column";
   first: LayoutNode<T>;
   second: LayoutNode<T>;
   splitPercentage?: number;
@@ -86,38 +86,55 @@ export interface WorkspaceActions {
   // Update preset-specific metadata (currently used for graph editor selection)
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
   reset: () => void;
-  openFloatingPanel: (panelId: PanelId | `dev-tool:${string}`, options?: { x?: number; y?: number; width?: number; height?: number; context?: Record<string, any> }) => void;
+  openFloatingPanel: (
+    panelId: PanelId | `dev-tool:${string}`,
+    options?: {
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      context?: Record<string, any>;
+    },
+  ) => void;
   closeFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => void;
   minimizeFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => void;
   restoreFloatingPanel: (panelState: FloatingPanelState) => void;
-  updateFloatingPanelPosition: (panelId: PanelId | `dev-tool:${string}`, x: number, y: number) => void;
-  updateFloatingPanelSize: (panelId: PanelId | `dev-tool:${string}`, width: number, height: number) => void;
+  updateFloatingPanelPosition: (
+    panelId: PanelId | `dev-tool:${string}`,
+    x: number,
+    y: number,
+  ) => void;
+  updateFloatingPanelSize: (
+    panelId: PanelId | `dev-tool:${string}`,
+    width: number,
+    height: number,
+  ) => void;
   bringFloatingPanelToFront: (panelId: PanelId | `dev-tool:${string}`) => void;
 }
 
 // Default presets
 const defaultPresets: WorkspacePreset[] = [
   {
-    id: 'default',
-    name: 'Default Workspace',
-    description: 'Balanced layout for general development',
-    icon: '🏠',
+    id: "default",
+    name: "Default Workspace",
+    description: "Balanced layout for general development",
+    icon: "🏠",
     isDefault: true,
     layout: {
-      direction: 'row',
+      direction: "row",
       first: {
-        direction: 'column',
-        first: 'gallery',
-        second: 'health',
+        direction: "column",
+        first: "gallery",
+        second: "health",
         splitPercentage: 70,
       },
       second: {
-        direction: 'row',
-        first: 'graph',
+        direction: "row",
+        first: "graph",
         second: {
-          direction: 'column',
-          first: 'inspector',
-          second: 'game',
+          direction: "column",
+          first: "inspector",
+          second: "game",
           splitPercentage: 40,
         },
         splitPercentage: 60,
@@ -126,31 +143,31 @@ const defaultPresets: WorkspacePreset[] = [
     },
   },
   {
-    id: 'minimal',
-    name: 'Minimal (Graph + Game)',
-    description: 'Focus on graph editing and game preview',
-    icon: '⚡',
+    id: "minimal",
+    name: "Minimal (Graph + Game)",
+    description: "Focus on graph editing and game preview",
+    icon: "⚡",
     isDefault: true,
     layout: {
-      direction: 'row',
-      first: 'graph',
-      second: 'game',
+      direction: "row",
+      first: "graph",
+      second: "game",
       splitPercentage: 60,
     },
   },
   {
-    id: 'creative',
-    name: 'Creative Studio',
-    description: 'Optimized for content creation',
-    icon: '🎨',
+    id: "creative",
+    name: "Creative Studio",
+    description: "Optimized for content creation",
+    icon: "🎨",
     isDefault: true,
     layout: {
-      direction: 'row',
-      first: 'gallery',
+      direction: "row",
+      first: "gallery",
       second: {
-        direction: 'column',
-        first: 'scene',
-        second: 'game',
+        direction: "column",
+        first: "scene",
+        second: "game",
         splitPercentage: 50,
       },
       splitPercentage: 25,
@@ -164,52 +181,54 @@ const defaultPresets: WorkspacePreset[] = [
   // ─────────────────────────────────────────────────────────────────────────────
 
   {
-    id: 'world-locations',
-    name: 'World & Locations',
-    description: 'World editor-centric layout for managing locations, visual roles, and world theming',
-    icon: '🌍',
+    id: "world-locations",
+    name: "World & Locations",
+    description:
+      "World editor-centric layout for managing locations, visual roles, and world theming",
+    icon: "🌍",
     isDefault: true,
     // Primary view: 'world', Mode: 'layout'
     layout: {
-      direction: 'row',
+      direction: "row",
       first: {
-        direction: 'column',
-        first: 'gallery',
-        second: 'world-visual-roles',
+        direction: "column",
+        first: "gallery",
+        second: "world-visual-roles",
         splitPercentage: 50,
       },
       second: {
-        direction: 'column',
-        first: 'game-theming',
-        second: 'game',
+        direction: "column",
+        first: "game-theming",
+        second: "game",
         splitPercentage: 50,
       },
       splitPercentage: 40,
     },
   },
   {
-    id: 'narrative-flow',
-    name: 'Narrative & Flow',
-    description: 'Flow View-centric layout for designing scenes, nodes, choices, and transitions',
-    icon: '🔀',
+    id: "narrative-flow",
+    name: "Narrative & Flow",
+    description:
+      "Flow View-centric layout for designing scenes, nodes, choices, and transitions",
+    icon: "🔀",
     isDefault: true,
-    graphEditorId: 'scene-graph-v2',
+    graphEditorId: "scene-graph-v2",
     // Primary view: 'flow', Mode: 'edit-flow'
     layout: {
-      direction: 'row',
-      first: 'graph',
+      direction: "row",
+      first: "graph",
       second: {
-        direction: 'column',
+        direction: "column",
         first: {
-          direction: 'row',
-          first: 'scene',
-          second: 'inspector',
+          direction: "row",
+          first: "scene",
+          second: "inspector",
           splitPercentage: 50,
         },
         second: {
-          direction: 'row',
-          first: 'scene-management',
-          second: 'health',
+          direction: "row",
+          first: "scene-management",
+          second: "health",
           splitPercentage: 50,
         },
         splitPercentage: 60,
@@ -218,24 +237,25 @@ const defaultPresets: WorkspacePreset[] = [
     },
   },
   {
-    id: 'playtest-tuning',
-    name: 'Playtest & Tuning',
-    description: 'Game View-centric layout for playtesting, runtime tools, and HUD design',
-    icon: '🎮',
+    id: "playtest-tuning",
+    name: "Playtest & Tuning",
+    description:
+      "Game View-centric layout for playtesting, runtime tools, and HUD design",
+    icon: "🎮",
     isDefault: true,
     // Primary view: 'game', Mode: 'play' or 'debug'
     layout: {
-      direction: 'row',
+      direction: "row",
       first: {
-        direction: 'column',
-        first: 'game-tools',
-        second: 'hud-designer',
+        direction: "column",
+        first: "game-tools",
+        second: "hud-designer",
         splitPercentage: 50,
       },
       second: {
-        direction: 'column',
-        first: 'game',
-        second: 'dev-tools',
+        direction: "column",
+        first: "game",
+        second: "dev-tools",
         splitPercentage: 70,
       },
       splitPercentage: 30,
@@ -247,69 +267,71 @@ const defaultPresets: WorkspacePreset[] = [
   // ─────────────────────────────────────────────────────────────────────────────
 
   {
-    id: 'dev-default',
-    name: 'Dev – Default Debug',
-    description: 'Graph, session state, dev tools, and health monitoring',
-    icon: '🧪',
+    id: "dev-default",
+    name: "Dev – Default Debug",
+    description: "Graph, session state, dev tools, and health monitoring",
+    icon: "🧪",
     isDefault: true,
     layout: {
-      direction: 'row',
-      first: 'graph',
+      direction: "row",
+      first: "graph",
       second: {
-        direction: 'column',
-        first: 'dev-tools',
-        second: 'health',
+        direction: "column",
+        first: "dev-tools",
+        second: "health",
         splitPercentage: 60,
       },
       splitPercentage: 60,
     },
-    graphEditorId: 'scene-graph-v2',
+    graphEditorId: "scene-graph-v2",
   },
   {
-    id: 'dev-plugins',
-    name: 'Dev – Plugin Workshop',
-    description: 'Focus on plugin development and testing',
-    icon: '🔌',
+    id: "dev-plugins",
+    name: "Dev – Plugin Workshop",
+    description: "Focus on plugin development and testing",
+    icon: "🔌",
     isDefault: true,
     layout: {
-      direction: 'row',
+      direction: "row",
       first: {
-        direction: 'column',
-        first: 'dev-tools',
-        second: 'settings',
+        direction: "column",
+        first: "dev-tools",
+        second: "settings",
         splitPercentage: 70,
       },
-      second: 'game',
+      second: "game",
       splitPercentage: 40,
     },
   },
   {
-    id: 'dev-architecture',
-    name: 'Dev – Architecture View',
-    description: 'Graph editor with architecture and dependency visualization',
-    icon: '🏗️',
+    id: "dev-architecture",
+    name: "Dev – Architecture View",
+    description: "Graph editor with architecture and dependency visualization",
+    icon: "🏗️",
     isDefault: true,
     layout: {
-      direction: 'row',
-      first: 'graph',
-      second: 'dev-tools',
+      direction: "row",
+      first: "graph",
+      second: "dev-tools",
       splitPercentage: 50,
     },
-    graphEditorId: 'scene-graph-v2',
+    graphEditorId: "scene-graph-v2",
   },
 ];
 
-const STORAGE_KEY = 'workspace_v2';
+const STORAGE_KEY = "workspace_v2";
 
 // Helper to get all leaf IDs from a layout tree
 const getAllLeaves = (node: LayoutNode<PanelId> | null): PanelId[] => {
   if (!node) return [];
-  if (typeof node === 'string') return [node];
+  if (typeof node === "string") return [node];
   return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
 };
 
 // Helper to validate and fix duplicate IDs in a layout
-const validateAndFixLayout = (layout: LayoutNode<PanelId> | null): LayoutNode<PanelId> | null => {
+const validateAndFixLayout = (
+  layout: LayoutNode<PanelId> | null,
+): LayoutNode<PanelId> | null => {
   if (!layout) return null;
 
   const leaves = getAllLeaves(layout);
@@ -357,8 +379,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       restorePanel: (panelId) => {
         // Check if panel is disabled via plugin system
         const pluginMeta = pluginCatalog.get(panelId);
-        if (pluginMeta && pluginMeta.activationState === 'inactive') {
-          console.warn(`Cannot restore panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`);
+        if (pluginMeta && pluginMeta.activationState === "inactive") {
+          console.warn(
+            `Cannot restore panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`,
+          );
           // TODO: Show user-facing notification
           return;
         }
@@ -377,7 +401,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         // Add panel to layout - append to the right side
         const newLayout: LayoutNode<PanelId> = current
           ? {
-              direction: 'row',
+              direction: "row",
               first: current,
               second: panelId,
               splitPercentage: 75,
@@ -403,7 +427,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           createdAt: Date.now(),
           isDefault: false,
         };
-        set((s) => ({ presets: [...s.presets, newPreset], activePresetId: newPreset.id }));
+        set((s) => ({
+          presets: [...s.presets, newPreset],
+          activePresetId: newPreset.id,
+        }));
       },
 
       loadPreset: (id) => {
@@ -425,7 +452,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         set((s) => {
           const remaining = s.presets.filter((p) => p.id !== id);
           const newActiveId =
-            s.activePresetId === id ? (remaining.find((p) => p.isDefault)?.id ?? null) : s.activePresetId;
+            s.activePresetId === id
+              ? (remaining.find((p) => p.isDefault)?.id ?? null)
+              : s.activePresetId;
           return { presets: remaining, activePresetId: newActiveId };
         });
       },
@@ -433,7 +462,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       setPresetGraphEditor: (presetId, graphEditorId) => {
         set((s) => ({
           presets: s.presets.map((p) =>
-            p.id === presetId ? { ...p, graphEditorId } : p
+            p.id === presetId ? { ...p, graphEditorId } : p,
           ),
         }));
       },
@@ -452,20 +481,27 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       openFloatingPanel: (panelId, options = {}) => {
         // Check if panel is disabled via plugin system
         const pluginMeta = pluginCatalog.get(panelId);
-        if (pluginMeta && pluginMeta.activationState === 'inactive') {
-          console.warn(`Cannot open panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`);
+        if (pluginMeta && pluginMeta.activationState === "inactive") {
+          console.warn(
+            `Cannot open panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`,
+          );
           // TODO: Show user-facing notification
           return;
         }
 
         const { x, y, width, height, context } = options;
-        const existing = get().floatingPanels.find(p => p.id === panelId);
+        const existing = get().floatingPanels.find((p) => p.id === panelId);
         if (existing) {
           // Panel already floating, update context and bring to front
-          const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
+          const maxZ = Math.max(
+            ...get().floatingPanels.map((p) => p.zIndex),
+            0,
+          );
           set({
-            floatingPanels: get().floatingPanels.map(p =>
-              p.id === panelId ? { ...p, zIndex: maxZ + 1, context: context ?? p.context } : p
+            floatingPanels: get().floatingPanels.map((p) =>
+              p.id === panelId
+                ? { ...p, zIndex: maxZ + 1, context: context ?? p.context }
+                : p,
             ),
           });
           return;
@@ -476,26 +512,34 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const finalHeight = height ?? 400;
         const finalX = x ?? Math.max(0, (window.innerWidth - finalWidth) / 2);
         const finalY = y ?? Math.max(0, (window.innerHeight - finalHeight) / 2);
-        const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
+        const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
 
         set({
           floatingPanels: [
             ...get().floatingPanels,
-            { id: panelId, x: finalX, y: finalY, width: finalWidth, height: finalHeight, zIndex: maxZ + 1, context },
+            {
+              id: panelId,
+              x: finalX,
+              y: finalY,
+              width: finalWidth,
+              height: finalHeight,
+              zIndex: maxZ + 1,
+              context,
+            },
           ],
         });
       },
 
       closeFloatingPanel: (panelId) => {
         set({
-          floatingPanels: get().floatingPanels.filter(p => p.id !== panelId),
+          floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
         });
       },
 
       minimizeFloatingPanel: (panelId) => {
         // Remove from floating panels (it will become a cube)
         set({
-          floatingPanels: get().floatingPanels.filter(p => p.id !== panelId),
+          floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
         });
       },
 
@@ -508,32 +552,32 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       updateFloatingPanelPosition: (panelId, x, y) => {
         set({
-          floatingPanels: get().floatingPanels.map(p =>
-            p.id === panelId ? { ...p, x, y } : p
+          floatingPanels: get().floatingPanels.map((p) =>
+            p.id === panelId ? { ...p, x, y } : p,
           ),
         });
       },
 
       updateFloatingPanelSize: (panelId, width, height) => {
         set({
-          floatingPanels: get().floatingPanels.map(p =>
-            p.id === panelId ? { ...p, width, height } : p
+          floatingPanels: get().floatingPanels.map((p) =>
+            p.id === panelId ? { ...p, width, height } : p,
           ),
         });
       },
 
       bringFloatingPanelToFront: (panelId) => {
-        const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
+        const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
         set({
-          floatingPanels: get().floatingPanels.map(p =>
-            p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p
+          floatingPanels: get().floatingPanels.map((p) =>
+            p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p,
           ),
         });
       },
     }),
     {
       name: STORAGE_KEY,
-      storage: createBackendStorage('workspace'),
+      storage: createBackendStorage("workspace"),
       version: 1,
       partialize: (state) => ({
         currentLayout: state.currentLayout,
@@ -562,6 +606,6 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           state.floatingPanels = [];
         }
       },
-    }
-  )
+    },
+  ),
 );

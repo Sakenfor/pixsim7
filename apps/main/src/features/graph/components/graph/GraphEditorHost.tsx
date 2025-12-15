@@ -9,8 +9,8 @@
 import { useMemo } from 'react';
 import { graphEditorRegistry } from '../../lib/editor/editorRegistry';
 import type { GraphEditorId } from '../../lib/editor/types';
-import { usePanelConfigStore } from '@/stores/panelConfigStore';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { usePanelConfigStore } from '@features/panels';
+import { useWorkspaceStore } from '@features/workspace';
 
 export interface GraphEditorHostProps {
   /**

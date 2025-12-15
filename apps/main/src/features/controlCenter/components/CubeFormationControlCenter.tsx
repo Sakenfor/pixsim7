@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useControlCubeStore, type CubeType } from '@features/controlCenter/stores/controlCubeStore';
 import { useControlCenterStore, type ControlModule } from '@features/controlCenter/stores/controlCenterStore';
-import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
+import { useWorkspaceStore, type PanelId } from '@features/workspace';
 import { ControlCube } from './ControlCube';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';

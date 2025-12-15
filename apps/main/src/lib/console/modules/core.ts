@@ -11,7 +11,7 @@ import { opsRegistry } from '../opsRegistry';
 import { useConsoleStore } from '../consoleStore';
 
 // Import stores
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import { useWorldContextStore } from '@/stores/worldContextStore';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';

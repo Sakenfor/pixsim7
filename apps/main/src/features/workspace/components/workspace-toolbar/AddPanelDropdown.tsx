@@ -1,19 +1,26 @@
-import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
-import { Icon } from '@lib/icons';
-import { panelRegistry } from '@lib/ui/panels';
-import { CATEGORY_LABELS, CATEGORY_ORDER } from '@lib/ui/panels';
+import {
+  useWorkspaceStore,
+  type PanelId,
+  type LayoutNode,
+} from "../../stores/workspaceStore";
+import { Icon } from "@lib/icons";
+import { panelRegistry } from "@features/panels";
+import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
 
 interface AddPanelDropdownProps {
   onRestorePanel: (panelId: PanelId) => void;
   onClose: () => void;
 }
 
-export function AddPanelDropdown({ onRestorePanel, onClose }: AddPanelDropdownProps) {
+export function AddPanelDropdown({
+  onRestorePanel,
+  onClose,
+}: AddPanelDropdownProps) {
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);
 
   const getAllLeaves = (node: LayoutNode<PanelId> | null): PanelId[] => {
     if (!node) return [];
-    if (typeof node === 'string') return [node as PanelId];
+    if (typeof node === "string") return [node as PanelId];
     return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
   };
 
@@ -43,8 +50,8 @@ export function AddPanelDropdown({ onRestorePanel, onClose }: AddPanelDropdownPr
                     key={panel.id}
                     className={`w-full text-left text-xs px-2 py-1.5 rounded flex items-center gap-2 ${
                       alreadyExists
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:bg-neutral-100 dark:hover:bg-neutral-700"
                     }`}
                     onClick={() => {
                       if (!alreadyExists) {
@@ -53,11 +60,19 @@ export function AddPanelDropdown({ onRestorePanel, onClose }: AddPanelDropdownPr
                       }
                     }}
                     disabled={alreadyExists}
-                    title={alreadyExists ? 'Already in layout' : panel.description || ''}
+                    title={
+                      alreadyExists
+                        ? "Already in layout"
+                        : panel.description || ""
+                    }
                   >
-                    {panel.icon && <span className="text-sm">{panel.icon}</span>}
+                    {panel.icon && (
+                      <span className="text-sm">{panel.icon}</span>
+                    )}
                     <span className="flex-1">{panel.title}</span>
-                    {alreadyExists && <Icon name="check" size={12} className="opacity-50" />}
+                    {alreadyExists && (
+                      <Icon name="check" size={12} className="opacity-50" />
+                    )}
                   </button>
                 );
               })}

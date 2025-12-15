@@ -87,6 +87,7 @@ export {
   uploadAssetToProvider,
   getAsset,
   extractFrame,
+  downloadAsset,
   type AssetResponse,
   type ExtractFrameRequest,
 } from './lib/api';

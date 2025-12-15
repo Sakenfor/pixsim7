@@ -1,5 +1,5 @@
-import { DockviewWorkspace } from '../components/layout/DockviewWorkspace';
-import { WorkspaceToolbar } from '../components/layout/WorkspaceToolbar';
+import { DockviewWorkspace } from "../components/DockviewWorkspace";
+import { WorkspaceToolbar } from "../components/WorkspaceToolbar";
 
 export function WorkspaceRoute() {
   return (

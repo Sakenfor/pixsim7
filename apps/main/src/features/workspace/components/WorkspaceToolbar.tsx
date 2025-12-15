@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { PresetsDropdown } from './workspace-toolbar/PresetsDropdown';
-import { AddPanelDropdown } from './workspace-toolbar/AddPanelDropdown';
-import { RestoreClosedPanelsMenu } from './workspace-toolbar/RestoreClosedPanelsMenu';
-import { SavePresetDialog } from './workspace-toolbar/SavePresetDialog';
+import { useState } from "react";
+import { useWorkspaceStore } from "../stores/workspaceStore";
+import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
+import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";
+import { RestoreClosedPanelsMenu } from "./workspace-toolbar/RestoreClosedPanelsMenu";
+import { SavePresetDialog } from "./workspace-toolbar/SavePresetDialog";
 
 export function WorkspaceToolbar() {
   const [showPresets, setShowPresets] = useState(false);
@@ -34,13 +34,13 @@ export function WorkspaceToolbar() {
       <button
         className={`text-xs px-2 py-1 border rounded transition-colors ${
           isLocked
-            ? 'bg-yellow-100 border-yellow-400 text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-600 dark:text-yellow-200'
-            : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+            ? "bg-yellow-100 border-yellow-400 text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-600 dark:text-yellow-200"
+            : "hover:bg-neutral-100 dark:hover:bg-neutral-700"
         }`}
         onClick={toggleLock}
-        title={isLocked ? 'Unlock layout' : 'Lock layout'}
+        title={isLocked ? "Unlock layout" : "Lock layout"}
       >
-        {isLocked ? '🔒 Locked' : '🔓 Unlocked'}
+        {isLocked ? "🔒 Locked" : "🔓 Unlocked"}
       </button>
 
       <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-600" />

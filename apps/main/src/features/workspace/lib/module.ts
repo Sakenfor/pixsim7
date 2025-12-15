@@ -1,7 +1,7 @@
-import type { Module } from '../types';
-import { registerWorkspaceFeature } from '../../lib/capabilities/registerCoreFeatures';
-import { initializePanels } from '@lib/ui/panels';
-import { WorkspaceModule as WorkspaceModuleComponent } from '@features/controlCenter/components/modules/WorkspaceModule';
+import type { Module } from "@/modules/types";
+import { registerWorkspaceFeature } from "./capabilities";
+import { initializePanels } from "@features/panels";
+import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";
 
 /**
  * Workspace Module
@@ -10,8 +10,8 @@ import { WorkspaceModule as WorkspaceModuleComponent } from '@features/controlCe
  * Registers workspace feature capabilities with the capability registry.
  */
 export const workspaceModule: Module = {
-  id: 'workspace',
-  name: 'Scene Builder',
+  id: "workspace",
+  name: "Scene Builder",
 
   async initialize() {
     // Register workspace capabilities (hotspots, scene builder, etc.)
@@ -27,24 +27,24 @@ export const workspaceModule: Module = {
   // Auto-register Control Center module
   controlCenterModules: [
     {
-      id: 'workspace',
-      label: 'Workspace',
-      icon: '🏗️',
+      id: "workspace",
+      label: "Workspace",
+      icon: "🏗️",
       component: WorkspaceModuleComponent,
-      category: 'tools',
+      category: "tools",
       order: 60,
       enabledByDefault: true,
       builtin: true,
-      description: 'Workspace management and presets',
-      tags: ['workspace', 'layout', 'presets'],
+      description: "Workspace management and presets",
+      tags: ["workspace", "layout", "presets"],
     },
   ],
 
   page: {
-    route: '/workspace',
-    icon: 'palette',
-    description: 'Create and edit scenes with timeline',
-    category: 'creation',
+    route: "/workspace",
+    icon: "palette",
+    description: "Create and edit scenes with timeline",
+    category: "creation",
     featured: true,
   },
 };

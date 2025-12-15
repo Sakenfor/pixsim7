@@ -11,7 +11,7 @@ import {
   type NpcExpressionDTO,
 } from '../lib/api/game';
 import { NpcPreferencesEditor } from '../components/NpcPreferencesEditor';
-import { useWorkspaceStore } from '../stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 
 type TabType = 'expressions' | 'preferences';
 

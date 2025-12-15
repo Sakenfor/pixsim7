@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import { useMediaGenerationActions } from '@features/generation';
 import { deleteAsset, uploadAssetToProvider } from '../lib/api';
 import { BACKEND_BASE } from '@lib/api/client';

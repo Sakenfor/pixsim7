@@ -6,9 +6,9 @@
  */
 
 import { useState, useMemo } from 'react';
-import { usePanelConfigStore } from '@/stores/panelConfigStore';
-import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { usePanelConfigStore } from '@features/panels';
+import type { GalleryPanelSettings } from '@features/panels';
+import { useWorkspaceStore } from '@features/workspace';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
 import { mediaCardPresets } from '@lib/ui/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';

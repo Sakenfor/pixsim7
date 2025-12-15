@@ -6,7 +6,7 @@
  */
 
 import { opsRegistry } from './opsRegistry';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useConsoleStore } from './consoleStore';
 

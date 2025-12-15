@@ -1,10 +1,14 @@
-import { useRef, useEffect, useState } from 'react';
-import { DockviewReact } from 'dockview';
-import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
-import 'dockview/dist/styles/dockview.css';
-import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
-import { panelRegistry, initializePanels, PanelHostLite } from '@lib/ui/panels';
-import { initializeWidgets } from '@lib/ui/composer';
+import { useRef, useEffect, useState } from "react";
+import { DockviewReact } from "dockview";
+import type { DockviewReadyEvent, IDockviewPanelProps } from "dockview-core";
+import "dockview/dist/styles/dockview.css";
+import {
+  useWorkspaceStore,
+  type PanelId,
+  type LayoutNode,
+} from "../stores/workspaceStore";
+import { panelRegistry, initializePanels, PanelHostLite } from "@features/panels";
+import { initializeWidgets } from "@lib/ui/composer";
 
 // Wrapper for panels to provide data-panel-id and a common header
 function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
@@ -19,7 +23,13 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
     return <div className="p-4 text-red-500">Unknown panel: {panelId}</div>;
   }
 
-  return <PanelHostLite panelId={panelId} className="h-full w-full" variant="dockview" />;
+  return (
+    <PanelHostLite
+      panelId={panelId}
+      className="h-full w-full"
+      variant="dockview"
+    />
+  );
 }
 
 /** Get panel title from registry, with id as fallback */
@@ -28,9 +38,9 @@ const getPanelTitle = (id: PanelId): string =>
 
 // Helper to convert tree layout to Dockview panels
 function applyLayoutToDockview(
-  api: DockviewReadyEvent['api'],
+  api: DockviewReadyEvent["api"],
   layout: LayoutNode<PanelId> | null,
-  titles: Record<PanelId, string>
+  titles: Record<PanelId, string>,
 ) {
   // Clear existing panels (defensively guard against stale/undefined ids)
   const existingPanels = api.panels.map((p) => p.id).filter(Boolean);
@@ -52,9 +62,9 @@ function applyLayoutToDockview(
   const buildPanels = (
     node: LayoutNode<PanelId>,
     referencePanel?: string,
-    direction?: 'left' | 'right' | 'above' | 'below'
+    direction?: "left" | "right" | "above" | "below",
   ): string => {
-    if (typeof node === 'string') {
+    if (typeof node === "string") {
       // Leaf node - create panel
       const baseId = `${node}-panel-${panelCounter++}`;
       // Ensure the id is unique in the current Dockview instance
@@ -65,7 +75,7 @@ function applyLayoutToDockview(
       }
       api.addPanel({
         id: panelId,
-        component: 'panel',
+        component: "panel",
         params: { panelId: node },
         title: titles[node],
         position: referencePanel
@@ -79,8 +89,12 @@ function applyLayoutToDockview(
     const firstPanelId = buildPanels(node.first, referencePanel, direction);
 
     // Determine direction for second panel
-    const secondDirection = node.direction === 'row' ? 'right' : 'below';
-    const secondPanelId = buildPanels(node.second, firstPanelId, secondDirection);
+    const secondDirection = node.direction === "row" ? "right" : "below";
+    const secondPanelId = buildPanels(
+      node.second,
+      firstPanelId,
+      secondDirection,
+    );
 
     return firstPanelId;
   };
@@ -89,7 +103,7 @@ function applyLayoutToDockview(
 }
 
 export function DockviewWorkspace() {
-  const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
+  const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const [isReady, setIsReady] = useState(false);
   const lastAppliedLayoutRef = useRef<LayoutNode<PanelId> | null>(null);
 
@@ -103,8 +117,8 @@ export function DockviewWorkspace() {
     Promise.all([
       initializePanels(),
       Promise.resolve(initializeWidgets()),
-    ]).catch(error => {
-      console.error('Failed to initialize:', error);
+    ]).catch((error) => {
+      console.error("Failed to initialize:", error);
     });
   }, []);
 
@@ -117,7 +131,7 @@ export function DockviewWorkspace() {
       try {
         event.api.fromJSON(dockviewLayout);
       } catch (error) {
-        console.error('Failed to load layout:', error);
+        console.error("Failed to load layout:", error);
         createDefaultLayout(event.api);
       }
     } else {
@@ -127,51 +141,51 @@ export function DockviewWorkspace() {
     // Set locked state
     if (isLocked) {
       event.api.groups.forEach((group) => {
-        group.locked = 'no-drop-target';
+        group.locked = "no-drop-target";
       });
     }
   };
 
-  const createDefaultLayout = (api: DockviewReadyEvent['api']) => {
+  const createDefaultLayout = (api: DockviewReadyEvent["api"]) => {
     // Create default layout similar to mosaic default
     const galleryPanel = api.addPanel({
-      id: 'gallery-panel',
-      component: 'panel',
-      params: { panelId: 'gallery' as PanelId },
-      title: getPanelTitle('gallery'),
-      position: { direction: 'left' },
+      id: "gallery-panel",
+      component: "panel",
+      params: { panelId: "gallery" as PanelId },
+      title: getPanelTitle("gallery"),
+      position: { direction: "left" },
     });
 
     api.addPanel({
-      id: 'health-panel',
-      component: 'panel',
-      params: { panelId: 'health' as PanelId },
-      title: getPanelTitle('health'),
-      position: { direction: 'below', referencePanel: 'gallery-panel' },
+      id: "health-panel",
+      component: "panel",
+      params: { panelId: "health" as PanelId },
+      title: getPanelTitle("health"),
+      position: { direction: "below", referencePanel: "gallery-panel" },
     });
 
     api.addPanel({
-      id: 'graph-panel',
-      component: 'panel',
-      params: { panelId: 'graph' as PanelId },
-      title: getPanelTitle('graph'),
-      position: { direction: 'right' },
+      id: "graph-panel",
+      component: "panel",
+      params: { panelId: "graph" as PanelId },
+      title: getPanelTitle("graph"),
+      position: { direction: "right" },
     });
 
     api.addPanel({
-      id: 'inspector-panel',
-      component: 'panel',
-      params: { panelId: 'inspector' as PanelId },
-      title: getPanelTitle('inspector'),
-      position: { direction: 'right', referencePanel: 'graph-panel' },
+      id: "inspector-panel",
+      component: "panel",
+      params: { panelId: "inspector" as PanelId },
+      title: getPanelTitle("inspector"),
+      position: { direction: "right", referencePanel: "graph-panel" },
     });
 
     api.addPanel({
-      id: 'game-panel',
-      component: 'panel',
-      params: { panelId: 'game' as PanelId },
-      title: getPanelTitle('game'),
-      position: { direction: 'below', referencePanel: 'inspector-panel' },
+      id: "game-panel",
+      component: "panel",
+      params: { panelId: "game" as PanelId },
+      title: getPanelTitle("game"),
+      position: { direction: "below", referencePanel: "inspector-panel" },
     });
   };
 
@@ -197,7 +211,7 @@ export function DockviewWorkspace() {
 
     apiRef.current.groups.forEach((group) => {
       if (isLocked) {
-        group.locked = 'no-drop-target';
+        group.locked = "no-drop-target";
       } else {
         group.locked = false;
       }
@@ -216,7 +230,7 @@ export function DockviewWorkspace() {
 
     // Build panel titles from registry
     const panelTitles: Record<PanelId, string> = {} as any;
-    panelRegistry.getAll().forEach(panel => {
+    panelRegistry.getAll().forEach((panel) => {
       panelTitles[panel.id] = panel.title;
     });
 

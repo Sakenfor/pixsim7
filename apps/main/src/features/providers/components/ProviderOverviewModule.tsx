@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import { useProviders } from '../hooks/useProviders';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import { AIProviderSettings } from './AIProviderSettings';
 
 export function ProviderOverviewModule() {

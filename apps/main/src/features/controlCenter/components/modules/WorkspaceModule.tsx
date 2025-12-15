@@ -8,8 +8,8 @@
  * - Recent workspaces
  */
 
-import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import { useWorkspaceStore } from '@features/workspace';
+import { usePanelConfigStore } from '@features/panels';
 import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 
 export function WorkspaceModule({ }: ControlCenterModuleProps) {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Modal, Button, Input, FormField } from '@pixsim7/shared.ui';
+import { useState } from "react";
+import { Modal, Button, Input, FormField } from "@pixsim7/shared.ui";
 
 interface SavePresetDialogProps {
   onSave: (name: string) => void;
@@ -7,7 +7,7 @@ interface SavePresetDialogProps {
 }
 
 export function SavePresetDialog({ onSave, onCancel }: SavePresetDialogProps) {
-  const [presetName, setPresetName] = useState('');
+  const [presetName, setPresetName] = useState("");
 
   const handleSave = () => {
     if (presetName.trim()) {
@@ -16,14 +16,19 @@ export function SavePresetDialog({ onSave, onCancel }: SavePresetDialogProps) {
   };
 
   return (
-    <Modal isOpen={true} onClose={onCancel} title="Save Workspace Preset" size="sm">
+    <Modal
+      isOpen={true}
+      onClose={onCancel}
+      title="Save Workspace Preset"
+      size="sm"
+    >
       <FormField label="Preset Name" required>
         <Input
           type="text"
           placeholder="Preset name..."
           value={presetName}
           onChange={(e) => setPresetName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+          onKeyDown={(e) => e.key === "Enter" && handleSave()}
           autoFocus
         />
       </FormField>

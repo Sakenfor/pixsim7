@@ -19,7 +19,7 @@
  */
 
 export { coreModule } from './core';
-export { workspaceModule } from './workspace';
+export { workspaceConsoleModule as workspaceModule } from '@features/workspace';
 export { toolsModule, useToolConsoleStore } from './tools';
 
 // Inspector module system
@@ -42,7 +42,7 @@ export type { ConsoleModule } from '../moduleRegistry';
 
 // Default modules in dependency order
 import { coreModule } from './core';
-import { workspaceModule } from './workspace';
+import { workspaceConsoleModule as workspaceModule } from '@features/workspace';
 import { toolsModule } from './tools';
 
 /**

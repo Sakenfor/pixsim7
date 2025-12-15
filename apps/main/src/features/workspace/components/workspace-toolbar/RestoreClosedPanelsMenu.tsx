@@ -1,12 +1,12 @@
-import type { PanelId } from '@/stores/workspaceStore';
+import type { PanelId } from "../../stores/workspaceStore";
 
 const PANEL_NAMES: Record<PanelId, string> = {
-  gallery: 'Gallery',
-  scene: 'Scene Builder',
-  graph: 'Graph',
-  inspector: 'Inspector',
-  health: 'Health',
-  game: 'Game',
+  gallery: "Gallery",
+  scene: "Scene Builder",
+  graph: "Graph",
+  inspector: "Inspector",
+  health: "Health",
+  game: "Game",
 };
 
 interface RestoreClosedPanelsMenuProps {
@@ -26,7 +26,11 @@ export function RestoreClosedPanelsMenu({
     <div className="relative">
       <button
         className="text-xs px-2 py-1 border rounded bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
-        onClick={() => document.getElementById('closed-panels-menu')?.classList.toggle('hidden')}
+        onClick={() =>
+          document
+            .getElementById("closed-panels-menu")
+            ?.classList.toggle("hidden")
+        }
       >
         ↶ Restore ({closedPanels.length})
       </button>

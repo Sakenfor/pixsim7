@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 
 export function WorkspaceProfileManager() {
   const presets = useWorkspaceStore((s) => s.presets);
