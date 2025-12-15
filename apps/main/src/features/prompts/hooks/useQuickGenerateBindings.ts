@@ -14,7 +14,9 @@ export type { OperationType };
 export interface QuickGenerateBindings {
   lastSelectedAsset?: SelectedAsset;
   mainQueue: QueuedAsset[];
+  mainQueueIndex: number;
   transitionQueue: QueuedAsset[];
+  transitionQueueIndex: number;
   dynamicParams: Record<string, any>;
   setDynamicParams: Dispatch<SetStateAction<Record<string, any>>>;
   imageUrls: string[];
@@ -52,7 +54,9 @@ export function useQuickGenerateBindings(
 
   // Generation queue support
   const mainQueue = useGenerationQueueStore(s => s.mainQueue);
+  const mainQueueIndex = useGenerationQueueStore(s => s.mainQueueIndex);
   const transitionQueue = useGenerationQueueStore(s => s.transitionQueue);
+  const transitionQueueIndex = useGenerationQueueStore(s => s.transitionQueueIndex);
   const consumeFromQueue = useGenerationQueueStore(s => s.consumeFromQueue);
   const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
   const clearQueue = useGenerationQueueStore(s => s.clearQueue);
@@ -188,7 +192,9 @@ export function useQuickGenerateBindings(
   return {
     lastSelectedAsset,
     mainQueue,
+    mainQueueIndex,
     transitionQueue,
+    transitionQueueIndex,
     dynamicParams,
     setDynamicParams,
     imageUrls,

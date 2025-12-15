@@ -41,6 +41,7 @@ export function QuickGenerateModule() {
     generationId,
     lastSelectedAsset,
     mainQueue,
+    mainQueueIndex,
     transitionQueue,
     removeFromQueue,
     clearTransitionQueue,
@@ -545,6 +546,7 @@ export function QuickGenerateModule() {
   const panelContext = useMemo<QuickGenPanelContext>(() => ({
     displayAssets,
     mainQueue,
+    mainQueueIndex,
     operationType,
     isFlexibleOperation: isFlexibleOp,
     removeFromQueue,
@@ -558,6 +560,7 @@ export function QuickGenerateModule() {
   }), [
     displayAssets,
     mainQueue,
+    mainQueueIndex,
     operationType,
     isFlexibleOp,
     removeFromQueue,

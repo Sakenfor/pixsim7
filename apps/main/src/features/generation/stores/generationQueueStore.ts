@@ -23,6 +23,10 @@ export interface GenerationQueueState {
   mainQueue: QueuedAsset[];           // General generation queue
   transitionQueue: QueuedAsset[];     // Assets queued for video transition
 
+  // Current index tracking (1-based for display)
+  mainQueueIndex: number;
+  transitionQueueIndex: number;
+
   // Actions
   addToQueue: (asset: AssetSummary, operation?: 'image_to_image' | 'image_to_video' | 'video_extend') => void;
   addToTransitionQueue: (asset: AssetSummary) => void;
@@ -44,6 +48,8 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
     (set, get) => ({
       mainQueue: [],
       transitionQueue: [],
+      mainQueueIndex: 1,
+      transitionQueueIndex: 1,
 
       addToQueue: (asset, operation) => {
         set((state) => ({
@@ -55,6 +61,8 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
               queuedAt: new Date().toISOString(),
             },
           ],
+          // Reset to show the newly added asset (last in queue, but we cycle to show it first)
+          mainQueueIndex: state.mainQueue.length + 1,
         }));
       },
 
@@ -68,6 +76,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
               queuedAt: new Date().toISOString(),
             },
           ],
+          transitionQueueIndex: state.transitionQueue.length + 1,
         }));
       },
 
@@ -88,11 +97,11 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
       clearQueue: (queueType = 'all') => {
         set(() => {
           if (queueType === 'all') {
-            return { mainQueue: [], transitionQueue: [] };
+            return { mainQueue: [], transitionQueue: [], mainQueueIndex: 1, transitionQueueIndex: 1 };
           } else if (queueType === 'main') {
-            return { mainQueue: [] };
+            return { mainQueue: [], mainQueueIndex: 1 };
           } else {
-            return { transitionQueue: [] };
+            return { transitionQueue: [], transitionQueueIndex: 1 };
           }
         });
       },
@@ -151,30 +160,41 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
       cycleQueue: (queueType = 'main', direction = 'next') => {
         set((state) => {
           const key = queueType === 'main' ? 'mainQueue' : 'transitionQueue';
+          const indexKey = queueType === 'main' ? 'mainQueueIndex' : 'transitionQueueIndex';
           const queue = state[key];
-          if (!queue || queue.length <= 1) {
+          const currentIndex = state[indexKey];
+          const length = queue?.length || 0;
+
+          if (!queue || length <= 1) {
             return {};
           }
 
           let nextQueue: QueuedAsset[];
+          let nextIndex: number;
+
           if (direction === 'next') {
             nextQueue = [...queue.slice(1), queue[0]];
+            nextIndex = currentIndex >= length ? 1 : currentIndex + 1;
           } else {
             nextQueue = [queue[queue.length - 1], ...queue.slice(0, queue.length - 1)];
+            nextIndex = currentIndex <= 1 ? length : currentIndex - 1;
           }
 
           return {
             [key]: nextQueue,
+            [indexKey]: nextIndex,
           } as any;
         });
       },
     }),
     {
-      name: 'generation_queue_v1',
-      // Only queues need to be persisted; methods are recreated.
+      name: 'generation_queue_v2',
+      // Queues and indices need to be persisted; methods are recreated.
       partialize: (state) => ({
         mainQueue: state.mainQueue,
         transitionQueue: state.transitionQueue,
+        mainQueueIndex: state.mainQueueIndex,
+        transitionQueueIndex: state.transitionQueueIndex,
       }),
     },
   ),
