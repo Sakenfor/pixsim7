@@ -139,8 +139,8 @@ def register_default_loaders():
 
     Domain-specific loaders can be registered in their respective modules.
     """
-    from domain.character_integrations import CharacterInstance
-    from domain.game.models import GameNPC
+    from domain.game.entities.character_integrations import CharacterInstance
+    from domain.game.core.models import GameNPC, GameLocation
 
     registry = get_entity_loader_registry()
 
@@ -161,8 +161,14 @@ def register_default_loaders():
 
     registry.register_loader('npc', load_npc)
 
+    # GameLocation loader
+    async def load_location(location_id: int, db: AsyncSession):
+        """Load GameLocation by ID"""
+        return await db.get(GameLocation, location_id)
+
+    registry.register_loader('location', load_location)
+
     # TODO: Add loaders for other entity types as they are implemented
     # - itemTemplate, item
     # - propTemplate, prop
-    # - locationTemplate, location
     # etc.

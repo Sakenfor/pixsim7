@@ -267,6 +267,53 @@ def setup_stat_packages() -> int:
     return len(packages)
 
 
+def setup_link_system() -> dict:
+    """
+    Initialize the generic ObjectLink system.
+
+    Registers:
+    - Entity loaders for all core entity types
+    - Field mappings for template↔runtime pairs
+
+    Returns:
+        dict: Statistics (loaders, mappings registered)
+
+    Why this is a separate function:
+    - Must run after database init but before plugins
+    - Independent, testable initialization
+    - Returns stats for logging
+    """
+    from pixsim7.backend.main.services.links.entity_loaders import (
+        register_default_loaders,
+        get_entity_loader_registry
+    )
+    from pixsim7.backend.main.services.links.default_mappings import (
+        register_default_mappings
+    )
+    from pixsim7.backend.main.services.links.mapping_registry import (
+        get_mapping_registry
+    )
+
+    # Register entity loaders
+    register_default_loaders()
+    loader_count = len(get_entity_loader_registry().list_loaders())
+
+    # Register field mappings
+    register_default_mappings()
+    mapping_count = len(get_mapping_registry().list_mappings())
+
+    logger.info(
+        "link_system_initialized",
+        loaders=loader_count,
+        mappings=mapping_count
+    )
+
+    return {
+        'loaders': loader_count,
+        'mappings': mapping_count
+    }
+
+
 async def setup_plugins(
     app: FastAPI,
     plugins_dir: str | Path,

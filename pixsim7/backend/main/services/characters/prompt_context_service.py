@@ -400,6 +400,10 @@ class PromptContextService:
         self._sync_service = sync_service or CharacterNPCSyncService(db)
         self._stat_engine = stat_engine or create_stat_engine()
 
+        # Link resolver for generic link resolution
+        from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver
+        self.link_resolver = ObjectLinkResolver(db, self._stat_engine)
+
         # Register built-in resolver for NPCs with DI
         self._register_default_npc_resolver()
 
@@ -577,3 +581,47 @@ class PromptContextService:
                 "Generic ObjectLink system not available. "
                 "Use get_npc_prompt_context() for NPC resolution."
             )
+
+    async def get_prompt_context_from_link(
+        self,
+        template_kind: str,
+        template_id: str,
+        context: Optional[Dict] = None
+    ) -> PromptContextSnapshot:
+        """Get prompt context via generic ObjectLink resolution (NEW API)
+
+        This is the new generic API that uses ObjectLinkResolver.
+        Use for any entity type with cleaner, simpler implementation.
+
+        For backward compatibility, use get_npc_prompt_context() for NPCs.
+
+        Args:
+            template_kind: Template entity type (e.g., 'character', 'itemTemplate')
+            template_id: Template entity ID
+            context: Optional context for link activation
+
+        Returns:
+            PromptContextSnapshot with resolved data
+
+        Example:
+            snapshot = await service.get_prompt_context_from_link(
+                'character',
+                'abc-123-uuid',
+                context={'location.zone': 'downtown'}
+            )
+        """
+        resolved_data = await self.link_resolver.resolve_prompt_context(
+            template_kind,
+            template_id,
+            context
+        )
+
+        # Convert to PromptContextSnapshot
+        return PromptContextSnapshot(
+            entity_type=template_kind,
+            template_id=template_id,
+            name=resolved_data.get('name', 'Unknown'),
+            traits=resolved_data.get('traits', {}),
+            state=resolved_data.get('state', {}),
+            location_id=resolved_data.get('location_id'),
+        )

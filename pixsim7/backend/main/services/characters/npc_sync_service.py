@@ -60,6 +60,10 @@ class CharacterNPCSyncService:
         self.db = db
         self.instance_service = CharacterInstanceService(db)
 
+        # Use loader registry for entity loading
+        from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver
+        self.link_resolver = ObjectLinkResolver(db)
+
     async def create_link(
         self,
         character_instance_id: UUID,
@@ -89,7 +93,8 @@ class CharacterNPCSyncService:
         if not instance:
             raise ValueError(f"Instance {character_instance_id} not found")
 
-        npc = await self.db.get(GameNPC, npc_id)
+        # Load NPC via loader registry
+        npc = await self.link_resolver.load_entity('npc', npc_id)
         if not npc:
             raise ValueError(f"NPC {npc_id} not found")
 
@@ -274,8 +279,8 @@ class CharacterNPCSyncService:
             link.character_instance_id
         )
 
-        # Get NPC
-        npc = await self.db.get(GameNPC, link.npc_id)
+        # Get NPC via loader registry
+        npc = await self.link_resolver.load_entity('npc', link.npc_id)
         if not npc:
             return {"error": "NPC not found"}
 

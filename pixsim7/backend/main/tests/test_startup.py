@@ -275,4 +275,46 @@ class TestStartupSequence:
         pytest.skip("Full lifespan test requires database and Redis")
 
 
+class TestSetupLinkSystem:
+    """Tests for setup_link_system()"""
+
+    def test_setup_link_system_registers_loaders_and_mappings(self):
+        """Test that setup_link_system() registers loaders and mappings"""
+        from pixsim7.backend.main.startup import setup_link_system
+        from pixsim7.backend.main.services.links.entity_loaders import get_entity_loader_registry
+        from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
+
+        # Clear registries first (in case previous tests left state)
+        loader_registry = get_entity_loader_registry()
+        mapping_registry = get_mapping_registry()
+
+        # Call setup
+        stats = setup_link_system()
+
+        # Verify stats returned
+        assert 'loaders' in stats
+        assert 'mappings' in stats
+        assert stats['loaders'] >= 2  # At least character, npc
+        assert stats['mappings'] >= 1  # At least character->npc
+
+        # Verify loaders registered
+        assert loader_registry.has_loader('character')
+        assert loader_registry.has_loader('npc')
+        assert loader_registry.has_loader('location')
+
+        # Verify mappings registered
+        assert mapping_registry.has_mapping('character->npc')
+
+    def test_setup_link_system_idempotent(self):
+        """Test that setup_link_system() can be called multiple times"""
+        from pixsim7.backend.main.startup import setup_link_system
+
+        # Call twice
+        stats1 = setup_link_system()
+        stats2 = setup_link_system()
+
+        # Should return same counts (idempotent)
+        assert stats1 == stats2
+
+
 # Run tests with: pytest pixsim7/backend/main/tests/test_startup.py -v
