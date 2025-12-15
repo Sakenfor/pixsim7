@@ -668,8 +668,8 @@ export function QuickGenerateModule() {
     const api = dockviewRef.current;
     const needsRebuild = previousLayoutRef.current !== showAssetPanelInLayout;
 
-    if (needsRebuild) {
-      // Layout type changed - clear and rebuild all panels
+    if (needsRebuild || previousLayoutRef.current === null) {
+      // Layout type changed OR initial mount - clear and rebuild all panels
       const panelIds = ['asset-panel', 'prompt-panel', 'settings-panel', 'blocks-panel'];
       panelIds.forEach(id => {
         const panel = api.panels.find(p => p.id === id);
