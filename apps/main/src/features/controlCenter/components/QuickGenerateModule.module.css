@@ -4,12 +4,19 @@
  */
 
 /* Hide panel headers (we don't need titles/close buttons) */
-.minimalDockview :global(.dockview-panel-header) {
-  display: none;
+.minimalDockview :global(.dockview-panel-header),
+.minimalDockview :global([class*="header"]),
+.minimalDockview :global([class*="tab-container"]),
+.minimalDockview :global([class*="tabs-container"]) {
+  display: none !important;
 }
 
-/* Hide all tabs - panels are side-by-side, not tabbed */
-.minimalDockview :global(.tabs-container) {
+/* Also try hiding via dockview's tab elements */
+.minimalDockview :global(.dv-default-tab),
+.minimalDockview :global(.dv-tabs),
+.minimalDockview :global(.tab),
+.minimalDockview :global([role="tab"]),
+.minimalDockview :global([role="tablist"]) {
   display: none !important;
 }
 
