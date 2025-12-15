@@ -575,6 +575,23 @@ export function QuickGenerateModule() {
     previousLayoutRef.current = null; // Force initial layout creation
   };
 
+  // Focus asset panel when assets are added to queue
+  const prevQueueLengthRef = useRef(mainQueue.length);
+  useEffect(() => {
+    const prevLength = prevQueueLengthRef.current;
+    const currentLength = mainQueue.length;
+
+    // Asset was added (queue grew)
+    if (currentLength > prevLength && currentLength > 0 && dockviewRef.current) {
+      const assetPanel = dockviewRef.current.panels.find(p => p.id === 'asset-panel');
+      if (assetPanel && !assetPanel.api.isActive) {
+        assetPanel.api.setActive();
+      }
+    }
+
+    prevQueueLengthRef.current = currentLength;
+  }, [mainQueue.length]);
+
   // Helper to create panels for current layout
   const createPanelsForLayout = useCallback((api: DockviewReadyEvent['api'], hasAssetPanel: boolean) => {
     // Helper to safely add panel only if it doesn't exist
