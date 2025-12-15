@@ -19,14 +19,14 @@ interface ViewerQuickGenerateProps {
 
 export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
   const controlCenterOpen = useControlCenterStore((s) => s.open);
-  const [prompt, setPrompt] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
 
   const {
     generating,
     generate,
     setOperationType,
-    setPrompt: setControllerPrompt,
+    prompt,
+    setPrompt,
   } = useQuickGenerateController();
 
   const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
@@ -63,14 +63,13 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     // Add to main queue
     addToQueue(queueAsset, 'main');
 
-    // Set operation type and prompt
+    // Set operation type
     setOperationType(operationType);
-    setControllerPrompt(prompt);
 
     // Trigger generation
     await generate();
 
-    // Clear local prompt on success
+    // Clear prompt on success
     setPrompt('');
     setIsExpanded(false);
   };
@@ -113,15 +112,15 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
         </button>
       </div>
       <div className="flex gap-2">
-        <input
-          type="text"
+        <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={generating}
           autoFocus
-          className="flex-1 px-3 py-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50"
+          rows={3}
+          className="flex-1 px-3 py-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 resize-y min-h-[60px] max-h-[200px]"
         />
         <button
           onClick={handleGenerate}
