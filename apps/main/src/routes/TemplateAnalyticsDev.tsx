@@ -1,5 +1,5 @@
 import React from 'react';
-import { TemplateAnalyticsPanel } from '@/components/panels/dev/TemplateAnalyticsPanel';
+import { TemplateAnalyticsPanel } from '@features/panels/components/dev/TemplateAnalyticsPanel';
 
 /**
  * TemplateAnalyticsDev Route

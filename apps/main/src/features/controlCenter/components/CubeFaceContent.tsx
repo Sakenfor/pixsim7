@@ -1,7 +1,7 @@
 import type { CubeType } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFace } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFaceContent } from './ControlCube';
-import { panelActionRegistry } from '@lib/ui/panels';
+import { panelActionRegistry } from '@features/panels';
 import { Icon } from '@lib/icons';
 
 /**

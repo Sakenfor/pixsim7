@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppMapPanel } from '@/components/panels/dev/AppMapPanel';
+import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
 
 /**
  * AppMapDev Route

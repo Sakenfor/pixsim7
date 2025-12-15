@@ -27,7 +27,7 @@ import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '../devtools';
-import { panelRegistry, type PanelDefinition } from '@lib/ui/panels';
+import { panelRegistry, type PanelDefinition } from '@features/panels';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 
 // ============================================================================

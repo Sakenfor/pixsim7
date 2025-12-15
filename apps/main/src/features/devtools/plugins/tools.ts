@@ -10,14 +10,14 @@
 import type { DevToolDefinition } from '@lib/devtools/types';
 
 // Import dev tool components
-import { SessionStateViewer } from '@/components/panels/dev/SessionStateViewer';
-import { AppMapPanel } from '@/components/panels/dev/AppMapPanel';
-import { BackendArchitecturePanel } from '@/components/panels/dev/BackendArchitecturePanel';
-import { CapabilityTestingPanel } from '@/components/panels/dev/CapabilityTestingPanel';
-import { DependencyGraphPanel } from '@/components/panels/dev/DependencyGraphPanel';
-import { GenerationHealthView } from '@/components/panels/dev/GenerationHealthView';
-import { TemplateAnalyticsPanel } from '@/components/panels/dev/TemplateAnalyticsPanel';
-import { GizmoSurfacesPanel } from '@/components/panels/dev/GizmoSurfacesPanel';
+import { SessionStateViewer } from '@features/panels/components/dev/SessionStateViewer';
+import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
+import { BackendArchitecturePanel } from '@features/panels/components/dev/BackendArchitecturePanel';
+import { CapabilityTestingPanel } from '@features/panels/components/dev/CapabilityTestingPanel';
+import { DependencyGraphPanel } from '@features/panels/components/dev/DependencyGraphPanel';
+import { GenerationHealthView } from '@features/panels/components/dev/GenerationHealthView';
+import { TemplateAnalyticsPanel } from '@features/panels/components/dev/TemplateAnalyticsPanel';
+import { GizmoSurfacesPanel } from '@features/panels/components/dev/GizmoSurfacesPanel';
 
 // ============================================================================
 // Session & World State Tools

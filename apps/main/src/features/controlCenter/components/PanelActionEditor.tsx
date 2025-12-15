@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { CubeFace } from '@features/controlCenter/stores/controlCubeStore';
-import type { PanelAction, PanelActionsConfig } from '@lib/ui/panels';
+import type { PanelAction, PanelActionsConfig } from '@features/panels';
 import { useToast } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
 

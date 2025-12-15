@@ -68,7 +68,7 @@ import { WorldStateOverview } from './WorldStateOverview';
 import { MultiRunComparison } from './MultiRunComparison';
 import { ConstraintRunner } from './ConstraintRunner';
 import { SimulationPluginsPanel } from './SimulationPluginsPanel';
-import { ExportImportPanel } from '@/components/panels/tools/ExportImportPanel';
+import { ExportImportPanel } from '@features/panels/components/tools/ExportImportPanel';
 import {
   loadSavedRuns,
   saveSimulationRun,

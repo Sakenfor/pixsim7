@@ -16,6 +16,11 @@ export interface CompactAssetCardProps {
   onSelect?: () => void; // Callback when card is clicked for selection
   hideFooter?: boolean; // Hide the footer with asset ID/URL
   fillHeight?: boolean; // Fill parent height instead of using aspect ratio
+  // Navigation
+  currentIndex?: number; // Current index (1-based for display)
+  totalCount?: number; // Total count
+  onNavigatePrev?: () => void;
+  onNavigateNext?: () => void;
 }
 
 /**
@@ -36,6 +41,10 @@ export function CompactAssetCard({
   onSelect,
   hideFooter = false,
   fillHeight = false,
+  currentIndex,
+  totalCount,
+  onNavigatePrev,
+  onNavigateNext,
 }: CompactAssetCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -162,6 +171,27 @@ export function CompactAssetCard({
           >
             <ThemedIcon name="close" size={8} variant="default" className="text-white" />
           </button>
+        )}
+
+        {/* Navigation pill - bottom center */}
+        {currentIndex !== undefined && totalCount !== undefined && totalCount > 1 && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20">
+            <button
+              onClick={(e) => { e.stopPropagation(); onNavigatePrev?.(); }}
+              className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+              title="Previous"
+            >
+              {currentIndex}
+            </button>
+            <span className="text-white/60 text-[10px]">/</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onNavigateNext?.(); }}
+              className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+              title="Next"
+            >
+              {totalCount}
+            </button>
+          </div>
         )}
       </div>
 

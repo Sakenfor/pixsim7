@@ -10,8 +10,8 @@
 
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePanelConfigStore } from '@/stores/panelConfigStore';
-import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
+import { usePanelConfigStore } from '@features/panels';
+import type { GalleryPanelSettings } from '@features/panels';
 import { useAssets } from '@features/assets';
 import { mediaCardPresets } from '@lib/ui/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
