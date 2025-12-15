@@ -85,17 +85,20 @@ export function QuickGenerateModule() {
       return;
     }
 
+    const assetUrl = currentAsset.fullUrl || currentAsset.url;
+
     // Determine which parameter to set based on operation type and asset type
+    // Only update if the value is different to avoid infinite loops
     if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-      if (currentAsset.type === 'image') {
-        workbench.handleParamChange('image_url', currentAsset.fullUrl || currentAsset.url);
+      if (currentAsset.type === 'image' && workbench.dynamicParams.image_url !== assetUrl) {
+        workbench.handleParamChange('image_url', assetUrl);
       }
     } else if (operationType === 'video_extend') {
-      if (currentAsset.type === 'video') {
-        workbench.handleParamChange('video_url', currentAsset.fullUrl || currentAsset.url);
+      if (currentAsset.type === 'video' && workbench.dynamicParams.video_url !== assetUrl) {
+        workbench.handleParamChange('video_url', assetUrl);
       }
     }
-  }, [hasViewedAssetAvailable, currentAsset, operationType, workbench]);
+  }, [hasViewedAssetAvailable, currentAsset, operationType, workbench.dynamicParams.image_url, workbench.dynamicParams.video_url, workbench.handleParamChange]);
 
   // Infer pixverse provider from model
   const inferredProviderId = useMemo(() => {
