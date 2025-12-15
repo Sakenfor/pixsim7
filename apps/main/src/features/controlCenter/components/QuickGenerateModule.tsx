@@ -1,16 +1,17 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import clsx from 'clsx';
+import { DockviewReact, DockviewReadyEvent } from 'dockview';
+import 'dockview/dist/styles/dockview.css';
+import styles from './QuickGenerateModule.module.css';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
-import { PromptInput, ResizeDivider } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
-import { CompactAssetCard } from './CompactAssetCard';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
-import { useResizablePanels, type PanelConfig } from './hooks/useResizablePanels';
-import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
+import { AssetPanel, PromptPanel, SettingsPanel, BlocksPanel, type QuickGenPanelContext } from './QuickGeneratePanels';
+import { useAssetViewerStore } from '@features/assets';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -63,33 +64,38 @@ export function QuickGenerateModule() {
   const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
   const [creditLoading, setCreditLoading] = useState(false);
 
-  // Resizable panels for Asset | Prompt | Settings layout
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Dockview for minimal rearrangeable panels
+  const dockviewRef = useRef<DockviewReadyEvent['api'] | null>(null);
+  const previousLayoutRef = useRef<boolean | null>(null);
   const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
-  const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
 
-  // Panel configs change based on operation type
-  const panelConfigs = useMemo<PanelConfig[]>(() => {
-    if (showAssetPanelInLayout) {
-      return [
-        { id: 'asset', defaultWidth: 128, minWidth: 80, maxWidth: 200 },
-        { id: 'prompt', defaultWidth: 400, minWidth: 200 },
-        { id: 'settings', defaultWidth: 144, minWidth: 120, maxWidth: 200 },
-      ];
+  // Toggle to use asset from Media Viewer
+  const [useViewedAsset, setUseViewedAsset] = useState(false);
+  const currentAsset = useAssetViewerStore(s => s.currentAsset);
+  const isViewerOpen = useAssetViewerStore(s => s.mode !== 'closed');
+
+  // Hide asset panel when using viewed asset
+  const hasViewedAssetAvailable = useViewedAsset && isViewerOpen && currentAsset;
+  const showAssetPanelInLayout = (isSingleAssetOp || isFlexibleOp) && !hasViewedAssetAvailable;
+
+  // Auto-populate image_url/video_url when using viewed asset
+  useEffect(() => {
+    if (!hasViewedAssetAvailable || !currentAsset) {
+      return;
     }
-    // Text-only: just prompt + settings
-    return [
-      { id: 'prompt', defaultWidth: 500, minWidth: 200 },
-      { id: 'settings', defaultWidth: 144, minWidth: 120, maxWidth: 200 },
-    ];
-  }, [showAssetPanelInLayout]);
 
-  const { widths, dragging, draggingIndex, startResize } = useResizablePanels({
-    panels: panelConfigs,
-    storageKey: `quickgen-layout-${showAssetPanelInLayout ? '3col' : '2col'}`,
-    containerRef,
-  });
+    // Determine which parameter to set based on operation type and asset type
+    if (operationType === 'image_to_video' || operationType === 'image_to_image') {
+      if (currentAsset.type === 'image') {
+        workbench.handleParamChange('image_url', currentAsset.fullUrl || currentAsset.url);
+      }
+    } else if (operationType === 'video_extend') {
+      if (currentAsset.type === 'video') {
+        workbench.handleParamChange('video_url', currentAsset.fullUrl || currentAsset.url);
+      }
+    }
+  }, [hasViewedAssetAvailable, currentAsset, operationType, workbench]);
 
   // Infer pixverse provider from model
   const inferredProviderId = useMemo(() => {
@@ -467,19 +473,38 @@ export function QuickGenerateModule() {
       </div>
 
       {/* Fixed bottom section - Go button with advanced settings */}
-      <div className="flex-shrink-0 flex gap-1.5 mt-auto">
-        {/* Advanced settings gear icon */}
-        <AdvancedSettingsPopover
-          params={advancedParams}
-          values={workbench.dynamicParams}
-          onChange={workbench.handleParamChange}
-          disabled={generating}
-        />
+      <div className="flex-shrink-0 flex flex-col gap-1.5 mt-auto">
+        {/* Use Viewed Asset toggle - only show for single-asset operations */}
+        {(isSingleAssetOp || isFlexibleOp) && (
+          <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 cursor-pointer hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors">
+            <input
+              type="checkbox"
+              checked={useViewedAsset}
+              onChange={(e) => setUseViewedAsset(e.target.checked)}
+              disabled={generating}
+              className="w-3 h-3 rounded"
+            />
+            <span className="flex items-center gap-1">
+              Use Media Viewer Asset
+              {hasViewedAssetAvailable && <span className="text-green-500">✓</span>}
+              {useViewedAsset && !hasViewedAssetAvailable && <span className="text-amber-500" title="No asset in viewer">⚠</span>}
+            </span>
+          </label>
+        )}
 
-        {/* Go button with cost */}
-        <button
-          onClick={generate}
-          disabled={generating || !canGenerate}
+        <div className="flex gap-1.5">
+          {/* Advanced settings gear icon */}
+          <AdvancedSettingsPopover
+            params={advancedParams}
+            values={workbench.dynamicParams}
+            onChange={workbench.handleParamChange}
+            disabled={generating}
+          />
+
+          {/* Go button with cost */}
+          <button
+            onClick={generate}
+            disabled={generating || !canGenerate}
           className={clsx(
             'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white transition-all',
             'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -499,10 +524,140 @@ export function QuickGenerateModule() {
           ) : (
             'Go ⚡'
           )}
-        </button>
+          </button>
+        </div>
       </div>
     </div>
   );
+
+  // Prepare panel context data
+  const panelContext = useMemo<QuickGenPanelContext>(() => ({
+    displayAssets,
+    mainQueue,
+    operationType,
+    isFlexibleOperation: isFlexibleOp,
+    removeFromQueue,
+    updateLockedTimestamp,
+    cycleQueue,
+    prompt,
+    setPrompt,
+    providerId,
+    generating,
+    renderSettingsPanel,
+  }), [
+    displayAssets,
+    mainQueue,
+    operationType,
+    isFlexibleOp,
+    removeFromQueue,
+    updateLockedTimestamp,
+    cycleQueue,
+    prompt,
+    setPrompt,
+    providerId,
+    generating,
+  ]);
+
+  // Initialize dockview - just store the API reference
+  const handleDockviewReady = (event: DockviewReadyEvent) => {
+    dockviewRef.current = event.api;
+    previousLayoutRef.current = null; // Force initial layout creation
+  };
+
+  // Helper to create panels for current layout
+  const createPanelsForLayout = useCallback((api: DockviewReadyEvent['api'], hasAssetPanel: boolean) => {
+    if (hasAssetPanel) {
+      // 4-panel layout: Asset | Prompt | Settings | Blocks
+      api.addPanel({
+        id: 'asset-panel',
+        component: 'asset',
+        params: panelContext,
+        title: 'Asset',
+      });
+
+      api.addPanel({
+        id: 'prompt-panel',
+        component: 'prompt',
+        params: panelContext,
+        title: 'Prompt',
+        position: { direction: 'right', referencePanel: 'asset-panel' },
+      });
+
+      api.addPanel({
+        id: 'settings-panel',
+        component: 'settings',
+        params: panelContext,
+        title: 'Settings',
+        position: { direction: 'right', referencePanel: 'prompt-panel' },
+      });
+
+      api.addPanel({
+        id: 'blocks-panel',
+        component: 'blocks',
+        params: panelContext,
+        title: 'Blocks',
+        position: { direction: 'below', referencePanel: 'prompt-panel' },
+      });
+    } else {
+      // 3-panel layout: Prompt | Settings | Blocks
+      api.addPanel({
+        id: 'prompt-panel',
+        component: 'prompt',
+        params: panelContext,
+        title: 'Prompt',
+      });
+
+      api.addPanel({
+        id: 'settings-panel',
+        component: 'settings',
+        params: panelContext,
+        title: 'Settings',
+        position: { direction: 'right', referencePanel: 'prompt-panel' },
+      });
+
+      api.addPanel({
+        id: 'blocks-panel',
+        component: 'blocks',
+        params: panelContext,
+        title: 'Blocks',
+        position: { direction: 'below', referencePanel: 'prompt-panel' },
+      });
+    }
+  }, [panelContext]);
+
+  // Manage panel lifecycle: create on mount, rebuild on layout change, update params on context change
+  useEffect(() => {
+    if (!dockviewRef.current) return;
+
+    const api = dockviewRef.current;
+    const needsRebuild = previousLayoutRef.current !== showAssetPanelInLayout;
+
+    if (needsRebuild) {
+      // Layout type changed - clear and rebuild all panels
+      const panelIds = ['asset-panel', 'prompt-panel', 'settings-panel', 'blocks-panel'];
+      panelIds.forEach(id => {
+        const panel = api.panels.find(p => p.id === id);
+        if (panel) {
+          try {
+            api.removePanel(id);
+          } catch (e) {
+            console.warn('Failed to remove panel:', id);
+          }
+        }
+      });
+
+      // Create new layout
+      createPanelsForLayout(api, showAssetPanelInLayout);
+      previousLayoutRef.current = showAssetPanelInLayout;
+    } else {
+      // Just update parameters for existing panels
+      api.panels.forEach(panel => {
+        if (panel?.api) {
+          panel.api.updateParameters(panelContext);
+        }
+      });
+    }
+  }, [showAssetPanelInLayout, panelContext, createPanelsForLayout]);
 
   // Render the main content area based on operation type
   const renderContent = () => {
@@ -615,141 +770,21 @@ export function QuickGenerateModule() {
       );
     }
 
-    if (showAssetPanel) {
-      // Asset + prompt mode: [Asset | Prompt | Settings] with resizable dividers
-      const hasAsset = displayAssets.length > 0;
-      return (
-        <div ref={containerRef} className="flex flex-1 min-h-0 h-full">
-          {/* Left: Asset (optional for flexible operations like image_to_video) */}
-          <div className="flex-shrink-0 overflow-hidden h-full min-h-0" style={{ width: widths[0] }}>
-            {hasAsset ? (
-              <div className="flex flex-col gap-1 h-full">
-                <CompactAssetCard
-                  asset={displayAssets[0]}
-                  showRemoveButton={mainQueue.length > 0}
-                  onRemove={() =>
-                    mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')
-                  }
-                  lockedTimestamp={
-                    mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined
-                  }
-                  onLockTimestamp={
-                    mainQueue.length > 0
-                      ? (timestamp) =>
-                          updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
-                      : undefined
-                  }
-                  hideFooter
-                  fillHeight
-                />
-                {/* Navigation arrows below asset */}
-                {mainQueue.length > 1 && (
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => cycleQueue('main', 'prev')}
-                      className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                      title="Previous"
-                    >
-                      <ThemedIcon name="chevronLeft" size={12} variant="default" />
-                    </button>
-                    <span className="text-[10px] text-neutral-500">
-                      {mainQueue.length}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => cycleQueue('main', 'next')}
-                      className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                      title="Next"
-                    >
-                      <ThemedIcon name="chevronRight" size={12} variant="default" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 text-center h-full flex items-center justify-center">
-                {operationType === 'video_extend' ? 'Select video' :
-                 isFlexibleOperation ? '+ Image (optional)' : 'Select image'}
-              </div>
-            )}
-          </div>
-
-          {/* Divider: Asset | Prompt */}
-          <ResizeDivider
-            onMouseDown={startResize(0)}
-            isDragging={draggingIndex === 0}
-          />
-
-          {/* Center: Prompt */}
-          <div className="flex-1 min-w-0 overflow-hidden h-full min-h-0" style={{ width: widths[1] }}>
-            <PromptInput
-              value={prompt}
-              onChange={setPrompt}
-              maxChars={maxChars}
-              disabled={generating}
-              variant="compact"
-              resizable
-              minHeight={100}
-              placeholder={
-                operationType === 'image_to_video'
-                  ? (hasAsset ? 'Describe the motion...' : 'Describe the video...')
-                  : operationType === 'image_to_image'
-                  ? (hasAsset ? 'Describe the transformation...' : 'Describe the image...')
-                  : 'Describe how to continue the video...'
-              }
-              className="h-full"
-            />
-          </div>
-
-          {/* Divider: Prompt | Settings */}
-          <ResizeDivider
-            onMouseDown={startResize(1)}
-            isDragging={draggingIndex === 1}
-          />
-
-          {/* Right: Settings */}
-          <div className="flex-shrink-0 overflow-hidden h-full min-h-0" style={{ width: widths[2] }}>
-            {renderSettingsPanel()}
-          </div>
-        </div>
-      );
-    }
-
-    // Text-only mode (text_to_image, text_to_video, fusion): prompt + settings
+    // Use minimal dockview for asset+prompt or prompt+settings layout
     return (
-      <div ref={containerRef} className="flex flex-1 min-h-0 h-full">
-        {/* Left: Prompt */}
-        <div className="flex-1 min-w-0 overflow-hidden h-full min-h-0" style={{ width: widths[0] }}>
-          <PromptInput
-            value={prompt}
-            onChange={setPrompt}
-            maxChars={maxChars}
-            disabled={generating}
-            variant="compact"
-            resizable
-            minHeight={120}
-            placeholder={
-              operationType === 'text_to_image'
-                ? 'Describe the image you want to create...'
-                : operationType === 'text_to_video'
-                ? 'Describe the video you want to create...'
-                : 'Describe the fusion...'
-            }
-            className="h-full"
-          />
-        </div>
-
-        {/* Divider: Prompt | Settings */}
-        <ResizeDivider
-          onMouseDown={startResize(0)}
-          isDragging={draggingIndex === 0}
+      <div className={clsx("flex-1 min-h-0 h-full", styles.minimalDockview)}>
+        <DockviewReact
+          onReady={handleDockviewReady}
+          components={{
+            asset: AssetPanel,
+            prompt: PromptPanel,
+            settings: SettingsPanel,
+            blocks: BlocksPanel,
+          }}
+          className="dockview-theme-light"
+          watermarkComponent={() => null}
+          hideBorders={true}
         />
-
-        {/* Right: Settings */}
-        <div className="flex-shrink-0 overflow-hidden h-full min-h-0" style={{ width: widths[1] }}>
-          {renderSettingsPanel()}
-        </div>
       </div>
     );
   };
@@ -780,15 +815,7 @@ export function QuickGenerateModule() {
       hideGenerateButton
       // Render props - no header, just content with inline settings
       renderContent={renderContent}
-      // Prompt Companion slot
-      renderFooter={() => (
-        <PromptCompanionHost
-          surface="quick-generate"
-          promptValue={prompt}
-          setPromptValue={setPrompt}
-          metadata={{ operationType, providerId }}
-        />
-      )}
+      // No footer - blocks are now a dockview panel
     />
   );
 }
