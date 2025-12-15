@@ -1,0 +1,41 @@
+/**
+ * Minimal dockview styling for QuickGenerateModule
+ * Removes heavy chrome, keeps just the essential drag-drop and resize functionality
+ */
+
+/* Hide panel headers (we don't need titles/close buttons) */
+.minimalDockview :global(.dockview-panel-header) {
+  display: none;
+}
+
+/* Hide all tabs - panels are side-by-side, not tabbed */
+.minimalDockview :global(.tabs-container) {
+  display: none !important;
+}
+
+
+/* Make dividers thinner and subtle */
+.minimalDockview :global(.split-view-view .sash) {
+  background: transparent;
+}
+
+.minimalDockview :global(.split-view-view .sash:hover),
+.minimalDockview :global(.split-view-view .sash.active) {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+/* Remove extra padding from content areas */
+.minimalDockview :global(.dockview-panel-content) {
+  padding: 0;
+}
+
+/* Clean group container styling */
+.minimalDockview :global(.dockview-group) {
+  border: none;
+  background: transparent;
+}
+
+/* Panel body fills available space */
+.minimalDockview :global(.part-panel-container) {
+  background: transparent;
+}
