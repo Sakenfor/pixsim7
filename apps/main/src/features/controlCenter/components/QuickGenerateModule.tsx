@@ -572,10 +572,54 @@ export function QuickGenerateModule() {
     generating,
   ]);
 
-  // Initialize dockview - just store the API reference
+  // Layout management
+  const LAYOUT_STORAGE_KEY = 'quickGenerate-dockview-layout';
+
+  const saveLayout = useCallback(() => {
+    if (!dockviewRef.current) return;
+    try {
+      const layout = dockviewRef.current.toJSON();
+      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    } catch (error) {
+      console.error('Failed to save layout:', error);
+    }
+  }, []);
+
+  const loadSavedLayout = useCallback((api: DockviewReadyEvent['api']) => {
+    try {
+      const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
+      if (saved) {
+        const layout = JSON.parse(saved);
+        api.fromJSON(layout);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to load saved layout:', error);
+    }
+    return false;
+  }, []);
+
+  const resetLayout = useCallback(() => {
+    if (!dockviewRef.current) return;
+    // Clear saved layout
+    localStorage.removeItem(LAYOUT_STORAGE_KEY);
+    // Rebuild with default layout
+    previousLayoutRef.current = null;
+    createPanelsForLayout(dockviewRef.current, showAssetPanelInLayout);
+  }, [showAssetPanelInLayout, createPanelsForLayout]);
+
+  // Initialize dockview - load saved layout or create default
   const handleDockviewReady = (event: DockviewReadyEvent) => {
     dockviewRef.current = event.api;
-    previousLayoutRef.current = null; // Force initial layout creation
+
+    // Try to load saved layout, if it fails or doesn't exist, force initial creation
+    const loaded = loadSavedLayout(event.api);
+    previousLayoutRef.current = loaded ? showAssetPanelInLayout : null;
+
+    // Auto-save layout on changes
+    event.api.onDidLayoutChange(() => {
+      saveLayout();
+    });
   };
 
   // Focus asset panel when assets are added to queue
@@ -816,7 +860,16 @@ export function QuickGenerateModule() {
 
     // Use minimal dockview for asset+prompt or prompt+settings layout
     return (
-      <div className={clsx("flex-1 min-h-0 h-full", styles.minimalDockview)}>
+      <div className={clsx("flex-1 min-h-0 h-full relative", styles.minimalDockview)}>
+        {/* Reset layout button */}
+        <button
+          onClick={resetLayout}
+          className="absolute top-1 right-1 z-10 p-1 text-[10px] bg-white/80 dark:bg-neutral-800/80 hover:bg-white dark:hover:bg-neutral-700 rounded shadow-sm border border-neutral-200 dark:border-neutral-600 transition-colors"
+          title="Reset panel layout"
+        >
+          🔄
+        </button>
+
         <DockviewReact
           onReady={handleDockviewReady}
           components={{
