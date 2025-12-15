@@ -3,21 +3,53 @@
  * Removes heavy chrome, keeps just the essential drag-drop and resize functionality
  */
 
-/* Hide panel headers (we don't need titles/close buttons) */
-.minimalDockview :global(.dockview-panel-header),
-.minimalDockview :global([class*="header"]),
-.minimalDockview :global([class*="tab-container"]),
-.minimalDockview :global([class*="tabs-container"]) {
+/* Hide tab text but keep tab structure for dragging */
+.minimalDockview :global(.dv-default-tab .tab-label),
+.minimalDockview :global(.tab .tab-label),
+.minimalDockview :global([role="tab"] [class*="label"]),
+.minimalDockview :global([role="tab"] span) {
   display: none !important;
 }
 
-/* Also try hiding via dockview's tab elements */
+/* Make tabs minimal - just a small drag handle */
 .minimalDockview :global(.dv-default-tab),
-.minimalDockview :global(.dv-tabs),
 .minimalDockview :global(.tab),
-.minimalDockview :global([role="tab"]),
+.minimalDockview :global([role="tab"]) {
+  min-width: 20px !important;
+  width: 20px !important;
+  padding: 4px 6px !important;
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-radius: 3px !important;
+  margin: 2px !important;
+  cursor: grab !important;
+}
+
+.minimalDockview :global(.dv-default-tab:hover),
+.minimalDockview :global(.tab:hover),
+.minimalDockview :global([role="tab"]:hover) {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Add visual drag indicator */
+.minimalDockview :global(.dv-default-tab::before),
+.minimalDockview :global(.tab::before),
+.minimalDockview :global([role="tab"]::before) {
+  content: '⋮' !important;
+  display: block !important;
+  font-size: 12px !important;
+  color: rgba(0, 0, 0, 0.3) !important;
+  line-height: 1 !important;
+}
+
+/* Compact tab container */
+.minimalDockview :global([class*="tab-container"]),
+.minimalDockview :global([class*="tabs-container"]),
 .minimalDockview :global([role="tablist"]) {
-  display: none !important;
+  min-height: 24px !important;
+  height: 24px !important;
+  padding: 2px !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 
