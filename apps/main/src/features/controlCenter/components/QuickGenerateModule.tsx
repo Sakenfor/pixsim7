@@ -75,8 +75,16 @@ export function QuickGenerateModule() {
   const currentAsset = useAssetViewerStore(s => s.currentAsset);
   const isViewerOpen = useAssetViewerStore(s => s.mode !== 'closed');
 
-  // Hide asset panel when using viewed asset
-  const hasViewedAssetAvailable = useViewedAsset && isViewerOpen && currentAsset;
+  // Auto-disable "Use Viewed Asset" when assets are added to queue
+  // This ensures queued assets are visible in the asset panel
+  useEffect(() => {
+    if (useViewedAsset && mainQueue.length > 0) {
+      setUseViewedAsset(false);
+    }
+  }, [mainQueue.length, useViewedAsset]);
+
+  // Hide asset panel when using viewed asset (and no assets in queue)
+  const hasViewedAssetAvailable = useViewedAsset && isViewerOpen && currentAsset && mainQueue.length === 0;
   const showAssetPanelInLayout = (isSingleAssetOp || isFlexibleOp) && !hasViewedAssetAvailable;
 
   // Auto-populate image_url/video_url when using viewed asset
