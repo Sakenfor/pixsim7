@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import type { AssetSummary } from '@features/assets';
 import { useGenerationQueueStore } from '../stores/generationQueueStore';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import type { OperationType } from '@/types/operations';
 
 type QueueableOperation = 'image_to_image' | 'image_to_video' | 'video_extend';
@@ -12,8 +13,11 @@ type QueueableOperation = 'image_to_image' | 'image_to_video' | 'video_extend';
  * Centralizes gallery → generation actions so MediaCard and widgets
  * can queue work and open the Control Center consistently.
  *
- * When assets are added via quick actions, the Control Center operation type
- * is automatically set to match the requested operation.
+ * When assets are added via quick actions:
+ * - The asset is added to the generation queue
+ * - The asset is selected in the asset selection store
+ * - The Control Center operation type is set to match
+ * - The Quick Generate module is opened
  */
 export function useMediaGenerationActions() {
   const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
@@ -23,19 +27,34 @@ export function useMediaGenerationActions() {
   const setOpen = useControlCenterStore((s) => s.setOpen);
   const setOperationType = useControlCenterStore((s) => s.setOperationType);
 
+  const selectAsset = useAssetSelectionStore((s) => s.selectAsset);
+
   const openQuickGenerate = useCallback(() => {
     setActiveModule('quickGenerate');
     setOpen(true);
   }, [setActiveModule, setOpen]);
 
+  // Helper to select asset in selection store
+  const selectAssetFromSummary = useCallback((asset: AssetSummary) => {
+    selectAsset({
+      id: asset.id,
+      key: `asset-${asset.id}`,
+      name: asset.original_filename || `Asset ${asset.id}`,
+      type: asset.media_type === 'video' ? 'video' : 'image',
+      url: asset.remote_url,
+      source: 'gallery',
+    });
+  }, [selectAsset]);
+
   // Factory for queue actions that set operation type and open Quick Generate
   const createQueueAction = useCallback(
     (operation: QueueableOperation) => (asset: AssetSummary) => {
       addToQueue(asset, operation);
+      selectAssetFromSummary(asset);
       setOperationType(operation as OperationType);
       openQuickGenerate();
     },
-    [addToQueue, setOperationType, openQuickGenerate],
+    [addToQueue, selectAssetFromSummary, setOperationType, openQuickGenerate],
   );
 
   // Memoize individual actions for stable references
@@ -46,18 +65,20 @@ export function useMediaGenerationActions() {
   const queueAddToTransition = useCallback(
     (asset: AssetSummary) => {
       addToTransitionQueue(asset);
+      selectAssetFromSummary(asset);
       setOperationType('video_transition');
       openQuickGenerate();
     },
-    [addToTransitionQueue, setOperationType, openQuickGenerate],
+    [addToTransitionQueue, selectAssetFromSummary, setOperationType, openQuickGenerate],
   );
 
   const queueAutoGenerate = useCallback(
     (asset: AssetSummary) => {
       addToQueue(asset);
+      selectAssetFromSummary(asset);
       openQuickGenerate();
     },
-    [addToQueue, openQuickGenerate],
+    [addToQueue, selectAssetFromSummary, openQuickGenerate],
   );
 
   return {
