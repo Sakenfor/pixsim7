@@ -5,7 +5,7 @@
  * Includes module tabs, quick navigation, and position controls.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import type { ControlModule, DockPosition } from '@features/controlCenter/stores/controlCenterStore';
@@ -90,12 +90,73 @@ export function DockToolbar({
     }
   }, [dockPosition]);
 
+  // Dropdown state
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showDropdown]);
+
   return (
     <div className="control-center-header px-3 py-1.5 flex items-center gap-2 border-b border-white/10 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90 cursor-move flex-shrink-0">
-      {/* Title */}
-      <span className="text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-        Control Center
-      </span>
+      {/* Title with dropdown */}
+      <div className="relative" ref={dropdownRef}>
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity flex items-center gap-1"
+          title="Control Center Menu"
+        >
+          Control Center
+          <span className="text-[8px] opacity-50">▼</span>
+        </button>
+
+        {/* Dropdown menu */}
+        {showDropdown && (
+          <div className="absolute top-full left-0 mt-1 w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 py-1 z-50">
+            {/* Panel Management Section */}
+            <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+              Panels
+            </div>
+            <button
+              onClick={() => {
+                // TODO: Reset panel layout
+                setShowDropdown(false);
+              }}
+              className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
+            >
+              <span>🔄</span>
+              <span>Reset Panel Layout</span>
+            </button>
+
+            <div className="border-t border-neutral-200 dark:border-neutral-700 my-1"></div>
+
+            {/* Settings Section */}
+            <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+              Settings
+            </div>
+            <button
+              onClick={() => {
+                navigate('/settings?tab=control-center');
+                setShowDropdown(false);
+              }}
+              className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
+            >
+              <span>⚙️</span>
+              <span>Control Center Settings</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Inline Quick Actions */}
       <div className="flex items-center gap-1">
