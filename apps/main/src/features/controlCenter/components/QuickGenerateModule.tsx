@@ -566,16 +566,24 @@ export function QuickGenerateModule() {
 
   // Helper to create panels for current layout
   const createPanelsForLayout = useCallback((api: DockviewReadyEvent['api'], hasAssetPanel: boolean) => {
+    // Helper to safely add panel only if it doesn't exist
+    const addPanelIfNotExists = (config: any) => {
+      const existingPanel = api.panels.find(p => p.id === config.id);
+      if (!existingPanel) {
+        api.addPanel(config);
+      }
+    };
+
     if (hasAssetPanel) {
       // 4-panel layout: Asset | Prompt | Settings | Blocks
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'asset-panel',
         component: 'asset',
         params: panelContext,
         title: 'Asset',
       });
 
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'prompt-panel',
         component: 'prompt',
         params: panelContext,
@@ -583,7 +591,7 @@ export function QuickGenerateModule() {
         position: { direction: 'right', referencePanel: 'asset-panel' },
       });
 
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'settings-panel',
         component: 'settings',
         params: panelContext,
@@ -591,7 +599,7 @@ export function QuickGenerateModule() {
         position: { direction: 'right', referencePanel: 'prompt-panel' },
       });
 
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'blocks-panel',
         component: 'blocks',
         params: panelContext,
@@ -600,14 +608,14 @@ export function QuickGenerateModule() {
       });
     } else {
       // 3-panel layout: Prompt | Settings | Blocks
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'prompt-panel',
         component: 'prompt',
         params: panelContext,
         title: 'Prompt',
       });
 
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'settings-panel',
         component: 'settings',
         params: panelContext,
@@ -615,7 +623,7 @@ export function QuickGenerateModule() {
         position: { direction: 'right', referencePanel: 'prompt-panel' },
       });
 
-      api.addPanel({
+      addPanelIfNotExists({
         id: 'blocks-panel',
         component: 'blocks',
         params: panelContext,
