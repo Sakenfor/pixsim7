@@ -583,14 +583,19 @@ export function QuickGenerateModule() {
 
     // Asset was added (queue grew)
     if (currentLength > prevLength && currentLength > 0 && dockviewRef.current) {
-      const assetPanel = dockviewRef.current.panels.find(p => p.id === 'asset-panel');
-      if (assetPanel && !assetPanel.api.isActive) {
-        assetPanel.api.setActive();
-      }
+      // Use requestAnimationFrame to ensure layout rebuild completes first
+      // The panel might not exist yet if layout is being rebuilt
+      requestAnimationFrame(() => {
+        if (!dockviewRef.current) return;
+        const assetPanel = dockviewRef.current.panels.find(p => p.id === 'asset-panel');
+        if (assetPanel && !assetPanel.api.isActive) {
+          assetPanel.api.setActive();
+        }
+      });
     }
 
     prevQueueLengthRef.current = currentLength;
-  }, [mainQueue.length]);
+  }, [mainQueue.length, showAssetPanelInLayout]);
 
   // Helper to create panels for current layout
   const createPanelsForLayout = useCallback((api: DockviewReadyEvent['api'], hasAssetPanel: boolean) => {

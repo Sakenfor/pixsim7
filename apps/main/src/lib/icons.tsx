@@ -71,6 +71,8 @@ import {
   LayoutGrid,
   LightbulbIcon,
   KeyRound,
+  Lock,
+  Unlock,
   Map,
   User,
   Clock,
@@ -130,6 +132,8 @@ export const Icons = {
   link: Link2,
   externalLink: ExternalLink,
   listPlus: ListPlus,
+  lock: Lock,
+  unlock: Unlock,
 
   // Playback
   play: Play,
