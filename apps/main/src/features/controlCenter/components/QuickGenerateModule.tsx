@@ -652,7 +652,7 @@ export function QuickGenerateModule() {
           try {
             api.removePanel(id);
           } catch (e) {
-            console.warn('Failed to remove panel:', id);
+            // Silently ignore - expected during layout transitions
           }
         }
       });
