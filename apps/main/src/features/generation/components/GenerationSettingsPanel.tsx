@@ -557,9 +557,12 @@ export function GenerationSettingsPanel({
         {/* Extra controls (e.g., "Use Viewed Asset" toggle) */}
         {extraControls}
 
-        {/* Error message */}
+        {/* Error message - for prompt rejections only */}
         {error && (
-          <div className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800">
+          <div
+            className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800"
+            style={{ transition: 'none', animation: 'none' }}
+          >
             ⚠️ {error}
           </div>
         )}

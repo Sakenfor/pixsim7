@@ -60,23 +60,20 @@ export function useQuickGenerateController() {
     if (!generationId || watchedStatus !== 'failed' || !watchedErrorMessage) return;
     if (errorShownForRef.current === generationId) return;
 
+    // Only show error in prompt box for content-filtered prompt rejections
+    // (not for other failures like quota, network errors, output rejections, etc.)
+    const lowerError = watchedErrorMessage.toLowerCase();
+    const isPromptRejection =
+      lowerError.includes('sensitive') ||
+      lowerError.includes('500063') ||
+      (lowerError.includes('content') && lowerError.includes('text'));
+
+    if (!isPromptRejection) return;
+
     // Mark as shown before setting error
     errorShownForRef.current = generationId;
 
-    // Show a user-friendly version of the error
-    let friendlyError = watchedErrorMessage;
-
-    // Extract key info from content filter errors
-    if (friendlyError.toLowerCase().includes('content filter') ||
-        friendlyError.toLowerCase().includes('sensitive') ||
-        friendlyError.toLowerCase().includes('moderation')) {
-      friendlyError = 'Content filtered: Your prompt may contain sensitive content. Please revise and try again.';
-    } else if (friendlyError.length > 100) {
-      // Truncate long errors
-      friendlyError = friendlyError.slice(0, 100) + '...';
-    }
-
-    setError(friendlyError);
+    setError('Content filtered: Your prompt may contain sensitive content. Please revise and try again.');
   }, [generationId, watchedStatus, watchedErrorMessage]);
 
   async function generate() {
