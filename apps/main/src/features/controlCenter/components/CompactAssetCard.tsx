@@ -1,8 +1,20 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ThemedIcon } from '@lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import type { AssetSummary } from '@features/assets';
+
+export interface ThumbnailGridItem {
+  id: string | number;
+  thumbnailUrl: string;
+}
+
+interface PopupPosition {
+  x: number;
+  y: number;
+  showAbove: boolean; // true = above trigger, false = below
+}
 
 export interface CompactAssetCardProps {
   asset: AssetSummary;
@@ -21,6 +33,9 @@ export interface CompactAssetCardProps {
   totalCount?: number; // Total count
   onNavigatePrev?: () => void;
   onNavigateNext?: () => void;
+  // Queue grid popup
+  queueItems?: ThumbnailGridItem[]; // Items for grid popup (id, thumbnailUrl)
+  onSelectIndex?: (index: number) => void; // Jump to specific index (0-based)
 }
 
 /**
@@ -45,9 +60,49 @@ export function CompactAssetCard({
   totalCount,
   onNavigatePrev,
   onNavigateNext,
+  queueItems,
+  onSelectIndex,
 }: CompactAssetCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [showQueueGrid, setShowQueueGrid] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<PopupPosition | null>(null);
+
+  // Toggle grid and calculate position with edge detection
+  const handleToggleGrid = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (showQueueGrid) {
+      setShowQueueGrid(false);
+      setPopupPosition(null);
+    } else {
+      if (triggerRef.current && queueItems) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        const cols = queueItems.length <= 4 ? 2 : queueItems.length <= 9 ? 3 : 4;
+        const rows = Math.ceil(queueItems.length / cols);
+        const popupWidth = cols * 80 + (cols - 1) * 6 + 16; // thumbnails + gaps + padding
+        const popupHeight = rows * 80 + (rows - 1) * 6 + 16;
+
+        // Calculate x position (centered on trigger, clamped to screen edges)
+        let x = rect.left + rect.width / 2;
+        const minX = popupWidth / 2 + 8;
+        const maxX = window.innerWidth - popupWidth / 2 - 8;
+        x = Math.max(minX, Math.min(maxX, x));
+
+        // Check if there's room above, otherwise show below
+        const spaceAbove = rect.top;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const showAbove = spaceAbove >= popupHeight + 8 || spaceAbove > spaceBelow;
+
+        const y = showAbove
+          ? rect.top - 8
+          : rect.bottom + 8;
+
+        setPopupPosition({ x, y, showAbove });
+      }
+      setShowQueueGrid(true);
+    }
+  }, [showQueueGrid, queueItems]);
 
   // Use thumbnail_url from AssetSummary
   const thumbUrl = asset.thumbnail_url;
@@ -183,7 +238,21 @@ export function CompactAssetCard({
             >
               {currentIndex}
             </button>
-            <span className="text-white/60 text-[10px]">/</span>
+
+            {/* Grid popup trigger - small circle between numbers */}
+            {queueItems && queueItems.length > 1 && onSelectIndex ? (
+              <button
+                ref={triggerRef}
+                onClick={handleToggleGrid}
+                className="w-4 h-4 rounded-full bg-white/20 hover:bg-white/40 transition-colors flex items-center justify-center"
+                title={`View all ${queueItems.length} assets`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+              </button>
+            ) : (
+              <span className="text-white/60 text-[10px]">/</span>
+            )}
+
             <button
               onClick={(e) => { e.stopPropagation(); onNavigateNext?.(); }}
               className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
@@ -192,6 +261,60 @@ export function CompactAssetCard({
               {totalCount}
             </button>
           </div>
+        )}
+
+        {/* Queue grid popup - Portal to body to escape stacking context */}
+        {showQueueGrid && popupPosition && queueItems && queueItems.length > 1 && onSelectIndex && createPortal(
+          <>
+            {/* Backdrop to close on click outside */}
+            <div
+              className="fixed inset-0"
+              style={{ zIndex: 99998 }}
+              onClick={() => { setShowQueueGrid(false); setPopupPosition(null); }}
+            />
+            {/* Grid using fixed position with edge detection */}
+            <div
+              className="fixed p-2 bg-neutral-900 rounded-lg shadow-2xl border border-neutral-600"
+              style={{
+                zIndex: 99999,
+                display: 'grid',
+                gridTemplateColumns: `repeat(${queueItems.length <= 4 ? 2 : queueItems.length <= 9 ? 3 : 4}, 80px)`,
+                gap: '6px',
+                left: popupPosition.x,
+                top: popupPosition.showAbove ? undefined : popupPosition.y,
+                bottom: popupPosition.showAbove ? window.innerHeight - popupPosition.y : undefined,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              {queueItems.map((item, idx) => (
+                <button
+                  key={item.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectIndex(idx);
+                    setShowQueueGrid(false);
+                    setPopupPosition(null);
+                  }}
+                  style={{ width: 80, height: 80, transition: 'none', animation: 'none' }}
+                  className={`relative rounded-md overflow-hidden ${
+                    idx === (currentIndex ?? 1) - 1
+                      ? 'ring-2 ring-blue-500'
+                      : 'hover:ring-1 hover:ring-white/50'
+                  }`}
+                >
+                  <img
+                    src={item.thumbnailUrl}
+                    alt={`Asset ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[11px] px-1.5 py-0.5 rounded-tl font-medium">
+                    {idx + 1}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>,
+          document.body
         )}
       </div>
 

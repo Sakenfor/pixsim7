@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@lib/api/client';
 
+export interface ApiKeyEntry {
+  id: string;
+  kind: string;
+  value: string;
+  name?: string;
+  priority?: number;
+}
+
 export interface ProviderAccount {
   id: number;
   user_id: number | null;
@@ -17,6 +25,9 @@ export interface ProviderAccount {
   has_api_key_paid: boolean;
   has_cookies: boolean;
   is_google_account: boolean;
+
+  // API keys (for Pixverse: OpenAPI keys)
+  api_keys?: ApiKeyEntry[];
 
   // Credits
   credits: Record<string, number>;

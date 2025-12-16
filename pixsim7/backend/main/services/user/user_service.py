@@ -197,6 +197,10 @@ class UserService:
         if not user.is_active:
             raise QuotaError("User account is inactive")
 
+        # Admins have no daily limit
+        if user.is_admin():
+            return
+
         # Reset daily counter if needed
         await self._reset_daily_quota_if_needed(user)
 

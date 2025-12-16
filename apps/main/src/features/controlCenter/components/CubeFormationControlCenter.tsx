@@ -399,7 +399,7 @@ export function CubeFormationControlCenter() {
           onClick={() => setExpandedModule(null)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col"
+            className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl w-full mx-4 max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex-shrink-0 bg-white dark:bg-neutral-900 border-b px-6 py-4 flex items-center justify-between">

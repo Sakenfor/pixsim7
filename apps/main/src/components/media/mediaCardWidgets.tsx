@@ -24,7 +24,6 @@ import { useGenerationQueueStore } from '@features/generation/stores/generationQ
 import type { AssetSummary } from '@features/assets';
 import { Icon } from '@lib/icons';
 import {
-  isMultiAssetOperation,
   OPERATION_METADATA,
   type OperationType,
   type MediaType,
@@ -409,30 +408,33 @@ function buildGenerationMenuItems(
 }
 
 /**
- * Slot picker content for selecting queue position
+ * Slot picker content for selecting queue position in multiAssetQueue
+ * Always shows/targets multiAssetQueue (for arranging multi-asset compositions)
  * Styled to match dock position selector
  */
 function SlotPickerContent({
   asset,
   onSelectSlot,
+  maxSlots: maxSlotsProp,
 }: {
   asset: AssetSummary;
   onSelectSlot: (asset: AssetSummary, slotIndex: number) => void;
+  maxSlots?: number;
 }) {
-  const mainQueue = useGenerationQueueStore((s) => s.mainQueue);
   const multiAssetQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
-  const ccOperationType = useControlCenterStore((s) => s.operationType);
   const ccIsOpen = useControlCenterStore((s) => s.isOpen);
 
-  // Use appropriate queue based on operation type
-  const queue = isMultiAssetOperation(ccOperationType) ? multiAssetQueue : mainQueue;
+  // Always show multiAssetQueue - slot picker is for arranging compositions
+  const queue = multiAssetQueue;
 
-  // Show filled slots + 1 empty slot (max 5 total)
-  const maxSlots = Math.min(Math.max(queue.length + 1, 3), 5);
-  const slots = Array.from({ length: maxSlots }, (_, i) => i);
+  // Max slots from prop (provider-specific) or default to 7 (Pixverse transition limit)
+  const maxAllowed = maxSlotsProp ?? 7;
+  // Show filled slots + 1 empty slot, capped at maxAllowed
+  const visibleSlots = Math.min(Math.max(queue.length + 1, 3), maxAllowed);
+  const slots = Array.from({ length: visibleSlots }, (_, i) => i);
 
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
+    <div className="flex flex-col gap-1 p-1.5 rounded-lg bg-blue-600/95 backdrop-blur-sm shadow-2xl">
       {slots.map((slotIndex) => {
         const queuedAsset = queue[slotIndex];
         const isFilled = !!queuedAsset;
@@ -441,8 +443,8 @@ function SlotPickerContent({
           <button
             key={slotIndex}
             onClick={() => onSelectSlot(asset, slotIndex)}
-            className="relative w-8 h-8 rounded transition-all flex items-center justify-center text-sm bg-blue-600/80 hover:bg-blue-600 text-white"
-            title={`Slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
+            className="relative w-7 h-7 rounded transition-all flex items-center justify-center text-sm bg-white/20 hover:bg-white/30 text-white"
+            title={`Multi-asset slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
             type="button"
           >
             {isFilled ? (
@@ -605,11 +607,17 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
       const triggerRef = useRef<HTMLButtonElement>(null);
       const ccMode = useControlCenterStore((s) => s.operationType);
       const setControlCenterOpen = useControlCenterStore((s) => s.setOpen);
-      const addToQueueAtIndex = useGenerationQueueStore((s) => s.addToQueueAtIndex);
-      const addToMultiAssetQueueAtIndex = useGenerationQueueStore((s) => s.addToMultiAssetQueueAtIndex);
+      const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
+      const setOperationInputMode = useGenerationQueueStore((s) => s.setOperationInputMode);
 
       const menuItems = buildGenerationMenuItems(id, mediaType, actions);
       const smartActionLabel = getSmartActionLabel(mediaType, ccMode);
+      const operationMetadata = OPERATION_METADATA[ccMode];
+      const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
+
+      // TODO: Get max slots from provider specs based on ccMode and providerId
+      // For now, use defaults: video_transition = 7 (Pixverse limit), others = 10
+      const maxSlots = ccMode === 'video_transition' ? 7 : 10;
 
       // Reconstruct asset for slot picker
       const asset = {
@@ -661,14 +669,17 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         return () => document.removeEventListener('keydown', handleKeyDown);
       }, [isMenuOpen]);
 
-      const handleSmartAction = () => {
-        // Smart button adds to current mode's queue - NEVER changes mode
-        // Uses slot 0 (front of queue)
-        if (isMultiAssetOperation(ccMode)) {
-          addToMultiAssetQueueAtIndex?.(asset as AssetSummary, 0);
-        } else {
-          addToQueueAtIndex?.(asset as AssetSummary, 0, ccMode);
-        }
+      const handleSmartAction = (e: React.MouseEvent) => {
+        // Normal click → append to mainQueue (working set for single assets)
+        // Shift+click → append to multiAssetQueue (for compositions)
+        const forceMulti = e.shiftKey;
+
+        // Smart button appends to queue (no slotIndex = append)
+        enqueueAsset({
+          asset: asset as AssetSummary,
+          operationType: ccMode,
+          forceMulti,
+        });
         // Just open control center - don't change mode
         setControlCenterOpen(true);
       };
@@ -678,12 +689,18 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         setIsMenuOpen(false);
       };
 
-      const handleSelectSlot = (asset: AssetSummary, slotIndex: number) => {
-        // Route to appropriate queue based on operation metadata
-        if (isMultiAssetOperation(ccMode)) {
-          addToMultiAssetQueueAtIndex?.(asset, slotIndex);
-        } else {
-          addToQueueAtIndex?.(asset, slotIndex, ccMode);
+      const handleSelectSlot = (selectedAsset: AssetSummary, slotIndex: number) => {
+        // Slot picker always targets multiAssetQueue (for arranging compositions)
+        enqueueAsset({
+          asset: selectedAsset,
+          operationType: ccMode,
+          slotIndex,
+          forceMulti: true, // Always multi queue for slot picker
+        });
+
+        // Auto-switch to multi mode if operation supports it
+        if (isOptionalMultiAsset) {
+          setOperationInputMode(ccMode, 'multi');
         }
       };
 
@@ -722,7 +739,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
                   rounded-r-md
                   transition-colors
                 "
-                title={smartActionLabel}
+                title={`${smartActionLabel}\nShift: add to multi-asset\nHover: slot picker`}
               >
                 <Icon name="zap" size={14} />
               </button>
@@ -731,7 +748,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
             hoverDelay={150}
             offset={6}
           >
-            <SlotPickerContent asset={asset} onSelectSlot={handleSelectSlot} />
+            <SlotPickerContent asset={asset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
           </ExpandableButtonGroup>
 
           {/* Menu dropdown */}

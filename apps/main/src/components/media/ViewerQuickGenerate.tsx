@@ -12,6 +12,7 @@ import { GenerationSettingsPanel, useGenerationQueueStore } from '@features/gene
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
 import type { ViewerAsset } from '@features/assets';
+import type { OperationType } from '@/types/operations';
 
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
@@ -24,17 +25,18 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
   const {
     generating,
     generate,
+    operationType,
     setOperationType,
     prompt,
     setPrompt,
     error,
   } = useQuickGenerateController();
 
-  const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
+  const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
 
   // Auto-set operation type based on asset type
   useEffect(() => {
-    const targetOp = asset.type === 'video' ? 'video_extend' : 'image_to_video';
+    const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
     setOperationType(targetOp);
   }, [asset.type, setOperationType]);
 
@@ -60,8 +62,11 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
       provider_id: asset.metadata?.providerId || 'unknown',
     };
 
-    // Add to main queue
-    addToQueue(queueAsset, 'main');
+    // Use centralized enqueueAsset for automatic queue routing
+    enqueueAsset({
+      asset: queueAsset,
+      operationType,
+    });
 
     // Trigger generation
     await generate();

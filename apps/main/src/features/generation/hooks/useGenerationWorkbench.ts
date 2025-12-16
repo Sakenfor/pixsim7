@@ -119,6 +119,15 @@ export function useGenerationWorkbench(
   const setShowSettings = useGenerationSettingsStore(s => s.setShowSettings);
   const toggleSettings = useGenerationSettingsStore(s => s.toggleSettings);
   const hasHydrated = useGenerationSettingsStore(s => s._hasHydrated);
+  const setActiveOperationType = useGenerationSettingsStore(s => s.setActiveOperationType);
+  const activeOperationType = useGenerationSettingsStore(s => s.activeOperationType);
+
+  // Sync operation type to settings store for per-operation params
+  useEffect(() => {
+    if (hasHydrated && operationType !== activeOperationType) {
+      setActiveOperationType(operationType);
+    }
+  }, [hasHydrated, operationType, activeOperationType, setActiveOperationType]);
 
   const resolvedProviderId = useMemo(() => {
     if (providerId) {

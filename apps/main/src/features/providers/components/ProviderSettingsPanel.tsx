@@ -24,11 +24,14 @@ interface ProviderSettings {
   auto_reauth_max_retries: number;
 }
 
+type ProviderTab = 'accounts' | 'config' | 'lineage';
+
 export function ProviderSettingsPanel() {
   const { providers } = useProviders();
   const [refreshKey, setRefreshKey] = useState(0);
   const { capacity, loading, error, accounts } = useProviderCapacity(refreshKey);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
@@ -38,10 +41,9 @@ export function ProviderSettingsPanel() {
   // Provider-level settings
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [settingsExpanded, setSettingsExpanded] = useState(true);
 
-  // AI Provider settings
-  const [aiExpanded, setAiExpanded] = useState(false);
+  // Active provider tab (for provider-specific content)
+  const [activeTab, setActiveTab] = useState<ProviderTab>('accounts');
   const toast = useToast();
 
   const handleSaveAccount = async (accountId: number, data: UpdateAccountRequest) => {
@@ -220,6 +222,7 @@ export function ProviderSettingsPanel() {
           account={editingAccount}
           onClose={() => setEditingAccountId(null)}
           onSave={handleSaveAccount}
+          onRefresh={() => setRefreshKey(prev => prev + 1)}
         />
       )}
       {deletingAccount && (
@@ -245,12 +248,15 @@ export function ProviderSettingsPanel() {
         {capacity.length > 0 && (
           <div className="flex gap-2 overflow-x-auto">
             {capacity.map((cap) => {
-              const isActive = activeProvider === cap.provider_id;
+              const isActive = !showGlobalSettings && activeProvider === cap.provider_id;
 
               return (
                 <button
                   key={cap.provider_id}
-                  onClick={() => setSelectedProvider(cap.provider_id)}
+                  onClick={() => {
+                    setSelectedProvider(cap.provider_id);
+                    setShowGlobalSettings(false);
+                  }}
                   className={`px-4 py-2 rounded-lg border transition-colors whitespace-nowrap ${
                     isActive
                       ? 'bg-blue-600 text-white border-blue-600'
@@ -266,13 +272,80 @@ export function ProviderSettingsPanel() {
                 </button>
               );
             })}
+
+            {/* Global Settings tab */}
+            <button
+              onClick={() => setShowGlobalSettings(true)}
+              className={`px-4 py-2 rounded-lg border transition-colors whitespace-nowrap ${
+                showGlobalSettings
+                  ? 'bg-purple-600 text-white border-purple-600'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              <div className="text-sm font-medium">Settings</div>
+              <div className="text-xs opacity-80">AI Providers & Global</div>
+            </button>
           </div>
         )}
       </div>
 
+      {/* Provider-specific Tabs (only show when a provider is selected, not global settings) */}
+      {providerData && !showGlobalSettings && (
+        <div className="border-b dark:border-neutral-700">
+          <div className="flex gap-1 px-4">
+            {[
+              { id: 'accounts' as const, label: 'Accounts' },
+              { id: 'config' as const, label: 'Configuration' },
+              ...(activeProvider === 'pixverse' ? [{ id: 'lineage' as const, label: 'Library & Lineage' }] : []),
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-auto" key={refreshKey}>
-        {capacity.length === 0 ? (
+        {/* Global Settings Content */}
+        {showGlobalSettings ? (
+          <div className="p-4">
+            <div className="max-w-2xl">
+              <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
+                AI Providers
+              </h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6">
+                Configure AI providers for prompt editing and other AI-powered features.
+                These settings apply globally across all video providers.
+              </p>
+              <AIProviderSettings
+                onSaveSuccess={() => {
+                  toast?.({
+                    title: 'Settings saved',
+                    description: 'AI provider settings updated successfully',
+                    variant: 'success',
+                  });
+                }}
+                onSaveError={() => {
+                  toast?.({
+                    title: 'Error',
+                    description: 'Failed to save AI provider settings',
+                    variant: 'error',
+                  });
+                }}
+              />
+            </div>
+          </div>
+        ) : capacity.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <div className="text-sm text-neutral-500 mb-4">
               No provider accounts configured yet.
@@ -283,231 +356,193 @@ export function ProviderSettingsPanel() {
           </div>
         ) : providerData ? (
           <div className="p-4">
-            {/* AI Providers Section */}
-            <div className="mb-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setAiExpanded(!aiExpanded)}
-                className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-between hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-              >
-                <span className="font-medium text-blue-900 dark:text-blue-100">
-                  AI Providers (Prompt Editing & Features)
-                </span>
-                <span className="text-blue-600 dark:text-blue-400">
-                  {aiExpanded ? '▼' : '▶'}
-                </span>
-              </button>
-
-              {aiExpanded && (
-                <div className="p-4 bg-white dark:bg-neutral-900">
-                  <AIProviderSettings
-                    onSaveSuccess={() => {
-                      toast?.({
-                        title: 'Settings saved',
-                        description: 'AI provider settings updated successfully',
-                        variant: 'success',
-                      });
-                    }}
-                    onSaveError={(error) => {
-                      toast?.({
-                        title: 'Error',
-                        description: 'Failed to save AI provider settings',
-                        variant: 'error',
-                      });
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Provider Configuration Section */}
-            {providerSettings && (
-              <div className="mb-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setSettingsExpanded(!settingsExpanded)}
-                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
-                >
-                  <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                    Provider Configuration
-                  </span>
-                  <span className="text-neutral-500 dark:text-neutral-400">
-                    {settingsExpanded ? '▼' : '▶'}
-                  </span>
-                </button>
-
-                {settingsExpanded && (
-                  <div className="p-4 space-y-4 bg-white dark:bg-neutral-900">
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                      Configure automatic re-authentication and password management for this provider.
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        label="Global Password"
-                        helpText="Fallback password for accounts without stored passwords"
-                        size="sm"
-                      >
-                        <Input
-                          type="password"
-                          size="sm"
-                          value={providerSettings.global_password || ''}
-                          onChange={(e) => setProviderSettings({...providerSettings, global_password: e.target.value})}
-                          placeholder="Enter global password"
-                          autoComplete="new-password"
-                        />
-                      </FormField>
-
-                      <FormField
-                        label="Max Retry Attempts"
-                        helpText="Maximum auto re-auth attempts per session expiry"
-                        size="sm"
-                      >
-                        <Input
-                          type="number"
-                          size="sm"
-                          min={1}
-                          max={10}
-                          value={providerSettings.auto_reauth_max_retries}
-                          onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_max_retries: parseInt(e.target.value) || 3})}
-                        />
-                      </FormField>
+            {/* Accounts Tab */}
+            {activeTab === 'accounts' && (
+              <>
+                {/* Provider summary */}
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div className="p-3 border rounded-lg dark:border-neutral-700">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                      Total Accounts
                     </div>
-
-                    <div>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="rounded border-neutral-300 dark:border-neutral-600"
-                          checked={providerSettings.auto_reauth_enabled}
-                          onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_enabled: e.target.checked})}
-                        />
-                        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                          Enable automatic re-authentication
-                        </span>
-                      </label>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 ml-6 mt-1">
-                        Automatically re-login using Playwright when session expires (error 10005)
-                      </p>
+                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                      {providerData.total_accounts}
                     </div>
-
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-800 dark:text-blue-300">
-                      <strong>Note:</strong> Auto re-auth requires Playwright. Sessions are refreshed automatically when logged out elsewhere using the account's password or global password.
-                    </div>
-
-                    <div className="flex justify-end">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={saveProviderSettings}
-                        disabled={savingSettings}
-                      >
-                        {savingSettings ? 'Saving...' : 'Save Configuration'}
-                      </Button>
+                    <div className="text-xs text-neutral-500">
+                      {providerData.active_accounts} active
                     </div>
                   </div>
+                  <div className="p-3 border rounded-lg dark:border-neutral-700">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                      Jobs Running
+                    </div>
+                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                      {providerData.current_jobs}/{providerData.max_jobs}
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {providerData.max_jobs > 0
+                        ? Math.round((providerData.current_jobs / providerData.max_jobs) * 100)
+                        : 0}% utilized
+                    </div>
+                  </div>
+                  <div className="p-3 border rounded-lg dark:border-neutral-700">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                      Total Credits
+                    </div>
+                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                      {providerData.total_credits.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="p-3 border rounded-lg dark:border-neutral-700">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                      Avg Success Rate
+                    </div>
+                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                      {providerData.accounts.length > 0
+                        ? Math.round(
+                            (providerData.accounts.reduce((sum, acc) => sum + acc.success_rate, 0) /
+                              providerData.accounts.length) *
+                              100
+                          )
+                        : 0}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sort Controls */}
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
+                  {[
+                    { key: 'lastUsed', label: 'Last Used' },
+                    { key: 'name', label: 'Name' },
+                    { key: 'credits', label: 'Credits' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'success', label: 'Success Rate' },
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => toggleSort(key as typeof sortBy)}
+                      className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                        sortBy === key
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      {label} {sortBy === key && (sortDesc ? '↓' : '↑')}
+                    </button>
+                  ))}
+                  <div className="flex-1" />
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {sortedAccounts.length} account{sortedAccounts.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Accounts Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {sortedAccounts.map((account) => (
+                    <CompactAccountCard
+                      key={account.id}
+                      account={account}
+                      onEdit={() => setEditingAccountId(account.id)}
+                      onToggle={() => handleToggleStatus(account)}
+                      onDelete={() => setDeletingAccount(account)}
+                    />
+                  ))}
+                </div>
+
+                {sortedAccounts.length === 0 && (
+                  <div className="text-center py-12 text-sm text-neutral-500">
+                    No accounts found for this provider
+                  </div>
                 )}
+              </>
+            )}
+
+            {/* Configuration Tab */}
+            {activeTab === 'config' && providerSettings && (
+              <div className="max-w-2xl">
+                <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
+                  {providerNames[activeProvider!] || activeProvider} Configuration
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6">
+                  Configure automatic re-authentication and password management for this provider.
+                </p>
+
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      label="Global Password"
+                      helpText="Fallback password for accounts without stored passwords"
+                      size="sm"
+                    >
+                      <Input
+                        type="password"
+                        size="sm"
+                        value={providerSettings.global_password || ''}
+                        onChange={(e) => setProviderSettings({...providerSettings, global_password: e.target.value})}
+                        placeholder="Enter global password"
+                        autoComplete="new-password"
+                      />
+                    </FormField>
+
+                    <FormField
+                      label="Max Retry Attempts"
+                      helpText="Maximum auto re-auth attempts per session expiry"
+                      size="sm"
+                    >
+                      <Input
+                        type="number"
+                        size="sm"
+                        min={1}
+                        max={10}
+                        value={providerSettings.auto_reauth_max_retries}
+                        onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_max_retries: parseInt(e.target.value) || 3})}
+                      />
+                    </FormField>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="rounded border-neutral-300 dark:border-neutral-600"
+                        checked={providerSettings.auto_reauth_enabled}
+                        onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_enabled: e.target.checked})}
+                      />
+                      <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Enable automatic re-authentication
+                      </span>
+                    </label>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 ml-6 mt-1">
+                      Automatically re-login using Playwright when session expires (error 10005)
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                    <strong>Note:</strong> Auto re-auth requires Playwright. Sessions are refreshed automatically when logged out elsewhere using the account's password or global password.
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={saveProviderSettings}
+                      disabled={savingSettings}
+                    >
+                      {savingSettings ? 'Saving...' : 'Save Configuration'}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* Provider summary */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="p-3 border rounded-lg dark:border-neutral-700">
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                  Total Accounts
-                </div>
-                <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                  {providerData.total_accounts}
-                </div>
-                <div className="text-xs text-neutral-500">
-                  {providerData.active_accounts} active
-                </div>
-              </div>
-              <div className="p-3 border rounded-lg dark:border-neutral-700">
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                  Jobs Running
-                </div>
-                <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                  {providerData.current_jobs}/{providerData.max_jobs}
-                </div>
-                <div className="text-xs text-neutral-500">
-                  {providerData.max_jobs > 0
-                    ? Math.round((providerData.current_jobs / providerData.max_jobs) * 100)
-                    : 0}% utilized
-                </div>
-              </div>
-              <div className="p-3 border rounded-lg dark:border-neutral-700">
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                  Total Credits
-                </div>
-                <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                  {providerData.total_credits.toLocaleString()}
-                </div>
-              </div>
-              <div className="p-3 border rounded-lg dark:border-neutral-700">
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                  Avg Success Rate
-                </div>
-                <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                  {providerData.accounts.length > 0
-                    ? Math.round(
-                        (providerData.accounts.reduce((sum, acc) => sum + acc.success_rate, 0) /
-                          providerData.accounts.length) *
-                          100
-                      )
-                    : 0}%
-                </div>
-              </div>
-            </div>
-
-            {/* Sort Controls */}
-            <div className="flex items-center gap-2 mb-4 flex-wrap">
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
-              {[
-                { key: 'lastUsed', label: 'Last Used' },
-                { key: 'name', label: 'Name' },
-                { key: 'credits', label: 'Credits' },
-                { key: 'status', label: 'Status' },
-                { key: 'success', label: 'Success Rate' },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => toggleSort(key as typeof sortBy)}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-all ${
-                    sortBy === key
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                  }`}
-                >
-                  {label} {sortBy === key && (sortDesc ? '↓' : '↑')}
-                </button>
-              ))}
-              <div className="flex-1" />
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                {sortedAccounts.length} account{sortedAccounts.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            {/* Accounts Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {sortedAccounts.map((account) => (
-                <CompactAccountCard
-                  key={account.id}
-                  account={account}
-                  onEdit={() => setEditingAccountId(account.id)}
-                  onToggle={() => handleToggleStatus(account)}
-                  onDelete={() => setDeletingAccount(account)}
-                />
-              ))}
-            </div>
-
-            {sortedAccounts.length === 0 && (
-              <div className="text-center py-12 text-sm text-neutral-500">
-                No accounts found for this provider
-              </div>
-            )}
-
-            {/* Pixverse-specific Sync & Lineage Section */}
-            {activeProvider === 'pixverse' && sortedAccounts.length > 0 && (
-              <PixverseSyncSection accounts={sortedAccounts} />
+            {/* Lineage Tab (provider-specific) */}
+            {activeTab === 'lineage' && sortedAccounts.length > 0 && (
+              <ProviderSyncSection
+                providerId={activeProvider!}
+                providerName={providerNames[activeProvider!] || activeProvider!}
+                accounts={sortedAccounts}
+              />
             )}
           </div>
         ) : null}
@@ -518,16 +553,17 @@ export function ProviderSettingsPanel() {
 
 
 // ============================================================================
-// Pixverse Sync Section Component
+// Provider Sync Section Component (currently Pixverse-specific)
 // ============================================================================
 
-interface PixverseSyncSectionProps {
+interface ProviderSyncSectionProps {
+  providerId: string;
+  providerName: string;
   accounts: ProviderAccount[];
 }
 
-function PixverseSyncSection({ accounts }: PixverseSyncSectionProps) {
+function ProviderSyncSection({ providerId, providerName, accounts }: ProviderSyncSectionProps) {
   const toast = useToast();
-  const [expanded, setExpanded] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
     accounts[0]?.id ?? null
   );
@@ -599,7 +635,7 @@ function PixverseSyncSection({ accounts }: PixverseSyncSectionProps) {
     setRebuilding(true);
     try {
       const result = await refreshAssetLineage({
-        providerId: 'pixverse',
+        providerId,
         clearExisting: true,
       });
 
@@ -621,107 +657,96 @@ function PixverseSyncSection({ accounts }: PixverseSyncSectionProps) {
     : 0;
 
   return (
-    <div className="mt-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
-      >
-        <span className="font-medium text-neutral-800 dark:text-neutral-200">
-          Pixverse Library & Lineage (Manual Tools)
-        </span>
-        <span className="text-neutral-500 dark:text-neutral-400">
-          {expanded ? '▼' : '▶'}
-        </span>
-      </button>
+    <div className="max-w-3xl">
+      <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
+        {providerName} Library & Lineage
+      </h3>
+      <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6">
+        Manual tools for syncing your {providerName} library and rebuilding asset lineage data.
+        These operations do not run automatically.
+      </p>
 
-      {expanded && (
-        <div className="p-4 space-y-4 bg-white dark:bg-neutral-900">
-          <p className="text-xs text-neutral-600 dark:text-neutral-400">
-            These operations do not run automatically. Trigger them manually when you've added new
-            Pixverse content or want to repair/rebuild lineage data.
-          </p>
+      <div className="space-y-6">
+        {/* Account selector */}
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            Account:
+          </label>
+          <select
+            value={selectedAccountId ?? ''}
+            onChange={(e) => setSelectedAccountId(Number(e.target.value))}
+            className="px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+          >
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.nickname || acc.email}
+              </option>
+            ))}
+          </select>
+        </div>
 
-          {/* Account selector */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              Account:
-            </label>
-            <select
-              value={selectedAccountId ?? ''}
-              onChange={(e) => setSelectedAccountId(Number(e.target.value))}
-              className="px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.nickname || acc.email}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Scan Results */}
-          {scanResult && (
-            <div className="grid grid-cols-2 gap-4">
+        {/* Scan Results */}
+        {scanResult && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Videos</div>
+              <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+                {scanResult.videos.existing_count} / {scanResult.videos.total_remote}
+              </div>
+              <div className="text-xs text-neutral-500">
+                {missingVideos > 0 ? `${missingVideos} missing` : 'All imported'}
+              </div>
+            </div>
+            {scanResult.images && (
               <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Videos</div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Images</div>
                 <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-                  {scanResult.videos.existing_count} / {scanResult.videos.total_remote}
+                  {scanResult.images.existing_count} / {scanResult.images.total_remote}
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {missingVideos > 0 ? `${missingVideos} missing` : 'All imported'}
+                  {missingImages > 0 ? `${missingImages} missing` : 'All imported'}
                 </div>
               </div>
-              {scanResult.images && (
-                <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Images</div>
-                  <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-                    {scanResult.images.existing_count} / {scanResult.images.total_remote}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {missingImages > 0 ? `${missingImages} missing` : 'All imported'}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleScanLibrary}
-              disabled={scanning || !selectedAccountId}
-            >
-              {scanning ? 'Scanning...' : 'Scan Library'}
-            </Button>
-
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleImportMissing}
-              disabled={importing || !selectedAccountId || (scanResult && missingVideos + missingImages === 0)}
-            >
-              {importing ? 'Importing...' : 'Import Missing Assets'}
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleRebuildLineage}
-              disabled={rebuilding}
-            >
-              {rebuilding ? 'Rebuilding...' : 'Rebuild Lineage'}
-            </Button>
+            )}
           </div>
+        )}
 
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            <strong>Scan Library:</strong> Check how many remote items are already imported.{' '}
-            <strong>Import Missing:</strong> Create Asset records for unimported items.{' '}
-            <strong>Rebuild Lineage:</strong> Re-extract parent-child relationships from stored metadata.
-          </p>
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleScanLibrary}
+            disabled={scanning || !selectedAccountId}
+          >
+            {scanning ? 'Scanning...' : 'Scan Library'}
+          </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleImportMissing}
+            disabled={importing || !selectedAccountId || (scanResult && missingVideos + missingImages === 0)}
+          >
+            {importing ? 'Importing...' : 'Import Missing Assets'}
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRebuildLineage}
+            disabled={rebuilding}
+          >
+            {rebuilding ? 'Rebuilding...' : 'Rebuild Lineage'}
+          </Button>
         </div>
-      )}
+
+        <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-xs text-neutral-600 dark:text-neutral-400">
+          <strong>Scan Library:</strong> Check how many remote items are already imported.{' '}
+          <strong>Import Missing:</strong> Create Asset records for unimported items.{' '}
+          <strong>Rebuild Lineage:</strong> Re-extract parent-child relationships from stored metadata.
+        </div>
+      </div>
     </div>
   );
 }

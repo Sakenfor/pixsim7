@@ -73,7 +73,6 @@ export function useQuickGenerateBindings(
 
   // Track previous queue state to detect adds vs cycles vs initial hydration
   const prevMainQueueLengthRef = useRef<number | null>(null);
-  const prevMainQueueFrontIdRef = useRef<number | null>(null);
   const prevTransitionQueueLengthRef = useRef<number | null>(null);
 
   // Function to use active asset explicitly (e.g., "Use Asset" button)
@@ -98,28 +97,34 @@ export function useQuickGenerateBindings(
     }
   }, [lastSelectedAsset, operationType]);
 
-  // Auto-fill from main generation queue
+  // Track previous index to detect cycling
+  const prevMainQueueIndexRef = useRef<number | null>(null);
+
+  // Auto-fill from main generation queue based on current index
   useEffect(() => {
     const prevLength = prevMainQueueLengthRef.current;
-    const prevFrontId = prevMainQueueFrontIdRef.current;
+    const prevIndex = prevMainQueueIndexRef.current;
     const currentLength = mainQueue.length;
-    const currentFrontId = mainQueue[0]?.asset.id ?? null;
 
     // Update refs for next render
     prevMainQueueLengthRef.current = currentLength;
-    prevMainQueueFrontIdRef.current = currentFrontId;
+    prevMainQueueIndexRef.current = mainQueueIndex;
 
-    const nextInQueue = mainQueue[0];
-    if (!nextInQueue) return;
+    if (currentLength === 0) return;
 
-    const { asset, operation } = nextInQueue;
+    // Get current item based on index (1-based index, convert to 0-based)
+    const currentIdx = Math.max(0, Math.min(mainQueueIndex - 1, currentLength - 1));
+    const currentItem = mainQueue[currentIdx];
+    if (!currentItem) return;
+
+    const { asset, operation } = currentItem;
 
     // Detect different scenarios:
     // - itemsWereAdded: new items added to queue (switch operation + fill params)
-    // - queueWasCycled: front item changed but length same (update params to new front)
+    // - indexChanged: user cycled through queue (update params to current item)
     // - initialHydration: first render with data (fill only if empty)
     const itemsWereAdded = prevLength !== null && currentLength > prevLength;
-    const queueWasCycled = prevLength !== null && currentLength === prevLength && prevFrontId !== currentFrontId;
+    const indexChanged = prevIndex !== null && prevIndex !== mainQueueIndex;
 
     if (itemsWereAdded) {
       // Set operation type if specified
@@ -135,8 +140,8 @@ export function useQuickGenerateBindings(
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
         if (!operation) setOperationType('video_extend');
       }
-    } else if (queueWasCycled) {
-      // Queue was cycled - update params to reflect the new front item
+    } else if (indexChanged) {
+      // Index changed (user cycled) - update params to reflect the current item
       if (asset.media_type === 'image') {
         setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
       } else if (asset.media_type === 'video') {
@@ -150,7 +155,7 @@ export function useQuickGenerateBindings(
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
       }
     }
-  }, [mainQueue, setOperationType]);
+  }, [mainQueue, mainQueueIndex, setOperationType]);
 
   // Auto-fill transition queue data (but don't auto-switch operation type on load)
   useEffect(() => {
@@ -167,12 +172,9 @@ export function useQuickGenerateBindings(
       return;
     }
 
-    // Only auto-switch to video_transition when NEW items are added
-    // (prevLength was set and current > prev), not on initial hydration (prevLength was null)
-    const itemsWereAdded = prevLength !== null && currentLength > prevLength;
-    if (itemsWereAdded) {
-      setOperationType('video_transition');
-    }
+    // NOTE: Removed auto-switch to video_transition here.
+    // The slot picker now handles this via setOperationInputMode() for optional multi-asset operations.
+    // Operation type should be explicitly controlled by the user, not auto-switched when adding to queue.
 
     // Fill image URLs from transition queue
     const urls = multiAssetQueue.map(item => item.asset.remote_url);

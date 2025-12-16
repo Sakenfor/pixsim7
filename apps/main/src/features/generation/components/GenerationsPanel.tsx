@@ -11,6 +11,7 @@ import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@lib/api/generations';
 import { Icons, ThemedIcon } from '@lib/icons';
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 type StatusFilter = 'all' | 'active' | 'failed' | 'completed';
 type ProviderFilter = 'all' | string;
@@ -131,6 +132,32 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     onOpenAsset?.(assetId);
   }, [onOpenAsset]);
 
+  // Load a generation's settings into Quick Generate for editing and retry
+  const handleLoadToQuickGen = useCallback((generation: GenerationResponse) => {
+    const store = useControlCenterStore.getState();
+
+    // Set operation type
+    if (generation.operation_type) {
+      store.setOperationType(generation.operation_type as any);
+    }
+
+    // Set provider
+    if (generation.provider_id) {
+      store.setProvider(generation.provider_id);
+    }
+
+    // Set prompt
+    if (generation.final_prompt) {
+      store.setPrompt(generation.final_prompt);
+    }
+
+    // Set params from raw_params or canonical_params
+    const params = generation.canonical_params || generation.raw_params;
+    if (params) {
+      store.setPresetParams(params);
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -244,6 +271,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 onCancel={handleCancel}
                 onDelete={handleDelete}
                 onOpenAsset={handleOpenAsset}
+                onLoadToQuickGen={handleLoadToQuickGen}
               />
             ))}
           </div>
@@ -259,9 +287,10 @@ interface GenerationItemProps {
   onCancel: (id: number) => void;
   onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
+  onLoadToQuickGen: (generation: GenerationResponse) => void;
 }
 
-function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset }: GenerationItemProps) {
+function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -427,18 +456,31 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset }
             </button>
           )}
           {canRetry && (
-            <button
-              onClick={handleRetryClick}
-              disabled={isRetrying}
-              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
-              title="Retry generation"
-            >
-              <ThemedIcon
-                name="refreshCw"
-                size={14}
-                className={`text-blue-600 dark:text-blue-400 ${isRetrying ? 'animate-spin' : ''}`}
-              />
-            </button>
+            <>
+              <button
+                onClick={handleRetryClick}
+                disabled={isRetrying}
+                className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
+                title="Retry generation"
+              >
+                <ThemedIcon
+                  name="refreshCw"
+                  size={14}
+                  className={`text-blue-600 dark:text-blue-400 ${isRetrying ? 'animate-spin' : ''}`}
+                />
+              </button>
+              <button
+                onClick={() => onLoadToQuickGen(generation)}
+                className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
+                title="Load to Quick Generate (edit prompt and retry)"
+              >
+                <ThemedIcon
+                  name="edit"
+                  size={14}
+                  className="text-amber-600 dark:text-amber-400"
+                />
+              </button>
+            </>
           )}
           {canCancel && (
             <button

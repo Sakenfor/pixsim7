@@ -94,3 +94,31 @@ export async function connectPixverseWithGoogle(
   });
   return response.data.account as ProviderAccount;
 }
+
+export interface CreateApiKeyResponse {
+  success: boolean;
+  api_key_id?: number;
+  api_key_name?: string;
+  api_key?: string;
+  already_exists?: boolean;
+  account: ProviderAccount;
+}
+
+/**
+ * Create an OpenAPI key for a Pixverse account.
+ *
+ * This enables efficient status polling via direct API calls instead of
+ * listing all videos. Any JWT-authenticated Pixverse account can create
+ * API keys.
+ *
+ * @param accountId - The account ID to create the key for
+ * @returns The created API key info and updated account
+ */
+export async function createApiKey(
+  accountId: number
+): Promise<CreateApiKeyResponse> {
+  const response = await apiClient.post<CreateApiKeyResponse>(
+    `/accounts/${accountId}/create-api-key`
+  );
+  return response.data;
+}

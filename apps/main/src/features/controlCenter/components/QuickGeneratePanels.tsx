@@ -3,11 +3,13 @@
  *
  * Simple, lightweight panel components for use in QuickGenerateModule's dockview instance.
  */
+import { useRef, useEffect } from 'react';
 import type { IDockviewPanelProps } from 'dockview-core';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { CompactAssetCard } from './CompactAssetCard';
 import { resolvePromptLimit } from '@/utils/prompt/limits';
 import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
+import { useGenerationQueueStore } from '@features/generation';
 
 // Panel IDs
 export type QuickGenPanelId = 'asset' | 'prompt' | 'settings' | 'blocks';
@@ -23,6 +25,7 @@ export interface QuickGenPanelContext {
   removeFromQueue: (id: number, queue: 'main') => void;
   updateLockedTimestamp: (id: number, timestamp: number | undefined, queue: 'main') => void;
   cycleQueue: (queue: 'main', direction: 'prev' | 'next') => void;
+  setMainQueueIndex: (index: number) => void;
 
   // Prompt panel
   prompt: string;
@@ -37,21 +40,62 @@ export interface QuickGenPanelContext {
 
 /**
  * Asset Panel - Shows selected/queued assets
+ * Supports mousewheel scrolling to cycle through queue
+ * Navigation pill has grid popup for quick selection
  */
 export function AssetPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
   const ctx = props.params;
-  if (!ctx) return null;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe directly to store for queue data (dockview params may be stale)
+  const storeMainQueue = useGenerationQueueStore(s => s.mainQueue);
+  const storeMainQueueIndex = useGenerationQueueStore(s => s.mainQueueIndex);
+  const storeSetQueueIndex = useGenerationQueueStore(s => s.setQueueIndex);
+  const storeCycleQueue = useGenerationQueueStore(s => s.cycleQueue);
 
   const {
-    displayAssets,
-    mainQueue,
-    mainQueueIndex,
-    operationType,
-    isFlexibleOperation,
+    displayAssets = [],
+    operationType = '',
+    isFlexibleOperation = false,
     removeFromQueue,
     updateLockedTimestamp,
-    cycleQueue,
-  } = ctx;
+  } = ctx || {};
+
+  // Use store values directly for queue operations
+  const mainQueue = storeMainQueue;
+  const mainQueueIndex = storeMainQueueIndex;
+  const cycleQueue = storeCycleQueue;
+  const setMainQueueIndex = (idx: number) => storeSetQueueIndex('main', idx);
+
+  // Stable callback for wheel handler
+  const handleWheelRef = useRef<(e: WheelEvent) => void>();
+  handleWheelRef.current = (e: WheelEvent) => {
+    if (mainQueue.length <= 1) return;
+
+    e.preventDefault();
+
+    // Scroll up = next, scroll down = prev (reversed for natural feel)
+    if (e.deltaY < 0) {
+      cycleQueue?.('main', 'next');
+    } else if (e.deltaY > 0) {
+      cycleQueue?.('main', 'prev');
+    }
+  };
+
+  // Attach native wheel listener with passive: false
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handler = (e: WheelEvent) => handleWheelRef.current?.(e);
+    container.addEventListener('wheel', handler, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handler);
+    };
+  }, []);
+
+  if (!ctx) return null;
 
   const hasAsset = displayAssets.length > 0;
 
@@ -66,29 +110,39 @@ export function AssetPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
     );
   }
 
+  // Get the current queue item based on index
+  const currentQueueIndex = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
+  const currentQueueItem = mainQueue[currentQueueIndex];
+
+  // Build queue items for grid popup - use index as part of key to ensure uniqueness
+  const queueItems = mainQueue.map((item, idx) => ({
+    id: `${item.asset.id}-${idx}`,
+    thumbnailUrl: item.asset.thumbnail_url,
+  }));
+
   return (
-    <div className="h-full w-full p-2">
+    <div ref={containerRef} className="h-full w-full p-2 relative">
       <CompactAssetCard
         asset={displayAssets[0]}
         showRemoveButton={mainQueue.length > 0}
         onRemove={() =>
-          mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')
+          currentQueueItem && removeFromQueue?.(currentQueueItem.asset.id, 'main')
         }
-        lockedTimestamp={
-          mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined
-        }
+        lockedTimestamp={currentQueueItem?.lockedTimestamp}
         onLockTimestamp={
-          mainQueue.length > 0
+          currentQueueItem
             ? (timestamp) =>
-                updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
+                updateLockedTimestamp?.(currentQueueItem.asset.id, timestamp, 'main')
             : undefined
         }
         hideFooter
         fillHeight
         currentIndex={mainQueueIndex}
         totalCount={mainQueue.length}
-        onNavigatePrev={() => cycleQueue('main', 'prev')}
-        onNavigateNext={() => cycleQueue('main', 'next')}
+        onNavigatePrev={() => cycleQueue?.('main', 'prev')}
+        onNavigateNext={() => cycleQueue?.('main', 'next')}
+        queueItems={queueItems}
+        onSelectIndex={(idx) => setMainQueueIndex?.(idx + 1)} // Convert 0-based to 1-based
       />
     </div>
   );
@@ -117,7 +171,7 @@ export function PromptPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
 
   return (
     <div className="h-full w-full p-2 flex flex-col gap-2">
-      <div className={`flex-1 transition-all duration-300 ${error ? 'ring-2 ring-red-500 ring-offset-2 rounded-lg animate-pulse' : ''}`}>
+      <div className={`flex-1 ${error ? 'ring-2 ring-red-500 rounded-lg' : ''}`}>
         <PromptInput
           value={prompt}
           onChange={setPrompt}
@@ -142,11 +196,7 @@ export function PromptPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
           className="h-full"
         />
       </div>
-      {error && (
-        <div className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800 animate-in fade-in slide-in-from-top-2 duration-300">
-          ⚠️ {error}
-        </div>
-      )}
+      {/* Error is shown in GenerationSettingsPanel near Go button */}
     </div>
   );
 }
@@ -160,8 +210,9 @@ export function SettingsPanel(props: IDockviewPanelProps<QuickGenPanelContext>) 
 
   const { renderSettingsPanel } = ctx;
 
+  // Don't show loading state - just render empty during brief mode transitions
   if (!renderSettingsPanel || typeof renderSettingsPanel !== 'function') {
-    return <div className="h-full w-full p-2">Loading settings...</div>;
+    return null;
   }
 
   return (

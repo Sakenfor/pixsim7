@@ -156,7 +156,13 @@
       "Bash(do sed -i \"s|from ''@/stores/panelConfigStore''|from ''@features/panels''|g\" \"$file\")",
       "Bash(do sed -i \"s|from ''@/components/panels/|from ''@features/panels/components/|g\" \"$file\")",
       "Bash(python -c \"import sys; sys.path.insert(0, ''.''); from pixsim7.backend.main.domain import game, behavior, stats, brain\")",
-      "Bash(python update_imports.py:*)"
+      "Bash(python update_imports.py:*)",
+      "Bash(dir /s /b *.py)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm typecheck:ui:*)",
+      "Bash(node node_modules/.bin/tsc:*)",
+      "Bash(node -e:*)"
     ],
     "deny": [],
     "ask": []

@@ -100,7 +100,15 @@ export function AIProviderSettings({
   const descClass = compact ? 'text-[10px] text-neutral-600 dark:text-neutral-400' : 'text-xs text-neutral-600 dark:text-neutral-400';
 
   return (
-    <div className={`space-y-${compact ? '2' : '4'}`}>
+    <form
+      className={`space-y-${compact ? '2' : '4'}`}
+      autoComplete="off"
+      onSubmit={(e) => e.preventDefault()}
+    >
+      {/* Hidden fields to trick browser autofill */}
+      <input type="text" name="prevent_autofill" style={{ display: 'none' }} />
+      <input type="password" name="prevent_autofill_pw" style={{ display: 'none' }} />
+
       <p className={descClass}>
         Configure AI providers for prompt editing, suggestions, and other AI-powered features.
       </p>
@@ -116,7 +124,10 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
                 placeholder="sk-..."
                 className={inputClass}
-                autoComplete="off"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
+                name="openai_api_key_field"
               />
             </div>
 
@@ -128,7 +139,10 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, anthropic_api_key: e.target.value })}
                 placeholder="sk-ant-..."
                 className={inputClass}
-                autoComplete="off"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
+                name="anthropic_api_key_field"
               />
             </div>
 
@@ -168,7 +182,10 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
                 placeholder="sk-..."
                 size="sm"
-                autoComplete="off"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
+                name="openai_api_key_input"
               />
             </FormField>
 
@@ -183,7 +200,10 @@ export function AIProviderSettings({
                 onChange={(e) => setSettings({ ...settings, anthropic_api_key: e.target.value })}
                 placeholder="sk-ant-..."
                 size="sm"
-                autoComplete="off"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
+                name="anthropic_api_key_input"
               />
             </FormField>
 
@@ -234,6 +254,6 @@ export function AIProviderSettings({
           </Button>
         )}
       </div>
-    </div>
+    </form>
   );
 }

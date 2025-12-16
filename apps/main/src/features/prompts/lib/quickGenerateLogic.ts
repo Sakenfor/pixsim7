@@ -15,7 +15,7 @@ export interface QuickGenerateContext {
   prompts: string[];
   transitionDurations?: number[];
   activeAsset?: SelectedAsset;
-  mainQueueFirst?: QueuedAsset;
+  mainQueueCurrent?: QueuedAsset;
 }
 
 export interface BuildGenerationResult {
@@ -55,7 +55,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     imageUrls,
     prompts,
     activeAsset,
-    mainQueueFirst,
+    mainQueueCurrent,
   } = context;
 
   const trimmedPrompt = prompt.trim();
@@ -72,8 +72,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     // Try auto-recovery: use queued asset or active asset if available
     let imageUrl = dynamicParams.image_url;
 
-    if (!imageUrl && mainQueueFirst?.asset.media_type === 'image') {
-      imageUrl = mainQueueFirst.asset.remote_url;
+    if (!imageUrl && mainQueueCurrent?.asset.media_type === 'image') {
+      imageUrl = mainQueueCurrent.asset.remote_url;
       if (imageUrl) {
         context.dynamicParams.image_url = imageUrl;
       }
@@ -88,7 +88,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
     // Still no URL? Provide context-aware error
     if (!imageUrl) {
-      if (mainQueueFirst?.asset.media_type === 'image' && !mainQueueFirst.asset.remote_url) {
+      if (mainQueueCurrent?.asset.media_type === 'image' && !mainQueueCurrent.asset.remote_url) {
         return {
           error: 'The queued image is local-only and has no cloud URL. Upload it to the provider first, or select a different image.',
           finalPrompt: trimmedPrompt,
@@ -120,8 +120,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     // Try auto-recovery: use queued asset or active asset if available
     let imageUrl = dynamicParams.image_url;
 
-    if (!imageUrl && mainQueueFirst?.asset.media_type === 'image') {
-      imageUrl = mainQueueFirst.asset.remote_url;
+    if (!imageUrl && mainQueueCurrent?.asset.media_type === 'image') {
+      imageUrl = mainQueueCurrent.asset.remote_url;
       if (imageUrl) {
         // Auto-fill succeeded, update params
         context.dynamicParams.image_url = imageUrl;
@@ -137,7 +137,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
     // Still no URL? Provide context-aware error
     if (!imageUrl) {
-      if (mainQueueFirst?.asset.media_type === 'image' && !mainQueueFirst.asset.remote_url) {
+      if (mainQueueCurrent?.asset.media_type === 'image' && !mainQueueCurrent.asset.remote_url) {
         return {
           error: 'The queued image is local-only and has no cloud URL. Upload it to the provider first, or select a different image.',
           finalPrompt: trimmedPrompt,
@@ -170,8 +170,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     const hasOriginalId = Boolean(dynamicParams.original_video_id);
 
     // Try auto-recovery: use queued asset or active asset
-    if (!videoUrl && !hasOriginalId && mainQueueFirst?.asset.media_type === 'video') {
-      videoUrl = mainQueueFirst.asset.remote_url;
+    if (!videoUrl && !hasOriginalId && mainQueueCurrent?.asset.media_type === 'video') {
+      videoUrl = mainQueueCurrent.asset.remote_url;
       if (videoUrl) {
         context.dynamicParams.video_url = videoUrl;
       }
@@ -186,7 +186,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
     // Still no URL or ID? Provide context-aware error
     if (!videoUrl && !hasOriginalId) {
-      if (mainQueueFirst?.asset.media_type === 'video' && !mainQueueFirst.asset.remote_url) {
+      if (mainQueueCurrent?.asset.media_type === 'video' && !mainQueueCurrent.asset.remote_url) {
         return {
           error: 'The queued video is local-only and has no cloud URL. Upload it to the provider first, or select a different video.',
           finalPrompt: trimmedPrompt,

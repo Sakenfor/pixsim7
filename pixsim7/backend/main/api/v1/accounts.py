@@ -60,6 +60,23 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
     if provider_metadata.get("auth_method") == PixverseAuthMethod.GOOGLE.value:
         is_google_account = True
 
+    # Sanitize api_keys for response (keep metadata)
+    sanitized_api_keys = None
+    if api_keys:
+        logger.debug(f"Account {account.id} has {len(api_keys)} api_keys: {api_keys}")
+        sanitized_api_keys = [
+            {
+                "id": k.get("id", ""),
+                "kind": k.get("kind", ""),
+                "value": k.get("value", ""),  # Full value - frontend will mask display
+                "name": k.get("name", ""),
+            }
+            for k in api_keys
+            if isinstance(k, dict)
+        ]
+    else:
+        logger.debug(f"Account {account.id} has no api_keys")
+
     return AccountResponse(
         id=account.id,
         user_id=account.user_id,
@@ -75,6 +92,7 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         has_api_key_paid=has_openapi_key,
         has_cookies=bool(account.cookies),
         is_google_account=is_google_account,
+        api_keys=sanitized_api_keys,
         # Credits (normalized)
         credits=credits_dict,
         total_credits=account.get_total_credits(),
@@ -328,3 +346,72 @@ async def bulk_update_credits(
         "updated": len(results),
         "details": results
     }
+
+
+# ===== API KEY MANAGEMENT =====
+
+@router.post("/accounts/{account_id}/create-api-key")
+async def create_account_api_key(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+    name: str | None = None
+):
+    """
+    Create an OpenAPI key for a Pixverse account.
+
+    This enables efficient status polling via direct API calls instead of
+    listing all videos. Any JWT-authenticated Pixverse account can create
+    API keys.
+
+    Returns:
+        Dict with api_key_id, api_key_name, api_key_sign (the actual key)
+    """
+    from pixsim7.backend.main.services.provider.registry import registry
+
+    try:
+        account = await account_service.get_account(account_id)
+
+        # Only owner can create API key
+        if account.user_id is not None and account.user_id != user.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your account")
+
+        # Only Pixverse accounts supported
+        if account.provider_id != "pixverse":
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "API key creation only supported for Pixverse accounts"
+            )
+
+        # Get Pixverse provider
+        provider = registry.get("pixverse")
+
+        # Create API key
+        result = await provider.create_api_key(account, name=name)
+
+        # Explicitly mark api_keys as modified (mutable JSON field)
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(account, "api_keys")
+
+        await db.commit()
+        await db.refresh(account)
+
+        # Return result with updated account info
+        return {
+            "success": True,
+            "api_key_id": result.get("api_key_id"),
+            "api_key_name": result.get("api_key_name"),
+            "api_key": result.get("api_key_sign"),
+            "already_exists": result.get("already_exists", False),
+            "account": _to_response(account, user.id),
+        }
+
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+    except Exception as e:
+        logger.error(f"Failed to create API key for account {account_id}: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Failed to create API key: {str(e)}"
+        )

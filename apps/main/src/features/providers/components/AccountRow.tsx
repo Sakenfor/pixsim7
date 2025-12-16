@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { useToast } from '@pixsim7/shared.ui';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
-import { dryRunPixverseSync } from '../lib/api/accounts';
+import { dryRunPixverseSync, createApiKey } from '../lib/api/accounts';
 
 /** Status color mapping */
 const STATUS_COLORS: Record<string, string> = {
@@ -23,9 +23,10 @@ interface AccountRowProps {
   onEdit: (account: ProviderAccount) => void;
   onToggleStatus: (account: ProviderAccount) => void;
   onDelete: (account: ProviderAccount) => void;
+  onRefresh?: () => void;
 }
 
-export function AccountRow({ account, onEdit, onToggleStatus, onDelete }: AccountRowProps) {
+export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefresh }: AccountRowProps) {
   const isActive = account.status === 'ACTIVE';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
   const statusColor = STATUS_COLORS[account.status] || STATUS_COLORS.DISABLED;
@@ -127,9 +128,14 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete }: Accoun
             Delete
           </button>
 
-          {/* Dev-only: Pixverse dry-run sync */}
+          {/* Pixverse-specific buttons */}
           {account.provider_id === 'pixverse' && (
-            <PixverseDryRunButton accountId={account.id} />
+            <>
+              <PixverseDryRunButton accountId={account.id} />
+              {!account.has_api_key_paid && account.has_jwt && (
+                <CreateApiKeyButton accountId={account.id} onSuccess={onRefresh} />
+              )}
+            </>
           )}
         </div>
       </td>
@@ -169,6 +175,42 @@ function PixverseDryRunButton({ accountId }: { accountId: number }) {
       title="Dev: Dry-run Pixverse video sync (no changes)"
     >
       {loading ? 'Pixverse…' : 'Pixverse Dry-Run'}
+    </button>
+  );
+}
+
+/** Button for creating Pixverse OpenAPI key */
+function CreateApiKeyButton({ accountId, onSuccess }: { accountId: number; onSuccess?: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+
+  const handleClick = async () => {
+    setLoading(true);
+    try {
+      const res = await createApiKey(accountId);
+      if (res.already_exists) {
+        toast.info('API key already exists for this account');
+      } else {
+        toast.success('API key created! Status polling will now be faster.');
+      }
+      onSuccess?.();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to create API key';
+      toast.error(message);
+      console.error('Create API key error', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      className="px-2 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-neutral-500 transition-colors"
+      title="Create OpenAPI key for faster status polling"
+    >
+      {loading ? 'Creating…' : 'Create API Key'}
     </button>
   );
 }

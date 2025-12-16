@@ -139,11 +139,24 @@ export function MediaCard(props: MediaCardProps) {
     overlayConfig: customOverlayConfig,
     customWidgets = [],
     overlayPresetId,
+    width,
+    height,
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
   const thumbSrc = useMediaThumbnail(thumbUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
+
+  const videoAspectRatio = useMemo(() => {
+    if (mediaType !== 'video') return null;
+
+    if (typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0) {
+      return width / height;
+    }
+
+    return intrinsicVideoAspectRatio ?? 16 / 9;
+  }, [mediaType, width, height, intrinsicVideoAspectRatio]);
 
   // Resolve badge configuration
   const badges = useMemo(
@@ -297,10 +310,11 @@ export function MediaCard(props: MediaCardProps) {
       >
         <div
           className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer ${
-            mediaType === 'video' ? 'aspect-video' : !thumbSrc ? 'aspect-[4/3]' : ''
+            !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
+          style={mediaType === 'video' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
         >
           {thumbSrc ? (
             mediaType === 'video' ? (
@@ -311,6 +325,15 @@ export function MediaCard(props: MediaCardProps) {
                 preload="metadata"
                 muted
                 playsInline
+                onLoadedMetadata={(e) => {
+                  const el = e.currentTarget;
+                  const w = el.videoWidth;
+                  const h = el.videoHeight;
+                  if (w > 0 && h > 0) {
+                    const next = w / h;
+                    setIntrinsicVideoAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
+                  }
+                }}
               />
             ) : (
               <img

@@ -28,8 +28,8 @@ export { useMediaGenerationActions } from './hooks/useMediaGenerationActions';
 export { useRecentGenerations } from './hooks/useRecentGenerations';
 
 // Stores
-export { useGenerationQueueStore } from './stores/generationQueueStore';
-export type { GenerationQueueState, QueuedAsset } from './stores/generationQueueStore';
+export { useGenerationQueueStore, getQueueForOperation } from './stores/generationQueueStore';
+export type { GenerationQueueState, QueuedAsset, EnqueueOptions, InputMode } from './stores/generationQueueStore';
 export { useGenerationSettingsStore } from './stores/generationSettingsStore';
 export {
   useGenerationsStore,

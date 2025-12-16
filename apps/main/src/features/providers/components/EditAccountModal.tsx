@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react';
 import { Modal, FormField, Input, Button, useToast } from '@pixsim7/shared.ui';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import type { UpdateAccountRequest } from '../lib/api/accounts';
-import { connectPixverseWithGoogle } from '../lib/api/accounts';
+import { connectPixverseWithGoogle, createApiKey } from '../lib/api/accounts';
 
 /** Form state for editing an account */
 export interface EditAccountFormState {
@@ -78,19 +78,49 @@ interface EditAccountModalProps {
   account: ProviderAccount;
   onClose: () => void;
   onSave: (accountId: number, data: UpdateAccountRequest) => Promise<void>;
+  onRefresh?: () => void;
 }
 
-export function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
+export function EditAccountModal({ account, onClose, onSave, onRefresh }: EditAccountModalProps) {
   const [formState, setFormState] = useState<EditAccountFormState>(() =>
     createInitialFormState(account)
   );
   const [saving, setSaving] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [creatingApiKey, setCreatingApiKey] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(account.has_api_key_paid);
   const toast = useToast();
 
   useEffect(() => {
     setFormState(createInitialFormState(account));
+    setHasApiKey(account.has_api_key_paid);
   }, [account]);
+
+  const handleCreateApiKey = async () => {
+    if (account.provider_id !== 'pixverse') {
+      toast.error('API key creation only supported for Pixverse');
+      return;
+    }
+    if (!account.has_jwt) {
+      toast.error('Account needs JWT token to create API key');
+      return;
+    }
+
+    setCreatingApiKey(true);
+    try {
+      const result = await createApiKey(account.id);
+      toast.success('API key created successfully!');
+      setHasApiKey(true);
+      // Refresh to show the new key
+      onRefresh?.();
+      // Close and reopen modal to see updated account
+      onClose();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create API key';
+      toast.error(message);
+      setCreatingApiKey(false);
+    }
+  };
 
   const updateFormField = <K extends keyof EditAccountFormState>(
     field: K,
@@ -158,54 +188,107 @@ export function EditAccountModal({ account, onClose, onSave }: EditAccountModalP
         </FormField>
 
         <FormField
-          label="API Key / JWT Token"
-          helpText="Leave empty to keep existing"
+          label="JWT Token (Session)"
+          helpText="Web API session token - leave empty to keep existing"
           size="md"
         >
           <Input
             type="text"
             size="md"
-            autoComplete="off"
+            autoComplete="new-password"
+            data-lpignore="true"
             value={formState.api_key}
             onChange={(e) => updateFormField('api_key', e.target.value)}
-            placeholder="Enter new API key or JWT token"
+            placeholder="Paste JWT token from browser session"
             className="font-mono"
           />
           {account.has_jwt && (
-            <p className="text-xs text-neutral-500 mt-1">Currently has JWT token</p>
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+              ✓ Currently has JWT token
+              {account.jwt_expired && <span className="text-red-500 ml-2">⚠ Expired</span>}
+            </p>
           )}
         </FormField>
 
         <FormField
-          label="OpenAPI Key (Pro/Paid)"
-          helpText="For Pixverse: This is the OpenAPI key for paid accounts with higher limits"
+          label="OpenAPI Keys"
+          helpText="API keys for direct API access - enables faster status polling"
           size="md"
         >
-          <Input
-            type="text"
-            size="md"
-            autoComplete="off"
-            value={formState.openapi_key}
-            onChange={(e) => updateFormField('openapi_key', e.target.value)}
-            placeholder="Enter OpenAPI key for paid tier"
-            className="font-mono"
-          />
-          {account.has_api_key_paid && (
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-              ✓ Currently has OpenAPI key (Pro tier active)
-            </p>
-          )}
-          {account.has_api_key_paid && (
-            <label className="mt-1 flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
-              <input
-                type="checkbox"
-                className="rounded border-neutral-300 dark:border-neutral-600"
-                checked={formState.clearOpenApiKey}
-                onChange={(e) => updateFormField('clearOpenApiKey', e.target.checked)}
+          <div className="space-y-3">
+            {/* Existing keys */}
+            {account.api_keys && account.api_keys.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                  Existing keys ({account.api_keys.length}):
+                </div>
+                {account.api_keys.map((key, idx) => {
+                  const displayValue = key.value || '';
+                  const maskedValue = displayValue.length > 14
+                    ? `${displayValue.slice(0, 10)}...${displayValue.slice(-4)}`
+                    : displayValue || '(empty)';
+                  return (
+                    <div
+                      key={key.id || idx}
+                      className="flex items-center gap-2 p-2 bg-neutral-100 dark:bg-neutral-800 rounded text-xs font-mono"
+                    >
+                      <span className="text-green-600 dark:text-green-400">✓</span>
+                      <span className="flex-1 truncate" title={displayValue}>
+                        {key.name || key.kind || `Key ${idx + 1}`}: {maskedValue}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add new key manually */}
+            <div>
+              <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Add new key manually:
+              </div>
+              <Input
+                type="text"
+                size="md"
+                autoComplete="new-password"
+                data-lpignore="true"
+                value={formState.openapi_key}
+                onChange={(e) => updateFormField('openapi_key', e.target.value)}
+                placeholder="sk-... (paste key here)"
+                className="font-mono"
               />
-              <span>Clear stored OpenAPI key on save</span>
-            </label>
-          )}
+            </div>
+
+            {/* Create key button (Pixverse only) */}
+            {account.provider_id === 'pixverse' && account.has_jwt && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleCreateApiKey}
+                  disabled={creatingApiKey}
+                >
+                  {creatingApiKey ? 'Creating...' : 'Create New API Key'}
+                </Button>
+                <span className="text-xs text-neutral-500">
+                  Auto-create from your Pixverse account
+                </span>
+              </div>
+            )}
+
+            {/* Clear all keys option */}
+            {hasApiKey && (
+              <label className="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  className="rounded border-neutral-300 dark:border-neutral-600"
+                  checked={formState.clearOpenApiKey}
+                  onChange={(e) => updateFormField('clearOpenApiKey', e.target.checked)}
+                />
+                <span>Clear all stored API keys on save</span>
+              </label>
+            )}
+          </div>
         </FormField>
 
         {/* Google Account Marker */}

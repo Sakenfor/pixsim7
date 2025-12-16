@@ -114,7 +114,7 @@ export function ControlCenterManager() {
             </div>
 
             {/* Control Center Grid */}
-            <div className="p-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3 overflow-y-auto">
+            <div className="p-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 overflow-y-auto">
               {availableControlCenters.map((cc) => {
                 const isActive = controlCenterRegistry.getActiveId() === cc.id;
 

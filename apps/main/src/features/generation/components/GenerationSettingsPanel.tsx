@@ -10,9 +10,10 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationWorkbench } from '@features/generation';
+import { useGenerationWorkbench, useGenerationQueueStore } from '@features/generation';
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { estimatePixverseCost } from '@features/providers';
+import { OPERATION_METADATA } from '@/types/operations';
 import { Icon } from '@lib/icons';
 import {
   Star,
@@ -152,6 +153,14 @@ export function GenerationSettingsPanel({
   const providerId = useControlCenterStore(s => s.providerId);
   const setProvider = useControlCenterStore(s => s.setProvider);
   const setOperationType = useControlCenterStore(s => s.setOperationType);
+
+  // Input mode for optional multi-asset operations
+  // Subscribe directly to operationInputModePrefs to trigger re-render on changes
+  const operationInputModePrefs = useGenerationQueueStore(s => s.operationInputModePrefs);
+  const setOperationInputMode = useGenerationQueueStore(s => s.setOperationInputMode);
+  const operationMetadata = OPERATION_METADATA[operationType];
+  const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
+  const currentInputMode = operationInputModePrefs[operationType] ?? 'single';
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
@@ -362,20 +371,59 @@ export function GenerationSettingsPanel({
     <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
       {/* Fixed top section - Operation type & Provider */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
-        {/* Operation type */}
+        {/* Operation type + Input mode toggle (inline) */}
         {showOperationType && (
-          <select
-            value={operationType}
-            onChange={(e) => setOperationType(e.target.value as any)}
-            disabled={generating}
-            className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
-          >
-            <option value="image_to_image">→ Image</option>
-            <option value="image_to_video">→ Video</option>
-            <option value="video_extend">Extend</option>
-            <option value="video_transition">Transition</option>
-            <option value="fusion">Fusion</option>
-          </select>
+          <div className="flex gap-1">
+            <select
+              value={operationType}
+              onChange={(e) => setOperationType(e.target.value as any)}
+              disabled={generating}
+              className={clsx(
+                'px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium',
+                isOptionalMultiAsset ? 'flex-1' : 'w-full'
+              )}
+            >
+              <option value="image_to_image">→ Image</option>
+              <option value="image_to_video">→ Video</option>
+              <option value="video_extend">Extend</option>
+              <option value="video_transition">Transition</option>
+              <option value="fusion">Fusion</option>
+            </select>
+
+            {/* Input mode toggle for optional multi-asset operations */}
+            {isOptionalMultiAsset && (
+              <div className="flex rounded-lg overflow-hidden shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setOperationInputMode(operationType, 'single')}
+                  disabled={generating}
+                  className={clsx(
+                    'px-2 py-1.5 text-[10px] font-medium transition-colors',
+                    currentInputMode === 'single'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-blue-50 dark:hover:bg-neutral-700'
+                  )}
+                  title="Single asset mode"
+                >
+                  1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOperationInputMode(operationType, 'multi')}
+                  disabled={generating}
+                  className={clsx(
+                    'px-2 py-1.5 text-[10px] font-medium transition-colors',
+                    currentInputMode === 'multi'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-purple-50 dark:hover:bg-neutral-700'
+                  )}
+                  title="Multi-asset mode"
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Provider */}
@@ -511,7 +559,7 @@ export function GenerationSettingsPanel({
 
         {/* Error message */}
         {error && (
-          <div className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800">
             ⚠️ {error}
           </div>
         )}
@@ -530,13 +578,12 @@ export function GenerationSettingsPanel({
             onClick={onGenerate}
             disabled={generating || !canGenerate}
             className={clsx(
-              'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white transition-all duration-300',
+              'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white transition-colors',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              error && !generating ? 'ring-2 ring-red-500 ring-offset-1 animate-pulse' : '',
               generating || !canGenerate
                 ? 'bg-neutral-400'
                 : error
-                ? 'bg-red-600 hover:bg-red-700'
+                ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
                 : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
             )}
           >

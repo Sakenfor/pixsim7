@@ -119,13 +119,15 @@ export type OperationType = typeof OPERATION_TYPES[number];
 
 export type MediaType = 'image' | 'video';
 
+export type MultiAssetMode = 'single' | 'optional' | 'required';
+
 export interface OperationMetadata {
   /** Display label */
   label: string;
   /** Short description */
   description: string;
-  /** Whether this operation accepts multiple input assets */
-  multiAsset: boolean;
+  /** Multi-asset behavior */
+  multiAssetMode: MultiAssetMode;
   /** What media types can be used as input (empty = no media input, e.g., text_to_*) */
   acceptsInput: MediaType[];
   /** Output media type */
@@ -144,7 +146,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   text_to_image: {
     label: 'Text to Image',
     description: 'Generate an image from a text prompt',
-    multiAsset: false,
+    multiAssetMode: 'single',
     acceptsInput: [],
     outputType: 'image',
     promptRequired: true,
@@ -153,7 +155,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   text_to_video: {
     label: 'Text to Video',
     description: 'Generate a video from a text prompt',
-    multiAsset: false,
+    multiAssetMode: 'single',
     acceptsInput: [],
     outputType: 'video',
     promptRequired: true,
@@ -162,7 +164,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   image_to_video: {
     label: 'Image to Video',
     description: 'Animate an image into a video',
-    multiAsset: false,
+    multiAssetMode: 'single',
     acceptsInput: ['image', 'video'], // video via frame extraction
     outputType: 'video',
     promptRequired: false,
@@ -171,7 +173,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   image_to_image: {
     label: 'Image Generation',
     description: 'Transform or edit an image',
-    multiAsset: true, // Can use multiple source images for composition/style
+    multiAssetMode: 'optional', // Can use multiple source images for composition/style
     acceptsInput: ['image', 'video'], // video via frame extraction
     outputType: 'image',
     promptRequired: true,
@@ -180,7 +182,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   video_extend: {
     label: 'Video Extend',
     description: 'Extend a video with additional frames',
-    multiAsset: false,
+    multiAssetMode: 'single',
     acceptsInput: ['video'],
     outputType: 'video',
     promptRequired: false,
@@ -189,7 +191,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   video_transition: {
     label: 'Video Transition',
     description: 'Create transitions between multiple images',
-    multiAsset: true,
+    multiAssetMode: 'required',
     acceptsInput: ['image', 'video'], // video via frame extraction
     outputType: 'video',
     promptRequired: true,
@@ -198,7 +200,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   fusion: {
     label: 'Fusion',
     description: 'Blend multiple assets together',
-    multiAsset: true,
+    multiAssetMode: 'optional',
     acceptsInput: ['image', 'video'],
     outputType: 'video',
     promptRequired: false,
@@ -210,7 +212,18 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
  * Check if an operation supports multiple input assets
  */
 export function isMultiAssetOperation(operationType: OperationType): boolean {
-  return OPERATION_METADATA[operationType]?.multiAsset ?? false;
+  const mode = OPERATION_METADATA[operationType]?.multiAssetMode;
+  return mode === 'optional' || mode === 'required';
+}
+
+/**
+ * Check if an operation should default to the multi-asset queue.
+ *
+ * @deprecated Use `useGenerationQueueStore().resolveQueueType()` instead for
+ * centralized queue routing that respects user preferences for optional operations.
+ */
+export function shouldDefaultToMultiAssetQueue(operationType: OperationType): boolean {
+  return OPERATION_METADATA[operationType]?.multiAssetMode === 'required';
 }
 
 /**

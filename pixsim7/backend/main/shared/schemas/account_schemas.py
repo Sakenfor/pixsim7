@@ -62,6 +62,9 @@ class AccountResponse(BaseModel):
     has_cookies: bool
     is_google_account: bool  # True if authenticated via Google Sign-In
 
+    # API keys (for displaying in UI)
+    api_keys: Optional[list[dict]] = None
+
     # Credits (normalized - supports any number of credit types)
     # Example: {"webapi": 100, "openapi": 50} for Pixverse
     # Example: {"standard": 200} for Runway

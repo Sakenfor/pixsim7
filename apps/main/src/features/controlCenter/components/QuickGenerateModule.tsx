@@ -13,6 +13,7 @@ import { estimatePixverseCost } from '@features/providers';
 import { AssetPanel, PromptPanel, SettingsPanel, BlocksPanel, type QuickGenPanelContext } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
 import { useAssetViewerStore } from '@features/assets';
+import { OPERATION_METADATA } from '@/types/operations';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -58,6 +59,17 @@ export function QuickGenerateModule() {
   const workbench = useGenerationWorkbench({ operationType });
 
   const updateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
+  const setQueueIndex = useGenerationQueueStore(s => s.setQueueIndex);
+  // Subscribe directly to operationInputModePrefs to trigger re-render on changes
+  const operationInputModePrefs = useGenerationQueueStore(s => s.operationInputModePrefs);
+
+  // Check if we're in multi-asset mode for optional operations
+  const operationMetadata = OPERATION_METADATA[operationType];
+  const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
+  const isRequiredMultiAsset = operationMetadata?.multiAssetMode === 'required';
+  // Get input mode - required ops are always multi, optional check prefs, single ops are always single
+  const inputMode = isRequiredMultiAsset ? 'multi' : (operationInputModePrefs[operationType] ?? 'single');
+  const isInMultiMode = (isOptionalMultiAsset && inputMode === 'multi') || isRequiredMultiAsset;
 
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
@@ -69,6 +81,7 @@ export function QuickGenerateModule() {
   // Dockview for minimal rearrangeable panels
   const dockviewRef = useRef<DockviewReadyEvent['api'] | null>(null);
   const previousLayoutRef = useRef<boolean | null>(null);
+  const [dockviewReady, setDockviewReady] = useState(0); // Counter to trigger re-render on ready
   const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
 
@@ -218,13 +231,14 @@ export function QuickGenerateModule() {
   const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
 
 
-  // Get the asset to display based on operation type
+  // Get the asset to display based on operation type and input mode
   const getDisplayAssets = () => {
-    if (operationType === 'video_transition') {
+    // Multi-asset modes: video_transition OR optional operations in multi mode
+    if (operationType === 'video_transition' || isInMultiMode) {
       return multiAssetQueue.map(q => q.asset);
     }
 
-    // For image_to_video, image_to_image, or video_extend, show asset at current index
+    // For single-asset modes: image_to_video, image_to_image, video_extend
     if (mainQueue.length > 0) {
       // mainQueueIndex is 1-based, convert to 0-based array index
       const index = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
@@ -422,6 +436,11 @@ export function QuickGenerateModule() {
     />
   ), [generating, canGenerate, generate, extraControls, error]);
 
+  // Wrapper to set main queue index directly
+  const setMainQueueIndex = useCallback((index: number) => {
+    setQueueIndex('main', index);
+  }, [setQueueIndex]);
+
   // Prepare panel context data
   const panelContext = useMemo<QuickGenPanelContext>(() => ({
     displayAssets,
@@ -432,6 +451,7 @@ export function QuickGenerateModule() {
     removeFromQueue,
     updateLockedTimestamp,
     cycleQueue,
+    setMainQueueIndex,
     prompt,
     setPrompt,
     providerId,
@@ -447,6 +467,7 @@ export function QuickGenerateModule() {
     removeFromQueue,
     updateLockedTimestamp,
     cycleQueue,
+    setMainQueueIndex,
     prompt,
     setPrompt,
     providerId,
@@ -580,6 +601,9 @@ export function QuickGenerateModule() {
     event.api.onDidLayoutChange(() => {
       saveLayout();
     });
+
+    // Trigger re-render to update panels with context
+    setDockviewReady(c => c + 1);
   };
 
   // Focus asset panel when assets are added to queue
@@ -636,45 +660,57 @@ export function QuickGenerateModule() {
         }
       });
     }
-  }, [showAssetPanelInLayout, panelContext, createPanelsForLayout]);
+  }, [showAssetPanelInLayout, panelContext, createPanelsForLayout, dockviewReady]);
 
-  // Render the main content area based on operation type
+  // Render the main content area based on operation type and input mode
   const renderContent = () => {
-    if (operationType === 'video_transition') {
-      // Transition mode: assets with hover overlay for transition controls
+    // Unified multi-asset layout for: video_transition, fusion, or optional ops in multi mode
+    const isMultiAssetLayout = operationType === 'video_transition' || isInMultiMode;
+    const isTransitionMode = operationType === 'video_transition';
+
+    if (isMultiAssetLayout) {
       const isLastAsset = (idx: number) => idx === displayAssets.length - 1;
 
       return (
         <div className="flex gap-3 flex-1 min-h-0">
-          {/* Left: Asset sequence - hover shows badge overlay */}
+          {/* Left: Asset strip */}
           <div className="flex-shrink-0 flex items-stretch">
             {displayAssets.length > 0 ? (
               <div className="flex items-stretch gap-1.5">
                 {multiAssetQueue.map((queueItem, idx) => {
-                  const hasOutgoingTransition = !isLastAsset(idx);
-                  const isSelected = selectedTransitionIndex === idx;
+                  const hasOutgoingTransition = isTransitionMode && !isLastAsset(idx);
+                  const isSelected = isTransitionMode && selectedTransitionIndex === idx;
 
                   return (
                     <div
                       key={idx}
                       className={clsx(
-                        'group relative flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 transition-colors cursor-pointer',
+                        'group relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-colors',
+                        isTransitionMode ? 'w-32 cursor-pointer' : 'w-24',
                         isSelected && hasOutgoingTransition
                           ? 'border-blue-500'
-                          : 'border-transparent hover:border-neutral-300 dark:hover:border-neutral-600'
+                          : isTransitionMode
+                          ? 'border-transparent hover:border-neutral-300 dark:hover:border-neutral-600'
+                          : 'border-transparent hover:border-purple-400'
                       )}
-                      onClick={() => hasOutgoingTransition && setSelectedTransitionIndex(idx)}
+                      onClick={() => isTransitionMode && hasOutgoingTransition && setSelectedTransitionIndex(idx)}
                     >
                       <CompactAssetCard
                         asset={queueItem.asset}
                         showRemoveButton
-                        onRemove={() => removeFromQueue(queueItem.asset.id, 'transition')}
+                        onRemove={() => removeFromQueue(queueItem.asset.id, 'multi')}
                         lockedTimestamp={queueItem.lockedTimestamp}
-                        onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'transition')}
+                        onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'multi')}
                         hideFooter
                         fillHeight
                       />
-                      {/* Hover badge overlay for transition controls */}
+                      {/* Index badge for non-transition multi mode */}
+                      {!isTransitionMode && (
+                        <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                          {idx + 1}
+                        </div>
+                      )}
+                      {/* Hover overlay for transition controls */}
                       {hasOutgoingTransition && (
                         <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-4">
                           <div className="flex items-center justify-between gap-1">
@@ -716,30 +752,45 @@ export function QuickGenerateModule() {
                 })}
               </div>
             ) : (
-              <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+              <div className={clsx(
+                'text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed',
+                isTransitionMode ? 'border-neutral-300 dark:border-neutral-700' : 'border-purple-300 dark:border-purple-700'
+              )}>
                 Add images from gallery
               </div>
             )}
           </div>
 
-          {/* Center: Prompt for selected transition */}
+          {/* Center: Prompt area */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            {displayAssets.length > 1 ? (
-              <textarea
-                value={prompts[selectedTransitionIndex] || ''}
-                onChange={(e) => {
-                  const newPrompts = [...prompts];
-                  newPrompts[selectedTransitionIndex] = e.target.value;
-                  setPrompts(newPrompts);
-                }}
-                placeholder="Describe the motion..."
-                disabled={generating}
-                className="flex-1 min-h-[60px] px-4 py-3 text-sm border border-neutral-200 dark:border-neutral-700 rounded-2xl bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none focus:ring-2 focus:ring-blue-500/40 focus:border-transparent outline-none shadow-sm"
-              />
+            {isTransitionMode ? (
+              // Per-transition prompts for video_transition
+              displayAssets.length > 1 ? (
+                <textarea
+                  value={prompts[selectedTransitionIndex] || ''}
+                  onChange={(e) => {
+                    const newPrompts = [...prompts];
+                    newPrompts[selectedTransitionIndex] = e.target.value;
+                    setPrompts(newPrompts);
+                  }}
+                  placeholder="Describe the motion..."
+                  disabled={generating}
+                  className="flex-1 min-h-[60px] px-4 py-3 text-sm border border-neutral-200 dark:border-neutral-700 rounded-2xl bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none focus:ring-2 focus:ring-blue-500/40 focus:border-transparent outline-none shadow-sm"
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                  {displayAssets.length === 1 ? 'Add one more image' : 'Add images from gallery'}
+                </div>
+              )
             ) : (
-              <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                {displayAssets.length === 1 ? 'Add one more image' : 'Add images from gallery'}
-              </div>
+              // Single shared prompt for other multi-asset operations
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={operationType === 'image_to_image' ? 'Describe the transformation...' : 'Describe the generation...'}
+                disabled={generating}
+                className="flex-1 min-h-[60px] px-4 py-3 text-sm border border-neutral-200 dark:border-neutral-700 rounded-2xl bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none focus:ring-2 focus:ring-purple-500/40 focus:border-transparent outline-none shadow-sm"
+              />
             )}
           </div>
 
@@ -750,8 +801,9 @@ export function QuickGenerateModule() {
     }
 
     // Use minimal dockview for asset+prompt or prompt+settings layout
+    // Key includes mode to force remount when switching between single/multi modes
     return (
-      <div className={clsx("flex-1 min-h-0 h-full relative", styles.minimalDockview)}>
+      <div key={`dockview-${inputMode}`} className={clsx("flex-1 min-h-0 h-full relative", styles.minimalDockview)}>
         <DockviewReact
           onReady={handleDockviewReady}
           components={{

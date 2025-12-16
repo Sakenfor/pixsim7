@@ -92,7 +92,7 @@ export function ProviderOverviewModule() {
           No accounts configured. Add accounts from browser extension.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
           {capacity.map((cap) => {
             const isAtCapacity = cap.current_jobs >= cap.max_jobs;
             const utilizationPercent = cap.max_jobs > 0

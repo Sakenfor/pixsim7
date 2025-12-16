@@ -41,7 +41,7 @@ export function ShortcutsModule() {
 
   return (
     <div className="p-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
         {shortcuts.map(shortcut => (
           <button
             key={shortcut.id}

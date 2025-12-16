@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationsStore } from '@features/generation';
 import { ccSelectors } from '@/stores/selectors';
@@ -42,24 +42,64 @@ export function useQuickGenerateController() {
   const [generationId, setGenerationId] = useState<number | null>(null);
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore(s => s.setWatchingGeneration);
+  const generations = useGenerationsStore(s => s.generations);
+
+  // Watch for generation failures and display error in prompt box
+  // Use selector to only get the specific generation we're watching
+  const watchedGeneration = useGenerationsStore(s =>
+    generationId ? s.generations.get(generationId) : undefined
+  );
+  const watchedStatus = watchedGeneration?.status;
+  const watchedErrorMessage = watchedGeneration?.error_message;
+
+  // Track which generation we've already shown error for (prevents re-triggering)
+  const errorShownForRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Skip if no generation, not failed, no error message, or already shown
+    if (!generationId || watchedStatus !== 'failed' || !watchedErrorMessage) return;
+    if (errorShownForRef.current === generationId) return;
+
+    // Mark as shown before setting error
+    errorShownForRef.current = generationId;
+
+    // Show a user-friendly version of the error
+    let friendlyError = watchedErrorMessage;
+
+    // Extract key info from content filter errors
+    if (friendlyError.toLowerCase().includes('content filter') ||
+        friendlyError.toLowerCase().includes('sensitive') ||
+        friendlyError.toLowerCase().includes('moderation')) {
+      friendlyError = 'Content filtered: Your prompt may contain sensitive content. Please revise and try again.';
+    } else if (friendlyError.length > 100) {
+      // Truncate long errors
+      friendlyError = friendlyError.slice(0, 100) + '...';
+    }
+
+    setError(friendlyError);
+  }, [generationId, watchedStatus, watchedErrorMessage]);
 
   async function generate() {
     setError(null);
     setGenerating(true);
     setGenerationId(null);
+    errorShownForRef.current = null; // Reset so new generation can show errors
 
     try {
       // Handle frame extraction for video assets with locked timestamps
       let modifiedDynamicParams = { ...bindings.dynamicParams };
       let modifiedImageUrls = [...bindings.imageUrls];
 
+      // Get current queue item based on index (1-based index, convert to 0-based)
+      const currentIdx = Math.max(0, Math.min(bindings.mainQueueIndex - 1, bindings.mainQueue.length - 1));
+      const currentQueueItem = bindings.mainQueue.length > 0 ? bindings.mainQueue[currentIdx] : null;
+
       // For image_to_video: extract frame if video has locked timestamp
-      if (operationType === 'image_to_video' && bindings.mainQueue[0]) {
-        const queueItem = bindings.mainQueue[0];
-        if (queueItem.lockedTimestamp !== undefined && queueItem.asset.media_type === 'video') {
+      if (operationType === 'image_to_video' && currentQueueItem) {
+        if (currentQueueItem.lockedTimestamp !== undefined && currentQueueItem.asset.media_type === 'video') {
           const extractedFrame = await extractFrame({
-            video_asset_id: queueItem.asset.id,
-            timestamp: queueItem.lockedTimestamp,
+            video_asset_id: currentQueueItem.asset.id,
+            timestamp: currentQueueItem.lockedTimestamp,
           });
           // Use extracted frame URL instead of video URL
           modifiedDynamicParams.image_url = extractedFrame.remote_url || extractedFrame.thumbnail_url;
@@ -93,7 +133,7 @@ export function useQuickGenerateController() {
         prompts: bindings.prompts,
         transitionDurations: bindings.transitionDurations,
         activeAsset: bindings.lastSelectedAsset,
-        mainQueueFirst: bindings.mainQueue[0],
+        mainQueueCurrent: currentQueueItem,
       });
 
       if (buildResult.error || !buildResult.params) {
