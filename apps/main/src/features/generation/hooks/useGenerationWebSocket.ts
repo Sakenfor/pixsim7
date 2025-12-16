@@ -242,35 +242,12 @@ class WebSocketManager {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
           } else if (message.type === 'job:completed') {
-            console.log('[WebSocket] Job completed! Fetching generation and asset data...');
-            // Fetch generation data
-            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(async ({ data }) => {
+            console.log('[WebSocket] Job completed! Updating generation status...');
+            // Fetch generation data to update status
+            // Note: asset:created event will handle adding the asset to gallery
+            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
               console.log('[WebSocket] Generation data:', data);
               addOrUpdateGeneration(data);
-
-              if (data.asset_id) {
-                console.log('[WebSocket] Fetching asset data for:', data.asset_id);
-                // Fetch full asset data to ensure filters work correctly
-                try {
-                  const { data: assetData } = await apiClient.get(`/assets/${data.asset_id}`);
-                  console.log('[WebSocket] Asset data fetched:', assetData);
-                  console.log('[WebSocket] Emitting asset:created event');
-                  assetEvents.emitAssetCreated(assetData);
-
-                  if (downloadOnGenerate) {
-                    const rawData = data as Record<string, unknown>;
-                    if (rawData && typeof rawData === 'object') {
-                      const generationData: GenerationResponse = {
-                        ...rawData,
-                        id: generationId,
-                      };
-                      addOrUpdateGeneration(generationData);
-                    }
-                  }
-                } catch (err) {
-                  console.error('[WebSocket] Failed to fetch asset:', err);
-                }
-              }
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
