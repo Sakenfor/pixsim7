@@ -22,7 +22,7 @@ from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
-from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations
+from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim7.backend.main.shared.config import settings
@@ -112,6 +112,18 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
     logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
+
+    # Reconcile account counters on startup (fixes counter drift from crashes)
+    try:
+        reconcile_result = await reconcile_account_counters(ctx)
+        if reconcile_result.get("reconciled", 0) > 0:
+            logger.info(
+                "startup_reconciliation_complete",
+                reconciled=reconcile_result.get("reconciled", 0),
+                errors=reconcile_result.get("errors", 0),
+            )
+    except Exception as e:
+        logger.warning("startup_reconciliation_failed", error=str(e))
 
     # Start distributed event bridge
     _event_bridge = await start_event_bus_bridge(role="arq_worker")

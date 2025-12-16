@@ -22,6 +22,7 @@ from pixsim7.backend.main.shared.errors import (
     ProviderQuotaExceededError,
     ProviderContentFilteredError,
     ProviderRateLimitError,
+    ProviderConcurrentLimitError,
 )
 
 # Expected errors that don't need stack traces - these are business logic, not bugs
@@ -29,6 +30,7 @@ EXPECTED_ERRORS = (
     ProviderContentFilteredError,
     ProviderQuotaExceededError,
     ProviderRateLimitError,
+    ProviderConcurrentLimitError,
     NoAccountAvailableError,
     AccountExhaustedError,
     AccountCooldownError,
@@ -345,6 +347,69 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         return {
                             "status": "requeued",
                             "reason": "account_quota_exhausted",
+                            "generation_id": generation_id,
+                        }
+                    except Exception as requeue_err:
+                        gen_logger.error(
+                            "generation_requeue_failed",
+                            error=str(requeue_err),
+                            generation_id=generation.id,
+                        )
+                        # Fall through to mark as failed if requeue fails
+
+                # Concurrent limit reached - put account in short cooldown and try different account
+                elif isinstance(e, ProviderConcurrentLimitError):
+                    # Put account in short cooldown (30 seconds) so it's not immediately reselected
+                    try:
+                        from datetime import timedelta
+                        account.cooldown_until = datetime.utcnow() + timedelta(seconds=30)
+                        await db.commit()
+                        gen_logger.info(
+                            "account_cooldown_concurrent_limit",
+                            account_id=account.id,
+                            cooldown_seconds=30,
+                        )
+                    except Exception as cooldown_err:
+                        gen_logger.warning(
+                            "account_cooldown_failed",
+                            account_id=account.id,
+                            error=str(cooldown_err),
+                        )
+
+                    # Release account reservation
+                    try:
+                        await account_service.release_account(account.id)
+                    except Exception as release_err:
+                        gen_logger.warning("account_release_failed", error=str(release_err))
+
+                    # Clear account_id so job picks a different account on retry
+                    generation.account_id = None
+
+                    # Reset generation to PENDING and re-enqueue for different account
+                    try:
+                        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+                        generation.status = GenStatus.PENDING
+                        generation.started_at = None
+                        await db.commit()
+                        await db.refresh(generation)
+
+                        arq_pool = await get_arq_pool()
+                        await arq_pool.enqueue_job(
+                            "process_generation",
+                            generation_id=generation.id,
+                        )
+
+                        gen_logger.info(
+                            "generation_requeued_concurrent_limit",
+                            generation_id=generation.id,
+                            previous_account_id=account.id,
+                        )
+
+                        return {
+                            "status": "requeued",
+                            "reason": "account_concurrent_limit",
                             "generation_id": generation_id,
                         }
                     except Exception as requeue_err:

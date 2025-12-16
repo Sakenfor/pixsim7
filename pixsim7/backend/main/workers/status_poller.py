@@ -115,6 +115,17 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             generation.id,
                             "No provider submission found"
                         )
+                        # Decrement counter using generation.account_id if available
+                        # (counter was incremented at selection, before submission created)
+                        if generation.account_id:
+                            orphan_account = await db.get(ProviderAccount, generation.account_id)
+                            if orphan_account and orphan_account.current_processing_jobs > 0:
+                                orphan_account.current_processing_jobs -= 1
+                                logger.info(
+                                    "counter_decremented_no_submission",
+                                    account_id=generation.account_id,
+                                    generation_id=generation.id,
+                                )
                         failed += 1
                         continue
 
@@ -141,7 +152,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         except Exception as billing_err:
                             logger.warning(
                                 "billing_finalization_error",
-                                extra={"generation_id": generation.id, "error": str(billing_err)}
+                                generation_id=generation.id,
+                                error=str(billing_err)
                             )
 
                         # Decrement account's concurrent job count
@@ -212,7 +224,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
-                                    extra={"generation_id": generation.id, "error": str(billing_err)}
+                                    generation_id=generation.id,
+                                    error=str(billing_err)
                                 )
 
                             # Decrement account's concurrent job count
@@ -257,7 +270,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
-                                    extra={"generation_id": generation.id, "error": str(billing_err)}
+                                    generation_id=generation.id,
+                                    error=str(billing_err)
                                 )
 
                             # Decrement account's concurrent job count
@@ -514,6 +528,95 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
         finally:
             await db.close()
+
+
+async def reconcile_account_counters(ctx: dict) -> dict:
+    """
+    Reconcile current_processing_jobs counters on startup.
+
+    This fixes counter drift that occurs when:
+    1. Worker crashes between account selection and job completion
+    2. Jobs are orphaned without proper counter decrement
+
+    For each account with current_processing_jobs > 0, we count actual
+    PROCESSING generations and reset the counter to match reality.
+
+    Args:
+        ctx: ARQ worker context
+
+    Returns:
+        dict with reconciliation statistics
+    """
+    reconciled = 0
+    errors = 0
+
+    async for db in get_db():
+        try:
+            from sqlalchemy import func
+
+            # Find all accounts that think they have processing jobs
+            result = await db.execute(
+                select(ProviderAccount).where(
+                    ProviderAccount.current_processing_jobs > 0
+                )
+            )
+            accounts_with_jobs = list(result.scalars().all())
+
+            if not accounts_with_jobs:
+                logger.debug("reconcile_idle", msg="No accounts with elevated counters")
+                return {"reconciled": 0, "errors": 0}
+
+            logger.info("reconcile_found_accounts", count=len(accounts_with_jobs))
+
+            for account in accounts_with_jobs:
+                try:
+                    # Count actual PROCESSING generations for this account
+                    count_result = await db.execute(
+                        select(func.count(Generation.id)).where(
+                            Generation.account_id == account.id,
+                            Generation.status == GenerationStatus.PROCESSING,
+                        )
+                    )
+                    actual_count = count_result.scalar() or 0
+
+                    old_count = account.current_processing_jobs
+                    if old_count != actual_count:
+                        account.current_processing_jobs = actual_count
+                        logger.info(
+                            "counter_reconciled",
+                            account_id=account.id,
+                            email=account.email,
+                            old_count=old_count,
+                            new_count=actual_count,
+                        )
+                        reconciled += 1
+
+                except Exception as e:
+                    logger.error(
+                        "reconcile_account_error",
+                        account_id=account.id,
+                        error=str(e),
+                    )
+                    errors += 1
+
+            await db.commit()
+
+            logger.info(
+                "reconcile_complete",
+                reconciled=reconciled,
+                errors=errors,
+            )
+
+            return {"reconciled": reconciled, "errors": errors}
+
+        except Exception as e:
+            logger.error("reconcile_error", error=str(e), exc_info=True)
+            raise
+
+        finally:
+            await db.close()
+
+    return {"reconciled": 0, "errors": 0}
 
 
 async def requeue_pending_generations(ctx: dict) -> dict:

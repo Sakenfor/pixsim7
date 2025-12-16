@@ -402,12 +402,13 @@ from pixsim7.backend.main.shared.errors import (
     ProviderJobNotFoundError as JobNotFoundError,
     ProviderContentFilteredError as ContentFilteredError,
     ProviderRateLimitError as RateLimitError,
+    ProviderConcurrentLimitError as ConcurrentLimitError,
     UnsupportedOperationError,
 )
 
 __all__ = [
     "Provider",
-    "GenerationResult", 
+    "GenerationResult",
     "ProviderStatusResult",
     "ProviderError",
     "AuthenticationError",
@@ -415,5 +416,6 @@ __all__ = [
     "JobNotFoundError",
     "ContentFilteredError",
     "RateLimitError",
+    "ConcurrentLimitError",
     "UnsupportedOperationError",
 ]

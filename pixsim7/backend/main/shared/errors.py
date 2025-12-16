@@ -115,6 +115,19 @@ class ProviderRateLimitError(ProviderError):
         self.retry_after = retry_after
 
 
+class ProviderConcurrentLimitError(ProviderError):
+    """Provider concurrent generation limit reached for this account.
+
+    This indicates the provider has too many jobs running for this account.
+    The job should be requeued to try a different account.
+    """
+    def __init__(self, provider_id: str, account_id: int | None = None):
+        msg = f"Concurrent generation limit reached for provider '{provider_id}'"
+        super().__init__(msg, code="PROVIDER_CONCURRENT_LIMIT")
+        self.provider_id = provider_id
+        self.account_id = account_id
+
+
 class ProviderContentFilteredError(ProviderError):
     """Content filtered by provider policy
 

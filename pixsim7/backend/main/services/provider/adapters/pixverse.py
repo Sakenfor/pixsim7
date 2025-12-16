@@ -55,6 +55,7 @@ from pixsim7.backend.main.services.provider.base import (
     QuotaExceededError,
     ContentFilteredError,
     JobNotFoundError,
+    ConcurrentLimitError,
 )
 from pixsim7.backend.main.shared.jwt_utils import extract_jwt_from_cookies, needs_refresh
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod, PixverseSessionData
@@ -736,6 +737,110 @@ class PixverseProvider(
                 return str(entry["value"])
         return None
 
+    async def create_api_key(
+        self,
+        account: ProviderAccount,
+        name: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Create an OpenAPI key for a JWT-authenticated account.
+
+        This enables efficient status polling via direct API calls instead
+        of listing all videos. The key is automatically stored in account.api_keys.
+
+        Args:
+            account: Account with JWT token
+            name: Name for the API key
+
+        Returns:
+            Dict with api_key_id, api_key_name, api_key_sign
+
+        Raises:
+            ProviderError: If creation fails
+        """
+        import secrets
+
+        if not account.jwt_token:
+            raise ProviderError("Cannot create API key: account has no JWT token")
+
+        # Generate unique name if not provided
+        # Use nickname or email prefix as base, with random suffix for uniqueness
+        if not name:
+            base = account.nickname or account.email.split("@")[0]
+            # Clean up base name (remove special chars, limit length)
+            base = "".join(c for c in base if c.isalnum() or c in "-_")[:20]
+            suffix = secrets.token_hex(2)  # 4 chars like "a3f2"
+            name = f"{base}-{suffix}"
+
+        client = self._create_client(account)
+        api = getattr(client, "api", None)
+        if not api:
+            raise ProviderError("Pixverse SDK API client missing")
+
+        # Get the SDK account from the client's pool
+        sdk_account = client.pool.get_next()
+
+        try:
+            result = await api.create_api_key(sdk_account, name)
+            api_key = result.get("api_key_sign")
+
+            if api_key:
+                # Store in account.api_keys (caller will handle DB commit)
+                current_keys = list(account.api_keys or [])
+                current_keys.append({
+                    "id": str(result.get("api_key_id", "auto")),
+                    "kind": "openapi",
+                    "value": api_key,
+                    "name": result.get("api_key_name", name),
+                })
+                account.api_keys = current_keys
+
+                # Evict cache so next client creation picks up the new key
+                self._evict_account_cache(account)
+
+                logger.info(
+                    "create_api_key_success",
+                    account_id=account.id,
+                    email=account.email,
+                    key_id=result.get("api_key_id"),
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "create_api_key_failed",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+            )
+            raise ProviderError(f"Failed to create API key: {e}")
+
+    async def ensure_api_key(self, account: ProviderAccount) -> str | None:
+        """
+        Ensure account has an API key for efficient status polling.
+
+        Creates one if missing. Returns the API key or None if creation fails.
+        This is a best-effort operation - failures are logged but not raised.
+        """
+        existing = self._get_openapi_key(account)
+        if existing:
+            return existing
+
+        if not account.jwt_token:
+            return None
+
+        try:
+            result = await self.create_api_key(account)
+            return result.get("api_key_sign")
+        except Exception as e:
+            logger.warning(
+                "ensure_api_key_failed",
+                account_id=account.id,
+                error=str(e),
+            )
+            return None
+
     # ===== CREDIT ESTIMATION (Provider Interface) =====
 
     def estimate_credits(
@@ -918,11 +1023,7 @@ class PixverseProvider(
 
             # Concurrent generations limit
             if err_code in {500044}:
-                friendly = (
-                    "Pixverse is at its concurrent generation limit for this account. "
-                    "Please wait for existing jobs to finish and try again."
-                )
-                raise ProviderError(friendly)
+                raise ConcurrentLimitError("pixverse")
 
             # Prompt length / parameter validation
             if err_code in {400017, 400018, 400019}:
