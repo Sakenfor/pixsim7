@@ -5,9 +5,9 @@ Listens to event bus and broadcasts relevant events via WebSocket.
 """
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, Event
 from pixsim7.backend.main.infrastructure.websocket import connection_manager
-import logging
+from pixsim_logging import configure_logging
 
-logger = logging.getLogger(__name__)
+logger = configure_logging("websocket_handler")
 
 
 async def broadcast_generation_event(event: Event):

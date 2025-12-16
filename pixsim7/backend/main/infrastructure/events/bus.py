@@ -4,7 +4,7 @@ Event bus for domain events
 Simple in-memory event bus for Phase 1.
 Phase 2 will add Redis-backed persistent events.
 """
-from typing import Callable, Dict, List, Any
+from typing import Callable, Dict, List, Any, Awaitable, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
@@ -48,6 +48,7 @@ class EventBus:
     def __init__(self):
         self._handlers: Dict[str, List[EventHandler]] = {}
         self._wildcard_handlers: List[EventHandler] = []
+        self._distributed_publisher: Optional[Callable[[Event], Awaitable[None]]] = None
 
     def on(self, event_type: str) -> Callable:
         """
@@ -94,7 +95,10 @@ class EventBus:
         event_type: str,
         data: Dict[str, Any],
         wait: bool = False,
-        strict: bool = False
+        strict: bool = False,
+        event_id: str | None = None,
+        timestamp: datetime | None = None,
+        propagate: bool = True,
     ) -> None:
         """
         Publish an event
@@ -125,7 +129,7 @@ class EventBus:
             else:
                 logger.warning(message)
 
-        event = Event(event_type=event_type, data=data)
+        event = Event(event_type=event_type, data=data, event_id=event_id, timestamp=timestamp or datetime.utcnow())
 
         # Get handlers for this event type
         handlers = self._handlers.get(event_type, []) + self._wildcard_handlers
@@ -165,6 +169,26 @@ class EventBus:
         # If not waiting, just log task creation
         if not wait and tasks:
             logger.debug(f"Created {len(tasks)} background tasks for {event_type}")
+
+        # Propagate to distributed publisher (e.g., Redis) if configured
+        if propagate and self._distributed_publisher:
+            try:
+                await self._distributed_publisher(event)
+            except Exception as e:
+                logger.error(
+                    "Distributed publish failed",
+                    event_type=event_type,
+                    error=str(e),
+                )
+
+    def set_distributed_publisher(self, publisher: Callable[[Event], Awaitable[None]]) -> None:
+        """Register a distributed publisher (e.g., Redis bridge)"""
+        self._distributed_publisher = publisher
+
+    def clear_distributed_publisher(self, publisher: Optional[Callable[[Event], Awaitable[None]]] = None) -> None:
+        """Clear distributed publisher if it matches"""
+        if publisher is None or self._distributed_publisher == publisher:
+            self._distributed_publisher = None
 
     def clear(self) -> None:
         """Clear all handlers (useful for testing)"""

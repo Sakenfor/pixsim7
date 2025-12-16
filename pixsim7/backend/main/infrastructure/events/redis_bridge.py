@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -18,8 +17,9 @@ import redis.asyncio as redis
 from pixsim7.backend.main.infrastructure.events.bus import Event, event_bus
 from pixsim7.backend.main.infrastructure.redis import get_redis
 from pixsim7.backend.main.shared.config import settings
+from pixsim_logging import configure_logging
 
-logger = logging.getLogger(__name__)
+logger = configure_logging("event_bridge")
 
 
 class RedisEventBridge:
