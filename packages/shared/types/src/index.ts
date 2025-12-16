@@ -109,3 +109,13 @@ export * from './brain'
 // ===================
 
 export * from './assetProvider'
+
+// ===================
+// Backend OpenAPI Contract (Generated)
+// ===================
+
+export type {
+  paths as ApiPaths,
+  components as ApiComponents,
+  operations as ApiOperations,
+} from './openapi.generated';

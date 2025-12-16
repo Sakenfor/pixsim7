@@ -14,12 +14,14 @@ try:
     from ..dialogs.simple_git_dialog import show_simple_git_dialog
     from ..dialogs.git_tools_dialog import show_git_tools_dialog
     from ..dialogs.log_management_dialog import show_log_management_dialog
+    from ..dialogs.openapi_tools_dialog import show_openapi_tools_dialog
 except ImportError:
     import theme
     from dialogs.migrations_dialog import show_migrations_dialog
     from dialogs.simple_git_dialog import show_simple_git_dialog
     from dialogs.git_tools_dialog import show_git_tools_dialog
     from dialogs.log_management_dialog import show_log_management_dialog
+    from dialogs.openapi_tools_dialog import show_openapi_tools_dialog
 
 
 class ToolsTab:
@@ -104,6 +106,24 @@ class ToolsTab:
         dev_layout.addWidget(launcher.btn_log_management)
 
         tools_layout.addWidget(dev_group)
+
+        # API Contract (OpenAPI) Section
+        api_group = QFrame()
+        api_group.setFrameShape(QFrame.Shape.StyledPanel)
+        api_group.setStyleSheet(theme.get_group_frame_stylesheet())
+        api_layout = QVBoxLayout(api_group)
+
+        api_title = QLabel("📄 API Contract (OpenAPI)")
+        api_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
+        api_layout.addWidget(api_title)
+
+        launcher.btn_openapi_tools = QPushButton('🔧 OpenAPI Tools')
+        launcher.btn_openapi_tools.setToolTip("Manage OpenAPI docs, generate TypeScript types, check sync status")
+        launcher.btn_openapi_tools.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+        launcher.btn_openapi_tools.clicked.connect(lambda: show_openapi_tools_dialog(launcher))
+        api_layout.addWidget(launcher.btn_openapi_tools)
+
+        tools_layout.addWidget(api_group)
 
         tools_layout.addStretch()
         return tools_tab

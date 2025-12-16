@@ -1,0 +1,390 @@
+"""
+OpenAPI Tools Dialog for managing API contract and TypeScript type generation.
+
+Provides controls for:
+- Opening API docs and openapi.json in browser
+- Generating TypeScript API types
+- Checking if types are up-to-date
+- Revealing generated files in explorer
+"""
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QTextEdit, QGroupBox, QMessageBox, QFrame
+)
+from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtGui import QFont, QDesktopServices
+import subprocess
+import os
+import sys
+import urllib.request
+import urllib.error
+
+try:
+    from .. import theme
+    from ..config import read_env_ports, service_env, ROOT
+except ImportError:
+    import theme
+    from config import read_env_ports, service_env, ROOT
+
+
+class OpenApiWorker(QThread):
+    """Worker thread for OpenAPI operations to prevent UI freezing."""
+    finished = Signal(bool, str)  # success, message
+
+    def __init__(self, operation, backend_port, parent=None):
+        super().__init__(parent)
+        self.operation = operation
+        self.backend_port = backend_port
+
+    def run(self):
+        try:
+            if self.operation == "check":
+                result = self._check_backend()
+            elif self.operation == "generate":
+                result = self._generate_types()
+            elif self.operation == "check_uptodate":
+                result = self._check_uptodate()
+            else:
+                result = (False, f"Unknown operation: {self.operation}")
+
+            self.finished.emit(result[0], result[1])
+        except Exception as e:
+            self.finished.emit(False, f"Error: {str(e)}")
+
+    def _check_backend(self):
+        """Check if backend is reachable."""
+        url = f"http://localhost:{self.backend_port}/openapi.json"
+        try:
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    return (True, f"✓ Backend is reachable at port {self.backend_port}")
+                else:
+                    return (False, f"Backend returned status {response.status}")
+        except urllib.error.URLError as e:
+            return (False, f"Cannot reach backend: {str(e)}")
+        except Exception as e:
+            return (False, f"Error checking backend: {str(e)}")
+
+    def _run_pnpm(self, args, timeout=60):
+        """Run pnpm command and return (returncode, stdout, stderr)."""
+        env = service_env()
+        env['OPENAPI_URL'] = f"http://localhost:{self.backend_port}/openapi.json"
+
+        # Use pnpm from PATH
+        pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
+
+        proc = subprocess.Popen(
+            [pnpm_cmd] + args,
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env
+        )
+        try:
+            out, err = proc.communicate(timeout=timeout)
+            return proc.returncode, out, err
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return -1, "", "Command timed out"
+
+    def _generate_types(self):
+        """Generate TypeScript types from OpenAPI spec."""
+        # First check backend is reachable
+        check_result = self._check_backend()
+        if not check_result[0]:
+            return check_result
+
+        # Run the generation script
+        code, out, err = self._run_pnpm(["-s", "openapi:gen"], timeout=120)
+
+        output_msg = ""
+        if out:
+            output_msg += f"stdout:\n{out}\n"
+        if err:
+            output_msg += f"stderr:\n{err}\n"
+
+        if code == 0:
+            return (True, f"✓ Types generated successfully!\n\n{output_msg}")
+        else:
+            return (False, f"Generation failed (exit code {code}):\n\n{output_msg}")
+
+    def _check_uptodate(self):
+        """Check if generated types are up-to-date."""
+        # First check backend is reachable
+        check_result = self._check_backend()
+        if not check_result[0]:
+            return check_result
+
+        # Run with --check flag
+        code, out, err = self._run_pnpm([
+            "-s", "exec", "openapi-typescript",
+            f"http://localhost:{self.backend_port}/openapi.json",
+            "-o", "packages/shared/types/src/openapi.generated.ts",
+            "--check", "--alphabetize", "--immutable"
+        ], timeout=60)
+
+        output_msg = ""
+        if out:
+            output_msg += f"stdout:\n{out}\n"
+        if err:
+            output_msg += f"stderr:\n{err}\n"
+
+        if code == 0:
+            return (True, f"✓ Types are up-to-date!\n\n{output_msg}")
+        else:
+            # Exit code 1 from --check means types are stale
+            return (False, f"⚠️ Types are NOT up-to-date (exit code {code}):\n\n{output_msg}")
+
+
+def show_openapi_tools_dialog(parent):
+    """Show the OpenAPI Tools dialog."""
+    dlg = QDialog(parent)
+    dlg.setWindowTitle('OpenAPI / API Contract Tools')
+    dlg.setMinimumWidth(700)
+    dlg.setMinimumHeight(600)
+    dlg.setStyleSheet(
+        theme.get_dialog_stylesheet() +
+        theme.get_button_stylesheet() +
+        theme.get_scrollbar_stylesheet() +
+        f"""
+        QTextEdit {{
+            background-color: {theme.BG_TERTIARY};
+            color: {theme.TEXT_PRIMARY};
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9pt;
+            border: 1px solid {theme.BORDER_DEFAULT};
+            border-radius: {theme.RADIUS_MD}px;
+        }}
+        QGroupBox {{
+            background-color: {theme.BG_SECONDARY};
+            border: 1px solid {theme.BORDER_DEFAULT};
+            border-radius: {theme.RADIUS_MD}px;
+            margin-top: 12px;
+            padding-top: 12px;
+            font-weight: bold;
+            color: {theme.TEXT_PRIMARY};
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px;
+            color: {theme.ACCENT_PRIMARY};
+        }}
+        """
+    )
+
+    layout = QVBoxLayout(dlg)
+    layout.setSpacing(12)
+    layout.setContentsMargins(20, 20, 20, 20)
+
+    # Header
+    header = QLabel('OpenAPI Tools & Type Generation')
+    header.setStyleSheet(f"font-size: 14pt; font-weight: bold; color: {theme.TEXT_PRIMARY}; margin-bottom: 8px;")
+    layout.addWidget(header)
+
+    help_text = QLabel(
+        "Manage OpenAPI contract and TypeScript type generation. "
+        "Backend must be running to use these tools."
+    )
+    help_text.setWordWrap(True)
+    help_text.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-bottom: 8px;")
+    layout.addWidget(help_text)
+
+    # Get backend port
+    ports = read_env_ports()
+    backend_port = ports.backend
+
+    # Status indicator
+    status_frame = QFrame()
+    status_frame.setFrameShape(QFrame.StyledPanel)
+    status_frame.setStyleSheet(f"background-color: {theme.BG_TERTIARY}; border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 6px; padding: 12px;")
+    status_layout = QVBoxLayout(status_frame)
+    status_layout.setContentsMargins(12, 12, 12, 12)
+
+    port_label = QLabel(f'Backend Port: {backend_port}')
+    port_label.setStyleSheet(f"font-size: 10pt; font-weight: bold; color: {theme.TEXT_PRIMARY};")
+    status_layout.addWidget(port_label)
+
+    backend_status_label = QLabel('Status: Not checked')
+    backend_status_label.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY}; margin-top: 4px;")
+    status_layout.addWidget(backend_status_label)
+
+    layout.addWidget(status_frame)
+
+    # Browse/Documentation Section
+    browse_group = QGroupBox("Documentation & API Specification")
+    browse_layout = QVBoxLayout(browse_group)
+
+    browse_info = QLabel("Open API documentation and specification in your browser:")
+    browse_info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-bottom: 4px;")
+    browse_layout.addWidget(browse_info)
+
+    browse_buttons_row = QHBoxLayout()
+
+    btn_open_docs = QPushButton('📖 Open API Docs')
+    btn_open_docs.setToolTip(f"Open http://localhost:{backend_port}/docs in browser")
+    btn_open_docs.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    browse_buttons_row.addWidget(btn_open_docs)
+
+    btn_open_json = QPushButton('📄 Open openapi.json')
+    btn_open_json.setToolTip(f"Open http://localhost:{backend_port}/openapi.json in browser")
+    btn_open_json.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    browse_buttons_row.addWidget(btn_open_json)
+
+    browse_layout.addLayout(browse_buttons_row)
+    layout.addWidget(browse_group)
+
+    # Type Generation Section
+    gen_group = QGroupBox("TypeScript Type Generation")
+    gen_layout = QVBoxLayout(gen_group)
+
+    gen_info = QLabel("Generate or check TypeScript types from the OpenAPI specification:")
+    gen_info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-bottom: 4px;")
+    gen_layout.addWidget(gen_info)
+
+    gen_buttons_row1 = QHBoxLayout()
+
+    btn_generate = QPushButton('🔄 Generate TS API Types')
+    btn_generate.setToolTip("Run pnpm openapi:gen to generate TypeScript types")
+    btn_generate.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    btn_generate.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {theme.ACCENT_SUCCESS};
+            color: white;
+            font-weight: bold;
+        }}
+        QPushButton:hover {{
+            background-color: #56d364;
+        }}
+    """)
+    gen_buttons_row1.addWidget(btn_generate)
+
+    btn_check = QPushButton('✓ Check Types Up-to-date')
+    btn_check.setToolTip("Check if generated types match current OpenAPI spec")
+    btn_check.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    gen_buttons_row1.addWidget(btn_check)
+
+    gen_layout.addLayout(gen_buttons_row1)
+
+    gen_buttons_row2 = QHBoxLayout()
+
+    btn_reveal = QPushButton('📁 Reveal Generated File')
+    btn_reveal.setToolTip("Open Explorer/Finder at the generated TypeScript file")
+    btn_reveal.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    gen_buttons_row2.addWidget(btn_reveal)
+
+    btn_refresh = QPushButton('🔍 Check Backend Status')
+    btn_refresh.setToolTip("Test connection to backend OpenAPI endpoint")
+    btn_refresh.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    gen_buttons_row2.addWidget(btn_refresh)
+
+    gen_layout.addLayout(gen_buttons_row2)
+    layout.addWidget(gen_group)
+
+    # Output Section
+    output_group = QGroupBox("Output / Logs")
+    output_layout = QVBoxLayout(output_group)
+
+    output_box = QTextEdit()
+    output_box.setReadOnly(True)
+    output_box.setMinimumHeight(200)
+    output_box.setPlainText("Ready. Click a button to perform an operation.")
+    output_layout.addWidget(output_box)
+
+    layout.addWidget(output_group)
+
+    # Close button
+    btn_close = QPushButton('Close')
+    btn_close.setStyleSheet(f"background-color: {theme.BG_TERTIARY};")
+    layout.addWidget(btn_close)
+
+    # Worker thread reference
+    worker = None
+
+    def set_buttons_enabled(enabled):
+        """Enable/disable all operation buttons."""
+        btn_open_docs.setEnabled(enabled)
+        btn_open_json.setEnabled(enabled)
+        btn_generate.setEnabled(enabled)
+        btn_check.setEnabled(enabled)
+        btn_reveal.setEnabled(enabled)
+        btn_refresh.setEnabled(enabled)
+
+    def on_worker_finished(success, message):
+        """Handle worker completion."""
+        nonlocal worker
+        set_buttons_enabled(True)
+
+        if success:
+            output_box.setPlainText(f"✓ Success\n\n{message}")
+            # Update backend status if this was a check
+            if worker and worker.operation == "check":
+                backend_status_label.setText('Status: ✓ Backend reachable')
+                backend_status_label.setStyleSheet(f"font-size: 9pt; color: {theme.ACCENT_SUCCESS}; margin-top: 4px;")
+        else:
+            output_box.setPlainText(f"✗ Failed\n\n{message}")
+            # Update backend status if this was a check
+            if worker and worker.operation == "check":
+                backend_status_label.setText('Status: ✗ Cannot reach backend')
+                backend_status_label.setStyleSheet(f"font-size: 9pt; color: {theme.ACCENT_ERROR}; margin-top: 4px;")
+
+        worker = None
+
+    def run_operation(operation):
+        """Run an OpenAPI operation in background thread."""
+        nonlocal worker
+        if worker and worker.isRunning():
+            QMessageBox.warning(dlg, "Operation in Progress", "Please wait for the current operation to complete.")
+            return
+
+        output_box.setPlainText(f"Running: {operation}...\n")
+        set_buttons_enabled(False)
+
+        worker = OpenApiWorker(operation, backend_port, dlg)
+        worker.finished.connect(on_worker_finished)
+        worker.start()
+
+    def open_url(url):
+        """Open URL in default browser."""
+        if not QDesktopServices.openUrl(QUrl(url)):
+            QMessageBox.warning(dlg, "Error", f"Failed to open URL: {url}")
+
+    def reveal_file():
+        """Reveal generated TypeScript file in Explorer/Finder."""
+        file_path = os.path.join(ROOT, "packages", "shared", "types", "src", "openapi.generated.ts")
+
+        if not os.path.exists(file_path):
+            QMessageBox.warning(
+                dlg,
+                "File Not Found",
+                f"Generated file does not exist:\n{file_path}\n\nRun 'Generate TS API Types' first."
+            )
+            return
+
+        # Platform-specific reveal
+        if sys.platform == "win32":
+            # Windows: use explorer /select
+            subprocess.Popen(['explorer', '/select,', os.path.normpath(file_path)])
+        elif sys.platform == "darwin":
+            # macOS: use open -R
+            subprocess.Popen(['open', '-R', file_path])
+        else:
+            # Linux: just open the containing directory
+            dir_path = os.path.dirname(file_path)
+            subprocess.Popen(['xdg-open', dir_path])
+
+    # Connect buttons
+    btn_open_docs.clicked.connect(lambda: open_url(f"http://localhost:{backend_port}/docs"))
+    btn_open_json.clicked.connect(lambda: open_url(f"http://localhost:{backend_port}/openapi.json"))
+    btn_generate.clicked.connect(lambda: run_operation("generate"))
+    btn_check.clicked.connect(lambda: run_operation("check_uptodate"))
+    btn_refresh.clicked.connect(lambda: run_operation("check"))
+    btn_reveal.clicked.connect(reveal_file)
+    btn_close.clicked.connect(dlg.accept)
+
+    # Auto-check backend status on open
+    run_operation("check")
+
+    dlg.exec()
