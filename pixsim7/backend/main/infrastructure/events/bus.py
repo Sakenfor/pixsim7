@@ -135,40 +135,41 @@ class EventBus:
         handlers = self._handlers.get(event_type, []) + self._wildcard_handlers
 
         if not handlers:
-            logger.debug(f"No handlers for event: {event_type}")
-            return
+            logger.debug(f"No local handlers for event: {event_type}")
+            # Don't return - still need to propagate to distributed publisher!
+        else:
+            logger.info(f"Publishing event: {event_type} to {len(handlers)} handlers")
 
-        logger.info(f"Publishing event: {event_type} to {len(handlers)} handlers")
-
-        # Execute handlers
+        # Execute local handlers (if any)
         tasks = []
-        for handler in handlers:
-            try:
-                if asyncio.iscoroutinefunction(handler):
-                    task = handler(event)
-                    if wait:
-                        await task
+        if handlers:
+            for handler in handlers:
+                try:
+                    if asyncio.iscoroutinefunction(handler):
+                        task = handler(event)
+                        if wait:
+                            await task
+                        else:
+                            tasks.append(asyncio.create_task(task))
                     else:
-                        tasks.append(asyncio.create_task(task))
-                else:
-                    # Sync handler - run in executor
-                    task = asyncio.get_event_loop().run_in_executor(
-                        None, handler, event
+                        # Sync handler - run in executor
+                        task = asyncio.get_event_loop().run_in_executor(
+                            None, handler, event
+                        )
+                        if wait:
+                            await task
+                        else:
+                            tasks.append(task)
+                except Exception as e:
+                    logger.error(
+                        f"Error in event handler {handler.__name__} "
+                        f"for {event_type}: {e}",
+                        exc_info=True
                     )
-                    if wait:
-                        await task
-                    else:
-                        tasks.append(task)
-            except Exception as e:
-                logger.error(
-                    f"Error in event handler {handler.__name__} "
-                    f"for {event_type}: {e}",
-                    exc_info=True
-                )
 
-        # If not waiting, just log task creation
-        if not wait and tasks:
-            logger.debug(f"Created {len(tasks)} background tasks for {event_type}")
+            # If not waiting, just log task creation
+            if not wait and tasks:
+                logger.debug(f"Created {len(tasks)} background tasks for {event_type}")
 
         # Propagate to distributed publisher (e.g., Redis) if configured
         if propagate and self._distributed_publisher:
