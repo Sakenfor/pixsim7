@@ -399,32 +399,50 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Extend video"""
-        # Build kwargs for extend
-        kwargs = {
-            "prompt": params.get("prompt", ""),
-            "video_url": params.get("video_url"),
-            "original_video_id": params.get("original_video_id"),
-            "quality": params.get("quality", "360p"),
-            "seed": params.get("seed", 0),
-        }
+        # Prepare video reference (prefer original_video_id if available)
+        video_url = params.get("video_url")
+        original_video_id = params.get("original_video_id")
 
-        # Video options (multi_shot, audio, off_peak, etc.)
-        kwargs.update(_extract_video_options(params))
+        # Build video reference dict or string
+        if original_video_id:
+            # Prefer Pixverse job ID if available
+            video_ref = {"original_video_id": original_video_id}
+            if video_url:
+                video_ref["url"] = video_url
+        elif video_url:
+            # Use video URL
+            video_ref = video_url
+        else:
+            raise ValueError("Either video_url or original_video_id is required for extend operation")
+
+        # Build options for extend
+        options = GenerationOptions(
+            duration=params.get("duration", 5),
+            quality=params.get("quality", "360p"),
+            seed=params.get("seed", 0),
+            # Video options
+            multi_shot=params.get("multi_shot"),
+            audio=params.get("audio", True),
+            off_peak=params.get("off_peak", False),
+        )
 
         # Log the extend request details for debugging
         logger.info(
             "extend_video_request",
             extra={
-                "video_url": kwargs.get("video_url"),
-                "original_video_id": kwargs.get("original_video_id"),
-                "prompt": kwargs.get("prompt", "")[:100],  # First 100 chars
-                "quality": kwargs.get("quality")
+                "video_ref": video_ref,
+                "original_video_id": original_video_id,
+                "video_url": video_url,
+                "prompt": params.get("prompt", "")[:100],  # First 100 chars
+                "quality": options.quality
             }
         )
 
-        # Call pixverse-py extend method (now async)
+        # Call pixverse-py extend method
         video = await client.extend(
-            **kwargs
+            video_url=video_ref,
+            prompt=params.get("prompt", ""),
+            options=options,
         )
 
         return video
