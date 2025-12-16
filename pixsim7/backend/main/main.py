@@ -31,18 +31,45 @@ from pixsim7.backend.main.infrastructure.middleware import init_middleware_manag
 
 # Configure structured logging using pixsim_logging
 from pixsim_logging import configure_logging
+import logging as stdlib_logging
 
 logger = configure_logging("api")
 
+# Configure root logger to capture ALL logging.getLogger() calls
+# This ensures any module using standard logging will output to stdout
+root_logger = stdlib_logging.getLogger()
+if not root_logger.handlers:
+    # Add console handler to root logger
+    console_handler = stdlib_logging.StreamHandler()
+    console_handler.setLevel(stdlib_logging.DEBUG)
+
+    # Use human-readable format when PIXSIM_LOG_FORMAT=human
+    if os.getenv("PIXSIM_LOG_FORMAT", "json").lower() == "human":
+        formatter = stdlib_logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S'
+        )
+    else:
+        # JSON format for structured logging
+        formatter = stdlib_logging.Formatter('%(message)s')
+
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(stdlib_logging.INFO)  # Default to INFO, can be overridden by LOG_LEVEL
+
+# Set root logger level from LOG_LEVEL env if provided
+log_level_env = os.getenv("LOG_LEVEL", "INFO").upper()
+if log_level_env in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+    root_logger.setLevel(getattr(stdlib_logging, log_level_env))
+
 # Log the effective log level for diagnostics
-import logging as stdlib_logging
-effective_level = stdlib_logging.getLogger().level
+effective_level = root_logger.level
 level_name = stdlib_logging.getLevelName(effective_level)
 logger.info(
     "logging_configured",
     level=level_name,
     log_level_env=os.getenv("LOG_LEVEL", "not set"),
-    msg=f"Logging initialized at {level_name} level"
+    msg=f"Logging initialized at {level_name} level (root logger configured for all modules)"
 )
 
 

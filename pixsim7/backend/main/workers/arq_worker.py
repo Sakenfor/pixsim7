@@ -28,6 +28,7 @@ from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tra
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging
+import logging as stdlib_logging
 from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     start_event_bus_bridge,
     stop_event_bus_bridge,
@@ -35,6 +36,33 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
 
 # Configure structured logging and optional ingestion via env
 logger = configure_logging("worker")
+
+# Configure root logger to capture ALL logging.getLogger() calls
+# This ensures any module using standard logging will output to stdout
+root_logger = stdlib_logging.getLogger()
+if not root_logger.handlers:
+    # Add console handler to root logger
+    console_handler = stdlib_logging.StreamHandler()
+    console_handler.setLevel(stdlib_logging.DEBUG)
+
+    # Use human-readable format when PIXSIM_LOG_FORMAT=human
+    if os.getenv("PIXSIM_LOG_FORMAT", "json").lower() == "human":
+        formatter = stdlib_logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S'
+        )
+    else:
+        # JSON format for structured logging
+        formatter = stdlib_logging.Formatter('%(message)s')
+
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(stdlib_logging.INFO)  # Default to INFO
+
+# Set root logger level from LOG_LEVEL env if provided
+log_level_env = os.getenv("LOG_LEVEL", "INFO").upper()
+if log_level_env in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+    root_logger.setLevel(getattr(stdlib_logging, log_level_env))
 
 
 _event_bridge = None
