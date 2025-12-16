@@ -248,6 +248,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               />
             </div>
 
+            {/* Pagination controls */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                {controller.assets.length} items
+              </span>
+              {controller.hasMore && (
+                <button
+                  onClick={() => controller.loadMore()}
+                  disabled={controller.loading}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors"
+                  title="Load more assets"
+                >
+                  {controller.loading ? '...' : 'More'}
+                </button>
+              )}
+            </div>
+
             {/* Divider */}
             <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
 
