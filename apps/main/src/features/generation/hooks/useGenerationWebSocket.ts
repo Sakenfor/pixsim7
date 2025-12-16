@@ -208,7 +208,7 @@ class WebSocketManager {
     }
   };
 
-  private handleMessage(event: MessageEvent) {
+  private async handleMessage(event: MessageEvent) {
     try {
       console.log('[WebSocket] Raw message received:', event.data);
       const message = parseWebSocketMessage(event.data);
