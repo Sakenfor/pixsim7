@@ -28,9 +28,16 @@ from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tra
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging
+from pixsim7.backend.main.infrastructure.events.redis_bridge import (
+    start_event_bus_bridge,
+    stop_event_bus_bridge,
+)
 
 # Configure structured logging and optional ingestion via env
 logger = configure_logging("worker")
+
+
+_event_bridge = None
 
 
 async def startup(ctx: dict) -> None:
@@ -43,7 +50,18 @@ async def startup(ctx: dict) -> None:
     # Initialize health tracker
     health = get_health_tracker()
 
-    logger.info("worker_start", msg="PixSim7 ARQ Worker Starting")
+    global _event_bridge
+
+    # Log effective log level for diagnostics
+    import logging as stdlib_logging
+    effective_level = stdlib_logging.getLogger().level
+    level_name = stdlib_logging.getLevelName(effective_level)
+    logger.info(
+        "worker_start",
+        msg="PixSim7 ARQ Worker Starting",
+        log_level=level_name,
+        log_level_env=os.getenv("LOG_LEVEL", "not set")
+    )
 
     # Initialize global worker debug flags from environment (if set)
     debug_flags = load_global_debug_from_env()
@@ -67,6 +85,9 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
     logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
 
+    # Start distributed event bridge
+    _event_bridge = await start_event_bus_bridge(role="arq_worker")
+
     # Send initial heartbeat
     await update_heartbeat(ctx)
 
@@ -78,7 +99,11 @@ async def shutdown(ctx: dict) -> None:
     Called once when the worker stops.
     Clean up any resources here.
     """
+    global _event_bridge
     logger.info("worker_shutdown", msg="PixSim7 ARQ Worker Shutting Down")
+    if _event_bridge:
+        await stop_event_bus_bridge()
+        _event_bridge = None
 
 
 class WorkerSettings:

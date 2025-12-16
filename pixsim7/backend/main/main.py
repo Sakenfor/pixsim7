@@ -34,6 +34,17 @@ from pixsim_logging import configure_logging
 
 logger = configure_logging("api")
 
+# Log the effective log level for diagnostics
+import logging as stdlib_logging
+effective_level = stdlib_logging.getLogger().level
+level_name = stdlib_logging.getLevelName(effective_level)
+logger.info(
+    "logging_configured",
+    level=level_name,
+    log_level_env=os.getenv("LOG_LEVEL", "not set"),
+    msg=f"Logging initialized at {level_name} level"
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,6 +69,10 @@ async def lifespan(app: FastAPI):
         setup_behavior_registry_lock,
         configure_admin_diagnostics,
         setup_middleware_lifecycle,
+    )
+    from pixsim7.backend.main.infrastructure.events.redis_bridge import (
+        start_event_bus_bridge,
+        stop_event_bus_bridge,
     )
     from pixsim7.backend.main.infrastructure.plugins import set_plugin_manager
     from pixsim7.backend.main.infrastructure.middleware.manager import middleware_manager
@@ -84,6 +99,8 @@ async def lifespan(app: FastAPI):
     setup_providers()
     setup_ai_models()
     setup_event_handlers()
+    event_bridge = await start_event_bus_bridge(role="api")
+    app.state.event_bridge = event_bridge
     ecs_count = setup_ecs_components()
 
     # Setup stat packages
@@ -135,6 +152,7 @@ async def lifespan(app: FastAPI):
     # Close connections
     await close_redis()
     await close_database()
+    await stop_event_bus_bridge()
 
     logger.info("pixsim7_shutdown_complete")
 

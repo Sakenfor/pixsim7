@@ -33,9 +33,20 @@ async def broadcast_generation_event(event: Event):
     # Broadcast to all connected clients
     # NOTE: Currently WebSocket auth is not implemented, so user_id is hardcoded.
     # Once proper auth is added, we can use broadcast_to_user() for filtering.
-    logger.info(f"[WebSocket] Broadcasting {event.event_type} to {len(connection_manager._all_connections)} clients (gen_id={message.get('generation_id')})")
+    logger.info(
+        "[WebSocket] Broadcasting event to clients",
+        extra={
+            "event_type": event.event_type,
+            "generation_id": message.get('generation_id'),
+            "client_count": len(connection_manager._all_connections),
+            "event_id": event.event_id
+        }
+    )
     await connection_manager.broadcast(message)
-    logger.info(f"[WebSocket] Broadcast complete for {event.event_type}")
+    logger.info(
+        "[WebSocket] Broadcast complete",
+        extra={"event_type": event.event_type, "generation_id": message.get('generation_id')}
+    )
 
 
 def register_websocket_handlers():
