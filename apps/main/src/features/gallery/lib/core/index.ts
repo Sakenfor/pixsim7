@@ -17,7 +17,8 @@ export * from './registerGalleryTools';
 // Asset roles and tag utilities (Task 99.1)
 export * from './assetRoles';
 
-// Asset sources
+// Asset sources (order matters for initialization)
+export * from './sourceTypes';
 export * from './assetSources';
 export * from './registerAssetSources';
 

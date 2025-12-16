@@ -6,7 +6,7 @@ import { useControlCenterLayout, useControlCenterStore } from '@features/control
 import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '@features/workspace';
-import { usePanelConfigStore } from '../stores/panelConfigStore';
+import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels';
 import {
   GallerySurfaceSwitcher,
   GalleryLayoutControls,
@@ -19,11 +19,7 @@ import {
 } from '@features/gallery';
 import { mediaCardPresets } from '@lib/ui/overlay';
 import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
-import type { GalleryPanelSettings } from '../stores/panelConfigStore';
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
-
-// Register all sources once
-registerAssetSources();
 
 export function AssetsRoute() {
   const navigate = useNavigate();
@@ -32,6 +28,12 @@ export function AssetsRoute() {
   const { isConnected: generationWsConnected } = useGenerationWebSocket();
   const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [sourcesRegistered, setSourcesRegistered] = useState(false);
+
+  // Register all sources once
+  useEffect(() => {
+    registerAssetSources().then(() => setSourcesRegistered(true));
+  }, []);
 
   // Shared layout state for all sources
   const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
@@ -53,11 +55,11 @@ export function AssetsRoute() {
     return (params.get('source') as AssetSourceId) || 'remote-gallery';
   }, [location.search]);
 
-  const sourceDef = getAssetSource(activeSourceId) ?? getAssetSource('remote-gallery')!;
-  const SourceComponent = sourceDef.component;
+  const sourceDef = getAssetSource(activeSourceId) ?? getAssetSource('remote-gallery');
+  const SourceComponent = sourceDef?.component;
   const allSources = getAllAssetSources();
 
-  // Get badge config from panel settings
+  // Get badge config from panel settings (must be before any conditional returns)
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
@@ -116,6 +118,18 @@ export function AssetsRoute() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [allSources, handleSourceChange]);
+
+  // Show loading state while sources are being registered (after all hooks)
+  if (!sourcesRegistered || !sourceDef || !SourceComponent) {
+    return (
+      <div className="flex items-center justify-center h-screen" style={layoutStyle}>
+        <div className="text-center">
+          <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">Loading asset sources...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={layoutStyle}>

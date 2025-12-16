@@ -5,7 +5,7 @@
  * Part of Task 51 Phase 51.2 - Resolution Engine & Caching
  */
 
-import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 import { useGameStateStore } from '../../stores/gameStateStore';
 
 /**

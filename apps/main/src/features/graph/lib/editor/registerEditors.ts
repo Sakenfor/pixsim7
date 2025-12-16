@@ -13,9 +13,14 @@
  */
 
 import { graphEditorRegistry } from './editorRegistry';
-import { GraphPanelWithProvider } from '@/components/legacy/GraphPanel';
 import { ArcGraphPanel } from '@features/graph';
 import { debugFlags } from '@lib/utils/debugFlags';
+import { lazy } from 'react';
+
+// Use lazy import to break circular dependency
+const GraphPanelWithProvider = lazy(() =>
+  import('@/components/legacy/GraphPanel').then(m => ({ default: m.GraphPanelWithProvider }))
+);
 
 /**
  * Register all built-in graph editors
@@ -30,7 +35,7 @@ export function registerGraphEditors(): void {
     description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
     icon: '🔀',
     category: 'core',
-    component: GraphPanelWithProvider,
+    component: GraphPanelWithProvider as any,
     storeId: 'scene-graph-v2',
     supportsMultiScene: true,
     supportsWorldContext: true,

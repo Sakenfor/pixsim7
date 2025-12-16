@@ -1,7 +1,5 @@
-import { registerAssetSource } from './assetSources';
 import { registerSourceType, getDefaultInstanceId } from './sourceTypes';
-import { RemoteGallerySource } from '@features/assets';
-import { LocalFoldersSource } from '@features/assets';
+import { registerAssetSource } from './assetSources';
 
 /**
  * Register all available asset sources
@@ -10,18 +8,21 @@ import { LocalFoldersSource } from '@features/assets';
  * Phase 2: Define source types, then create one static instance per type
  * Phase 3: Users will create their own instances via settings UI
  */
-export function registerAssetSources() {
+export async function registerAssetSources() {
   // Step 1: Register source types (templates)
-  registerSourceTypes();
+  await registerSourceTypes();
 
   // Step 2: Create static instances (one per type for now)
-  createStaticInstances();
+  await createStaticInstances();
 }
 
 /**
  * Register all available source types
  */
-function registerSourceTypes() {
+async function registerSourceTypes() {
+  // Dynamic imports to avoid circular dependency
+  const { RemoteGallerySource, LocalFoldersSource } = await import('@features/assets');
+
   // Remote gallery type
   registerSourceType({
     typeId: 'remote-gallery',
@@ -60,7 +61,10 @@ function registerSourceTypes() {
  * Phase 2: Hard-coded, one instance per type
  * Phase 3: Will be replaced by user-created instances from DB
  */
-function createStaticInstances() {
+async function createStaticInstances() {
+  // Dynamic imports to avoid circular dependency
+  const { RemoteGallerySource, LocalFoldersSource } = await import('@features/assets');
+
   // Remote gallery instance: "PixSim Assets"
   registerAssetSource({
     id: getDefaultInstanceId('remote-gallery'),

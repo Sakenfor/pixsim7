@@ -6,7 +6,7 @@
  */
 
 import type { PanelPlugin } from "./panelPlugin";
-import { registerBuiltinPanel } from "../../plugins/registryBridge";
+import { registerBuiltinPanel } from "../../../lib/plugins/registryBridge";
 import { AssetsRoute } from "../../../routes/Assets";
 import { SceneBuilderPanel, SceneManagementPanel } from "@features/scene";
 import { GraphEditorHost } from "@features/graph";

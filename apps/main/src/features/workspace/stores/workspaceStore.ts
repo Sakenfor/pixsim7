@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createBackendStorage } from "../lib/backendStorage";
-import { pluginCatalog } from "../lib/plugins/pluginSystem";
+import { createBackendStorage } from "../../../lib/backendStorage";
+import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
 
 export type PanelId =
   | "gallery"

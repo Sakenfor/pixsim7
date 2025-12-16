@@ -7,7 +7,7 @@
 
 import type { PanelId } from "../../stores/workspaceStore";
 import type { ComponentType } from "react";
-import { BaseRegistry } from "../../core/BaseRegistry";
+import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 import type { EditorContext } from "../../context/editorContext";
 import type { PanelCategory } from "./panelConstants";
 

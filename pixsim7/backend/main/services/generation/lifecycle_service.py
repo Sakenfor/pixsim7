@@ -90,6 +90,7 @@ class GenerationLifecycleService:
 
         # Emit status change events (include user_id for WebSocket filtering)
         if status == GenerationStatus.PROCESSING:
+            logger.info(f"[Lifecycle] Publishing JOB_STARTED event for generation {generation_id}")
             await event_bus.publish(JOB_STARTED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
@@ -97,12 +98,14 @@ class GenerationLifecycleService:
                 "status": status.value
             })
         elif status == GenerationStatus.COMPLETED:
+            logger.info(f"[Lifecycle] Publishing JOB_COMPLETED event for generation {generation_id}")
             await event_bus.publish(JOB_COMPLETED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
                 "user_id": generation.user_id,
                 "status": status.value
             })
+            logger.info(f"[Lifecycle] JOB_COMPLETED event published for generation {generation_id}")
         elif status == GenerationStatus.FAILED:
             await event_bus.publish(JOB_FAILED, {
                 "job_id": generation_id,
