@@ -67,9 +67,9 @@ export function useQuickGenerateController() {
       }
 
       // For video_transition: extract frames for videos with locked timestamps
-      if (operationType === 'video_transition' && bindings.transitionQueue.length > 0) {
+      if (operationType === 'video_transition' && bindings.multiAssetQueue.length > 0) {
         const extractedUrls: string[] = [];
-        for (const queueItem of bindings.transitionQueue) {
+        for (const queueItem of bindings.multiAssetQueue) {
           if (queueItem.lockedTimestamp !== undefined && queueItem.asset.media_type === 'video') {
             const extractedFrame = await extractFrame({
               video_asset_id: queueItem.asset.id,

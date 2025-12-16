@@ -21,7 +21,7 @@ type QueueableOperation = 'image_to_image' | 'image_to_video' | 'video_extend';
  */
 export function useMediaGenerationActions() {
   const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
-  const addToTransitionQueue = useGenerationQueueStore((s) => s.addToTransitionQueue);
+  const addToMultiAssetQueue = useGenerationQueueStore((s) => s.addToMultiAssetQueue);
 
   const setActiveModule = useControlCenterStore((s) => s.setActiveModule);
   const setOpen = useControlCenterStore((s) => s.setOpen);
@@ -64,12 +64,12 @@ export function useMediaGenerationActions() {
 
   const queueAddToTransition = useCallback(
     (asset: AssetSummary) => {
-      addToTransitionQueue(asset);
+      addToMultiAssetQueue(asset);
       selectAssetFromSummary(asset);
       setOperationType('video_transition');
       openQuickGenerate();
     },
-    [addToTransitionQueue, selectAssetFromSummary, setOperationType, openQuickGenerate],
+    [addToMultiAssetQueue, selectAssetFromSummary, setOperationType, openQuickGenerate],
   );
 
   const queueAutoGenerate = useCallback(
@@ -81,12 +81,23 @@ export function useMediaGenerationActions() {
     [addToQueue, selectAssetFromSummary, openQuickGenerate],
   );
 
+  // Silent add - just adds to queue without opening control center
+  const queueSilentAdd = useCallback(
+    (asset: AssetSummary) => {
+      addToQueue(asset);
+      selectAssetFromSummary(asset);
+      // Don't open control center - just queue it
+    },
+    [addToQueue, selectAssetFromSummary],
+  );
+
   return {
     queueImageToImage,
     queueImageToVideo,
     queueVideoExtend,
     queueAddToTransition,
     queueAutoGenerate,
+    queueSilentAdd,
   };
 }
 

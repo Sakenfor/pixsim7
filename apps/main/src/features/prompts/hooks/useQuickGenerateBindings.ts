@@ -15,8 +15,8 @@ export interface QuickGenerateBindings {
   lastSelectedAsset?: SelectedAsset;
   mainQueue: QueuedAsset[];
   mainQueueIndex: number;
-  transitionQueue: QueuedAsset[];
-  transitionQueueIndex: number;
+  multiAssetQueue: QueuedAsset[];
+  multiAssetQueueIndex: number;
   dynamicParams: Record<string, any>;
   setDynamicParams: Dispatch<SetStateAction<Record<string, any>>>;
   imageUrls: string[];
@@ -27,8 +27,8 @@ export interface QuickGenerateBindings {
   setTransitionDurations: Dispatch<SetStateAction<number[]>>;
   consumeFromQueue: GenerationQueueState['consumeFromQueue'];
   removeFromQueue: GenerationQueueState['removeFromQueue'];
-  clearTransitionQueue: () => void;
-  cycleQueue: (queueType?: 'main' | 'transition', direction?: 'next' | 'prev') => void;
+  clearMultiAssetQueue: () => void;
+  cycleQueue: (queueType?: 'main' | 'multi', direction?: 'next' | 'prev') => void;
   /**
    * Apply the currently active asset (if compatible) to dynamic parameters.
    */
@@ -55,8 +55,8 @@ export function useQuickGenerateBindings(
   // Generation queue support
   const mainQueue = useGenerationQueueStore(s => s.mainQueue);
   const mainQueueIndex = useGenerationQueueStore(s => s.mainQueueIndex);
-  const transitionQueue = useGenerationQueueStore(s => s.transitionQueue);
-  const transitionQueueIndex = useGenerationQueueStore(s => s.transitionQueueIndex);
+  const multiAssetQueue = useGenerationQueueStore(s => s.multiAssetQueue);
+  const multiAssetQueueIndex = useGenerationQueueStore(s => s.multiAssetQueueIndex);
   const consumeFromQueue = useGenerationQueueStore(s => s.consumeFromQueue);
   const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
   const clearQueue = useGenerationQueueStore(s => s.clearQueue);
@@ -130,10 +130,10 @@ export function useQuickGenerateBindings(
         if (!operation) setOperationType('video_extend');
       }
     } else {
-      // On initial load or when not adding, only fill params without changing operation type
-      if (asset.media_type === 'image') {
+      // On initial load or when not adding, only fill params if empty (don't override user choices)
+      if (asset.media_type === 'image' && !dynamicParams.image_url) {
         setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
-      } else if (asset.media_type === 'video') {
+      } else if (asset.media_type === 'video' && !dynamicParams.video_url) {
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
       }
     }
@@ -142,7 +142,7 @@ export function useQuickGenerateBindings(
   // Auto-fill transition queue data (but don't auto-switch operation type on load)
   useEffect(() => {
     const prevLength = prevTransitionQueueLengthRef.current;
-    const currentLength = transitionQueue.length;
+    const currentLength = multiAssetQueue.length;
 
     // Update ref for next render
     prevTransitionQueueLengthRef.current = currentLength;
@@ -162,7 +162,7 @@ export function useQuickGenerateBindings(
     }
 
     // Fill image URLs from transition queue
-    const urls = transitionQueue.map(item => item.asset.remote_url);
+    const urls = multiAssetQueue.map(item => item.asset.remote_url);
     setImageUrls(urls);
 
     // Initialize prompts array with N-1 elements (one per transition between images)
@@ -183,18 +183,18 @@ export function useQuickGenerateBindings(
       }
       return next.slice(0, numTransitions);
     });
-  }, [transitionQueue, setOperationType]);
+  }, [multiAssetQueue, setOperationType]);
 
-  const clearTransitionQueue = () => {
-    clearQueue('transition');
+  const clearMultiAssetQueue = () => {
+    clearQueue('multi');
   };
 
   return {
     lastSelectedAsset,
     mainQueue,
     mainQueueIndex,
-    transitionQueue,
-    transitionQueueIndex,
+    multiAssetQueue,
+    multiAssetQueueIndex,
     dynamicParams,
     setDynamicParams,
     imageUrls,
@@ -205,7 +205,7 @@ export function useQuickGenerateBindings(
     setTransitionDurations,
     consumeFromQueue,
     removeFromQueue,
-    clearTransitionQueue,
+    clearMultiAssetQueue,
     cycleQueue,
     useActiveAsset,
   };

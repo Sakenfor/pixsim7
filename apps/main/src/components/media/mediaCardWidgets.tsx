@@ -19,6 +19,8 @@ import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
+import type { AssetSummary } from '@features/assets';
 import { Icon } from '@lib/icons';
 import type { OperationType } from '@/types/operations';
 
@@ -401,6 +403,176 @@ function buildGenerationMenuItems(
 }
 
 /**
+ * Slot picker popup component
+ */
+function SlotPickerPopup({
+  asset,
+  onSelectSlot,
+  onClose
+}: {
+  asset: AssetSummary;
+  onSelectSlot: (asset: AssetSummary, slotIndex: number) => void;
+  onClose: () => void;
+}) {
+  const mainQueue = useGenerationQueueStore((s) => s.mainQueue);
+  const multiAssetQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
+  const ccOperationType = useControlCenterStore((s) => s.operationType);
+  const ccIsOpen = useControlCenterStore((s) => s.isOpen);
+
+  // Determine which operations support multiple assets
+  const isMultiAssetOperation =
+    ccOperationType === 'video_transition' ||
+    ccOperationType === 'fusion' ||
+    ccOperationType === 'image_to_image'; // Image edit can use multiple images
+
+  // Use appropriate queue based on operation type
+  const queue = isMultiAssetOperation ? multiAssetQueue : mainQueue;
+
+  // Show filled slots + 1 empty slot (max 5 total)
+  const maxSlots = Math.min(Math.max(queue.length + 1, 3), 5);
+  const slots = Array.from({ length: maxSlots }, (_, i) => i);
+
+  return (
+    <div
+      className="absolute bottom-full mb-2 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 p-2 flex gap-2"
+      onMouseLeave={onClose}
+    >
+      {slots.map((slotIndex) => {
+        const queuedAsset = queue[slotIndex];
+        const isFilled = !!queuedAsset;
+
+        return (
+          <button
+            key={slotIndex}
+            onClick={() => {
+              onSelectSlot(asset, slotIndex);
+              onClose();
+            }}
+            className="relative w-12 h-12 rounded border-2 border-neutral-300 dark:border-neutral-600 hover:border-blue-500 dark:hover:border-blue-400 transition-colors flex items-center justify-center bg-neutral-50 dark:bg-neutral-900"
+            title={`Slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
+            type="button"
+          >
+            {isFilled ? (
+              ccIsOpen ? (
+                // CC is open: show simple checkmark
+                <Icon name="check" size={16} className="text-green-600 dark:text-green-400" />
+              ) : (
+                // CC is retracted: show thumbnail
+                <img
+                  src={queuedAsset.asset.thumbnail_url}
+                  alt={`Slot ${slotIndex + 1}`}
+                  className="w-full h-full object-cover rounded"
+                />
+              )
+            ) : (
+              // Empty slot: show slot number
+              <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                {slotIndex + 1}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Create quick add button (+) widget
+ * Shows next to generation menu for silently adding to queue
+ */
+export function createQuickAddButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { id, actions, badgeConfig, presetCapabilities } = props;
+
+  // Show quick add button only when generation button group shows
+  if (!presetCapabilities?.showsGenerationMenu) {
+    return null;
+  }
+
+  const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
+
+  if (!showGenerationBadge || !actions?.onQuickAdd) {
+    return null;
+  }
+
+  return {
+    id: 'quick-add',
+    type: 'custom',
+    // Position to the right of the generation button group (which is at bottom-center)
+    position: { anchor: 'bottom-center', offset: { x: 70, y: -8 } },
+    visibility: { trigger: 'hover-container' },
+    priority: 34, // Just below generation button group (35)
+    interactive: true,
+    handlesOwnInteraction: true,
+    render: (data: MediaCardOverlayData) => {
+      const [showSlotPicker, setShowSlotPicker] = useState(false);
+      const addToQueueAtIndex = useGenerationQueueStore((s) => s.addToQueueAtIndex);
+      const addToMultiAssetQueueAtIndex = useGenerationQueueStore((s) => s.addToMultiAssetQueueAtIndex);
+      const ccOperationType = useControlCenterStore((s) => s.operationType);
+
+      // Reconstruct AssetSummary from props and data
+      const asset = {
+        id: props.id,
+        media_type: props.mediaType,
+        provider_id: props.providerId,
+        provider_asset_id: props.providerAssetId,
+        remote_url: props.remoteUrl,
+        thumbnail_url: props.thumbUrl,
+        width: props.width,
+        height: props.height,
+        duration_sec: props.durationSec,
+        tags: props.tags || [],
+        description: props.description,
+        created_at: props.createdAt,
+        provider_status: props.providerStatus,
+      };
+
+      const handleSelectSlot = (asset: AssetSummary, slotIndex: number) => {
+        // Determine which operations support multiple assets
+        const isMultiAssetOperation =
+          ccOperationType === 'video_transition' ||
+          ccOperationType === 'fusion' ||
+          ccOperationType === 'image_to_image'; // Image edit can use multiple images
+
+        // Route to appropriate queue
+        if (isMultiAssetOperation) {
+          addToMultiAssetQueueAtIndex?.(asset, slotIndex);
+        } else {
+          addToQueueAtIndex?.(asset, slotIndex, ccOperationType);
+        }
+      };
+
+      return (
+        <div className="relative">
+          {showSlotPicker && (
+            <SlotPickerPopup
+              asset={asset}
+              onSelectSlot={handleSelectSlot}
+              onClose={() => setShowSlotPicker(false)}
+            />
+          )}
+          <button
+            onMouseEnter={() => setShowSlotPicker(true)}
+            onMouseLeave={(e) => {
+              // Keep open if moving to the popup
+              const relatedTarget = e.relatedTarget as HTMLElement;
+              if (!relatedTarget?.closest('.absolute.bottom-full')) {
+                setShowSlotPicker(false);
+              }
+            }}
+            className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-all hover:scale-125 hover:shadow-xl flex items-center justify-center border-2 border-white/30"
+            title="Quick add to queue"
+            type="button"
+          >
+            <Icon name="add" size={20} strokeWidth={3} />
+          </button>
+        </div>
+      );
+    },
+  };
+}
+
+/**
  * Create generation actions menu widget
  */
 export function createGenerationMenu(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
@@ -714,6 +886,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
     createVideoScrubber(props),
     createUploadButton(props),
     createTagsTooltip(props),
+    createQuickAddButton(props),
     createGenerationButtonGroup(props),
   ];
 

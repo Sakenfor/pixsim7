@@ -28,6 +28,10 @@ from pixsim7.backend.main.shared.debug import (
 )
 from pixsim7.backend.main.shared.errors import ProviderError
 from pixsim7.backend.main.workers.job_processor import refresh_account_credits
+from pixsim7.backend.main.infrastructure.events.redis_bridge import (
+    start_event_bus_bridge,
+    stop_event_bus_bridge,
+)
 
 logger = configure_logging("worker")
 _poller_debug_initialized = False
@@ -612,14 +616,23 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             await db.close()
 
 
+_event_bridge = None
+
+
 async def on_startup(ctx: dict) -> None:
     """ARQ worker startup"""
+    global _event_bridge
     logger.info("status_poller_started")
+    _event_bridge = await start_event_bus_bridge(role="status_poller")
 
 
 async def on_shutdown(ctx: dict) -> None:
     """ARQ worker shutdown"""
+    global _event_bridge
     logger.info("status_poller_shutdown")
+    if _event_bridge:
+        await stop_event_bus_bridge()
+        _event_bridge = None
 
 
 # ARQ task configuration

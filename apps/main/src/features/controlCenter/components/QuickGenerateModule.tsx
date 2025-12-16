@@ -5,12 +5,13 @@ import 'dockview/dist/styles/dockview.css';
 import styles from './QuickGenerateModule.module.css';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 import { resolvePromptLimit } from '@/utils/prompt/limits';
-import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench } from '@features/generation';
+import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
 import { AssetPanel, PromptPanel, SettingsPanel, BlocksPanel, type QuickGenPanelContext } from './QuickGeneratePanels';
+import { CompactAssetCard } from './CompactAssetCard';
 import { useAssetViewerStore } from '@features/assets';
 
 /** Operation type categories for layout and behavior */
@@ -42,9 +43,9 @@ export function QuickGenerateModule() {
     lastSelectedAsset,
     mainQueue,
     mainQueueIndex,
-    transitionQueue,
+    multiAssetQueue,
     removeFromQueue,
-    clearTransitionQueue,
+    clearMultiAssetQueue,
     prompts,
     setPrompts,
     transitionDurations,
@@ -76,20 +77,31 @@ export function QuickGenerateModule() {
   const currentAsset = useAssetViewerStore(s => s.currentAsset);
   const isViewerOpen = useAssetViewerStore(s => s.mode !== 'closed');
 
-  // Auto-disable "Use Viewed Asset" when assets are added to queue
-  // This ensures queued assets are visible in the asset panel
-  useEffect(() => {
-    if (useViewedAsset && mainQueue.length > 0) {
-      setUseViewedAsset(false);
-    }
-  }, [mainQueue.length, useViewedAsset]);
+  // Check if viewed asset is available (regardless of queue state)
+  const hasViewedAssetAvailable = useViewedAsset && isViewerOpen && currentAsset;
 
-  // Hide asset panel when using viewed asset (and no assets in queue)
-  const hasViewedAssetAvailable = useViewedAsset && isViewerOpen && currentAsset && mainQueue.length === 0;
-  const showAssetPanelInLayout = (isSingleAssetOp || isFlexibleOp) && !hasViewedAssetAvailable;
+  // Always show asset panel for these operations (to show queue or allow drag-drop)
+  const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
 
   // Auto-populate image_url/video_url when using viewed asset
+  // Track previous state to detect when to clear params
+  const prevUseViewedAssetRef = useRef(useViewedAsset);
+
   useEffect(() => {
+    // Clear params when toggle is disabled (transitions from true to false)
+    if (prevUseViewedAssetRef.current && !useViewedAsset) {
+      if (operationType === 'image_to_video' || operationType === 'image_to_image') {
+        if (workbench.dynamicParams.image_url) {
+          workbench.handleParamChange('image_url', undefined);
+        }
+      } else if (operationType === 'video_extend') {
+        if (workbench.dynamicParams.video_url) {
+          workbench.handleParamChange('video_url', undefined);
+        }
+      }
+    }
+    prevUseViewedAssetRef.current = useViewedAsset;
+
     if (!hasViewedAssetAvailable || !currentAsset) {
       return;
     }
@@ -107,7 +119,7 @@ export function QuickGenerateModule() {
         workbench.handleParamChange('video_url', assetUrl);
       }
     }
-  }, [hasViewedAssetAvailable, currentAsset, operationType, workbench.dynamicParams.image_url, workbench.dynamicParams.video_url, workbench.handleParamChange]);
+  }, [hasViewedAssetAvailable, useViewedAsset, currentAsset, operationType, workbench.dynamicParams.image_url, workbench.dynamicParams.video_url, workbench.handleParamChange]);
 
   // Infer pixverse provider from model
   const inferredProviderId = useMemo(() => {
@@ -209,12 +221,14 @@ export function QuickGenerateModule() {
   // Get the asset to display based on operation type
   const getDisplayAssets = () => {
     if (operationType === 'video_transition') {
-      return transitionQueue.map(q => q.asset);
+      return multiAssetQueue.map(q => q.asset);
     }
 
-    // For image_to_video, image_to_image, or video_extend, prefer queue first, then active asset
+    // For image_to_video, image_to_image, or video_extend, show asset at current index
     if (mainQueue.length > 0) {
-      return [mainQueue[0].asset];
+      // mainQueueIndex is 1-based, convert to 0-based array index
+      const index = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
+      return [mainQueue[index].asset];
     }
 
     if (lastSelectedAsset &&
@@ -375,172 +389,38 @@ export function QuickGenerateModule() {
     }
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
 
-  // Render the settings panel (right side) - used by all operation types
-  const renderSettingsPanel = () => (
-    <div className="h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0">
-      {/* Fixed top section - Operation type & Provider */}
-      <div className="flex-shrink-0 flex flex-col gap-1.5">
-        {/* Operation type */}
-        <select
-          value={operationType}
-          onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
+  // Extra controls for GenerationSettingsPanel
+  const extraControls = useMemo(() => {
+    if (!(isSingleAssetOp || isFlexibleOp)) return null;
+
+    return (
+      <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 cursor-pointer hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors">
+        <input
+          type="checkbox"
+          checked={useViewedAsset}
+          onChange={(e) => setUseViewedAsset(e.target.checked)}
           disabled={generating}
-          className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
-        >
-          <option value="image_to_image">→ Image</option>
-          <option value="image_to_video">→ Video</option>
-          <option value="video_extend">Extend</option>
-          <option value="video_transition">Transition</option>
-          <option value="fusion">Fusion</option>
-        </select>
+          className="w-3 h-3 rounded"
+        />
+        <span className="flex items-center gap-1">
+          Use Media Viewer Asset
+          {hasViewedAssetAvailable && <span className="text-green-500">✓</span>}
+          {useViewedAsset && !hasViewedAssetAvailable && <span className="text-amber-500" title="No asset in viewer">⚠</span>}
+        </span>
+      </label>
+    );
+  }, [isSingleAssetOp, isFlexibleOp, useViewedAsset, hasViewedAssetAvailable, generating]);
 
-        {/* Provider */}
-        <select
-          value={providerId || ''}
-          onChange={(e) => setProvider(e.target.value || undefined)}
-          disabled={generating}
-          className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-          title="Provider"
-        >
-          <option value="">Auto</option>
-          {workbench.providers.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Scrollable middle section - Dynamic params */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 min-h-0">
-        {filteredParamSpecs
-        .filter(p => !['image_url', 'image_urls', 'negative_prompt', 'prompt'].includes(p.name))
-        .map(param => {
-          if (param.type === 'boolean') return null;
-          // Skip string params without enum (like negative_prompt) - they need text input
-          if (param.type === 'string' && !param.enum) return null;
-
-          // Duration with preset buttons
-          if (param.name === 'duration' && param.type === 'number' && durationOptions) {
-            const currentDuration = Number(workbench.dynamicParams[param.name]) || durationOptions[0];
-            return (
-              <div key="duration" className="flex flex-wrap gap-1">
-                {durationOptions.map((seconds) => (
-                  <button
-                    type="button"
-                    key={seconds}
-                    onClick={() => workbench.handleParamChange('duration', seconds)}
-                    disabled={generating}
-                    className={clsx(
-                      'px-2 py-1 rounded-lg text-[11px] font-medium transition-colors',
-                      currentDuration === seconds
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-blue-50 dark:hover:bg-neutral-700'
-                    )}
-                    title={`${seconds} seconds`}
-                  >
-                    {seconds}s
-                  </button>
-                ))}
-              </div>
-            );
-          }
-
-          const COMMON_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'];
-          // Use model-specific quality options when available
-          const options = param.name === 'quality' && getQualityOptionsForModel
-            ? getQualityOptionsForModel
-            : param.enum ?? (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
-
-          if (param.type === 'number' && !options) {
-            return (
-              <input
-                key={param.name}
-                type="number"
-                value={workbench.dynamicParams[param.name] ?? param.default ?? ''}
-                onChange={(e) => workbench.handleParamChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
-                disabled={generating}
-                placeholder={param.name}
-                className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-                title={param.name}
-              />
-            );
-          }
-
-          if (!options) return null;
-
-          return (
-            <select
-              key={param.name}
-              value={workbench.dynamicParams[param.name] ?? param.default ?? ''}
-              onChange={(e) => workbench.handleParamChange(param.name, e.target.value)}
-              disabled={generating}
-              className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-              title={param.name}
-            >
-              {options.map((opt: string) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          );
-        })}
-      </div>
-
-      {/* Fixed bottom section - Go button with advanced settings */}
-      <div className="flex-shrink-0 flex flex-col gap-1.5 mt-auto">
-        {/* Use Viewed Asset toggle - only show for single-asset operations */}
-        {(isSingleAssetOp || isFlexibleOp) && (
-          <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 cursor-pointer hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors">
-            <input
-              type="checkbox"
-              checked={useViewedAsset}
-              onChange={(e) => setUseViewedAsset(e.target.checked)}
-              disabled={generating}
-              className="w-3 h-3 rounded"
-            />
-            <span className="flex items-center gap-1">
-              Use Media Viewer Asset
-              {hasViewedAssetAvailable && <span className="text-green-500">✓</span>}
-              {useViewedAsset && !hasViewedAssetAvailable && <span className="text-amber-500" title="No asset in viewer">⚠</span>}
-            </span>
-          </label>
-        )}
-
-        <div className="flex gap-1.5">
-          {/* Advanced settings gear icon */}
-          <AdvancedSettingsPopover
-            params={advancedParams}
-            values={workbench.dynamicParams}
-            onChange={workbench.handleParamChange}
-            disabled={generating}
-          />
-
-          {/* Go button with cost */}
-          <button
-            onClick={generate}
-            disabled={generating || !canGenerate}
-          className={clsx(
-            'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white transition-all',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-            generating || !canGenerate
-              ? 'bg-neutral-400'
-              : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
-          )}
-        >
-          {generating ? (
-            '...'
-          ) : creditLoading ? (
-            'Go ⚡'
-          ) : creditEstimate !== null ? (
-            <span className="flex items-center justify-center gap-1">
-              Go ⚡ <span className="text-amber-200 text-[10px]">◆{Math.round(creditEstimate)}</span>
-            </span>
-          ) : (
-            'Go ⚡'
-          )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  // Render the settings panel (right side) - using shared GenerationSettingsPanel
+  const renderSettingsPanel = useCallback(() => (
+    <GenerationSettingsPanel
+      generating={generating}
+      canGenerate={canGenerate}
+      onGenerate={generate}
+      extraControls={extraControls}
+      error={error}
+    />
+  ), [generating, canGenerate, generate, extraControls, error]);
 
   // Prepare panel context data
   const panelContext = useMemo<QuickGenPanelContext>(() => ({
@@ -556,6 +436,7 @@ export function QuickGenerateModule() {
     setPrompt,
     providerId,
     generating,
+    error,
     renderSettingsPanel,
   }), [
     displayAssets,
@@ -570,6 +451,8 @@ export function QuickGenerateModule() {
     setPrompt,
     providerId,
     generating,
+    error,
+    renderSettingsPanel,
   ]);
 
   // Layout management
@@ -598,51 +481,6 @@ export function QuickGenerateModule() {
     }
     return false;
   }, []);
-
-  const resetLayout = useCallback(() => {
-    if (!dockviewRef.current) return;
-    // Clear saved layout
-    localStorage.removeItem(LAYOUT_STORAGE_KEY);
-    // Rebuild with default layout
-    previousLayoutRef.current = null;
-    createPanelsForLayout(dockviewRef.current, showAssetPanelInLayout);
-  }, [showAssetPanelInLayout, createPanelsForLayout]);
-
-  // Initialize dockview - load saved layout or create default
-  const handleDockviewReady = (event: DockviewReadyEvent) => {
-    dockviewRef.current = event.api;
-
-    // Try to load saved layout, if it fails or doesn't exist, force initial creation
-    const loaded = loadSavedLayout(event.api);
-    previousLayoutRef.current = loaded ? showAssetPanelInLayout : null;
-
-    // Auto-save layout on changes
-    event.api.onDidLayoutChange(() => {
-      saveLayout();
-    });
-  };
-
-  // Focus asset panel when assets are added to queue
-  const prevQueueLengthRef = useRef(mainQueue.length);
-  useEffect(() => {
-    const prevLength = prevQueueLengthRef.current;
-    const currentLength = mainQueue.length;
-
-    // Asset was added (queue grew)
-    if (currentLength > prevLength && currentLength > 0 && dockviewRef.current) {
-      // Use requestAnimationFrame to ensure layout rebuild completes first
-      // The panel might not exist yet if layout is being rebuilt
-      requestAnimationFrame(() => {
-        if (!dockviewRef.current) return;
-        const assetPanel = dockviewRef.current.panels.find(p => p.id === 'asset-panel');
-        if (assetPanel && !assetPanel.api.isActive) {
-          assetPanel.api.setActive();
-        }
-      });
-    }
-
-    prevQueueLengthRef.current = currentLength;
-  }, [mainQueue.length, showAssetPanelInLayout]);
 
   // Helper to create panels for current layout
   const createPanelsForLayout = useCallback((api: DockviewReadyEvent['api'], hasAssetPanel: boolean) => {
@@ -713,6 +551,59 @@ export function QuickGenerateModule() {
     }
   }, [panelContext]);
 
+  const resetLayout = useCallback(() => {
+    if (!dockviewRef.current) return;
+    // Clear saved layout
+    localStorage.removeItem(LAYOUT_STORAGE_KEY);
+    // Rebuild with default layout
+    previousLayoutRef.current = null;
+    createPanelsForLayout(dockviewRef.current, showAssetPanelInLayout);
+  }, [showAssetPanelInLayout, createPanelsForLayout]);
+
+  // Listen to global panel layout reset trigger
+  const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
+  useEffect(() => {
+    if (panelLayoutResetTrigger > 0) {
+      resetLayout();
+    }
+  }, [panelLayoutResetTrigger, resetLayout]);
+
+  // Initialize dockview - load saved layout or create default
+  const handleDockviewReady = (event: DockviewReadyEvent) => {
+    dockviewRef.current = event.api;
+
+    // Try to load saved layout, if it fails or doesn't exist, force initial creation
+    const loaded = loadSavedLayout(event.api);
+    previousLayoutRef.current = loaded ? showAssetPanelInLayout : null;
+
+    // Auto-save layout on changes
+    event.api.onDidLayoutChange(() => {
+      saveLayout();
+    });
+  };
+
+  // Focus asset panel when assets are added to queue
+  const prevQueueLengthRef = useRef(mainQueue.length);
+  useEffect(() => {
+    const prevLength = prevQueueLengthRef.current;
+    const currentLength = mainQueue.length;
+
+    // Asset was added (queue grew)
+    if (currentLength > prevLength && currentLength > 0 && dockviewRef.current) {
+      // Use requestAnimationFrame to ensure layout rebuild completes first
+      // The panel might not exist yet if layout is being rebuilt
+      requestAnimationFrame(() => {
+        if (!dockviewRef.current) return;
+        const assetPanel = dockviewRef.current.panels.find(p => p.id === 'asset-panel');
+        if (assetPanel && !assetPanel.api.isActive) {
+          assetPanel.api.setActive();
+        }
+      });
+    }
+
+    prevQueueLengthRef.current = currentLength;
+  }, [mainQueue.length, showAssetPanelInLayout]);
+
   // Manage panel lifecycle: create on mount, rebuild on layout change, update params on context change
   useEffect(() => {
     if (!dockviewRef.current) return;
@@ -759,7 +650,7 @@ export function QuickGenerateModule() {
           <div className="flex-shrink-0 flex items-stretch">
             {displayAssets.length > 0 ? (
               <div className="flex items-stretch gap-1.5">
-                {transitionQueue.map((queueItem, idx) => {
+                {multiAssetQueue.map((queueItem, idx) => {
                   const hasOutgoingTransition = !isLastAsset(idx);
                   const isSelected = selectedTransitionIndex === idx;
 
@@ -861,15 +752,6 @@ export function QuickGenerateModule() {
     // Use minimal dockview for asset+prompt or prompt+settings layout
     return (
       <div className={clsx("flex-1 min-h-0 h-full relative", styles.minimalDockview)}>
-        {/* Reset layout button */}
-        <button
-          onClick={resetLayout}
-          className="absolute top-1 right-1 z-10 p-1 text-[10px] bg-white/80 dark:bg-neutral-800/80 hover:bg-white dark:hover:bg-neutral-700 rounded shadow-sm border border-neutral-200 dark:border-neutral-600 transition-colors"
-          title="Reset panel layout"
-        >
-          🔄
-        </button>
-
         <DockviewReact
           onReady={handleDockviewReady}
           components={{
@@ -881,6 +763,8 @@ export function QuickGenerateModule() {
           className="dockview-theme-light"
           watermarkComponent={() => null}
           hideBorders={true}
+          disableDnd={true}
+          defaultTabComponent={() => null}
         />
       </div>
     );

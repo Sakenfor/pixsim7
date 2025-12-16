@@ -29,6 +29,7 @@ export interface QuickGenPanelContext {
   setPrompt: (value: string) => void;
   providerId?: string;
   generating: boolean;
+  error?: string | null;
 
   // Settings panel
   renderSettingsPanel: () => React.ReactNode;
@@ -108,36 +109,44 @@ export function PromptPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
     operationType,
     displayAssets,
     isFlexibleOperation,
+    error,
   } = ctx;
 
   const maxChars = resolvePromptLimit(providerId);
   const hasAsset = displayAssets.length > 0;
 
   return (
-    <div className="h-full w-full p-2">
-      <PromptInput
-        value={prompt}
-        onChange={setPrompt}
-        maxChars={maxChars}
-        disabled={generating}
-        variant="compact"
-        resizable
-        minHeight={100}
-        placeholder={
-          operationType === 'image_to_video'
-            ? (hasAsset ? 'Describe the motion...' : 'Describe the video...')
-            : operationType === 'image_to_image'
-            ? (hasAsset ? 'Describe the transformation...' : 'Describe the image...')
-            : operationType === 'text_to_image'
-            ? 'Describe the image you want to create...'
-            : operationType === 'text_to_video'
-            ? 'Describe the video you want to create...'
-            : operationType === 'video_extend'
-            ? 'Describe how to continue the video...'
-            : 'Describe the fusion...'
-        }
-        className="h-full"
-      />
+    <div className="h-full w-full p-2 flex flex-col gap-2">
+      <div className={`flex-1 transition-all duration-300 ${error ? 'ring-2 ring-red-500 ring-offset-2 rounded-lg animate-pulse' : ''}`}>
+        <PromptInput
+          value={prompt}
+          onChange={setPrompt}
+          maxChars={maxChars}
+          disabled={generating}
+          variant="compact"
+          resizable
+          minHeight={100}
+          placeholder={
+            operationType === 'image_to_video'
+              ? (hasAsset ? 'Describe the motion...' : 'Describe the video...')
+              : operationType === 'image_to_image'
+              ? (hasAsset ? 'Describe the transformation...' : 'Describe the image...')
+              : operationType === 'text_to_image'
+              ? 'Describe the image you want to create...'
+              : operationType === 'text_to_video'
+              ? 'Describe the video you want to create...'
+              : operationType === 'video_extend'
+              ? 'Describe how to continue the video...'
+              : 'Describe the fusion...'
+          }
+          className="h-full"
+        />
+      </div>
+      {error && (
+        <div className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800 animate-in fade-in slide-in-from-top-2 duration-300">
+          ⚠️ {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -150,6 +159,10 @@ export function SettingsPanel(props: IDockviewPanelProps<QuickGenPanelContext>) 
   if (!ctx) return null;
 
   const { renderSettingsPanel } = ctx;
+
+  if (!renderSettingsPanel || typeof renderSettingsPanel !== 'function') {
+    return <div className="h-full w-full p-2">Loading settings...</div>;
+  }
 
   return (
     <div className="h-full w-full p-2">

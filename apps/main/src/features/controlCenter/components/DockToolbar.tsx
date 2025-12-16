@@ -8,6 +8,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import type { ControlModule, DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 import type { ControlCenterModule } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
@@ -94,6 +95,9 @@ export function DockToolbar({
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Panel layout reset action
+  const triggerPanelLayoutReset = useControlCenterStore(s => s.triggerPanelLayoutReset);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -129,7 +133,7 @@ export function DockToolbar({
             </div>
             <button
               onClick={() => {
-                // TODO: Reset panel layout
+                triggerPanelLayoutReset();
                 setShowDropdown(false);
               }}
               className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"

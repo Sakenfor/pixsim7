@@ -1,14 +1,14 @@
 /**
  * ViewerQuickGenerate
  *
- * Compact inline generation prompt for the asset viewer panel.
- * Shows when control center is closed, allowing quick image-to-video
- * or video-extend operations on the currently viewed asset.
+ * Compact inline generation panel for the asset viewer.
+ * Shows when control center is closed, providing full generation settings
+ * for the currently viewed asset without needing to open Control Center.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationQueueStore } from '@features/generation';
+import { GenerationSettingsPanel, useGenerationQueueStore } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
 import type { ViewerAsset } from '@features/assets';
@@ -27,18 +27,18 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     setOperationType,
     prompt,
     setPrompt,
+    error,
   } = useQuickGenerateController();
 
   const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
 
-  // Determine operation type based on asset type
-  const operationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
-  const operationLabel = asset.type === 'video' ? 'Extend' : 'Animate';
-  const placeholder = asset.type === 'video'
-    ? 'Describe how to continue...'
-    : 'Describe the motion...';
+  // Auto-set operation type based on asset type
+  useEffect(() => {
+    const targetOp = asset.type === 'video' ? 'video_extend' : 'image_to_video';
+    setOperationType(targetOp);
+  }, [asset.type, setOperationType]);
 
-  // Don't show if control center is open (they can use the full UI there)
+  // Don't show if control center is open
   if (controlCenterOpen) {
     return null;
   }
@@ -63,15 +63,10 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     // Add to main queue
     addToQueue(queueAsset, 'main');
 
-    // Set operation type
-    setOperationType(operationType);
-
     // Trigger generation
     await generate();
 
-    // Clear prompt on success
-    setPrompt('');
-    setIsExpanded(false);
+    // Keep prompt and panel open for iteration
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -84,59 +79,61 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     }
   };
 
-  // Collapsed state - just show a button
+  // Collapsed state - just show icon button (no label)
   if (!isExpanded) {
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="w-full px-3 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center justify-center gap-2"
+        className="w-full px-3 py-2 text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center justify-center"
+        title="Quick Generate"
       >
-        <Icon name="sparkles" size={14} />
-        {operationLabel}
+        <Icon name="sparkles" size={16} />
       </button>
     );
   }
 
-  // Expanded state - show prompt input
+  // Expanded state - show full generation panel
   return (
     <div className="space-y-2">
+      {/* Header with close button */}
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-          {operationLabel}
+          Quick Generate
         </span>
         <button
           onClick={() => setIsExpanded(false)}
           className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
+          title="Close"
         >
           <Icon name="x" size={12} />
         </button>
       </div>
-      <div className="flex gap-2">
+
+      {/* Prompt input */}
+      <div className={`transition-all duration-300 ${error ? 'ring-2 ring-red-500 ring-offset-2 rounded-lg animate-pulse' : ''}`}>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder="Describe the generation..."
           disabled={generating}
           autoFocus
-          rows={3}
-          className="flex-1 px-3 py-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 resize-y min-h-[60px] max-h-[200px]"
+          rows={2}
+          className="w-full px-3 py-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 resize-y min-h-[48px] max-h-[120px]"
         />
-        <button
-          onClick={handleGenerate}
-          disabled={!prompt.trim() || generating}
-          className="px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-1"
-        >
-          {generating ? (
-            <span className="animate-pulse">...</span>
-          ) : (
-            <>
-              <Icon name="sparkles" size={12} />
-              Go
-            </>
-          )}
-        </button>
       </div>
+
+      {/* Settings panel with all generation options */}
+      <div className="-mx-2">
+        <GenerationSettingsPanel
+          showOperationType={false}
+          generating={generating}
+          canGenerate={!!prompt.trim()}
+          onGenerate={handleGenerate}
+          error={error}
+        />
+      </div>
+
       <p className="text-[10px] text-neutral-400 dark:text-neutral-500">
         Press Enter to generate, Esc to close
       </p>

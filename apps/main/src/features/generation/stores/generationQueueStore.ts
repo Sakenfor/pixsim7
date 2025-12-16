@@ -20,116 +20,154 @@ export interface QueuedAsset {
 
 export interface GenerationQueueState {
   // Queue for different operation types
-  mainQueue: QueuedAsset[];           // General generation queue
-  transitionQueue: QueuedAsset[];     // Assets queued for video transition
+  mainQueue: QueuedAsset[];           // Single-asset operations (video extend, etc.)
+  multiAssetQueue: QueuedAsset[];     // Multi-asset operations (transition, fusion, image edit)
 
   // Current index tracking (1-based for display)
   mainQueueIndex: number;
-  transitionQueueIndex: number;
+  multiAssetQueueIndex: number;
 
   // Actions
   addToQueue: (asset: AssetSummary, operation?: 'image_to_image' | 'image_to_video' | 'video_extend') => void;
-  addToTransitionQueue: (asset: AssetSummary) => void;
-  removeFromQueue: (assetId: number, queueType?: 'main' | 'transition') => void;
-  clearQueue: (queueType?: 'main' | 'transition' | 'all') => void;
-  getNextInQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;
-  consumeFromQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;
-  updateLockedTimestamp: (assetId: number, timestamp: number | undefined, queueType?: 'main' | 'transition') => void;
+  addToMultiAssetQueue: (asset: AssetSummary) => void;
+  addToQueueAtIndex: (asset: AssetSummary, index: number, operation?: 'image_to_image' | 'image_to_video' | 'video_extend') => void;
+  addToMultiAssetQueueAtIndex: (asset: AssetSummary, index: number) => void;
+  removeFromQueue: (assetId: number, queueType?: 'main' | 'multi') => void;
+  clearQueue: (queueType?: 'main' | 'multi' | 'all') => void;
+  getNextInQueue: (queueType?: 'main' | 'multi') => QueuedAsset | null;
+  consumeFromQueue: (queueType?: 'main' | 'multi') => QueuedAsset | null;
+  updateLockedTimestamp: (assetId: number, timestamp: number | undefined, queueType?: 'main' | 'multi') => void;
   /**
    * Cycle the queue forward/backward so that a different asset becomes the
    * "front" item. Useful for UI controls that let the user step through
    * queued assets without changing queue membership.
    */
-  cycleQueue: (queueType?: 'main' | 'transition', direction?: 'next' | 'prev') => void;
+  cycleQueue: (queueType?: 'main' | 'multi', direction?: 'next' | 'prev') => void;
+}
+
+// Helper to get queue key and index key from queue type
+type QueueKeys = {
+  queueKey: 'mainQueue' | 'multiAssetQueue';
+  indexKey: 'mainQueueIndex' | 'multiAssetQueueIndex';
+};
+
+function getQueueKeys(queueType: 'main' | 'multi'): QueueKeys {
+  return queueType === 'main'
+    ? { queueKey: 'mainQueue', indexKey: 'mainQueueIndex' }
+    : { queueKey: 'multiAssetQueue', indexKey: 'multiAssetQueueIndex' };
 }
 
 export const useGenerationQueueStore = create<GenerationQueueState>()(
   persist(
-    (set, get) => ({
-      mainQueue: [],
-      transitionQueue: [],
-      mainQueueIndex: 1,
-      transitionQueueIndex: 1,
-
-      addToQueue: (asset, operation) => {
-        set((state) => ({
-          mainQueue: [
-            ...state.mainQueue,
+    (set, get) => {
+      // Shared helper: add asset to end of queue
+      const addToQueueHelper = (
+        queueType: 'main' | 'multi',
+        asset: AssetSummary,
+        operation?: QueuedAsset['operation']
+      ) => {
+        set((state) => {
+          const { queueKey, indexKey } = getQueueKeys(queueType);
+          const currentQueue = state[queueKey];
+          const newQueue = [
+            ...currentQueue,
             {
               asset,
-              operation,
+              operation: operation || (queueType === 'multi' ? 'add_to_transition' as const : undefined),
               queuedAt: new Date().toISOString(),
             },
-          ],
-          // Reset to show the newly added asset (last in queue, but we cycle to show it first)
-          mainQueueIndex: state.mainQueue.length + 1,
-        }));
-      },
+          ];
+          return {
+            [queueKey]: newQueue,
+            [indexKey]: newQueue.length, // 1-indexed
+          } as Partial<GenerationQueueState>;
+        });
+      };
 
-      addToTransitionQueue: (asset) => {
-        set((state) => ({
-          transitionQueue: [
-            ...state.transitionQueue,
-            {
-              asset,
-              operation: 'add_to_transition' as const,
-              queuedAt: new Date().toISOString(),
-            },
-          ],
-          transitionQueueIndex: state.transitionQueue.length + 1,
-        }));
-      },
+      // Shared helper: add/replace asset at specific index
+      const addToQueueAtIndexHelper = (
+        queueType: 'main' | 'multi',
+        asset: AssetSummary,
+        index: number,
+        operation?: QueuedAsset['operation']
+      ) => {
+        set((state) => {
+          const { queueKey, indexKey } = getQueueKeys(queueType);
+          const newQueue = [...state[queueKey]];
+          const queuedAsset: QueuedAsset = {
+            asset,
+            operation: operation || (queueType === 'multi' ? 'add_to_transition' as const : undefined),
+            queuedAt: new Date().toISOString(),
+          };
+
+          // If index is within current queue, replace; otherwise append
+          if (index < newQueue.length) {
+            newQueue[index] = queuedAsset;
+          } else {
+            newQueue.push(queuedAsset);
+          }
+
+          return {
+            [queueKey]: newQueue,
+            [indexKey]: index + 1, // 1-indexed
+          } as Partial<GenerationQueueState>;
+        });
+      };
+
+      return {
+        mainQueue: [],
+        multiAssetQueue: [],
+        mainQueueIndex: 1,
+        multiAssetQueueIndex: 1,
+
+        addToQueue: (asset, operation) => addToQueueHelper('main', asset, operation),
+        addToMultiAssetQueue: (asset) => addToQueueHelper('multi', asset),
+        addToQueueAtIndex: (asset, index, operation) => addToQueueAtIndexHelper('main', asset, index, operation),
+        addToMultiAssetQueueAtIndex: (asset, index) => addToQueueAtIndexHelper('multi', asset, index),
 
       removeFromQueue: (assetId, queueType = 'main') => {
         set((state) => {
-          if (queueType === 'main') {
-            return {
-              mainQueue: state.mainQueue.filter((item) => item.asset.id !== assetId),
-            };
-          } else {
-            return {
-              transitionQueue: state.transitionQueue.filter((item) => item.asset.id !== assetId),
-            };
-          }
+          const { queueKey } = getQueueKeys(queueType);
+          return {
+            [queueKey]: state[queueKey].filter((item) => item.asset.id !== assetId),
+          } as Partial<GenerationQueueState>;
         });
       },
 
       clearQueue: (queueType = 'all') => {
         set(() => {
           if (queueType === 'all') {
-            return { mainQueue: [], transitionQueue: [], mainQueueIndex: 1, transitionQueueIndex: 1 };
-          } else if (queueType === 'main') {
-            return { mainQueue: [], mainQueueIndex: 1 };
-          } else {
-            return { transitionQueue: [], transitionQueueIndex: 1 };
+            return { mainQueue: [], multiAssetQueue: [], mainQueueIndex: 1, multiAssetQueueIndex: 1 };
           }
+          const { queueKey, indexKey } = getQueueKeys(queueType);
+          return {
+            [queueKey]: [],
+            [indexKey]: 1,
+          } as Partial<GenerationQueueState>;
         });
       },
 
       getNextInQueue: (queueType = 'main') => {
         const state = get();
-        const queue = queueType === 'main' ? state.mainQueue : state.transitionQueue;
+        const { queueKey } = getQueueKeys(queueType);
+        const queue = state[queueKey];
         return queue.length > 0 ? queue[0] : null;
       },
 
       consumeFromQueue: (queueType = 'main') => {
         const state = get();
-        const queue = queueType === 'main' ? state.mainQueue : state.transitionQueue;
+        const { queueKey } = getQueueKeys(queueType);
+        const queue = state[queueKey];
 
         if (queue.length === 0) return null;
 
         const item = queue[0];
 
         set((state) => {
-          if (queueType === 'main') {
-            return {
-              mainQueue: state.mainQueue.slice(1),
-            };
-          } else {
-            return {
-              transitionQueue: state.transitionQueue.slice(1),
-            };
-          }
+          const { queueKey } = getQueueKeys(queueType);
+          return {
+            [queueKey]: state[queueKey].slice(1),
+          } as Partial<GenerationQueueState>;
         });
 
         return item;
@@ -137,31 +175,21 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
 
       updateLockedTimestamp: (assetId, timestamp, queueType = 'main') => {
         set((state) => {
-          if (queueType === 'main') {
-            return {
-              mainQueue: state.mainQueue.map((item) =>
-                item.asset.id === assetId
-                  ? { ...item, lockedTimestamp: timestamp }
-                  : item
-              ),
-            };
-          } else {
-            return {
-              transitionQueue: state.transitionQueue.map((item) =>
-                item.asset.id === assetId
-                  ? { ...item, lockedTimestamp: timestamp }
-                  : item
-              ),
-            };
-          }
+          const { queueKey } = getQueueKeys(queueType);
+          return {
+            [queueKey]: state[queueKey].map((item) =>
+              item.asset.id === assetId
+                ? { ...item, lockedTimestamp: timestamp }
+                : item
+            ),
+          } as Partial<GenerationQueueState>;
         });
       },
 
       cycleQueue: (queueType = 'main', direction = 'next') => {
         set((state) => {
-          const key = queueType === 'main' ? 'mainQueue' : 'transitionQueue';
-          const indexKey = queueType === 'main' ? 'mainQueueIndex' : 'transitionQueueIndex';
-          const queue = state[key];
+          const { queueKey, indexKey } = getQueueKeys(queueType);
+          const queue = state[queueKey];
           const currentIndex = state[indexKey];
           const length = queue?.length || 0;
 
@@ -181,20 +209,21 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
           }
 
           return {
-            [key]: nextQueue,
+            [queueKey]: nextQueue,
             [indexKey]: nextIndex,
-          } as any;
+          } as Partial<GenerationQueueState>;
         });
       },
-    }),
+    };
+  },
     {
-      name: 'generation_queue_v2',
+      name: 'generation_queue_v3',
       // Queues and indices need to be persisted; methods are recreated.
       partialize: (state) => ({
         mainQueue: state.mainQueue,
-        transitionQueue: state.transitionQueue,
+        multiAssetQueue: state.multiAssetQueue,
         mainQueueIndex: state.mainQueueIndex,
-        transitionQueueIndex: state.transitionQueueIndex,
+        multiAssetQueueIndex: state.multiAssetQueueIndex,
       }),
     },
   ),

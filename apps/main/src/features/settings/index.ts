@@ -17,6 +17,7 @@ export { WorkspaceProfileManager } from './components/WorkspaceProfileManager';
 // Components - Settings Modules
 // ============================================================================
 
+export { AssetsSettings } from './components/modules/AssetsSettings';
 export { DebugSettings } from './components/modules/DebugSettings';
 export { GeneralSettings } from './components/modules/GeneralSettings';
 export { GenerationSettings } from './components/modules/GenerationSettings';
@@ -47,6 +48,7 @@ export { settingsSchemaRegistry } from './lib/core/settingsSchemaRegistry';
 // Lib - Settings Schemas
 // ============================================================================
 
+export { registerAssetSettings } from './lib/schemas/assets.settings';
 export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerMediaSettings } from './lib/schemas/media.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';

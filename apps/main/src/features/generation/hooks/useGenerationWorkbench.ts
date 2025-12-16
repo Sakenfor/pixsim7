@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useCallback } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
 import { useProviders } from '@features/providers';
@@ -246,9 +246,9 @@ export function useGenerationWorkbench(
   }, [hasHydrated, presetParams, specs, effectiveOperationType, setDynamicParams]);
 
   // Handler for dynamic param changes
-  const handleParamChange = (name: string, value: any) => {
+  const handleParamChange = useCallback((name: string, value: any) => {
     setDynamicParams(prev => ({ ...prev, [name]: value }));
-  };
+  }, [setDynamicParams]);
 
   return {
     providerId,

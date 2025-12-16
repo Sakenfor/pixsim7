@@ -291,6 +291,35 @@ class WebSocketManager {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
           }
+        } else if (message.type === 'asset:created') {
+          // Handle asset creation events (from any source: generation, upload, paused frame)
+          console.log('[WebSocket] Asset created event received:', message);
+          const rawData = message as any;
+          const assetId = rawData?.asset_id ?? rawData?.data?.asset_id;
+
+          if (assetId) {
+            console.log('[WebSocket] Fetching asset data for:', assetId);
+            try {
+              const { data: assetData } = await apiClient.get(`/assets/${assetId}`);
+              console.log('[WebSocket] Asset data fetched:', assetData);
+              console.log('[WebSocket] Emitting asset:created event to gallery');
+              assetEvents.emitAssetCreated(assetData);
+            } catch (err) {
+              console.error('[WebSocket] Failed to fetch asset:', assetId, err);
+            }
+          } else {
+            console.warn('[WebSocket] No asset ID found in asset:created message');
+          }
+        } else if (message.type === 'asset:deleted') {
+          // Handle asset deletion events
+          console.log('[WebSocket] Asset deleted event received:', message);
+          const rawData = message as any;
+          const assetId = rawData?.asset_id ?? rawData?.data?.asset_id;
+
+          if (assetId) {
+            console.log('[WebSocket] Emitting asset:deleted event to gallery');
+            assetEvents.emitAssetDeleted(assetId);
+          }
         } else if (message.type === 'generation_update' && message.data) {
           // Legacy generation_update message type
           console.log('[WebSocket] Legacy generation update received:', message.data);

@@ -97,6 +97,7 @@ class GenerationLifecycleService:
                 "user_id": generation.user_id,
                 "status": status.value
             })
+            logger.info(f"[Lifecycle] JOB_STARTED event dispatched for generation {generation_id}")
         elif status == GenerationStatus.COMPLETED:
             logger.info(f"[Lifecycle] Publishing JOB_COMPLETED event for generation {generation_id}")
             await event_bus.publish(JOB_COMPLETED, {
@@ -107,6 +108,7 @@ class GenerationLifecycleService:
             })
             logger.info(f"[Lifecycle] JOB_COMPLETED event published for generation {generation_id}")
         elif status == GenerationStatus.FAILED:
+            logger.info(f"[Lifecycle] Publishing JOB_FAILED event for generation {generation_id}")
             await event_bus.publish(JOB_FAILED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
@@ -114,13 +116,16 @@ class GenerationLifecycleService:
                 "status": status.value,
                 "error": error_message
             })
+            logger.info(f"[Lifecycle] JOB_FAILED event dispatched for generation {generation_id}")
         elif status == GenerationStatus.CANCELLED:
+            logger.info(f"[Lifecycle] Publishing JOB_CANCELLED event for generation {generation_id}")
             await event_bus.publish(JOB_CANCELLED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
                 "user_id": generation.user_id,
                 "status": status.value
             })
+            logger.info(f"[Lifecycle] JOB_CANCELLED event dispatched for generation {generation_id}")
 
         # === PHASE 7: Record telemetry for terminal states ===
         if generation.is_terminal:

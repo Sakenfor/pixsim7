@@ -16,6 +16,7 @@ from sqlalchemy import select
 from pixsim7.backend.main.domain.asset import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7.backend.main.domain.relation_types import DERIVATION
+from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 
 
 async def add_asset(
@@ -191,6 +192,15 @@ async def add_asset(
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
+
+    # Emit asset:created event
+    await event_bus.publish(ASSET_CREATED, {
+        "asset_id": asset.id,
+        "user_id": asset.user_id,
+        "media_type": asset.media_type.value,
+        "provider_id": asset.provider_id,
+        "source": "upload" if not source_generation_id else "generation",
+    })
 
     # Create lineage links if provided
     if parent_asset_ids:

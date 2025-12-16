@@ -15,6 +15,8 @@ export { GenerationHistoryButton } from './components/GenerationHistoryButton';
 export type { GenerationHistoryButtonProps } from './components/GenerationHistoryButton';
 export { GenerationsPanel } from './components/GenerationsPanel';
 export type { GenerationsPanelProps } from './components/GenerationsPanel';
+export { GenerationSettingsPanel } from './components/GenerationSettingsPanel';
+export type { GenerationSettingsPanelProps } from './components/GenerationSettingsPanel';
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';

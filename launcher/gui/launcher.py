@@ -25,7 +25,7 @@ try:
     from .config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
-        read_env_file, write_env_file, set_sql_logging
+        read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags
     )
     from .docker_utils import compose_ps, compose_up_detached, compose_down
     from .dialogs.git_tools_dialog import show_git_tools_dialog
@@ -42,7 +42,7 @@ except ImportError:
     from config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
-        read_env_file, write_env_file, set_sql_logging
+        read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags
     )
     from docker_utils import compose_ps, compose_up_detached, compose_down
     from dialogs.git_tools_dialog import show_git_tools_dialog
@@ -194,11 +194,8 @@ class LauncherWindow(QWidget):
         self.ui_state = load_ui_state()
         # Apply SQL logging and worker debug preferences
         set_sql_logging(self.ui_state.sql_logging_enabled)
-        try:
-            from .config import set_worker_debug_flags
-        except Exception:
-            from config import set_worker_debug_flags
         set_worker_debug_flags(self.ui_state.worker_debug_flags)
+        set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
         if self.ui_state.window_width > 0 and self.ui_state.window_height > 0:
             self.resize(self.ui_state.window_width, self.ui_state.window_height)
         else:
@@ -1394,6 +1391,8 @@ class LauncherWindow(QWidget):
             self.ui_state = updated
             # Apply preferences immediately
             set_sql_logging(self.ui_state.sql_logging_enabled)
+            set_worker_debug_flags(self.ui_state.worker_debug_flags)
+            set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
 
             # Apply window flags if changed
             if old_always_on_top != self.ui_state.window_always_on_top:
@@ -1586,4 +1585,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

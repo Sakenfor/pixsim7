@@ -11,6 +11,8 @@ _sql_logging_enabled = False
 
 # Global setting for worker debug categories (set by launcher on startup)
 _worker_debug_flags = ""
+# Global setting for backend log level
+_backend_log_level = "INFO"
 
 
 def set_sql_logging(enabled: bool) -> None:
@@ -23,6 +25,12 @@ def set_worker_debug_flags(flags: str) -> None:
     """Set global worker debug categories (comma-separated)."""
     global _worker_debug_flags
     _worker_debug_flags = flags or ""
+
+
+def set_backend_log_level(level: str) -> None:
+    """Set global backend log level (LOG_LEVEL env)."""
+    global _backend_log_level
+    _backend_log_level = (level or "INFO").upper()
 
 
 @dataclass
@@ -156,6 +164,7 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
     # Worker debug flags (if set via launcher, propagate to services)
     if _worker_debug_flags:
         env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
+    env['LOG_LEVEL'] = _backend_log_level
     # Prefer direct DB ingestion via env if configured globally (.env)
     # If LOG_DATABASE_URL/PIXSIM_LOG_DB_URL exists, pixsim_logging will use it automatically.
     # We intentionally do NOT set PIXSIM_LOG_INGESTION_URL here to avoid routing through backend.
@@ -190,6 +199,7 @@ class UIState:
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
     worker_debug_flags: str = ""        # Worker debug categories (comma-separated)
+    backend_debug_enabled: bool = False # Toggle backend LOG_LEVEL=DEBUG
 
     # Console settings
     autoscroll_enabled: bool = False    # Auto-scroll console logs to bottom
@@ -219,6 +229,8 @@ def load_ui_state() -> UIState:
                     data['sql_logging_enabled'] = False
                 if 'worker_debug_flags' not in data:
                     data['worker_debug_flags'] = ""
+                if 'backend_debug_enabled' not in data:
+                    data['backend_debug_enabled'] = False
                 if 'window_always_on_top' not in data:
                     data['window_always_on_top'] = False
                 if 'health_check_interval' not in data:

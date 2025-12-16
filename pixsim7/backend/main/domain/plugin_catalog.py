@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import Enum
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON, UniqueConstraint
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class PluginFamily(str, Enum):
@@ -95,8 +96,8 @@ class PluginCatalogEntry(SQLModel, table=True):
     )
 
     # ===== TIMESTAMPS =====
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     def __repr__(self):
         return f"<PluginCatalogEntry(id={self.id}, plugin_id='{self.plugin_id}', family='{self.family}')>"
@@ -152,8 +153,8 @@ class UserPluginState(SQLModel, table=True):
         default=None,
         description="When plugin was last disabled"
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     def __repr__(self):
         return f"<UserPluginState(user_id={self.user_id}, plugin_id='{self.plugin_id}', enabled={self.is_enabled})>"

@@ -39,6 +39,10 @@ from pixsim7.backend.main.shared.debug import (
     load_global_debug_from_env,
 )
 from pixsim7.backend.main.workers.health import get_health_tracker
+from pixsim7.backend.main.infrastructure.events.redis_bridge import (
+    start_event_bus_bridge,
+    stop_event_bus_bridge,
+)
 
 from pixsim_logging import configure_logging, bind_job_context
 
@@ -458,14 +462,23 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             await db.close()
 
 
+_event_bridge = None
+
+
 async def on_startup(ctx: dict) -> None:
     """ARQ worker startup"""
+    global _event_bridge
     logger.info("worker_started", component="generation_processor")
+    _event_bridge = await start_event_bus_bridge(role="generation_processor")
 
 
 async def on_shutdown(ctx: dict) -> None:
     """ARQ worker shutdown"""
+    global _event_bridge
     logger.info("worker_shutdown", component="generation_processor")
+    if _event_bridge:
+        await stop_event_bus_bridge()
+        _event_bridge = None
 
 
 # ARQ task configuration

@@ -11,6 +11,7 @@ import './UISettings';
 import './PanelsSettings';
 import './PromptsSettings';
 import './ProfilesSettings';
+import './AssetsSettings';
 import './MediaSettings';
 import './GenerationSettings';
 import './PluginsSettings';

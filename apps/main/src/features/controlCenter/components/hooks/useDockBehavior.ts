@@ -142,22 +142,36 @@ export function useDockBehavior({
       // Check ref to avoid re-creating listener
       if (openRef.current) return;
 
+      const node = dockRef.current;
+      if (!node) return;
+
       const winH = window.innerHeight;
       const winW = window.innerWidth;
 
       // Check appropriate edge based on dock position
-      let shouldOpen = false;
-      if (dockPosition === 'bottom' && e.clientY >= winH - REVEAL_STRIP_THRESHOLD) shouldOpen = true;
-      if (dockPosition === 'top' && e.clientY <= REVEAL_STRIP_THRESHOLD) shouldOpen = true;
-      if (dockPosition === 'left' && e.clientX <= REVEAL_STRIP_THRESHOLD) shouldOpen = true;
-      if (dockPosition === 'right' && e.clientX >= winW - REVEAL_STRIP_THRESHOLD) shouldOpen = true;
+      let nearEdge = false;
+      if (dockPosition === 'bottom' && e.clientY >= winH - REVEAL_STRIP_THRESHOLD) nearEdge = true;
+      if (dockPosition === 'top' && e.clientY <= REVEAL_STRIP_THRESHOLD) nearEdge = true;
+      if (dockPosition === 'left' && e.clientX <= REVEAL_STRIP_THRESHOLD) nearEdge = true;
+      if (dockPosition === 'right' && e.clientX >= winW - REVEAL_STRIP_THRESHOLD) nearEdge = true;
 
-      if (shouldOpen) setOpen(true);
+      if (!nearEdge) return;
+
+      // Check if mouse is actually over the dock element's bounds
+      // (this accounts for width reduction when other panels are open)
+      const rect = node.getBoundingClientRect();
+      const isOverDock =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+
+      if (isOverDock) setOpen(true);
     }, THROTTLE.mousemove);
 
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [setOpen, dockPosition]);
+  }, [setOpen, dockPosition, dockRef]);
 
   // Keyboard resize support
   useEffect(() => {

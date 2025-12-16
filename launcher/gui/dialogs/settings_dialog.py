@@ -130,6 +130,11 @@ class SettingsDialog(QDialog):
         self.chk_worker_debug.setToolTip("Enable verbose worker debug logs. Categories are configured globally via PIXSIM_WORKER_DEBUG.")
         logging_layout.addWidget(self.chk_worker_debug)
 
+        self.chk_backend_debug = QCheckBox("Enable backend DEBUG logging (API + workers)")
+        self.chk_backend_debug.setChecked(self._state.backend_debug_enabled)
+        self.chk_backend_debug.setToolTip("When enabled, services run with LOG_LEVEL=DEBUG for full backend and WebSocket diagnostics.")
+        logging_layout.addWidget(self.chk_backend_debug)
+
         layout.addWidget(logging_group)
 
         layout.addStretch()
@@ -230,6 +235,8 @@ class SettingsDialog(QDialog):
                 self._state.worker_debug_flags = "generation,provider,worker"
         else:
             self._state.worker_debug_flags = ""
+        if hasattr(self, "chk_backend_debug"):
+            self._state.backend_debug_enabled = self.chk_backend_debug.isChecked()
 
         # Performance / health check
         self._state.health_check_adaptive = self.chk_adaptive_health.isChecked()
@@ -275,3 +282,7 @@ class SettingsDialog(QDialog):
             self.spin_health_interval.setValue(defaults.health_check_interval)
             self.spin_startup_interval.setValue(defaults.health_check_startup_interval)
             self.spin_stable_interval.setValue(defaults.health_check_stable_interval)
+            if hasattr(self, "chk_worker_debug"):
+                self.chk_worker_debug.setChecked(bool(defaults.worker_debug_flags))
+            if hasattr(self, "chk_backend_debug"):
+                self.chk_backend_debug.setChecked(defaults.backend_debug_enabled)

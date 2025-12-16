@@ -279,6 +279,16 @@ class AssetEnrichmentService:
             await self.db.commit()
             await self.db.refresh(asset)
 
+            # Emit asset:created event
+            await event_bus.publish(ASSET_CREATED, {
+                "asset_id": asset.id,
+                "user_id": asset.user_id,
+                "media_type": asset.media_type.value,
+                "provider_id": asset.provider_id,
+                "source": "paused_frame",
+                "parent_asset_id": video_asset.id,
+            })
+
             # Create lineage link: child=frame_asset, parent=video_asset
             await create_lineage_links(
                 self.db,

@@ -50,6 +50,7 @@ export interface ControlCenterState {
   presetParams: Record<string, any>; // resolved params from selected preset
   assets: TimelineAsset[];  // assets from operator popup
   generating: boolean;
+  panelLayoutResetTrigger: number; // timestamp to trigger panel layout resets in modules
 }
 
 export interface ControlCenterActions {
@@ -73,6 +74,7 @@ export interface ControlCenterActions {
   setPresetParams: (params: Record<string, any>) => void;
   setAssets: (assets: TimelineAsset[]) => void;
   setGenerating: (v: boolean) => void;
+  triggerPanelLayoutReset: () => void;
   reset: () => void;
 }
 
@@ -101,6 +103,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         presetParams: {},
         assets: [],
         generating: false,
+        panelLayoutResetTrigger: 0,
       setMode: (mode) => {
         if (get().mode === mode) return;
         set({ mode });
@@ -190,6 +193,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().generating === v) return;
         set({ generating: v });
       },
+      triggerPanelLayoutReset: () => set({ panelLayoutResetTrigger: Date.now() }),
       reset: () => set({
         mode: 'dock',
         dockPosition: 'bottom',

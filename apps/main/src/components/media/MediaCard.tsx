@@ -42,6 +42,7 @@ export interface MediaCardActions {
   onReupload?: (id: number) => void;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
+  onQuickAdd?: (id: number) => void;
   onImageToImage?: (id: number) => void;
   onImageToVideo?: (id: number) => void;
   onVideoExtend?: (id: number) => void;

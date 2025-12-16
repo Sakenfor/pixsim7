@@ -37,6 +37,7 @@ export function useAssetsController() {
     queueVideoExtend,
     queueAddToTransition,
     queueAutoGenerate,
+    queueSilentAdd,
   } = useMediaGenerationActions();
 
   // Filter persistence
@@ -217,6 +218,7 @@ export function useAssetsController() {
     onVideoExtend: queueVideoExtend,
     onAddToTransition: queueAddToTransition,
     onAddToGenerate: queueAutoGenerate,
+    onQuickAdd: queueSilentAdd,
     onDelete: handleDeleteAsset,
   }), [
     queueImageToImage,
@@ -224,6 +226,7 @@ export function useAssetsController() {
     queueVideoExtend,
     queueAddToTransition,
     queueAutoGenerate,
+    queueSilentAdd,
     handleDeleteAsset,
   ]);
 
