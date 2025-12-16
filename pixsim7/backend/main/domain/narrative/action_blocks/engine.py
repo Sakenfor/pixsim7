@@ -599,7 +599,7 @@ class ActionEngine:
         # Template query - find matching asset
         if ref.npcId and ref.tags:
             from pixsim7.backend.main.domain.asset import Asset
-            from pixsim7.backend.main.domain.game.models import NpcExpression
+            from pixsim7.backend.main.domain.game.core.models import NpcExpression
 
             # First try NpcExpression for this NPC
             query = select(NpcExpression).where(

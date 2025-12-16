@@ -423,7 +423,7 @@ async def track_character_usage_in_scene(
         character_id: Character template UUID
         scene_id: GameScene ID
     """
-    from pixsim7.backend.main.domain.character import CharacterUsage
+    from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
     from datetime import datetime
 
     usage = CharacterUsage(
@@ -449,7 +449,7 @@ async def track_character_usage_in_asset(
         character_id: Character template UUID
         asset_id: Asset ID
     """
-    from pixsim7.backend.main.domain.character import CharacterUsage
+    from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
     from datetime import datetime
 
     usage = CharacterUsage(
@@ -475,7 +475,7 @@ async def track_character_usage_in_generation(
         character_id: Character template UUID
         generation_id: Generation ID
     """
-    from pixsim7.backend.main.domain.character import CharacterUsage
+    from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
     from datetime import datetime
 
     usage = CharacterUsage(

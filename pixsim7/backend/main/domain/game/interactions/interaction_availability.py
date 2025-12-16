@@ -21,7 +21,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import time
 
-from pixsim7.backend.main.domain.game.npc_interactions import (
+from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     NpcInteractionDefinition,
     NpcInteractionInstance,
     InteractionContext,

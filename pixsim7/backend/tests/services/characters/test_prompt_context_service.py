@@ -95,7 +95,7 @@ def service(mock_db):
 async def test_npc_resolver_normalizes_personality_via_stat_engine(npc_resolver, mock_stat_engine):
     """Test that personality fields are normalized via StatEngine."""
     from unittest.mock import patch
-    from pixsim7.backend.main.domain.stats import StatDefinition, StatAxis, StatTier
+    from pixsim7.backend.main.domain.game.stats import StatDefinition, StatAxis, StatTier
 
     # Create a mock stat package with personality definition
     mock_personality_def = StatDefinition(

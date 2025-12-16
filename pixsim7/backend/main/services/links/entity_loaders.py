@@ -139,8 +139,8 @@ def register_default_loaders():
 
     Domain-specific loaders can be registered in their respective modules.
     """
-    from domain.game.entities.character_integrations import CharacterInstance
-    from domain.game.core.models import GameNPC, GameLocation
+    from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
+    from pixsim7.backend.main.domain.game.core.models import GameNPC, GameLocation
 
     registry = get_entity_loader_registry()
 

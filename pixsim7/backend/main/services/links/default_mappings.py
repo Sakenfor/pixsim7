@@ -9,9 +9,9 @@ This module should be called on service startup to register default mappings.
 Domain-specific mappings can be added in their respective modules.
 """
 from typing import Dict
-from services.links.mapping_registry import get_mapping_registry
-from services.characters.npc_prompt_mapping import NPC_FIELD_MAPPING
-from services.prompt_context.mapping import FieldMapping
+from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
+from pixsim7.backend.main.services.characters.npc_prompt_mapping import NPC_FIELD_MAPPING
+from pixsim7.backend.main.services.prompt_context.mapping import FieldMapping
 
 
 def register_default_mappings():

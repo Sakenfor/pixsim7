@@ -31,7 +31,7 @@ from pixsim7.backend.main.services.simulation import (
 # Behavior System (Simulation Logic)
 # =============================================================================
 
-from pixsim7.backend.main.domain.behavior import (
+from pixsim7.backend.main.domain.game.behavior import (
     # Conditions
     evaluate_condition,
     evaluate_conditions_all,

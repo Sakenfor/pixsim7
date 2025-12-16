@@ -90,7 +90,7 @@ async def apply_stat_deltas(
             stats_config = world.meta.get("stats_config", {})
             definitions = stats_config.get("definitions", {})
             if package_key in definitions:
-                from pixsim7.backend.main.domain.stats import StatDefinition
+                from pixsim7.backend.main.domain.game.stats import StatDefinition
                 stat_definition = StatDefinition(**definitions[package_key])
 
         # Fall back to default relationship definition

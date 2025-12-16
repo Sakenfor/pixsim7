@@ -104,7 +104,7 @@ class ComponentAPI(BaseCapabilityAPI):
             component_name = f"plugin:{self.plugin_id}:{component_name}"
 
         # Use ECS helper to get component
-        from pixsim7.backend.main.domain.game.ecs import get_npc_component
+        from pixsim7.backend.main.domain.game.core.ecs import get_npc_component
 
         # Create a simple object to mimic session
         class SessionStub:
@@ -193,7 +193,7 @@ class ComponentAPI(BaseCapabilityAPI):
             component_name = f"plugin:{self.plugin_id}:{component_name}"
 
         # Use ECS helper to set component
-        from pixsim7.backend.main.domain.game.ecs import set_npc_component
+        from pixsim7.backend.main.domain.game.core.ecs import set_npc_component
 
         # Create a simple object to mimic session
         class SessionStub:
@@ -278,7 +278,7 @@ class ComponentAPI(BaseCapabilityAPI):
             component_name = f"plugin:{self.plugin_id}:{component_name}"
 
         # Use ECS helper to update component
-        from pixsim7.backend.main.domain.game.ecs import update_npc_component
+        from pixsim7.backend.main.domain.game.core.ecs import update_npc_component
 
         class SessionStub:
             def __init__(self, flags_data):
@@ -362,7 +362,7 @@ class ComponentAPI(BaseCapabilityAPI):
             component_name = f"plugin:{self.plugin_id}:{component_name}"
 
         # Use ECS helper to delete component
-        from pixsim7.backend.main.domain.game.ecs import delete_npc_component
+        from pixsim7.backend.main.domain.game.core.ecs import delete_npc_component
 
         class SessionStub:
             def __init__(self, flags_data):

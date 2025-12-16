@@ -5,7 +5,7 @@ These tests focus on pure, world-agnostic behavior so they can run
 without a database or plugin manager.
 """
 
-from pixsim7.backend.main.domain.stats import (
+from pixsim7.backend.main.domain.game.stats import (
     StatAxis,
     StatTier,
     StatLevel,
@@ -16,11 +16,11 @@ from pixsim7.backend.main.domain.stats import (
     normalize_stat_package_entity,
     normalize_stat_package_all,
 )
-from pixsim7.backend.main.domain.stats.package_registry import (
+from pixsim7.backend.main.domain.game.stats.package_registry import (
     list_stat_packages,
     find_stat_definitions,
 )
-from pixsim7.backend.main.domain.stats.relationships_package import (
+from pixsim7.backend.main.domain.game.stats.relationships_package import (
     RELATIONSHIPS_PACKAGE_ID,
 )
 

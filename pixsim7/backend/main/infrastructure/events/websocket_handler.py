@@ -33,8 +33,9 @@ async def broadcast_generation_event(event: Event):
     # Broadcast to all connected clients
     # NOTE: Currently WebSocket auth is not implemented, so user_id is hardcoded.
     # Once proper auth is added, we can use broadcast_to_user() for filtering.
+    logger.info(f"[WebSocket] Broadcasting {event.event_type} to {len(connection_manager.active_connections)} clients (gen_id={message.get('generation_id')})")
     await connection_manager.broadcast(message)
-    logger.debug(f"Broadcast {event.event_type} to all clients (gen_id={message.get('generation_id')})")
+    logger.info(f"[WebSocket] Broadcast complete for {event.event_type}")
 
 
 def register_websocket_handlers():
@@ -44,10 +45,14 @@ def register_websocket_handlers():
     Call this during app startup to enable WebSocket broadcasts.
     """
     # Generation events
+    logger.info("[WebSocket] Registering WebSocket event handlers...")
     event_bus.subscribe("job:created", broadcast_generation_event)
     event_bus.subscribe("job:started", broadcast_generation_event)
     event_bus.subscribe("job:completed", broadcast_generation_event)
     event_bus.subscribe("job:failed", broadcast_generation_event)
     event_bus.subscribe("job:cancelled", broadcast_generation_event)
 
-    logger.info("WebSocket event handlers registered")
+    logger.info("[WebSocket] Event handlers registered for: job:created, job:started, job:completed, job:failed, job:cancelled")
+
+    # Log the event bus state
+    logger.info(f"[WebSocket] Event bus has {len(event_bus._handlers)} event types with subscribers")

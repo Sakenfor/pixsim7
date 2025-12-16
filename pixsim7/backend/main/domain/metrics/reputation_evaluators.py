@@ -8,7 +8,7 @@ from typing import Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
+from pixsim7.backend.main.domain.game.core.models import GameWorld, GameSession
 
 
 def _default_reputation_band(reputation_score: float) -> str:

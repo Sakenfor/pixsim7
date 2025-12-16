@@ -14,8 +14,9 @@ from sqlalchemy import select
 
 # Use domain entry module for cross-domain imports
 from pixsim7.backend.game import GameWorld, GameSession
-from pixsim7.backend.main.domain.stats import StatEngine, WorldStatsConfig
-from pixsim7.backend.main.domain.stats.migration import (
+from pixsim7.backend.main.domain.game.stats.engine import StatEngine
+from pixsim7.backend.main.domain.game.stats.schemas import WorldStatsConfig
+from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
     get_default_relationship_definition,

@@ -197,7 +197,7 @@ class WorldReadAPI(BaseCapabilityAPI):
             self.logger.error("WorldReadAPI requires database access")
             return None
 
-        from pixsim7.backend.main.domain.game.models import GameNPC
+        from pixsim7.backend.main.domain.game.core.models import GameNPC
 
         result = await self.db.execute(
             "SELECT id, name, personality, meta, home_location_id FROM game_npcs WHERE id = :npc_id",

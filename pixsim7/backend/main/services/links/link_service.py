@@ -25,9 +25,9 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from domain.links import ObjectLink
-from services.links.mapping_registry import get_mapping_registry
-from services.links.activation import (
+from pixsim7.backend.main.domain.links import ObjectLink
+from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
+from pixsim7.backend.main.services.links.activation import (
     filter_active_links,
     get_highest_priority_active_link
 )

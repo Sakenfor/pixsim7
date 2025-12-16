@@ -7,7 +7,7 @@ relationship_* conditions maintain backwards compatibility.
 """
 
 import pytest
-from pixsim7.backend.main.domain.behavior.conditions import (
+from pixsim7.backend.main.domain.game.behavior.conditions import (
     evaluate_condition,
     _eval_stat_axis_gt,
     _eval_stat_axis_lt,

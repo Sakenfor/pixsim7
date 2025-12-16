@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Dict, Any, Optional
 import time
 
-from pixsim7.backend.main.domain.game.models import GameSession
+from pixsim7.backend.main.domain.game.core.models import GameSession
 from pixsim7.backend.main.domain.narrative.schema import (
     NarrativeRuntimeState,
     NarrativeProgramId,

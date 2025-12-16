@@ -17,8 +17,8 @@ from .context import (
     SceneContext
 )
 from .programs import PromptProgram, ConditionExpression
-from pixsim7.backend.main.domain.stats import StatEngine
-from pixsim7.backend.main.domain.stats.migration import (
+from pixsim7.backend.main.domain.game.stats import StatEngine
+from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
     get_default_relationship_definition,
@@ -154,10 +154,10 @@ class NarrativeEngine:
         if needs_world_migration(world_meta):
             stats_config = migrate_world_meta_to_stats_config(world_meta)
         elif 'stats_config' in world_meta:
-            from pixsim7.backend.main.domain.stats import WorldStatsConfig
+            from pixsim7.backend.main.domain.game.stats import WorldStatsConfig
             stats_config = WorldStatsConfig.model_validate(world_meta['stats_config'])
         else:
-            from pixsim7.backend.main.domain.stats import WorldStatsConfig
+            from pixsim7.backend.main.domain.game.stats import WorldStatsConfig
             stats_config = WorldStatsConfig(
                 version=1,
                 definitions={"relationships": get_default_relationship_definition()}

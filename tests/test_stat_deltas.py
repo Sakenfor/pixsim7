@@ -7,16 +7,16 @@ stat changes through the StatEngine, replacing hardcoded clamping logic.
 
 import asyncio
 import pytest
-from pixsim7.backend.main.domain.game.models import GameSession, GameWorld
-from pixsim7.backend.main.domain.game.npc_interactions import (
+from pixsim7.backend.main.domain.game.core.models import GameSession, GameWorld
+from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     StatDelta,
     RelationshipDelta,
 )
-from pixsim7.backend.main.domain.game.interaction_execution import (
+from pixsim7.backend.main.domain.game.interactions.interaction_execution import (
     apply_stat_deltas,
     apply_relationship_deltas,
 )
-from pixsim7.backend.main.domain.stats import get_default_relationship_definition
+from pixsim7.backend.main.domain.game.stats import get_default_relationship_definition
 
 
 def run_async(coro):

@@ -305,10 +305,10 @@ class SessionMutationsAPI(BaseCapabilityAPI):
 
         try:
             # Import domain execution logic
-            from pixsim7.backend.main.domain.game.interaction_execution import (
+            from pixsim7.backend.main.domain.game.interactions.interaction_execution import (
                 execute_interaction as execute_interaction_logic
             )
-            from pixsim7.backend.main.domain.game.models import GameSession as ORMGameSession
+            from pixsim7.backend.main.domain.game.core.models import GameSession as ORMGameSession
 
             # Fetch ORM session for execution (domain logic requires it)
             orm_session = await self.db.get(ORMGameSession, session_id)

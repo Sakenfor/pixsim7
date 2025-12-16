@@ -14,8 +14,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 from pixsim7.backend.main.api.v1.stat_preview import router
 from pixsim7.backend.main.api.dependencies import get_database
-from pixsim7.backend.main.domain.game.models import GameWorld, Base
-from pixsim7.backend.main.domain.stats import get_default_relationship_definition
+from pixsim7.backend.main.domain.game.core.models import GameWorld, Base
+from pixsim7.backend.main.domain.game.stats import get_default_relationship_definition
 
 
 # Test database setup

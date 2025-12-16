@@ -272,7 +272,7 @@ class BrainEngine:
         package_ids: List[str],
     ) -> Optional[StatDefinition]:
         """Find a stat definition by ID across active packages."""
-        from pixsim7.backend.main.domain.stats import get_stat_package
+        from pixsim7.backend.main.domain.game.stats import get_stat_package
 
         for pkg_id in package_ids:
             pkg = get_stat_package(pkg_id)

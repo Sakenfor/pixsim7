@@ -12,8 +12,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
-from pixsim7.backend.main.domain.npc_memory import NPCEmotionalState, EmotionType
+from pixsim7.backend.main.domain.game.core.models import GameWorld, GameSession
+from pixsim7.backend.main.domain.game.entities.npc_memory import NPCEmotionalState, EmotionType
 from .mood_types import (
     GeneralMoodId,
     IntimacyMoodId,

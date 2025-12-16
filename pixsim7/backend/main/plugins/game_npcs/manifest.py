@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, NpcExpressionSvc
-from pixsim7.backend.main.domain.game.models import GameNPC, NPCSchedule, NPCState, GameWorldState
+from pixsim7.backend.main.domain.game.core.models import GameNPC, NPCSchedule, NPCState, GameWorldState
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 
@@ -254,7 +254,7 @@ async def list_npc_surface_packages(
 
     Returns a list of all surface packages registered by core and plugins.
     """
-    from pixsim7.backend.main.domain.npc_surfaces import list_npc_surface_packages
+    from pixsim7.backend.main.domain.game.entities.npc_surfaces import list_npc_surface_packages
 
     packages = list_npc_surface_packages()
     return [

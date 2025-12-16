@@ -229,7 +229,7 @@ def setup_ecs_components() -> int:
     - Testable independently
     - Returns count for logging/assertions
     """
-    from pixsim7.backend.main.domain.game.ecs import register_core_components
+    from pixsim7.backend.main.domain.game.core.ecs import register_core_components
     count = register_core_components()
     logger.info("ecs_components_registered", count=count)
     return count
@@ -250,7 +250,7 @@ def setup_stat_packages() -> int:
     - Returns count for observability
     - Testable in isolation
     """
-    from pixsim7.backend.main.domain.stats import (
+    from pixsim7.backend.main.domain.game.stats import (
         register_core_stat_packages,
         list_stat_packages,
     )

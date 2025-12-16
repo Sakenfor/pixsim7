@@ -17,7 +17,7 @@ Usage:
         ...
 """
 from typing import Dict, Any, Optional
-from services.prompt_context.mapping import get_nested_value
+from pixsim7.backend.main.services.prompt_context.mapping import get_nested_value
 
 
 def evaluate_activation(

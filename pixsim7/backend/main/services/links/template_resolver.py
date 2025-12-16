@@ -23,8 +23,8 @@ Usage:
 from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.links.link_service import LinkService
-from services.links.activation import get_highest_priority_active_link
+from pixsim7.backend.main.services.links.link_service import LinkService
+from pixsim7.backend.main.services.links.activation import get_highest_priority_active_link
 
 
 async def resolve_template_to_runtime(

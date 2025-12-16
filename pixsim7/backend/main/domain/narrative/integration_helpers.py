@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Dict, Any, Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.game.models import GameSession, GameWorld
+from pixsim7.backend.main.domain.game.core.models import GameSession, GameWorld
 from pixsim7.backend.main.domain.narrative.schema import (
     NarrativeProgram,
     DialogueNode,

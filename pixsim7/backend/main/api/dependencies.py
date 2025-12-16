@@ -23,7 +23,8 @@ from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
 from pixsim7.backend.main.services.analysis import AnalysisService
-from pixsim7.backend.main.services.game import GameSessionService, GameLocationService, NpcExpressionService, GameWorldService
+from pixsim7.backend.main.services.game import GameSessionService, GameLocationService, GameWorldService
+from pixsim7.backend.main.services.npc import NpcExpressionService
 from pixsim7.backend.main.services.plugin import PluginCatalogService
 
 # Narrative engine imports (lazy-loaded)

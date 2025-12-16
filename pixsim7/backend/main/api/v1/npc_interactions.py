@@ -18,7 +18,7 @@ from pixsim7.backend.main.infrastructure.plugins.dependencies import get_plugin_
 from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
 # Note: Fully migrated to capability APIs - reads via ctx.world/ctx.session,
 # writes via ctx.session_mutations.execute_interaction()
-from pixsim7.backend.main.domain.game.npc_interactions import (
+from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     ListInteractionsRequest,
     ListInteractionsResponse,
     ExecuteInteractionRequest,
@@ -28,7 +28,7 @@ from pixsim7.backend.main.domain.game.npc_interactions import (
     RelationshipSnapshot,
     NpcInteractionDefinition,
 )
-from pixsim7.backend.main.domain.game.interaction_availability import (
+from pixsim7.backend.main.domain.game.interactions.interaction_availability import (
     evaluate_interaction_availability,
     create_interaction_instance,
     filter_interactions_by_target,
