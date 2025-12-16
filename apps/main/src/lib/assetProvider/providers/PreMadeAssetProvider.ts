@@ -12,36 +12,15 @@ import type {
   IAssetProvider,
 } from '@pixsim7/shared.types';
 import { AssetNotFoundError } from '@pixsim7/shared.types';
-import { apiClient } from '@lib/api/client';
-import { getAsset as getAssetApi } from '@features/assets/lib/api';
+import { getAsset as getAssetApi, listAssets } from '@features/assets/lib/api';
+import type { AssetResponse, AssetListResponse } from '@features/assets/lib/api';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface AssetSummary {
-  id: number;
-  media_type: 'video' | 'image' | 'audio' | '3d_model';
-  provider_id: string;
-  provider_asset_id: string;
-  remote_url: string;
-  thumbnail_url: string;
-  sync_status?: string;
-  width?: number;
-  height?: number;
-  duration_sec?: number;
-  tags: string[];
-  description?: string;
-  created_at: string;
-}
-
-interface AssetsResponse {
-  assets: AssetSummary[];
-  next_cursor?: string | null;
-  total: number;
-  limit: number;
-  offset: number;
-}
+type AssetSummary = AssetResponse;
+type AssetsResponse = AssetListResponse;
 
 export interface PreMadeAssetProviderConfig {
   /** Maximum assets to fetch per query (default: 50) */
@@ -74,16 +53,16 @@ function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_mode
 function mapAssetSummaryToAsset(summary: AssetSummary): Asset {
   return {
     id: String(summary.id),
-    url: summary.remote_url,
+    url: summary.remote_url || summary.file_url || '',
     type: mapMediaType(summary.media_type),
     source: 'pre-made',
     metadata: {
-      description: summary.description,
+      description: summary.description || undefined,
       tags: summary.tags,
-      durationSec: summary.duration_sec,
-      width: summary.width,
-      height: summary.height,
-      thumbnailUrl: summary.thumbnail_url,
+      durationSec: summary.duration_sec || undefined,
+      width: summary.width || undefined,
+      height: summary.height || undefined,
+      thumbnailUrl: summary.thumbnail_url || undefined,
     },
   };
 }
@@ -266,23 +245,16 @@ export class PreMadeAssetProvider implements IAssetProvider {
    */
   async findMatchingAsset(request: AssetRequest): Promise<Asset | null> {
     // Build query parameters
-    const params = new URLSearchParams();
-    params.set('limit', String(this.config.queryLimit));
-
-    // Add tag filter if we have context
     const tag = buildTagFromRequest(request);
-    if (tag) {
-      params.set('tag', tag);
-    }
-
-    // Add search query if we have a prompt (for description matching)
-    if (request.prompt) {
-      params.set('q', request.prompt.slice(0, 100)); // Limit query length
-    }
 
     try {
-      const response = await apiClient.get<AssetsResponse>(`/assets?${params.toString()}`);
-      const assets = response.data.assets;
+      const response = await listAssets({
+        limit: this.config.queryLimit,
+        tag: tag || undefined,
+        q: request.prompt ? request.prompt.slice(0, 100) : undefined,
+      });
+
+      const assets = response.assets;
 
       if (assets.length === 0) {
         return null;

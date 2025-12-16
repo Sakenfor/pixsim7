@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '@lib/api/client';
-import type { AssetSummary } from './useAssets';
+import { getAsset } from '@lib/api/assets';
+import type { AssetResponse } from '@lib/api/assets';
 
 export function useAsset(id: number | string | null) {
-  const [asset, setAsset] = useState<AssetSummary | null>(null);
+  const [asset, setAsset] = useState<AssetResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,8 +14,9 @@ export function useAsset(id: number | string | null) {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiClient.get<AssetSummary>(`/assets/${id}`);
-        if (active) setAsset(res.data);
+        const assetId = typeof id === 'string' ? parseInt(id, 10) : id;
+        const data = await getAsset(assetId);
+        if (active) setAsset(data);
       } catch (e: unknown) {
         if (active) setError(e instanceof Error ? e.message : 'Failed to load asset');
       } finally {

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { getAsset } from '@lib/api/assets';
 
 export interface MediaPreviewProps {
   /** Asset ID for fetching media */
@@ -13,8 +14,6 @@ export interface MediaPreviewProps {
  * Media preview component for displaying full media in modal
  *
  * Renders video, image, or audio player based on media type.
- * Note: This is a simple implementation. In a full app, you'd fetch
- * the asset from an API using the assetId.
  */
 export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
   const [mediaUrl, setMediaUrl] = useState<string | null>(url || null);
@@ -32,16 +31,11 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
         setLoading(true);
         setError(null);
 
-        // Fetch asset from API
-        const response = await fetch(`/api/v1/assets/${assetId}`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch asset: ${response.statusText}`);
-        }
+        // Fetch asset using typed API wrapper
+        const asset = await getAsset(assetId);
 
-        const asset = await response.json();
-
-        // Use remote URL if available, otherwise use local file endpoint
-        const assetUrl = asset.remote_url || `/api/v1/assets/${assetId}/file`;
+        // Use remote URL if available, fallback to file_url, or use file endpoint
+        const assetUrl = asset.remote_url || asset.file_url || `/api/v1/assets/${assetId}/file`;
         setMediaUrl(assetUrl);
         setLoading(false);
       } catch (err) {

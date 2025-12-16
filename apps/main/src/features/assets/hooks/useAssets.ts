@@ -1,31 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { apiClient } from '@lib/api/client';
+import { listAssets } from '@lib/api/assets';
+import type { AssetListResponse, AssetResponse } from '@lib/api/assets';
 import { assetEvents } from '../lib/assetEvents';
 
-export interface AssetSummary {
-  id: number;
-  media_type: 'video' | 'image' | 'audio' | '3d_model';
-  provider_id: string;
-  provider_asset_id: string;
-  remote_url: string;
-  thumbnail_url: string;
-  sync_status?: string;
-  width?: number;
-  height?: number;
-  duration_sec?: number;
-  tags: string[];
-  description?: string;
-  created_at: string;
-  provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
-}
-
-interface AssetsResponse {
-  assets: AssetSummary[];
-  next_cursor?: string | null;
-  total: number;
-  limit: number;
-  offset: number;
-}
+export type AssetSummary = AssetResponse;
+type AssetsResponse = AssetListResponse;
 
 export type AssetFilters = {
   q?: string;
@@ -83,8 +62,14 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       if (currentFilters.sort) params.set('sort', currentFilters.sort);
       if (currentFilters.media_type) params.set('media_type', currentFilters.media_type);
 
-      const res = await apiClient.get<AssetsResponse>(`/assets?${params.toString()}`);
-      let data = res.data;
+      let data: AssetsResponse = await listAssets({
+        limit,
+        cursor: currentCursor || undefined,
+        q: currentFilters.q,
+        tag: currentFilters.tag,
+        provider_id: currentFilters.provider_id || undefined,
+        media_type: currentFilters.media_type || undefined,
+      });
 
       // Client-side filter for provider_status (backend doesn't support this yet)
       if (currentFilters.provider_status) {
@@ -96,10 +81,11 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
 
       // Merge new assets while avoiding duplicates by ID.
       setItems(prev => {
-        if (prev.length === 0) return data.assets;
+        const nextAssets = Array.isArray(data.assets) ? [...data.assets] : [];
+        if (prev.length === 0) return nextAssets;
         const existingIds = new Set(prev.map(a => a.id));
         const merged = [...prev];
-        for (const asset of data.assets) {
+        for (const asset of nextAssets) {
           if (!existingIds.has(asset.id)) {
             merged.push(asset);
           }
@@ -137,15 +123,16 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   // Subscribe to new asset events (from generation completions)
   useEffect(() => {
     const unsubscribe = assetEvents.subscribe((asset) => {
+      const tags = asset.tags || [];
       // Only prepend if it matches current filters (or no filters)
       const matchesFilters =
         (!filterParams.media_type || asset.media_type === filterParams.media_type) &&
         (!filterParams.provider_id || asset.provider_id === filterParams.provider_id) &&
         (!filterParams.provider_status || asset.provider_status === filterParams.provider_status) &&
-        (!filterParams.tag || asset.tags?.includes(filterParams.tag)) &&
+        (!filterParams.tag || tags.includes(filterParams.tag)) &&
         (!filterParams.q ||
           asset.description?.toLowerCase().includes(filterParams.q.toLowerCase()) ||
-          asset.tags?.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
+          tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
 
       if (matchesFilters) {
         prependAsset(asset);
