@@ -22,6 +22,11 @@ class LoginRequest(BaseModel):
     username: str | None = None
     password: str
 
+    # Client identification (optional)
+    client_id: str | None = None  # Persistent device/client identifier
+    client_type: str | None = None  # "chrome_extension", "web_app", "device_agent", etc.
+    client_name: str | None = None  # Human-readable client name
+
 
 # ===== RESPONSE SCHEMAS =====
 
@@ -55,6 +60,9 @@ class SessionResponse(BaseModel):
     token_jti: str
     ip_address: str | None
     user_agent: str | None
+    client_id: str | None
+    client_type: str | None
+    client_name: str | None
     last_active_at: datetime
     expires_at: datetime
     is_revoked: bool

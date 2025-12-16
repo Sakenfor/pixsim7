@@ -48,7 +48,10 @@ class AuthService:
         email_or_username: str,
         password: str,
         ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
+        user_agent: Optional[str] = None,
+        client_id: Optional[str] = None,
+        client_type: Optional[str] = None,
+        client_name: Optional[str] = None
     ) -> Tuple[User, str]:
         """
         Authenticate user and create session
@@ -58,6 +61,9 @@ class AuthService:
             password: Plain text password
             ip_address: Client IP address (for logging)
             user_agent: Client user agent (for logging)
+            client_id: Persistent device/client identifier (optional)
+            client_type: Type of client (e.g., "chrome_extension", "web_app") (optional)
+            client_name: Human-readable client name (optional)
 
         Returns:
             Tuple of (User, JWT token)
@@ -127,6 +133,9 @@ class AuthService:
             expires_at=exp,
             ip_address=ip_address,
             user_agent=user_agent,
+            client_id=client_id,
+            client_type=client_type,
+            client_name=client_name,
         )
         self.db.add(session)
 

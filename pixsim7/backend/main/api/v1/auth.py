@@ -50,7 +50,7 @@ async def register(
         user_agent = req.headers.get("user-agent")
 
         user, token = await auth_service.login(
-            email=request.email,
+            email_or_username=request.email,
             password=request.password,
             ip_address=ip_address,
             user_agent=user_agent
@@ -102,7 +102,10 @@ async def login(
             email_or_username=identifier,
             password=request.password,
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
+            client_id=request.client_id,
+            client_type=request.client_type,
+            client_name=request.client_name
         )
 
         return LoginResponse(

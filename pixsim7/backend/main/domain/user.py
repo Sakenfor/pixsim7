@@ -165,6 +165,11 @@ class UserSession(SQLModel, table=True):
     ip_address: Optional[str] = Field(default=None, max_length=45)
     user_agent: Optional[str] = None
 
+    # Client identification (for device/client tracking)
+    client_id: Optional[str] = Field(default=None, max_length=255, index=True)
+    client_type: Optional[str] = Field(default=None, max_length=50)  # "chrome_extension", "web_app", "device_agent", etc.
+    client_name: Optional[str] = Field(default=None, max_length=255)  # Human-readable client name
+
     # Revocation
     is_revoked: bool = Field(default=False, index=True)
     revoked_at: Optional[datetime] = None

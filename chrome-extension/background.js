@@ -22,9 +22,85 @@ console.log('[PixSim7 Extension] Background service worker loaded');
 
 // Constants for provider session tracking (used by loginWithAccount)
 const PROVIDER_SESSION_STORAGE_KEY = 'pixsim7ProviderSessions';
+const CLIENT_ID_STORAGE_KEY = 'pixsim7ClientId';
 
 // Initialize context menus and listeners
 initContextMenuListeners();
+
+// ===== CLIENT IDENTIFICATION HELPERS =====
+
+/**
+ * Get or create a persistent client ID for this extension instance
+ * This ID is used to track sessions from this specific browser/device
+ */
+async function getOrCreateClientId() {
+  const result = await chrome.storage.local.get(CLIENT_ID_STORAGE_KEY);
+
+  if (result[CLIENT_ID_STORAGE_KEY]) {
+    return result[CLIENT_ID_STORAGE_KEY];
+  }
+
+  // Generate new client ID: "ext-" + random UUID-like string
+  const clientId = 'ext-' + generateUUID();
+  await chrome.storage.local.set({ [CLIENT_ID_STORAGE_KEY]: clientId });
+
+  return clientId;
+}
+
+/**
+ * Generate a simple UUID-like string
+ */
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/**
+ * Get a human-readable client name (browser + version)
+ */
+async function getClientName() {
+  // Try to get browser info from user agent
+  const browserInfo = getBrowserInfo();
+  const manifestVersion = chrome.runtime.getManifest().version;
+
+  return `${browserInfo} - PixSim7 Extension v${manifestVersion}`;
+}
+
+/**
+ * Extract browser name and version from user agent
+ */
+function getBrowserInfo() {
+  const ua = navigator.userAgent;
+
+  // Chrome
+  if (ua.includes('Chrome/')) {
+    const version = ua.match(/Chrome\/(\d+)/)?.[1];
+    return version ? `Chrome ${version}` : 'Chrome';
+  }
+
+  // Edge
+  if (ua.includes('Edg/')) {
+    const version = ua.match(/Edg\/(\d+)/)?.[1];
+    return version ? `Edge ${version}` : 'Edge';
+  }
+
+  // Opera
+  if (ua.includes('OPR/')) {
+    const version = ua.match(/OPR\/(\d+)/)?.[1];
+    return version ? `Opera ${version}` : 'Opera';
+  }
+
+  // Brave (harder to detect, usually reports as Chrome)
+  if (ua.includes('Brave')) {
+    return 'Brave';
+  }
+
+  // Fallback
+  return 'Chrome-based Browser';
+}
 
 // ===== MESSAGE HANDLERS =====
 
@@ -37,25 +113,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'login') {
-    // Login to PixSim7 backend
-    backendRequest('/api/v1/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: message.email,
-        password: message.password,
-      }),
-    })
-      .then((data) => {
+    // Login to PixSim7 backend with client identification
+    (async () => {
+      try {
+        // Get or create persistent client_id
+        const clientId = await getOrCreateClientId();
+
+        // Get client name (browser + version info)
+        const clientName = await getClientName();
+
+        const data = await backendRequest('/api/v1/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: message.email,
+            password: message.password,
+            client_id: clientId,
+            client_type: 'chrome_extension',
+            client_name: clientName,
+          }),
+        });
+
         // Store token
-        chrome.storage.local.set({
+        await chrome.storage.local.set({
           pixsim7Token: data.access_token,
           currentUser: data.user,
         });
+
         sendResponse({ success: true, data });
-      })
-      .catch((error) => {
+      } catch (error) {
         sendResponse({ success: false, error: error.message });
-      });
+      }
+    })();
     return true; // Async response
   }
 
