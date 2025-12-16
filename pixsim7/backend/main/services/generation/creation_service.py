@@ -309,9 +309,11 @@ class GenerationCreationService:
             if not has_credits:
                 logger.warning(
                     "insufficient_credits_fail_fast",
-                    user_id=user.id,
-                    provider_id=provider_id,
-                    estimated_credits=estimated_credits,
+                    extra={
+                        "user_id": user.id,
+                        "provider_id": provider_id,
+                        "estimated_credits": estimated_credits,
+                    }
                 )
                 raise QuotaError(
                     f"No account with sufficient credits ({estimated_credits}) "
@@ -962,7 +964,7 @@ class GenerationCreationService:
         except KeyError:
             logger.warning(
                 "provider_not_found_for_credit_estimation",
-                provider_id=provider_id,
+                extra={"provider_id": provider_id}
             )
             return None
 

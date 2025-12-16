@@ -78,7 +78,7 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
         actions={{
           ...controller.getAssetActions(asset),
           onOpenDetails: () => navigate(`/assets/${asset.id}`),
-          onShowMetadata: () => navigate(`/assets/${asset.id}`),
+          // onShowMetadata removed - was duplicate of onOpenDetails
         }}
         badgeConfig={badgeConfig}
       />

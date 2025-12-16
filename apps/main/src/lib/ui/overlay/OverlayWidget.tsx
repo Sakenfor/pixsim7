@@ -107,8 +107,10 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
     return undefined;
   }, [size]);
 
-  // Calculate z-index
-  const zIndex = widget.style?.zIndex ?? WIDGET_Z_INDEX_RANGE.default;
+  // Calculate z-index from priority or explicit style
+  // Priority maps to z-index: higher priority = higher z-index
+  // If explicit zIndex is provided in style, it takes precedence
+  const zIndex = widget.style?.zIndex ?? (widget.priority ?? WIDGET_Z_INDEX_RANGE.default);
 
   // Calculate spacing offset (if in a group)
   const spacingValue = SPACING_VALUES[spacing];

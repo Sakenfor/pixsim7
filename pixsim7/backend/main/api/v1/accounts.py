@@ -415,3 +415,41 @@ async def create_account_api_key(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             f"Failed to create API key: {str(e)}"
         )
+
+
+@router.post("/cleanup")
+async def cleanup_account_states(
+    provider_id: Optional[str] = None,
+    user: CurrentUser = None,
+    account_service: AccountSvc = None,
+) -> Dict[str, Any]:
+    """
+    Maintenance endpoint to clean up account states:
+    - Clear expired cooldowns
+    - Fix incorrectly marked EXHAUSTED accounts (that have credits)
+    - Mark accounts with 0 credits as EXHAUSTED
+
+    Args:
+        provider_id: Optional provider filter (e.g., "pixverse")
+
+    Returns:
+        Cleanup statistics
+    """
+    try:
+        stats = await account_service.cleanup_account_states(provider_id)
+
+        return {
+            "success": True,
+            "provider_id": provider_id or "all",
+            "stats": stats,
+            "message": f"Cleaned up {stats['cooldowns_cleared']} cooldowns, "
+                      f"reactivated {stats['reactivated']} accounts, "
+                      f"marked {stats['marked_exhausted']} as exhausted"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to cleanup account states: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Failed to cleanup account states: {str(e)}"
+        )

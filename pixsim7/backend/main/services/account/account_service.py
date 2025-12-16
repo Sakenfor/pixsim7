@@ -460,25 +460,148 @@ class AccountService:
         Update account status based on credit availability
 
         Mark as EXHAUSTED if all credits are 0, otherwise ACTIVE.
+        Also clears expired cooldowns.
         Provider adapters can set more specific statuses as needed.
 
         Args:
             account_id: Account ID
         """
-        account = await self.db.get(ProviderAccount, account_id)
+        # Eagerly load credits relationship to ensure accurate check
+        from sqlalchemy.orm import selectinload
+        query = select(ProviderAccount).where(
+            ProviderAccount.id == account_id
+        ).options(selectinload(ProviderAccount.credits))
+
+        result = await self.db.execute(query)
+        account = result.scalar_one_or_none()
+
         if not account:
             return
+
+        # Clear expired cooldown
+        if account.cooldown_until and datetime.utcnow() >= account.cooldown_until:
+            account.cooldown_until = None
+            logger.info(
+                "cooldown_expired",
+                extra={
+                    "account_id": account.id,
+                    "provider_id": account.provider_id
+                }
+            )
 
         # Simple check: does account have ANY credits at all?
         has_any_credits = account.has_any_credits()
 
         if not has_any_credits and account.status == AccountStatus.ACTIVE:
             account.status = AccountStatus.EXHAUSTED
+            logger.info(
+                "account_marked_exhausted",
+                extra={
+                    "account_id": account.id,
+                    "provider_id": account.provider_id,
+                    "reason": "no_credits"
+                }
+            )
         elif has_any_credits and account.status == AccountStatus.EXHAUSTED:
             # Re-activate if credits were added
             account.status = AccountStatus.ACTIVE
+            logger.info(
+                "account_reactivated",
+                extra={
+                    "account_id": account.id,
+                    "provider_id": account.provider_id,
+                    "total_credits": account.get_total_credits()
+                }
+            )
 
         await self.db.flush()
+
+    async def cleanup_account_states(self, provider_id: Optional[str] = None) -> dict:
+        """
+        Maintenance task to clean up account states:
+        - Clear expired cooldowns
+        - Fix incorrectly marked EXHAUSTED accounts (that have credits)
+        - Mark accounts with 0 credits as EXHAUSTED
+
+        Args:
+            provider_id: Optional provider filter
+
+        Returns:
+            Dict with cleanup statistics
+        """
+        from sqlalchemy.orm import selectinload
+
+        # Build query
+        query = select(ProviderAccount).options(
+            selectinload(ProviderAccount.credits)
+        )
+        if provider_id:
+            query = query.where(ProviderAccount.provider_id == provider_id)
+
+        result = await self.db.execute(query)
+        accounts = result.scalars().all()
+
+        stats = {
+            "cooldowns_cleared": 0,
+            "reactivated": 0,
+            "marked_exhausted": 0,
+            "no_change": 0
+        }
+
+        now = datetime.utcnow()
+
+        for account in accounts:
+            changed = False
+
+            # Clear expired cooldowns
+            if account.cooldown_until and now >= account.cooldown_until:
+                account.cooldown_until = None
+                stats["cooldowns_cleared"] += 1
+                changed = True
+                logger.info(
+                    "cleanup_cooldown_cleared",
+                    extra={
+                        "account_id": account.id,
+                        "provider_id": account.provider_id
+                    }
+                )
+
+            # Check if status matches credit state
+            has_credits = account.has_any_credits()
+
+            if has_credits and account.status == AccountStatus.EXHAUSTED:
+                # Has credits but marked exhausted - reactivate
+                account.status = AccountStatus.ACTIVE
+                stats["reactivated"] += 1
+                changed = True
+                logger.info(
+                    "cleanup_reactivated",
+                    extra={
+                        "account_id": account.id,
+                        "provider_id": account.provider_id,
+                        "total_credits": account.get_total_credits()
+                    }
+                )
+            elif not has_credits and account.status == AccountStatus.ACTIVE:
+                # No credits but marked active - mark exhausted
+                account.status = AccountStatus.EXHAUSTED
+                stats["marked_exhausted"] += 1
+                changed = True
+                logger.info(
+                    "cleanup_marked_exhausted",
+                    extra={
+                        "account_id": account.id,
+                        "provider_id": account.provider_id
+                    }
+                )
+
+            if not changed:
+                stats["no_change"] += 1
+
+        await self.db.commit()
+
+        logger.info("cleanup_completed", extra=stats)
+        return stats
 
     # ===== STATS TRACKING =====
 

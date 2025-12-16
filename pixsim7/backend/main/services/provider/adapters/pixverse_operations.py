@@ -112,6 +112,10 @@ class PixverseOperationsMixin:
                 params=params,
             )
 
+            # Store context for error handling
+            self._current_operation_type = operation_type
+            self._current_params = params
+
             # Route to appropriate method using a mapping instead of
             # a long if/elif chain. This keeps routing declarative and
             # makes it easier to add new operations.
@@ -406,6 +410,17 @@ class PixverseOperationsMixin:
 
         # Video options (multi_shot, audio, off_peak, etc.)
         kwargs.update(_extract_video_options(params))
+
+        # Log the extend request details for debugging
+        logger.info(
+            "extend_video_request",
+            extra={
+                "video_url": kwargs.get("video_url"),
+                "original_video_id": kwargs.get("original_video_id"),
+                "prompt": kwargs.get("prompt", "")[:100],  # First 100 chars
+                "quality": kwargs.get("quality")
+            }
+        )
 
         # Call pixverse-py extend method (now async)
         video = await client.extend(

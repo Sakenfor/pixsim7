@@ -409,6 +409,88 @@ export function ProviderSettingsPanel() {
                   </div>
                 </div>
 
+                {/* Maintenance Actions */}
+                <div className="flex items-center gap-2 mb-4 p-3 border rounded-lg dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50">
+                  <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                    Maintenance:
+                  </span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        toast?.({
+                          title: 'Running cleanup...',
+                          description: 'Clearing expired cooldowns and fixing account states',
+                          variant: 'info',
+                        });
+                        const response = await apiClient.post(`/accounts/cleanup?provider_id=${activeProvider}`);
+                        const { stats, message } = response.data;
+                        toast?.({
+                          title: 'Cleanup complete',
+                          description: message,
+                          variant: 'success',
+                        });
+                        setRefreshKey(prev => prev + 1);
+                      } catch (error) {
+                        console.error('Cleanup failed:', error);
+                        toast?.({
+                          title: 'Cleanup failed',
+                          description: 'Failed to run account cleanup',
+                          variant: 'error',
+                        });
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    Fix Account States
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        toast?.({
+                          title: 'Syncing credits...',
+                          description: 'Fetching latest credit balances for all accounts',
+                          variant: 'info',
+                        });
+
+                        // Get all accounts for this provider
+                        const accountsForProvider = providerData.accounts;
+                        let synced = 0;
+                        let failed = 0;
+
+                        for (const account of accountsForProvider) {
+                          try {
+                            await apiClient.post(`/accounts/${account.id}/sync-credits?force=true`);
+                            synced++;
+                          } catch (err) {
+                            console.error(`Failed to sync account ${account.id}:`, err);
+                            failed++;
+                          }
+                        }
+
+                        toast?.({
+                          title: 'Sync complete',
+                          description: `Synced ${synced} accounts${failed > 0 ? `, ${failed} failed` : ''}`,
+                          variant: synced > 0 ? 'success' : 'error',
+                        });
+                        setRefreshKey(prev => prev + 1);
+                      } catch (error) {
+                        console.error('Bulk sync failed:', error);
+                        toast?.({
+                          title: 'Sync failed',
+                          description: 'Failed to sync credits',
+                          variant: 'error',
+                        });
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    Sync All Credits
+                  </button>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 ml-auto">
+                    Use these tools to fix account states and refresh credit balances
+                  </div>
+                </div>
+
                 {/* Sort Controls */}
                 <div className="flex items-center gap-2 mb-4 flex-wrap">
                   <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>

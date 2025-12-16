@@ -204,8 +204,9 @@ class PixverseProvider(
         else:
             mapped["quality"] = "360p" if is_video_op else "720p"
 
-        # === Aspect ratio (both, but not for IMAGE_TO_VIDEO) ===
-        if operation_type != OperationType.IMAGE_TO_VIDEO:
+        # === Aspect ratio (both, but not for IMAGE_TO_VIDEO or VIDEO_EXTEND) ===
+        # VIDEO_EXTEND inherits aspect ratio from source video
+        if operation_type not in {OperationType.IMAGE_TO_VIDEO, OperationType.VIDEO_EXTEND}:
             if "aspect_ratio" in params and params["aspect_ratio"] is not None:
                 mapped["aspect_ratio"] = params["aspect_ratio"]
             elif is_image_op:
@@ -1068,7 +1069,25 @@ class PixverseProvider(
 
         # Job not found
         if "not found" in error_msg or "404" in error_msg:
-            raise JobNotFoundError("pixverse", "unknown")
+            # Try to extract video/job ID from stored context
+            job_id = "unknown"
+            if hasattr(self, "_current_params") and self._current_params:
+                # For extend operations, try to get original_video_id or video_url
+                if hasattr(self, "_current_operation_type"):
+                    from pixsim7.backend.main.domain import OperationType
+                    if self._current_operation_type == OperationType.VIDEO_EXTEND:
+                        job_id = self._current_params.get("original_video_id") or \
+                                 self._current_params.get("video_url") or \
+                                 "unknown"
+                        logger.error(
+                            "extend_video_404",
+                            extra={
+                                "video_url": self._current_params.get("video_url"),
+                                "original_video_id": self._current_params.get("original_video_id"),
+                                "error": raw_error
+                            }
+                        )
+            raise JobNotFoundError("pixverse", job_id)
 
         # Generic provider error
         raise ProviderError(f"Pixverse API error: {raw_error}")

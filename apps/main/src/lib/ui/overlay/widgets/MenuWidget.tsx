@@ -351,17 +351,53 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
                 py-1 z-50
                 overflow-hidden
               `}
-              style={{
-                top: placement.includes('bottom')
+              style={(() => {
+                // Calculate initial position
+                let top = placement.includes('bottom')
                   ? triggerRect.bottom + 4
-                  : triggerRect.top - 4,
-                left: placement.includes('right')
+                  : triggerRect.top - 4;
+                let left = placement.includes('right')
                   ? triggerRect.right
-                  : triggerRect.left,
-                transform: placement.includes('right')
+                  : triggerRect.left;
+                let transform = placement.includes('right')
                   ? 'translateX(-100%)'
-                  : undefined,
-              }}
+                  : undefined;
+
+                // Viewport boundary detection
+                const menuWidth = 280; // max-w-[280px]
+                const menuHeight = 300; // estimated max height
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                const padding = 8; // padding from viewport edge
+
+                // Adjust horizontal position if off-screen
+                if (placement.includes('right')) {
+                  const menuLeft = triggerRect.right - menuWidth;
+                  if (menuLeft < padding) {
+                    // Menu would be off left edge, align to left of trigger instead
+                    left = triggerRect.left;
+                    transform = undefined;
+                  }
+                } else {
+                  if (left + menuWidth > viewportWidth - padding) {
+                    // Menu would be off right edge, align to right of trigger instead
+                    left = triggerRect.right;
+                    transform = 'translateX(-100%)';
+                  }
+                }
+
+                // Adjust vertical position if off-screen
+                if (placement.includes('bottom') && top + menuHeight > viewportHeight - padding) {
+                  // Menu would be off bottom edge, show above trigger instead
+                  top = triggerRect.top - 4;
+                  transform = (transform || '') + ' translateY(-100%)';
+                } else if (placement.includes('top') && top - menuHeight < padding) {
+                  // Menu would be off top edge, show below trigger instead
+                  top = triggerRect.bottom + 4;
+                }
+
+                return { top, left, transform };
+              })()}
               onMouseEnter={() => {
                 if (triggerType === 'hover') {
                   setIsOpen(true);
