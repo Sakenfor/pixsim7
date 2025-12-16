@@ -141,8 +141,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         except Exception as billing_err:
                             logger.warning(
                                 "billing_finalization_error",
-                                generation_id=generation.id,
-                                error=str(billing_err),
+                                extra={"generation_id": generation.id, "error": str(billing_err)}
                             )
 
                         # Decrement account's concurrent job count
@@ -213,8 +212,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
-                                    generation_id=generation.id,
-                                    error=str(billing_err),
+                                    extra={"generation_id": generation.id, "error": str(billing_err)}
                                 )
 
                             # Decrement account's concurrent job count
@@ -259,8 +257,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
-                                    generation_id=generation.id,
-                                    error=str(billing_err),
+                                    extra={"generation_id": generation.id, "error": str(billing_err)}
                                 )
 
                             # Decrement account's concurrent job count
