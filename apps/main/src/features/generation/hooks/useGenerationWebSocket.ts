@@ -275,15 +275,39 @@ class WebSocketManager {
           const assetId = rawData?.asset_id ?? rawData?.data?.asset_id;
 
           if (assetId) {
-            console.log('[WebSocket] Fetching asset data for:', assetId);
-            try {
-              const { data: assetData } = await apiClient.get(`/assets/${assetId}`);
-              console.log('[WebSocket] Asset data fetched:', assetData);
-              console.log('[WebSocket] Emitting asset:created event to gallery');
-              assetEvents.emitAssetCreated(assetData);
-            } catch (err) {
-              console.error('[WebSocket] Failed to fetch asset:', assetId, err);
-            }
+            // Small delay to ensure asset is fully synced/downloaded before fetching
+            // This prevents showing incomplete assets in the gallery
+            setTimeout(async () => {
+              console.log('[WebSocket] Fetching asset data for:', assetId);
+              try {
+                const { data: assetData } = await apiClient.get(`/assets/${assetId}`);
+                console.log('[WebSocket] Asset data fetched:', assetData);
+
+                // Check if asset is ready (downloaded or remote URL available)
+                const isReady = assetData.sync_status === 'downloaded' ||
+                               assetData.sync_status === 'remote' ||
+                               assetData.remote_url;
+
+                if (isReady) {
+                  console.log('[WebSocket] Asset ready, emitting asset:created event to gallery');
+                  assetEvents.emitAssetCreated(assetData);
+                } else {
+                  // Asset not ready yet, retry after another delay
+                  console.log('[WebSocket] Asset not ready, retrying in 1s...');
+                  setTimeout(async () => {
+                    try {
+                      const { data: retryData } = await apiClient.get(`/assets/${assetId}`);
+                      console.log('[WebSocket] Asset data refetched:', retryData);
+                      assetEvents.emitAssetCreated(retryData);
+                    } catch (retryErr) {
+                      console.error('[WebSocket] Failed to refetch asset:', assetId, retryErr);
+                    }
+                  }, 1000);
+                }
+              } catch (err) {
+                console.error('[WebSocket] Failed to fetch asset:', assetId, err);
+              }
+            }, 300); // Initial 300ms delay for sync to complete
           } else {
             console.warn('[WebSocket] No asset ID found in asset:created message');
           }
