@@ -3,9 +3,9 @@ import type { AssetSummary } from '@features/assets';
 import { useGenerationQueueStore } from '../stores/generationQueueStore';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
-import type { OperationType } from '@/types/operations';
+import { isMultiAssetOperation, type OperationType } from '@/types/operations';
 
-type QueueableOperation = 'image_to_image' | 'image_to_video' | 'video_extend';
+type QueueableOperation = 'image_to_image' | 'image_to_video' | 'video_extend' | 'video_transition';
 
 /**
  * Hook: useMediaGenerationActions
@@ -26,6 +26,7 @@ export function useMediaGenerationActions() {
   const setActiveModule = useControlCenterStore((s) => s.setActiveModule);
   const setOpen = useControlCenterStore((s) => s.setOpen);
   const setOperationType = useControlCenterStore((s) => s.setOperationType);
+  const currentOperationType = useControlCenterStore((s) => s.operationType);
 
   const selectAsset = useAssetSelectionStore((s) => s.selectAsset);
 
@@ -46,31 +47,33 @@ export function useMediaGenerationActions() {
     });
   }, [selectAsset]);
 
-  // Factory for queue actions that set operation type and open Quick Generate
+  // Smart queue action - automatically routes to main or multi-asset queue
   const createQueueAction = useCallback(
     (operation: QueueableOperation) => (asset: AssetSummary) => {
-      addToQueue(asset, operation);
+      // Smart routing: use appropriate queue based on operation type
+      if (isMultiAssetOperation(operation as OperationType)) {
+        addToMultiAssetQueue(asset);
+      } else {
+        addToQueue(asset, operation);
+      }
+
       selectAssetFromSummary(asset);
-      setOperationType(operation as OperationType);
+
+      // Only set operation type if it's different to avoid resetting settings
+      if (currentOperationType !== operation) {
+        setOperationType(operation as OperationType);
+      }
+
       openQuickGenerate();
     },
-    [addToQueue, selectAssetFromSummary, setOperationType, openQuickGenerate],
+    [addToQueue, addToMultiAssetQueue, selectAssetFromSummary, setOperationType, currentOperationType, openQuickGenerate],
   );
 
   // Memoize individual actions for stable references
   const queueImageToImage = useMemo(() => createQueueAction('image_to_image'), [createQueueAction]);
   const queueImageToVideo = useMemo(() => createQueueAction('image_to_video'), [createQueueAction]);
   const queueVideoExtend = useMemo(() => createQueueAction('video_extend'), [createQueueAction]);
-
-  const queueAddToTransition = useCallback(
-    (asset: AssetSummary) => {
-      addToMultiAssetQueue(asset);
-      selectAssetFromSummary(asset);
-      setOperationType('video_transition');
-      openQuickGenerate();
-    },
-    [addToMultiAssetQueue, selectAssetFromSummary, setOperationType, openQuickGenerate],
-  );
+  const queueAddToTransition = useMemo(() => createQueueAction('video_transition' as QueueableOperation), [createQueueAction]);
 
   const queueAutoGenerate = useCallback(
     (asset: AssetSummary) => {

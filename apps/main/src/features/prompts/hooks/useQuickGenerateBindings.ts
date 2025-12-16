@@ -71,9 +71,9 @@ export function useQuickGenerateBindings(
   const [prompts, setPrompts] = useState<string[]>([]);
   const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
 
-  // Track previous queue lengths to detect when items are ADDED vs initial hydration
-  // We only auto-switch operation type when items are actively added, not on page load
+  // Track previous queue state to detect adds vs cycles vs initial hydration
   const prevMainQueueLengthRef = useRef<number | null>(null);
+  const prevMainQueueFrontIdRef = useRef<number | null>(null);
   const prevTransitionQueueLengthRef = useRef<number | null>(null);
 
   // Function to use active asset explicitly (e.g., "Use Asset" button)
@@ -101,19 +101,25 @@ export function useQuickGenerateBindings(
   // Auto-fill from main generation queue
   useEffect(() => {
     const prevLength = prevMainQueueLengthRef.current;
+    const prevFrontId = prevMainQueueFrontIdRef.current;
     const currentLength = mainQueue.length;
+    const currentFrontId = mainQueue[0]?.asset.id ?? null;
 
-    // Update ref for next render
+    // Update refs for next render
     prevMainQueueLengthRef.current = currentLength;
+    prevMainQueueFrontIdRef.current = currentFrontId;
 
     const nextInQueue = mainQueue[0];
     if (!nextInQueue) return;
 
     const { asset, operation } = nextInQueue;
 
-    // Only auto-switch operation type when items are ADDED to the queue
-    // (prevLength was set and current > prev), not on initial hydration (prevLength was null)
+    // Detect different scenarios:
+    // - itemsWereAdded: new items added to queue (switch operation + fill params)
+    // - queueWasCycled: front item changed but length same (update params to new front)
+    // - initialHydration: first render with data (fill only if empty)
     const itemsWereAdded = prevLength !== null && currentLength > prevLength;
+    const queueWasCycled = prevLength !== null && currentLength === prevLength && prevFrontId !== currentFrontId;
 
     if (itemsWereAdded) {
       // Set operation type if specified
@@ -129,8 +135,15 @@ export function useQuickGenerateBindings(
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
         if (!operation) setOperationType('video_extend');
       }
+    } else if (queueWasCycled) {
+      // Queue was cycled - update params to reflect the new front item
+      if (asset.media_type === 'image') {
+        setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
+      } else if (asset.media_type === 'video') {
+        setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+      }
     } else {
-      // On initial load or when not adding, only fill params if empty (don't override user choices)
+      // On initial load, only fill params if empty (don't override user choices)
       if (asset.media_type === 'image' && !dynamicParams.image_url) {
         setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
       } else if (asset.media_type === 'video' && !dynamicParams.video_url) {

@@ -113,6 +113,127 @@ export const OPERATION_TYPES = [
 
 export type OperationType = typeof OPERATION_TYPES[number];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Operation Metadata Registry
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MediaType = 'image' | 'video';
+
+export interface OperationMetadata {
+  /** Display label */
+  label: string;
+  /** Short description */
+  description: string;
+  /** Whether this operation accepts multiple input assets */
+  multiAsset: boolean;
+  /** What media types can be used as input (empty = no media input, e.g., text_to_*) */
+  acceptsInput: MediaType[];
+  /** Output media type */
+  outputType: MediaType;
+  /** Whether prompt is required */
+  promptRequired: boolean;
+  /** Whether prompt is supported (optional) */
+  promptSupported: boolean;
+}
+
+/**
+ * Centralized metadata for all operation types.
+ * Use this instead of scattered if/elif checks throughout the codebase.
+ */
+export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
+  text_to_image: {
+    label: 'Text to Image',
+    description: 'Generate an image from a text prompt',
+    multiAsset: false,
+    acceptsInput: [],
+    outputType: 'image',
+    promptRequired: true,
+    promptSupported: true,
+  },
+  text_to_video: {
+    label: 'Text to Video',
+    description: 'Generate a video from a text prompt',
+    multiAsset: false,
+    acceptsInput: [],
+    outputType: 'video',
+    promptRequired: true,
+    promptSupported: true,
+  },
+  image_to_video: {
+    label: 'Image to Video',
+    description: 'Animate an image into a video',
+    multiAsset: false,
+    acceptsInput: ['image', 'video'], // video via frame extraction
+    outputType: 'video',
+    promptRequired: false,
+    promptSupported: true,
+  },
+  image_to_image: {
+    label: 'Image Generation',
+    description: 'Transform or edit an image',
+    multiAsset: true, // Can use multiple source images for composition/style
+    acceptsInput: ['image', 'video'], // video via frame extraction
+    outputType: 'image',
+    promptRequired: true,
+    promptSupported: true,
+  },
+  video_extend: {
+    label: 'Video Extend',
+    description: 'Extend a video with additional frames',
+    multiAsset: false,
+    acceptsInput: ['video'],
+    outputType: 'video',
+    promptRequired: false,
+    promptSupported: true,
+  },
+  video_transition: {
+    label: 'Video Transition',
+    description: 'Create transitions between multiple images',
+    multiAsset: true,
+    acceptsInput: ['image', 'video'], // video via frame extraction
+    outputType: 'video',
+    promptRequired: true,
+    promptSupported: true,
+  },
+  fusion: {
+    label: 'Fusion',
+    description: 'Blend multiple assets together',
+    multiAsset: true,
+    acceptsInput: ['image', 'video'],
+    outputType: 'video',
+    promptRequired: false,
+    promptSupported: true,
+  },
+};
+
+/**
+ * Check if an operation supports multiple input assets
+ */
+export function isMultiAssetOperation(operationType: OperationType): boolean {
+  return OPERATION_METADATA[operationType]?.multiAsset ?? false;
+}
+
+/**
+ * Check if an operation accepts a given media type as input
+ */
+export function operationAcceptsMediaType(operationType: OperationType, mediaType: MediaType): boolean {
+  return OPERATION_METADATA[operationType]?.acceptsInput.includes(mediaType) ?? false;
+}
+
+/**
+ * Get all operations that accept a given media type
+ */
+export function getOperationsForMediaType(mediaType: MediaType): OperationType[] {
+  return OPERATION_TYPES.filter(op => operationAcceptsMediaType(op, mediaType));
+}
+
+/**
+ * Get the default single-asset operation for a media type
+ */
+export function getDefaultOperation(mediaType: MediaType): OperationType {
+  return mediaType === 'image' ? 'image_to_video' : 'video_extend';
+}
+
 /**
  * Check if a string is a valid OperationType
  */
