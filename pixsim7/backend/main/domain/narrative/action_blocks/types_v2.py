@@ -4,7 +4,7 @@ Enhanced Action Block type definitions v2 with camera and consistency support.
 
 from typing import Dict, Any, List, Optional, Union, Literal
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # Import base types from v1
 from .types import (
@@ -181,6 +181,8 @@ class EnhancedTransitionBlock(BaseModel):
     """
     Enhanced transition block with camera and consistency support.
     """
+    model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
+
     id: str = Field(description="Unique identifier")
     kind: Literal["transition"] = "transition"
     tags: EnhancedActionBlockTags = Field(default_factory=EnhancedActionBlockTags)
@@ -210,6 +212,3 @@ class EnhancedTransitionBlock(BaseModel):
     # Metadata
     description: Optional[str] = None
     worldOverride: Optional[str] = None
-
-    class Config:
-        use_enum_values = True

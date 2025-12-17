@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Union, Annotated
 
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator, WithJsonSchema
 
 
 class EntityRef(BaseModel):
@@ -146,44 +146,47 @@ def _make_entity_ref_validator(entity_type: str):
     return validate
 
 
+def _make_entity_ref_schema(entity_type: str) -> WithJsonSchema:
+    """Create JSON schema extension with x-entity-type for OpenAPI codegen."""
+    return WithJsonSchema(
+        {
+            "anyOf": [
+                {"$ref": "#/components/schemas/EntityRef"},
+                {"type": "null"},
+            ],
+            "x-entity-type": entity_type,
+        }
+    )
+
+
+def _make_entity_ref_type(entity_type: str):
+    """Create an EntityRef type alias with validation and schema extension."""
+    return Annotated[
+        Optional[EntityRef],
+        BeforeValidator(_make_entity_ref_validator(entity_type)),
+        _make_entity_ref_schema(entity_type),
+    ]
+
+
 # Type aliases for common entity types
-# These use Annotated + BeforeValidator to automatically parse input
-AssetRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("asset"))
-]
-SceneRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("scene"))
-]
-NpcRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("npc"))
-]
-LocationRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("location"))
-]
-WorldRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("world"))
-]
-SessionRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("session"))
-]
-UserRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("user"))
-]
-GenerationRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("generation"))
-]
-WorkspaceRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("workspace"))
-]
-AccountRef = Annotated[
-    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("account"))
-]
+# These use Annotated + BeforeValidator for parsing + WithJsonSchema for x-entity-type
+AssetRef = _make_entity_ref_type("asset")
+SceneRef = _make_entity_ref_type("scene")
+NpcRef = _make_entity_ref_type("npc")
+LocationRef = _make_entity_ref_type("location")
+WorldRef = _make_entity_ref_type("world")
+SessionRef = _make_entity_ref_type("session")
+UserRef = _make_entity_ref_type("user")
+GenerationRef = _make_entity_ref_type("generation")
+WorkspaceRef = _make_entity_ref_type("workspace")
+AccountRef = _make_entity_ref_type("account")
 
 
 def entity_ref_field(entity_type: str) -> type:
     """Create an annotated type for EntityRef fields with automatic parsing.
 
     Use this for entity types not covered by the pre-defined aliases.
+    Includes x-entity-type in JSON schema for OpenAPI codegen.
 
     Usage:
         class MyDTO(BaseModel):
@@ -193,11 +196,9 @@ def entity_ref_field(entity_type: str) -> type:
         entity_type: The entity type string for this reference
 
     Returns:
-        Annotated type alias for Optional[EntityRef]
+        Annotated type alias for Optional[EntityRef] with schema extension
     """
-    return Annotated[
-        Optional[EntityRef], BeforeValidator(_make_entity_ref_validator(entity_type))
-    ]
+    return _make_entity_ref_type(entity_type)
 
 
 # ===================

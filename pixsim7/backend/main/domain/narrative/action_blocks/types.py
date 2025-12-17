@@ -4,7 +4,13 @@ Action Block type definitions for visual generation.
 
 from typing import Dict, Any, List, Optional, Union, Literal
 from enum import Enum
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices
+
+from pixsim7.backend.main.shared.schemas.entity_ref import (
+    AssetRef,
+    NpcRef,
+    EntityRef,
+)
 
 
 class BranchIntent(str, Enum):
@@ -25,10 +31,20 @@ class ReferenceImage(BaseModel):
     Can be either a specific asset or a template query.
     """
     # Option 1: Specific asset reference (world-specific)
-    assetId: Optional[int] = Field(None, description="Specific asset ID if locked")
+    # Accepts: {"asset": 123}, {"asset": "asset:123"}, {"assetId": 123}
+    asset: AssetRef = Field(
+        default=None,
+        validation_alias=AliasChoices("asset", "assetId"),
+        description="Specific asset reference if locked",
+    )
 
     # Option 2: Template query (global library)
-    npcId: Optional[int] = Field(None, description="NPC ID for template matching")
+    # Accepts: {"npc": 123}, {"npc": "npc:123"}, {"npcId": 123}
+    npc: NpcRef = Field(
+        default=None,
+        validation_alias=AliasChoices("npc", "npcId"),
+        description="NPC reference for template matching",
+    )
     tags: List[str] = Field(default_factory=list, description="Tags to match assets")
 
     # Option 3: External URL (for prototyping/import)
@@ -39,11 +55,22 @@ class ReferenceImage(BaseModel):
 
     def is_resolved(self) -> bool:
         """Check if this reference points to a specific asset."""
-        return self.assetId is not None or self.url is not None
+        return self.asset is not None or self.url is not None
 
     def is_template(self) -> bool:
         """Check if this is a template that needs resolution."""
-        return self.assetId is None and self.url is None
+        return self.asset is None and self.url is None
+
+    # Backward-compatible property accessors
+    @property
+    def assetId(self) -> Optional[int]:
+        """Legacy accessor for asset ID."""
+        return self.asset.id if self.asset else None
+
+    @property
+    def npcId(self) -> Optional[int]:
+        """Legacy accessor for NPC ID."""
+        return self.npc.id if self.npc else None
 
 
 class ActionBlockTags(BaseModel):
@@ -167,14 +194,34 @@ class ActionSelectionContext(BaseModel):
     branchIntent: Optional[BranchIntent] = Field(None, description="Desired narrative direction")
     previousBlockId: Optional[str] = Field(None, description="Previous block for chaining")
 
-    # Character references
-    leadNpcId: int = Field(description="Primary NPC/lead character")
-    partnerNpcId: Optional[int] = Field(None, description="Partner/secondary character if applicable")
+    # Character references (using EntityRef for type safety)
+    # Accepts: {"leadNpc": 123}, {"leadNpc": "npc:123"}, {"leadNpcId": 123}
+    leadNpc: NpcRef = Field(
+        ...,  # Required
+        validation_alias=AliasChoices("leadNpc", "leadNpcId"),
+        description="Primary NPC/lead character",
+    )
+    partnerNpc: NpcRef = Field(
+        default=None,
+        validation_alias=AliasChoices("partnerNpc", "partnerNpcId"),
+        description="Partner/secondary character if applicable",
+    )
 
     # Optional filters
     requiredTags: List[str] = Field(default_factory=list, description="Tags that must be present")
     excludeTags: List[str] = Field(default_factory=list, description="Tags to exclude")
     maxDuration: Optional[float] = Field(None, description="Maximum total duration if chaining")
+
+    # Backward-compatible property accessors
+    @property
+    def leadNpcId(self) -> int:
+        """Legacy accessor for lead NPC ID."""
+        return self.leadNpc.id if self.leadNpc else 0
+
+    @property
+    def partnerNpcId(self) -> Optional[int]:
+        """Legacy accessor for partner NPC ID."""
+        return self.partnerNpc.id if self.partnerNpc else None
 
 
 class ActionSelectionResult(BaseModel):
