@@ -583,7 +583,7 @@ export function GenerationSettingsPanel({
             onClick={onGenerate}
             disabled={generating || !canGenerate}
             className={clsx(
-              'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white transition-colors',
+              'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               generating || !canGenerate
                 ? 'bg-neutral-400'
@@ -591,6 +591,7 @@ export function GenerationSettingsPanel({
                 ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
                 : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
             )}
+            style={{ transition: 'none', animation: 'none' }}
           >
             {generating ? (
               '...'
