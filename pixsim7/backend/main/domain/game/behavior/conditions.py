@@ -34,7 +34,12 @@ ConditionEvaluator = Callable[[Dict[str, Any], Dict[str, Any]], bool]
 BUILTIN_CONDITIONS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], bool]] = {}
 
 
-def register_condition_evaluator(evaluator_id: str, evaluator: ConditionEvaluator) -> None:
+def register_condition_evaluator(
+    evaluator_id: str,
+    evaluator: ConditionEvaluator,
+    description: Optional[str] = None,
+    params_schema: Optional[Dict[str, Any]] = None
+) -> None:
     """
     Register a custom condition evaluator.
 
@@ -47,6 +52,8 @@ def register_condition_evaluator(evaluator_id: str, evaluator: ConditionEvaluato
     Args:
         evaluator_id: Unique ID for the evaluator (e.g., "evaluator:is_raining")
         evaluator: Function that takes (condition, context) and returns bool
+        description: Human-readable description
+        params_schema: JSON Schema (Draft 7) for condition parameters
     """
     from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
@@ -63,7 +70,8 @@ def register_condition_evaluator(evaluator_id: str, evaluator: ConditionEvaluato
         condition_id=evaluator_id,
         plugin_id="core",  # Legacy evaluators use "core" as plugin_id
         evaluator=wrapped_evaluator,
-        description=f"Legacy condition evaluator: {evaluator_id}"
+        description=description or f"Legacy condition evaluator: {evaluator_id}",
+        params_schema=params_schema,
     )
 
     if success:
@@ -544,44 +552,9 @@ def _example_evaluator_has_item(params: Dict[str, Any], context: Dict[str, Any])
     return inventory.get(item_id, 0) >= quantity
 
 
-# Register example evaluators (DEPRECATED - kept for backward compatibility)
-register_condition_evaluator("evaluator:is_raining", _example_evaluator_is_raining)
-register_condition_evaluator("evaluator:quest_active", _example_evaluator_quest_active)
-register_condition_evaluator("evaluator:has_item", _example_evaluator_has_item)
-
-
 # ==================
-# Register Built-in Conditions
+# Built-in Registration
 # ==================
-
-def _register_builtin_conditions():
-    """
-    Register all built-in condition evaluators.
-
-    This function is called at module load time to populate the BUILTIN_CONDITIONS registry.
-    Built-in conditions use the same lookup pathway as plugin conditions.
-    """
-    # Stat-aware conditions (Task 110)
-    BUILTIN_CONDITIONS["stat_axis_gt"] = _eval_stat_axis_gt
-    BUILTIN_CONDITIONS["stat_axis_lt"] = _eval_stat_axis_lt
-    BUILTIN_CONDITIONS["stat_axis_between"] = _eval_stat_axis_between
-
-    # Legacy relationship conditions (backwards compatible, delegate to stat-aware)
-    BUILTIN_CONDITIONS["relationship_gt"] = _eval_relationship_gt
-    BUILTIN_CONDITIONS["relationship_lt"] = _eval_relationship_lt
-
-    # Other built-in conditions
-    BUILTIN_CONDITIONS["flag_equals"] = _eval_flag_equals
-    BUILTIN_CONDITIONS["flag_exists"] = _eval_flag_exists
-    BUILTIN_CONDITIONS["mood_in"] = _eval_mood_in
-    BUILTIN_CONDITIONS["energy_between"] = _eval_energy_between
-    BUILTIN_CONDITIONS["random_chance"] = _eval_random_chance
-    BUILTIN_CONDITIONS["time_of_day_in"] = _eval_time_of_day_in
-    BUILTIN_CONDITIONS["location_type_in"] = _eval_location_type_in
-    BUILTIN_CONDITIONS["expression"] = _eval_expression
-
-    logger.info(f"Registered {len(BUILTIN_CONDITIONS)} built-in condition evaluators")
-
-
-# Register built-in conditions at module load time
-_register_builtin_conditions()
+# Built-in conditions, effects, and scoring factors are now registered explicitly
+# at application startup via bootstrap.register_game_behavior_builtins().
+# See pixsim7/backend/main/domain/game/behavior/bootstrap.py

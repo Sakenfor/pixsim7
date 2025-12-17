@@ -314,6 +314,40 @@ def setup_link_system() -> dict:
     }
 
 
+def setup_behavior_builtins() -> dict:
+    """
+    Register built-in game behaviors (conditions, effects, scoring factors).
+
+    This must be called before plugins are loaded so that:
+    1. Built-in behaviors are available when plugins initialize
+    2. Plugins can extend or override built-in behaviors
+    3. The behavior registry is populated before it's locked
+
+    Returns:
+        dict: Statistics about registered behaviors
+
+    Why this is a separate function:
+    - Makes registration explicit in startup flow
+    - Prevents import-time side effects
+    - Returns stats for observability
+    - Testable in isolation
+    """
+    from pixsim7.backend.main.domain.game.behavior.bootstrap import (
+        register_game_behavior_builtins
+    )
+
+    stats = register_game_behavior_builtins()
+
+    logger.info(
+        "behavior_builtins_registered",
+        conditions=stats.get('conditions', 0),
+        effects=stats.get('effects', 0),
+        scoring_factors=stats.get('scoring_factors', 0),
+    )
+
+    return stats
+
+
 async def setup_plugins(
     app: FastAPI,
     plugins_dir: str | Path,

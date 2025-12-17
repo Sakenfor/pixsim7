@@ -39,6 +39,9 @@ class ConditionMetadata:
     required_context: List[str] = None
     """Required context keys (e.g., ['npc_id', 'location_id'])"""
 
+    params_schema: Optional[Dict[str, Any]] = None
+    """JSON Schema (Draft 7) for condition parameters"""
+
     def __post_init__(self):
         if self.required_context is None:
             self.required_context = []
@@ -61,6 +64,9 @@ class EffectMetadata:
 
     default_params: Dict[str, Any] = None
     """Default parameters for this effect"""
+
+    params_schema: Optional[Dict[str, Any]] = None
+    """JSON Schema (Draft 7) for effect parameters"""
 
     def __post_init__(self):
         if self.default_params is None:
@@ -127,6 +133,9 @@ class ScoringFactorMetadata:
     description: Optional[str] = None
     """Human-readable description"""
 
+    params_schema: Optional[Dict[str, Any]] = None
+    """JSON Schema (Draft 7) for scoring factor parameters (optional, rarely used)"""
+
 
 # ===== GLOBAL REGISTRIES =====
 
@@ -157,6 +166,7 @@ class BehaviorExtensionRegistry:
         evaluator: Callable,
         description: Optional[str] = None,
         required_context: Optional[List[str]] = None,
+        params_schema: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Register a condition evaluator.
@@ -167,6 +177,7 @@ class BehaviorExtensionRegistry:
             evaluator: Condition function (context) -> bool
             description: Human-readable description
             required_context: Required context keys
+            params_schema: JSON Schema (Draft 7) for condition parameters
 
         Returns:
             True if registered, False if already exists or locked
@@ -196,6 +207,7 @@ class BehaviorExtensionRegistry:
             evaluator=evaluator,
             description=description,
             required_context=required_context or [],
+            params_schema=params_schema,
         )
 
         self._conditions[condition_id] = metadata
@@ -238,6 +250,7 @@ class BehaviorExtensionRegistry:
         handler: Callable,
         description: Optional[str] = None,
         default_params: Optional[Dict[str, Any]] = None,
+        params_schema: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Register an effect handler.
@@ -248,6 +261,7 @@ class BehaviorExtensionRegistry:
             handler: Effect function (context, params) -> result
             description: Human-readable description
             default_params: Default parameters
+            params_schema: JSON Schema (Draft 7) for effect parameters
 
         Returns:
             True if registered, False if already exists or locked
@@ -275,6 +289,7 @@ class BehaviorExtensionRegistry:
             handler=handler,
             description=description,
             default_params=default_params or {},
+            params_schema=params_schema,
         )
 
         self._effects[effect_id] = metadata
@@ -484,6 +499,7 @@ class BehaviorExtensionRegistry:
         evaluator: Callable,
         default_weight: float = 1.0,
         description: Optional[str] = None,
+        params_schema: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Register a scoring factor for activity selection.
@@ -494,6 +510,7 @@ class BehaviorExtensionRegistry:
             evaluator: Function(activity, npc_state, context) -> float
             default_weight: Default weight in scoring config
             description: Human-readable description
+            params_schema: JSON Schema (Draft 7) for scoring factor parameters (optional)
 
         Returns:
             True if registered, False if already exists or locked
@@ -521,6 +538,7 @@ class BehaviorExtensionRegistry:
             evaluator=evaluator,
             default_weight=default_weight,
             description=description,
+            params_schema=params_schema,
         )
 
         logger.info(

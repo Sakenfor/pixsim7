@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 EffectHandler = Callable[[Dict[str, Any], Dict[str, Any]], None]
 
 
-def register_effect_handler(effect_type: str, handler: EffectHandler) -> None:
+def register_effect_handler(
+    effect_type: str,
+    handler: EffectHandler,
+    description: Optional[str] = None,
+    default_params: Optional[Dict[str, Any]] = None,
+    params_schema: Optional[Dict[str, Any]] = None
+) -> None:
     """
     Register a custom effect handler.
 
@@ -31,6 +37,9 @@ def register_effect_handler(effect_type: str, handler: EffectHandler) -> None:
     Args:
         effect_type: Effect type ID (e.g., "effect:give_item")
         handler: Function that takes (params, context) and applies the effect
+        description: Human-readable description
+        default_params: Default parameters for this effect
+        params_schema: JSON Schema (Draft 7) for effect parameters
     """
     from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
@@ -38,7 +47,9 @@ def register_effect_handler(effect_type: str, handler: EffectHandler) -> None:
         effect_id=effect_type,
         plugin_id="core",  # Built-in effects use "core" as plugin_id
         handler=handler,
-        description=f"Effect handler: {effect_type}"
+        description=description or f"Effect handler: {effect_type}",
+        default_params=default_params,
+        params_schema=params_schema,
     )
 
     if success:
@@ -326,8 +337,9 @@ def _example_spawn_event_effect(params: Dict[str, Any], context: Dict[str, Any])
     logger.info(f"Spawned world event: {event_id}")
 
 
-# Register example effect handlers
-register_effect_handler("effect:give_item", _example_give_item_effect)
-register_effect_handler("effect:grant_xp", _example_grant_xp_effect)
-register_effect_handler("effect:consume_ingredient", _example_consume_ingredient_effect)
-register_effect_handler("effect:spawn_event", _example_spawn_event_effect)
+# ==================
+# Built-in Registration
+# ==================
+# Built-in effects are now registered explicitly at application startup
+# via bootstrap.register_game_behavior_builtins().
+# See pixsim7/backend/main/domain/game/behavior/bootstrap.py

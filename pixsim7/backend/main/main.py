@@ -92,6 +92,7 @@ async def lifespan(app: FastAPI):
         setup_ecs_components,
         setup_stat_packages,
         setup_link_system,
+        setup_behavior_builtins,
         setup_plugins,
         setup_behavior_registry_lock,
         configure_admin_diagnostics,
@@ -135,6 +136,9 @@ async def lifespan(app: FastAPI):
 
     # Setup link system
     link_stats = setup_link_system()
+
+    # Setup built-in game behaviors (BEFORE plugins so they can extend/override)
+    behavior_stats = setup_behavior_builtins()
 
     # Setup plugins
     plugin_manager, routes_manager = await setup_plugins(

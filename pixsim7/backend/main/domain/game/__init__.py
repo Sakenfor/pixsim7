@@ -29,6 +29,10 @@ Import patterns:
     )
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 # Core models and ECS
 from .core import (
     GameWorld,
@@ -149,13 +153,16 @@ from .stats import (
     register_core_stat_packages,
 )
 
-# Behavior (selective exports)
-from .behavior import (
-    evaluate_condition,
-    choose_npc_activity,
-    apply_activity_to_npc,
-    determine_simulation_tier,
-)
+# Behavior exports are intentionally lazy-loaded via __getattr__.
+# Importing behavior modules at package import time triggers registration side effects
+# (conditions/effects/scoring), which is undesirable during Alembic migrations.
+if TYPE_CHECKING:
+    from .behavior import (  # noqa: F401
+        evaluate_condition,
+        choose_npc_activity,
+        apply_activity_to_npc,
+        determine_simulation_tier,
+    )
 
 # Brain (selective exports)
 from .brain import (
@@ -278,3 +285,16 @@ __all__ = [
     "BrainEngine",
     "BrainState",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in {
+        "evaluate_condition",
+        "choose_npc_activity",
+        "apply_activity_to_npc",
+        "determine_simulation_tier",
+    }:
+        from . import behavior as _behavior
+        return getattr(_behavior, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -35,6 +35,7 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
         evaluator: Callable,
         description: Optional[str] = None,
         required_context: Optional[list[str]] = None,
+        params_schema: Optional[dict] = None,
     ) -> bool:
         """
         Register a custom behavior condition evaluator.
@@ -44,6 +45,7 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
             evaluator: Callable that takes context dict and returns bool
             description: Human-readable description
             required_context: List of required context keys
+            params_schema: JSON Schema (Draft 7) for condition parameters
 
         Returns:
             True if registered, False if permission denied
@@ -57,7 +59,13 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
                 'has_disguise',
                 has_disguise,
                 description='Check if player has a disguise',
-                required_context=['session_flags']
+                required_context=['session_flags'],
+                params_schema={
+                    'type': 'object',
+                    'properties': {
+                        'disguiseType': {'type': 'string'}
+                    }
+                }
             )
         """
         if not self._check_permission(
@@ -79,6 +87,7 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
             evaluator=evaluator,
             description=description,
             required_context=required_context,
+            params_schema=params_schema,
         )
 
         if success:
@@ -96,6 +105,7 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
         handler: Callable,
         description: Optional[str] = None,
         default_params: Optional[dict] = None,
+        params_schema: Optional[dict] = None,
     ) -> bool:
         """
         Register a custom activity effect handler.
@@ -105,6 +115,7 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
             handler: Callable that applies the effect (context, params) -> result
             description: Human-readable description
             default_params: Default parameters for this effect
+            params_schema: JSON Schema (Draft 7) for effect parameters
 
         Returns:
             True if registered, False if permission denied
@@ -119,7 +130,13 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
                 'arousal_boost',
                 arousal_boost_effect,
                 description='Increase NPC arousal',
-                default_params={'amount': 0.1}
+                default_params={'amount': 0.1},
+                params_schema={
+                    'type': 'object',
+                    'properties': {
+                        'amount': {'type': 'number', 'minimum': 0, 'maximum': 1}
+                    }
+                }
             )
         """
         if not self._check_permission(
@@ -141,6 +158,7 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
             handler=handler,
             description=description,
             default_params=default_params,
+            params_schema=params_schema,
         )
 
         if success:

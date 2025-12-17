@@ -49,7 +49,9 @@ DEFAULT_SCORING_WEIGHTS = {
 def register_scoring_factor(
     factor_id: str,
     evaluator: ScoringFactorFunc,
-    default_weight: float = 1.0
+    default_weight: float = 1.0,
+    description: Optional[str] = None,
+    params_schema: Optional[Dict[str, Any]] = None
 ) -> bool:
     """
     Register a custom scoring factor.
@@ -61,6 +63,8 @@ def register_scoring_factor(
         factor_id: Unique ID for the factor (e.g., "weather_preference", "plugin:my_plugin:social_fatigue")
         evaluator: Function that calculates the factor contribution
         default_weight: Default weight for this factor in DEFAULT_SCORING_WEIGHTS
+        description: Human-readable description
+        params_schema: JSON Schema (Draft 7) for scoring factor parameters (optional)
 
     Returns:
         True if registered successfully, False if already exists
@@ -79,7 +83,8 @@ def register_scoring_factor(
         plugin_id="core",  # Built-in factors use "core" as plugin_id
         evaluator=evaluator,
         default_weight=default_weight,
-        description=f"Scoring factor: {factor_id}"
+        description=description or f"Scoring factor: {factor_id}",
+        params_schema=params_schema,
     )
 
     if not success:
@@ -566,26 +571,9 @@ def _factor_inertia(
         return 1.0
 
 
-def _register_builtin_scoring_factors():
-    """
-    Register all built-in scoring factors.
-
-    This function is called at module load time to register built-in factors with behavior_registry.
-    Built-in factors use the same registration pathway as plugin factors.
-    """
-    # Note: We use DEFAULT_SCORING_WEIGHTS to get the default weight for each factor
-    register_scoring_factor("activityPreference", _factor_activity_preference, DEFAULT_SCORING_WEIGHTS["activityPreference"])
-    register_scoring_factor("categoryPreference", _factor_category_preference, DEFAULT_SCORING_WEIGHTS["categoryPreference"])
-    register_scoring_factor("traitModifier", _factor_trait_modifier, DEFAULT_SCORING_WEIGHTS["traitModifier"])
-    register_scoring_factor("moodCompatibility", _factor_mood_compatibility, DEFAULT_SCORING_WEIGHTS["moodCompatibility"])
-    register_scoring_factor("relationshipBonus", _factor_relationship_bonus, DEFAULT_SCORING_WEIGHTS["relationshipBonus"])
-    register_scoring_factor("urgency", _factor_urgency, DEFAULT_SCORING_WEIGHTS["urgency"])
-    register_scoring_factor("inertia", _factor_inertia, DEFAULT_SCORING_WEIGHTS["inertia"])
-
-    from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
-    factor_count = len(behavior_registry.list_scoring_factors())
-    logger.info(f"Registered {factor_count} built-in scoring factors")
-
-
-# Register built-in scoring factors at module load time
-_register_builtin_scoring_factors()
+# ==================
+# Built-in Registration
+# ==================
+# Built-in scoring factors are now registered explicitly at application startup
+# via bootstrap.register_game_behavior_builtins().
+# See pixsim7/backend/main/domain/game/behavior/bootstrap.py
