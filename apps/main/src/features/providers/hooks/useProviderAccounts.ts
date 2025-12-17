@@ -1,54 +1,20 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@lib/api/client';
+import type { AccountResponse } from '@lib/api/accounts';
 
-export interface ApiKeyEntry {
-  id: string;
-  kind: string;
-  value: string;
-  name?: string;
-  priority?: number;
-}
+// ============================================================================
+// OpenAPI-Derived Types
+// ============================================================================
 
-export interface ProviderAccount {
-  id: number;
-  user_id: number | null;
-  email: string;
-  provider_id: string;
-  nickname: string | null;
-  is_private: boolean;
-  status: string;
+/**
+ * ProviderAccount is an alias for the OpenAPI-derived AccountResponse.
+ * Kept for backward compatibility with existing code.
+ */
+export type ProviderAccount = AccountResponse;
 
-  // Auth info
-  has_jwt: boolean;
-  jwt_expired: boolean;
-  jwt_expires_at: string | null;
-  has_api_key_paid: boolean;
-  has_cookies: boolean;
-  is_google_account: boolean;
-
-  // API keys (for Pixverse: OpenAPI keys)
-  api_keys?: ApiKeyEntry[];
-
-  // Credits
-  credits: Record<string, number>;
-  total_credits: number;
-
-  // Usage
-  videos_today: number;
-  total_videos_generated: number;
-  total_videos_failed: number;
-  success_rate: number;
-
-  // Concurrency
-  max_concurrent_jobs: number;
-  current_processing_jobs: number;
-
-  // Timing
-  last_used: string | null;
-  last_error: string | null;
-  cooldown_until: string | null;
-  created_at: string;
-}
+// ============================================================================
+// UI/Feature-Specific Types
+// ============================================================================
 
 export interface ProviderAccountsGrouped {
   [providerId: string]: ProviderAccount[];
