@@ -2,143 +2,42 @@
  * Generations API Client
  *
  * Canonical API client for the unified /api/v1/generations endpoint.
- * Replaces legacy jobs API.
+ * Uses OpenAPI-generated types for type safety and contract alignment.
  */
 import { apiClient } from './client';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
-import type {
-  GenerationNodeConfig,
-  GenerateContentRequest,
-  GenerateContentResponse,
-  GenerationSocialContext,
-  SceneRef,
-  PlayerContextSnapshot,
-} from '@lib/registries';
-import { GenerationId } from '@shared/types';
+import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
 
-// Re-export types from @pixsim7/shared.types for convenience
+// ============================================================================
+// OpenAPI-Derived Types (Generated from backend contract)
+// ============================================================================
+
+export type GenerationResponse = ApiComponents['schemas']['GenerationResponse'];
+export type GenerationListResponse = ApiComponents['schemas']['GenerationListResponse'];
+export type CreateGenerationRequest = ApiComponents['schemas']['CreateGenerationRequest'];
+export type GenerationStatus = ApiComponents['schemas']['GenerationStatus'];
+export type OperationType = ApiComponents['schemas']['OperationType'];
+export type GenerationNodeConfigSchema = ApiComponents['schemas']['GenerationNodeConfigSchema'];
+export type GenerationSocialContext = ApiComponents['schemas']['GenerationSocialContextSchema'];
+export type SceneRef = ApiComponents['schemas']['SceneRefSchema'];
+export type PlayerContextSnapshot = ApiComponents['schemas']['PlayerContextSnapshotSchema'];
+
+export type ListGenerationsQuery =
+  ApiOperations['list_generations_api_v1_generations_get']['parameters']['query'];
+
+// ============================================================================
+// Legacy Type Re-exports (for backward compatibility)
+// ============================================================================
+
 export type {
   GenerationNodeConfig,
   GenerateContentRequest,
   GenerateContentResponse,
-  GenerationSocialContext,
-  SceneRef,
-  PlayerContextSnapshot,
-};
+} from '@lib/registries';
 
-// Backend response types (match backend schemas)
-export interface GenerationResponse {
-  id: GenerationId;
-  user_id: number;
-  workspace_id?: number | null;
-
-  // Operation
-  operation_type: string;
-  provider_id: string;
-
-  // Params
-  raw_params: Record<string, any>;
-  canonical_params: Record<string, any>;
-
-  // Inputs & reproducibility
-  inputs: Array<Record<string, any>>;
-  reproducible_hash?: string | null;
-
-  // Prompt versioning
-  prompt_version_id?: string | null;
-  final_prompt?: string | null;
-  prompt_config?: Record<string, any> | null;
-  prompt_source_type?: string | null;
-
-  // Lifecycle
-  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  priority: number;
-  scheduled_at?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  error_message?: string | null;
-  retry_count: number;
-  parent_generation_id?: GenerationId | null;
-
-  // Result
-  asset_id?: number | null;
-
-  // Account info
-  account_id?: number | null;
-  account_email?: string | null;
-
-  // Metadata
-  name?: string | null;
-  description?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface GenerationListResponse {
-  generations: GenerationResponse[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-/**
- * Extended config type for generation requests.
- *
- * Extends GenerationNodeConfig with additional fields used by the control center
- * that aren't in the strict schema (prompt, image_url, video_url, etc.).
- * These extra fields are passed through to the provider adapter.
- */
-export interface GenerationConfig extends Partial<GenerationNodeConfig> {
-  // Provider-specific params (passed through to adapter)
-  prompt?: string;
-  image_url?: string;
-  image_urls?: string[];
-  video_url?: string;
-  original_video_id?: string;
-  prompts?: string[];
-  fusion_assets?: string[];
-  [key: string]: unknown;
-}
-
-// Request type for creating generations (matches backend schema)
-export interface CreateGenerationRequest {
-  // Required
-  config: GenerationConfig;
-  provider_id: string;
-
-  // Scene context
-  from_scene?: SceneRef;
-  to_scene?: SceneRef;
-
-  // Player context
-  player_context?: PlayerContextSnapshot;
-
-  // Social context
-  social_context?: GenerationSocialContext;
-
-  // Prompt versioning
-  prompt_version_id?: string;
-  template_id?: string;
-  template_variables?: Record<string, unknown>;
-
-  // Workspace and metadata
-  workspace_id?: number;
-  name?: string;
-  description?: string;
-
-  // Scheduling
-  priority?: number;
-  scheduled_at?: string;
-  parent_generation_id?: number;
-
-  // Deduplication control
-  force_new?: boolean;
-
-  // Prompt analysis settings (see GET /api/v1/analyzers for available options)
-  analyzer_id?: string;
-}
-
-// ===== API FUNCTIONS =====
+// ============================================================================
+// API Functions
+// ============================================================================
 
 /**
  * Create a new generation
@@ -163,7 +62,7 @@ export async function createGeneration(
 /**
  * Get generation by ID
  */
-export async function getGeneration(id: GenerationId): Promise<GenerationResponse> {
+export async function getGeneration(id: number): Promise<GenerationResponse> {
   const res = await apiClient.get<GenerationResponse>(`/generations/${id}?_=details`);
   return res.data;
 }
@@ -171,21 +70,17 @@ export async function getGeneration(id: GenerationId): Promise<GenerationRespons
 /**
  * List generations with filters
  */
-export async function listGenerations(params?: {
-  workspace_id?: number;
-  status?: string;
-  operation_type?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<GenerationListResponse> {
-  const res = await apiClient.get<GenerationListResponse>('/generations', { params: { ...params, _: 'list' } });
+export async function listGenerations(query?: ListGenerationsQuery): Promise<GenerationListResponse> {
+  const res = await apiClient.get<GenerationListResponse>('/generations', {
+    params: { ...query, _: 'list' },
+  });
   return res.data;
 }
 
 /**
  * Cancel a generation
  */
-export async function cancelGeneration(id: GenerationId): Promise<GenerationResponse> {
+export async function cancelGeneration(id: number): Promise<GenerationResponse> {
   const res = await apiClient.post<GenerationResponse>(`/generations/${id}/cancel?_=cancel`);
   return res.data;
 }
@@ -196,7 +91,7 @@ export async function cancelGeneration(id: GenerationId): Promise<GenerationResp
  * Creates a new generation with the same parameters.
  * Useful for content filter rejections or temporary errors.
  */
-export async function retryGeneration(id: GenerationId): Promise<GenerationResponse> {
+export async function retryGeneration(id: number): Promise<GenerationResponse> {
   const res = await apiClient.post<GenerationResponse>(`/generations/${id}/retry?_=retry`);
   return res.data;
 }
@@ -207,7 +102,7 @@ export async function retryGeneration(id: GenerationId): Promise<GenerationRespo
  * Permanently removes a generation from the database.
  * Only terminal generations (completed, failed, cancelled) can be deleted.
  */
-export async function deleteGeneration(id: GenerationId): Promise<void> {
+export async function deleteGeneration(id: number): Promise<void> {
   await apiClient.delete(`/generations/${id}?_=delete`);
 }
 
@@ -235,6 +130,10 @@ export async function buildSocialContext(params: {
   npc_id?: string;
   user_max_rating?: string;
 }): Promise<GenerationSocialContext> {
-  const res = await apiClient.post<GenerationSocialContext>('/generations/social-context/build', null, { params: { ...params, _: 'social' } });
+  const res = await apiClient.post<GenerationSocialContext>(
+    '/generations/social-context/build',
+    null,
+    { params: { ...params, _: 'social' } }
+  );
   return res.data;
 }
