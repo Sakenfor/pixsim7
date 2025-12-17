@@ -39,5 +39,28 @@ schema is cross-cutting:
 # ]
 """
 
-# Currently no exports - add only when cross-cutting schemas are identified
-__all__ = []
+# Cross-cutting entity reference type for all DTOs
+from pixsim7.backend.main.shared.schemas.entity_ref import (
+    EntityRef,
+    AssetRef,
+    SceneRef,
+    NpcRef,
+    LocationRef,
+    WorldRef,
+    SessionRef,
+    UserRef,
+    entity_ref_field,
+)
+
+__all__ = [
+    # EntityRef - canonical reference type for API boundaries
+    "EntityRef",
+    "AssetRef",
+    "SceneRef",
+    "NpcRef",
+    "LocationRef",
+    "WorldRef",
+    "SessionRef",
+    "UserRef",
+    "entity_ref_field",
+]

@@ -140,7 +140,8 @@ def register_default_loaders():
     Domain-specific loaders can be registered in their respective modules.
     """
     from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
-    from pixsim7.backend.main.domain.game.core.models import GameNPC, GameLocation
+    from pixsim7.backend.main.domain.game.core.models import GameNPC, GameLocation, GameScene
+    from pixsim7.backend.main.domain.asset import Asset
 
     registry = get_entity_loader_registry()
 
@@ -168,7 +169,22 @@ def register_default_loaders():
 
     registry.register_loader('location', load_location)
 
+    # Asset loader
+    async def load_asset(asset_id: int, db: AsyncSession):
+        """Load Asset by ID"""
+        return await db.get(Asset, asset_id)
+
+    registry.register_loader('asset', load_asset)
+
+    # GameScene loader
+    async def load_scene(scene_id: int, db: AsyncSession):
+        """Load GameScene by ID"""
+        return await db.get(GameScene, scene_id)
+
+    registry.register_loader('scene', load_scene)
+
     # TODO: Add loaders for other entity types as they are implemented
     # - itemTemplate, item
     # - propTemplate, prop
+    # - world, session, user
     # etc.

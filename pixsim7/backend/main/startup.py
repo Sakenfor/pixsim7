@@ -293,24 +293,34 @@ def setup_link_system() -> dict:
     from pixsim7.backend.main.services.links.mapping_registry import (
         get_mapping_registry
     )
+    from pixsim7.backend.main.services.refs.entity_ref_registry import (
+        register_default_ref_mappings,
+        get_entity_ref_registry
+    )
 
     # Register entity loaders
     register_default_loaders()
     loader_count = len(get_entity_loader_registry().list_loaders())
 
-    # Register field mappings
+    # Register field mappings (for template↔runtime syncing)
     register_default_mappings()
     mapping_count = len(get_mapping_registry().list_mappings())
+
+    # Register EntityRef field mappings (for API DTOs)
+    register_default_ref_mappings()
+    ref_mapping_count = len(get_entity_ref_registry().list_mappings())
 
     logger.info(
         "link_system_initialized",
         loaders=loader_count,
-        mappings=mapping_count
+        mappings=mapping_count,
+        ref_mappings=ref_mapping_count
     )
 
     return {
         'loaders': loader_count,
-        'mappings': mapping_count
+        'mappings': mapping_count,
+        'ref_mappings': ref_mapping_count
     }
 
 

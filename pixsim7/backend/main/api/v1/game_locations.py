@@ -3,33 +3,55 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameLocationSvc
+from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef, SceneRef
 
 
 router = APIRouter()
 
 
 class GameLocationSummary(BaseModel):
+    """Summary of a game location."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
     name: str
-    asset_id: Optional[int] = None
+    asset: Optional[AssetRef] = Field(
+        default=None,
+        validation_alias=AliasChoices("asset", "asset_id"),
+    )
     default_spawn: Optional[str] = None
 
 
 class GameHotspotDTO(BaseModel):
+    """A hotspot within a game location."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: Optional[int] = None
     object_name: str
     hotspot_id: str
-    linked_scene_id: Optional[int] = None
+    linked_scene: Optional[SceneRef] = Field(
+        default=None,
+        validation_alias=AliasChoices("linked_scene", "linked_scene_id"),
+    )
     meta: Optional[Dict[str, Any]] = None
 
 
 class GameLocationDetail(BaseModel):
+    """Detailed game location with hotspots."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: int
     name: str
-    asset_id: Optional[int] = None
+    asset: Optional[AssetRef] = Field(
+        default=None,
+        validation_alias=AliasChoices("asset", "asset_id"),
+    )
     default_spawn: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
     hotspots: List[GameHotspotDTO]

@@ -26,6 +26,7 @@ from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.game import GameSessionService, GameLocationService, GameWorldService
 from pixsim7.backend.main.services.npc import NpcExpressionService
 from pixsim7.backend.main.services.plugin import PluginCatalogService
+from pixsim7.backend.main.services.refs import EntityRefResolver
 
 # Narrative engine imports (lazy-loaded)
 from pixsim7.backend.main.domain.narrative import NarrativeEngine
@@ -128,6 +129,11 @@ async def get_game_world_service(
 def get_plugin_catalog_service(db: AsyncSession = Depends(get_database)) -> PluginCatalogService:
     """Get PluginCatalogService instance"""
     return PluginCatalogService(db)
+
+
+def get_entity_ref_resolver(db: AsyncSession = Depends(get_database)) -> EntityRefResolver:
+    """Get EntityRefResolver instance for resolving EntityRef to entities"""
+    return EntityRefResolver(db)
 
 
 # ===== NARRATIVE ENGINE SINGLETONS =====
@@ -358,6 +364,7 @@ GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_servi
 NpcExpressionSvc = Annotated[NpcExpressionService, Depends(get_npc_expression_service)]
 GameWorldSvc = Annotated[GameWorldService, Depends(get_game_world_service)]
 PluginCatalogSvc = Annotated[PluginCatalogService, Depends(get_plugin_catalog_service)]
+EntityRefResolverSvc = Annotated[EntityRefResolver, Depends(get_entity_ref_resolver)]
 
 # Narrative engine type aliases
 NarrativeEng = Annotated[NarrativeEngine, Depends(get_narrative_engine)]
