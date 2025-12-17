@@ -9,6 +9,7 @@ export { ApiError, handleApiError, isApiError } from './errorHandling';
 export * from './game';
 export * from './accounts';
 export * from './assets';
+export * from './automation';
 export * from './interactions';
 export * from './generations';
 export * from './generationOperations';

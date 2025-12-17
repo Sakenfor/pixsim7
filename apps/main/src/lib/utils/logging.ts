@@ -1,7 +1,17 @@
-// Simple web logger posting to backend ingestion API (batched).
-// Usage: import { initWebLogger, logEvent } from '@lib/utils/logging'; initWebLogger('frontend');
+/**
+ * Simple web logger posting to backend ingestion API (batched).
+ *
+ * Usage:
+ *   import { initWebLogger, logEvent } from '@lib/utils/logging';
+ *   initWebLogger('frontend');
+ *
+ * Note: Uses raw fetch with `keepalive: true` to ensure logs are sent even
+ * during page unload. The typed client (logs.ts) uses axios which doesn't
+ * support keepalive, so we use types for validation but keep raw fetch.
+ */
 
 import { API_BASE_URL } from '../api/client';
+import type { LogIngestRequest } from '../api/logs';
 
 const getBackendUrl = (): string | undefined => {
   return API_BASE_URL;
@@ -10,7 +20,8 @@ const getBackendUrl = (): string | undefined => {
 let serviceName = 'web';
 
 // In-memory batch queue and flush settings
-type LogPayload = Record<string, unknown>;
+// Use LogIngestRequest for type safety, but allow extra fields via intersection
+type LogPayload = Partial<LogIngestRequest> & { level: string; service: string; msg: string };
 
 const LOG_BATCH_SIZE = 10;
 const LOG_FLUSH_INTERVAL_MS = 5000;
