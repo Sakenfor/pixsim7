@@ -45,41 +45,42 @@ Follow these rules when working on game features:
 ### Required Reading by Task Type
 
 **If you're editing 2D gameplay (hotspots, actions, playback):**
-- Read: `docs/HOTSPOT_ACTIONS_2D.md`
-- Read: `docs/RELATIONSHIPS_AND_ARCS.md`
-- Reference: `docs/SYSTEM_OVERVIEW.md`
+- Read: `docs/game-systems/HOTSPOT_ACTIONS_2D.md`
+- Read: `docs/game/RELATIONSHIPS_AND_ARCS.md`
+- Reference: `docs/game-systems/SYSTEM_OVERVIEW.md`
 
 **If you're editing the scene graph / node editor:**
-- Read: `docs/NODE_EDITOR_DEVELOPMENT.md`
-- Read: `docs/GRAPH_UI_LIFE_SIM_PHASES.md`
-- Reference: `docs/SYSTEM_OVERVIEW.md`
+- Read: `docs/game-systems/NODE_EDITOR_DEVELOPMENT.md`
+- Read: `docs/game-systems/GRAPH_UI_LIFE_SIM_PHASES.md`
+- Reference: `docs/game-systems/SYSTEM_OVERVIEW.md`
 
 **If you're editing NPC behavior / world systems:**
-- Read: `docs/RELATIONSHIPS_AND_ARCS.md`
-- Read: `docs/GRAPH_UI_LIFE_SIM_PHASES.md`
-- Reference: `docs/SYSTEM_OVERVIEW.md`
+- Read: `docs/game/RELATIONSHIPS_AND_ARCS.md`
+- Read: `docs/game-systems/GRAPH_UI_LIFE_SIM_PHASES.md`
+- Reference: `docs/game-systems/SYSTEM_OVERVIEW.md`
 
 **If you're editing 3D display modes:**
-- Read: `docs/GAME_WORLD_DISPLAY_MODES.md`
-- Reference: `docs/SYSTEM_OVERVIEW.md`
+- Read: `docs/ui/GAME_WORLD_DISPLAY_MODES.md`
+- Reference: `docs/game-systems/SYSTEM_OVERVIEW.md`
 
 ### Key Files by System
 
 **Scene Editor:**
-- `frontend/src/components/GraphPanel.tsx` – Graph canvas
-- `frontend/src/components/SceneBuilderPanel.tsx` – Property inspector
-- `frontend/src/modules/scene-builder/index.ts` – Draft model
-- `packages/types/src/index.ts` – Shared Scene types
+- `apps/main/src/features/graph/components/arc-graph/ArcGraphPanel.tsx` - Graph canvas (primary)
+- `apps/main/src/components/legacy/GraphPanel.tsx` - Graph canvas (legacy)
+- `apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx` - Property inspector
+- `apps/main/src/modules/scene-builder/index.ts` - Draft model
+- `packages/types/src/index.ts` - Shared Scene types
 
 **2D Game Preview:**
-- `frontend/src/routes/Game2D.tsx` – Playtest environment
-- `frontend/src/lib/game/interactionSchema.ts` – Action parsing
-- `frontend/src/lib/game/session.ts` – Session helpers
+- `apps/main/src/routes/Game2D.tsx` - Playtest environment
+- `apps/main/src/lib/game/interactionSchema.ts` - Action parsing
+- `apps/main/src/lib/game/session.ts` - Session helpers
 
 **Backend APIs:**
-- `pixsim7_backend/api/v1/game_worlds.py` – Worlds and state
-- `pixsim7_backend/api/v1/game_sessions.py` – Session CRUD
-- `pixsim7_backend/api/v1/game_npcs.py` – NPCs, schedules, presence
+- `pixsim7/backend/main/api/v1/game_worlds.py` - Worlds and state
+- `pixsim7/backend/main/api/v1/game_sessions.py` - Session CRUD
+- `pixsim7/backend/main/api/v1/game_npcs.py` - NPCs, schedules, presence
 
 **Shared Packages:**
 - `packages/types/` – Shared TypeScript types
@@ -89,16 +90,16 @@ Follow these rules when working on game features:
 ### Quick Reference Links
 
 **Documentation:**
-- `docs/SYSTEM_OVERVIEW.md` – **Start here** for high-level map of all game systems
-- `docs/HOTSPOT_ACTIONS_2D.md` – Hotspot actions and scene playback
-- `docs/RELATIONSHIPS_AND_ARCS.md` – Relationships, arcs, quests, session state
-- `docs/GRAPH_UI_LIFE_SIM_PHASES.md` – World/life-sim integration with graph editor
-- `docs/NODE_EDITOR_DEVELOPMENT.md` – Scene editor architecture and roadmap
-- `docs/GAME_WORLD_DISPLAY_MODES.md` – 2D/3D display modes
+- `docs/game-systems/SYSTEM_OVERVIEW.md` - **Start here** for high-level map of all game systems
+- `docs/game-systems/HOTSPOT_ACTIONS_2D.md` - Hotspot actions and scene playback
+- `docs/game/RELATIONSHIPS_AND_ARCS.md` - Relationships, arcs, quests, session state
+- `docs/game-systems/GRAPH_UI_LIFE_SIM_PHASES.md` - World/life-sim integration with graph editor
+- `docs/game-systems/NODE_EDITOR_DEVELOPMENT.md` - Scene editor architecture and roadmap
+- `docs/ui/GAME_WORLD_DISPLAY_MODES.md` - 2D/3D display modes
 
 **Component READMEs:**
-- `frontend/src/components/README.md` – GraphPanel, SceneBuilderPanel, WorldContextSelector
-- `frontend/src/lib/game/README.md` – interactionSchema.ts, session.ts
+- `apps/main/src/components/README.md` - GraphPanel, SceneBuilderPanel, WorldContextSelector
+- `apps/main/src/lib/game/README.md` - interactionSchema.ts, session.ts
 
 ---
 
@@ -122,7 +123,7 @@ Follow these rules when working on game features:
 - Update relevant docs when adding features or changing behavior
 - Keep docs concise; prefer bullet lists and explicit "If you're doing X, read Y" guidance
 - Cross-link docs where helpful; avoid duplicating content
-- Update SYSTEM_OVERVIEW.md if you add new major concepts
+- Update `docs/game-systems/SYSTEM_OVERVIEW.md` if you add new major concepts
 
 ### Git Workflow
 
@@ -135,7 +136,7 @@ Follow these rules when working on game features:
 
 ## When in Doubt
 
-1. Check `docs/SYSTEM_OVERVIEW.md` for high-level guidance
+1. Check `docs/game-systems/SYSTEM_OVERVIEW.md` for high-level guidance
 2. Read the specific doc for the system you're working on
 3. Look at existing code patterns for similar features
 4. Ask the user for clarification on ambiguous requirements

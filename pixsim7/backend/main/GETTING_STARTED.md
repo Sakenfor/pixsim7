@@ -1,4 +1,4 @@
-```# Getting Started with PixSim7 Backend
+# Getting Started with PixSim7 Backend
 
 ## Prerequisites
 
@@ -284,6 +284,5 @@ See `README.md` for full roadmap.
 ## Support
 
 - **Documentation:** See `README.md`
-- **Architecture:** See `docs/PIXSIM7_MIGRATION_PLAN.md`
+- **Architecture:** Start at [docs/README.md](../../../docs/README.md) and [docs/architecture/CURRENT.md](../../../docs/architecture/CURRENT.md)
 - **Issues:** Check existing docs or ask in chat
-```

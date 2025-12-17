@@ -310,7 +310,7 @@ These interactive tools provide real-time visibility into the app's structure an
 4. **Via Plugin Browser:** Dev tools registered as plugins appear in the plugin browser
 
 **Documentation:**
-- [SYSTEM_OVERVIEW.md](./SYSTEM_OVERVIEW.md#dev-tools-surface--debug-workspace) - Dev tools system overview
+- [game-systems/SYSTEM_OVERVIEW.md](./game-systems/SYSTEM_OVERVIEW.md#dev-tools-surface--debug-workspace) - Dev tools system overview
 - [claude-tasks/54-dev-tools-surface-and-debug-workspace.md](../claude-tasks/54-dev-tools-surface-and-debug-workspace.md) - Implementation details
 
 ---

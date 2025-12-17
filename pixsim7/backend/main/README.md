@@ -343,7 +343,7 @@ operation_type: OperationType  # Set once, use everywhere
 
 ## 📝 Migration from PixSim6
 
-See: `docs/PIXSIM7_MIGRATION_PLAN.md`
+See: [docs/PIXSIM7_MIGRATION_PLAN.md](../../../docs/PIXSIM7_MIGRATION_PLAN.md)
 
 **Strategy:** Staged approach
 1. Build PixSim7 core (Week 1-2)
@@ -374,9 +374,9 @@ python -m workers.job_processor
 
 ## 📚 Documentation
 
-- [Migration Plan](../docs/PIXSIM7_MIGRATION_PLAN.md) - What to keep/borrow from PixSim6
-- [Architecture Analysis](../docs/COMPREHENSIVE_ARCHITECTURE_ANALYSIS.md) - PixSim6 issues
-- [Clean Proposal](../docs/PIXSIM7_PROPOSAL.md) - Original clean architecture proposal
+- [Migration Plan](../../../docs/PIXSIM7_MIGRATION_PLAN.md) - What to keep/borrow from PixSim6
+- [Architecture Analysis](../../../docs/COMPREHENSIVE_ARCHITECTURE_ANALYSIS.md) - PixSim6 issues
+- [Clean Proposal](../../../docs/PIXSIM7_PROPOSAL.md) - Original clean architecture proposal
 
 ---
 
