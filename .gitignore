@@ -117,3 +117,6 @@ tests/scenarios/
 # Launcher GUI state files
 launcher/gui/launcher.json
 .claude/settings.local.json
+
+# OpenAPI schema cache (for freshness tracking)
+*.schema-hash
