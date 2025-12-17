@@ -7399,9 +7399,9 @@ export interface components {
             /** Api Key */
             readonly api_key?: string | null;
             /** Api Keys */
-            readonly api_keys?: readonly Record<string, never>[] | null;
+            readonly api_keys?: readonly Record<string, unknown>[] | null;
             /** Cookies */
-            readonly cookies?: Record<string, never> | null;
+            readonly cookies?: Record<string, unknown> | null;
             /**
              * Email
              * Format: email
@@ -7447,7 +7447,7 @@ export interface components {
          */
         readonly AccountResponse: {
             /** Api Keys */
-            readonly api_keys?: readonly Record<string, never>[] | null;
+            readonly api_keys?: readonly Record<string, unknown>[] | null;
             /** Cooldown Until */
             readonly cooldown_until: string | null;
             /**
@@ -7518,9 +7518,9 @@ export interface components {
             /** Api Key */
             readonly api_key?: string | null;
             /** Api Keys */
-            readonly api_keys?: readonly Record<string, never>[] | null;
+            readonly api_keys?: readonly Record<string, unknown>[] | null;
             /** Cookies */
-            readonly cookies?: Record<string, never> | null;
+            readonly cookies?: Record<string, unknown> | null;
             /** Email */
             readonly email?: string | null;
             /** Is Google Account */
@@ -7540,9 +7540,9 @@ export interface components {
             /** Block Id */
             readonly block_id: string;
             /** Block Metadata */
-            readonly block_metadata: Record<string, never>;
+            readonly block_metadata: Record<string, unknown>;
             /** Camera Movement */
-            readonly camera_movement: Record<string, never> | null;
+            readonly camera_movement: Record<string, unknown> | null;
             /** Char Count */
             readonly char_count: number;
             /** Compatible Next */
@@ -7554,7 +7554,7 @@ export interface components {
             /** Component Blocks */
             readonly component_blocks: readonly string[];
             /** Consistency */
-            readonly consistency: Record<string, never> | null;
+            readonly consistency: Record<string, unknown> | null;
             /** Created At */
             readonly created_at: string;
             /** Created By */
@@ -7579,7 +7579,7 @@ export interface components {
             /** Prompt */
             readonly prompt: string;
             /** Reference Image */
-            readonly reference_image: Record<string, never> | null;
+            readonly reference_image: Record<string, unknown> | null;
             /** Source Type */
             readonly source_type: string;
             /** Style */
@@ -7587,7 +7587,7 @@ export interface components {
             /** Success Count */
             readonly success_count: number;
             /** Tags */
-            readonly tags: Record<string, never>;
+            readonly tags: Record<string, unknown>;
             /** Updated At */
             readonly updated_at: string;
             /** Usage Count */
@@ -7625,7 +7625,7 @@ export interface components {
             /** Success Count */
             readonly success_count: number;
             /** Tags */
-            readonly tags: Record<string, never>;
+            readonly tags: Record<string, unknown>;
             /** Usage Count */
             readonly usage_count: number;
             /** Word Count */
@@ -7655,11 +7655,11 @@ export interface components {
          */
         readonly ActionNextResponse: {
             /** Generated Block */
-            readonly generated_block?: Record<string, never> | null;
+            readonly generated_block?: Record<string, unknown> | null;
             /** Generation Error */
             readonly generation_error?: string | null;
             /** Generation Info */
-            readonly generation_info?: Record<string, never> | null;
+            readonly generation_info?: Record<string, unknown> | null;
             /**
              * Mode
              * @enum {string}
@@ -7705,7 +7705,7 @@ export interface components {
          */
         readonly ActionSelectionResponse: {
             /** Blocks */
-            readonly blocks: readonly Record<string, never>[];
+            readonly blocks: readonly Record<string, unknown>[];
             /** Compatibility Score */
             readonly compatibility_score: number;
             /** Fallback Reason */
@@ -7713,9 +7713,9 @@ export interface components {
             /** Prompts */
             readonly prompts: readonly string[];
             /** Resolved Images */
-            readonly resolved_images: readonly Record<string, never>[];
+            readonly resolved_images: readonly Record<string, unknown>[];
             /** Segments */
-            readonly segments: readonly Record<string, never>[];
+            readonly segments: readonly Record<string, unknown>[];
             /** Total Duration */
             readonly total_duration: number;
         };
@@ -7737,7 +7737,7 @@ export interface components {
          */
         readonly ActivityPreviewResponse: {
             /** Npc State */
-            readonly npc_state: Record<string, never>;
+            readonly npc_state: Record<string, unknown>;
             /** Scores */
             readonly scores: {
                 readonly [key: string]: number;
@@ -7750,7 +7750,7 @@ export interface components {
             /** Item Id */
             readonly item_id: string;
             /** Metadata */
-            readonly metadata?: Record<string, never> | null;
+            readonly metadata?: Record<string, unknown> | null;
             /** Name */
             readonly name: string;
             /**
@@ -7764,9 +7764,9 @@ export interface components {
             /** Description */
             readonly description: string;
             /** Metadata */
-            readonly metadata?: Record<string, never> | null;
+            readonly metadata?: Record<string, unknown> | null;
             /** Objectives */
-            readonly objectives: readonly Record<string, never>[];
+            readonly objectives: readonly Record<string, unknown>[];
             /** Quest Id */
             readonly quest_id: string;
             /** Title */
@@ -7956,7 +7956,7 @@ export interface components {
             /** Id */
             readonly id: number;
             /** Params */
-            readonly params: Record<string, never>;
+            readonly params: Record<string, unknown>;
             /** Priority */
             readonly priority: number;
             /** Prompt */
@@ -7964,7 +7964,7 @@ export interface components {
             /** Provider Id */
             readonly provider_id: string;
             /** Result */
-            readonly result: Record<string, never> | null;
+            readonly result: Record<string, unknown> | null;
             /** Started At */
             readonly started_at: string | null;
             /** Status */
@@ -7987,7 +7987,7 @@ export interface components {
              * Analysis
              * @description Analysis result with blocks, tags, ontology_ids
              */
-            readonly analysis: Record<string, never>;
+            readonly analysis: Record<string, unknown>;
             /**
              * Analyzer Id
              * @description Analyzer used
@@ -8079,7 +8079,7 @@ export interface components {
         /** AppActionPreset */
         readonly AppActionPreset: {
             /** Actions */
-            readonly actions?: readonly Record<string, never>[];
+            readonly actions?: readonly Record<string, unknown>[];
             /**
              * App Package
              * @default ai.pixverse.pixverse
@@ -8188,7 +8188,7 @@ export interface components {
              * Tags
              * @description Structured tags (ontology-aligned where possible)
              */
-            readonly tags?: Record<string, never>;
+            readonly tags?: Record<string, unknown>;
         };
         /**
          * ApplyBlockSuggestionResponse
@@ -8339,11 +8339,11 @@ export interface components {
             /** Error Action Index */
             readonly error_action_index?: number | null;
             /** Error Details */
-            readonly error_details?: Record<string, never> | null;
+            readonly error_details?: Record<string, unknown> | null;
             /** Error Message */
             readonly error_message?: string | null;
             /** Execution Context */
-            readonly execution_context?: Record<string, never> | null;
+            readonly execution_context?: Record<string, unknown> | null;
             /** Id */
             readonly id?: number | null;
             /** Loop Id */
@@ -8397,7 +8397,7 @@ export interface components {
              * Providers
              * @description List of available LLM providers
              */
-            readonly providers: readonly Record<string, never>[];
+            readonly providers: readonly Record<string, unknown>[];
         };
         /**
          * BatchSyncCreditsRequest
@@ -8422,7 +8422,7 @@ export interface components {
          */
         readonly BatchSyncCreditsResponse: {
             /** Details */
-            readonly details?: readonly Record<string, never>[];
+            readonly details?: readonly Record<string, unknown>[];
             /** Failed */
             readonly failed: number;
             /**
@@ -8474,11 +8474,11 @@ export interface components {
              */
             readonly prompt_text: string;
             /** Provider Hints */
-            readonly provider_hints?: Record<string, never>;
+            readonly provider_hints?: Record<string, unknown>;
             /** Tags */
             readonly tags?: readonly string[];
             /** Variables */
-            readonly variables?: Record<string, never>;
+            readonly variables?: Record<string, unknown>;
         };
         /**
          * BehaviorConfigResponse
@@ -8486,23 +8486,23 @@ export interface components {
          */
         readonly BehaviorConfigResponse: {
             /** Activities */
-            readonly activities?: Record<string, never> | null;
+            readonly activities?: Record<string, unknown> | null;
             /** Activitycategories */
-            readonly activityCategories?: Record<string, never> | null;
+            readonly activityCategories?: Record<string, unknown> | null;
             /** Customconditionevaluators */
-            readonly customConditionEvaluators?: Record<string, never> | null;
+            readonly customConditionEvaluators?: Record<string, unknown> | null;
             /** Customeffecthandlers */
-            readonly customEffectHandlers?: Record<string, never> | null;
+            readonly customEffectHandlers?: Record<string, unknown> | null;
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** Presets */
-            readonly presets?: Record<string, never> | null;
+            readonly presets?: Record<string, unknown> | null;
             /** Routines */
-            readonly routines?: Record<string, never> | null;
+            readonly routines?: Record<string, unknown> | null;
             /** Scoringconfig */
-            readonly scoringConfig?: Record<string, never> | null;
+            readonly scoringConfig?: Record<string, unknown> | null;
             /** Simulationconfig */
-            readonly simulationConfig?: Record<string, never> | null;
+            readonly simulationConfig?: Record<string, unknown> | null;
             /** Version */
             readonly version: number;
         };
@@ -8569,13 +8569,13 @@ export interface components {
             /** Archetype */
             readonly archetype: string | null;
             /** Behavioral Patterns */
-            readonly behavioral_patterns: Record<string, never>;
+            readonly behavioral_patterns: Record<string, unknown>;
             /** Category */
             readonly category: string;
             /** Character Id */
             readonly character_id: string;
             /** Character Metadata */
-            readonly character_metadata: Record<string, never>;
+            readonly character_metadata: Record<string, unknown>;
             /** Created At */
             readonly created_at: string;
             /** Created By */
@@ -8583,7 +8583,7 @@ export interface components {
             /** Display Name */
             readonly display_name: string | null;
             /** Game Metadata */
-            readonly game_metadata: Record<string, never>;
+            readonly game_metadata: Record<string, unknown>;
             /** Game Npc Id */
             readonly game_npc_id: string | null;
             /**
@@ -8596,7 +8596,7 @@ export interface components {
             /** Name */
             readonly name: string | null;
             /** Personality Traits */
-            readonly personality_traits: Record<string, never>;
+            readonly personality_traits: Record<string, unknown>;
             /** Previous Version Id */
             readonly previous_version_id: string | null;
             /** Reference Images */
@@ -8610,7 +8610,7 @@ export interface components {
             /** Sync With Game */
             readonly sync_with_game: boolean;
             /** Tags */
-            readonly tags: Record<string, never>;
+            readonly tags: Record<string, unknown>;
             /** Updated At */
             readonly updated_at: string;
             /** Usage Count */
@@ -8620,16 +8620,16 @@ export interface components {
             /** Version Notes */
             readonly version_notes: string | null;
             /** Visual Traits */
-            readonly visual_traits: Record<string, never>;
+            readonly visual_traits: Record<string, unknown>;
             /** Voice Profile */
-            readonly voice_profile: Record<string, never>;
+            readonly voice_profile: Record<string, unknown>;
         };
         /** CharacterResponse */
         readonly CharacterResponse: {
             /** Archetype */
             readonly archetype: string | null;
             /** Behavioral Patterns */
-            readonly behavioral_patterns: Record<string, never>;
+            readonly behavioral_patterns: Record<string, unknown>;
             /** Category */
             readonly category: string;
             /** Character Id */
@@ -8646,7 +8646,7 @@ export interface components {
             /** Name */
             readonly name: string | null;
             /** Personality Traits */
-            readonly personality_traits: Record<string, never>;
+            readonly personality_traits: Record<string, unknown>;
             /** Render Style */
             readonly render_style: string | null;
             /** Species */
@@ -8658,7 +8658,7 @@ export interface components {
             /** Version */
             readonly version: number;
             /** Visual Traits */
-            readonly visual_traits: Record<string, never>;
+            readonly visual_traits: Record<string, unknown>;
         };
         /** CompletePairingRequest */
         readonly CompletePairingRequest: {
@@ -8711,7 +8711,7 @@ export interface components {
              * Concepts
              * @description Concepts to confirm and formalize
              */
-            readonly concepts: readonly Record<string, never>[];
+            readonly concepts: readonly Record<string, unknown>[];
             /** Confirmed By */
             readonly confirmed_by?: string | null;
         };
@@ -8744,7 +8744,7 @@ export interface components {
             /** Provider Id */
             readonly provider_id: string;
             /** Raw Data */
-            readonly raw_data: Record<string, never>;
+            readonly raw_data: Record<string, unknown>;
             /** Url */
             readonly url: string;
         };
@@ -8810,7 +8810,7 @@ export interface components {
              */
             readonly style: string | null;
             /** Tags */
-            readonly tags?: Record<string, never>;
+            readonly tags?: Record<string, unknown>;
         };
         /**
          * CreateActivityRequest
@@ -8818,7 +8818,7 @@ export interface components {
          */
         readonly CreateActivityRequest: {
             /** Activity */
-            readonly activity: Record<string, never>;
+            readonly activity: Record<string, unknown>;
         };
         /**
          * CreateAnalysisRequest
@@ -8836,7 +8836,7 @@ export interface components {
              * Params
              * @description Additional parameters for the analysis
              */
-            readonly params?: Record<string, never> | null;
+            readonly params?: Record<string, unknown> | null;
             /**
              * Priority
              * @description Job priority (0=highest, 10=lowest)
@@ -8865,7 +8865,7 @@ export interface components {
              * Behavioral Patterns
              * @description Behavior patterns (movement_style, social_behavior, quirks)
              */
-            readonly behavioral_patterns?: Record<string, never>;
+            readonly behavioral_patterns?: Record<string, unknown>;
             /**
              * Category
              * @description Category: creature, human, hybrid, fantasy
@@ -8896,7 +8896,7 @@ export interface components {
              * Personality Traits
              * @description Personality (demeanor, intelligence, temperament)
              */
-            readonly personality_traits?: Record<string, never>;
+            readonly personality_traits?: Record<string, unknown>;
             /**
              * Reference Images
              * @description Reference image URLs
@@ -8928,17 +8928,17 @@ export interface components {
              * Tags
              * @description Custom tags
              */
-            readonly tags?: Record<string, never>;
+            readonly tags?: Record<string, unknown>;
             /**
              * Visual Traits
              * @description Visual appearance (build, height, skin_fur, eyes, etc.)
              */
-            readonly visual_traits?: Record<string, never>;
+            readonly visual_traits?: Record<string, unknown>;
             /**
              * Voice Profile
              * @description Voice/sound profile
              */
-            readonly voice_profile?: Record<string, never>;
+            readonly voice_profile?: Record<string, unknown>;
         };
         /**
          * CreateGenerationRequest
@@ -9031,7 +9031,7 @@ export interface components {
             /** Template Id */
             readonly template_id?: string | null;
             /** Template Variables */
-            readonly template_variables?: Record<string, never> | null;
+            readonly template_variables?: Record<string, unknown> | null;
             readonly to_scene?: components["schemas"]["SceneRefSchema"] | null;
             /** Workspace Id */
             readonly workspace_id?: number | null;
@@ -9099,11 +9099,11 @@ export interface components {
              */
             readonly prompt_text: string;
             /** Provider Hints */
-            readonly provider_hints?: Record<string, never>;
+            readonly provider_hints?: Record<string, unknown>;
             /** Tags */
             readonly tags?: readonly string[];
             /** Variables */
-            readonly variables?: Record<string, never>;
+            readonly variables?: Record<string, unknown>;
         };
         /**
          * CreateRoutineRequest
@@ -9111,12 +9111,12 @@ export interface components {
          */
         readonly CreateRoutineRequest: {
             /** Routine */
-            readonly routine: Record<string, never>;
+            readonly routine: Record<string, unknown>;
         };
         /** CreateSessionRequest */
         readonly CreateSessionRequest: {
             /** Flags */
-            readonly flags?: Record<string, never> | null;
+            readonly flags?: Record<string, unknown> | null;
             /** Scene Id */
             readonly scene_id: number;
             /** World Id */
@@ -9125,7 +9125,7 @@ export interface components {
         /** CreateWorldRequest */
         readonly CreateWorldRequest: {
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** Name */
             readonly name: string;
         };
@@ -9164,11 +9164,11 @@ export interface components {
         /** DevPromptVersionDetail */
         readonly DevPromptVersionDetail: {
             /** Prompt Analysis */
-            readonly prompt_analysis: Record<string, never> | null;
+            readonly prompt_analysis: Record<string, unknown> | null;
             /** Prompt Text */
             readonly prompt_text: string;
             /** Provider Hints */
-            readonly provider_hints: Record<string, never>;
+            readonly provider_hints: Record<string, unknown>;
             readonly version: components["schemas"]["DevPromptVersionSummary"];
         };
         /** DevPromptVersionSummary */
@@ -9198,19 +9198,19 @@ export interface components {
          */
         readonly DialogueDebugResponse: {
             /** Context */
-            readonly context: Record<string, never>;
+            readonly context: Record<string, unknown>;
             /**
              * Debug
              * @default {}
              */
-            readonly debug: Record<string, never>;
+            readonly debug: Record<string, unknown>;
             /** Llm Prompt */
             readonly llm_prompt: string;
             /**
              * Meta
              * @default {}
              */
-            readonly meta: Record<string, never>;
+            readonly meta: Record<string, unknown>;
             /** Visual Prompt */
             readonly visual_prompt?: string | null;
         };
@@ -9252,7 +9252,7 @@ export interface components {
              * Meta
              * @default {}
              */
-            readonly meta: Record<string, never>;
+            readonly meta: Record<string, unknown>;
             /** Visual Prompt */
             readonly visual_prompt?: string | null;
         };
@@ -9299,7 +9299,7 @@ export interface components {
          */
         readonly ExecuteInteractionRequest: {
             /** Context */
-            readonly context?: Record<string, never> | null;
+            readonly context?: Record<string, unknown> | null;
             /** Interactionid */
             readonly interactionId: string;
             /** Npcid */
@@ -9331,7 +9331,7 @@ export interface components {
             /** Timestamp */
             readonly timestamp: number;
             /** Updatedsession */
-            readonly updatedSession?: Record<string, never> | null;
+            readonly updatedSession?: Record<string, unknown> | null;
         };
         /**
          * ExecuteLoopForAccountRequest
@@ -9603,7 +9603,7 @@ export interface components {
              * Details
              * @description Detailed breakdown
              */
-            readonly details: Record<string, never>;
+            readonly details: Record<string, unknown>;
             /**
              * Explanation
              * @description Human-readable explanation
@@ -9650,7 +9650,7 @@ export interface components {
             /** Linked Scene Id */
             readonly linked_scene_id?: number | null;
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** Object Name */
             readonly object_name: string;
         };
@@ -9665,7 +9665,7 @@ export interface components {
             /** Id */
             readonly id: number;
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** Name */
             readonly name: string;
         };
@@ -9685,13 +9685,13 @@ export interface components {
             /** Current Node Id */
             readonly current_node_id: number;
             /** Flags */
-            readonly flags: Record<string, never>;
+            readonly flags: Record<string, unknown>;
             /** Id */
             readonly id: number;
             /** Scene Id */
             readonly scene_id: number;
             /** Stats */
-            readonly stats: Record<string, never>;
+            readonly stats: Record<string, unknown>;
             /** User Id */
             readonly user_id: number;
             /** Version */
@@ -9706,7 +9706,7 @@ export interface components {
             /** Id */
             readonly id: number;
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** Name */
             readonly name: string;
             /** World Time */
@@ -9725,11 +9725,11 @@ export interface components {
          */
         readonly GenerateActionBlockRequest: {
             /** Camera Settings */
-            readonly camera_settings?: Record<string, never> | null;
+            readonly camera_settings?: Record<string, unknown> | null;
             /** Concept Type */
             readonly concept_type: string;
             /** Consistency Settings */
-            readonly consistency_settings?: Record<string, never> | null;
+            readonly consistency_settings?: Record<string, unknown> | null;
             /**
              * Content Rating
              * @default general
@@ -9741,9 +9741,9 @@ export interface components {
              */
             readonly duration: number | null;
             /** Intensity Settings */
-            readonly intensity_settings?: Record<string, never> | null;
+            readonly intensity_settings?: Record<string, unknown> | null;
             /** Parameters */
-            readonly parameters: Record<string, never>;
+            readonly parameters: Record<string, unknown>;
             readonly previous_segment?: components["schemas"]["PreviousSegmentInput"] | null;
         };
         /**
@@ -9752,7 +9752,7 @@ export interface components {
          */
         readonly GenerateActionBlockResponse: {
             /** Action Block */
-            readonly action_block?: Record<string, never> | null;
+            readonly action_block?: Record<string, unknown> | null;
             /** Error Message */
             readonly error_message?: string | null;
             /** Generation Time */
@@ -9907,7 +9907,7 @@ export interface components {
             /** Asset Id */
             readonly asset_id: number | null;
             /** Canonical Params */
-            readonly canonical_params: Record<string, never>;
+            readonly canonical_params: Record<string, unknown>;
             /** Completed At */
             readonly completed_at: string | null;
             /**
@@ -9924,7 +9924,7 @@ export interface components {
             /** Id */
             readonly id: number;
             /** Inputs */
-            readonly inputs: readonly Record<string, never>[];
+            readonly inputs: readonly Record<string, unknown>[];
             /** Name */
             readonly name: string | null;
             readonly operation_type: components["schemas"]["OperationType"];
@@ -9933,7 +9933,7 @@ export interface components {
             /** Priority */
             readonly priority: number;
             /** Prompt Config */
-            readonly prompt_config: Record<string, never> | null;
+            readonly prompt_config: Record<string, unknown> | null;
             /** Prompt Source Type */
             readonly prompt_source_type: string | null;
             /** Prompt Version Id */
@@ -9941,7 +9941,7 @@ export interface components {
             /** Provider Id */
             readonly provider_id: string;
             /** Raw Params */
-            readonly raw_params: Record<string, never>;
+            readonly raw_params: Record<string, unknown>;
             /** Reproducible Hash */
             readonly reproducible_hash: string | null;
             /** Retry Count */
@@ -9973,7 +9973,7 @@ export interface components {
             /** Intimacy Level Id */
             readonly intimacy_level_id?: string | null;
             /** Relationship State */
-            readonly relationship_state?: Record<string, never> | null;
+            readonly relationship_state?: Record<string, unknown> | null;
             /** Tier Id */
             readonly tier_id?: string | null;
             /** User Max Rating */
@@ -10015,7 +10015,7 @@ export interface components {
              * Import Data
              * @description Exported family data or raw prompt text
              */
-            readonly import_data: Record<string, never> | string;
+            readonly import_data: Record<string, unknown> | string;
             /**
              * Preserve Metadata
              * @description Keep original authors/timestamps
@@ -10048,7 +10048,7 @@ export interface components {
             readonly moodTags?: readonly string[] | null;
             readonly relationshipSnapshot?: components["schemas"]["RelationshipSnapshot"] | null;
             /** Sessionflags */
-            readonly sessionFlags?: Record<string, never> | null;
+            readonly sessionFlags?: Record<string, unknown> | null;
             /** Statetags */
             readonly stateTags?: readonly string[] | null;
             /** Worldtime */
@@ -10081,7 +10081,7 @@ export interface components {
              * Metadata
              * @default {}
              */
-            readonly metadata: Record<string, never>;
+            readonly metadata: Record<string, unknown>;
             /** Name */
             readonly name: string;
             /**
@@ -10134,7 +10134,7 @@ export interface components {
              * Logs
              * @description List of log entries
              */
-            readonly logs: readonly Record<string, never>[];
+            readonly logs: readonly Record<string, unknown>[];
         };
         /**
          * LogEntry
@@ -10183,7 +10183,7 @@ export interface components {
             /** Error Type */
             readonly error_type: string | null;
             /** Extra */
-            readonly extra: Record<string, never> | null;
+            readonly extra: Record<string, unknown> | null;
             /** Id */
             readonly id: number;
             /** Job Id */
@@ -10251,7 +10251,7 @@ export interface components {
              * Extra
              * @description Additional context
              */
-            readonly extra?: Record<string, never> | null;
+            readonly extra?: Record<string, unknown> | null;
             /** Job Id */
             readonly job_id?: number | null;
             /**
@@ -10384,7 +10384,7 @@ export interface components {
             /** Head Revision */
             readonly head_revision: string | null;
             /** History */
-            readonly history: readonly Record<string, never>[];
+            readonly history: readonly Record<string, unknown>[];
             /** Is Up To Date */
             readonly is_up_to_date: boolean;
             /** Pending Migrations */
@@ -10395,11 +10395,11 @@ export interface components {
             /** Asset Id */
             readonly asset_id: number;
             /** Crop */
-            readonly crop?: Record<string, never> | null;
+            readonly crop?: Record<string, unknown> | null;
             /** Id */
             readonly id?: number | null;
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** State */
             readonly state: string;
         };
@@ -10442,7 +10442,7 @@ export interface components {
             /** Npc Id */
             readonly npc_id: number;
             /** State */
-            readonly state: Record<string, never>;
+            readonly state: Record<string, unknown>;
         };
         /** NpcSummary */
         readonly NpcSummary: {
@@ -10468,7 +10468,7 @@ export interface components {
             readonly source_plugin_id?: string | null;
             /** Surface Types */
             readonly surface_types: {
-                readonly [key: string]: Record<string, never>;
+                readonly [key: string]: Record<string, unknown>;
             };
         };
         /**
@@ -10591,7 +10591,7 @@ export interface components {
             /** Success */
             readonly success: boolean;
             /** Updated Flags */
-            readonly updated_flags: Record<string, never>;
+            readonly updated_flags: Record<string, unknown>;
         };
         /**
          * LogQueryResponse
@@ -10599,7 +10599,7 @@ export interface components {
          */
         readonly pixsim7__backend__main__api__v1__admin__LogQueryResponse: {
             /** Filters */
-            readonly filters: Record<string, never>;
+            readonly filters: Record<string, unknown>;
             /** Limit */
             readonly limit: number;
             /** Logs */
@@ -10698,7 +10698,7 @@ export interface components {
             /** Last Login At */
             readonly last_login_at?: string | null;
             /** Preferences */
-            readonly preferences?: Record<string, never>;
+            readonly preferences?: Record<string, unknown>;
             /** Role */
             readonly role: string;
             /**
@@ -10786,7 +10786,7 @@ export interface components {
          */
         readonly PixverseStatusResponse: {
             /** Ad Watch Task */
-            readonly ad_watch_task?: Record<string, never> | null;
+            readonly ad_watch_task?: Record<string, unknown> | null;
             /** Credits */
             readonly credits: {
                 readonly [key: string]: number;
@@ -10802,7 +10802,7 @@ export interface components {
          */
         readonly PlayerContextSnapshotSchema: {
             /** Choices */
-            readonly choices?: Record<string, never> | null;
+            readonly choices?: Record<string, unknown> | null;
             /** Flags */
             readonly flags?: {
                 readonly [key: string]: boolean;
@@ -10935,7 +10935,7 @@ export interface components {
          */
         readonly PreviewEntityStatsResponse: {
             /** Normalized Stats */
-            readonly normalized_stats: Record<string, never>;
+            readonly normalized_stats: Record<string, unknown>;
             /** Stat Definition Id */
             readonly stat_definition_id: string;
         };
@@ -11075,7 +11075,7 @@ export interface components {
             /** Existing Ontology Ids */
             readonly existing_ontology_ids: readonly string[];
             /** Parser Roles */
-            readonly parser_roles: readonly Record<string, never>[];
+            readonly parser_roles: readonly Record<string, unknown>[];
             /** Prompt Text */
             readonly prompt_text: string;
             /** Suggested Action Blocks */
@@ -11085,7 +11085,7 @@ export interface components {
             /** Suggested Packs */
             readonly suggested_packs: readonly components["schemas"]["SuggestedPackEntry"][];
             /** Suggestions */
-            readonly suggestions: Record<string, never>;
+            readonly suggestions: Record<string, unknown>;
         };
         /**
          * PromptEditRequest
@@ -11096,7 +11096,7 @@ export interface components {
              * Context
              * @description Optional context (generation metadata, user preferences, etc.)
              */
-            readonly context?: Record<string, never> | null;
+            readonly context?: Record<string, unknown> | null;
             /**
              * Generation Id
              * @description Optional generation ID to link this interaction to
@@ -11215,7 +11215,7 @@ export interface components {
              * Family Metadata
              * @description Additional family metadata
              */
-            readonly family_metadata?: Record<string, never> | null;
+            readonly family_metadata?: Record<string, unknown> | null;
             /**
              * Family Slug
              * @description Custom slug (auto-generated if not provided)
@@ -11251,7 +11251,7 @@ export interface components {
              * Version Metadata
              * @description Additional version metadata
              */
-            readonly version_metadata?: Record<string, never> | null;
+            readonly version_metadata?: Record<string, unknown> | null;
         };
         /**
          * PromptImportResponse
@@ -11347,7 +11347,7 @@ export interface components {
          */
         readonly ProviderInfo: {
             /** Capabilities */
-            readonly capabilities?: Record<string, never> | null;
+            readonly capabilities?: Record<string, unknown> | null;
             /** Domains */
             readonly domains: readonly string[];
             /** Name */
@@ -11402,7 +11402,7 @@ export interface components {
              * Metadata
              * @default {}
              */
-            readonly metadata: Record<string, never>;
+            readonly metadata: Record<string, unknown>;
             /**
              * Objectives
              * @default []
@@ -11623,9 +11623,9 @@ export interface components {
              */
             readonly strict: boolean;
             /** Variable Defs */
-            readonly variable_defs?: Record<string, never> | null;
+            readonly variable_defs?: Record<string, unknown> | null;
             /** Variables */
-            readonly variables: Record<string, never>;
+            readonly variables: Record<string, unknown>;
         };
         /**
          * ReuploadAssetRequest
@@ -11697,9 +11697,9 @@ export interface components {
          */
         readonly SceneNode: {
             /** Choices */
-            readonly choices?: readonly Record<string, never>[] | null;
+            readonly choices?: readonly Record<string, unknown>[] | null;
             /** Condition */
-            readonly condition?: Record<string, never> | null;
+            readonly condition?: Record<string, unknown> | null;
             /** Endmessage */
             readonly endMessage?: string | null;
             /** Endtype */
@@ -11715,19 +11715,19 @@ export interface components {
             /** Mediaurl */
             readonly mediaUrl?: string | null;
             /** Meta */
-            readonly meta?: Record<string, never> | null;
+            readonly meta?: Record<string, unknown> | null;
             /** Parameterbindings */
-            readonly parameterBindings?: Record<string, never> | null;
+            readonly parameterBindings?: Record<string, unknown> | null;
             /** Playback */
-            readonly playback?: Record<string, never> | null;
+            readonly playback?: Record<string, unknown> | null;
             /** Returnpointid */
             readonly returnPointId?: string | null;
             /** Returnrouting */
-            readonly returnRouting?: Record<string, never> | null;
+            readonly returnRouting?: Record<string, unknown> | null;
             /** Returnvalues */
-            readonly returnValues?: Record<string, never> | null;
+            readonly returnValues?: Record<string, unknown> | null;
             /** Selection */
-            readonly selection?: Record<string, never> | null;
+            readonly selection?: Record<string, unknown> | null;
             /** Targetsceneid */
             readonly targetSceneId?: string | null;
             /** Truetargetnodeid */
@@ -11779,7 +11779,7 @@ export interface components {
              * @default {}
              */
             readonly changed_ranges: {
-                readonly [key: string]: Record<string, never>;
+                readonly [key: string]: Record<string, unknown>;
             };
             /**
              * Removed Ids
@@ -11798,7 +11798,7 @@ export interface components {
              */
             readonly dry_run: boolean;
             /** New Schemas */
-            readonly new_schemas: Record<string, never>;
+            readonly new_schemas: Record<string, unknown>;
         };
         /**
          * SchemaEvolutionResponse
@@ -11872,7 +11872,7 @@ export interface components {
             /** Description */
             readonly description?: string | null;
             /** Extra */
-            readonly extra?: Record<string, never>;
+            readonly extra?: Record<string, unknown>;
             /** Id */
             readonly id: string;
             /** Label */
@@ -11900,10 +11900,10 @@ export interface components {
          */
         readonly SemanticPackExportResponse: {
             /** Action Blocks */
-            readonly action_blocks?: readonly Record<string, never>[];
+            readonly action_blocks?: readonly Record<string, unknown>[];
             readonly manifest: components["schemas"]["SemanticPackManifest"];
             /** Prompt Families */
-            readonly prompt_families?: readonly Record<string, never>[];
+            readonly prompt_families?: readonly Record<string, unknown>[];
         };
         /**
          * SemanticPackManifest
@@ -11937,7 +11937,7 @@ export interface components {
              * Extra
              * @description Additional flexible metadata
              */
-            readonly extra?: Record<string, never>;
+            readonly extra?: Record<string, unknown>;
             /**
              * Id
              * @description Pack ID (e.g. 'minotaur_city_pack')
@@ -11995,7 +11995,7 @@ export interface components {
          * SemanticPackPublishRequest
          * @description Request schema for publishing a semantic pack
          */
-        readonly SemanticPackPublishRequest: Record<string, never>;
+        readonly SemanticPackPublishRequest: Record<string, unknown>;
         /**
          * SemanticPackStatus
          * @description Status of a semantic pack
@@ -12042,7 +12042,7 @@ export interface components {
             /** Tool Unlocked */
             readonly tool_unlocked: string | null;
             /** Updated Flags */
-            readonly updated_flags: Record<string, never>;
+            readonly updated_flags: Record<string, unknown>;
         };
         /** ServiceCommand */
         readonly ServiceCommand: {
@@ -12073,7 +12073,7 @@ export interface components {
              * Details
              * @default {}
              */
-            readonly details: Record<string, never>;
+            readonly details: Record<string, unknown>;
             /** Healthy */
             readonly healthy: boolean;
             /**
@@ -12137,9 +12137,9 @@ export interface components {
             /** Expected Version */
             readonly expected_version?: number | null;
             /** Flags */
-            readonly flags?: Record<string, never> | null;
+            readonly flags?: Record<string, unknown> | null;
             /** Stats */
-            readonly stats?: Record<string, never> | null;
+            readonly stats?: Record<string, unknown> | null;
             /** World Time */
             readonly world_time?: number | null;
         };
@@ -12222,7 +12222,7 @@ export interface components {
             /** Prompt */
             readonly prompt: string;
             /** Tags */
-            readonly tags: Record<string, never>;
+            readonly tags: Record<string, unknown>;
         };
         /**
          * SuggestedOntologyId
@@ -12333,7 +12333,7 @@ export interface components {
             /** Account Id */
             readonly account_id: number;
             /** Actions */
-            readonly actions: readonly Record<string, never>[];
+            readonly actions: readonly Record<string, unknown>[];
             /** Device Id */
             readonly device_id?: number | null;
             /** End Index */
@@ -12344,7 +12344,7 @@ export interface components {
              */
             readonly start_index: number;
             /** Variables */
-            readonly variables?: readonly Record<string, never>[] | null;
+            readonly variables?: readonly Record<string, unknown>[] | null;
         };
         /**
          * TestGenerationRequest
@@ -12490,7 +12490,7 @@ export interface components {
             /** Prompt */
             readonly prompt?: string | null;
             /** Tags */
-            readonly tags?: Record<string, never> | null;
+            readonly tags?: Record<string, unknown> | null;
         };
         /**
          * UpdateActivityRequest
@@ -12498,7 +12498,7 @@ export interface components {
          */
         readonly UpdateActivityRequest: {
             /** Activity */
-            readonly activity: Record<string, never>;
+            readonly activity: Record<string, unknown>;
         };
         /**
          * UpdateBehaviorConfigRequest
@@ -12506,12 +12506,12 @@ export interface components {
          */
         readonly UpdateBehaviorConfigRequest: {
             /** Config */
-            readonly config: Record<string, never>;
+            readonly config: Record<string, unknown>;
         };
         /** UpdateCharacterRequest */
         readonly UpdateCharacterRequest: {
             /** Behavioral Patterns */
-            readonly behavioral_patterns?: Record<string, never> | null;
+            readonly behavioral_patterns?: Record<string, unknown> | null;
             /**
              * Create Version
              * @description Create new version instead of updating
@@ -12523,7 +12523,7 @@ export interface components {
             /** Name */
             readonly name?: string | null;
             /** Personality Traits */
-            readonly personality_traits?: Record<string, never> | null;
+            readonly personality_traits?: Record<string, unknown> | null;
             /** Render Instructions */
             readonly render_instructions?: string | null;
             /**
@@ -12532,14 +12532,14 @@ export interface components {
              */
             readonly version_notes?: string | null;
             /** Visual Traits */
-            readonly visual_traits?: Record<string, never> | null;
+            readonly visual_traits?: Record<string, unknown> | null;
             /** Voice Profile */
-            readonly voice_profile?: Record<string, never> | null;
+            readonly voice_profile?: Record<string, unknown> | null;
         };
         /** UpdateItemRequest */
         readonly UpdateItemRequest: {
             /** Metadata */
-            readonly metadata?: Record<string, never> | null;
+            readonly metadata?: Record<string, unknown> | null;
             /** Name */
             readonly name?: string | null;
             /** Quantity */
@@ -12565,7 +12565,7 @@ export interface components {
          */
         readonly UpdateRoutineRequest: {
             /** Routine */
-            readonly routine: Record<string, never>;
+            readonly routine: Record<string, unknown>;
         };
         /**
          * UpdateSchedulerConfigRequest
@@ -12603,7 +12603,7 @@ export interface components {
              * Preferences
              * @description User preferences dictionary
              */
-            readonly preferences: Record<string, never>;
+            readonly preferences: Record<string, unknown>;
         };
         /**
          * UpdateUserRequest
@@ -12618,7 +12618,7 @@ export interface components {
         /** UpdateWorldMetaRequest */
         readonly UpdateWorldMetaRequest: {
             /** Meta */
-            readonly meta: Record<string, never>;
+            readonly meta: Record<string, unknown>;
         };
         /** UploadAssetResponse */
         readonly UploadAssetResponse: {
@@ -12667,7 +12667,7 @@ export interface components {
          */
         readonly UserPreferencesResponse: {
             /** Preferences */
-            readonly preferences?: Record<string, never>;
+            readonly preferences?: Record<string, unknown>;
         };
         /**
          * UserQuotaResponse
@@ -12716,7 +12716,7 @@ export interface components {
          */
         readonly ValidateBehaviorConfigRequest: {
             /** Config */
-            readonly config: Record<string, never>;
+            readonly config: Record<string, unknown>;
         };
         /** ValidatePromptRequest */
         readonly ValidatePromptRequest: {
@@ -12741,7 +12741,7 @@ export interface components {
             /** Prompt Text */
             readonly prompt_text: string;
             /** Variable Defs */
-            readonly variable_defs?: Record<string, never> | null;
+            readonly variable_defs?: Record<string, unknown> | null;
         };
         /** ValidateVersionRequest */
         readonly ValidateVersionRequest: {
@@ -12754,7 +12754,7 @@ export interface components {
              * Variables
              * @description Variables to render prompt
              */
-            readonly variables?: Record<string, never>;
+            readonly variables?: Record<string, unknown>;
             /**
              * Version Id
              * Format: uuid
@@ -12870,7 +12870,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": Record<string, never>;
+                readonly "application/json": Record<string, unknown>;
             };
         };
         readonly responses: {
@@ -12880,7 +12880,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -12911,7 +12911,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -12944,7 +12944,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -12975,7 +12975,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -13011,7 +13011,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -13998,7 +13998,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14064,7 +14064,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14099,7 +14099,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14128,7 +14128,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -14151,7 +14151,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly Record<string, never>[];
+                    readonly "application/json": readonly Record<string, unknown>[];
                 };
             };
             /** @description Validation Error */
@@ -14180,7 +14180,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly Record<string, never>[];
+                    readonly "application/json": readonly Record<string, unknown>[];
                 };
             };
         };
@@ -14202,7 +14202,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14236,7 +14236,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14271,7 +14271,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14306,7 +14306,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14340,7 +14340,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14375,7 +14375,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -14404,7 +14404,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -14508,7 +14508,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -14536,7 +14536,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly Record<string, never>[];
+                    readonly "application/json": readonly Record<string, unknown>[];
                 };
             };
             /** @description Validation Error */
@@ -16012,7 +16012,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -16032,7 +16032,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -17411,7 +17411,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -17444,7 +17444,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -17478,7 +17478,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -17512,7 +17512,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly Record<string, never>[];
+                    readonly "application/json": readonly Record<string, unknown>[];
                 };
             };
             /** @description Validation Error */
@@ -17545,7 +17545,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -17607,7 +17607,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -17630,7 +17630,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -17899,7 +17899,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -18179,7 +18179,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -18214,7 +18214,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -18355,7 +18355,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -18388,7 +18388,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -18526,7 +18526,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -18594,7 +18594,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -19094,7 +19094,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": Record<string, never>;
+                readonly "application/json": Record<string, unknown>;
             };
         };
         readonly responses: {
@@ -19261,7 +19261,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": Record<string, never>;
+                readonly "application/json": Record<string, unknown>;
             };
         };
         readonly responses: {
@@ -19606,7 +19606,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -20093,7 +20093,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -20131,7 +20131,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -20239,7 +20239,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -20277,7 +20277,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -20488,7 +20488,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -20525,7 +20525,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -23448,7 +23448,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -23477,7 +23477,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, never>;
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };

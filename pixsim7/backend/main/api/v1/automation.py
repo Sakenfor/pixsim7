@@ -22,6 +22,49 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/automation", tags=["automation"])
 
 
+# ============================================================================
+# Response DTOs
+# ============================================================================
+
+class DeviceScanResponse(BaseModel):
+    """Response from device scan operation."""
+    scanned: int
+    added: int
+    updated: int
+    offline: int
+
+
+class ExecutePresetResponse(BaseModel):
+    """Response from executing a preset for an account."""
+    status: str
+    execution_id: int
+    task_id: str
+    account_id: int
+    preset_id: int
+    preset_name: str
+
+
+class TestActionsResponse(BaseModel):
+    """Response from test actions execution."""
+    status: str
+    execution_id: Optional[int] = None
+    task_id: Optional[str] = None
+    actions_count: Optional[int] = None
+    message: Optional[str] = None  # Used when status="skipped"
+
+
+class ClearExecutionsResponse(BaseModel):
+    """Response from clearing automation executions."""
+    status: str
+    deleted: int
+    filter: str
+
+
+class StatusResponse(BaseModel):
+    """Generic status response for simple operations."""
+    status: str
+
+
 @router.get("/devices", response_model=List[AndroidDevice])
 async def list_devices(
     user: CurrentUser,
@@ -45,11 +88,12 @@ async def list_devices(
     return result.scalars().all()
 
 
-@router.post("/devices/scan")
-async def scan_devices(db: AsyncSession = Depends(get_db)):
+@router.post("/devices/scan", response_model=DeviceScanResponse)
+async def scan_devices(db: AsyncSession = Depends(get_db)) -> DeviceScanResponse:
+    """Scan for ADB devices and sync to database."""
     svc = DeviceSyncService(db)
     stats = await svc.scan_and_sync()
-    return stats
+    return DeviceScanResponse(**stats)
 
 
 @router.get("/loops", response_model=List[ExecutionLoop])
@@ -328,11 +372,11 @@ async def list_executions(
     return result.scalars().all()
 
 
-@router.delete("/executions/clear")
+@router.delete("/executions/clear", response_model=ClearExecutionsResponse)
 async def clear_executions(
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
-):
+) -> ClearExecutionsResponse:
     """
     Clear (delete) automation executions by status.
 
@@ -366,11 +410,11 @@ async def clear_executions(
 
     deleted_count = result.rowcount
 
-    return {
-        "status": "ok",
-        "deleted": deleted_count,
-        "filter": status if status else "completed,failed"
-    }
+    return ClearExecutionsResponse(
+        status="ok",
+        deleted=deleted_count,
+        filter=status if status else "completed,failed"
+    )
 
 
 @router.get("/executions/{execution_id}", response_model=AutomationExecution)
@@ -435,11 +479,11 @@ class ExecutePresetRequest(BaseModel):
     priority: int = 1
 
 
-@router.post("/execute-preset")
+@router.post("/execute-preset", response_model=ExecutePresetResponse)
 async def execute_preset_for_account(
     request: ExecutePresetRequest,
     db: AsyncSession = Depends(get_db)
-):
+) -> ExecutePresetResponse:
     """
     Execute a single preset for a specific account.
 
@@ -476,14 +520,14 @@ async def execute_preset_for_account(
     execution.task_id = task_id
     await db.commit()
 
-    return {
-        "status": "queued",
-        "execution_id": execution.id,
-        "task_id": task_id,
-        "account_id": request.account_id,
-        "preset_id": request.preset_id,
-        "preset_name": preset.name
-    }
+    return ExecutePresetResponse(
+        status="queued",
+        execution_id=execution.id,
+        task_id=task_id,
+        account_id=request.account_id,
+        preset_id=request.preset_id,
+        preset_name=preset.name
+    )
 
 
 class TestActionsRequest(BaseModel):
@@ -496,11 +540,11 @@ class TestActionsRequest(BaseModel):
     end_index: Optional[int] = None  # None = run to end
 
 
-@router.post("/test-actions")
+@router.post("/test-actions", response_model=TestActionsResponse)
 async def test_actions(
     request: TestActionsRequest,
     db: AsyncSession = Depends(get_db)
-):
+) -> TestActionsResponse:
     """
     Test actions by creating a queued execution (reuses existing infrastructure).
 
@@ -526,10 +570,10 @@ async def test_actions(
     actions_to_run = actions[start:end]
 
     if not actions_to_run:
-        return {
-            "status": "skipped",
-            "message": "No actions to test"
-        }
+        return TestActionsResponse(
+            status="skipped",
+            message="No actions to test"
+        )
 
     # Create execution with test actions stored in execution_context
     execution = AutomationExecution(
@@ -557,12 +601,12 @@ async def test_actions(
     execution.task_id = task_id
     await db.commit()
 
-    return {
-        "status": "queued",
-        "execution_id": execution.id,
-        "task_id": task_id,
-        "actions_count": len(actions_to_run)
-    }
+    return TestActionsResponse(
+        status="queued",
+        execution_id=execution.id,
+        task_id=task_id,
+        actions_count=len(actions_to_run)
+    )
 
 
 class ExecuteLoopForAccountRequest(BaseModel):

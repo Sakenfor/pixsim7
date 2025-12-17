@@ -73,6 +73,12 @@ class CompletePairingRequest(BaseModel):
     pairing_code: str
 
 
+class CompletePairingResponse(BaseModel):
+    """Response from completing agent pairing."""
+    status: str
+    agent_id: str
+
+
 class PairingStatusResponse(BaseModel):
     status: str  # "pending" | "paired" | "expired" | "unknown"
 
@@ -191,12 +197,12 @@ async def request_pairing(
     return PairingStartResponse(pairing_code=pairing_code, agent_id=data.agent_id)
 
 
-@router.post("/complete-pairing")
+@router.post("/complete-pairing", response_model=CompletePairingResponse)
 async def complete_pairing(
     body: CompletePairingRequest,
     user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-):
+) -> CompletePairingResponse:
     """Complete pairing for an agent using a pairing code.
 
     The logged-in user submits the pairing code from the Automation UI.
@@ -258,7 +264,7 @@ async def complete_pairing(
     await db.commit()
     await db.refresh(agent)
 
-    return {"status": "paired", "agent_id": agent.agent_id}
+    return CompletePairingResponse(status="paired", agent_id=agent.agent_id)
 
 
 @router.get("/pairing-status/{agent_id}", response_model=PairingStatusResponse)
