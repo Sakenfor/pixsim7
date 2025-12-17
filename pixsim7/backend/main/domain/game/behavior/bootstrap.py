@@ -72,10 +72,8 @@ def register_game_behavior_builtins() -> dict:
     _BUILTINS_REGISTERED = True
 
     logger.info(
-        "Built-in game behaviors registered successfully",
-        conditions=conditions_count,
-        effects=effects_count,
-        scoring_factors=scoring_factors_count
+        f"Built-in game behaviors registered successfully: "
+        f"conditions={conditions_count}, effects={effects_count}, scoring_factors={scoring_factors_count}"
     )
 
     return {
