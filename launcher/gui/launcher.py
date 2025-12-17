@@ -286,6 +286,7 @@ class LauncherWindow(QWidget):
             # Use old health worker
             self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
             self.health_worker.health_update.connect(self._update_service_health)
+            self.health_worker.openapi_update.connect(self._update_openapi_status)
             self.health_worker.start()
 
         # Connect health check signal (for any manual triggers if added later)
@@ -350,6 +351,9 @@ class LauncherWindow(QWidget):
             card.restart_requested.connect(self._restart_service)
             # Open DB logs for this specific service from card context menu
             card.db_logs_requested.connect(lambda k=s.key: (self._select_service(k), self._open_db_logs_for_current_service()))
+            # OpenAPI actions from card menu
+            card.openapi_refresh_requested.connect(self._refresh_openapi_status)
+            card.openapi_generate_requested.connect(self._generate_openapi_types)
             if card.open_btn:
                 card.open_btn.clicked.connect(lambda checked, k=s.key: self._open_service_url(k))
 
@@ -848,6 +852,78 @@ class LauncherWindow(QWidget):
             if hasattr(self, 'architecture_panel'):
                 # Delay refresh to let service fully initialize
                 QTimer.singleShot(2000, self.architecture_panel.refresh_metrics)
+
+    def _update_openapi_status(self, key: str, status):
+        """Update the OpenAPI freshness status for a service."""
+        card = self.cards.get(key)
+        if card:
+            card.update_openapi_status(status)
+
+    def _refresh_openapi_status(self, key: str):
+        """Force refresh OpenAPI status check for a service."""
+        if self.health_worker:
+            # Clear the last check time to force immediate recheck
+            self.health_worker.last_openapi_check.pop(key, None)
+            self.health_worker.openapi_status_cache.pop(key, None)
+
+    def _generate_openapi_types(self, key: str):
+        """Generate OpenAPI types for a service."""
+        sp = self.processes.get(key)
+        if not sp:
+            return
+
+        defn = getattr(sp, 'defn', None)
+        if not defn or not defn.openapi_url:
+            return
+
+        # Run pnpm openapi:gen in background
+        import subprocess
+        import sys
+
+        pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
+        env = service_env()
+        env['OPENAPI_URL'] = defn.openapi_url
+
+        try:
+            # Show status in console
+            self._append_console(f"[OpenAPI] Generating types from {defn.openapi_url}...\n")
+
+            proc = subprocess.Popen(
+                [pnpm_cmd, "-s", "openapi:gen"],
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env
+            )
+
+            # Run in thread to avoid blocking UI
+            def on_complete():
+                out, err = proc.communicate(timeout=120)
+                if proc.returncode == 0:
+                    self._append_console(f"[OpenAPI] ✓ Types generated successfully\n")
+                    # Update cache and refresh status
+                    try:
+                        from .openapi_checker import update_schema_cache
+                        if defn.openapi_types_path:
+                            update_schema_cache(defn.openapi_url, defn.openapi_types_path)
+                    except Exception:
+                        pass
+                    # Trigger refresh
+                    self._refresh_openapi_status(key)
+                else:
+                    self._append_console(f"[OpenAPI] ✗ Generation failed: {err or out}\n")
+
+            from PySide6.QtCore import QThread
+            class GenThread(QThread):
+                def run(self_thread):
+                    on_complete()
+
+            self._gen_thread = GenThread()
+            self._gen_thread.start()
+
+        except Exception as e:
+            self._append_console(f"[OpenAPI] Error: {e}\n")
 
     def update_ports_label(self):
         p = read_env_ports()

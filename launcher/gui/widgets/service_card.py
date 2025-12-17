@@ -7,17 +7,37 @@ from datetime import datetime
 try:
     from ..services import ServiceDef
     from ..status import HealthStatus, STATUS_COLORS, STATUS_TEXT
+    from ..openapi_checker import OpenAPIStatus
     from .. import theme
 except ImportError:
     from services import ServiceDef
     from status import HealthStatus, STATUS_COLORS, STATUS_TEXT
+    from openapi_checker import OpenAPIStatus
     import theme
+
+
+# OpenAPI status colors and tooltips
+OPENAPI_STATUS_COLORS = {
+    OpenAPIStatus.FRESH: "#3fb950",       # Green
+    OpenAPIStatus.STALE: "#d29922",       # Yellow/Orange
+    OpenAPIStatus.UNAVAILABLE: "#8b949e", # Gray
+    OpenAPIStatus.NO_OPENAPI: None,       # Hidden
+}
+
+OPENAPI_STATUS_TEXT = {
+    OpenAPIStatus.FRESH: "✓ API Types Fresh",
+    OpenAPIStatus.STALE: "⚠ API Types Stale",
+    OpenAPIStatus.UNAVAILABLE: "? API Types Unknown",
+    OpenAPIStatus.NO_OPENAPI: "",
+}
 
 
 class ServiceCard(QFrame):
     clicked = Signal(str)
     restart_requested = Signal(str)
     db_logs_requested = Signal(str)
+    openapi_refresh_requested = Signal(str)  # Request to refresh OpenAPI status
+    openapi_generate_requested = Signal(str)  # Request to generate OpenAPI types
 
     def __init__(self, service_def: 'ServiceDef', service_process):
         super().__init__()
@@ -25,6 +45,7 @@ class ServiceCard(QFrame):
         self.service_process = service_process
         self.is_selected = False
         self.start_time = None  # Track when service started
+        self.openapi_status: Optional[OpenAPIStatus] = None  # Track OpenAPI freshness
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
@@ -75,6 +96,34 @@ class ServiceCard(QFrame):
         info_layout.addWidget(self.status_label)
 
         layout.addLayout(info_layout, stretch=1)
+
+        # OpenAPI status indicator (only shown for services with openapi_url)
+        self.openapi_indicator = QPushButton()
+        self.openapi_indicator.setFixedHeight(18)
+        self.openapi_indicator.setFixedWidth(42)
+        openapi_font = QFont(); openapi_font.setPointSize(7); openapi_font.setBold(True)
+        self.openapi_indicator.setFont(openapi_font)
+        self.openapi_indicator.setCursor(Qt.PointingHandCursor)
+        # Hide by default - only show if service has OpenAPI
+        if service_def.openapi_url:
+            self.openapi_indicator.setText("? API")
+            self.openapi_indicator.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {theme.BG_SECONDARY};
+                    color: {theme.TEXT_DISABLED};
+                    border-radius: 3px;
+                    padding: 1px 4px;
+                    border: none;
+                }}
+                QPushButton:hover {{
+                    background-color: {theme.BG_HOVER};
+                }}
+            """)
+            self.openapi_indicator.setToolTip("OpenAPI types status unknown - click for options")
+            self.openapi_indicator.clicked.connect(self._show_openapi_menu)
+        else:
+            self.openapi_indicator.hide()
+        layout.addWidget(self.openapi_indicator)
 
         btn_layout = QHBoxLayout(); btn_layout.setSpacing(4)
 
@@ -195,6 +244,109 @@ class ServiceCard(QFrame):
     def set_selected(self, selected: bool):
         self.is_selected = selected
         self._update_style()
+
+    def _show_openapi_menu(self):
+        """Show context menu for OpenAPI actions."""
+        menu = QMenu(self)
+
+        # Status info (non-clickable header)
+        status_text = OPENAPI_STATUS_TEXT.get(self.openapi_status, "Status unknown")
+        status_action = QAction(status_text, self)
+        status_action.setEnabled(False)
+        menu.addAction(status_action)
+        menu.addSeparator()
+
+        # Refresh status
+        refresh_action = QAction("🔄 Refresh Status", self)
+        refresh_action.triggered.connect(lambda: self.openapi_refresh_requested.emit(self.service_def.key))
+        menu.addAction(refresh_action)
+
+        # Generate types
+        generate_action = QAction("⚡ Generate Types", self)
+        generate_action.setToolTip("Run pnpm openapi:gen to regenerate TypeScript types")
+        generate_action.triggered.connect(lambda: self.openapi_generate_requested.emit(self.service_def.key))
+        menu.addAction(generate_action)
+
+        menu.addSeparator()
+
+        # Open OpenAPI Tools dialog
+        tools_action = QAction("🔧 OpenAPI Tools...", self)
+        tools_action.triggered.connect(self._open_openapi_tools)
+        menu.addAction(tools_action)
+
+        # Show menu at button position
+        menu.exec_(self.openapi_indicator.mapToGlobal(self.openapi_indicator.rect().bottomLeft()))
+
+    def _open_openapi_tools(self):
+        """Open the OpenAPI Tools dialog for this service."""
+        try:
+            from ..dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+        except ImportError:
+            from dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+        # Pass service-specific OpenAPI settings
+        show_openapi_tools_dialog(
+            self.window(),
+            openapi_url=self.service_def.openapi_url,
+            types_path=self.service_def.openapi_types_path,
+            service_name=self.service_def.title
+        )
+
+    def update_openapi_status(self, status: OpenAPIStatus):
+        """Update the OpenAPI freshness indicator."""
+        if not self.service_def.openapi_url:
+            return
+
+        self.openapi_status = status
+        color = OPENAPI_STATUS_COLORS.get(status)
+        text = OPENAPI_STATUS_TEXT.get(status, "")
+
+        if color:
+            self.openapi_indicator.show()
+            if status == OpenAPIStatus.FRESH:
+                self.openapi_indicator.setText("✓ API")
+                self.openapi_indicator.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: rgba(63, 185, 80, 0.2);
+                        color: {color};
+                        border-radius: 3px;
+                        padding: 1px 4px;
+                        border: none;
+                    }}
+                    QPushButton:hover {{
+                        background-color: rgba(63, 185, 80, 0.3);
+                    }}
+                """)
+            elif status == OpenAPIStatus.STALE:
+                self.openapi_indicator.setText("⚠ API")
+                self.openapi_indicator.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: rgba(210, 153, 34, 0.2);
+                        color: {color};
+                        border-radius: 3px;
+                        padding: 1px 4px;
+                        border: none;
+                    }}
+                    QPushButton:hover {{
+                        background-color: rgba(210, 153, 34, 0.3);
+                    }}
+                """)
+            else:  # UNAVAILABLE
+                self.openapi_indicator.setText("? API")
+                self.openapi_indicator.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {theme.BG_SECONDARY};
+                        color: {color};
+                        border-radius: 3px;
+                        padding: 1px 4px;
+                        border: none;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {theme.BG_HOVER};
+                    }}
+                """)
+            self.openapi_indicator.setToolTip(f"{text} - click for options")
+        else:
+            self.openapi_indicator.hide()
 
     def _refresh_title(self):
         """Update title label to reflect external management state."""

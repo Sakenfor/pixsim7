@@ -23,6 +23,9 @@ class ServiceDef:
     required_tool: Optional[str] = None  # Tool that must be in PATH
     health_grace_attempts: int = 5       # Attempts before marking unhealthy
     depends_on: Optional[List[str]] = None  # Service keys that must be running first
+    # OpenAPI schema support (for services that expose OpenAPI)
+    openapi_url: Optional[str] = None  # e.g., "http://localhost:8000/openapi.json"
+    openapi_types_path: Optional[str] = None  # Relative path to generated types file
 
 
 def build_services() -> List[ServiceDef]:
@@ -62,6 +65,8 @@ def build_services() -> List[ServiceDef]:
             health_url=f"http://localhost:{ports.backend}/health",
             health_grace_attempts=6,
             depends_on=["db"],  # Backend requires database
+            openapi_url=f"http://localhost:{ports.backend}/openapi.json",
+            openapi_types_path="packages/shared/types/src/openapi.generated.ts",
         ),
         ServiceDef(
             key="worker",
@@ -178,6 +183,11 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
     # Parse module (e.g., "pixsim7.backend.main.main:app")
     module = service_config.get('module', 'pixsim7.backend.main.main:app')
 
+    # OpenAPI settings (optional)
+    openapi_endpoint = service_config.get('openapi_endpoint')
+    openapi_url = f"http://localhost:{port}{openapi_endpoint}" if openapi_endpoint else None
+    openapi_types_path = service_config.get('openapi_types_path')
+
     return ServiceDef(
         key=service_id,
         title=service_config.get('name', service_id),
@@ -194,6 +204,8 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         health_url=f"http://localhost:{port}{service_config.get('health_endpoint', '/health')}",
         health_grace_attempts=6,
         depends_on=service_config.get('depends_on', []),
+        openapi_url=openapi_url,
+        openapi_types_path=openapi_types_path,
     )
 
 

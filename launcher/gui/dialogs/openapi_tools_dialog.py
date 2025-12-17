@@ -22,19 +22,22 @@ import urllib.error
 try:
     from .. import theme
     from ..config import read_env_ports, service_env, ROOT
+    from ..openapi_checker import update_schema_cache
 except ImportError:
     import theme
     from config import read_env_ports, service_env, ROOT
+    from openapi_checker import update_schema_cache
 
 
 class OpenApiWorker(QThread):
     """Worker thread for OpenAPI operations to prevent UI freezing."""
     finished = Signal(bool, str)  # success, message
 
-    def __init__(self, operation, backend_port, parent=None):
+    def __init__(self, operation, openapi_url, types_path=None, parent=None):
         super().__init__(parent)
         self.operation = operation
-        self.backend_port = backend_port
+        self.openapi_url = openapi_url
+        self.types_path = types_path or "packages/shared/types/src/openapi.generated.ts"
 
     def run(self):
         try:
@@ -53,23 +56,23 @@ class OpenApiWorker(QThread):
 
     def _check_backend(self):
         """Check if backend is reachable."""
-        url = f"http://localhost:{self.backend_port}/openapi.json"
         try:
-            req = urllib.request.Request(url, method='GET')
+            req = urllib.request.Request(self.openapi_url, method='GET')
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
-                    return (True, f"✓ Backend is reachable at port {self.backend_port}")
+                    return (True, f"✓ Service is reachable at {self.openapi_url}")
                 else:
-                    return (False, f"Backend returned status {response.status}")
+                    return (False, f"Service returned status {response.status}")
         except urllib.error.URLError as e:
-            return (False, f"Cannot reach backend: {str(e)}")
+            return (False, f"Cannot reach service: {str(e)}")
         except Exception as e:
-            return (False, f"Error checking backend: {str(e)}")
+            return (False, f"Error checking service: {str(e)}")
 
     def _run_pnpm(self, args, timeout=60):
         """Run pnpm command and return (returncode, stdout, stderr)."""
         env = service_env()
-        env['OPENAPI_URL'] = f"http://localhost:{self.backend_port}/openapi.json"
+        env['OPENAPI_URL'] = self.openapi_url
+        env['OPENAPI_TYPES_OUT'] = self.types_path
 
         # Use pnpm from PATH
         pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
@@ -106,6 +109,11 @@ class OpenApiWorker(QThread):
             output_msg += f"stderr:\n{err}\n"
 
         if code == 0:
+            # Update the schema cache so freshness checks work
+            cache_updated = update_schema_cache(self.openapi_url, self.types_path)
+            if cache_updated:
+                output_msg += "\n✓ Schema cache updated for freshness tracking.\n"
+
             return (True, f"✓ Types generated successfully!\n\n{output_msg}")
         else:
             return (False, f"Generation failed (exit code {code}):\n\n{output_msg}")
@@ -120,9 +128,9 @@ class OpenApiWorker(QThread):
         # Run with --check flag
         code, out, err = self._run_pnpm([
             "-s", "exec", "openapi-typescript",
-            f"http://localhost:{self.backend_port}/openapi.json",
-            "-o", "packages/shared/types/src/openapi.generated.ts",
-            "--check", "--alphabetize", "--immutable"
+            self.openapi_url,
+            "-o", self.types_path,
+            "--check", "--alphabetize", "--immutable", "--empty-objects-unknown"
         ], timeout=60)
 
         output_msg = ""
@@ -138,10 +146,23 @@ class OpenApiWorker(QThread):
             return (False, f"⚠️ Types are NOT up-to-date (exit code {code}):\n\n{output_msg}")
 
 
-def show_openapi_tools_dialog(parent):
-    """Show the OpenAPI Tools dialog."""
+def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str = None, service_name: str = None):
+    """Show the OpenAPI Tools dialog.
+
+    Args:
+        parent: Parent widget
+        openapi_url: Full OpenAPI URL (e.g., http://localhost:8000/openapi.json)
+        types_path: Path to generated types file (relative to ROOT)
+        service_name: Display name of the service
+    """
     dlg = QDialog(parent)
-    dlg.setWindowTitle('OpenAPI / API Contract Tools')
+
+    # Determine title based on service
+    if service_name:
+        dlg.setWindowTitle(f'OpenAPI Tools - {service_name}')
+    else:
+        dlg.setWindowTitle('OpenAPI / API Contract Tools')
+
     dlg.setMinimumWidth(700)
     dlg.setMinimumHeight(600)
     dlg.setStyleSheet(
@@ -192,9 +213,24 @@ def show_openapi_tools_dialog(parent):
     help_text.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-bottom: 8px;")
     layout.addWidget(help_text)
 
-    # Get backend port
+    # Determine OpenAPI URL and types path
     ports = read_env_ports()
-    backend_port = ports.backend
+    if openapi_url:
+        # Use provided URL (service-specific)
+        effective_openapi_url = openapi_url
+        # Extract port from URL for display
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(openapi_url)
+            display_info = f"{parsed.netloc}"
+        except Exception:
+            display_info = openapi_url
+    else:
+        # Fall back to default backend
+        effective_openapi_url = f"http://localhost:{ports.backend}/openapi.json"
+        display_info = f"localhost:{ports.backend}"
+
+    effective_types_path = types_path or "packages/shared/types/src/openapi.generated.ts"
 
     # Status indicator
     status_frame = QFrame()
@@ -203,9 +239,9 @@ def show_openapi_tools_dialog(parent):
     status_layout = QVBoxLayout(status_frame)
     status_layout.setContentsMargins(12, 12, 12, 12)
 
-    port_label = QLabel(f'Backend Port: {backend_port}')
-    port_label.setStyleSheet(f"font-size: 10pt; font-weight: bold; color: {theme.TEXT_PRIMARY};")
-    status_layout.addWidget(port_label)
+    service_label = QLabel(f'Service: {service_name or "Backend API"} ({display_info})')
+    service_label.setStyleSheet(f"font-size: 10pt; font-weight: bold; color: {theme.TEXT_PRIMARY};")
+    status_layout.addWidget(service_label)
 
     backend_status_label = QLabel('Status: Not checked')
     backend_status_label.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY}; margin-top: 4px;")
@@ -223,13 +259,16 @@ def show_openapi_tools_dialog(parent):
 
     browse_buttons_row = QHBoxLayout()
 
+    # Derive docs URL from OpenAPI URL (replace /openapi.json with /docs)
+    docs_url = effective_openapi_url.replace('/openapi.json', '/docs')
+
     btn_open_docs = QPushButton('📖 Open API Docs')
-    btn_open_docs.setToolTip(f"Open http://localhost:{backend_port}/docs in browser")
+    btn_open_docs.setToolTip(f"Open {docs_url} in browser")
     btn_open_docs.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
     browse_buttons_row.addWidget(btn_open_docs)
 
     btn_open_json = QPushButton('📄 Open openapi.json')
-    btn_open_json.setToolTip(f"Open http://localhost:{backend_port}/openapi.json in browser")
+    btn_open_json.setToolTip(f"Open {effective_openapi_url} in browser")
     btn_open_json.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
     browse_buttons_row.addWidget(btn_open_json)
 
@@ -319,15 +358,15 @@ def show_openapi_tools_dialog(parent):
 
         if success:
             output_box.setPlainText(f"✓ Success\n\n{message}")
-            # Update backend status if this was a check
+            # Update service status if this was a check
             if worker and worker.operation == "check":
-                backend_status_label.setText('Status: ✓ Backend reachable')
+                backend_status_label.setText('Status: ✓ Service reachable')
                 backend_status_label.setStyleSheet(f"font-size: 9pt; color: {theme.ACCENT_SUCCESS}; margin-top: 4px;")
         else:
             output_box.setPlainText(f"✗ Failed\n\n{message}")
-            # Update backend status if this was a check
+            # Update service status if this was a check
             if worker and worker.operation == "check":
-                backend_status_label.setText('Status: ✗ Cannot reach backend')
+                backend_status_label.setText('Status: ✗ Cannot reach service')
                 backend_status_label.setStyleSheet(f"font-size: 9pt; color: {theme.ACCENT_ERROR}; margin-top: 4px;")
 
         worker = None
@@ -342,7 +381,7 @@ def show_openapi_tools_dialog(parent):
         output_box.setPlainText(f"Running: {operation}...\n")
         set_buttons_enabled(False)
 
-        worker = OpenApiWorker(operation, backend_port, dlg)
+        worker = OpenApiWorker(operation, effective_openapi_url, effective_types_path, dlg)
         worker.finished.connect(on_worker_finished)
         worker.start()
 
@@ -353,7 +392,7 @@ def show_openapi_tools_dialog(parent):
 
     def reveal_file():
         """Reveal generated TypeScript file in Explorer/Finder."""
-        file_path = os.path.join(ROOT, "packages", "shared", "types", "src", "openapi.generated.ts")
+        file_path = os.path.join(ROOT, effective_types_path)
 
         if not os.path.exists(file_path):
             QMessageBox.warning(
@@ -376,15 +415,15 @@ def show_openapi_tools_dialog(parent):
             subprocess.Popen(['xdg-open', dir_path])
 
     # Connect buttons
-    btn_open_docs.clicked.connect(lambda: open_url(f"http://localhost:{backend_port}/docs"))
-    btn_open_json.clicked.connect(lambda: open_url(f"http://localhost:{backend_port}/openapi.json"))
+    btn_open_docs.clicked.connect(lambda: open_url(docs_url))
+    btn_open_json.clicked.connect(lambda: open_url(effective_openapi_url))
     btn_generate.clicked.connect(lambda: run_operation("generate"))
     btn_check.clicked.connect(lambda: run_operation("check_uptodate"))
     btn_refresh.clicked.connect(lambda: run_operation("check"))
     btn_reveal.clicked.connect(reveal_file)
     btn_close.clicked.connect(dlg.accept)
 
-    # Auto-check backend status on open
+    # Auto-check service status on open
     run_operation("check")
 
     dlg.exec()

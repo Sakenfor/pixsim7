@@ -8,16 +8,19 @@ try:
     from .docker_utils import compose_ps
     from .config import ROOT, UIState
     from .process_utils import find_pid_by_port
+    from .openapi_checker import check_openapi_freshness, OpenAPIStatus
 except ImportError:
     from status import HealthStatus
     from logger import launcher_logger as _launcher_logger
     from docker_utils import compose_ps
     from config import ROOT, UIState
     from process_utils import find_pid_by_port
+    from openapi_checker import check_openapi_freshness, OpenAPIStatus
 
 
 class HealthWorker(QThread):
     health_update = Signal(str, HealthStatus)
+    openapi_update = Signal(str, object)  # (service_key, OpenAPIStatus)
 
     def __init__(self, processes: Dict[str, object], ui_state: Optional[UIState] = None, interval_sec: float = None, parent=None):
         super().__init__(parent)
@@ -42,6 +45,11 @@ class HealthWorker(QThread):
         # Adaptive mode state tracking
         self.service_healthy_since: Dict[str, Optional[float]] = {}  # timestamp when service became healthy
         self.last_startup_detected: Optional[float] = None  # timestamp of last STARTING status
+
+        # OpenAPI check state (check less frequently than health)
+        self.openapi_check_interval = 30  # seconds between OpenAPI checks
+        self.last_openapi_check: Dict[str, float] = {}
+        self.openapi_status_cache: Dict[str, OpenAPIStatus] = {}
 
     def stop(self):
         self._stop = True
@@ -138,6 +146,66 @@ class HealthWorker(QThread):
         except Exception:
             pass
         self._track_health_change(key, status)
+
+    def _check_openapi_freshness(self, key: str, sp):
+        """Check OpenAPI freshness for a service if applicable.
+
+        Only checks if:
+        - Service has openapi_url and openapi_types_path defined
+        - Service is currently healthy
+        - Enough time has passed since last check
+        """
+        defn = getattr(sp, 'defn', None)
+        if not defn:
+            return
+
+        openapi_url = getattr(defn, 'openapi_url', None)
+        types_path = getattr(defn, 'openapi_types_path', None)
+
+        if not openapi_url or not types_path:
+            return
+
+        # Rate limit checks
+        current_time = time.time()
+        last_check = self.last_openapi_check.get(key, 0)
+        if current_time - last_check < self.openapi_check_interval:
+            return
+
+        self.last_openapi_check[key] = current_time
+
+        try:
+            result = check_openapi_freshness(openapi_url, types_path, timeout=2.0)
+            new_status = result.status
+
+            # Only emit if status changed
+            old_status = self.openapi_status_cache.get(key)
+            if new_status != old_status:
+                self.openapi_status_cache[key] = new_status
+                try:
+                    self.openapi_update.emit(key, new_status)
+                except Exception:
+                    pass
+
+                if _launcher_logger:
+                    try:
+                        _launcher_logger.debug(
+                            "openapi_freshness_check",
+                            service_key=key,
+                            status=new_status.value,
+                            message=result.message
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning(
+                        "openapi_check_failed",
+                        service_key=key,
+                        error=str(e)
+                    )
+                except Exception:
+                    pass
 
     def _detect_and_store_pid(self, sp, url: str = None, port: int = None):
         """Detect PID of running service and store it if not started by launcher."""
@@ -349,6 +417,8 @@ class HealthWorker(QThread):
                                     self._detect_and_store_pid(sp, url=health_url)
                                     self._emit_health_update(key, HealthStatus.HEALTHY)
                                     self.failure_counts[key] = 0
+                                    # Check OpenAPI freshness when service is healthy
+                                    self._check_openapi_freshness(key, sp)
                                 else:
                                     self._emit_health_update(key, HealthStatus.UNHEALTHY)
                                     self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
