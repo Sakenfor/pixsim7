@@ -1,13 +1,13 @@
 // Automation-related types
 
 export enum DeviceType {
-  BLUESTACKS = 'BLUESTACKS',
-  ADB = 'ADB',
+  BLUESTACKS = 'bluestacks',
+  ADB = 'adb',
 }
 
 export enum ConnectionMethod {
   ADB = 'adb',
-  SCRCPY = 'scrcpy',
+  UIAUTOMATOR2 = 'uiautomator2',
 }
 
 export enum DeviceStatus {
@@ -25,6 +25,7 @@ export interface AndroidDevice {
   connection_method: ConnectionMethod;
   status: DeviceStatus;
   is_enabled: boolean;
+  agent_id?: number;
   device_serial?: string;
   instance_name?: string;
   instance_port?: number;
@@ -32,9 +33,10 @@ export interface AndroidDevice {
   assigned_at?: string;
   primary_device_id?: number;
   error_message?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   last_seen?: string;
+  last_used_at?: string;
 }
 
 export enum AutomationStatus {
@@ -124,15 +126,23 @@ export interface AppActionPreset {
   name: string;
   description?: string;
   category?: string;
+  tags?: string[];
   variables?: PresetVariable[];  // Reusable variables for this preset
   actions: ActionDefinition[];
-  owner_id: number;
+  owner_id?: number;
   is_shared: boolean;
   is_system: boolean;
+  app_package?: string;
+  requires_password?: boolean;
+  requires_google_account?: boolean;
+  max_retries?: number;
+  retry_delay_seconds?: number;
+  timeout_seconds?: number;
+  continue_on_error?: boolean;
   usage_count: number;
   last_used?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   cloned_from_id?: number;
 }
 
@@ -153,15 +163,16 @@ export interface AutomationExecution {
   retry_count: number;
   max_retries: number;
   task_id?: string;
-  created_at: string;
+  created_at?: string;
   started_at?: string;
   completed_at?: string;
 }
 
 export enum ExecutionLoopStatus {
-  ACTIVE = 'ACTIVE',
-  PAUSED = 'PAUSED',
-  COMPLETED = 'COMPLETED',
+  ACTIVE = 'active',
+  PAUSED = 'paused',
+  STOPPED = 'stopped',
+  ERROR = 'error',
 }
 
 export enum PresetExecutionMode {
@@ -171,10 +182,10 @@ export enum PresetExecutionMode {
 }
 
 export enum AccountSelectionMode {
-  MOST_CREDITS = 'MOST_CREDITS',
-  LEAST_CREDITS = 'LEAST_CREDITS',
-  ROUND_ROBIN = 'ROUND_ROBIN',
-  SPECIFIC_ACCOUNTS = 'SPECIFIC_ACCOUNTS',
+  MOST_CREDITS = 'most_credits',
+  LEAST_CREDITS = 'least_credits',
+  ROUND_ROBIN = 'round_robin',
+  SPECIFIC_ACCOUNTS = 'specific_accounts',
 }
 
 export interface ExecutionLoop {
@@ -204,8 +215,8 @@ export interface ExecutionLoop {
   failed_executions: number;
   executions_today: number;
   last_reset_date?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   // Mode-specific data
   shared_preset_ids?: number[];
   current_preset_index?: number;

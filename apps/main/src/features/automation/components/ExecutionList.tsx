@@ -66,6 +66,15 @@ export function ExecutionList() {
     cancelled: executions.filter(e => e.status === AutomationStatus.CANCELLED).length,
   };
 
+  const filterOptions: Array<{ label: string; value: AutomationStatus | 'ALL' }> = [
+    { label: 'ALL', value: 'ALL' },
+    { label: 'PENDING', value: AutomationStatus.PENDING },
+    { label: 'RUNNING', value: AutomationStatus.RUNNING },
+    { label: 'COMPLETED', value: AutomationStatus.COMPLETED },
+    { label: 'FAILED', value: AutomationStatus.FAILED },
+    { label: 'CANCELLED', value: AutomationStatus.CANCELLED },
+  ];
+
   const handleViewDetails = (execution: AutomationExecution) => {
     setSelectedExecution(execution);
   };
@@ -220,17 +229,17 @@ export function ExecutionList() {
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
         <div className="flex gap-2 flex-wrap">
-          {(['ALL', 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'] as const).map((status) => (
+          {filterOptions.map((option) => (
             <button
-              key={status}
-              onClick={() => setFilterStatus(status)}
+              key={option.label}
+              onClick={() => setFilterStatus(option.value)}
               className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                filterStatus === status
+                filterStatus === option.value
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               }`}
             >
-              {status}
+              {option.label}
             </button>
           ))}
         </div>

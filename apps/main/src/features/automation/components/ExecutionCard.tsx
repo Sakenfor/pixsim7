@@ -36,6 +36,10 @@ export function ExecutionCard({ execution, onViewDetails }: ExecutionCardProps) 
     ? Math.round((Date.now() - new Date(execution.started_at).getTime()) / 1000)
     : null;
 
+  const createdAtText = execution.created_at
+    ? new Date(execution.created_at).toLocaleTimeString()
+    : '—';
+
   return (
     <Panel className="space-y-3">
       {/* Header */}
@@ -89,7 +93,7 @@ export function ExecutionCard({ execution, onViewDetails }: ExecutionCardProps) 
         <div>
           <span className="text-gray-500 dark:text-gray-400">Created:</span>
           <span className="ml-2 font-medium text-gray-900 dark:text-gray-100">
-            {new Date(execution.created_at).toLocaleTimeString()}
+            {createdAtText}
           </span>
         </div>
         {duration !== null && (

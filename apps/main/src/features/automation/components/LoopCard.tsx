@@ -13,7 +13,8 @@ interface LoopCardProps {
 const statusColors: Record<ExecutionLoopStatus, 'blue' | 'green' | 'red' | 'gray' | 'purple'> = {
   [ExecutionLoopStatus.ACTIVE]: 'green',
   [ExecutionLoopStatus.PAUSED]: 'gray',
-  [ExecutionLoopStatus.COMPLETED]: 'blue',
+  [ExecutionLoopStatus.STOPPED]: 'blue',
+  [ExecutionLoopStatus.ERROR]: 'red',
 };
 
 export function LoopCard({ loop, onEdit, onDelete, onStart, onPause, onRunNow }: LoopCardProps) {
