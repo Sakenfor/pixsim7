@@ -69,9 +69,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    // Try auto-recovery: use queued asset or active asset if available
+    // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue > activeAsset
     let imageUrl = dynamicParams.image_url;
 
+    // Only fall back to queue if dynamicParams is empty
     if (!imageUrl && mainQueueCurrent?.asset.media_type === 'image') {
       imageUrl = mainQueueCurrent.asset.remote_url;
       if (imageUrl) {
@@ -79,29 +80,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    if (!imageUrl && activeAsset?.type === 'image') {
-      imageUrl = activeAsset.url;
-      if (imageUrl) {
-        context.dynamicParams.image_url = imageUrl;
-      }
-    }
-
-    // Still no URL? Provide context-aware error
+    // Validate we have a URL
     if (!imageUrl) {
-      if (mainQueueCurrent?.asset.media_type === 'image' && !mainQueueCurrent.asset.remote_url) {
-        return {
-          error: 'The queued image is local-only and has no cloud URL. Upload it to the provider first, or select a different image.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
-      if (activeAsset?.type === 'image') {
-        return {
-          error: 'The selected image has no usable URL. Try selecting a gallery image that has been uploaded to the provider.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
       return {
         error: 'No image selected. Select an image from the gallery to transform.',
         finalPrompt: trimmedPrompt,
@@ -117,47 +97,20 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_video') {
-    // Try auto-recovery: use queued asset or active asset if available
+    // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue
     let imageUrl = dynamicParams.image_url;
 
+    // Only fall back to queue if dynamicParams is empty
     if (!imageUrl && mainQueueCurrent?.asset.media_type === 'image') {
       imageUrl = mainQueueCurrent.asset.remote_url;
       if (imageUrl) {
-        // Auto-fill succeeded, update params
         context.dynamicParams.image_url = imageUrl;
       }
     }
 
-    if (!imageUrl && activeAsset?.type === 'image') {
-      imageUrl = activeAsset.url;
-      if (imageUrl) {
-        context.dynamicParams.image_url = imageUrl;
-      }
-    }
-
-    // Still no URL? Provide context-aware error
-    if (!imageUrl) {
-      if (mainQueueCurrent?.asset.media_type === 'image' && !mainQueueCurrent.asset.remote_url) {
-        return {
-          error: 'The queued image is local-only and has no cloud URL. Upload it to the provider first, or select a different image.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
-      if (activeAsset?.type === 'image') {
-        return {
-          error: 'The selected image has no usable URL. Try selecting a gallery image that has been uploaded to the provider.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
-      return {
-        error: 'No image selected. Click "Image to Video" on a gallery image, or paste an image URL in Settings.',
-        finalPrompt: trimmedPrompt,
-      };
-    }
-
-    if (!trimmedPrompt) {
+    // Validate we have a URL (optional - can fall back to text_to_video)
+    // If no image, the caller will handle switching to text_to_video
+    if (imageUrl && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing the motion/action for Image to Video.',
         finalPrompt: trimmedPrompt,
@@ -166,10 +119,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'video_extend') {
+    // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue
     let videoUrl = dynamicParams.video_url;
     const hasOriginalId = Boolean(dynamicParams.original_video_id);
 
-    // Try auto-recovery: use queued asset or active asset
+    // Only fall back to queue if dynamicParams is empty
     if (!videoUrl && !hasOriginalId && mainQueueCurrent?.asset.media_type === 'video') {
       videoUrl = mainQueueCurrent.asset.remote_url;
       if (videoUrl) {
@@ -177,29 +131,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    if (!videoUrl && !hasOriginalId && activeAsset?.type === 'video') {
-      videoUrl = activeAsset.url;
-      if (videoUrl) {
-        context.dynamicParams.video_url = videoUrl;
-      }
-    }
-
-    // Still no URL or ID? Provide context-aware error
+    // Validate we have a URL or ID
     if (!videoUrl && !hasOriginalId) {
-      if (mainQueueCurrent?.asset.media_type === 'video' && !mainQueueCurrent.asset.remote_url) {
-        return {
-          error: 'The queued video is local-only and has no cloud URL. Upload it to the provider first, or select a different video.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
-      if (activeAsset?.type === 'video') {
-        return {
-          error: 'The selected video has no usable URL. Try selecting a gallery video that has been uploaded to the provider.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
       return {
         error: 'No video selected. Click "Video Extend" on a gallery video, or paste a video URL in Settings.',
         finalPrompt: trimmedPrompt,
