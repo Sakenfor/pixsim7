@@ -14,6 +14,7 @@ import { AssetPanel, PromptPanel, SettingsPanel, BlocksPanel, type QuickGenPanel
 import { CompactAssetCard } from './CompactAssetCard';
 import { useAssetViewerStore } from '@features/assets';
 import { OPERATION_METADATA } from '@/types/operations';
+import { PromptInput } from '@pixsim7/shared.ui';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -768,16 +769,20 @@ export function QuickGenerateModule() {
             {isTransitionMode ? (
               // Per-transition prompts for video_transition
               displayAssets.length > 1 ? (
-                <textarea
+                <PromptInput
                   value={prompts[selectedTransitionIndex] || ''}
-                  onChange={(e) => {
+                  onChange={(value) => {
                     const newPrompts = [...prompts];
-                    newPrompts[selectedTransitionIndex] = e.target.value;
+                    newPrompts[selectedTransitionIndex] = value;
                     setPrompts(newPrompts);
                   }}
+                  maxChars={maxChars}
                   placeholder="Describe the motion..."
                   disabled={generating}
-                  className="flex-1 min-h-[60px] px-4 py-3 text-sm border border-neutral-200 dark:border-neutral-700 rounded-2xl bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none focus:ring-2 focus:ring-blue-500/40 focus:border-transparent outline-none shadow-sm"
+                  variant="compact"
+                  minHeight={60}
+                  showCounter={true}
+                  className="flex-1"
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
@@ -786,12 +791,16 @@ export function QuickGenerateModule() {
               )
             ) : (
               // Single shared prompt for other multi-asset operations
-              <textarea
+              <PromptInput
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={setPrompt}
+                maxChars={maxChars}
                 placeholder={operationType === 'image_to_image' ? 'Describe the transformation...' : 'Describe the generation...'}
                 disabled={generating}
-                className="flex-1 min-h-[60px] px-4 py-3 text-sm border border-neutral-200 dark:border-neutral-700 rounded-2xl bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none focus:ring-2 focus:ring-purple-500/40 focus:border-transparent outline-none shadow-sm"
+                variant="compact"
+                minHeight={60}
+                showCounter={true}
+                className="flex-1"
               />
             )}
           </div>

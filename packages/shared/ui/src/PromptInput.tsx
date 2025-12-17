@@ -22,6 +22,8 @@ export interface PromptInputProps {
   resizable?: boolean;
   /** Minimum height in pixels */
   minHeight?: number;
+  /** If true, hard-truncate input at maxChars. If false, allow exceeding limit with visual warning. Defaults to false. */
+  enforceLimit?: boolean;
 }
 
 export const PromptInput: React.FC<PromptInputProps> = ({
@@ -36,18 +38,21 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   showCounter = true,
   resizable = false,
   minHeight,
+  enforceLimit = false,
 }) => {
   const remaining = maxChars - value.length;
+  const isOverLimit = remaining < 0;
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
-    if (next.length <= maxChars) {
-      onChange(next);
-    } else {
-      // Hard truncate any paste beyond limit
+    if (enforceLimit && next.length > maxChars) {
+      // Hard truncate if enforceLimit is true
       onChange(next.slice(0, maxChars));
+    } else {
+      // Allow exceeding limit, visual warning will be shown
+      onChange(next);
     }
-  }, [onChange, maxChars]);
+  }, [onChange, maxChars, enforceLimit]);
 
   // Calculate min-height: use prop if provided, else variant default
   const defaultMinHeight = variant === 'compact' ? 70 : 110;
@@ -63,15 +68,29 @@ export const PromptInput: React.FC<PromptInputProps> = ({
         autoFocus={autoFocus}
         style={{ minHeight: `${effectiveMinHeight}px` }}
         className={clsx(
-          'w-full rounded border p-2 bg-white dark:bg-neutral-900 outline-none focus:ring-2 focus:ring-blue-500/40 flex-1',
+          'w-full rounded border p-2 bg-white dark:bg-neutral-900 outline-none flex-1',
           disabled && 'opacity-60 cursor-not-allowed',
           variant === 'compact' ? 'text-sm' : 'text-base',
-          resizable ? 'resize-y' : 'resize-none'
+          resizable ? 'resize-y' : 'resize-none',
+          // Show warning border and ring when over limit
+          isOverLimit
+            ? 'border-red-500 dark:border-red-500 focus:ring-2 focus:ring-red-500/40'
+            : 'border-neutral-300 dark:border-neutral-700 focus:ring-2 focus:ring-blue-500/40'
         )}
       />
       {showCounter && (
-        <div className="mt-1 flex justify-end text-xs tabular-nums text-neutral-500">
-          <span className={clsx(remaining < 0 && 'text-red-600')}>{remaining} chars left</span>
+        <div className="mt-1 flex justify-between items-center text-xs">
+          {isOverLimit && (
+            <span className="text-red-600 dark:text-red-400 font-medium">
+              ⚠️ Over limit by {Math.abs(remaining)} chars
+            </span>
+          )}
+          <span className={clsx(
+            'tabular-nums ml-auto',
+            isOverLimit ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-neutral-500'
+          )}>
+            {value.length} / {maxChars}
+          </span>
         </div>
       )}
     </div>

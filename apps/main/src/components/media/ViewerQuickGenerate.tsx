@@ -11,6 +11,8 @@ import { useControlCenterStore } from '@features/controlCenter/stores/controlCen
 import { GenerationSettingsPanel, useGenerationQueueStore } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
+import { PromptInput } from '@pixsim7/shared.ui';
+import { resolvePromptLimit } from '@/utils/prompt/limits';
 import type { ViewerAsset } from '@features/assets';
 import type { OperationType } from '@/types/operations';
 
@@ -30,9 +32,11 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     prompt,
     setPrompt,
     error,
+    providerId,
   } = useQuickGenerateController();
 
   const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
+  const maxChars = resolvePromptLimit(providerId);
 
   // Auto-set operation type based on asset type
   useEffect(() => {
@@ -115,16 +119,21 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
       </div>
 
       {/* Prompt input */}
-      <div className={`transition-all duration-300 ${error ? 'ring-2 ring-red-500 ring-offset-2 rounded-lg animate-pulse' : ''}`}>
-        <textarea
+      <div
+        className={`transition-all duration-300 ${error ? 'ring-2 ring-red-500 ring-offset-2 rounded-lg animate-pulse' : ''}`}
+        onKeyDown={handleKeyDown}
+      >
+        <PromptInput
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={setPrompt}
+          maxChars={maxChars}
           placeholder="Describe the generation..."
           disabled={generating}
           autoFocus
-          rows={2}
-          className="w-full px-3 py-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 resize-y min-h-[48px] max-h-[120px]"
+          variant="compact"
+          resizable
+          minHeight={48}
+          showCounter={true}
         />
       </div>
 
