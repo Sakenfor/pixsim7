@@ -175,8 +175,7 @@ async def add_asset(
         file_size_bytes=file_size_bytes,
         mime_type=mime_type,
         description=description,
-        tags=tags or [],
-        style_tags=style_tags or [],
+        # NOTE: tags removed - use TagService.assign_tags_to_asset() after creation
         media_metadata=media_metadata,
         image_hash=image_hash,
         phash64=phash64,
