@@ -21,6 +21,11 @@ class GameStateSchema(BaseModel):
     - scene: Running a scene graph / cutscene
     - conversation: In a narrative program / chat/dialogue view
     - menu: Global menu / settings
+
+    Location field notes:
+    - location_id: String format "location:123" (canonical for session state)
+    - Use get_location_id_int() to get the integer ID for DB queries
+    - Use set_location_from_id() class method to create from integer ID
     """
 
     mode: str = Field(description="Game mode: map, room, scene, conversation, menu")
@@ -39,6 +44,57 @@ class GameStateSchema(BaseModel):
         if v not in allowed_modes:
             raise ValueError(f'mode must be one of {allowed_modes}')
         return v
+
+    @field_validator('location_id')
+    @classmethod
+    def validate_location_id(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure location_id is in correct format if provided."""
+        if v is None:
+            return None
+        if not v.startswith('location:'):
+            raise ValueError(f"location_id must be in 'location:123' format, got: {v}")
+        try:
+            int(v.split(':', 1)[1])
+        except (ValueError, IndexError):
+            raise ValueError(f"location_id must be in 'location:123' format with integer ID, got: {v}")
+        return v
+
+    def get_location_id_int(self) -> Optional[int]:
+        """Get the location ID as an integer for DB queries.
+
+        Returns:
+            Integer location ID, or None if no location set
+
+        Example:
+            >>> state = GameStateSchema(mode="room", world_id=1, session_id=1, location_id="location:123")
+            >>> state.get_location_id_int()
+            123
+        """
+        if self.location_id is None:
+            return None
+        try:
+            return int(self.location_id.split(':', 1)[1])
+        except (ValueError, IndexError):
+            return None
+
+    @classmethod
+    def with_location(cls, location_id_int: Optional[int], **kwargs) -> "GameStateSchema":
+        """Create a GameStateSchema with location set from integer ID.
+
+        Args:
+            location_id_int: Integer location ID, or None
+            **kwargs: Other fields for GameStateSchema
+
+        Returns:
+            New GameStateSchema instance
+
+        Example:
+            >>> state = GameStateSchema.with_location(123, mode="room", world_id=1, session_id=1)
+            >>> state.location_id
+            "location:123"
+        """
+        location_str = f"location:{location_id_int}" if location_id_int is not None else None
+        return cls(location_id=location_str, **kwargs)
 
     class Config:
         extra = "allow"  # Allow additional fields for future extensibility

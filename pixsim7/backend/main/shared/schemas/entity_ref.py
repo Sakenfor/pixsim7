@@ -191,6 +191,120 @@ def entity_ref_field(entity_type: str) -> type:
     ]
 
 
+# ===================
+# Location Reference Helpers
+# ===================
+# These helpers provide easy conversion between:
+# - int (location_id): Used in DB models and most APIs
+# - str (location_ref): "location:123" format used in GameStateSchema
+
+
+def location_id_to_ref(location_id: Optional[int]) -> Optional[str]:
+    """Convert integer location ID to "location:123" string format.
+
+    Args:
+        location_id: Integer location ID or None
+
+    Returns:
+        String in "location:123" format, or None if input is None
+
+    Example:
+        >>> location_id_to_ref(123)
+        "location:123"
+        >>> location_id_to_ref(None)
+        None
+    """
+    if location_id is None:
+        return None
+    return f"location:{location_id}"
+
+
+def location_ref_to_id(location_ref: Optional[str]) -> Optional[int]:
+    """Convert "location:123" string to integer location ID.
+
+    Args:
+        location_ref: String in "location:123" format, or None
+
+    Returns:
+        Integer location ID, or None if input is None or invalid
+
+    Example:
+        >>> location_ref_to_id("location:123")
+        123
+        >>> location_ref_to_id(None)
+        None
+        >>> location_ref_to_id("invalid")
+        None
+    """
+    if location_ref is None:
+        return None
+    if not location_ref.startswith("location:"):
+        return None
+    try:
+        return int(location_ref.split(":", 1)[1])
+    except (ValueError, IndexError):
+        return None
+
+
+def normalize_location_to_id(value: Union[int, str, None]) -> Optional[int]:
+    """Normalize any location reference format to integer ID.
+
+    Args:
+        value: Location ID as int, string "location:123", or None
+
+    Returns:
+        Integer location ID, or None
+
+    Example:
+        >>> normalize_location_to_id(123)
+        123
+        >>> normalize_location_to_id("location:123")
+        123
+        >>> normalize_location_to_id(None)
+        None
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return location_ref_to_id(value)
+    return None
+
+
+def normalize_location_to_ref(value: Union[int, str, None]) -> Optional[str]:
+    """Normalize any location reference format to string "location:123".
+
+    Args:
+        value: Location ID as int, string "location:123", or None
+
+    Returns:
+        String in "location:123" format, or None
+
+    Example:
+        >>> normalize_location_to_ref(123)
+        "location:123"
+        >>> normalize_location_to_ref("location:123")
+        "location:123"
+        >>> normalize_location_to_ref(None)
+        None
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return location_id_to_ref(value)
+    if isinstance(value, str):
+        # Validate format and return as-is if valid
+        if value.startswith("location:"):
+            try:
+                int(value.split(":", 1)[1])
+                return value
+            except (ValueError, IndexError):
+                return None
+        return None
+    return None
+
+
 __all__ = [
     "EntityRef",
     "AssetRef",
@@ -201,4 +315,9 @@ __all__ = [
     "SessionRef",
     "UserRef",
     "entity_ref_field",
+    # Location helpers
+    "location_id_to_ref",
+    "location_ref_to_id",
+    "normalize_location_to_id",
+    "normalize_location_to_ref",
 ]

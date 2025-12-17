@@ -261,11 +261,12 @@ class WorldScheduler:
             logger.warning(f"World or world state not found for {world_id}")
             return {}
 
-        # Get simulation config from world meta or use defaults
+        # Get simulation config from canonical location: world.meta["simulation"]
+        # This is the single source of truth for scheduler config, including NPC tier selection.
+        # Previously also read from world.meta["behavior"]["simulationConfig"] - that path is now deprecated.
         simulation_config = None
-        if world.meta and "behavior" in world.meta:
-            behavior_config = world.meta.get("behavior", {})
-            simulation_config = behavior_config.get("simulationConfig")
+        if world.meta and "simulation" in world.meta:
+            simulation_config = world.meta["simulation"]
 
         # Collect all NPCs that might need simulation
         # For now, we'll query NPCs and check them against all sessions

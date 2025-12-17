@@ -27,6 +27,10 @@ from pixsim7.backend.main.domain.game import (
 from pixsim7.backend.main.services.game.stat_service import StatService
 
 
+# Type for action names - kept short for storage efficiency
+ActionType = str  # e.g., "session_created", "advance", "inventory_add", "quest_add"
+
+
 class GameSessionService:
     def __init__(self, db: AsyncSession, redis: Optional[Redis] = None):
         self.db = db
@@ -86,6 +90,98 @@ class GameSessionService:
     async def _normalize_session_relationships(self, session: GameSession) -> None:
         """Normalize relationship stats for a session using the generic stat service."""
         await self.stat_service.normalize_session_stats(session, "relationships")
+
+    async def create_event(
+        self,
+        session_id: int,
+        action: ActionType,
+        diff: Optional[Dict[str, Any]] = None,
+        node_id: Optional[int] = None,
+        edge_id: Optional[int] = None,
+        cleanup: bool = True,
+    ) -> GameSessionEvent:
+        """
+        Create a session event for tracking state mutations.
+
+        Args:
+            session_id: The session this event belongs to
+            action: Short action name (max 64 chars), e.g., "inventory_add", "quest_complete"
+            diff: Optional dict describing the change (kept small for efficiency)
+            node_id: Optional scene node reference
+            edge_id: Optional scene edge reference
+            cleanup: Whether to run cleanup after creating event (default True)
+
+        Returns:
+            The created GameSessionEvent
+
+        Example:
+            await service.create_event(
+                session_id=123,
+                action="inventory_add",
+                diff={"item_id": "sword", "quantity": 1}
+            )
+        """
+        event = GameSessionEvent(
+            session_id=session_id,
+            action=action[:64],  # Enforce max length
+            diff=diff,
+            node_id=node_id,
+            edge_id=edge_id,
+        )
+        self.db.add(event)
+        await self.db.commit()
+
+        if cleanup:
+            await self._cleanup_old_events(session_id)
+
+        return event
+
+    async def get_events(
+        self,
+        session_id: int,
+        limit: int = 200,
+        before_ts: Optional[str] = None,
+        after_ts: Optional[str] = None,
+    ) -> list[GameSessionEvent]:
+        """
+        Get events for a session with optional time filtering.
+
+        Args:
+            session_id: The session to get events for
+            limit: Maximum number of events to return (default 200, max 1000)
+            before_ts: ISO timestamp - only return events before this time
+            after_ts: ISO timestamp - only return events after this time
+
+        Returns:
+            List of GameSessionEvent ordered by timestamp descending (most recent first)
+        """
+        from datetime import datetime
+
+        limit = min(limit, 1000)  # Cap at 1000
+
+        query = (
+            select(GameSessionEvent)
+            .where(GameSessionEvent.session_id == session_id)
+        )
+
+        if before_ts:
+            try:
+                before_dt = datetime.fromisoformat(before_ts.replace("Z", "+00:00"))
+                query = query.where(GameSessionEvent.ts < before_dt)
+            except ValueError:
+                pass  # Ignore invalid timestamps
+
+        if after_ts:
+            try:
+                after_dt = datetime.fromisoformat(after_ts.replace("Z", "+00:00"))
+                query = query.where(GameSessionEvent.ts > after_dt)
+            except ValueError:
+                pass  # Ignore invalid timestamps
+
+        query = query.order_by(GameSessionEvent.ts.desc()).limit(limit)
+
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
 
     async def normalize_session_stats(
         self,
@@ -264,19 +360,23 @@ class GameSessionService:
                             f"turn_based_validation_failed: expected delta of {turn_delta}s, got {float(actual_delta)}s"
                         )
 
-        # Track if any changes were made
+        # Track if any changes were made and what changed (for events)
         changed = False
         relationship_updated = False
+        diff: Dict[str, Any] = {}
 
         if world_time is not None and world_time != session.world_time:
+            diff["world_time"] = {"old": session.world_time, "new": world_time}
             session.world_time = float(world_time)
             changed = True
         if flags is not None and flags != session.flags:
+            diff["flags_updated"] = True  # Don't include full flags in diff (too large)
             session.flags = flags
             changed = True
 
         # Handle stats parameter
         if stats is not None and stats != session.stats:
+            diff["stats_updated"] = True  # Don't include full stats in diff (too large)
             session.stats = stats
             changed = True
             # Check if relationships were updated
@@ -290,6 +390,15 @@ class GameSessionService:
         self.db.add(session)
         await self.db.commit()
         await self.db.refresh(session)
+
+        # Create event for the update if changes occurred
+        if changed:
+            await self.create_event(
+                session_id=session.id,
+                action="session_update",
+                diff=diff if diff else None,
+                cleanup=True,
+            )
 
         # Only normalize if relationships were updated (optimization)
         if relationship_updated:
