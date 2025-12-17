@@ -287,7 +287,7 @@ export function QuickGenerateModule() {
 
   // Filter params based on operation type:
   // - video_transition: hide duration (we have per-transition duration controls inline)
-  // - image_to_video: hide aspect_ratio (follows source image dimensions)
+  // - image_to_video/video_extend: hide aspect_ratio (inherit from source)
   const filteredParamSpecs = useMemo(() => {
     const hideParams = new Set<string>();
 
@@ -295,7 +295,9 @@ export function QuickGenerateModule() {
       hideParams.add('duration');
     }
 
-    if (operationType === 'image_to_video') {
+    // Operations that inherit aspect ratio from source (don't support custom aspect_ratio)
+    const INHERITS_ASPECT_RATIO = new Set(['image_to_video', 'video_extend']);
+    if (INHERITS_ASPECT_RATIO.has(operationType)) {
       hideParams.add('aspect_ratio');
     }
 

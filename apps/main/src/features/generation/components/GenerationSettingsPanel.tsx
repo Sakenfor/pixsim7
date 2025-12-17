@@ -262,7 +262,9 @@ export function GenerationSettingsPanel({
       hideParams.add('duration');
     }
 
-    if (operationType === 'image_to_video') {
+    // Operations that inherit aspect ratio from source (don't support custom aspect_ratio)
+    const INHERITS_ASPECT_RATIO = new Set(['image_to_video', 'video_extend']);
+    if (INHERITS_ASPECT_RATIO.has(operationType)) {
       hideParams.add('aspect_ratio');
     }
 
