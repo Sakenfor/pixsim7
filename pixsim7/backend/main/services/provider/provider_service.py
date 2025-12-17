@@ -105,10 +105,20 @@ class ProviderService:
         try:
             # Some providers require uploading local files. For these, we keep the persisted
             # payload small/portable (URLs or asset references) but resolve files at runtime.
-            if generation.provider_id == "remaker":
-                execute_params = await self._prepare_remaker_execute_params(
+            # Instead of provider-specific checks, we use the generic prepare_execution_params() hook.
+            if provider.requires_file_preparation():
+                # Create a bound resolver function for the provider to use
+                async def resolve_source_fn(source, user_id: int, default_suffix: str):
+                    return await self._resolve_source_to_local_file(
+                        source=source,
+                        user_id=user_id,
+                        default_suffix=default_suffix,
+                    )
+
+                execute_params = await provider.prepare_execution_params(
                     generation=generation,
                     mapped_params=mapped_params,
+                    resolve_source_fn=resolve_source_fn,
                 )
 
             # Execute provider operation
@@ -199,49 +209,8 @@ class ProviderService:
 
     _ASSET_REF_RE = re.compile(r"^(?:asset[_:])(?P<id>\\d+)$")
 
-    async def _prepare_remaker_execute_params(
-        self,
-        *,
-        generation: Generation,
-        mapped_params: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Resolve Remaker inpaint inputs to local filesystem paths.
-
-        Remaker's create-job endpoint is multipart and requires two files:
-        - original image (jpeg)
-        - mask image (png)
-
-        The mapped payload stores sources as strings (URL/path/asset ref).
-        This method resolves those sources to local paths, downloading remote
-        URLs to temp files when needed, and returns an execute-only params dict.
-        """
-        original_source = mapped_params.get("original_image_source")
-        mask_source = mapped_params.get("mask_source")
-        file_extension = mapped_params.get("file_extension")
-
-        original_path, original_temps = await self._resolve_source_to_local_file(
-            source=original_source,
-            user_id=generation.user_id,
-            default_suffix=".jpg",
-        )
-        mask_path, mask_temps = await self._resolve_source_to_local_file(
-            source=mask_source,
-            user_id=generation.user_id,
-            default_suffix=".png",
-        )
-
-        temps = [*original_temps, *mask_temps]
-
-        resolved: Dict[str, Any] = dict(mapped_params)
-        resolved["original_image_path"] = original_path
-        resolved["mask_path"] = mask_path
-        resolved["_temp_paths"] = temps
-
-        if file_extension and isinstance(file_extension, str) and not file_extension.startswith("."):
-            resolved["file_extension"] = f".{file_extension}"
-
-        return resolved
+    # Note: _prepare_remaker_execute_params has been removed.
+    # Providers now implement prepare_execution_params() directly.
 
     async def _resolve_source_to_local_file(
         self,

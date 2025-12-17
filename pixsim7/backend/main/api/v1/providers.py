@@ -98,16 +98,9 @@ class PixverseCostEstimateResponse(BaseModel):
     estimated_cost_usd: Optional[float] = None
 
 
-# Provider domain mappings (centralized configuration)
-PROVIDER_DOMAINS = {
-    "pixverse": {
-        "name": "Pixverse AI",
-        "domains": ["pixverse.ai", "app.pixverse.ai"],
-    },
-    "sora": {
-        "name": "OpenAI Sora",
-        "domains": ["sora.chatgpt.com", "sora.com", "chatgpt.com"],
-    },
+# Provider domain mappings - DEPRECATED, use get_provider_domains() instead
+# These are kept as fallbacks for providers that don't define domains in their manifest
+_FALLBACK_PROVIDER_DOMAINS = {
     "runway": {
         "name": "Runway ML",
         "domains": ["runwayml.com", "app.runwayml.com"],
@@ -119,9 +112,53 @@ PROVIDER_DOMAINS = {
 }
 
 
+def get_provider_domains() -> dict[str, dict]:
+    """
+    Get provider domains dynamically from registered providers.
+
+    Returns dict mapping provider_id to {"name": str, "domains": list[str]}
+
+    This replaces the hardcoded PROVIDER_DOMAINS constant. Providers now define
+    their domains in their manifest (get_manifest().domains) or adapter (get_domains()).
+    """
+    domains_map = {}
+
+    # Get domains from registered providers
+    for provider_id in registry.list_provider_ids():
+        try:
+            provider = registry.get(provider_id)
+
+            # Try to get manifest first (preferred)
+            manifest = provider.get_manifest() if hasattr(provider, 'get_manifest') else None
+
+            if manifest and manifest.domains:
+                domains_map[provider_id] = {
+                    "name": manifest.name,
+                    "domains": list(manifest.domains),
+                }
+            elif hasattr(provider, 'get_domains') and provider.get_domains():
+                # Fallback to get_domains() method
+                domains_map[provider_id] = {
+                    "name": provider.get_display_name() if hasattr(provider, 'get_display_name') else provider_id.title(),
+                    "domains": provider.get_domains(),
+                }
+        except Exception:
+            continue
+
+    # Add fallback domains for providers that aren't registered yet or don't have manifests
+    for provider_id, config in _FALLBACK_PROVIDER_DOMAINS.items():
+        if provider_id not in domains_map:
+            domains_map[provider_id] = config
+
+    return domains_map
+
+
 def detect_provider_from_url(url: str) -> Optional[str]:
     """
-    Detect provider from URL
+    Detect provider from URL using dynamic domain mappings.
+
+    Domains are pulled from registered providers via get_provider_domains().
+    This enables new providers to be detected without code changes.
 
     Args:
         url: URL to analyze
@@ -136,9 +173,12 @@ def detect_provider_from_url(url: str) -> Optional[str]:
         if not hostname:
             return None
 
-        # Check against known provider domains
-        for provider_id, config in PROVIDER_DOMAINS.items():
-            for domain in config["domains"]:
+        # Get domains dynamically from providers
+        provider_domains = get_provider_domains()
+
+        # Check against provider domains
+        for provider_id, config in provider_domains.items():
+            for domain in config.get("domains", []):
                 if hostname == domain or hostname.endswith('.' + domain):
                     return provider_id
 
@@ -184,26 +224,29 @@ async def detect_provider(
             url=request.url
         )
 
+    # Get domains dynamically
+    provider_domains = get_provider_domains()
+
     # Get provider from registry
     try:
         provider = registry.get(provider_id)
-        provider_config = PROVIDER_DOMAINS.get(provider_id, {})
+        provider_config = provider_domains.get(provider_id, {})
 
         capabilities = extract_provider_capabilities(provider)
         return ProviderDetectionResponse(
             detected=True,
             provider=ProviderInfo(
                 provider_id=provider.provider_id,
-                name=provider_config.get("name", provider_id.capitalize()),
+                name=provider_config.get("name", provider.get_display_name() if hasattr(provider, 'get_display_name') else provider_id.capitalize()),
                 domains=provider_config.get("domains", []),
                 supported_operations=[op.value for op in provider.supported_operations],
                 capabilities=capabilities
             ),
             url=request.url
         )
-    except Exception as e:
+    except Exception:
         # Provider configured in domains but not registered in backend
-        provider_config = PROVIDER_DOMAINS.get(provider_id, {})
+        provider_config = provider_domains.get(provider_id, {})
         return ProviderDetectionResponse(
             detected=True,
             provider=ProviderInfo(
@@ -225,17 +268,22 @@ async def list_providers(user: CurrentUser):
     List all registered providers
 
     Returns list of providers currently registered in the backend.
+    Provider metadata (domains, capabilities) is pulled dynamically from
+    each provider's manifest/adapter methods.
     """
     providers_info = []
+
+    # Get domains dynamically from providers
+    provider_domains = get_provider_domains()
 
     for provider_id in registry.list_provider_ids():
         try:
             provider = registry.get(provider_id)
-            provider_config = PROVIDER_DOMAINS.get(provider_id, {})
+            provider_config = provider_domains.get(provider_id, {})
             capabilities = extract_provider_capabilities(provider)
             providers_info.append(ProviderInfo(
                 provider_id=provider.provider_id,
-                name=provider_config.get("name", provider_id.capitalize()),
+                name=provider_config.get("name", provider.get_display_name() if hasattr(provider, 'get_display_name') else provider_id.capitalize()),
                 domains=provider_config.get("domains", []),
                 supported_operations=[op.value for op in provider.supported_operations],
                 capabilities=capabilities,
@@ -252,13 +300,16 @@ def extract_provider_capabilities(provider) -> dict:
     """Derive extended capability metadata for a provider.
 
     Strategy:
-    - Inspect provider.supported_operations
-    - Infer quality presets, model defaults, dimension rules from adapter type
-    - Provide parameter hints per operation
-    - Surface optional feature flags (embedded asset extraction, uploads)
+    - Pull metadata from provider's manifest when available
+    - Use get_operation_parameter_spec() for UI form hints
+    - Infer additional capabilities from adapter methods
+    - Fall back to provider-type-specific defaults only when necessary
+
+    This is now mostly manifest-driven, reducing hardcoded provider logic.
     """
     ops = [op.value for op in provider.supported_operations]
-    # Try to get structured operation specs
+
+    # Try to get structured operation specs (for UI forms)
     operation_specs = {}
     try:
         if hasattr(provider, 'get_operation_parameter_spec'):
@@ -266,37 +317,49 @@ def extract_provider_capabilities(provider) -> dict:
     except Exception:
         operation_specs = {}
 
+    # Get manifest for additional metadata
+    manifest = None
+    try:
+        if hasattr(provider, 'get_manifest'):
+            manifest = provider.get_manifest()
+    except Exception:
+        pass
+
+    # Build base capabilities
     base = {
         "provider_id": getattr(provider, 'provider_id', 'unknown'),
         "operations": ops,
         "features": {
             "embedded_assets": _method_overridden(provider, 'extract_embedded_assets'),
             "asset_upload": _method_overridden(provider, 'upload_asset'),
+            "file_preparation": provider.requires_file_preparation() if hasattr(provider, 'requires_file_preparation') else False,
         },
         "operation_specs": operation_specs,
     }
 
-    # Adapter-specific augmentation
+    # Add credit types from manifest
+    if manifest and manifest.credit_types:
+        base["credit_types"] = list(manifest.credit_types)
+    elif hasattr(provider, 'get_credit_types'):
+        base["credit_types"] = provider.get_credit_types()
+
+    # Add status mapping notes if available
+    if manifest and manifest.status_mapping_notes:
+        base["status_mapping_notes"] = manifest.status_mapping_notes
+
+    # Provider-specific augmentations (kept for backward compatibility, but
+    # most metadata should come from operation_specs in the provider)
     adapter_name = provider.__class__.__name__.lower()
     if 'pixverse' in adapter_name:
-        # Base presets / hints derived from adapter
-        base.update({
-            "quality_presets": ["360p", "720p", "1080p"],
-            "default_model": "v5",
-            "aspect_ratios": ["16:9", "9:16", "1:1"],
-            "parameter_hints": {
-                "TEXT_TO_VIDEO": ["prompt", "quality", "duration", "seed", "aspect_ratio", "motion_mode", "negative_prompt", "style"],
-                "IMAGE_TO_VIDEO": ["prompt", "image_url", "quality", "duration", "seed", "camera_movement"],
-                "VIDEO_EXTEND": ["prompt", "video_url", "original_video_id", "quality", "seed"],
-                "VIDEO_TRANSITION": ["prompts", "image_urls", "quality", "duration"],
-                "FUSION": ["prompt", "fusion_assets", "quality", "duration", "seed"],
-            },
-        })
+        # These could also come from operation_specs, but we keep them for backward compat
+        base.setdefault("quality_presets", ["360p", "720p", "1080p"])
+        base.setdefault("default_model", "v5")
+        base.setdefault("aspect_ratios", ["16:9", "9:16", "1:1"])
+
         # Cost hints: prefer exact Pixverse credit calculator when available.
         cost_hints: dict = {}
         if pixverse_calculate_cost is not None:
             try:
-                # Use a simple baseline: 1 second, default model/quality, no extras.
                 credits = pixverse_calculate_cost(
                     quality="360p",
                     duration=1,
@@ -316,16 +379,21 @@ def extract_provider_capabilities(provider) -> dict:
                 cost_hints = {}
         if cost_hints:
             base["cost_hints"] = cost_hints
+
     elif 'sora' in adapter_name:
-        base.update({
-            "dimension_defaults": {"width": 480, "height": 480},
-            "default_model": "turbo",
-            "parameter_hints": {
-                "TEXT_TO_VIDEO": ["prompt", "width", "height", "duration", "model", "n_variants"],
-                "IMAGE_TO_VIDEO": ["prompt", "width", "height", "duration", "model", "n_variants", "image_url|image_media_id"],
-            },
-        })
-    else:
+        base.setdefault("dimension_defaults", {"width": 480, "height": 480})
+        base.setdefault("default_model", "turbo")
+
+    # Generate parameter_hints from operation_specs if not already present
+    if "parameter_hints" not in base and operation_specs:
+        param_hints = {}
+        for op_name, spec in operation_specs.items():
+            params = spec.get("parameters", [])
+            param_hints[op_name.upper()] = [p["name"] for p in params if isinstance(p, dict)]
+        if param_hints:
+            base["parameter_hints"] = param_hints
+    elif "parameter_hints" not in base:
+        # Minimal fallback
         base["parameter_hints"] = {op: ["prompt"] for op in ops}
 
     return base

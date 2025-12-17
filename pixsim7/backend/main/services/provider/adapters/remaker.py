@@ -10,18 +10,24 @@ Notes:
 - The site also sends `product-serial` and `product-code` headers; we persist those
   on ProviderAccount.provider_metadata and forward them on each request.
 - Inpaint masks are PNG images where white = inpaint and black = preserve.
+
+This is a "web internal API" provider - it replays the same requests the browser makes.
+Adding similar providers requires:
+1. Implementing prepare_execution_params() if multipart uploads are needed
+2. Implementing extract_account_data() to parse browser-captured auth data
+3. Defining get_manifest() with domains for URL detection
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
 
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import OperationType, ProviderAccount, ProviderStatus
+from pixsim7.backend.main.domain import OperationType, ProviderAccount, ProviderStatus, Generation
 from pixsim7.backend.main.services.provider.base import (
     Provider,
     GenerationResult,
@@ -31,7 +37,34 @@ from pixsim7.backend.main.services.provider.base import (
     UnsupportedOperationError,
 )
 
+if TYPE_CHECKING:
+    from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest
+
 logger = get_logger()
+
+
+# Provider manifest - can also be accessed from manifest.py
+_REMAKER_MANIFEST = None
+
+def _get_remaker_manifest() -> "ProviderManifest":
+    """Lazily load Remaker manifest to avoid circular imports."""
+    global _REMAKER_MANIFEST
+    if _REMAKER_MANIFEST is None:
+        from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+        _REMAKER_MANIFEST = ProviderManifest(
+            id="remaker",
+            name="Remaker.ai",
+            version="0.1.0",
+            description="Remaker.ai inpainting provider (web internal API replay)",
+            author="PixSim7",
+            kind=ProviderKind.VIDEO,
+            enabled=True,
+            requires_credentials=True,
+            domains=["remaker.ai", "api.remaker.ai"],
+            credit_types=["web"],  # Remaker only has web credits
+            status_mapping_notes="100000=success, 300006=processing, other=failed",
+        )
+    return _REMAKER_MANIFEST
 
 
 class RemakerProvider(Provider):
@@ -50,6 +83,64 @@ class RemakerProvider(Provider):
     @property
     def supported_operations(self) -> list[OperationType]:
         return [OperationType.IMAGE_TO_IMAGE]
+
+    # ===== PROVIDER METADATA =====
+
+    def get_manifest(self) -> "ProviderManifest":
+        """Return Remaker provider manifest with domains and credit types."""
+        return _get_remaker_manifest()
+
+    # ===== FILE PREPARATION (for multipart uploads) =====
+
+    def requires_file_preparation(self) -> bool:
+        """Remaker requires local file paths for multipart uploads."""
+        return True
+
+    async def prepare_execution_params(
+        self,
+        generation: Generation,
+        mapped_params: Dict[str, Any],
+        resolve_source_fn,
+    ) -> Dict[str, Any]:
+        """
+        Resolve Remaker inpaint inputs to local filesystem paths.
+
+        Remaker's create-job endpoint is multipart and requires two files:
+        - original image (jpeg)
+        - mask image (png)
+
+        The mapped payload stores sources as strings (URL/path/asset ref).
+        This method resolves those sources to local paths, downloading remote
+        URLs to temp files when needed, and returns an execute-only params dict.
+        """
+        original_source = mapped_params.get("original_image_source")
+        mask_source = mapped_params.get("mask_source")
+        file_extension = mapped_params.get("file_extension")
+
+        original_path, original_temps = await resolve_source_fn(
+            original_source,
+            generation.user_id,
+            ".jpg",
+        )
+        mask_path, mask_temps = await resolve_source_fn(
+            mask_source,
+            generation.user_id,
+            ".png",
+        )
+
+        temps = [*original_temps, *mask_temps]
+
+        resolved: Dict[str, Any] = dict(mapped_params)
+        resolved["original_image_path"] = original_path
+        resolved["mask_path"] = mask_path
+        resolved["_temp_paths"] = temps
+
+        if file_extension and isinstance(file_extension, str) and not file_extension.startswith("."):
+            resolved["file_extension"] = f".{file_extension}"
+
+        return resolved
+
+    # ===== PARAMETER MAPPING =====
 
     def map_parameters(self, operation_type: OperationType, params: Dict[str, Any]) -> Dict[str, Any]:
         if operation_type not in self.supported_operations:

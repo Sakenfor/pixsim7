@@ -86,6 +86,8 @@ async def refresh_account_credits(
     Refresh credits for an account from the provider.
 
     Returns dict with credit amounts, or empty dict on failure.
+    Credit types are determined dynamically from the provider's manifest/adapter
+    via get_credit_types() instead of being hardcoded.
     """
     from pixsim7.backend.main.services.provider.registry import registry
 
@@ -101,10 +103,18 @@ async def refresh_account_credits(
             gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
             return {}
 
+        # Get valid credit types from provider (no longer hardcoded)
+        valid_credit_types = set()
+        if hasattr(provider, 'get_credit_types'):
+            valid_credit_types = set(provider.get_credit_types())
+        else:
+            # Fallback for providers without get_credit_types()
+            valid_credit_types = {'web', 'openapi', 'standard', 'usage'}
+
         # Update credits in database
         if credits_data:
             for credit_type, amount in credits_data.items():
-                if credit_type in ('web', 'openapi', 'standard'):
+                if credit_type in valid_credit_types:
                     try:
                         await account_service.set_credit(account.id, credit_type, int(amount))
                     except Exception as e:
@@ -120,13 +130,24 @@ async def refresh_account_credits(
 
 
 def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
-    """Check if account has any usable credits."""
-    # Check web credits (free tier)
-    web = credits_data.get('web', 0)
-    # Check openapi credits (paid tier)
-    openapi = credits_data.get('openapi', 0)
+    """
+    Check if account has any usable credits.
 
-    return (web >= min_credits) or (openapi >= min_credits)
+    Checks all credit types in credits_data. Returns True if any type has
+    sufficient credits. This is provider-agnostic - works with any credit types.
+    """
+    if not credits_data:
+        return False
+
+    # Check if any credit type has sufficient credits
+    for credit_type, amount in credits_data.items():
+        try:
+            if int(amount) >= min_credits:
+                return True
+        except (ValueError, TypeError):
+            continue
+
+    return False
 
 
 async def process_generation(ctx: dict, generation_id: int) -> dict:
