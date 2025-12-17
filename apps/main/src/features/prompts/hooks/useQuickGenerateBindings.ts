@@ -6,6 +6,7 @@ import {
   type QueuedAsset,
 } from '@features/generation';
 import { useGenerationSettingsStore } from '@features/generation';
+import { useCubeSettingsStore } from '@features/controlCenter/stores/cubeSettingsStore';
 import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility
@@ -61,6 +62,9 @@ export function useQuickGenerateBindings(
   const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
   const clearQueue = useGenerationQueueStore(s => s.clearQueue);
   const cycleQueue = useGenerationQueueStore(s => s.cycleQueue);
+
+  // Settings for auto-selection behavior
+  const autoSelectOperationType = useCubeSettingsStore(s => s.autoSelectOperationType);
 
   // Dynamic params from operation_specs (shared across UIs via store)
   const dynamicParams = useGenerationSettingsStore(s => s.params);
@@ -127,7 +131,7 @@ export function useQuickGenerateBindings(
     const indexChanged = prevIndex !== null && prevIndex !== mainQueueIndex;
 
     if (itemsWereAdded) {
-      // Set operation type if specified
+      // Set operation type if explicitly specified in queue item
       if (operation) {
         setOperationType(operation);
       }
@@ -135,10 +139,16 @@ export function useQuickGenerateBindings(
       // Auto-fill based on operation and asset type
       if ((operation === 'image_to_video' || !operation) && asset.media_type === 'image') {
         setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
-        if (!operation) setOperationType('image_to_video');
+        // Only auto-select operation type if setting is enabled
+        if (!operation && autoSelectOperationType) {
+          setOperationType('image_to_video');
+        }
       } else if ((operation === 'video_extend' || !operation) && asset.media_type === 'video') {
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
-        if (!operation) setOperationType('video_extend');
+        // Only auto-select operation type if setting is enabled
+        if (!operation && autoSelectOperationType) {
+          setOperationType('video_extend');
+        }
       }
     } else if (indexChanged) {
       // Index changed (user cycled) - update params to reflect the current item
@@ -155,7 +165,7 @@ export function useQuickGenerateBindings(
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
       }
     }
-  }, [mainQueue, mainQueueIndex, setOperationType]);
+  }, [mainQueue, mainQueueIndex, setOperationType, autoSelectOperationType]);
 
   // Auto-fill transition queue data (but don't auto-switch operation type on load)
   useEffect(() => {

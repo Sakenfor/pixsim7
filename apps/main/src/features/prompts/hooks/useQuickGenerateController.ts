@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationsStore } from '@features/generation';
+import { useGenerationsStore, useGenerationQueueStore } from '@features/generation';
 import { ccSelectors } from '@/stores/selectors';
 import { generateAsset } from '@features/controlCenter/lib/api';
 import { extractFrame } from '@features/assets';
@@ -87,9 +87,15 @@ export function useQuickGenerateController() {
       let modifiedDynamicParams = { ...bindings.dynamicParams };
       let modifiedImageUrls = [...bindings.imageUrls];
 
+      // Get current queue state directly from store to avoid stale React hook values
+      // This is critical when assets are enqueued right before generation
+      const queueState = useGenerationQueueStore.getState();
+      const currentMainQueue = queueState.mainQueue;
+      const currentMainQueueIndex = queueState.mainQueueIndex;
+
       // Get current queue item based on index (1-based index, convert to 0-based)
-      const currentIdx = Math.max(0, Math.min(bindings.mainQueueIndex - 1, bindings.mainQueue.length - 1));
-      const currentQueueItem = bindings.mainQueue.length > 0 ? bindings.mainQueue[currentIdx] : null;
+      const currentIdx = Math.max(0, Math.min(currentMainQueueIndex - 1, currentMainQueue.length - 1));
+      const currentQueueItem = currentMainQueue.length > 0 ? currentMainQueue[currentIdx] : null;
 
       // For image_to_video: extract frame if video has locked timestamp
       if (operationType === 'image_to_video' && currentQueueItem) {
@@ -104,9 +110,10 @@ export function useQuickGenerateController() {
       }
 
       // For video_transition: extract frames for videos with locked timestamps
-      if (operationType === 'video_transition' && bindings.multiAssetQueue.length > 0) {
+      const currentMultiAssetQueue = queueState.multiAssetQueue;
+      if (operationType === 'video_transition' && currentMultiAssetQueue.length > 0) {
         const extractedUrls: string[] = [];
-        for (const queueItem of bindings.multiAssetQueue) {
+        for (const queueItem of currentMultiAssetQueue) {
           if (queueItem.lockedTimestamp !== undefined && queueItem.asset.media_type === 'video') {
             const extractedFrame = await extractFrame({
               video_asset_id: queueItem.asset.id,

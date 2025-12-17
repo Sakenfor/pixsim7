@@ -21,6 +21,8 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
 
   const linkingGesture = useCubeSettingsStore((s) => s.linkingGesture);
   const setLinkingGesture = useCubeSettingsStore((s) => s.setLinkingGesture);
+  const autoSelectOperationType = useCubeSettingsStore((s) => s.autoSelectOperationType);
+  const setAutoSelectOperationType = useCubeSettingsStore((s) => s.setAutoSelectOperationType);
 
   const cubeList = useMemo(
     () => Object.values(cubes).sort((a, b) => a.zIndex - b.zIndex),
@@ -190,7 +192,7 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
   );
 
   const renderInputTab = () => (
-    <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
+    <div className="flex-1 overflow-auto px-3 py-3 space-y-4">
       <div>
         <div className="text-[11px] font-semibold mb-1">Linking Gesture</div>
         <div className="text-[10px] text-white/60 mb-1">
@@ -207,6 +209,26 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
         <div className="mt-1 text-[10px] text-white/50">
           Tip: Middle-click avoids conflicts with dragging; Shift+Left-click works on
           trackpads without a middle button.
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[11px] font-semibold mb-1">Operation Type Auto-Selection</div>
+        <div className="text-[10px] text-white/60 mb-2">
+          Automatically select operation type when adding assets to queue based on asset type.
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoSelectOperationType}
+            onChange={(e) => setAutoSelectOperationType(e.target.checked)}
+            className="w-4 h-4 rounded bg-black/40 border border-white/25 checked:bg-blue-600"
+          />
+          <span className="text-[11px]">Auto-select operation type</span>
+        </label>
+        <div className="mt-2 text-[10px] text-white/50">
+          When enabled: Adding a video will auto-select "Extend Video", adding an image will auto-select "Animate Image".
+          Disable this to manually control operation type selection.
         </div>
       </div>
     </div>
