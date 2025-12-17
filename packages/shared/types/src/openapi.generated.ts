@@ -1845,6 +1845,39 @@ export interface paths {
         readonly patch: operations["add_asset_tags_api_v1_assets__asset_id__tags_add_patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/{asset_id}/tags/assign": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Assign Tags To Asset
+         * @description Assign/remove tags to/from an asset using structured hierarchical tags.
+         *
+         *     Example request:
+         *     ```json
+         *     {
+         *       "add": ["character:alice", "location:tokyo", "style:anime"],
+         *       "remove": ["old_tag:value"]
+         *     }
+         *     ```
+         *
+         *     Tags are automatically:
+         *     - Normalized (lowercase, trimmed)
+         *     - Resolved to canonical tags (aliases are followed)
+         *     - Created if they don't exist
+         */
+        readonly post: operations["assign_tags_to_asset_api_v1_assets__asset_id__tags_assign_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/{asset_id}/tags/remove": {
         readonly parameters: {
             readonly query?: never;
@@ -7175,6 +7208,115 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tags": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description List tags with optional filters.
+         *
+         *     Examples:
+         *     - GET /tags → all tags
+         *     - GET /tags?namespace=character → all character tags
+         *     - GET /tags?q=alice → tags matching 'alice'
+         */
+        readonly get: operations["list_tags_api_v1_tags_get"];
+        readonly put?: never;
+        /**
+         * Create Tag
+         * @description Create a new tag.
+         *
+         *     Example request:
+         *     ```json
+         *     {
+         *       "namespace": "character",
+         *       "name": "alice",
+         *       "display_name": "Character: Alice",
+         *       "parent_tag_id": null,
+         *       "meta": {"source": "game"}
+         *     }
+         *     ```
+         */
+        readonly post: operations["create_tag_api_v1_tags_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/tags/{tag_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Tag
+         * @description Get detailed information about a specific tag.
+         *
+         *     Includes:
+         *     - Tag identity (slug, namespace, name)
+         *     - Hierarchy (parent_tag)
+         *     - Aliasing (canonical_tag)
+         *     - Metadata
+         *     - Usage count
+         */
+        readonly get: operations["get_tag_api_v1_tags__tag_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Tag
+         * @description Update tag fields.
+         *
+         *     Example request:
+         *     ```json
+         *     {
+         *       "display_name": "Updated Display Name",
+         *       "parent_tag_id": 123
+         *     }
+         *     ```
+         */
+        readonly patch: operations["update_tag_api_v1_tags__tag_id__patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/tags/{tag_id}/alias": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Create Alias
+         * @description Create an alias tag pointing to this canonical tag.
+         *
+         *     Example request:
+         *     ```json
+         *     {
+         *       "alias_slug": "char:alice",
+         *       "display_name": "Char: Alice"
+         *     }
+         *     ```
+         *
+         *     This creates a new tag 'char:alice' that resolves to 'character:alice'.
+         */
+        readonly post: operations["create_alias_api_v1_tags__tag_id__alias_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/users/me": {
         readonly parameters: {
             readonly query?: never;
@@ -8345,13 +8487,31 @@ export interface components {
             readonly remote_url?: string | null;
             readonly sync_status: components["schemas"]["SyncStatus"];
             /** Tags */
-            readonly tags?: readonly string[];
+            readonly tags?: readonly components["schemas"]["TagSummary"][];
             /** Thumbnail Url */
             readonly thumbnail_url?: string | null;
             /** User Id */
             readonly user_id: number;
             /** Width */
             readonly width?: number | null;
+        };
+        /**
+         * AssignTagsRequest
+         * @description Assign/remove tags from an asset.
+         *
+         *     Slugs are automatically normalized and resolved to canonical tags.
+         */
+        readonly AssignTagsRequest: {
+            /**
+             * Add
+             * @description Tag slugs to add
+             */
+            readonly add?: readonly string[];
+            /**
+             * Remove
+             * @description Tag slugs to remove
+             */
+            readonly remove?: readonly string[];
         };
         /** AutomationExecution */
         readonly AutomationExecution: {
@@ -8875,6 +9035,22 @@ export interface components {
             readonly activity: Record<string, unknown>;
         };
         /**
+         * CreateAliasRequest
+         * @description Create an alias tag pointing to a canonical tag
+         */
+        readonly CreateAliasRequest: {
+            /**
+             * Alias Slug
+             * @description New alias slug (e.g., 'char:alice')
+             */
+            readonly alias_slug: string;
+            /**
+             * Display Name
+             * @description Display name for alias
+             */
+            readonly display_name?: string | null;
+        };
+        /**
          * CreateAnalysisRequest
          * @description Request to create a new asset analysis
          */
@@ -9175,6 +9351,37 @@ export interface components {
             readonly scene_id: number;
             /** World Id */
             readonly world_id?: number | null;
+        };
+        /**
+         * CreateTagRequest
+         * @description Create a new tag
+         */
+        readonly CreateTagRequest: {
+            /**
+             * Display Name
+             * @description Display name preserving casing
+             */
+            readonly display_name?: string | null;
+            /**
+             * Meta
+             * @description Plugin/provider metadata
+             */
+            readonly meta?: Record<string, unknown> | null;
+            /**
+             * Name
+             * @description Tag name (e.g., alice, tokyo, anime)
+             */
+            readonly name: string;
+            /**
+             * Namespace
+             * @description Tag namespace (e.g., character, location, style)
+             */
+            readonly namespace: string;
+            /**
+             * Parent Tag Id
+             * @description Parent tag ID for hierarchy
+             */
+            readonly parent_tag_id?: number | null;
         };
         /** CreateWorldRequest */
         readonly CreateWorldRequest: {
@@ -12412,6 +12619,75 @@ export interface components {
             readonly timestamp: string;
         };
         /**
+         * TagDetail
+         * @description Complete tag information including hierarchy and metadata.
+         */
+        readonly TagDetail: {
+            readonly canonical_tag?: components["schemas"]["TagSummary"] | null;
+            /** Canonical Tag Id */
+            readonly canonical_tag_id?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Display Name */
+            readonly display_name?: string | null;
+            /** Id */
+            readonly id: number;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Name */
+            readonly name: string;
+            /** Namespace */
+            readonly namespace: string;
+            readonly parent_tag?: components["schemas"]["TagSummary"] | null;
+            /** Parent Tag Id */
+            readonly parent_tag_id?: number | null;
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+            /**
+             * Usage Count
+             * @description Number of assets with this tag
+             */
+            readonly usage_count?: number | null;
+        };
+        /**
+         * TagListResponse
+         * @description Tag list response with pagination
+         */
+        readonly TagListResponse: {
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Tags */
+            readonly tags: readonly components["schemas"]["TagSummary"][];
+            /** Total */
+            readonly total: number;
+        };
+        /**
+         * TagSummary
+         * @description Minimal tag information for asset responses and tag lists.
+         */
+        readonly TagSummary: {
+            /** Display Name */
+            readonly display_name?: string | null;
+            /** Id */
+            readonly id: number;
+            /** Name */
+            readonly name: string;
+            /** Namespace */
+            readonly namespace: string;
+            /** Slug */
+            readonly slug: string;
+        };
+        /**
          * TestActionsRequest
          * @description Request to test actions (reuses existing execution infrastructure)
          */
@@ -12686,8 +12962,29 @@ export interface components {
             readonly timeScale?: number | null;
         };
         /**
+         * UpdateTagRequest
+         * @description Update tag fields
+         */
+        readonly UpdateTagRequest: {
+            /**
+             * Display Name
+             * @description Update display name
+             */
+            readonly display_name?: string | null;
+            /**
+             * Meta
+             * @description Update metadata
+             */
+            readonly meta?: Record<string, unknown> | null;
+            /**
+             * Parent Tag Id
+             * @description Update parent tag
+             */
+            readonly parent_tag_id?: number | null;
+        };
+        /**
          * UpdateTagsRequest
-         * @description Request to update asset tags
+         * @description Request to update asset tags (deprecated - use AssignTagsRequest instead)
          */
         readonly UpdateTagsRequest: {
             /**
@@ -15278,7 +15575,7 @@ export interface operations {
                 readonly q?: string | null;
                 /** @description Filter by sync status */
                 readonly sync_status?: components["schemas"]["SyncStatus"] | null;
-                /** @description Filter assets containing tag */
+                /** @description Filter assets containing tag (slug) */
                 readonly tag?: string | null;
             };
             readonly header?: {
@@ -15604,6 +15901,43 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["UpdateTagsRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly assign_tags_to_asset_api_v1_assets__asset_id__tags_assign_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssignTagsRequest"];
             };
         };
         readonly responses: {
@@ -23390,6 +23724,178 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PreviewEntityStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_tags_api_v1_tags_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Results per page */
+                readonly limit?: number;
+                /** @description Filter by namespace */
+                readonly namespace?: string | null;
+                /** @description Pagination offset */
+                readonly offset?: number;
+                /** @description Search query (name or slug) */
+                readonly q?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_tag_api_v1_tags_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateTagRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_tag_api_v1_tags__tag_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly tag_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_tag_api_v1_tags__tag_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly tag_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["UpdateTagRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_alias_api_v1_tags__tag_id__alias_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly tag_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateAliasRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TagDetail"];
                 };
             };
             /** @description Validation Error */
