@@ -113,9 +113,25 @@ export function ProviderSettingsPanel() {
     return acc;
   }, {});
 
-  // Auto-select first provider if none selected
-  const activeProvider = selectedProvider || (capacity.length > 0 ? capacity[0].provider_id : null);
-  const providerData = capacity.find(c => c.provider_id === activeProvider);
+  const providerTabList = providers.length
+    ? providers.map((p) => ({ id: p.id, name: p.name }))
+    : capacity.map((c) => ({ id: c.provider_id, name: providerNames[c.provider_id] || c.provider_id }));
+
+  // Auto-select first provider if none selected (even if it has 0 accounts)
+  const activeProvider = selectedProvider || (providerTabList.length > 0 ? providerTabList[0].id : null);
+  const providerData =
+    capacity.find((c) => c.provider_id === activeProvider) ||
+    (activeProvider
+      ? {
+          provider_id: activeProvider,
+          total_accounts: 0,
+          active_accounts: 0,
+          current_jobs: 0,
+          max_jobs: 0,
+          total_credits: 0,
+          accounts: [] as ProviderAccount[],
+        }
+      : null);
 
   // Sorted accounts
   const sortedAccounts = useMemo(() => {
@@ -245,16 +261,17 @@ export function ProviderSettingsPanel() {
         </div>
 
         {/* Provider tabs */}
-        {capacity.length > 0 && (
+        {providerTabList.length > 0 && (
           <div className="flex gap-2 overflow-x-auto">
-            {capacity.map((cap) => {
-              const isActive = !showGlobalSettings && activeProvider === cap.provider_id;
+            {providerTabList.map((tab) => {
+              const cap = capacity.find((c) => c.provider_id === tab.id) || null;
+              const isActive = !showGlobalSettings && activeProvider === tab.id;
 
               return (
                 <button
-                  key={cap.provider_id}
+                  key={tab.id}
                   onClick={() => {
-                    setSelectedProvider(cap.provider_id);
+                    setSelectedProvider(tab.id);
                     setShowGlobalSettings(false);
                   }}
                   className={`px-4 py-2 rounded-lg border transition-colors whitespace-nowrap ${
@@ -264,10 +281,10 @@ export function ProviderSettingsPanel() {
                   }`}
                 >
                   <div className="text-sm font-medium">
-                    {providerNames[cap.provider_id] || cap.provider_id}
+                    {providerNames[tab.id] || tab.name || tab.id}
                   </div>
                   <div className="text-xs opacity-80">
-                    {cap.current_jobs}/{cap.max_jobs} jobs • {cap.total_credits} credits
+                    {cap ? `${cap.current_jobs}/${cap.max_jobs} jobs • ${cap.total_credits} credits` : '0/0 jobs • 0 credits'}
                   </div>
                 </button>
               );
@@ -345,7 +362,7 @@ export function ProviderSettingsPanel() {
               />
             </div>
           </div>
-        ) : capacity.length === 0 ? (
+        ) : providerTabList.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <div className="text-sm text-neutral-500 mb-4">
               No provider accounts configured yet.
