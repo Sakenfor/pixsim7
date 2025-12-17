@@ -115,16 +115,9 @@ class AssetService:
     async def find_similar_asset_by_phash(self, *args, **kwargs):
         return await self._quota.find_similar_by_phash(*args, **kwargs)
 
-    # ===== Tag Management (delegate to AssetCoreService) =====
-
-    async def update_tags(self, *args, **kwargs):
-        return await self._core.update_tags(*args, **kwargs)
-
-    async def add_tags(self, *args, **kwargs):
-        return await self._core.add_tags(*args, **kwargs)
-
-    async def remove_tags(self, *args, **kwargs):
-        return await self._core.remove_tags(*args, **kwargs)
+    # ===== Tag Management (moved to TagService) =====
+    # NOTE: Individual tag operations removed - use TagService directly
+    # Bulk operations still supported via core service
 
     async def bulk_update_tags(self, *args, **kwargs):
         return await self._core.bulk_update_tags(*args, **kwargs)
