@@ -1,5 +1,15 @@
+/**
+ * Assets API Client
+ *
+ * Typed API client for /api/v1/assets endpoint.
+ * Uses OpenAPI-generated types for type safety and contract alignment.
+ */
 import { apiClient } from './client';
 import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+
+// ============================================================================
+// OpenAPI-Derived Types (Generated from backend contract)
+// ============================================================================
 
 export type AssetResponse = ApiComponents['schemas']['AssetResponse'];
 export type AssetListResponse = ApiComponents['schemas']['AssetListResponse'];
@@ -8,6 +18,10 @@ export type ReuploadAssetRequest = ApiComponents['schemas']['ReuploadAssetReques
 
 export type ListAssetsQuery =
   ApiOperations['list_assets_api_v1_assets_get']['parameters']['query'];
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 function buildQueryString(query?: Record<string, unknown>): string {
   if (!query) return '';
@@ -19,6 +33,10 @@ function buildQueryString(query?: Record<string, unknown>): string {
   const s = params.toString();
   return s ? `?${s}` : '';
 }
+
+// ============================================================================
+// API Functions
+// ============================================================================
 
 export async function listAssets(query?: ListAssetsQuery): Promise<AssetListResponse> {
   const res = await apiClient.get<AssetListResponse>(`/assets${buildQueryString(query as any)}`);
