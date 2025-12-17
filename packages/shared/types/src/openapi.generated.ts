@@ -1791,60 +1791,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/assets/{asset_id}/tags": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Update Asset Tags
-         * @description Update tags for an asset (replaces existing tags)
-         *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "tags": ["portrait", "outdoor", "daytime"]
-         *     }
-         *     ```
-         */
-        readonly post: operations["update_asset_tags_api_v1_assets__asset_id__tags_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/assets/{asset_id}/tags/add": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        /**
-         * Add Asset Tags
-         * @description Add tags to an asset (merges with existing tags)
-         *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "tags": ["favorite", "profile_pic"]
-         *     }
-         *     ```
-         */
-        readonly patch: operations["add_asset_tags_api_v1_assets__asset_id__tags_add_patch"];
-        readonly trace?: never;
-    };
     readonly "/api/v1/assets/{asset_id}/tags/assign": {
         readonly parameters: {
             readonly query?: never;
@@ -1876,33 +1822,6 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/assets/{asset_id}/tags/remove": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        /**
-         * Remove Asset Tags
-         * @description Remove tags from an asset
-         *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "tags": ["draft", "temp"]
-         *     }
-         *     ```
-         */
-        readonly patch: operations["remove_asset_tags_api_v1_assets__asset_id__tags_remove_patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/assets/bulk/delete": {
@@ -12983,17 +12902,6 @@ export interface components {
             readonly parent_tag_id?: number | null;
         };
         /**
-         * UpdateTagsRequest
-         * @description Request to update asset tags (deprecated - use AssignTagsRequest instead)
-         */
-        readonly UpdateTagsRequest: {
-            /**
-             * Tags
-             * @description List of tags to apply
-             */
-            readonly tags: readonly string[];
-        };
-        /**
          * UpdateUserPreferencesRequest
          * @description Update user preferences request
          */
@@ -15850,80 +15758,6 @@ export interface operations {
             };
         };
     };
-    readonly update_asset_tags_api_v1_assets__asset_id__tags_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["UpdateTagsRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AssetResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly add_asset_tags_api_v1_assets__asset_id__tags_add_patch: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["UpdateTagsRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AssetResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     readonly assign_tags_to_asset_api_v1_assets__asset_id__tags_assign_post: {
         readonly parameters: {
             readonly query?: never;
@@ -15938,43 +15772,6 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["AssignTagsRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AssetResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly remove_asset_tags_api_v1_assets__asset_id__tags_remove_patch: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["UpdateTagsRequest"];
             };
         };
         readonly responses: {

@@ -43,6 +43,7 @@ async function main() {
 
   const ast = await openapiTS(openapiUrl, {
     alphabetize: true,
+    emptyObjectsUnknown: true,
     immutable: true,
   });
 
