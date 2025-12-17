@@ -113,16 +113,8 @@ class Asset(SQLModel, table=True):
         default=None,
         description="What's happening in this asset (AI-generated or user-provided)"
     )
-    tags: List[str] = Field(
-        default_factory=list,
-        sa_column=Column(JSON),
-        description="Content tags: ['cat', 'dancing', 'neon', 'cyberpunk']"
-    )
-    style_tags: List[str] = Field(
-        default_factory=list,
-        sa_column=Column(JSON),
-        description="Style: ['anime', 'realistic', 'watercolor']"
-    )
+    # NOTE: tags and style_tags have been migrated to structured hierarchical tags
+    # See Tag and AssetTag models for the new tag system
     embedding: Optional[List[float]] = Field(
         default=None,
         sa_column=Column(Vector(768)),

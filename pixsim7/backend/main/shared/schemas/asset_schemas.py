@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, List, Literal, Dict
 from pydantic import BaseModel, Field, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
+from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 
 
 # ===== REQUEST SCHEMAS =====
@@ -52,7 +53,7 @@ class AssetResponse(BaseModel):
 
     # Semantics
     description: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
+    tags: List[TagSummary] = Field(default_factory=list)
 
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None

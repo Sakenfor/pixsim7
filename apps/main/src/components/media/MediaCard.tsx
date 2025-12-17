@@ -78,7 +78,7 @@ export interface MediaCardProps {
   width?: number;
   height?: number;
   durationSec?: number;
-  tags?: string[];
+  tags?: Array<{ slug: string; display_name?: string | null }>;
   description?: string;
   createdAt: string;
   onOpen?: (id: number) => void;
@@ -178,13 +178,17 @@ export function MediaCard(props: MediaCardProps) {
 
   // Partition tags
   const { displayTags } = useMemo(() => {
-    const isTechnical = (tag: string) =>
-      tag.includes('_url') ||
-      tag.includes('_id') ||
-      tag.includes('from_') ||
-      tag === 'user_upload';
+    const isTechnical = (tagSlug: string) =>
+      tagSlug.includes('_url') ||
+      tagSlug.includes('_id') ||
+      tagSlug.includes('from_') ||
+      tagSlug === 'user_upload';
 
-    const display = tags.filter(tag => !isTechnical(tag));
+    // Filter out technical tags and convert to display strings
+    const display = tags
+      ?.filter(tag => !isTechnical(tag.slug))
+      .map(tag => tag.display_name || tag.slug) || [];
+
     return { displayTags: display };
   }, [tags]);
 

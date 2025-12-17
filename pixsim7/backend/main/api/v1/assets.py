@@ -12,6 +12,8 @@ from pixsim7.backend.main.shared.schemas.asset_schemas import (
     AssetResponse,
     AssetListResponse,
 )
+from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary, AssignTagsRequest
+from pixsim7.backend.main.services.tag_service import TagService
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import os, tempfile, hashlib
@@ -25,16 +27,58 @@ router = APIRouter()
 logger = get_logger()
 
 
+# ===== HELPER FUNCTIONS =====
+
+async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetResponse:
+    """
+    Build AssetResponse with tags loaded from database.
+
+    Args:
+        asset: Asset model instance
+        db: Database session
+
+    Returns:
+        AssetResponse with tags populated
+    """
+    # Get tags for this asset
+    tag_service = TagService(db)
+    tags = await tag_service.get_asset_tags(asset.id)
+
+    # Compute provider_status
+    provider_asset_id = getattr(asset, "provider_asset_id", None)
+    provider_flagged = getattr(asset, "provider_flagged", False)
+    remote_url = getattr(asset, "remote_url", None)
+
+    if provider_flagged:
+        status = "flagged"
+    elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
+        status = "ok"
+    elif provider_asset_id and not provider_asset_id.startswith("local_"):
+        status = "ok"
+    elif provider_asset_id and provider_asset_id.startswith("local_"):
+        status = "local_only"
+    else:
+        status = "unknown"
+
+    # Build response
+    ar = AssetResponse.model_validate(asset)
+    ar.provider_status = status
+    ar.tags = [TagSummary.model_validate(tag) for tag in tags]
+
+    return ar
+
+
 # ===== LIST ASSETS =====
 
 @router.get("/assets", response_model=AssetListResponse)
 async def list_assets(
     user: CurrentUser,
     asset_service: AssetSvc,
+    db: DatabaseSession,
     media_type: MediaType | None = Query(None, description="Filter by media type"),
     sync_status: SyncStatus | None = Query(None, description="Filter by sync status"),
     provider_id: str | None = Query(None, description="Filter by provider"),
-    tag: str | None = Query(None, description="Filter assets containing tag"),
+    tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
     q: str | None = Query(None, description="Full-text search over description/tags"),
     limit: int = Query(50, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset (legacy)"),
@@ -66,44 +110,31 @@ async def list_assets(
             # Opaque format created_at|id
             next_cursor = f"{last.created_at.isoformat()}|{last.id}"
 
-        # Filter by tag/q post-query (temporary until pushed into SQL)
-        if tag:
-            assets = [a for a in assets if tag in (a.tags or [])]
-        if q:
-            q_lower = q.lower()
-            assets = [
-                a for a in assets
-                if (a.description and q_lower in a.description.lower()) or any(q_lower in t.lower() for t in (a.tags or []))
-            ]
+        # TODO: Move tag/q filtering to SQL query in asset_service
+        # For now, filter assets in-memory after loading tags
 
-        # Compute provider_status for each asset
+        # Build responses with tags
         asset_responses: list[AssetResponse] = []
         for a in assets:
-            # Heuristic:
-            # - provider_flagged == True -> flagged (highest priority)
-            # - remote_url is a valid HTTP(S) URL -> provider OK
-            # - provider_asset_id present and doesn't start with "local_" -> provider OK
-            # - provider_asset_id present and starts with "local_" and no remote_url -> local-only
-            # - otherwise -> unknown
-            provider_asset_id = getattr(a, "provider_asset_id", None)
-            provider_flagged = getattr(a, "provider_flagged", False)
-            remote_url = getattr(a, "remote_url", None)
-
-            status: str
-            if provider_flagged:
-                status = "flagged"
-            elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
-                status = "ok"
-            elif provider_asset_id and not provider_asset_id.startswith("local_"):
-                status = "ok"
-            elif provider_asset_id and provider_asset_id.startswith("local_"):
-                status = "local_only"
-            else:
-                status = "unknown"
-
-            ar = AssetResponse.model_validate(a)
-            ar.provider_status = status
+            ar = await build_asset_response_with_tags(a, db)
             asset_responses.append(ar)
+
+        # Filter by tag slug (post-query for now)
+        if tag:
+            tag_lower = tag.lower()
+            asset_responses = [
+                ar for ar in asset_responses
+                if any(t.slug == tag_lower or tag_lower in t.slug for t in ar.tags)
+            ]
+
+        # Filter by search query
+        if q:
+            q_lower = q.lower()
+            asset_responses = [
+                ar for ar in asset_responses
+                if (ar.description and q_lower in ar.description.lower()) or
+                   any(q_lower in t.slug or q_lower in t.name or (t.display_name and q_lower in t.display_name.lower()) for t in ar.tags)
+            ]
 
         return AssetListResponse(
             assets=asset_responses,
@@ -122,7 +153,8 @@ async def list_assets(
 async def get_asset(
     asset_id: int,
     user: CurrentUser,
-    asset_service: AssetSvc
+    asset_service: AssetSvc,
+    db: DatabaseSession,
 ):
     """
     Get asset details
@@ -137,26 +169,7 @@ async def get_asset(
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
-
-        # Compute provider_status
-        provider_asset_id = getattr(asset, "provider_asset_id", None)
-        provider_flagged = getattr(asset, "provider_flagged", False)
-        remote_url = getattr(asset, "remote_url", None)
-
-        if provider_flagged:
-            status = "flagged"
-        elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
-            status = "ok"
-        elif provider_asset_id and not provider_asset_id.startswith("local_"):
-            status = "ok"
-        elif provider_asset_id and provider_asset_id.startswith("local_"):
-            status = "local_only"
-        else:
-            status = "unknown"
-
-        ar = AssetResponse.model_validate(asset)
-        ar.provider_status = status
-        return ar
+        return await build_asset_response_with_tags(asset, db)
 
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -398,9 +411,9 @@ async def upload_asset_to_provider(
                 mime_type=result.mime_type or content_type,
                 file_size_bytes=result.file_size_bytes,
                  sha256=sha256,
-                tags=["user_upload"],
                 media_metadata=media_metadata or None,
             )
+            # TODO: Add "user_upload" tag using TagService after asset creation
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
             logger.error(
@@ -740,9 +753,9 @@ async def upload_asset_from_url(
             sha256=sha256,
             image_hash=image_hash,
             phash64=phash64,
-            tags=["user_upload", "from_url"],
             media_metadata=media_metadata or None,
         )
+        # TODO: Add "user_upload" and "from_url" tags using TagService after asset creation
 
         # Rename file to use actual asset ID
         final_local_path = str(storage_root / f"{asset.id}{ext}")
@@ -928,9 +941,70 @@ async def extract_frame(
 
 # ===== TAG MANAGEMENT =====
 
-class UpdateTagsRequest(BaseModel):
-    """Request to update asset tags"""
-    tags: List[str] = Field(description="List of tags to apply")
+@router.post("/assets/{asset_id}/tags/assign", response_model=AssetResponse)
+async def assign_tags_to_asset(
+    asset_id: int,
+    request: AssignTagsRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+):
+    """
+    Assign/remove tags to/from an asset using structured hierarchical tags.
+
+    Example request:
+    ```json
+    {
+      "add": ["character:alice", "location:tokyo", "style:anime"],
+      "remove": ["old_tag:value"]
+    }
+    ```
+
+    Tags are automatically:
+    - Normalized (lowercase, trimmed)
+    - Resolved to canonical tags (aliases are followed)
+    - Created if they don't exist
+    """
+    try:
+        # Verify asset ownership
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+
+        # Create tag service
+        tag_service = TagService(db)
+
+        # Add tags
+        if request.add:
+            await tag_service.assign_tags_to_asset(
+                asset_id=asset_id,
+                tag_slugs=request.add,
+                auto_create=True,
+            )
+
+        # Remove tags
+        if request.remove:
+            await tag_service.remove_tags_from_asset(
+                asset_id=asset_id,
+                tag_slugs=request.remove,
+            )
+
+        # Return updated asset
+        return await build_asset_response_with_tags(asset, db)
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to assign tags: {str(e)}"
+        )
+
+
+# Note: Old tag endpoints below are kept for backward compatibility but deprecated
+# Please use /assets/{asset_id}/tags/assign for new code
 
 
 @router.post("/assets/{asset_id}/analyze")

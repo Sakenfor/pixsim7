@@ -39,8 +39,7 @@ async def add_asset(
     file_size_bytes: Optional[int] = None,
     mime_type: Optional[str] = None,
     description: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    style_tags: Optional[List[str]] = None,
+    # NOTE: tags parameter removed - use TagService.assign_tags_to_asset() after creation
     media_metadata: Optional[Dict[str, Any]] = None,
     parent_asset_ids: Optional[List[int]] = None,
     relation_type: Optional[str] = None,
@@ -146,13 +145,7 @@ async def add_asset(
         _fill(existing, "image_hash", image_hash)
         _fill(existing, "phash64", phash64)
 
-        if tags:
-            existing.tags = existing.tags or []
-            # simple merge unique
-            existing.tags = list({*existing.tags, *tags})
-        if style_tags:
-            existing.style_tags = existing.style_tags or []
-            existing.style_tags = list({*existing.style_tags, *style_tags})
+        # NOTE: Tag assignment has been moved to TagService.assign_tags_to_asset()
 
         # Sync status upgrade (never downgrade a terminal DOWNLOADED to REMOTE)
         if existing.sync_status != SyncStatus.DOWNLOADED and sync_status:

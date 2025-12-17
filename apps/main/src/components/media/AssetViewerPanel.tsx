@@ -119,7 +119,7 @@ export function AssetViewerPanel() {
                   key={i}
                   className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs"
                 >
-                  {tag}
+                  {tag.display_name || tag.slug}
                 </span>
               ))}
             </div>

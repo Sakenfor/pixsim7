@@ -290,16 +290,23 @@ def add_asset_character_tag(
 ) -> Asset:
     """Add character reference to asset tags
 
+    NOTE: This function is deprecated. Tags are now managed via TagService.
+    The old string-based tags field has been removed from Asset model.
+
     Args:
         asset: Asset to update
         character_ref: Character reference (e.g., "character:uuid")
 
     Returns:
-        Updated asset
-    """
-    if character_ref not in asset.tags:
-        asset.tags.append(character_ref)
+        Asset (unchanged - tagging must be done via TagService after asset creation)
 
+    TODO: Update callers to use TagService.assign_tags_to_asset() instead:
+        from pixsim7.backend.main.services.tag_service import TagService
+        tag_service = TagService(db)
+        await tag_service.assign_tags_to_asset(asset.id, [character_ref])
+    """
+    # Asset.tags field no longer exists - this is now a no-op
+    # Callers should use TagService instead
     return asset
 
 

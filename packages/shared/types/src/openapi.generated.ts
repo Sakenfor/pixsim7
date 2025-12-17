@@ -2479,7 +2479,10 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Scan Devices */
+        /**
+         * Scan Devices
+         * @description Scan for ADB devices and sync to database.
+         */
         readonly post: operations["scan_devices_api_v1_automation_devices_scan_post"];
         readonly delete?: never;
         readonly options?: never;
@@ -3309,6 +3312,35 @@ export interface paths {
          *     Returns which character references are valid/invalid.
          */
         readonly post: operations["validate_template_api_v1_characters_validate_template_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cleanup": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Cleanup Account States
+         * @description Maintenance endpoint to clean up account states:
+         *     - Clear expired cooldowns
+         *     - Fix incorrectly marked EXHAUSTED accounts (that have credits)
+         *     - Mark accounts with 0 credits as EXHAUSTED
+         *
+         *     Args:
+         *         provider_id: Optional provider filter (e.g., "pixverse")
+         *
+         *     Returns:
+         *         Cleanup statistics
+         */
+        readonly post: operations["cleanup_account_states_api_v1_cleanup_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -8660,10 +8692,32 @@ export interface components {
             /** Visual Traits */
             readonly visual_traits: Record<string, unknown>;
         };
+        /**
+         * ClearExecutionsResponse
+         * @description Response from clearing automation executions.
+         */
+        readonly ClearExecutionsResponse: {
+            /** Deleted */
+            readonly deleted: number;
+            /** Filter */
+            readonly filter: string;
+            /** Status */
+            readonly status: string;
+        };
         /** CompletePairingRequest */
         readonly CompletePairingRequest: {
             /** Pairing Code */
             readonly pairing_code: string;
+        };
+        /**
+         * CompletePairingResponse
+         * @description Response from completing agent pairing.
+         */
+        readonly CompletePairingResponse: {
+            /** Agent Id */
+            readonly agent_id: string;
+            /** Status */
+            readonly status: string;
         };
         /** ComposeBlocksRequest */
         readonly ComposeBlocksRequest: {
@@ -9130,6 +9184,20 @@ export interface components {
             readonly name: string;
         };
         /**
+         * DeviceScanResponse
+         * @description Response from device scan operation.
+         */
+        readonly DeviceScanResponse: {
+            /** Added */
+            readonly added: number;
+            /** Offline */
+            readonly offline: number;
+            /** Scanned */
+            readonly scanned: number;
+            /** Updated */
+            readonly updated: number;
+        };
+        /**
          * DeviceStatus
          * @enum {string}
          */
@@ -9357,6 +9425,24 @@ export interface components {
              * @default 1
              */
             readonly priority: number;
+        };
+        /**
+         * ExecutePresetResponse
+         * @description Response from executing a preset for an account.
+         */
+        readonly ExecutePresetResponse: {
+            /** Account Id */
+            readonly account_id: number;
+            /** Execution Id */
+            readonly execution_id: number;
+            /** Preset Id */
+            readonly preset_id: number;
+            /** Preset Name */
+            readonly preset_name: string;
+            /** Status */
+            readonly status: string;
+            /** Task Id */
+            readonly task_id: string;
         };
         /** ExecutionLoop */
         readonly ExecutionLoop: {
@@ -12345,6 +12431,22 @@ export interface components {
             readonly start_index: number;
             /** Variables */
             readonly variables?: readonly Record<string, unknown>[] | null;
+        };
+        /**
+         * TestActionsResponse
+         * @description Response from test actions execution.
+         */
+        readonly TestActionsResponse: {
+            /** Actions Count */
+            readonly actions_count?: number | null;
+            /** Execution Id */
+            readonly execution_id?: number | null;
+            /** Message */
+            readonly message?: string | null;
+            /** Status */
+            readonly status: string;
+            /** Task Id */
+            readonly task_id?: string | null;
         };
         /**
          * TestGenerationRequest
@@ -16159,7 +16261,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["CompletePairingResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16351,7 +16453,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["DeviceScanResponse"];
                 };
             };
         };
@@ -16375,7 +16477,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ExecutePresetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16469,7 +16571,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ClearExecutionsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16884,7 +16986,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["TestActionsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17619,6 +17721,39 @@ export interface operations {
                 readonly prompt_text: string;
             };
             readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly cleanup_account_states_api_v1_cleanup_post: {
+        readonly parameters: {
+            readonly query?: {
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path?: never;
             readonly cookie?: never;
         };
