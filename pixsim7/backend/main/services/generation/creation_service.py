@@ -536,6 +536,24 @@ class GenerationCreationService:
             elif image_url:
                 canonical["image_urls"] = [image_url]
 
+            # Optional: inpainting-style image edits may provide an explicit mask.
+            # Provider adapters can opt into using these fields without changing
+            # the core OperationType contract.
+            mask_url = (
+                gen_config.get("mask_url")
+                or params.get("mask_url")
+                or gen_config.get("mask_source")
+                or params.get("mask_source")
+                or gen_config.get("mask")
+                or params.get("mask")
+            )
+            if mask_url:
+                canonical["mask_url"] = mask_url
+
+            file_extension = gen_config.get("file_extension") or params.get("file_extension")
+            if file_extension:
+                canonical["file_extension"] = file_extension
+
         elif operation_type == OperationType.VIDEO_EXTEND:
             video_url = gen_config.get("video_url") or params.get("video_url")
             if video_url:
