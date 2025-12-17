@@ -20,6 +20,8 @@ manifest = ProviderManifest(
     kind=ProviderKind.VIDEO,
     enabled=True,
     requires_credentials=True,
+    domains=["pixverse.ai", "app.pixverse.ai"],
+    credit_types=["web", "openapi"],  # Pixverse has both web (free) and openapi (paid) credits
 )
 
 

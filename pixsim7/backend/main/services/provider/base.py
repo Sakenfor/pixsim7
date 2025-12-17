@@ -72,6 +72,8 @@ class Provider(ABC):
             config: Provider-specific configuration
         """
         self.config = config or {}
+        # Manifest will be attached by registry during provider loading
+        self._manifest = None
 
     @property
     @abstractmethod
@@ -167,6 +169,101 @@ class Provider(ABC):
             JobNotFoundError: Job ID not found
         """
         pass
+
+    # ===== MANIFEST-DRIVEN METADATA =====
+
+    def get_manifest(self):
+        """
+        Get provider manifest (attached by registry during loading).
+
+        Returns the manifest if it was attached by the registry, None otherwise.
+        Providers should not override this - metadata belongs in manifest.py.
+
+        Returns:
+            ProviderManifest or None
+        """
+        return getattr(self, '_manifest', None)
+
+    def get_domains(self) -> list[str]:
+        """
+        Get provider domains from manifest.
+
+        Returns:
+            List of domains (e.g., ["sora.com", "chatgpt.com"])
+        """
+        manifest = self.get_manifest()
+        if manifest and hasattr(manifest, 'domains'):
+            return manifest.domains or []
+        return []
+
+    def get_credit_types(self) -> list[str]:
+        """
+        Get valid credit types for this provider from manifest.
+
+        Returns:
+            List of credit type keys (e.g., ["web", "openapi"])
+        """
+        manifest = self.get_manifest()
+        if manifest and hasattr(manifest, 'credit_types'):
+            return manifest.credit_types or []
+        return []
+
+    def get_display_name(self) -> str:
+        """
+        Get provider display name from manifest.
+
+        Returns:
+            Display name (e.g., "OpenAI Sora"), falls back to provider_id
+        """
+        manifest = self.get_manifest()
+        if manifest and hasattr(manifest, 'name'):
+            return manifest.name
+        return self.provider_id
+
+    # ===== FILE PREPARATION =====
+
+    def requires_file_preparation(self) -> bool:
+        """
+        Whether this provider requires file preparation before execution.
+
+        Override this to return True if your provider overrides prepare_execution_params().
+        Default: False (no file preparation needed)
+
+        Returns:
+            True if file preparation is required
+        """
+        return False
+
+    def prepare_execution_params(
+        self,
+        operation_type,
+        params: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Prepare execution parameters (e.g., download files, resolve asset references).
+
+        This is called before execute() if requires_file_preparation() returns True.
+        Override in provider implementations that need to prepare local files.
+
+        Args:
+            operation_type: Operation type
+            params: Mapped parameters (from map_parameters)
+
+        Returns:
+            Prepared parameters with local file paths
+
+        Raises:
+            ProviderError: If preparation fails
+        """
+        # Check for common footgun: prepare_execution_params overridden but requires_file_preparation returns False
+        if not self.requires_file_preparation():
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Provider {self.provider_id} has prepare_execution_params() but requires_file_preparation() "
+                f"returns False. File preparation will be skipped. Override requires_file_preparation() to return True."
+            )
+        return params
 
     async def extract_embedded_assets(
         self,

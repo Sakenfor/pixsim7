@@ -85,7 +85,7 @@ async def refresh_account_credits(
     """
     Refresh credits for an account from the provider.
 
-    Returns dict with credit amounts, or empty dict on failure.
+    Returns dict with only valid credit types, or empty dict on failure.
     """
     from pixsim7.backend.main.services.provider.registry import registry
 
@@ -101,18 +101,26 @@ async def refresh_account_credits(
             gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
             return {}
 
-        # Update credits in database
+        # Get valid credit types from provider manifest
+        valid_credit_types = provider.get_credit_types()
+        if not valid_credit_types:
+            # Fallback to known credit types if manifest doesn't specify
+            valid_credit_types = ['web', 'openapi', 'standard']
+
+        # Filter credits to only valid types (ignore non-spendable fields like freeze_credits)
+        filtered_credits = {}
         if credits_data:
             for credit_type, amount in credits_data.items():
-                if credit_type in ('web', 'openapi', 'standard'):
+                if credit_type in valid_credit_types:
                     try:
                         await account_service.set_credit(account.id, credit_type, int(amount))
+                        filtered_credits[credit_type] = int(amount)
                     except Exception as e:
                         gen_logger.warning("credit_update_failed", credit_type=credit_type, error=str(e))
 
-            gen_logger.info("credits_refreshed", account_id=account.id, credits=credits_data)
+            gen_logger.info("credits_refreshed", account_id=account.id, credits=filtered_credits)
 
-        return credits_data or {}
+        return filtered_credits
 
     except Exception as e:
         gen_logger.warning("credits_refresh_failed", account_id=account.id, error=str(e))
@@ -120,13 +128,22 @@ async def refresh_account_credits(
 
 
 def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
-    """Check if account has any usable credits."""
-    # Check web credits (free tier)
-    web = credits_data.get('web', 0)
-    # Check openapi credits (paid tier)
-    openapi = credits_data.get('openapi', 0)
+    """
+    Check if account has any usable credits.
 
-    return (web >= min_credits) or (openapi >= min_credits)
+    Args:
+        credits_data: Filtered dict with only valid credit types (from refresh_account_credits)
+        min_credits: Minimum credit threshold
+
+    Returns:
+        True if any credit type has >= min_credits
+    """
+    # credits_data should already be filtered to only valid credit types by refresh_account_credits
+    # Just check if any of the provided credits meet the threshold
+    for credit_type, amount in credits_data.items():
+        if isinstance(amount, (int, float)) and amount >= min_credits:
+            return True
+    return False
 
 
 async def process_generation(ctx: dict, generation_id: int) -> dict:

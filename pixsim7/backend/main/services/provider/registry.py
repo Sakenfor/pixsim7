@@ -165,6 +165,9 @@ def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7/backe
 
         if not manifest:
             logger.warning(f"Provider plugin {provider_name} has no manifest")
+        else:
+            # Attach manifest to provider instance (single source of truth)
+            provider_instance._manifest = manifest
 
         # Check if enabled
         if manifest and hasattr(manifest, 'enabled') and not manifest.enabled:

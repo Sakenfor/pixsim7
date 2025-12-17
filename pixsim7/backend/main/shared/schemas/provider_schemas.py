@@ -24,3 +24,5 @@ class ProviderManifest(BaseModel):
     kind: ProviderKind  # NEW: Distinguish between video/LLM providers
     enabled: bool = True
     requires_credentials: bool = True
+    domains: list[str] = []  # Provider domains for URL detection (e.g., ["sora.com", "chatgpt.com"])
+    credit_types: list[str] = []  # Valid credit types (e.g., ["web", "openapi"])

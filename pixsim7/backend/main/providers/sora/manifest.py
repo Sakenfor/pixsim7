@@ -20,6 +20,8 @@ manifest = ProviderManifest(
     kind=ProviderKind.VIDEO,
     enabled=True,
     requires_credentials=True,
+    domains=["sora.chatgpt.com", "sora.com", "chatgpt.com"],
+    credit_types=["standard"],  # Sora uses standard credits
 )
 
 

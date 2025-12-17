@@ -98,30 +98,28 @@ class PixverseCostEstimateResponse(BaseModel):
     estimated_cost_usd: Optional[float] = None
 
 
-# Provider domain mappings (centralized configuration)
-PROVIDER_DOMAINS = {
-    "pixverse": {
-        "name": "Pixverse AI",
-        "domains": ["pixverse.ai", "app.pixverse.ai"],
-    },
-    "sora": {
-        "name": "OpenAI Sora",
-        "domains": ["sora.chatgpt.com", "sora.com", "chatgpt.com"],
-    },
-    "runway": {
-        "name": "Runway ML",
-        "domains": ["runwayml.com", "app.runwayml.com"],
-    },
-    "pika": {
-        "name": "Pika Labs",
-        "domains": ["pika.art", "app.pika.art"],
-    },
-}
+def get_provider_domains() -> dict[str, list[str]]:
+    """
+    Get provider domains from manifests (single source of truth).
+
+    Returns:
+        Dict mapping provider_id to list of domains
+    """
+    domains_map = {}
+    for provider_id in registry.list_provider_ids():
+        try:
+            provider = registry.get(provider_id)
+            domains = provider.get_domains()
+            if domains:
+                domains_map[provider_id] = domains
+        except Exception:
+            continue
+    return domains_map
 
 
 def detect_provider_from_url(url: str) -> Optional[str]:
     """
-    Detect provider from URL
+    Detect provider from URL using manifest-driven domains.
 
     Args:
         url: URL to analyze
@@ -136,9 +134,10 @@ def detect_provider_from_url(url: str) -> Optional[str]:
         if not hostname:
             return None
 
-        # Check against known provider domains
-        for provider_id, config in PROVIDER_DOMAINS.items():
-            for domain in config["domains"]:
+        # Check against provider domains from manifests
+        provider_domains = get_provider_domains()
+        for provider_id, domains in provider_domains.items():
+            for domain in domains:
                 if hostname == domain or hostname.endswith('.' + domain):
                     return provider_id
 
@@ -187,29 +186,27 @@ async def detect_provider(
     # Get provider from registry
     try:
         provider = registry.get(provider_id)
-        provider_config = PROVIDER_DOMAINS.get(provider_id, {})
 
         capabilities = extract_provider_capabilities(provider)
         return ProviderDetectionResponse(
             detected=True,
             provider=ProviderInfo(
                 provider_id=provider.provider_id,
-                name=provider_config.get("name", provider_id.capitalize()),
-                domains=provider_config.get("domains", []),
+                name=provider.get_display_name(),
+                domains=provider.get_domains(),
                 supported_operations=[op.value for op in provider.supported_operations],
                 capabilities=capabilities
             ),
             url=request.url
         )
     except Exception as e:
-        # Provider configured in domains but not registered in backend
-        provider_config = PROVIDER_DOMAINS.get(provider_id, {})
+        # Provider ID detected from URL but not registered in backend
         return ProviderDetectionResponse(
             detected=True,
             provider=ProviderInfo(
                 provider_id=provider_id,
-                name=provider_config.get("name", provider_id.capitalize()),
-                domains=provider_config.get("domains", []),
+                name=provider_id.capitalize(),
+                domains=[],
                 supported_operations=[],  # Not registered yet
                 capabilities=None,
             ),
@@ -231,12 +228,11 @@ async def list_providers(user: CurrentUser):
     for provider_id in registry.list_provider_ids():
         try:
             provider = registry.get(provider_id)
-            provider_config = PROVIDER_DOMAINS.get(provider_id, {})
             capabilities = extract_provider_capabilities(provider)
             providers_info.append(ProviderInfo(
                 provider_id=provider.provider_id,
-                name=provider_config.get("name", provider_id.capitalize()),
-                domains=provider_config.get("domains", []),
+                name=provider.get_display_name(),
+                domains=provider.get_domains(),
                 supported_operations=[op.value for op in provider.supported_operations],
                 capabilities=capabilities,
             ))
