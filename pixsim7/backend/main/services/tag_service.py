@@ -9,7 +9,8 @@ Handles:
 - Tag aliasing
 """
 from typing import Optional, List
-from sqlmodel import Session, select, or_, func
+from sqlmodel import select, or_, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain.tag import (
     Tag,
     AssetTag,
@@ -26,14 +27,14 @@ from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOpe
 class TagService:
     """Service for managing tags and asset-tag associations."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
     # ===== TAG CRUD =====
 
     async def get_tag_by_id(self, tag_id: int) -> Tag:
         """Get tag by ID."""
-        tag = self.db.get(Tag, tag_id)
+        tag = await self.db.get(Tag, tag_id)
         if not tag:
             raise ResourceNotFoundError(f"Tag {tag_id} not found")
         return tag
@@ -57,14 +58,15 @@ class TagService:
 
         # Find tag
         stmt = select(Tag).where(Tag.slug == normalized_slug)
-        tag = self.db.exec(stmt).first()
+        result = await self.db.execute(stmt)
+        tag = result.scalars().first()
 
         if not tag:
             return None
 
         # Resolve canonical if needed
         if resolve_canonical and tag.canonical_tag_id:
-            canonical = self.db.get(Tag, tag.canonical_tag_id)
+            canonical = await self.db.get(Tag, tag.canonical_tag_id)
             return canonical or tag
 
         return tag
@@ -109,7 +111,7 @@ class TagService:
 
         # Validate parent exists
         if parent_tag_id:
-            parent = self.db.get(Tag, parent_tag_id)
+            parent = await self.db.get(Tag, parent_tag_id)
             if not parent:
                 raise InvalidOperationError(f"Parent tag {parent_tag_id} not found")
 
@@ -124,8 +126,8 @@ class TagService:
         )
 
         self.db.add(tag)
-        self.db.commit()
-        self.db.refresh(tag)
+        await self.db.commit()
+        await self.db.refresh(tag)
 
         return tag
 
@@ -183,7 +185,7 @@ class TagService:
             if parent_tag_id == tag_id:
                 raise InvalidOperationError("Tag cannot be its own parent")
 
-            parent = self.db.get(Tag, parent_tag_id)
+            parent = await self.db.get(Tag, parent_tag_id)
             if not parent:
                 raise InvalidOperationError(f"Parent tag {parent_tag_id} not found")
 
@@ -194,8 +196,8 @@ class TagService:
 
         tag.updated_at = func.now()
 
-        self.db.commit()
-        self.db.refresh(tag)
+        await self.db.commit()
+        await self.db.refresh(tag)
 
         return tag
 
@@ -247,8 +249,8 @@ class TagService:
         )
 
         self.db.add(alias_tag)
-        self.db.commit()
-        self.db.refresh(alias_tag)
+        await self.db.commit()
+        await self.db.refresh(alias_tag)
 
         return alias_tag
 
@@ -295,13 +297,15 @@ class TagService:
         # Pagination
         stmt = stmt.limit(limit).offset(offset)
 
-        tags = self.db.exec(stmt).all()
+        result = await self.db.execute(stmt)
+        tags = result.scalars().all()
         return list(tags)
 
     async def get_tag_usage_count(self, tag_id: int) -> int:
         """Get number of assets using this tag."""
         stmt = select(func.count(AssetTag.asset_id)).where(AssetTag.tag_id == tag_id)
-        count = self.db.exec(stmt).first()
+        result = await self.db.execute(stmt)
+        count = result.scalar()
         return count or 0
 
     # ===== ASSET TAG ASSIGNMENT =====
@@ -339,7 +343,8 @@ class TagService:
                 AssetTag.asset_id == asset_id,
                 AssetTag.tag_id == tag.id,
             )
-            existing = self.db.exec(stmt).first()
+            result = await self.db.execute(stmt)
+            existing = result.scalars().first()
 
             if not existing:
                 # Create assignment
@@ -347,7 +352,7 @@ class TagService:
                 self.db.add(asset_tag)
                 assigned_tags.append(tag)
 
-        self.db.commit()
+        await self.db.commit()
 
         return assigned_tags
 
@@ -379,13 +384,14 @@ class TagService:
                 AssetTag.asset_id == asset_id,
                 AssetTag.tag_id == tag.id,
             )
-            asset_tag = self.db.exec(stmt).first()
+            result = await self.db.execute(stmt)
+            asset_tag = result.scalars().first()
 
             if asset_tag:
-                self.db.delete(asset_tag)
+                await self.db.delete(asset_tag)
                 removed_tags.append(tag)
 
-        self.db.commit()
+        await self.db.commit()
 
         return removed_tags
 
@@ -403,7 +409,8 @@ class TagService:
             .order_by(Tag.namespace, Tag.name)
         )
 
-        tags = self.db.exec(stmt).all()
+        result = await self.db.execute(stmt)
+        tags = result.scalars().all()
         return list(tags)
 
     async def replace_asset_tags(
@@ -425,12 +432,13 @@ class TagService:
         """
         # Remove all existing tags
         stmt = select(AssetTag).where(AssetTag.asset_id == asset_id)
-        existing_assignments = self.db.exec(stmt).all()
+        result = await self.db.execute(stmt)
+        existing_assignments = result.scalars().all()
 
         for assignment in existing_assignments:
-            self.db.delete(assignment)
+            await self.db.delete(assignment)
 
-        self.db.commit()
+        await self.db.commit()
 
         # Assign new tags
         return await self.assign_tags_to_asset(asset_id, tag_slugs, auto_create=auto_create)
