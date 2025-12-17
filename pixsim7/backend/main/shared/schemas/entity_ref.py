@@ -169,6 +169,15 @@ SessionRef = Annotated[
 UserRef = Annotated[
     Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("user"))
 ]
+GenerationRef = Annotated[
+    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("generation"))
+]
+WorkspaceRef = Annotated[
+    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("workspace"))
+]
+AccountRef = Annotated[
+    Optional[EntityRef], BeforeValidator(_make_entity_ref_validator("account"))
+]
 
 
 def entity_ref_field(entity_type: str) -> type:
@@ -200,5 +209,8 @@ __all__ = [
     "WorldRef",
     "SessionRef",
     "UserRef",
+    "GenerationRef",
+    "WorkspaceRef",
+    "AccountRef",
     "entity_ref_field",
 ]

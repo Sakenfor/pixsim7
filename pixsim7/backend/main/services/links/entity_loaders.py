@@ -183,8 +183,40 @@ def register_default_loaders():
 
     registry.register_loader('scene', load_scene)
 
+    # User loader
+    async def load_user(user_id: int, db: AsyncSession):
+        """Load User by ID"""
+        from pixsim7.backend.main.domain import User
+        return await db.get(User, user_id)
+
+    registry.register_loader('user', load_user)
+
+    # Generation loader
+    async def load_generation(generation_id: int, db: AsyncSession):
+        """Load Generation by ID"""
+        from pixsim7.backend.main.domain import Generation
+        return await db.get(Generation, generation_id)
+
+    registry.register_loader('generation', load_generation)
+
+    # Workspace loader
+    async def load_workspace(workspace_id: int, db: AsyncSession):
+        """Load Workspace by ID"""
+        from pixsim7.backend.main.domain import Workspace
+        return await db.get(Workspace, workspace_id)
+
+    registry.register_loader('workspace', load_workspace)
+
+    # ProviderAccount loader
+    async def load_account(account_id: int, db: AsyncSession):
+        """Load ProviderAccount by ID"""
+        from pixsim7.backend.main.domain import ProviderAccount
+        return await db.get(ProviderAccount, account_id)
+
+    registry.register_loader('account', load_account)
+
     # TODO: Add loaders for other entity types as they are implemented
     # - itemTemplate, item
     # - propTemplate, prop
-    # - world, session, user
+    # - world, session
     # etc.

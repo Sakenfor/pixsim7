@@ -4,12 +4,19 @@ Pydantic schemas for Generation API
 These schemas map the frontend GenerationNodeConfig types to backend
 Generation model and provide request/response validation.
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, AliasChoices
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
 from pixsim7.backend.main.domain.enums import GenerationStatus, OperationType, normalize_enum
+from pixsim7.backend.main.shared.schemas.entity_ref import (
+    AssetRef,
+    UserRef,
+    WorkspaceRef,
+    GenerationRef,
+    AccountRef,
+)
 
 
 # ===== GENERATION CONFIG SCHEMAS =====
@@ -158,14 +165,18 @@ class CreateGenerationRequest(BaseModel):
     template_variables: Optional[Dict[str, Any]] = None
 
     # Workspace and metadata
-    workspace_id: Optional[int] = None
+    workspace: Optional[WorkspaceRef] = Field(
+        default=None, validation_alias=AliasChoices("workspace", "workspace_id")
+    )
     name: Optional[str] = Field(None, max_length=255)
     description: Optional[str] = None
 
     # Scheduling
     priority: int = Field(5, ge=0, le=10)
     scheduled_at: Optional[datetime] = None
-    parent_generation_id: Optional[int] = None
+    parent_generation: Optional[GenerationRef] = Field(
+        default=None, validation_alias=AliasChoices("parent_generation", "parent_generation_id")
+    )
 
     # Deduplication control
     force_new: bool = Field(False, description="Skip dedup and cache, always create new generation")
@@ -176,8 +187,9 @@ class CreateGenerationRequest(BaseModel):
         description="Analyzer ID for prompt parsing (e.g., 'parser:simple', 'llm:claude'). See GET /api/v1/analyzers for available options."
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "config": {
                     "generation_type": "transition",
@@ -219,6 +231,7 @@ class CreateGenerationRequest(BaseModel):
                 "priority": 5
             }
         }
+    )
 
 
 # ===== RESPONSE SCHEMAS =====
@@ -227,9 +240,14 @@ class GenerationResponse(BaseModel):
     """
     Generation response - mirrors Generation model
     """
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
     id: int
-    user_id: int
-    workspace_id: Optional[int]
+    user: UserRef = Field(..., validation_alias=AliasChoices("user", "user_id"))
+    workspace: Optional[WorkspaceRef] = Field(
+        default=None, validation_alias=AliasChoices("workspace", "workspace_id")
+    )
 
     # Operation
     operation_type: OperationType
@@ -257,13 +275,19 @@ class GenerationResponse(BaseModel):
     completed_at: Optional[datetime]
     error_message: Optional[str]
     retry_count: int
-    parent_generation_id: Optional[int]
+    parent_generation: Optional[GenerationRef] = Field(
+        default=None, validation_alias=AliasChoices("parent_generation", "parent_generation_id")
+    )
 
     # Result
-    asset_id: Optional[int]
+    asset: Optional[AssetRef] = Field(
+        default=None, validation_alias=AliasChoices("asset", "asset_id")
+    )
 
     # Account info (for UI display)
-    account_id: Optional[int] = None
+    account: Optional[AccountRef] = Field(
+        default=None, validation_alias=AliasChoices("account", "account_id")
+    )
     account_email: Optional[str] = None
 
     # Metadata
@@ -290,9 +314,6 @@ class GenerationResponse(BaseModel):
         if not self.started_at or not self.completed_at:
             return None
         return (self.completed_at - self.started_at).total_seconds()
-
-    class Config:
-        from_attributes = True
 
 
 class GenerationListResponse(BaseModel):

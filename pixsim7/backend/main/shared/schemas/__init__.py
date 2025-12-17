@@ -49,6 +49,9 @@ from pixsim7.backend.main.shared.schemas.entity_ref import (
     WorldRef,
     SessionRef,
     UserRef,
+    GenerationRef,
+    WorkspaceRef,
+    AccountRef,
     entity_ref_field,
 )
 
@@ -62,5 +65,8 @@ __all__ = [
     "WorldRef",
     "SessionRef",
     "UserRef",
+    "GenerationRef",
+    "WorkspaceRef",
+    "AccountRef",
     "entity_ref_field",
 ]

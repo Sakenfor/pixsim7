@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, NpcExpressionSvc
 from pixsim7.backend.main.domain.game import GameNPC, NPCSchedule, NPCState, GameWorldState
 from pixsim7.backend.main.services.npc.npc_stat_service import NPCStatService
+from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef, NpcRef, LocationRef
 
 
 router = APIRouter()
@@ -20,16 +21,24 @@ class NpcSummary(BaseModel):
 
 
 class NpcExpressionDTO(BaseModel):
+    """NPC expression/portrait configuration."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     id: Optional[int] = None
     state: str
-    asset_id: int
+    asset: AssetRef = Field(..., validation_alias=AliasChoices("asset", "asset_id"))
     crop: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
 
 class NpcPresenceDTO(BaseModel):
-    npc_id: int
-    location_id: int
+    """NPC presence at a location."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    npc: NpcRef = Field(..., validation_alias=AliasChoices("npc", "npc_id"))
+    location: LocationRef = Field(..., validation_alias=AliasChoices("location", "location_id"))
     state: Dict[str, Any]
     transform: Optional[Dict[str, Any]] = None  # Optional spatial transform
 
@@ -42,7 +51,10 @@ class UpdateNpcStatsRequest(BaseModel):
 
 class NpcStatsResponse(BaseModel):
     """Response containing NPC stats."""
-    npc_id: int
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    npc: NpcRef = Field(..., validation_alias=AliasChoices("npc", "npc_id"))
     stat_type: str
     stats: Dict[str, Any]
     is_runtime: bool = False  # Indicates if stats include runtime overrides
