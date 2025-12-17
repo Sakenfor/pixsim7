@@ -886,7 +886,8 @@ class LauncherWindow(QWidget):
 
         try:
             # Show status in console
-            self._append_console(f"[OpenAPI] Generating types from {defn.openapi_url}...\n")
+            if _launcher_logger:
+                _launcher_logger.info("openapi_generation_started", url=defn.openapi_url)
 
             proc = subprocess.Popen(
                 [pnpm_cmd, "-s", "openapi:gen"],
@@ -901,7 +902,8 @@ class LauncherWindow(QWidget):
             def on_complete():
                 out, err = proc.communicate(timeout=120)
                 if proc.returncode == 0:
-                    self._append_console(f"[OpenAPI] ✓ Types generated successfully\n")
+                    if _launcher_logger:
+                        _launcher_logger.info("openapi_generation_success", url=defn.openapi_url)
                     # Update cache and refresh status
                     try:
                         from .openapi_checker import update_schema_cache
@@ -912,7 +914,8 @@ class LauncherWindow(QWidget):
                     # Trigger refresh
                     self._refresh_openapi_status(key)
                 else:
-                    self._append_console(f"[OpenAPI] ✗ Generation failed: {err or out}\n")
+                    if _launcher_logger:
+                        _launcher_logger.error("openapi_generation_failed", url=defn.openapi_url, error=err or out)
 
             from PySide6.QtCore import QThread
             class GenThread(QThread):
@@ -923,7 +926,8 @@ class LauncherWindow(QWidget):
             self._gen_thread.start()
 
         except Exception as e:
-            self._append_console(f"[OpenAPI] Error: {e}\n")
+            if _launcher_logger:
+                _launcher_logger.error("openapi_generation_error", url=defn.openapi_url, error=str(e))
 
     def update_ports_label(self):
         p = read_env_ports()
