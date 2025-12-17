@@ -417,9 +417,9 @@ class PixverseOperationsMixin:
 
         # Build options for extend
         options = GenerationOptions(
-            duration=params.get("duration", 5),
+            duration=int(params.get("duration", 5)),
             quality=params.get("quality", "360p"),
-            seed=params.get("seed", 0),
+            seed=int(params.get("seed", 0)),
             # Video options
             multi_shot=params.get("multi_shot"),
             audio=params.get("audio", True),
