@@ -33,9 +33,10 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     setPrompt,
     error,
     providerId,
+    dynamicParams,
+    setDynamicParams,
   } = useQuickGenerateController();
 
-  const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
   const maxChars = resolvePromptLimit(providerId);
 
   // Auto-set operation type based on asset type
@@ -43,6 +44,18 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
     const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
     setOperationType(targetOp);
   }, [asset.type, setOperationType]);
+
+  // Auto-set dynamic params from viewed asset
+  // This bypasses the queue to avoid index race conditions
+  useEffect(() => {
+    const assetUrl = asset.fullUrl || asset.url;
+
+    if (asset.type === 'video') {
+      setDynamicParams((prev: Record<string, any>) => ({ ...prev, video_url: assetUrl }));
+    } else if (asset.type === 'image') {
+      setDynamicParams((prev: Record<string, any>) => ({ ...prev, image_url: assetUrl }));
+    }
+  }, [asset.fullUrl, asset.url, asset.type, setDynamicParams]);
 
   // Don't show if control center is open
   if (controlCenterOpen) {
@@ -52,27 +65,7 @@ export function ViewerQuickGenerate({ asset }: ViewerQuickGenerateProps) {
   const handleGenerate = async () => {
     if (!prompt.trim() || generating) return;
 
-    // Convert viewer asset to queue format
-    const queueAsset = {
-      id: Number(asset.id) || 0,
-      provider_asset_id: asset.metadata?.providerId || String(asset.id),
-      media_type: asset.type as 'image' | 'video',
-      thumbnail_url: asset.url,
-      remote_url: asset.fullUrl || asset.url,
-      provider_status: 'ok' as const,
-      description: asset.name,
-      tags: asset.metadata?.tags || [],
-      created_at: asset.metadata?.createdAt || new Date().toISOString(),
-      provider_id: asset.metadata?.providerId || 'unknown',
-    };
-
-    // Use centralized enqueueAsset for automatic queue routing
-    enqueueAsset({
-      asset: queueAsset,
-      operationType,
-    });
-
-    // Trigger generation
+    // Trigger generation (asset URL is already set in dynamicParams via useEffect)
     await generate();
 
     // Keep prompt and panel open for iteration
