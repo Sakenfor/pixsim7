@@ -1,15 +1,15 @@
 """
 Game Stealth API - Pickpocket and stealth mechanics.
-Phase 5 of EDITOR_2D_WORLD_LAYOUT_SPEC.md
+
+Uses async database session and service patterns for consistency with other game APIs.
 """
+
 from typing import Any
 import random
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.db import get_db
-from pixsim7.backend.main.domain.game.session import GameSession
+from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
 
 router = APIRouter(prefix="/game/stealth", tags=["game-stealth"])
 
@@ -18,10 +18,9 @@ class PickpocketRequest(BaseModel):
     """Request to attempt pickpocketing an NPC."""
     npc_id: int
     slot_id: str
-    base_success_chance: float
-    detection_chance: float
+    base_success_chance: float = Field(ge=0, le=1)
+    detection_chance: float = Field(ge=0, le=1)
     world_id: int | None = None
-    session_id: int
 
 
 class PickpocketResponse(BaseModel):
@@ -32,10 +31,20 @@ class PickpocketResponse(BaseModel):
     message: str
 
 
-@router.post("/pickpocket", response_model=PickpocketResponse)
-def attempt_pickpocket(
+async def _get_owned_session(session_id: int, user: CurrentUser, game_session_service: GameSessionSvc):
+    """Fetch a session and ensure it belongs to the current user."""
+    gs = await game_session_service.get_session(session_id)
+    if not gs or gs.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Game session not found")
+    return gs
+
+
+@router.post("/sessions/{session_id}/pickpocket", response_model=PickpocketResponse)
+async def attempt_pickpocket(
+    session_id: int,
     req: PickpocketRequest,
-    db: Session = Depends(get_db),
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
 ) -> PickpocketResponse:
     """
     Attempt to pickpocket an NPC at a specific slot.
@@ -46,16 +55,7 @@ def attempt_pickpocket(
 
     Updates GameSession.flags with the results.
     """
-    # Validate chances are in valid range
-    if not (0 <= req.base_success_chance <= 1):
-        raise HTTPException(status_code=400, detail="base_success_chance must be between 0 and 1")
-    if not (0 <= req.detection_chance <= 1):
-        raise HTTPException(status_code=400, detail="detection_chance must be between 0 and 1")
-
-    # Fetch the game session
-    session = db.query(GameSession).filter(GameSession.id == req.session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail=f"GameSession {req.session_id} not found")
+    session = await _get_owned_session(session_id, user, game_session_service)
 
     # Perform random rolls
     success_roll = random.random()
@@ -65,7 +65,7 @@ def attempt_pickpocket(
     detected = detection_roll < req.detection_chance
 
     # Prepare updated flags
-    flags = session.flags or {}
+    flags = dict(session.flags) if session.flags else {}
     if "stealth" not in flags:
         flags["stealth"] = {}
 
@@ -91,15 +91,18 @@ def attempt_pickpocket(
     else:
         message = f"Pickpocket attempt on NPC #{req.npc_id} failed."
 
+    # Prepare updated stats (for relationship tracking)
+    stats = dict(session.stats) if session.stats else {}
+
     if detected:
         flag_key = f"caught_by_npc_{req.npc_id}"
         stealth_flags[flag_key] = True
         message += " You were detected!"
 
         # Also update relationship flags in stat-based system
-        if "relationships" not in session.stats:
-            session.stats["relationships"] = {}
-        relationships = session.stats["relationships"]
+        if "relationships" not in stats:
+            stats["relationships"] = {}
+        relationships = stats["relationships"]
 
         npc_key = f"npc:{req.npc_id}"
         if npc_key not in relationships:
@@ -115,10 +118,24 @@ def attempt_pickpocket(
         if "score" in npc_rel:
             npc_rel["score"] = max(0, npc_rel.get("score", 50) - 10)
 
-    # Save updated flags
-    session.flags = flags
-    db.commit()
-    db.refresh(session)
+    # Update session via service
+    await game_session_service.update_session(
+        session_id=session_id,
+        flags=flags,
+        stats=stats if detected else None,  # Only update stats if detected (relationship change)
+    )
+
+    # Create event for pickpocket attempt
+    await game_session_service.create_event(
+        session_id=session_id,
+        action="stealth_pickpocket",
+        diff={
+            "npc_id": req.npc_id,
+            "slot_id": req.slot_id,
+            "success": success,
+            "detected": detected,
+        },
+    )
 
     return PickpocketResponse(
         success=success,

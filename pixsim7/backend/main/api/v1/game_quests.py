@@ -1,15 +1,15 @@
 """
 Game quest management endpoints
+
+Uses async database session and service patterns for consistency with other game APIs.
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlmodel import Session
 
-from pixsim7.backend.main.infrastructure.database.session import get_sync_session
-from pixsim7.backend.main.domain.game import GameSession
-from pixsim7.backend.main.services.game.quest_service import QuestService, Quest, QuestObjective
+from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
+from pixsim7.backend.main.services.game.quest_service import QuestService, Quest
 
 router = APIRouter(prefix="/game/quests", tags=["game-quests"])
 
@@ -33,17 +33,23 @@ class UpdateObjectiveRequest(BaseModel):
     completed: Optional[bool] = None
 
 
+async def _get_owned_session(session_id: int, user: CurrentUser, game_session_service: GameSessionSvc):
+    """Fetch a session and ensure it belongs to the current user."""
+    gs = await game_session_service.get_session(session_id)
+    if not gs or gs.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Game session not found")
+    return gs
+
+
 @router.get("/sessions/{session_id}/quests", response_model=List[Quest])
 async def list_session_quests(
     session_id: int,
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
     status: Optional[str] = None,
-    db: Session = Depends(get_sync_session)
 ):
     """List all quests for a game session, optionally filtered by status"""
-    game_session = db.get(GameSession, session_id)
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session not found")
-
+    game_session = await _get_owned_session(session_id, user, game_session_service)
     quests = QuestService.list_quests(game_session.flags, status_filter=status)
     return quests
 
@@ -52,17 +58,14 @@ async def list_session_quests(
 async def get_session_quest(
     session_id: int,
     quest_id: str,
-    db: Session = Depends(get_sync_session)
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
 ):
     """Get a specific quest from a game session"""
-    game_session = db.get(GameSession, session_id)
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session not found")
-
+    game_session = await _get_owned_session(session_id, user, game_session_service)
     quest = QuestService.get_quest(game_session.flags, quest_id)
     if not quest:
         raise HTTPException(status_code=404, detail="Quest not found")
-
     return quest
 
 
@@ -70,12 +73,11 @@ async def get_session_quest(
 async def add_quest_to_session(
     session_id: int,
     request: AddQuestRequest,
-    db: Session = Depends(get_sync_session)
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
 ):
     """Add a new quest to a game session"""
-    game_session = db.get(GameSession, session_id)
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session not found")
+    game_session = await _get_owned_session(session_id, user, game_session_service)
 
     # Check if quest already exists
     existing = QuestService.get_quest(game_session.flags, request.quest_id)
@@ -92,12 +94,20 @@ async def add_quest_to_session(
         request.metadata
     )
 
-    game_session.flags = updated_flags
-    db.add(game_session)
-    db.commit()
-    db.refresh(game_session)
+    # Update session via service
+    await game_session_service.update_session(
+        session_id=session_id,
+        flags=updated_flags,
+    )
 
-    return QuestService.get_quest(game_session.flags, request.quest_id)
+    # Create event for quest addition
+    await game_session_service.create_event(
+        session_id=session_id,
+        action="quest_add",
+        diff={"quest_id": request.quest_id, "title": request.title},
+    )
+
+    return QuestService.get_quest(updated_flags, request.quest_id)
 
 
 @router.patch("/sessions/{session_id}/quests/{quest_id}/status", response_model=Quest)
@@ -105,12 +115,11 @@ async def update_quest_status(
     session_id: int,
     quest_id: str,
     request: UpdateQuestStatusRequest,
-    db: Session = Depends(get_sync_session)
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
 ):
     """Update quest status"""
-    game_session = db.get(GameSession, session_id)
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session not found")
+    game_session = await _get_owned_session(session_id, user, game_session_service)
 
     try:
         updated_flags = QuestService.update_quest_status(
@@ -119,12 +128,20 @@ async def update_quest_status(
             request.status
         )
 
-        game_session.flags = updated_flags
-        db.add(game_session)
-        db.commit()
-        db.refresh(game_session)
+        # Update session via service
+        await game_session_service.update_session(
+            session_id=session_id,
+            flags=updated_flags,
+        )
 
-        return QuestService.get_quest(game_session.flags, quest_id)
+        # Create event for quest status change
+        await game_session_service.create_event(
+            session_id=session_id,
+            action="quest_status",
+            diff={"quest_id": quest_id, "status": request.status},
+        )
+
+        return QuestService.get_quest(updated_flags, quest_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -134,12 +151,11 @@ async def update_objective_progress(
     session_id: int,
     quest_id: str,
     request: UpdateObjectiveRequest,
-    db: Session = Depends(get_sync_session)
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
 ):
     """Update objective progress"""
-    game_session = db.get(GameSession, session_id)
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session not found")
+    game_session = await _get_owned_session(session_id, user, game_session_service)
 
     try:
         updated_flags = QuestService.update_objective_progress(
@@ -150,12 +166,28 @@ async def update_objective_progress(
             request.completed
         )
 
-        game_session.flags = updated_flags
-        db.add(game_session)
-        db.commit()
-        db.refresh(game_session)
+        # Update session via service
+        await game_session_service.update_session(
+            session_id=session_id,
+            flags=updated_flags,
+        )
 
-        return QuestService.get_quest(game_session.flags, quest_id)
+        # Create event for objective progress
+        diff = {
+            "quest_id": quest_id,
+            "objective_id": request.objective_id,
+            "progress": request.progress,
+        }
+        if request.completed is not None:
+            diff["completed"] = request.completed
+
+        await game_session_service.create_event(
+            session_id=session_id,
+            action="quest_progress",
+            diff=diff,
+        )
+
+        return QuestService.get_quest(updated_flags, quest_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -165,12 +197,11 @@ async def complete_objective(
     session_id: int,
     quest_id: str,
     objective_id: str,
-    db: Session = Depends(get_sync_session)
+    user: CurrentUser,
+    game_session_service: GameSessionSvc,
 ):
     """Mark an objective as completed"""
-    game_session = db.get(GameSession, session_id)
-    if not game_session:
-        raise HTTPException(status_code=404, detail="Game session not found")
+    game_session = await _get_owned_session(session_id, user, game_session_service)
 
     try:
         updated_flags = QuestService.complete_objective(
@@ -179,11 +210,19 @@ async def complete_objective(
             objective_id
         )
 
-        game_session.flags = updated_flags
-        db.add(game_session)
-        db.commit()
-        db.refresh(game_session)
+        # Update session via service
+        await game_session_service.update_session(
+            session_id=session_id,
+            flags=updated_flags,
+        )
 
-        return QuestService.get_quest(game_session.flags, quest_id)
+        # Create event for objective completion
+        await game_session_service.create_event(
+            session_id=session_id,
+            action="quest_objective_complete",
+            diff={"quest_id": quest_id, "objective_id": objective_id},
+        )
+
+        return QuestService.get_quest(updated_flags, quest_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

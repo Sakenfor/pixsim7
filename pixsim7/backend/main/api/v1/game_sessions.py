@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
+from datetime import datetime
+from typing import Dict, Any, Optional, List
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
 
@@ -60,6 +61,33 @@ class GameSessionResponse(BaseModel):
             world_time=gs.world_time,
             version=gs.version,
         )
+
+
+class SessionEventResponse(BaseModel):
+    """Response model for a single session event."""
+    id: int
+    ts: datetime = Field(description="Event timestamp")
+    action: str = Field(description="Action name (e.g., 'session_created', 'advance', 'inventory_add')")
+    node_id: Optional[int] = Field(None, description="Scene node ID if applicable")
+    edge_id: Optional[int] = Field(None, description="Scene edge ID if applicable")
+    diff: Optional[Dict[str, Any]] = Field(None, description="Change details")
+
+    @classmethod
+    def from_model(cls, event: Any) -> "SessionEventResponse":
+        return cls(
+            id=event.id,
+            ts=event.ts,
+            action=event.action,
+            node_id=event.node_id,
+            edge_id=event.edge_id,
+            diff=event.diff,
+        )
+
+
+class SessionEventsResponse(BaseModel):
+    """Response model for events list endpoint."""
+    events: List[SessionEventResponse]
+    count: int = Field(description="Number of events returned")
 
 
 @router.post("/", response_model=GameSessionResponse)
@@ -167,3 +195,41 @@ async def update_session(
         raise
 
     return GameSessionResponse.from_model(gs)
+
+
+@router.get("/{session_id}/events", response_model=SessionEventsResponse)
+async def get_session_events(
+    session_id: int,
+    game_session_service: GameSessionSvc,
+    user: CurrentUser,
+    limit: int = Query(200, ge=1, le=1000, description="Maximum number of events to return"),
+    before_ts: Optional[str] = Query(None, description="ISO timestamp - only return events before this time"),
+    after_ts: Optional[str] = Query(None, description="ISO timestamp - only return events after this time"),
+) -> SessionEventsResponse:
+    """Get session events timeline.
+
+    Returns a list of events for the session, ordered by timestamp descending
+    (most recent first). Useful for playtesting and debugging session state changes.
+
+    Events include:
+    - session_created: Initial session creation
+    - advance: Scene graph progression
+    - session_update: World time/flags/stats updates
+    - inventory_add/remove/update/clear: Inventory mutations
+    - quest_add/status/progress/objective_complete: Quest changes
+    - stealth_pickpocket: Stealth mechanics
+    """
+    # Verify ownership
+    await _get_owned_session(session_id, user, game_session_service)
+
+    events = await game_session_service.get_events(
+        session_id=session_id,
+        limit=limit,
+        before_ts=before_ts,
+        after_ts=after_ts,
+    )
+
+    return SessionEventsResponse(
+        events=[SessionEventResponse.from_model(e) for e in events],
+        count=len(events),
+    )
