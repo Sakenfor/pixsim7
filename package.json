@@ -14,6 +14,8 @@
     "build:plugins": "tsx scripts/build-plugin.ts --all",
     "openapi:gen": "tsx scripts/generate-openapi-types.ts",
     "openapi:check": "tsx scripts/generate-openapi-types.ts --check",
+    "branded:gen": "tsx scripts/generate-branded-types.ts",
+    "branded:check": "tsx scripts/generate-branded-types.ts --check",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "lint": "echo 'add lint script per package'",
     "generate-docs": "tsx packages/game-core/src/utils/generatePluginDocs.ts",
