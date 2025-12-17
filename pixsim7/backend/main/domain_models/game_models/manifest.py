@@ -7,8 +7,9 @@ Includes scenes, sessions, NPCs, locations.
 
 from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
 
-# Import models from existing domain module
-from pixsim7.backend.main.domain.game import (
+# Import models directly (avoid importing pixsim7.backend.main.domain.game, which triggers
+# behavior/effect/scoring registration as an import-time side effect).
+from pixsim7.backend.main.domain.game.core.models import (
     GameScene,
     GameSceneNode,
     GameSceneEdge,
