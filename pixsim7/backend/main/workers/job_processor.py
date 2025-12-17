@@ -85,7 +85,9 @@ async def refresh_account_credits(
     """
     Refresh credits for an account from the provider.
 
-    Returns dict with only valid credit types, or empty dict on failure.
+    Returns dict with credit amounts, or empty dict on failure.
+    Credit types are determined dynamically from the provider's manifest/adapter
+    via get_credit_types() instead of being hardcoded.
     """
     from pixsim7.backend.main.services.provider.registry import registry
 
@@ -101,13 +103,15 @@ async def refresh_account_credits(
             gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
             return {}
 
-        # Get valid credit types from provider manifest
-        valid_credit_types = provider.get_credit_types()
-        if not valid_credit_types:
-            # Fallback to known credit types if manifest doesn't specify
-            valid_credit_types = ['web', 'openapi', 'standard']
+        # Get valid credit types from provider (no longer hardcoded)
+        valid_credit_types = set()
+        if hasattr(provider, 'get_credit_types'):
+            valid_credit_types = set(provider.get_credit_types())
+        else:
+            # Fallback for providers without get_credit_types()
+            valid_credit_types = {'web', 'openapi', 'standard', 'usage'}
 
-        # Filter credits to only valid types (ignore non-spendable fields like freeze_credits)
+        # Update credits in database and build filtered result
         filtered_credits = {}
         if credits_data:
             for credit_type, amount in credits_data.items():
@@ -131,18 +135,20 @@ def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
     """
     Check if account has any usable credits.
 
-    Args:
-        credits_data: Filtered dict with only valid credit types (from refresh_account_credits)
-        min_credits: Minimum credit threshold
-
-    Returns:
-        True if any credit type has >= min_credits
+    Checks all credit types in credits_data. Returns True if any type has
+    sufficient credits. This is provider-agnostic - works with any credit types.
     """
-    # credits_data should already be filtered to only valid credit types by refresh_account_credits
-    # Just check if any of the provided credits meet the threshold
+    if not credits_data:
+        return False
+
+    # Check if any credit type has sufficient credits
     for credit_type, amount in credits_data.items():
-        if isinstance(amount, (int, float)) and amount >= min_credits:
-            return True
+        try:
+            if int(amount) >= min_credits:
+                return True
+        except (ValueError, TypeError):
+            continue
+
     return False
 
 

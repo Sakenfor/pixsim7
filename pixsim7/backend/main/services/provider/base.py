@@ -2,9 +2,27 @@
 Provider abstraction - clean interface for video generation providers
 
 CLEAN VERSION: Single execute() method instead of per-operation methods
+
+Provider Integration Guide:
+    To add a new provider, implement this interface and create a manifest.
+    See docs/systems/generation/adding-providers.md for details.
+
+    Required:
+        - provider_id: Unique identifier
+        - supported_operations: List of OperationType values
+        - map_parameters(): Convert generic params to provider format
+        - execute(): Submit generation to provider
+        - check_status(): Poll for completion
+
+    Optional (override for advanced features):
+        - get_manifest(): Return provider metadata (domains, credit_types)
+        - prepare_execution_params(): Resolve files for multipart uploads
+        - extract_account_data(): Parse auth data from browser capture
+        - get_operation_parameter_spec(): UI form generation hints
+        - estimate_credits() / compute_actual_credits(): Credit estimation
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -14,6 +32,9 @@ from pixsim7.backend.main.domain import (
     ProviderAccount,
     Generation,
 )
+
+if TYPE_CHECKING:
+    from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest
 
 
 @dataclass
@@ -410,6 +431,139 @@ class Provider(ABC):
                 f"Operation {operation_type.value} not supported by {self.provider_id}. "
                 f"Supported: {[op.value for op in self.supported_operations]}"
             )
+
+    # ===== PROVIDER METADATA =====
+
+    def get_manifest(self) -> Optional["ProviderManifest"]:
+        """
+        Return the provider's manifest with metadata.
+
+        Override this to return a ProviderManifest with domains, credit_types,
+        display name, etc. The manifest is used by:
+        - URL detection (domains)
+        - Credit handling (credit_types)
+        - UI display (name, description)
+
+        Returns:
+            ProviderManifest or None if not implemented
+
+        Example:
+            def get_manifest(self):
+                return ProviderManifest(
+                    id="myprovider",
+                    name="My Provider",
+                    domains=["myprovider.com"],
+                    credit_types=["web", "api"],
+                    ...
+                )
+        """
+        return None
+
+    def get_domains(self) -> list[str]:
+        """
+        Return domains associated with this provider for URL detection.
+
+        By default, tries to get domains from manifest. Override if needed.
+
+        Returns:
+            List of domain strings (e.g., ["pixverse.ai", "app.pixverse.ai"])
+        """
+        manifest = self.get_manifest()
+        if manifest and manifest.domains:
+            return list(manifest.domains)
+        return []
+
+    def get_credit_types(self) -> list[str]:
+        """
+        Return credit types supported by this provider.
+
+        Used by billing/credit tracking to know which credit types to update.
+        By default returns ["web"]. Override or set via manifest.
+
+        Returns:
+            List of credit type strings (e.g., ["web", "openapi", "standard"])
+        """
+        manifest = self.get_manifest()
+        if manifest and manifest.credit_types:
+            return list(manifest.credit_types)
+        return ["web"]
+
+    def get_display_name(self) -> str:
+        """
+        Return human-readable display name for this provider.
+
+        Returns:
+            Display name (e.g., "Pixverse AI")
+        """
+        manifest = self.get_manifest()
+        if manifest:
+            return manifest.name
+        # Fallback: capitalize provider_id
+        return self.provider_id.replace("_", " ").title()
+
+    # ===== FILE/INPUT RESOLUTION =====
+
+    async def prepare_execution_params(
+        self,
+        generation: Generation,
+        mapped_params: Dict[str, Any],
+        resolve_source_fn,
+    ) -> Dict[str, Any]:
+        """
+        Prepare execution parameters, optionally resolving files for multipart uploads.
+
+        This hook is called by ProviderService before execute(). Providers that need
+        local file paths (e.g., for multipart form uploads) should override this to:
+        1. Identify which params reference files (URLs, asset refs)
+        2. Use resolve_source_fn() to download/resolve to local paths
+        3. Return updated params with local paths and cleanup list
+
+        The default implementation returns mapped_params unchanged (no file resolution).
+
+        Args:
+            generation: The Generation being processed
+            mapped_params: Parameters already mapped via map_parameters()
+            resolve_source_fn: Async function to resolve sources to local files.
+                Signature: async (source, user_id, default_suffix) -> (local_path, temp_paths)
+                - source: URL string, asset ref ("asset_123"), dict {"asset_id": 123}, etc.
+                - user_id: User ID for asset lookup
+                - default_suffix: File extension default (e.g., ".jpg")
+                - Returns: (local_path, list_of_temp_paths_to_cleanup)
+
+        Returns:
+            Dict with execution params. May include:
+            - Original params plus resolved file paths
+            - "_temp_paths": list of temp file paths to clean up after execute()
+
+        Example (Remaker inpaint):
+            async def prepare_execution_params(self, generation, mapped_params, resolve_source_fn):
+                original_path, temps1 = await resolve_source_fn(
+                    mapped_params["original_image_source"], generation.user_id, ".jpg"
+                )
+                mask_path, temps2 = await resolve_source_fn(
+                    mapped_params["mask_source"], generation.user_id, ".png"
+                )
+                return {
+                    **mapped_params,
+                    "original_image_path": original_path,
+                    "mask_path": mask_path,
+                    "_temp_paths": temps1 + temps2,
+                }
+        """
+        return mapped_params
+
+    def requires_file_preparation(self) -> bool:
+        """
+        Return True if this provider needs file preparation before execute().
+
+        Providers that override prepare_execution_params() to resolve files
+        should also override this to return True. This allows ProviderService
+        to skip the file resolution step for providers that don't need it.
+
+        Returns:
+            True if prepare_execution_params() does file resolution
+        """
+        return False
 
     # ===== CREDIT ESTIMATION =====
 

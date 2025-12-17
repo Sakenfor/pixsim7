@@ -152,6 +152,29 @@ class PixverseProvider(
             OperationType.FUSION,
         ]
 
+    # ===== PROVIDER METADATA =====
+
+    def get_manifest(self):
+        """Return Pixverse provider manifest with domains and credit types."""
+        from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+        return ProviderManifest(
+            id="pixverse",
+            name="Pixverse AI",
+            version="1.0.0",
+            description="Pixverse AI video and image generation provider",
+            author="PixSim Team",
+            kind=ProviderKind.VIDEO,
+            enabled=True,
+            requires_credentials=True,
+            domains=["pixverse.ai", "app.pixverse.ai"],
+            credit_types=["web", "openapi", "standard"],
+            status_mapping_notes=(
+                "1=success/completed, 2=processing, "
+                "4/7=failed (transient, may retry), 5=filtered (may retry), "
+                "6=filtered (prompt blocked, no retry)"
+            ),
+        )
+
     def map_parameters(
         self,
         operation_type: OperationType,
