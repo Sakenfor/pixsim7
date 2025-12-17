@@ -113,6 +113,23 @@ export * from './assetProvider'
 // ===================
 // Backend OpenAPI Contract (Generated)
 // ===================
+//
+// These types are auto-generated from the running backend's /openapi.json
+// endpoint using `pnpm openapi:gen`. DO NOT manually edit openapi.generated.ts.
+//
+// Conventions:
+//   - OpenAPI types = HTTP DTOs only (request/response schemas)
+//   - Uses snake_case as backend returns (no camelCase mapping)
+//   - Frontend API modules (lib/api/*.ts) re-export small aliases:
+//       export type AssetResponse = ApiComponents['schemas']['AssetResponse']
+//     so most code never touches ApiComponents[...] directly.
+//
+// Commands:
+//   pnpm openapi:gen    - Regenerate types (requires running backend)
+//   pnpm openapi:check  - Verify types are up-to-date (for CI/pre-commit)
+//
+// See also: Launcher GUI > Tools > OpenAPI Tools (for GUI-based generation)
+//
 
 export type {
   paths as ApiPaths,

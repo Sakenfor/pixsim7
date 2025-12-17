@@ -1,2 +1,19 @@
-#\!/usr/bin/env sh
+#!/usr/bin/env sh
+
+# Lint staged files
 cd apps/main && pnpm exec lint-staged
+
+# OpenAPI types freshness check (warning only - requires running backend)
+# Uncomment the following to enable blocking check in CI:
+# cd "$OLDPWD" && pnpm openapi:check || exit 1
+#
+# For now, just warn if the check fails (doesn't block commit)
+cd "$OLDPWD"
+if pnpm openapi:check 2>/dev/null; then
+  echo "✓ OpenAPI types are up-to-date"
+else
+  echo ""
+  echo "⚠️  OpenAPI types may be stale (or backend not running)"
+  echo "   Run 'pnpm openapi:gen' if you've changed the backend API."
+  echo ""
+fi
