@@ -111,6 +111,12 @@ export * from './brain'
 export * from './assetProvider'
 
 // ===================
+// Asset Core Types (Shared between Backend & Frontend)
+// ===================
+
+export * from './asset-core'
+
+// ===================
 // Backend OpenAPI Contract (Generated)
 // ===================
 //
