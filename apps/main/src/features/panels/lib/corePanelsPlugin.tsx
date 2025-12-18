@@ -28,6 +28,8 @@ import { WorldContextPanel } from "@/components/game/panels/WorldContextPanel";
 import { EdgeEffectsPanel } from "@features/panels/components/tools/EdgeEffectsPanel";
 import { ConsolePanel } from "@features/panels/components/console/ConsolePanel";
 import { ModelInspectorPanel } from "@features/panels/components/tools/ModelInspectorPanel";
+import { galleryPanelSettingsSections } from "@features/gallery/components/GalleryPanelSettings";
+import { GraphPanelSettingsComponent } from "@features/graph/components/GraphPanelSettings";
 
 export const corePanelsPlugin: PanelPlugin = {
   id: "core-panels",
@@ -47,6 +49,7 @@ export const corePanelsPlugin: PanelPlugin = {
       description: "Browse and manage project assets",
       supportsCompactMode: false,
       supportsMultipleInstances: false,
+      settingsSections: galleryPanelSettingsSections,
     },
     {
       id: "scene",
@@ -78,6 +81,7 @@ export const corePanelsPlugin: PanelPlugin = {
             : undefined,
       supportsCompactMode: false,
       supportsMultipleInstances: false,
+      settingsComponent: GraphPanelSettingsComponent,
     },
     {
       id: "inspector",

@@ -10,6 +10,7 @@ import type { ComponentType } from "react";
 import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 import type { EditorContext } from "../../context/editorContext";
 import type { PanelCategory } from "./panelConstants";
+import type { z } from "zod";
 
 // Re-export PanelCategory for backwards compatibility
 export type { PanelCategory } from "./panelConstants";
@@ -47,7 +48,45 @@ export interface WorkspaceContext {
  */
 export type CoreEditorRole = "game-view" | "flow-view" | "world-editor";
 
-export interface PanelDefinition {
+/**
+ * Settings update helpers provided to panel settings components.
+ * Centralizes persistence and debouncing logic.
+ */
+export interface PanelSettingsUpdateHelpers<TSettings = any> {
+  /** Update settings with a partial patch (shallow merge) */
+  update: (patch: Partial<TSettings>) => void;
+  /** Set a specific setting value by path (deep set with dot notation) */
+  set: <K extends keyof TSettings>(key: K, value: TSettings[K]) => void;
+  /** Replace entire settings object */
+  replace: (settings: TSettings) => void;
+}
+
+/**
+ * Props passed to panel settings components
+ */
+export interface PanelSettingsProps<TSettings = any> {
+  /** Current settings for the panel */
+  settings: TSettings;
+  /** Update helpers (update, set, replace) */
+  helpers: PanelSettingsUpdateHelpers<TSettings>;
+}
+
+/**
+ * A section within a panel's settings UI.
+ * Allows large panels to organize settings into multiple sections.
+ */
+export interface PanelSettingsSection<TSettings = any> {
+  /** Unique section ID */
+  id: string;
+  /** Display title for the section */
+  title: string;
+  /** Description shown below the title */
+  description?: string;
+  /** Component that renders this section's settings */
+  component: ComponentType<PanelSettingsProps<TSettings>>;
+}
+
+export interface PanelDefinition<TSettings = any> {
   id: PanelId;
   title: string;
   component: ComponentType<any>;
@@ -55,7 +94,48 @@ export interface PanelDefinition {
   tags: string[];
   icon?: string;
   description?: string;
-  defaultSettings?: Record<string, any>;
+
+  // Settings System
+  /**
+   * Default settings for the panel.
+   * Used when panel is first registered or settings are reset.
+   */
+  defaultSettings?: TSettings;
+
+  /**
+   * Zod schema for validating and type-checking settings.
+   * Used to validate stored settings and provide defaults.
+   */
+  settingsSchema?: z.ZodSchema<TSettings>;
+
+  /**
+   * Single settings component for simple panels.
+   * Mutually exclusive with settingsSections.
+   */
+  settingsComponent?: ComponentType<PanelSettingsProps<TSettings>>;
+
+  /**
+   * Multiple settings sections for complex panels.
+   * Allows organizing settings into collapsible/tabbed sections.
+   * Mutually exclusive with settingsComponent.
+   */
+  settingsSections?: PanelSettingsSection<TSettings>[];
+
+  /**
+   * Settings version for migration support.
+   * Increment when settings structure changes.
+   */
+  settingsVersion?: number;
+
+  /**
+   * Migration hook to upgrade old settings to current version.
+   * Called when stored settings version < current settingsVersion.
+   *
+   * @param oldSettings - Settings from storage (unknown structure)
+   * @param oldVersion - Version number from storage (0 if not present)
+   * @returns Migrated settings matching current TSettings type
+   */
+  migrateSettings?: (oldSettings: unknown, oldVersion: number) => TSettings;
 
   /**
    * Strategy for deriving the context label shown in the panel header.
