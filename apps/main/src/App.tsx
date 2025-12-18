@@ -41,6 +41,7 @@ import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
 import { useInitializePanelSystem } from '@features/panels';
+import { ContextMenuProvider } from '@lib/dockview/contextMenu';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -91,8 +92,9 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
-        <Routes>
+      <ContextMenuProvider>
+        <div className="min-h-screen flex flex-col">
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
@@ -122,30 +124,31 @@ function App() {
           <Route path="/dev/action-block-graph" element={<ProtectedRoute><ActionBlockGraphDev /></ProtectedRoute>} />
           <Route path="/dev/block-fit" element={<ProtectedRoute><BlockFitDev /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
-      {/* Control Center - plugin-based (only when authenticated) */}
-      {isAuthenticated && (
-        <ErrorBoundary>
-          <ControlCenterManager />
-        </ErrorBoundary>
-      )}
-      {/* Floating panels (only when authenticated) */}
-      {isAuthenticated && (
-        <ErrorBoundary>
-          <FloatingPanelsManager />
-        </ErrorBoundary>
-      )}
-      {/* Global toast notifications */}
-      <ToastContainer />
-      {/* Plugin overlays (only when authenticated) */}
-      {isAuthenticated && (
-        <ErrorBoundary>
-          <PluginOverlays />
-        </ErrorBoundary>
-      )}
-      {/* Dev tool quick access modal (Ctrl+Shift+D) */}
-      {isAuthenticated && <DevToolQuickAccess />}
+          </Routes>
+        </div>
+        {/* Control Center - plugin-based (only when authenticated) */}
+        {isAuthenticated && (
+          <ErrorBoundary>
+            <ControlCenterManager />
+          </ErrorBoundary>
+        )}
+        {/* Floating panels (only when authenticated) */}
+        {isAuthenticated && (
+          <ErrorBoundary>
+            <FloatingPanelsManager />
+          </ErrorBoundary>
+        )}
+        {/* Global toast notifications */}
+        <ToastContainer />
+        {/* Plugin overlays (only when authenticated) */}
+        {isAuthenticated && (
+          <ErrorBoundary>
+            <PluginOverlays />
+          </ErrorBoundary>
+        )}
+        {/* Dev tool quick access modal (Ctrl+Shift+D) */}
+        {isAuthenticated && <DevToolQuickAccess />}
+      </ContextMenuProvider>
     </BrowserRouter>
   );
 }
