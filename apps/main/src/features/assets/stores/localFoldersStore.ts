@@ -1,24 +1,32 @@
-/* Local Folders store using File System Access API (Chromium). 
+/* Local Folders store using File System Access API (Chromium).
  * Persists directory handles in IndexedDB so each user can add their own folders.
  */
 import { create } from 'zustand';
+import type {
+  AssetCandidate,
+  FolderCandidate,
+  generateCandidateId,
+  FolderSourceMetadata,
+} from '../types/assetCandidate';
 
 type DirHandle = FileSystemDirectoryHandle;
 type FileHandle = FileSystemFileHandle;
 
-export type LocalAsset = {
-  key: string; // unique key (folderId + relativePath)
-  name: string;
-  relativePath: string;
-  kind: 'image' | 'video' | 'other';
-  size?: number;
-  lastModified?: number;
+/**
+ * Local asset representing a file in a user's local folder.
+ *
+ * @deprecated Use AssetCandidate with source.type === 'folder' instead.
+ * Kept for backward compatibility during migration.
+ */
+export type LocalAsset = FolderCandidate & {
+  /** Legacy key field (maps to id) */
+  key: string;
+  /** Legacy handle field (transient, not persisted) */
   fileHandle?: FileHandle;
+  /** Legacy folder ID field (maps to source.folderId) */
   folderId: string;
-  // Upload history tracking (Task 104)
-  lastUploadStatus?: 'success' | 'error';
-  lastUploadNote?: string;
-  lastUploadAt?: number;
+  /** Legacy relative path field (maps to source.relativePath) */
+  relativePath: string;
 };
 
 type FolderEntry = {
@@ -55,12 +63,25 @@ type LocalFoldersState = {
 };
 
 // --- minimal IndexedDB helpers ---
+const DB_VERSION = 2; // Bumped for AssetCandidate migration
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('ps7_local_folders', 1);
-    req.onupgradeneeded = () => {
+    const req = indexedDB.open('ps7_local_folders', DB_VERSION);
+    req.onupgradeneeded = (event) => {
       const db = req.result;
-      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
+
+      // Version 1: Initial schema
+      if (oldVersion < 1) {
+        if (!db.objectStoreNames.contains('kv')) {
+          db.createObjectStore('kv');
+        }
+      }
+
+      // Version 2: AssetCandidate migration
+      // Data migration happens in code when loading - no schema changes needed
+      // (kv store is schema-less, just stores JSON)
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -100,19 +121,37 @@ function extKind(name: string): LocalAsset['kind'] {
   return 'other';
 }
 
-// Serializable asset metadata for caching (Task 104)
+// Serializable asset metadata for caching
+// Version 2: Includes source metadata for AssetCandidate system
 type AssetMeta = {
-  key: string;
+  // AssetCandidate fields
+  id: string;
   name: string;
-  relativePath: string;
   kind: 'image' | 'video' | 'other';
   size?: number;
   lastModified?: number;
-  folderId: string;
-  // Upload history tracking (Task 104)
-  lastUploadStatus?: 'success' | 'error';
-  lastUploadNote?: string;
-  lastUploadAt?: number;
+  source: FolderSourceMetadata;
+
+  // Hash metadata
+  sha256?: string;
+  sha256_computed_at?: number;
+  sha256_file_size?: number;
+  sha256_last_modified?: number;
+
+  // Upload tracking
+  last_upload_status?: 'idle' | 'uploading' | 'success' | 'error';
+  last_upload_note?: string;
+  last_upload_at?: number;
+  last_upload_provider_id?: string;
+  last_upload_asset_id?: number;
+
+  // Legacy fields (for v1 compatibility)
+  key?: string; // Old ID format
+  folderId?: string; // Duplicates source.folderId
+  relativePath?: string; // Duplicates source.relativePath
+  lastUploadStatus?: 'success' | 'error'; // Old format
+  lastUploadNote?: string; // Old format
+  lastUploadAt?: number; // Old format
 };
 
 // Chunked folder scanning - yields to main thread every N files for responsiveness
@@ -161,16 +200,30 @@ async function scanFolderChunked(
           lastModified = f.lastModified;
         } catch {}
 
-        out.push({
-          key: `${id}:${rel}`,
+        // Create FolderCandidate (with legacy LocalAsset compatibility)
+        const candidateId = `${id}:${rel}`;
+        const candidate: LocalAsset = {
+          // AssetCandidate fields
+          id: candidateId,
           name,
-          relativePath: rel,
           kind,
           size,
           lastModified,
-          fileHandle: fh,
+          source: {
+            type: 'folder',
+            folderId: id,
+            relativePath: rel,
+            handleKey: candidateId, // Use ID as handle reference
+          },
+
+          // Legacy LocalAsset compatibility fields
+          key: candidateId,
           folderId: id,
-        });
+          relativePath: rel,
+          fileHandle: fh, // Transient, not persisted
+        };
+
+        out.push(candidate);
         stats.found++;
       }
 
@@ -225,31 +278,89 @@ async function loadCachedAssets(id: string, _handle: DirHandle): Promise<LocalAs
     // For large folders, reconstructing FileSystemFileHandle for every asset on
     // startup is very expensive. Instead, return lightweight assets without
     // fileHandle and let callers resolve handles lazily when needed.
-    return cached.map((meta) => ({
-      ...meta,
-      fileHandle: undefined,
-    }));
+    return cached.map((meta) => {
+      // Migrate v1 format to v2 (AssetCandidate format)
+      if (!meta.source) {
+        // Legacy v1 format - create source metadata
+        const candidateId = meta.key || `${meta.folderId}:${meta.relativePath}`;
+        return {
+          id: candidateId,
+          name: meta.name,
+          kind: meta.kind,
+          size: meta.size,
+          lastModified: meta.lastModified,
+          source: {
+            type: 'folder' as const,
+            folderId: meta.folderId || id,
+            relativePath: meta.relativePath || '',
+            handleKey: candidateId,
+          },
+          // Hash metadata (v2 fields)
+          sha256: meta.sha256,
+          sha256_computed_at: meta.sha256_computed_at,
+          sha256_file_size: meta.sha256_file_size,
+          sha256_last_modified: meta.sha256_last_modified,
+          // Upload tracking (migrate old field names)
+          last_upload_status: meta.last_upload_status || meta.lastUploadStatus,
+          last_upload_note: meta.last_upload_note || meta.lastUploadNote,
+          last_upload_at: meta.last_upload_at || meta.lastUploadAt,
+          last_upload_provider_id: meta.last_upload_provider_id,
+          last_upload_asset_id: meta.last_upload_asset_id,
+          // Legacy compatibility
+          key: candidateId,
+          folderId: meta.folderId || id,
+          relativePath: meta.relativePath || '',
+          fileHandle: undefined,
+        } as LocalAsset;
+      }
+
+      // V2 format - just add legacy fields
+      return {
+        ...meta,
+        key: meta.id,
+        folderId: meta.source.folderId,
+        relativePath: meta.source.relativePath,
+        fileHandle: undefined,
+      } as LocalAsset;
+    });
   } catch (e) {
     console.warn('loadCachedAssets error', e);
     return [];
   }
 }
 
-// Save assets to cache (Task 104: includes upload history)
+// Save assets to cache (v2: AssetCandidate format with backward compatibility)
 async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
   try {
     const meta: AssetMeta[] = assets.map(a => ({
-      key: a.key,
+      // V2 AssetCandidate fields
+      id: a.id,
       name: a.name,
-      relativePath: a.relativePath,
       kind: a.kind,
       size: a.size,
       lastModified: a.lastModified,
+      source: a.source,
+
+      // Hash metadata
+      sha256: a.sha256,
+      sha256_computed_at: a.sha256_computed_at,
+      sha256_file_size: a.sha256_file_size,
+      sha256_last_modified: a.sha256_last_modified,
+
+      // Upload tracking
+      last_upload_status: a.last_upload_status,
+      last_upload_note: a.last_upload_note,
+      last_upload_at: a.last_upload_at,
+      last_upload_provider_id: a.last_upload_provider_id,
+      last_upload_asset_id: a.last_upload_asset_id,
+
+      // Legacy compatibility (for rollback)
+      key: a.key,
       folderId: a.folderId,
-      // Task 104: persist upload history
-      lastUploadStatus: a.lastUploadStatus,
-      lastUploadNote: a.lastUploadNote,
-      lastUploadAt: a.lastUploadAt,
+      relativePath: a.relativePath,
+      lastUploadStatus: a.last_upload_status as 'success' | 'error' | undefined,
+      lastUploadNote: a.last_upload_note,
+      lastUploadAt: a.last_upload_at,
     }));
     await idbSet(`assets_${id}`, meta);
   } catch (e) {
@@ -490,14 +601,94 @@ export async function setLocalThumbnailBlob(asset: LocalAsset, blob: Blob): Prom
 /**
  * Generate a thumbnail from a file.
  * For images: resize to max 400px on longest side
- * For videos: extract first frame (future enhancement)
+ * For videos: extract first frame at 400px max
  */
 const THUMBNAIL_MAX_SIZE = 400;
 
+/**
+ * Generate a video thumbnail by extracting a frame from the video.
+ */
+async function generateVideoThumbnail(file: File): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(video.src);
+      video.remove();
+    };
+
+    video.onloadedmetadata = () => {
+      // Seek to 0.5 seconds or 10% of duration, whichever is smaller
+      const seekTime = Math.min(0.5, video.duration * 0.1);
+      video.currentTime = seekTime;
+    };
+
+    video.onseeked = () => {
+      try {
+        // Calculate thumbnail dimensions
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+
+        if (width > THUMBNAIL_MAX_SIZE || height > THUMBNAIL_MAX_SIZE) {
+          if (width > height) {
+            height = Math.round((height / width) * THUMBNAIL_MAX_SIZE);
+            width = THUMBNAIL_MAX_SIZE;
+          } else {
+            width = Math.round((width / height) * THUMBNAIL_MAX_SIZE);
+            height = THUMBNAIL_MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+
+        ctx.drawImage(video, 0, 0, width, height);
+        cleanup();
+
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
+      } catch (e) {
+        console.warn('Failed to extract video frame', e);
+        cleanup();
+        resolve(null);
+      }
+    };
+
+    video.onerror = () => {
+      console.warn('Failed to load video for thumbnail');
+      cleanup();
+      resolve(null);
+    };
+
+    // Set a timeout to prevent hanging
+    setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, 5000);
+
+    video.src = URL.createObjectURL(file);
+  });
+}
+
 export async function generateThumbnail(file: File): Promise<Blob | null> {
-  // Only handle images for now
+  // Handle videos
+  if (file.type.startsWith('video/')) {
+    return generateVideoThumbnail(file);
+  }
+
+  // Handle images
   if (!file.type.startsWith('image/')) {
-    return file; // Return original for videos (will be handled by video element)
+    return null;
   }
 
   try {
