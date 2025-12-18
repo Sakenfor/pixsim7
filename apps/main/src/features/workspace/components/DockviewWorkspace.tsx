@@ -3,7 +3,7 @@ import type { DockviewReadyEvent, IDockviewPanelProps } from "dockview-core";
 import {
   useWorkspaceStore,
   type PanelId,
-  type LayoutNode,
+  type DockviewLayout,
 } from "../stores/workspaceStore";
 import { panelRegistry, initializePanels, PanelHostLite } from "@features/panels";
 import { initializeWidgets } from "@lib/ui/composer";
@@ -35,72 +35,6 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
 const getPanelTitle = (id: PanelId): string =>
   panelRegistry.get(id)?.title ?? id;
 
-// Helper to convert tree layout to Dockview panels
-function applyLayoutToDockview(
-  api: DockviewReadyEvent["api"],
-  layout: LayoutNode<PanelId> | null,
-  titles: Record<PanelId, string>,
-) {
-  // Clear existing panels (defensively guard against stale/undefined ids)
-  const existingPanels = api.panels.map((p) => p.id).filter(Boolean);
-  existingPanels.forEach((id) => {
-    try {
-      api.removePanel(id);
-    } catch (e) {
-      // If Dockview already removed this panel or its group, ignore
-      // to avoid hard failures when syncing layouts.
-      // console.warn('Failed to remove panel', id, e);
-    }
-  });
-
-  if (!layout) return;
-
-  let panelCounter = 0;
-
-  // Recursively build panels from LayoutNode tree
-  const buildPanels = (
-    node: LayoutNode<PanelId>,
-    referencePanel?: string,
-    direction?: "left" | "right" | "above" | "below",
-  ): string => {
-    if (typeof node === "string") {
-      // Leaf node - create panel
-      const baseId = `${node}-panel-${panelCounter++}`;
-      // Ensure the id is unique in the current Dockview instance
-      let panelId = baseId;
-      let suffix = 1;
-      while (api.panels.some((p) => p.id === panelId)) {
-        panelId = `${baseId}-${suffix++}`;
-      }
-      api.addPanel({
-        id: panelId,
-        component: "panel",
-        params: { panelId: node },
-        title: titles[node],
-        position: referencePanel
-          ? { direction: direction!, referencePanel }
-          : undefined,
-      });
-      return panelId;
-    }
-
-    // Branch node - recursively create children
-    const firstPanelId = buildPanels(node.first, referencePanel, direction);
-
-    // Determine direction for second panel
-    const secondDirection = node.direction === "row" ? "right" : "below";
-    const secondPanelId = buildPanels(
-      node.second,
-      firstPanelId,
-      secondDirection,
-    );
-
-    return firstPanelId;
-  };
-
-  buildPanels(layout);
-}
-
 // Watermark component for empty workspace
 function WorkspaceWatermark() {
   return (
@@ -113,11 +47,9 @@ function WorkspaceWatermark() {
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const isReadyRef = useRef(false);
-  const lastAppliedLayoutRef = useRef<LayoutNode<PanelId> | null>(null);
 
-  const dockviewLayout = useWorkspaceStore((s) => s.dockviewLayout);
-  const currentLayout = useWorkspaceStore((s) => s.currentLayout);
-  const setDockviewLayout = useWorkspaceStore((s) => s.setDockviewLayout);
+  const savedLayout = useWorkspaceStore((s) => s.getLayout("workspace"));
+  const setLayout = useWorkspaceStore((s) => s.setLayout);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
 
   // Initialize panels and widgets on mount
@@ -136,7 +68,7 @@ export function DockviewWorkspace() {
   }), []);
 
   const createDefaultLayout = (api: DockviewReadyEvent["api"]) => {
-    // Create default layout similar to mosaic default
+    // Create default layout
     api.addPanel({
       id: "gallery-panel",
       component: "panel",
@@ -183,9 +115,9 @@ export function DockviewWorkspace() {
     isReadyRef.current = true;
 
     // Load saved layout or create default
-    if (dockviewLayout) {
+    if (savedLayout) {
       try {
-        api.fromJSON(dockviewLayout);
+        api.fromJSON(savedLayout);
       } catch (error) {
         console.error("Failed to load layout:", error);
         createDefaultLayout(api);
@@ -204,8 +136,8 @@ export function DockviewWorkspace() {
     // Subscribe to layout changes to save to store
     api.onDidLayoutChange(() => {
       if (apiRef.current) {
-        const layout = apiRef.current.toJSON();
-        setDockviewLayout(layout);
+        const layout = apiRef.current.toJSON() as DockviewLayout;
+        setLayout("workspace", layout);
       }
     });
   };
@@ -223,24 +155,19 @@ export function DockviewWorkspace() {
     });
   }, [isLocked]);
 
-  // Handle preset loading and panel restoration from currentLayout
+  // Handle layout changes from store (e.g., preset loading)
   useEffect(() => {
     if (!apiRef.current || !isReadyRef.current) return;
-    if (!currentLayout) return;
 
-    // Only apply if the layout actually changed
-    if (currentLayout === lastAppliedLayoutRef.current) return;
-
-    lastAppliedLayoutRef.current = currentLayout;
-
-    // Build panel titles from registry
-    const panelTitles: Record<PanelId, string> = {} as any;
-    panelRegistry.getAll().forEach((panel) => {
-      panelTitles[panel.id] = panel.title;
-    });
-
-    applyLayoutToDockview(apiRef.current, currentLayout, panelTitles);
-  }, [currentLayout]);
+    // If layout in store changed (e.g., preset loaded), apply it
+    if (savedLayout) {
+      try {
+        apiRef.current.fromJSON(savedLayout);
+      } catch (error) {
+        console.error("Failed to apply layout from store:", error);
+      }
+    }
+  }, [savedLayout]);
 
   return (
     <div className="h-full w-full">

@@ -49,12 +49,8 @@ export const savePresetAction: MenuAction = {
 
     // Save to workspaceStore with scope
     if (ctx.workspaceStore) {
-      // First update the current layout in store
       const layout = ctx.api.toJSON();
-      ctx.workspaceStore.getState().setLayout(layout);
-      // Then save as preset
-      ctx.workspaceStore.getState().savePreset(name, scope);
-      console.log('[PresetActions] Saved preset:', name, 'scope:', scope);
+      ctx.workspaceStore.getState().savePreset(name, scope, layout);
     }
   },
 };
@@ -89,7 +85,6 @@ export const loadPresetAction: MenuAction = {
       execute: () => {
         if (ctx.workspaceStore) {
           ctx.workspaceStore.getState().loadPreset(preset.id);
-          console.log('[PresetActions] Loaded preset:', preset.name);
         }
       },
     }));
@@ -134,7 +129,6 @@ export const deletePresetAction: MenuAction = {
       execute: () => {
         if (ctx.workspaceStore && window.confirm(`Delete preset "${preset.name}"?`)) {
           ctx.workspaceStore.getState().deletePreset(preset.id);
-          console.log('[PresetActions] Deleted preset:', preset.name);
         }
       },
     }));
@@ -143,7 +137,7 @@ export const deletePresetAction: MenuAction = {
 };
 
 /**
- * Reset layout to default
+ * Reset layout to default for the current scope
  */
 export const resetLayoutAction: MenuAction = {
   id: 'preset:reset',
@@ -156,9 +150,10 @@ export const resetLayoutAction: MenuAction = {
   execute: (ctx) => {
     if (!ctx.workspaceStore) return;
 
+    const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+
     if (window.confirm('Reset layout to default? This will lose any unsaved changes.')) {
-      ctx.workspaceStore.getState().reset();
-      console.log('[PresetActions] Reset to default layout');
+      ctx.workspaceStore.getState().resetScope(scope);
     }
   },
 };

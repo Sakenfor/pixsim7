@@ -27,14 +27,15 @@ export const allActions = [
   ...addPanelActions,
 ];
 
+let actionsRegistered = false;
+
 /**
- * Register all actions with the global registry
- * Call this once at app initialization
+ * Register all actions with the global registry.
+ * Call this once at app initialization.
+ * Safe to call multiple times - will only register once.
  */
 export function registerContextMenuActions() {
-  console.log('[ContextMenu] Registering', allActions.length, 'actions');
+  if (actionsRegistered) return;
+  actionsRegistered = true;
   contextMenuRegistry.registerAll(allActions);
 }
-
-// Auto-register on import
-registerContextMenuActions();

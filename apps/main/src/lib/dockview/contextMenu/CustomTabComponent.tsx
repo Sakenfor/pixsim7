@@ -28,8 +28,6 @@ export function CustomTabComponent(props: IDockviewPanelProps) {
     const panelId = props.api.id;
     const groupId = props.api.group.id;
 
-    console.log('[CustomTabComponent] Context menu on tab:', panelId, 'dockview:', currentDockviewId);
-
     contextMenu.showContextMenu({
       contextType: 'tab',
       panelId,

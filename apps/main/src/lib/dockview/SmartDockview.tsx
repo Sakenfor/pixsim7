@@ -45,7 +45,7 @@ import { useSmartDockview } from './useSmartDockview';
 import type { LocalPanelRegistry } from './LocalPanelRegistry';
 import type { LocalPanelDefinition } from './types';
 import { panelRegistry } from '@features/panels';
-import { ContextMenuPortal, CustomTabComponent, useContextMenuOptional, DockviewIdProvider } from './contextMenu';
+import { CustomTabComponent, useContextMenuOptional, DockviewIdProvider } from './contextMenu';
 
 /** Base props shared by both modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -208,7 +208,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Handle dockview ready
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
-      console.log('[SmartDockview] Ready, id:', panelManagerId, 'storageKey:', storageKey);
       apiRef.current = event.api;
 
       // Initialize smart features (tab visibility, persistence)
@@ -216,11 +215,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
       // Register with panel manager if ID provided
       if (panelManagerId) {
-        console.log('[SmartDockview] Registering with panel manager:', panelManagerId);
         import('@features/panels/lib/PanelManager').then(({ panelManager }) => {
           panelManager.registerDockview(panelManagerId, event.api);
-        }).catch(err => {
-          console.warn('[SmartDockview] Failed to register with panel manager:', err);
+        }).catch(() => {
+          // Panel manager not available
         });
 
         // Register with global context menu provider (if available)
@@ -232,21 +230,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       // Registry mode: try to load saved layout or create default
       if (registryMode && registry && defaultLayout) {
         const loaded = loadLayout();
-        console.log('[SmartDockview] Layout loaded from storage:', loaded);
 
         if (!loaded && event.api.panels.length === 0) {
-          console.log('[SmartDockview] Creating default layout');
           defaultLayout(event.api, registry);
-          console.log('[SmartDockview] Default layout created, panels:', event.api.panels.length);
-        } else {
-          console.log('[SmartDockview] Using existing layout, panels:', event.api.panels.length);
         }
       }
 
       setIsReady(true);
       onReadyProp?.(event.api);
     },
-    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, storageKey, registryMode, contextMenu]
+    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, registryMode, contextMenu]
   );
 
   // Unregister on unmount
@@ -306,7 +299,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           onReady={handleReady}
           className={theme}
         />
-        {contextMenuActive && <ContextMenuPortal />}
       </div>
     </DockviewIdProvider>
   );

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
+import type { DockviewApi } from "dockview-core";
 
 export type PanelId =
   | "gallery"
@@ -32,6 +33,9 @@ export type PanelId =
  */
 export type PresetScope = "workspace" | "control-center" | "asset-viewer" | "all";
 
+/** Dockview serialized layout type */
+export type DockviewLayout = ReturnType<DockviewApi["toJSON"]>;
+
 /**
  * Floating panel state for panels opened outside the main dockview
  */
@@ -54,7 +58,7 @@ export interface LayoutPreset {
   /** Scope determines which dockviews this preset applies to */
   scope: PresetScope;
   /** Dockview serialized layout (from api.toJSON()) - null means use default */
-  layout: any | null;
+  layout: DockviewLayout | null;
   description?: string;
   icon?: string;
   isDefault?: boolean;
@@ -64,8 +68,8 @@ export interface LayoutPreset {
 }
 
 export interface WorkspaceState {
-  /** Current dockview serialized layout */
-  layout: any | null;
+  /** Current layouts by scope - each dockview has its own layout */
+  layoutByScope: Partial<Record<PresetScope, DockviewLayout | null>>;
   /** Closed panels (can be restored) */
   closedPanels: PanelId[];
   /** Lock prevents layout changes */
@@ -76,13 +80,15 @@ export interface WorkspaceState {
   fullscreenPanel: PanelId | null;
   /** Floating panels outside main dockview */
   floatingPanels: FloatingPanelState[];
-  /** Currently active preset ID */
-  activePresetId: string | null;
+  /** Currently active preset ID per scope */
+  activePresetByScope: Partial<Record<PresetScope, string | null>>;
 }
 
 export interface WorkspaceActions {
-  /** Set the current layout (dockview serialized) */
-  setLayout: (layout: any | null) => void;
+  /** Get layout for a specific scope */
+  getLayout: (scope: PresetScope) => DockviewLayout | null;
+  /** Set layout for a specific scope */
+  setLayout: (scope: PresetScope, layout: DockviewLayout | null) => void;
   /** Close a panel */
   closePanel: (panelId: PanelId) => void;
   /** Restore a closed panel */
@@ -94,18 +100,22 @@ export interface WorkspaceActions {
   /** Set fullscreen panel */
   setFullscreen: (panelId: PanelId | null) => void;
   /** Save current layout as a new preset */
-  savePreset: (name: string, scope?: PresetScope) => void;
-  /** Save layout to an existing preset */
-  updatePreset: (id: string, layout: any) => void;
-  /** Load a preset */
-  loadPreset: (id: string) => void;
+  savePreset: (name: string, scope: PresetScope, layout: DockviewLayout) => void;
+  /** Update an existing preset's layout */
+  updatePreset: (id: string, layout: DockviewLayout) => void;
+  /** Load a preset (returns the layout to apply) */
+  loadPreset: (id: string) => DockviewLayout | null;
   /** Delete a preset */
   deletePreset: (id: string) => void;
   /** Get presets for a specific scope */
   getPresetsForScope: (scope: PresetScope) => LayoutPreset[];
+  /** Get active preset ID for a scope */
+  getActivePresetId: (scope: PresetScope) => string | null;
   /** Update preset metadata */
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
-  /** Reset to default state */
+  /** Reset a specific scope to default */
+  resetScope: (scope: PresetScope) => void;
+  /** Reset all state */
   reset: () => void;
   // Floating panel actions
   openFloatingPanel: (
@@ -136,7 +146,6 @@ export interface WorkspaceActions {
 
 /**
  * Default presets - layout is null meaning "use dockview's default initialization"
- * The actual layouts will be saved when the user first saves/modifies them
  */
 const defaultPresets: LayoutPreset[] = [
   {
@@ -146,7 +155,7 @@ const defaultPresets: LayoutPreset[] = [
     description: "Balanced layout for general development",
     icon: "🏠",
     isDefault: true,
-    layout: null, // Will use dockview's default
+    layout: null,
   },
   {
     id: "minimal",
@@ -170,7 +179,7 @@ const defaultPresets: LayoutPreset[] = [
     id: "narrative-flow",
     name: "Narrative & Flow",
     scope: "workspace",
-    description: "Flow View-centric layout for designing scenes and transitions",
+    description: "Flow View-centric layout for designing scenes",
     icon: "🔀",
     isDefault: true,
     layout: null,
@@ -180,7 +189,7 @@ const defaultPresets: LayoutPreset[] = [
     id: "playtest-tuning",
     name: "Playtest & Tuning",
     scope: "workspace",
-    description: "Game View-centric layout for playtesting and HUD design",
+    description: "Game View-centric layout for playtesting",
     icon: "🎮",
     isDefault: true,
     layout: null,
@@ -197,22 +206,28 @@ const defaultPresets: LayoutPreset[] = [
   },
 ];
 
-const STORAGE_KEY = "workspace_v3"; // Bumped version for new format
+const STORAGE_KEY = "workspace_v4"; // Bumped for layoutByScope
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
-      layout: null,
+      layoutByScope: {},
       closedPanels: [],
       isLocked: false,
       presets: defaultPresets,
       fullscreenPanel: null,
       floatingPanels: [],
-      activePresetId: "default",
+      activePresetByScope: { workspace: "default" },
 
-      setLayout: (layout) => {
+      getLayout: (scope) => {
+        return get().layoutByScope[scope] ?? null;
+      },
+
+      setLayout: (scope, layout) => {
         if (get().isLocked) return;
-        set({ layout });
+        set((s) => ({
+          layoutByScope: { ...s.layoutByScope, [scope]: layout },
+        }));
       },
 
       closePanel: (panelId) => {
@@ -223,17 +238,12 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       restorePanel: (panelId) => {
-        // Check if panel is disabled via plugin system
         const pluginMeta = pluginCatalog.get(panelId);
         if (pluginMeta && pluginMeta.activationState === "inactive") {
-          console.warn(
-            `Cannot restore panel "${panelId}": Panel is disabled.`,
-          );
           return;
         }
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
         set({ closedPanels });
-        // Note: Actual panel restoration is handled by the dockview component
       },
 
       clearClosedPanels: () => set({ closedPanels: [] }),
@@ -242,8 +252,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       setFullscreen: (panelId) => set({ fullscreenPanel: panelId }),
 
-      savePreset: (name, scope = "workspace") => {
-        const layout = get().layout;
+      savePreset: (name, scope, layout) => {
         const newPreset: LayoutPreset = {
           id: `preset_${Date.now()}`,
           name,
@@ -254,7 +263,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         };
         set((s) => ({
           presets: [...s.presets, newPreset],
-          activePresetId: newPreset.id,
+          activePresetByScope: {
+            ...s.activePresetByScope,
+            [scope]: newPreset.id,
+          },
         }));
       },
 
@@ -268,26 +280,37 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       loadPreset: (id) => {
         const preset = get().presets.find((p) => p.id === id);
-        if (preset) {
-          set({
-            layout: preset.layout,
-            closedPanels: [],
-            fullscreenPanel: null,
-            activePresetId: id,
-          });
-        }
+        if (!preset) return null;
+
+        set((s) => ({
+          layoutByScope: { ...s.layoutByScope, [preset.scope]: preset.layout },
+          activePresetByScope: {
+            ...s.activePresetByScope,
+            [preset.scope]: id,
+          },
+          closedPanels: [],
+          fullscreenPanel: null,
+        }));
+
+        return preset.layout;
       },
 
       deletePreset: (id) => {
         const preset = get().presets.find((p) => p.id === id);
-        if (preset?.isDefault) return; // Don't delete default presets
+        if (preset?.isDefault) return;
         set((s) => {
           const remaining = s.presets.filter((p) => p.id !== id);
-          const newActiveId =
-            s.activePresetId === id
-              ? (remaining.find((p) => p.isDefault)?.id ?? null)
-              : s.activePresetId;
-          return { presets: remaining, activePresetId: newActiveId };
+          const newActiveByScope = { ...s.activePresetByScope };
+
+          // If deleted preset was active, reset to default for that scope
+          if (preset && newActiveByScope[preset.scope] === id) {
+            const defaultForScope = remaining.find(
+              (p) => p.isDefault && p.scope === preset.scope
+            );
+            newActiveByScope[preset.scope] = defaultForScope?.id ?? null;
+          }
+
+          return { presets: remaining, activePresetByScope: newActiveByScope };
         });
       },
 
@@ -295,6 +318,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         return get().presets.filter(
           (p) => p.scope === scope || p.scope === "all"
         );
+      },
+
+      getActivePresetId: (scope) => {
+        return get().activePresetByScope[scope] ?? null;
       },
 
       setPresetGraphEditor: (presetId, graphEditorId) => {
@@ -305,20 +332,32 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }));
       },
 
+      resetScope: (scope) => {
+        const defaultPreset = get().presets.find(
+          (p) => p.isDefault && p.scope === scope
+        );
+        set((s) => ({
+          layoutByScope: { ...s.layoutByScope, [scope]: null },
+          activePresetByScope: {
+            ...s.activePresetByScope,
+            [scope]: defaultPreset?.id ?? null,
+          },
+        }));
+      },
+
       reset: () =>
         set({
-          layout: null,
+          layoutByScope: {},
           closedPanels: [],
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
-          activePresetId: "default",
+          activePresetByScope: { workspace: "default" },
         }),
 
       openFloatingPanel: (panelId, options = {}) => {
         const pluginMeta = pluginCatalog.get(panelId);
         if (pluginMeta && pluginMeta.activationState === "inactive") {
-          console.warn(`Cannot open panel "${panelId}": Panel is disabled.`);
           return;
         }
 
@@ -404,18 +443,17 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createBackendStorage("workspace"),
-      version: 3,
+      version: 4,
       partialize: (state) => ({
-        layout: state.layout,
+        layoutByScope: state.layoutByScope,
         closedPanels: state.closedPanels,
         isLocked: state.isLocked,
         presets: state.presets,
         fullscreenPanel: state.fullscreenPanel,
         floatingPanels: state.floatingPanels,
-        activePresetId: state.activePresetId,
+        activePresetByScope: state.activePresetByScope,
       }),
       onRehydrateStorage: () => (state) => {
-        // Ensure floatingPanels is an array
         if (state && !Array.isArray(state.floatingPanels)) {
           state.floatingPanels = [];
         }
@@ -424,6 +462,6 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   ),
 );
 
-// Legacy export for backwards compatibility during migration
+// Legacy exports for backwards compatibility
 /** @deprecated Use LayoutPreset instead */
 export type WorkspacePreset = LayoutPreset;

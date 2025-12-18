@@ -3,18 +3,30 @@
  *
  * Global React context provider for context menu state and actions.
  * Supports multiple dockviews with cross-dockview communication.
+ *
+ * Services are injected via props to keep the system decoupled and testable.
  */
 
 import { createContext, useContext, useState, useCallback, type ReactNode, useRef } from 'react';
 import type { DockviewApi } from 'dockview-core';
-import { panelRegistry } from '@features/panels';
-import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 import { contextMenuRegistry, type ContextMenuRegistry } from './ContextMenuRegistry';
 import type { MenuActionContext } from './types';
+import type { PanelRegistry } from '@features/panels/lib/panelRegistry';
+
+/** Dockview serialized layout type */
+export type DockviewLayout = ReturnType<DockviewApi['toJSON']>;
 
 interface ContextMenuState {
   isOpen: boolean;
   context: MenuActionContext | null;
+}
+
+/** Services that can be injected into the context menu system */
+export interface ContextMenuServices {
+  /** Workspace store for preset management */
+  workspaceStore?: any;
+  /** Panel registry for querying available panels */
+  panelRegistry?: PanelRegistry;
 }
 
 interface ContextMenuContextValue {
@@ -40,7 +52,10 @@ const ContextMenuContext = createContext<ContextMenuContextValue | null>(null);
 
 interface ContextMenuProviderProps {
   children: ReactNode;
+  /** Custom registry (default: global contextMenuRegistry) */
   registry?: ContextMenuRegistry;
+  /** Injected services for actions to use */
+  services?: ContextMenuServices;
 }
 
 /**
@@ -54,11 +69,16 @@ interface ContextMenuProviderProps {
 export function ContextMenuProvider({
   children,
   registry = contextMenuRegistry,
+  services = {},
 }: ContextMenuProviderProps) {
   const [state, setState] = useState<ContextMenuState>({
     isOpen: false,
     context: null,
   });
+
+  // Store services in ref to avoid recreating callbacks
+  const servicesRef = useRef(services);
+  servicesRef.current = services;
 
   // Track multiple dockview APIs by ID
   const dockviewApisRef = useRef<Map<string, DockviewApi>>(new Map());
@@ -84,7 +104,7 @@ export function ContextMenuProvider({
     const currentDockviewId = partial.currentDockviewId;
     const currentApi = currentDockviewId ? dockviewApisRef.current.get(currentDockviewId) : undefined;
 
-    // Build full context
+    // Build full context with injected services
     const fullContext: MenuActionContext = {
       contextType: partial.contextType!,
       position: partial.position!,
@@ -93,8 +113,9 @@ export function ContextMenuProvider({
       getDockviewApi,
       // Convenience: set api to current dockview's API
       api: currentApi,
-      workspaceStore: useWorkspaceStore,
-      panelRegistry,
+      // Inject services from props
+      workspaceStore: servicesRef.current.workspaceStore,
+      panelRegistry: servicesRef.current.panelRegistry,
       ...partial,
     };
 
