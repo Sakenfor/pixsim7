@@ -11,3 +11,7 @@ export * from './DockviewContextMenu';
 export * from './CustomTabComponent';
 export * from './DockviewIdContext';
 export { contextMenuRegistry } from './ContextMenuRegistry';
+
+// Actions - import to register with the global registry
+export * from './actions';
+export { registerContextMenuActions } from './actions';
