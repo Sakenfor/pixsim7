@@ -181,6 +181,13 @@ GenerationRef = _make_entity_ref_type("generation")
 WorkspaceRef = _make_entity_ref_type("workspace")
 AccountRef = _make_entity_ref_type("account")
 
+# Ontology-backed refs for action blocks (validated against ontology.yaml)
+PoseRef = _make_entity_ref_type("pose")
+MoodRef = _make_entity_ref_type("mood")
+IntimacyLevelRef = _make_entity_ref_type("intimacy")
+ContentRatingRef = _make_entity_ref_type("rating")
+BranchIntentRef = _make_entity_ref_type("branch")
+
 
 def entity_ref_field(entity_type: str) -> type:
     """Create an annotated type for EntityRef fields with automatic parsing.
@@ -317,6 +324,7 @@ def normalize_location_to_ref(value: Union[int, str, None]) -> Optional[str]:
 
 __all__ = [
     "EntityRef",
+    # Database entity refs
     "AssetRef",
     "SceneRef",
     "NpcRef",
@@ -327,6 +335,13 @@ __all__ = [
     "GenerationRef",
     "WorkspaceRef",
     "AccountRef",
+    # Ontology-backed refs (action blocks)
+    "PoseRef",
+    "MoodRef",
+    "IntimacyLevelRef",
+    "ContentRatingRef",
+    "BranchIntentRef",
+    # Factory
     "entity_ref_field",
     # Location helpers
     "location_id_to_ref",
