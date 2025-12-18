@@ -8,7 +8,7 @@ import base64
 import asyncio
 from typing import Dict, Any
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,

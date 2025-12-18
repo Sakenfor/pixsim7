@@ -156,7 +156,7 @@ class PixverseProvider(
 
     def get_manifest(self):
         """Return Pixverse provider manifest with domains and credit types."""
-        from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+        from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
         return ProviderManifest(
             id="pixverse",
             name="Pixverse AI",

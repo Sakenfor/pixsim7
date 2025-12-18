@@ -71,7 +71,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 raise RuntimeError("No preset or test actions provided")
 
             # Fetch account for credential injection
-            from pixsim7.backend.main.domain import ProviderAccount
+            from pixsim7.backend.main.domain.providers import ProviderAccount
             account = await db.get(ProviderAccount, execution.account_id) if execution.account_id else None
 
             # Smart device assignment using device pool service

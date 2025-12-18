@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import OperationType, ProviderStatus, ProviderAccount
+from pixsim7.backend.main.domain import OperationType, ProviderStatus
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.provider.base import (
     GenerationResult,
     ProviderStatusResult,

@@ -63,7 +63,7 @@ class AssetEnrichmentService:
         Use provider hook to extract embedded assets (images/prompts) and
         register them as provider-agnostic Asset rows (REMOTE).
         """
-        from pixsim7.backend.main.services.provider.registry import registry
+        from pixsim7.backend.main.domain.providers.registry import registry
         from pixsim_logging import get_logger
         logger = get_logger()
 

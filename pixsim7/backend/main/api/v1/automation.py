@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceAgent, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.automation import ExecutionLoopService
 from pixsim7.backend.main.services.automation.device_sync_service import DeviceSyncService
 from pixsim7.backend.main.services.automation.action_schemas import get_action_schemas, get_action_schemas_by_category

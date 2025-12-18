@@ -11,7 +11,7 @@ Note: Sora uses OpenAI's subscription/usage model, not discrete credits.
 """
 
 from pixsim7.backend.main.services.provider.adapters.sora import SoraProvider
-from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
 
 
 # ===== PROVIDER MANIFEST =====

@@ -210,7 +210,7 @@ def register_default_loaders():
     # ProviderAccount loader
     async def load_account(account_id: int, db: AsyncSession):
         """Load ProviderAccount by ID"""
-        from pixsim7.backend.main.domain import ProviderAccount
+        from pixsim7.backend.main.domain.providers import ProviderAccount
         return await db.get(ProviderAccount, account_id)
 
     registry.register_loader('account', load_account)

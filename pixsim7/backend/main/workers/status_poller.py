@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from pixsim_logging import configure_logging
-from pixsim7.backend.main.domain import Generation, ProviderSubmission, ProviderAccount
+from pixsim7.backend.main.domain import Generation
+from pixsim7.backend.main.domain.providers import ProviderSubmission, ProviderAccount
 from pixsim7.backend.main.domain.enums import GenerationStatus, ProviderStatus, OperationType
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.generation import GenerationService, GenerationBillingService

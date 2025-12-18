@@ -8,7 +8,8 @@ Processes generations created via GenerationService:
 """
 import os
 from sqlalchemy.ext.asyncio import AsyncSession
-from pixsim7.backend.main.domain import Generation, ProviderAccount
+from pixsim7.backend.main.domain import Generation
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.provider import ProviderService
@@ -89,7 +90,7 @@ async def refresh_account_credits(
     Credit types are determined dynamically from the provider's manifest/adapter
     via get_credit_types() instead of being hardcoded.
     """
-    from pixsim7.backend.main.services.provider.registry import registry
+    from pixsim7.backend.main.domain.providers.registry import registry
 
     try:
         provider = registry.get(account.provider_id)

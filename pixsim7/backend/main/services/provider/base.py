@@ -29,12 +29,12 @@ from datetime import datetime
 from pixsim7.backend.main.domain import (
     OperationType,
     ProviderStatus,
-    ProviderAccount,
     Generation,
 )
+from pixsim7.backend.main.domain.providers import ProviderAccount
 
 if TYPE_CHECKING:
-    from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest
+    from pixsim7.backend.main.domain.providers.schemas import ProviderManifest
 
 
 @dataclass

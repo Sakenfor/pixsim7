@@ -9,7 +9,7 @@ See the adapter (services/provider/adapters/remaker.py) for implementation detai
 """
 
 from pixsim7.backend.main.services.provider.adapters.remaker import RemakerProvider
-from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderKind, ProviderManifest
+from pixsim7.backend.main.domain.providers.schemas import ProviderKind, ProviderManifest
 
 
 # ===== PROVIDER MANIFEST =====

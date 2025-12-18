@@ -13,10 +13,11 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from pixsim7.backend.main.domain import ProviderAccount, AccountStatus
+from pixsim7.backend.main.domain import AccountStatus
+from pixsim7.backend.main.domain.providers import ProviderAccount
+from pixsim7.backend.main.domain.providers.registry import registry
 from pixsim7.backend.main.domain.enums import MediaType
 from pixsim7.backend.main.services.account.account_service import AccountService
-from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.shared.image_utils import get_image_info, downscale_image_max_dim
 from pixsim7.backend.main.shared.video_utils import validate_video_for_provider, get_provider_video_constraints

@@ -126,7 +126,7 @@ class GenerationCreationService:
         await self.users.check_can_create_job(user)
 
         # Validate provider exists and supports operation
-        from pixsim7.backend.main.services.provider.registry import registry
+        from pixsim7.backend.main.domain.providers.registry import registry
 
         try:
             provider = registry.get(provider_id)
@@ -974,7 +974,7 @@ class GenerationCreationService:
         Returns:
             Estimated credits or None if cannot be determined
         """
-        from pixsim7.backend.main.services.provider.registry import registry
+        from pixsim7.backend.main.domain.providers.registry import registry
 
         try:
             provider = registry.get(provider_id)

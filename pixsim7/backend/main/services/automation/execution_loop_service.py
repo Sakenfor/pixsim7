@@ -21,7 +21,8 @@ from pixsim7.backend.main.domain.automation import (
     AndroidDevice,
     DeviceStatus,
 )
-from pixsim7.backend.main.domain import ProviderAccount, AccountStatus
+from pixsim7.backend.main.domain import AccountStatus
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.infrastructure.queue import queue_task
 
 logger = logging.getLogger(__name__)

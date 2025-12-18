@@ -11,7 +11,8 @@ from sqlalchemy import select
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import get_current_user, get_database
-from pixsim7.backend.main.domain import ProviderAccount, Asset, User
+from pixsim7.backend.main.domain import Asset, User
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
 from pixsim7.backend.main.services.asset.asset_factory import add_asset

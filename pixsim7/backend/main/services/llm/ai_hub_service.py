@@ -8,7 +8,8 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain import User, ProviderAccount, AiInteraction
+from pixsim7.backend.main.domain import User, AiInteraction
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.llm.registry import llm_registry
 from pixsim7.backend.main.services.ai_model import ai_model_registry, get_default_model
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability

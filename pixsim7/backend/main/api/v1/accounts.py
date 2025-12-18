@@ -20,7 +20,8 @@ from pixsim7.backend.main.shared.schemas.account_schemas import (
     SetCreditRequest,
 )
 from pixsim7.backend.main.shared.jwt_utils import parse_jwt_token
-from pixsim7.backend.main.domain import ProviderAccount, AccountStatus
+from pixsim7.backend.main.domain import AccountStatus
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 
@@ -368,7 +369,7 @@ async def create_account_api_key(
     Returns:
         Dict with api_key_id, api_key_name, api_key_sign (the actual key)
     """
-    from pixsim7.backend.main.services.provider.registry import registry
+    from pixsim7.backend.main.domain.providers.registry import registry
 
     try:
         account = await account_service.get_account(account_id)

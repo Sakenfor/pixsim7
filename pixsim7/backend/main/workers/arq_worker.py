@@ -100,7 +100,7 @@ async def startup(ctx: dict) -> None:
         logger.info("worker_debug_flags", flags="none")
 
     # Register providers (required for generation processing)
-    from pixsim7.backend.main.services.provider.registry import register_default_providers
+    from pixsim7.backend.main.domain.providers.registry import register_default_providers
     register_default_providers()
     logger.info("worker_providers_registered", msg="Provider plugins loaded")
     logger.info("worker_component_registered", component="process_generation")

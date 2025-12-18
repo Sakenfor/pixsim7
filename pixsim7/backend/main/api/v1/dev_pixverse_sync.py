@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import get_current_user, get_database
-from pixsim7.backend.main.domain import ProviderAccount, Asset, User
+from pixsim7.backend.main.domain import Asset, User
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
 from pixsim7.backend.main.shared.errors import ProviderError
 from pixsim_logging import get_logger

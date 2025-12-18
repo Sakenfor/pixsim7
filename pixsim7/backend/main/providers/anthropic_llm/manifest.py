@@ -6,7 +6,7 @@ Auto-discovered and registered via provider plugin system.
 """
 
 from pixsim7.backend.main.services.llm.adapters import AnthropicLlmProvider
-from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
 
 
 # ===== PROVIDER MANIFEST =====

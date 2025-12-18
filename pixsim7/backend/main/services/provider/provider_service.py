@@ -18,14 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import (
     Generation,
-    ProviderSubmission,
-    ProviderAccount,
     ProviderStatus,
     OperationType,
     Asset,
 )
+from pixsim7.backend.main.domain.providers import ProviderSubmission, ProviderAccount
+from pixsim7.backend.main.domain.providers.registry import registry
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis
-from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import (
     GenerationResult,
     ProviderStatusResult,

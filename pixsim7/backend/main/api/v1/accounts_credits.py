@@ -194,7 +194,7 @@ async def sync_all_account_credits(
 
         try:
             # Get provider and sync credits
-            from pixsim7.backend.main.domain import ProviderCredit
+            from pixsim7.backend.main.domain.providers import ProviderCredit
 
             provider = registry.get(account_provider_id)
 
@@ -397,7 +397,7 @@ async def sync_account_credits(
             )
 
         # Get provider and call dedicated credit fetch function
-        from pixsim7.backend.main.domain import ProviderCredit
+        from pixsim7.backend.main.domain.providers import ProviderCredit
 
         provider = registry.get(account.provider_id)
 

@@ -23,7 +23,7 @@ from pixsim7.backend.main.shared.errors import (
     ProviderError,
     ProviderAuthenticationError,
 )
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 
 logger = logging.getLogger(__name__)
 

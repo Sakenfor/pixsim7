@@ -7,7 +7,7 @@ import asyncio
 import uuid
 from typing import Dict, Any, Optional
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
 from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_timeout,

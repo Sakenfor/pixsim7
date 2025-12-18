@@ -5,7 +5,7 @@ Handles session building, caching, and credential persistence.
 """
 from typing import Dict, Any
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 
 logger = get_logger()
 

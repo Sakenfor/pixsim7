@@ -14,7 +14,7 @@ from sqlalchemy import select
 from pixsim7.backend.main.api.dependencies import CurrentUser, AccountSvc, DatabaseSession
 from pixsim7.backend.main.shared.schemas.account_schemas import AccountResponse
 from pixsim7.backend.main.shared.jwt_utils import parse_jwt_token, extract_jwt_from_cookies
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 from pixsim7.backend.main.services.provider import registry

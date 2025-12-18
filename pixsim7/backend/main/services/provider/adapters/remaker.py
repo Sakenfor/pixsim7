@@ -27,7 +27,8 @@ from urllib.parse import urlparse
 import httpx
 
 from pixsim_logging import get_logger
-from pixsim7.backend.main.domain import OperationType, ProviderAccount, ProviderStatus, Generation
+from pixsim7.backend.main.domain import OperationType, ProviderStatus, Generation
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.provider.base import (
     Provider,
     GenerationResult,
@@ -38,7 +39,7 @@ from pixsim7.backend.main.services.provider.base import (
 )
 
 if TYPE_CHECKING:
-    from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest
+    from pixsim7.backend.main.domain.providers.schemas import ProviderManifest
 
 logger = get_logger()
 
@@ -50,7 +51,7 @@ def _get_remaker_manifest() -> "ProviderManifest":
     """Lazily load Remaker manifest to avoid circular imports."""
     global _REMAKER_MANIFEST
     if _REMAKER_MANIFEST is None:
-        from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+        from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
         _REMAKER_MANIFEST = ProviderManifest(
             id="remaker",
             name="Remaker.ai",

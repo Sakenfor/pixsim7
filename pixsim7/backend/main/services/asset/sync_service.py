@@ -363,7 +363,7 @@ class AssetSyncService:
         Raises:
             InvalidOperationError: If upload fails
         """
-        from pixsim7.backend.main.services.provider.registry import registry
+        from pixsim7.backend.main.domain.providers.registry import registry
         import httpx
         import tempfile
         import os

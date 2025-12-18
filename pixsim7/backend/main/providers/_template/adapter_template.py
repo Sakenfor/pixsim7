@@ -30,7 +30,7 @@ from pixsim7.backend.main.services.provider.base import (
 )
 
 if TYPE_CHECKING:
-    from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest
+    from pixsim7.backend.main.domain.providers.schemas import ProviderManifest
 
 # Use structured logging
 from pixsim_logging import get_logger
@@ -75,7 +75,7 @@ class MyProvider(Provider):
         - Credit tracking (credit_types)
         - UI display (name, description)
         """
-        from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+        from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
         return ProviderManifest(
             id="myprovider",
             name="My Provider",

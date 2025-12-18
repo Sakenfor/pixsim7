@@ -10,7 +10,8 @@ from sqlalchemy import select
 
 from pixsim_logging import get_logger
 
-from pixsim7.backend.main.domain import ProviderAccount, ProviderCredit, AccountStatus
+from pixsim7.backend.main.domain import AccountStatus
+from pixsim7.backend.main.domain.providers import ProviderAccount, ProviderCredit
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,

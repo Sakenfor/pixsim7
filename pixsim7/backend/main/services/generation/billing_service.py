@@ -241,7 +241,7 @@ class GenerationBillingService:
         Returns:
             Actual credit cost or None if cannot be determined
         """
-        from pixsim7.backend.main.services.provider.registry import registry
+        from pixsim7.backend.main.domain.providers.registry import registry
 
         try:
             provider = registry.get(generation.provider_id)

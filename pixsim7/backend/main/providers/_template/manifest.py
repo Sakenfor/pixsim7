@@ -12,7 +12,7 @@ See /docs/systems/generation/adding-providers.md for details.
 
 # TODO: Import your provider adapter
 # from pixsim7.backend.main.services.provider.adapters.myprovider import MyProvider
-from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
 
 
 # ===== PROVIDER MANIFEST =====

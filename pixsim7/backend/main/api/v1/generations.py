@@ -315,7 +315,7 @@ async def list_generations(
     Returns generations ordered by priority and creation time.
     """
     from sqlmodel import select
-    from pixsim7.backend.main.domain import ProviderAccount
+    from pixsim7.backend.main.domain.providers import ProviderAccount
 
     try:
         generations = await generation_service.list_generations(

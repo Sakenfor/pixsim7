@@ -11,7 +11,7 @@ Mirrors the generation processor pattern for consistency.
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.account import AccountService
