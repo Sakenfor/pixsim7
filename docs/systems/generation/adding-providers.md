@@ -58,7 +58,7 @@ class MyProvider(Provider):
 
     def get_manifest(self):
         """Return provider manifest with domains and credit types."""
-        from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+        from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
         return ProviderManifest(
             id="myprovider",
             name="My Provider",
@@ -159,7 +159,7 @@ MyProvider Plugin
 Auto-discovered and registered via provider plugin system.
 """
 from pixsim7.backend.main.services.provider.adapters.myprovider import MyProvider
-from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
+from pixsim7.backend.main.domain.providers.schemas import ProviderManifest, ProviderKind
 
 
 manifest = ProviderManifest(

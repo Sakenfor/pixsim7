@@ -371,7 +371,7 @@ class NpcResponseProvider(BaseProvider):
         prompt = self._build_npc_prompt(params)
 
         # Delegate to ComfyUI or other provider
-        from pixsim7.backend.main.services.provider.registry import registry
+        from pixsim7.backend.main.domain.providers.registry import registry
         comfyui = registry.get('comfyui')
 
         # Use image_to_video if base image provided, else text_to_video

@@ -24,8 +24,7 @@ from sqlmodel import select
 from datetime import datetime
 
 # Import pixsim7 models
-from pixsim7.backend.main.domain import ProviderAccount as PixSim7Account, User
-from pixsim7.backend.main.domain.provider_credit import ProviderCredit
+from pixsim7.backend.main.domain import ProviderAccount as PixSim7Account, User, ProviderCredit
 from pixsim7.backend.main.domain.enums import AccountStatus
 
 # Pixsim6 database URL (adjust if different)

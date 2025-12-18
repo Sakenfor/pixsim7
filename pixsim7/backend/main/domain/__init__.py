@@ -71,9 +71,7 @@ from .user import User, UserSession, UserQuotaUsage, UserRole
 from .workspace import Workspace
 from .asset import Asset, AssetVariant
 from .generation import Generation
-from .provider_submission import ProviderSubmission
-from .account import ProviderAccount
-from .provider_credit import ProviderCredit
+from .providers import ProviderSubmission, ProviderAccount, ProviderCredit
 
 # Asset metadata tables
 from .asset_metadata import (

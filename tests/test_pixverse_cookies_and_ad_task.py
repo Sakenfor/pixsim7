@@ -2,7 +2,7 @@ import types
 
 import pytest
 
-from pixsim7.backend.main.domain.account import ProviderAccount
+from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
 from pixsim7.backend.main.api.v1.accounts import export_account_cookies
