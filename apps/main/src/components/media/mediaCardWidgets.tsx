@@ -21,7 +21,7 @@ import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
-import type { AssetSummary } from '@features/assets';
+import type { AssetResponse } from '@features/assets';
 import { Icon } from '@lib/icons';
 import {
   OPERATION_METADATA,
@@ -115,7 +115,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
       : '!bg-white/80 dark:!bg-white/30';
 
   // If we have actions, create a menu widget
-  if (actions && (actions.onOpenDetails || actions.onShowMetadata || actions.onDelete || actions.onReupload)) {
+  if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload)) {
     const menuItems: MenuItem[] = [];
 
     if (actions.onOpenDetails) {
@@ -124,15 +124,6 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         label: 'View Details',
         icon: 'eye',
         onClick: () => actions.onOpenDetails?.(id),
-      });
-    }
-
-    if (actions.onShowMetadata) {
-      menuItems.push({
-        id: 'metadata',
-        label: 'Show Metadata',
-        icon: 'fileText',
-        onClick: () => actions.onShowMetadata?.(id),
       });
     }
 
@@ -145,6 +136,15 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
       });
     }
 
+    if (actions.onArchive) {
+      menuItems.push({
+        id: 'archive',
+        label: 'Archive',
+        icon: 'archive',
+        onClick: () => actions.onArchive?.(id),
+      });
+    }
+
     if (actions.onDelete) {
       menuItems.push({
         id: 'delete',
@@ -152,7 +152,6 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         icon: 'trash',
         variant: 'danger',
         onClick: () => actions.onDelete?.(id),
-        divider: true,
       });
     }
 
@@ -417,8 +416,8 @@ function SlotPickerContent({
   onSelectSlot,
   maxSlots: maxSlotsProp,
 }: {
-  asset: AssetSummary;
-  onSelectSlot: (asset: AssetSummary, slotIndex: number) => void;
+  asset: AssetResponse;
+  onSelectSlot: (asset: AssetResponse, slotIndex: number) => void;
   maxSlots?: number;
 }) {
   const multiAssetQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
@@ -676,7 +675,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
 
         // Smart button appends to queue (no slotIndex = append)
         enqueueAsset({
-          asset: asset as AssetSummary,
+          asset: asset as AssetResponse,
           operationType: ccMode,
           forceMulti,
         });
@@ -689,7 +688,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         setIsMenuOpen(false);
       };
 
-      const handleSelectSlot = (selectedAsset: AssetSummary, slotIndex: number) => {
+      const handleSelectSlot = (selectedAsset: AssetResponse, slotIndex: number) => {
         // Slot picker always targets multiAssetQueue (for arranging compositions)
         enqueueAsset({
           asset: selectedAsset,

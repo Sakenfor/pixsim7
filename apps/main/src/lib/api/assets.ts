@@ -53,6 +53,21 @@ export async function deleteAsset(assetId: number): Promise<void> {
 }
 
 /**
+ * Archive or unarchive an asset.
+ * Archived assets are soft-hidden from the default gallery view.
+ */
+export async function archiveAsset(
+  assetId: number,
+  archived: boolean
+): Promise<{ id: number; is_archived: boolean; message: string }> {
+  const res = await apiClient.patch<{ id: number; is_archived: boolean; message: string }>(
+    `/assets/${assetId}/archive`,
+    { archived }
+  );
+  return res.data;
+}
+
+/**
  * Extract a frame from a video at a specific timestamp.
  * Returns an image asset that can be used for image_to_video or transitions.
  * The extracted frame is linked to the parent video via PAUSED_FRAME lineage.

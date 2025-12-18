@@ -1,4 +1,5 @@
 export {
+  archiveAsset,
   deleteAsset,
   downloadAsset,
   extractFrame,

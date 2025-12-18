@@ -7,7 +7,7 @@
  * Used by: useAssetsController, useGallerySurfaceController
  */
 
-import type { AssetSummary } from '../../hooks/useAssets';
+import type { AssetResponse } from '@lib/api/assets';
 
 /**
  * Handler functions for asset actions
@@ -16,22 +16,22 @@ import type { AssetSummary } from '../../hooks/useAssets';
 export interface AssetActionHandlers {
   /** Open asset detail panel */
   onOpenDetails?: (id: number) => void;
-  /** Show asset metadata panel */
-  onShowMetadata?: (id: number) => void;
+  /** Archive asset (soft-hide from gallery) */
+  onArchive?: (asset: AssetResponse) => void | Promise<void>;
   /** Queue asset for image-to-image generation */
-  onImageToImage?: (asset: AssetSummary) => void;
+  onImageToImage?: (asset: AssetResponse) => void;
   /** Queue asset for image-to-video generation */
-  onImageToVideo?: (asset: AssetSummary) => void;
+  onImageToVideo?: (asset: AssetResponse) => void;
   /** Queue asset for video extend generation */
-  onVideoExtend?: (asset: AssetSummary) => void;
+  onVideoExtend?: (asset: AssetResponse) => void;
   /** Add asset to transition queue */
-  onAddToTransition?: (asset: AssetSummary) => void;
+  onAddToTransition?: (asset: AssetResponse) => void;
   /** Add asset to auto-generate queue */
-  onAddToGenerate?: (asset: AssetSummary) => void;
+  onAddToGenerate?: (asset: AssetResponse) => void;
   /** Delete asset */
-  onDelete?: (asset: AssetSummary) => void | Promise<void>;
+  onDelete?: (asset: AssetResponse) => void | Promise<void>;
   /** Upload/re-upload asset to provider */
-  onReupload?: (asset: AssetSummary, providerId: string) => void | Promise<void>;
+  onReupload?: (asset: AssetResponse, providerId: string) => void | Promise<void>;
   /** Custom actions (extensible) */
   [key: string]: any;
 }
@@ -42,7 +42,7 @@ export interface AssetActionHandlers {
  */
 export interface AssetActions {
   onOpenDetails?: () => void;
-  onShowMetadata?: () => void;
+  onArchive?: () => void | Promise<void>;
   onImageToImage?: () => void;
   onImageToVideo?: () => void;
   onVideoExtend?: () => void;
@@ -70,7 +70,7 @@ export interface AssetActions {
  *   onDelete: handleDelete,
  * };
  *
- * const getAssetActions = useCallback((asset: AssetSummary) => {
+ * const getAssetActions = useCallback((asset: AssetResponse) => {
  *   return createAssetActions(asset, handlers);
  * }, [handlers]);
  *
@@ -80,12 +80,12 @@ export interface AssetActions {
  * ```
  */
 // Handlers that receive asset.id instead of the full asset
-const ID_BASED_HANDLERS = new Set(['onOpenDetails', 'onShowMetadata']);
+const ID_BASED_HANDLERS = new Set(['onOpenDetails']);
 
 // Standard handlers (excluding special cases like onReupload)
 const STANDARD_HANDLERS = [
   'onOpenDetails',
-  'onShowMetadata',
+  'onArchive',
   'onImageToImage',
   'onImageToVideo',
   'onVideoExtend',
@@ -95,7 +95,7 @@ const STANDARD_HANDLERS = [
 ] as const;
 
 export function createAssetActions(
-  asset: AssetSummary,
+  asset: AssetResponse,
   handlers: AssetActionHandlers
 ): AssetActions {
   const actions: AssetActions = {};
@@ -106,7 +106,7 @@ export function createAssetActions(
     if (handler) {
       actions[key] = ID_BASED_HANDLERS.has(key)
         ? () => (handler as (id: number) => void)(asset.id)
-        : () => (handler as (asset: AssetSummary) => void)(asset);
+        : () => (handler as (asset: AssetResponse) => void)(asset);
     }
   }
 

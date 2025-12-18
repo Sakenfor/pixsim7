@@ -79,6 +79,9 @@ import {
   Code,
   ListPlus,
   FolderTree,
+  Maximize2,
+  Minimize2,
+  Archive,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -117,9 +120,12 @@ export const Icons = {
   close: X,
   x: X,
   add: Plus,
+  plus: Plus,      // Alias for add
   remove: Minus,
+  minus: Minus,    // Alias for remove
   delete: Trash,
   trash: Trash,
+  archive: Archive,
   edit: Edit,
   copy: Copy,
   save: Save,
@@ -153,6 +159,8 @@ export const Icons = {
   fileText: FileText,
   clock: Clock,
   code: Code,
+  maximize2: Maximize2,
+  minimize2: Minimize2,
 
   // Panels & Features
   heart: Heart,

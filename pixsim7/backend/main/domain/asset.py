@@ -187,6 +187,11 @@ class Asset(SQLModel, table=True):
         default=SyncStatus.REMOTE,
         index=True
     )
+    is_archived: bool = Field(
+        default=False,
+        index=True,
+        description="Soft-hide from default gallery view"
+    )
 
     # ===== INGESTION STATE =====
     # Tracks media ingestion pipeline progress (download, store, generate derivatives)

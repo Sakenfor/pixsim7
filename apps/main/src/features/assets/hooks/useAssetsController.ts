@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
+import { useAssets, type AssetFilters } from './useAssets';
+import type { AssetResponse } from '@lib/api/assets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '@features/workspace';
 import { useMediaGenerationActions } from '@features/generation';
-import { deleteAsset, uploadAssetToProvider } from '../lib/api';
+import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { BACKEND_BASE } from '@lib/api/client';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { useFilterPersistence } from '@/hooks/useFilterPersistence';
@@ -73,7 +74,7 @@ export function useAssetsController() {
   const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, isSelected } = useSelection();
 
   // Handle asset selection for picker mode
-  const handleSelectAsset = useCallback((asset: AssetSummary) => {
+  const handleSelectAsset = useCallback((asset: AssetResponse) => {
     selectAsset({
       id: String(asset.id),
       mediaType: asset.media_type,
@@ -102,7 +103,7 @@ export function useAssetsController() {
   }, [closeViewerInternal, viewerSrc]);
 
   // Handle asset deletion
-  const handleDeleteAsset = useCallback(async (asset: AssetSummary) => {
+  const handleDeleteAsset = useCallback(async (asset: AssetResponse) => {
     const confirmed = window.confirm(`Delete ${asset.media_type} asset "${asset.id}"? This cannot be undone.`);
     if (!confirmed) return;
     try {
@@ -122,9 +123,21 @@ export function useAssetsController() {
     }
   }, [viewerAsset, reset, isSelected, toggleAssetSelection, closeViewer]);
 
+  // Handle asset archiving
+  const handleArchiveAsset = useCallback(async (asset: AssetResponse) => {
+    try {
+      await archiveAsset(asset.id, true);
+      // Refresh the list to remove archived asset from view
+      reset();
+    } catch (err) {
+      console.error('Failed to archive asset:', err);
+      alert(extractErrorMessage(err, 'Failed to archive asset'));
+    }
+  }, [reset]);
+
   // Handle re-upload for local or multi-provider assets (provider chosen by caller)
   const reuploadAsset = useCallback(
-    async (asset: AssetSummary, providerId: string) => {
+    async (asset: AssetResponse, providerId: string) => {
       if (!providerId) {
         alert('No provider selected for re-upload.');
         return;
@@ -212,13 +225,13 @@ export function useAssetsController() {
   // Asset action handlers
   const actionHandlers = useMemo(() => ({
     onOpenDetails: setDetailAssetId,
-    onShowMetadata: setDetailAssetId,
     onImageToImage: queueImageToImage,
     onImageToVideo: queueImageToVideo,
     onVideoExtend: queueVideoExtend,
     onAddToTransition: queueAddToTransition,
     onAddToGenerate: queueAutoGenerate,
     onQuickAdd: queueSilentAdd,
+    onArchive: handleArchiveAsset,
     onDelete: handleDeleteAsset,
   }), [
     queueImageToImage,
@@ -227,11 +240,12 @@ export function useAssetsController() {
     queueAddToTransition,
     queueAutoGenerate,
     queueSilentAdd,
+    handleArchiveAsset,
     handleDeleteAsset,
   ]);
 
   // Get per-asset actions
-  const getAssetActions = useCallback((asset: AssetSummary) => {
+  const getAssetActions = useCallback((asset: AssetResponse) => {
     return createAssetActions(asset, actionHandlers);
   }, [actionHandlers]);
 

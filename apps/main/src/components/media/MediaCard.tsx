@@ -36,8 +36,8 @@ import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './medi
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
-  onShowMetadata?: (id: number) => void;
   onUploadToProvider?: (id: number) => void;
+  onArchive?: (id: number) => void;
   onDelete?: (id: number) => void;
   onReupload?: (id: number) => void;
   // Generation actions

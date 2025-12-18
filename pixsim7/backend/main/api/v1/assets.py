@@ -80,6 +80,7 @@ async def list_assets(
     provider_id: str | None = Query(None, description="Filter by provider"),
     tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
     q: str | None = Query(None, description="Full-text search over description/tags"),
+    include_archived: bool = Query(False, description="Include archived assets (default: false)"),
     limit: int = Query(50, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset (legacy)"),
     cursor: str | None = Query(None, description="Opaque cursor for pagination"),
@@ -88,6 +89,8 @@ async def list_assets(
 
     Supports either offset or cursor pagination (cursor takes precedence if provided).
     Assets returned newest first (created_at DESC, id DESC for tie-break).
+
+    By default, archived assets are excluded. Set include_archived=true to show them.
     """
     try:
         assets = await asset_service.list_assets(
@@ -95,6 +98,7 @@ async def list_assets(
             media_type=media_type,
             sync_status=sync_status,
             provider_id=provider_id,
+            include_archived=include_archived,
             limit=limit,
             offset=offset if cursor is None else 0,
             cursor=cursor,
@@ -300,6 +304,68 @@ async def delete_asset(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete asset: {str(e)}")
+
+
+# ===== ARCHIVE ASSET =====
+
+class ArchiveAssetRequest(BaseModel):
+    """Request body for archive/unarchive operation."""
+    archived: bool = Field(description="True to archive, False to unarchive")
+
+
+class ArchiveAssetResponse(BaseModel):
+    """Response for archive operation."""
+    id: int
+    is_archived: bool
+    message: str
+
+
+@router.patch("/assets/{asset_id}/archive", response_model=ArchiveAssetResponse)
+async def archive_asset(
+    asset_id: int,
+    request: ArchiveAssetRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+):
+    """
+    Archive or unarchive an asset.
+
+    Archived assets are soft-hidden from the default gallery view but remain
+    in the database and can be restored at any time.
+
+    Example request:
+    ```json
+    {"archived": true}
+    ```
+    """
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+        asset.is_archived = request.archived
+        db.add(asset)
+        await db.commit()
+        await db.refresh(asset)
+
+        action = "archived" if request.archived else "unarchived"
+        return ArchiveAssetResponse(
+            id=asset.id,
+            is_archived=asset.is_archived,
+            message=f"Asset {action} successfully"
+        )
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error(
+            "archive_asset_failed",
+            asset_id=asset_id,
+            archived=request.archived,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to archive asset: {str(e)}")
 
 
 # ===== SERVE LOCAL ASSET FILE =====

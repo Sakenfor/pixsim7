@@ -45,8 +45,9 @@ class AssetResponse(BaseModel):
     # Computed field for frontend to use
     file_url: Optional[str] = None
 
-    # Sync
+    # State
     sync_status: SyncStatus
+    is_archived: bool = False
     file_size_bytes: Optional[int] = None
 
     # Media metadata

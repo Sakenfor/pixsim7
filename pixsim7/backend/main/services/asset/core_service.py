@@ -353,6 +353,7 @@ class AssetCoreService:
         *,
         tag: Optional[str] = None,
         q: Optional[str] = None,
+        include_archived: bool = False,
         cursor: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -365,6 +366,7 @@ class AssetCoreService:
             media_type: Filter by media type
             sync_status: Filter by sync status
             provider_id: Filter by provider
+            include_archived: If False (default), exclude archived assets
             limit: Max results
             offset: Pagination offset
 
@@ -378,6 +380,10 @@ class AssetCoreService:
         # Filter by user (unless admin)
         if not user.is_admin():
             query = query.where(Asset.user_id == user.id)
+
+        # Exclude archived by default
+        if not include_archived:
+            query = query.where(Asset.is_archived == False)
 
         # Apply filters
         if media_type:
