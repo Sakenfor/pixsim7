@@ -24,13 +24,13 @@
  * <SmartDockview
  *   components={{ panel: MyPanel }}
  *   onReady={handleReady}
- *   disableLayoutPersistence
  * />
  * ```
  */
 
 import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview';
+import type { DockviewApi } from 'dockview-core';
 import clsx from 'clsx';
 import 'dockview/dist/styles/dockview.css';
 import styles from './SmartDockview.module.css';
@@ -112,31 +112,37 @@ function createPanelWrapper<TContext>(
   const PanelWrapper = (props: IDockviewPanelProps) => {
     const Component = definition.component;
     const context = contextRef.current;
-
-    // Pass both dockview props and our context
     return <Component {...props} context={context} panelId={definition.id} />;
   };
-
   PanelWrapper.displayName = `SmartPanel(${definition.id})`;
   return PanelWrapper;
 }
 
-function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
-  props: SmartDockviewProps<TContext, TPanelId>
+/** Options for the setup hook */
+interface UseSmartDockviewSetupOptions {
+  /** Optional callback to set dockview API (for context menu) */
+  setDockviewApi?: (api: DockviewApi) => void;
+}
+
+/**
+ * Shared setup hook for SmartDockview
+ * Extracts common logic used by both Inner and WithContextMenu variants
+ */
+function useSmartDockviewSetup<TContext = any, TPanelId extends string = string>(
+  props: SmartDockviewProps<TContext, TPanelId>,
+  options: UseSmartDockviewSetupOptions = {}
 ) {
   const {
     storageKey,
     context,
     minPanelsForTabs = 2,
-    className,
     onLayoutChange,
     onReady: onReadyProp,
     panelManagerId,
     globalPanelIds = [],
-    watermarkComponent,
-    tabComponents: customTabComponents,
-    theme = 'dockview-theme-abyss',
   } = props;
+
+  const { setDockviewApi } = options;
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
@@ -153,7 +159,7 @@ function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
     contextRef.current = context;
   }, [context]);
 
-  const { onReady: onSmartReady, loadLayout, getApi } = useSmartDockview({
+  const { onReady: onSmartReady, loadLayout } = useSmartDockview({
     storageKey,
     minPanelsForTabs,
     onLayoutChange,
@@ -162,29 +168,25 @@ function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
   // Build components map from local registry + global registry (registry mode)
   // Or use direct components (components mode)
   const components = useMemo(() => {
-    // Components mode - use directly
     if (directComponents) {
       return directComponents;
     }
 
-    // Registry mode - build from registry
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
 
-    // Add local registry panels
     if (registry) {
       registry.getAll().forEach((def) => {
         map[def.id] = createPanelWrapper(def, contextRef);
       });
     }
 
-    // Add global registry panels
     if (globalPanelIds.length > 0) {
       globalPanelIds.forEach((panelId) => {
         const globalDef = panelRegistry.get(panelId);
         if (globalDef) {
-          const GlobalPanelWrapper = (props: IDockviewPanelProps) => {
+          const GlobalPanelWrapper = (dockviewProps: IDockviewPanelProps) => {
             const Component = globalDef.component;
-            return <Component context={contextRef.current} params={props.params} />;
+            return <Component context={contextRef.current} params={dockviewProps.params} />;
           };
           GlobalPanelWrapper.displayName = `GlobalPanel(${panelId})`;
           map[panelId] = GlobalPanelWrapper;
@@ -203,6 +205,9 @@ function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
       console.log('[SmartDockview] Ready, storageKey:', storageKey);
       apiRef.current = event.api;
 
+      // Set dockview API for context menu (if provided)
+      setDockviewApi?.(event.api);
+
       // Initialize smart features (tab visibility, persistence)
       onSmartReady(event.api);
 
@@ -229,12 +234,11 @@ function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
           console.log('[SmartDockview] Using existing layout, panels:', event.api.panels.length);
         }
       }
-      // Components mode: caller handles layout in onReady
 
       setIsReady(true);
       onReadyProp?.(event.api);
     },
-    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, storageKey, registryMode]
+    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, storageKey, registryMode, setDockviewApi]
   );
 
   // Update panel params when context changes (registry mode only)
@@ -246,6 +250,28 @@ function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
       panel.api.updateParameters({ context });
     });
   }, [context, isReady, registryMode]);
+
+  return {
+    components,
+    handleReady,
+    contextRef,
+  };
+}
+
+/**
+ * SmartDockview without context menu
+ */
+function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
+  props: SmartDockviewProps<TContext, TPanelId>
+) {
+  const {
+    className,
+    watermarkComponent,
+    tabComponents: customTabComponents,
+    theme = 'dockview-theme-abyss',
+  } = props;
+
+  const { components, handleReady } = useSmartDockviewSetup(props);
 
   return (
     <div className={clsx(styles.smartDockview, className)}>
@@ -261,147 +287,33 @@ function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
 }
 
 /**
- * SmartDockview variant with context menu support
- *
+ * SmartDockview with context menu support
  * Must be used within ContextMenuProvider.
- * Adds right-click context menus to tabs and background areas.
  */
 function SmartDockviewWithContextMenu<TContext = any, TPanelId extends string = string>(
   props: Omit<SmartDockviewProps<TContext, TPanelId>, 'enableContextMenu' | 'contextMenuRegistry'>
 ) {
   const {
-    storageKey,
-    context,
-    minPanelsForTabs = 2,
     className,
-    onLayoutChange,
-    onReady: onReadyProp,
-    panelManagerId,
-    globalPanelIds = [],
     watermarkComponent,
     tabComponents: customTabComponents,
     theme = 'dockview-theme-abyss',
   } = props;
 
-  const [isReady, setIsReady] = useState(false);
-  const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
-  const contextRef = useRef<TContext | undefined>(context);
-
-  // Determine mode
-  const registryMode = isRegistryMode(props as SmartDockviewProps<TContext, TPanelId>);
-  const registry = registryMode ? (props as SmartDockviewRegistryProps<TContext, TPanelId>).registry : undefined;
-  const defaultLayout = registryMode ? (props as SmartDockviewRegistryProps<TContext, TPanelId>).defaultLayout : undefined;
-  const directComponents = !registryMode ? (props as SmartDockviewComponentsProps<TContext>).components : undefined;
-
   // Context menu hooks
   const { showContextMenu, setDockviewApi } = useContextMenu();
 
-  // Keep context ref updated
-  useEffect(() => {
-    contextRef.current = context;
-  }, [context]);
-
-  const { onReady: onSmartReady, loadLayout, getApi } = useSmartDockview({
-    storageKey,
-    minPanelsForTabs,
-    onLayoutChange,
-  });
-
-  // Build components map from local registry + global registry (registry mode)
-  // Or use direct components (components mode)
-  const components = useMemo(() => {
-    // Components mode - use directly
-    if (directComponents) {
-      return directComponents;
-    }
-
-    // Registry mode - build from registry
-    const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
-
-    if (registry) {
-      registry.getAll().forEach((def) => {
-        map[def.id] = createPanelWrapper(def, contextRef);
-      });
-    }
-
-    // Add global registry panels
-    if (globalPanelIds.length > 0) {
-      globalPanelIds.forEach((panelId) => {
-        const globalDef = panelRegistry.get(panelId);
-        if (globalDef) {
-          const GlobalPanelWrapper = (props: IDockviewPanelProps) => {
-            const Component = globalDef.component;
-            return <Component context={contextRef.current} params={props.params} />;
-          };
-          GlobalPanelWrapper.displayName = `GlobalPanel(${panelId})`;
-          map[panelId] = GlobalPanelWrapper;
-        } else {
-          console.warn(`[SmartDockview] Global panel "${panelId}" not found in registry`);
-        }
-      });
-    }
-
-    return map;
-  }, [registry, globalPanelIds, directComponents]);
+  // Use shared setup with context menu integration
+  const { components, handleReady } = useSmartDockviewSetup(
+    props as SmartDockviewProps<TContext, TPanelId>,
+    { setDockviewApi }
+  );
 
   // Tab components - merge custom with context menu default
   const tabComponents = useMemo(() => ({
     default: CustomTabComponent,
     ...customTabComponents,
   }), [customTabComponents]);
-
-  // Handle dockview ready
-  const handleReady = useCallback(
-    (event: DockviewReadyEvent) => {
-      console.log('[SmartDockview] Ready with context menu, storageKey:', storageKey);
-      apiRef.current = event.api;
-
-      // Set dockview API for context menu
-      setDockviewApi(event.api);
-
-      // Initialize smart features (tab visibility, persistence)
-      onSmartReady(event.api);
-
-      // Register with panel manager if ID provided
-      if (panelManagerId) {
-        console.log('[SmartDockview] Registering with panel manager:', panelManagerId);
-        import('@features/panels/lib/PanelManager').then(({ panelManager }) => {
-          panelManager.registerDockview(panelManagerId, event.api);
-        }).catch(err => {
-          console.warn('[SmartDockview] Failed to register with panel manager:', err);
-        });
-      }
-
-      // Registry mode: try to load saved layout or create default
-      if (registryMode && registry && defaultLayout) {
-        const loaded = loadLayout();
-        console.log('[SmartDockview] Layout loaded from storage:', loaded);
-
-        if (!loaded && event.api.panels.length === 0) {
-          console.log('[SmartDockview] Creating default layout');
-          defaultLayout(event.api, registry);
-          console.log('[SmartDockview] Default layout created, panels:', event.api.panels.length);
-        } else {
-          console.log('[SmartDockview] Using existing layout, panels:', event.api.panels.length);
-        }
-      }
-      // Components mode: caller handles layout in onReady
-
-      setIsReady(true);
-      onReadyProp?.(event.api);
-    },
-    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, storageKey, setDockviewApi, registryMode]
-  );
-
-  // Update panel params when context changes (registry mode only)
-  useEffect(() => {
-    if (!isReady || !apiRef.current || !registryMode) return;
-
-    const api = apiRef.current;
-    api.panels.forEach((panel) => {
-      panel.api.updateParameters({ context });
-    });
-  }, [context, isReady, registryMode]);
 
   // Handle background context menu (right-click on empty dockview area)
   const handleBackgroundContextMenu = useCallback((e: React.MouseEvent) => {
