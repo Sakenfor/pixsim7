@@ -23,6 +23,8 @@ export interface ViewerAsset {
   fullUrl?: string;
   /** Source context */
   source: 'gallery' | 'local';
+  /** Link to the generation that created this asset (if any) */
+  sourceGenerationId?: number;
   /** Additional metadata */
   metadata?: {
     description?: string;

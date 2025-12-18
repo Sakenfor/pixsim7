@@ -2,20 +2,24 @@
  * Asset Viewer Panel
  *
  * Side panel for viewing assets with controls and metadata.
- * Used in the side-push layout for both gallery and local folders.
+ * Uses dockview for resizable/rearrangeable panels in side mode.
+ * Fullscreen mode uses a fixed overlay layout.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   useAssetViewerStore,
   selectCanNavigatePrev,
   selectCanNavigateNext,
 } from '@features/assets';
 import { Icon } from '@lib/icons';
-import { Button } from '@pixsim7/shared.ui';
-import { ViewerQuickGenerate } from './ViewerQuickGenerate';
+import { AssetViewerDockview } from './viewer';
+import { usePanel } from '@features/panels';
 
 export function AssetViewerPanel() {
+  // Panel orchestration hook
+  const { open: panelOpen, close: panelClose } = usePanel('assetViewer');
+
   const currentAsset = useAssetViewerStore((s) => s.currentAsset);
   const mode = useAssetViewerStore((s) => s.mode);
   const settings = useAssetViewerStore((s) => s.settings);
@@ -32,6 +36,15 @@ export function AssetViewerPanel() {
   const toggleMetadata = useAssetViewerStore((s) => s.toggleMetadata);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Sync viewer state with panel manager
+  useEffect(() => {
+    if (mode !== 'closed') {
+      panelOpen();
+    } else {
+      panelClose();
+    }
+  }, [mode, panelOpen, panelClose]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -74,6 +87,61 @@ export function AssetViewerPanel() {
 
   const mediaUrl = currentAsset.fullUrl || currentAsset.url;
 
+  // Side panel mode - uses dockview for resizable panels
+  if (mode === 'side') {
+    return (
+      <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-700">
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-neutral-200 dark:border-neutral-700">
+          <div className="flex items-center gap-2 min-w-0">
+            <Icon
+              name={currentAsset.type === 'video' ? 'video' : 'image'}
+              size={16}
+              className="text-neutral-500 flex-shrink-0"
+            />
+            <span className="text-sm font-medium truncate" title={currentAsset.name}>
+              {currentAsset.name}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={toggleFullscreen}
+              className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
+              title="Fullscreen (F)"
+            >
+              <Icon name="maximize2" size={16} />
+            </button>
+            <button
+              onClick={closeViewer}
+              className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
+              title="Close (Esc)"
+            >
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Dockview panels */}
+        <div className="flex-1 min-h-0">
+          <AssetViewerDockview
+            asset={currentAsset}
+            settings={settings}
+            currentIndex={currentIndex}
+            assetListLength={assetListLength}
+            canNavigatePrev={canNavigatePrev}
+            canNavigateNext={canNavigateNext}
+            navigatePrev={navigatePrev}
+            navigateNext={navigateNext}
+            closeViewer={closeViewer}
+            toggleFullscreen={toggleFullscreen}
+            panelManagerId="assetViewer"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Helper for fullscreen media rendering
   const renderMedia = () => {
     if (currentAsset.type === 'video') {
       return (
@@ -96,149 +164,6 @@ export function AssetViewerPanel() {
       />
     );
   };
-
-  const renderMetadata = () => {
-    if (!showMetadata || !currentAsset.metadata) return null;
-
-    const { metadata } = currentAsset;
-
-    return (
-      <div className="mt-4 p-4 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-sm space-y-2">
-        {metadata.description && (
-          <div>
-            <span className="text-neutral-500 dark:text-neutral-400">Description:</span>
-            <p className="text-neutral-700 dark:text-neutral-300">{metadata.description}</p>
-          </div>
-        )}
-        {metadata.tags && metadata.tags.length > 0 && (
-          <div>
-            <span className="text-neutral-500 dark:text-neutral-400">Tags:</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {metadata.tags.map((tag, i) => (
-                <span
-                  key={i}
-                  className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs"
-                >
-                  {tag.display_name || tag.slug}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-        {metadata.size && (
-          <div className="flex justify-between">
-            <span className="text-neutral-500 dark:text-neutral-400">Size:</span>
-            <span>{(metadata.size / 1024 / 1024).toFixed(2)} MB</span>
-          </div>
-        )}
-        {metadata.createdAt && (
-          <div className="flex justify-between">
-            <span className="text-neutral-500 dark:text-neutral-400">Created:</span>
-            <span>{new Date(metadata.createdAt).toLocaleDateString()}</span>
-          </div>
-        )}
-        {metadata.path && (
-          <div>
-            <span className="text-neutral-500 dark:text-neutral-400">Path:</span>
-            <p className="text-xs font-mono text-neutral-600 dark:text-neutral-400 break-all">
-              {metadata.path}
-            </p>
-          </div>
-        )}
-        {metadata.duration && (
-          <div className="flex justify-between">
-            <span className="text-neutral-500 dark:text-neutral-400">Duration:</span>
-            <span>{metadata.duration.toFixed(1)}s</span>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Side panel mode
-  if (mode === 'side') {
-    return (
-      <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-700">
-        {/* Header */}
-        <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-neutral-200 dark:border-neutral-700">
-          <div className="flex items-center gap-2 min-w-0">
-            <Icon
-              name={currentAsset.type === 'video' ? 'video' : 'image'}
-              size={16}
-              className="text-neutral-500 flex-shrink-0"
-            />
-            <span className="text-sm font-medium truncate" title={currentAsset.name}>
-              {currentAsset.name}
-            </span>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={toggleMetadata}
-              className={`p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors ${
-                showMetadata ? 'text-blue-500' : 'text-neutral-500'
-              }`}
-              title="Toggle metadata (I)"
-            >
-              <Icon name="info" size={16} />
-            </button>
-            <button
-              onClick={toggleFullscreen}
-              className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
-              title="Fullscreen (F)"
-            >
-              <Icon name="target" size={16} />
-            </button>
-            <button
-              onClick={closeViewer}
-              className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-neutral-500"
-              title="Close (Esc)"
-            >
-              <Icon name="x" size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Media preview */}
-        <div className="flex-1 flex items-center justify-center p-4 min-h-0 bg-neutral-50 dark:bg-neutral-950">
-          {renderMedia()}
-        </div>
-
-        {/* Navigation + Quick Generate + metadata */}
-        <div className="flex-shrink-0 p-3 border-t border-neutral-200 dark:border-neutral-700 space-y-3">
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={navigatePrev}
-              disabled={!canNavigatePrev}
-              className="p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title="Previous (Left Arrow)"
-            >
-              <Icon name="chevronLeft" size={20} />
-            </button>
-            <span className="text-sm text-neutral-500">
-              {currentIndex + 1} / {assetListLength}
-            </span>
-            <button
-              onClick={navigateNext}
-              disabled={!canNavigateNext}
-              className="p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title="Next (Right Arrow)"
-            >
-              <Icon name="chevronRight" size={20} />
-            </button>
-          </div>
-
-          {/* Quick Generate (only for gallery assets) */}
-          {currentAsset.source === 'gallery' && (
-            <ViewerQuickGenerate asset={currentAsset} />
-          )}
-
-          {/* Metadata (collapsible) */}
-          {renderMetadata()}
-        </div>
-      </div>
-    );
-  }
 
   // Fullscreen mode
   return (
