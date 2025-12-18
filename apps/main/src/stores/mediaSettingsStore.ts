@@ -17,7 +17,9 @@ export interface ServerMediaSettings {
   prefer_local_over_provider: boolean;
   cache_control_max_age_seconds: number;
   generate_thumbnails: boolean;
-  generate_video_previews: boolean;
+  generate_previews: boolean;
+  thumbnail_quality: number;
+  preview_quality: number;
   max_download_size_mb: number;
   concurrency_limit: number;
   thumbnail_size: [number, number];
@@ -57,10 +59,12 @@ const DEFAULT_SERVER_SETTINGS: ServerMediaSettings = {
   prefer_local_over_provider: true,
   cache_control_max_age_seconds: 86400,
   generate_thumbnails: true,
-  generate_video_previews: false,
+  generate_previews: true,
+  thumbnail_quality: 85,
+  preview_quality: 92,
   max_download_size_mb: 500,
   concurrency_limit: 4,
-  thumbnail_size: [256, 256],
+  thumbnail_size: [320, 320],
   preview_size: [800, 800],
 };
 

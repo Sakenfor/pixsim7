@@ -131,7 +131,7 @@ class MediaSettings:
     @property
     def thumbnail_size(self) -> Tuple[int, int]:
         """Thumbnail dimensions (width, height)."""
-        size = self._settings.get("thumbnail_size", [256, 256])
+        size = self._settings.get("thumbnail_size", [320, 320])
         return tuple(size)
 
     @property
@@ -139,6 +139,25 @@ class MediaSettings:
         """Preview image dimensions (width, height)."""
         size = self._settings.get("preview_size", [800, 800])
         return tuple(size)
+
+    @property
+    def thumbnail_quality(self) -> int:
+        """JPEG quality for thumbnails (1-100)."""
+        return self._settings.get("thumbnail_quality", 85)
+
+    @property
+    def preview_quality(self) -> int:
+        """JPEG quality for preview images (1-100)."""
+        return self._settings.get("preview_quality", 92)
+
+    @property
+    def generate_previews(self) -> bool:
+        """Generate preview derivatives (replaces generate_video_previews)."""
+        # Support legacy key for backward compatibility
+        return self._settings.get(
+            "generate_previews",
+            self._settings.get("generate_video_previews", True)
+        )
 
     def update(self, updates: Dict[str, Any]) -> None:
         """Update settings and save."""
@@ -152,7 +171,9 @@ class MediaSettings:
             "prefer_local_over_provider": self.prefer_local_over_provider,
             "cache_control_max_age_seconds": self.cache_control_max_age_seconds,
             "generate_thumbnails": self.generate_thumbnails,
-            "generate_video_previews": self.generate_video_previews,
+            "generate_previews": self.generate_previews,
+            "thumbnail_quality": self.thumbnail_quality,
+            "preview_quality": self.preview_quality,
             "max_download_size_mb": self.max_download_size_mb,
             "concurrency_limit": self.concurrency_limit,
             "thumbnail_size": list(self.thumbnail_size),
@@ -206,12 +227,13 @@ class AssetIngestionService:
         store_for_serving: Optional[bool] = None,
         extract_metadata: bool = True,
         generate_thumbnails: Optional[bool] = None,
+        generate_previews: Optional[bool] = None,
     ) -> Asset:
         """
         Ingest a single asset.
 
         Idempotent by default: skips if already ingested (has stored_key and
-        ingested_at) unless force=True. Individual steps (metadata, thumbnails)
+        ingested_at) unless force=True. Individual steps (metadata, thumbnails, previews)
         can be re-run independently.
 
         Args:
@@ -220,6 +242,7 @@ class AssetIngestionService:
             store_for_serving: Store in storage service for serving (default: from settings)
             extract_metadata: Extract dimensions, duration, etc.
             generate_thumbnails: Generate thumbnails (default: from settings)
+            generate_previews: Generate preview derivatives (default: from settings)
 
         Returns:
             Updated asset
@@ -237,6 +260,8 @@ class AssetIngestionService:
             store_for_serving = self.settings.prefer_local_over_provider
         if generate_thumbnails is None:
             generate_thumbnails = self.settings.generate_thumbnails
+        if generate_previews is None:
+            generate_previews = self.settings.generate_previews
 
         # Idempotent check: skip if already ingested (unless forced)
         if not force and asset.ingest_status == INGEST_COMPLETED and asset.stored_key:
@@ -286,6 +311,11 @@ class AssetIngestionService:
             if generate_thumbnails and (force or not asset.thumbnail_generated_at):
                 await self._generate_thumbnail(asset, local_path)
                 asset.thumbnail_generated_at = datetime.utcnow()
+
+            # Step 6: Generate previews (if not already done or forced)
+            if generate_previews and (force or not asset.preview_generated_at):
+                await self._generate_preview(asset, local_path)
+                asset.preview_generated_at = datetime.utcnow()
 
             # Mark as completed
             asset.ingest_status = INGEST_COMPLETED
@@ -571,11 +601,15 @@ class AssetIngestionService:
 
     async def _generate_image_thumbnail(self, asset: Asset, local_path: str) -> None:
         """Generate thumbnail for image."""
-        from PIL import Image
+        from PIL import Image, ImageOps
 
         thumb_size = self.settings.thumbnail_size
+        thumb_quality = self.settings.thumbnail_quality
 
         with Image.open(local_path) as img:
+            # Handle EXIF orientation
+            img = ImageOps.exif_transpose(img)
+
             # Convert to RGB if needed (for PNG with alpha)
             if img.mode in ('RGBA', 'LA', 'P'):
                 img = img.convert('RGB')
@@ -589,7 +623,7 @@ class AssetIngestionService:
 
             Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
 
-            img.save(thumb_path, "JPEG", quality=85, optimize=True)
+            img.save(thumb_path, "JPEG", quality=thumb_quality, optimize=True)
 
         asset.thumbnail_key = thumb_key
         asset.thumbnail_url = self.storage.get_url(thumb_key)
@@ -656,6 +690,130 @@ class AssetIngestionService:
                 "ffmpeg_not_found",
                 asset_id=asset.id,
                 detail="ffmpeg not available for video thumbnail generation"
+            )
+
+    async def _generate_preview(self, asset: Asset, local_path: str) -> None:
+        """
+        Generate preview derivative for asset.
+
+        For images: Larger, higher-quality resize
+        For videos: Extract HD poster frame
+        """
+        try:
+            if asset.media_type == MediaType.IMAGE:
+                await self._generate_image_preview(asset, local_path)
+            elif asset.media_type == MediaType.VIDEO:
+                await self._generate_video_preview(asset, local_path)
+        except Exception as e:
+            logger.warning(
+                "preview_generation_failed",
+                asset_id=asset.id,
+                error=str(e),
+            )
+
+    async def _generate_image_preview(self, asset: Asset, local_path: str) -> None:
+        """Generate high-quality preview for image."""
+        from PIL import Image, ImageOps
+
+        preview_size = self.settings.preview_size
+        preview_quality = self.settings.preview_quality
+
+        with Image.open(local_path) as img:
+            # Handle EXIF orientation
+            img = ImageOps.exif_transpose(img)
+
+            # Convert to RGB if needed
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background for transparent images
+                if img.mode == 'RGBA':
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[3])  # Use alpha as mask
+                    img = background
+                else:
+                    img = img.convert('RGB')
+
+            # Create preview (maintains aspect ratio)
+            img.thumbnail(preview_size, Image.Resampling.LANCZOS)
+
+            # Save to storage
+            preview_key = f"u/{asset.user_id}/previews/{asset.id}.jpg"
+            preview_path = self.storage.get_path(preview_key)
+
+            Path(preview_path).parent.mkdir(parents=True, exist_ok=True)
+
+            img.save(preview_path, "JPEG", quality=preview_quality, optimize=True)
+
+        asset.preview_key = preview_key
+        asset.preview_url = self.storage.get_url(preview_key)
+
+        logger.debug(
+            "preview_generated",
+            asset_id=asset.id,
+            key=preview_key,
+            quality=preview_quality,
+        )
+
+    async def _generate_video_preview(self, asset: Asset, local_path: str) -> None:
+        """Generate high-quality poster frame for video."""
+        import subprocess
+
+        # Extract frame at 1 second (or middle if shorter)
+        timestamp = min(1.0, (asset.duration_sec or 0) / 2)
+
+        preview_key = f"u/{asset.user_id}/previews/{asset.id}.jpg"
+        preview_path = self.storage.get_path(preview_key)
+
+        Path(preview_path).parent.mkdir(parents=True, exist_ok=True)
+
+        preview_size = self.settings.preview_size
+        preview_quality = self.settings.preview_quality
+
+        # Map quality (1-100) to ffmpeg qscale (2-31, lower is better)
+        # Quality 92 -> qscale 2, Quality 75 -> qscale 5
+        qscale = max(2, min(31, int(2 + (100 - preview_quality) / 10)))
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss", str(timestamp),
+            "-i", local_path,
+            "-vframes", "1",
+            "-vf", f"scale={preview_size[0]}:{preview_size[1]}:force_original_aspect_ratio=decrease",
+            "-q:v", str(qscale),
+            preview_path
+        ]
+
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(cmd, capture_output=True, timeout=30)
+            )
+
+            if result.returncode != 0:
+                logger.warning(
+                    "ffmpeg_preview_failed",
+                    asset_id=asset.id,
+                    stderr=result.stderr.decode()[:200],
+                )
+                return
+
+            asset.preview_key = preview_key
+            asset.preview_url = self.storage.get_url(preview_key)
+
+            logger.debug(
+                "video_preview_generated",
+                asset_id=asset.id,
+                key=preview_key,
+            )
+
+        except subprocess.TimeoutExpired:
+            logger.warning("ffmpeg_preview_timeout", asset_id=asset.id)
+        except FileNotFoundError:
+            logger.warning(
+                "ffmpeg_not_found",
+                asset_id=asset.id,
+                detail="ffmpeg not available for video preview generation"
             )
 
     def _guess_extension(self, asset: Asset) -> str:

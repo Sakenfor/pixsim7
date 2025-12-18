@@ -250,6 +250,7 @@ export function ReviewGallerySurface() {
                 providerId={asset.provider_id}
                 providerAssetId={asset.provider_asset_id}
                 thumbUrl={asset.thumbnail_url}
+                previewUrl={asset.preview_url}
                 remoteUrl={asset.remote_url}
                 width={asset.width}
                 height={asset.height}

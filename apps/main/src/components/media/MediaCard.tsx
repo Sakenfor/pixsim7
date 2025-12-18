@@ -74,6 +74,7 @@ export interface MediaCardProps {
   providerId: string;
   providerAssetId: string;
   thumbUrl: string;
+  previewUrl?: string;
   remoteUrl: string;
   width?: number;
   height?: number;
@@ -128,6 +129,8 @@ export function MediaCard(props: MediaCardProps) {
     mediaType,
     providerId,
     thumbUrl,
+    previewUrl,
+    remoteUrl,
     durationSec,
     tags = [],
     description,
@@ -144,7 +147,7 @@ export function MediaCard(props: MediaCardProps) {
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
-  const thumbSrc = useMediaThumbnail(thumbUrl);
+  const thumbSrc = useMediaThumbnail(thumbUrl, previewUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
 
@@ -182,15 +185,19 @@ export function MediaCard(props: MediaCardProps) {
 
   // Partition tags
   const { displayTags } = useMemo(() => {
-    const isTechnical = (tagSlug: string) =>
-      tagSlug.includes('_url') ||
-      tagSlug.includes('_id') ||
-      tagSlug.includes('from_') ||
-      tagSlug === 'user_upload';
+    const isTechnical = (tagSlug: string | undefined | null) => {
+      if (!tagSlug) return false;
+      return (
+        tagSlug.includes('_url') ||
+        tagSlug.includes('_id') ||
+        tagSlug.includes('from_') ||
+        tagSlug === 'user_upload'
+      );
+    };
 
     // Filter out technical tags and convert to display strings
     const display = tags
-      ?.filter(tag => !isTechnical(tag.slug))
+      ?.filter(tag => tag?.slug && !isTechnical(tag.slug))
       .map(tag => tag.display_name || tag.slug) || [];
 
     return { displayTags: display };

@@ -36,9 +36,8 @@ class Asset(SQLModel, table=True):
     sha256: Optional[str] = Field(
         default=None,
         max_length=64,
-        unique=True,
-        index=True,
-        description="File content hash (for deduplication)"
+        index=False,  # Indexed via composite index below
+        description="File content hash (for per-user deduplication)"
     )
     media_type: MediaType = Field(description="Asset type: video or image")
 
@@ -76,6 +75,7 @@ class Asset(SQLModel, table=True):
         description="Provider URL (original). Optional - assets can be stored locally only."
     )
     thumbnail_url: Optional[str] = None
+    preview_url: Optional[str] = None
     local_path: Optional[str] = Field(
         default=None,
         max_length=512,
@@ -231,6 +231,10 @@ class Asset(SQLModel, table=True):
         default=None,
         description="When thumbnail generation completed"
     )
+    preview_generated_at: Optional[datetime] = Field(
+        default=None,
+        description="When preview derivative generation completed"
+    )
 
     # ===== PROVENANCE =====
     # Link back to creation generation (for audit trail)
@@ -259,6 +263,8 @@ class Asset(SQLModel, table=True):
         Index("idx_asset_user_created", "user_id", "created_at"),
         Index("idx_asset_provider_lookup", "provider_id", "provider_asset_id"),
         Index("idx_asset_sync_media", "sync_status", "media_type"),
+        # Composite unique constraint for per-user SHA256 deduplication
+        Index("idx_asset_user_sha256", "user_id", "sha256", unique=True, postgresql_where="sha256 IS NOT NULL"),
     )
 
     def __repr__(self):

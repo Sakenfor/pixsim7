@@ -33,9 +33,13 @@ class AssetResponse(BaseModel):
     provider_id: str
     provider_asset_id: str
 
+    # Provenance
+    source_generation_id: Optional[int] = None
+
     # URLs / paths
     remote_url: Optional[str] = None  # Now optional (may be None if only stored locally)
     thumbnail_url: Optional[str] = None
+    preview_url: Optional[str] = None
     local_path: Optional[str] = None
 
     # Computed field for frontend to use

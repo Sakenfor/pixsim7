@@ -36,7 +36,9 @@ class MediaSettingsResponse(BaseModel):
     prefer_local_over_provider: bool = Field(description="Serve from local storage")
     cache_control_max_age_seconds: int = Field(description="Cache-Control max-age")
     generate_thumbnails: bool = Field(description="Generate thumbnails")
-    generate_video_previews: bool = Field(description="Generate video previews")
+    generate_previews: bool = Field(description="Generate preview derivatives")
+    thumbnail_quality: int = Field(description="JPEG quality for thumbnails (1-100)")
+    preview_quality: int = Field(description="JPEG quality for previews (1-100)")
     max_download_size_mb: int = Field(description="Maximum download size (MB)")
     concurrency_limit: int = Field(description="Maximum concurrent ingestion jobs")
     thumbnail_size: list[int] = Field(description="Thumbnail dimensions [width, height]")
@@ -49,7 +51,9 @@ class MediaSettingsUpdate(BaseModel):
     prefer_local_over_provider: Optional[bool] = None
     cache_control_max_age_seconds: Optional[int] = None
     generate_thumbnails: Optional[bool] = None
-    generate_video_previews: Optional[bool] = None
+    generate_previews: Optional[bool] = None
+    thumbnail_quality: Optional[int] = None
+    preview_quality: Optional[int] = None
     max_download_size_mb: Optional[int] = None
     concurrency_limit: Optional[int] = None
     thumbnail_size: Optional[list[int]] = None
@@ -126,34 +130,82 @@ async def trigger_ingestion(
     db: DatabaseSession,
     background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Re-ingest even if already completed"),
+    regenerate_thumbnails: bool = Query(False, description="Force regenerate thumbnails only"),
+    regenerate_previews: bool = Query(False, description="Force regenerate previews only"),
+    regenerate_metadata: bool = Query(False, description="Force extract metadata only"),
 ):
     """
     Trigger ingestion for a specific asset.
 
     Downloads the asset from provider, stores locally, extracts metadata,
-    and generates thumbnails.
+    and generates thumbnails and previews.
+
+    Selective regeneration:
+    - regenerate_thumbnails: Only regenerate thumbnails
+    - regenerate_previews: Only regenerate previews
+    - regenerate_metadata: Only extract metadata
+    - force: Full re-ingestion (all steps)
     """
     service = AssetIngestionService(db)
 
-    try:
-        asset = await service.ingest_asset(asset_id, force=force)
-        return {
-            "success": True,
-            "asset_id": asset.id,
-            "ingest_status": asset.ingest_status,
-            "stored_key": asset.stored_key,
-            "thumbnail_key": asset.thumbnail_key,
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(
-            "ingestion_trigger_failed",
-            asset_id=asset_id,
-            error=str(e),
-            exc_info=True
-        )
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+    # Determine which steps to run
+    if regenerate_thumbnails or regenerate_previews or regenerate_metadata:
+        # Selective regeneration - don't re-download/store
+        generate_thumbnails = regenerate_thumbnails or force
+        generate_previews = regenerate_previews or force
+        extract_metadata = regenerate_metadata or force
+
+        try:
+            asset = await service.ingest_asset(
+                asset_id,
+                force=False,  # Don't re-download
+                store_for_serving=False,  # Don't re-store
+                extract_metadata=extract_metadata,
+                generate_thumbnails=generate_thumbnails,
+                generate_previews=generate_previews,
+            )
+            return {
+                "success": True,
+                "asset_id": asset.id,
+                "ingest_status": asset.ingest_status,
+                "regenerated": {
+                    "thumbnails": regenerate_thumbnails,
+                    "previews": regenerate_previews,
+                    "metadata": regenerate_metadata,
+                }
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(
+                "regeneration_failed",
+                asset_id=asset_id,
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
+    else:
+        # Full ingestion
+        try:
+            asset = await service.ingest_asset(asset_id, force=force)
+            return {
+                "success": True,
+                "asset_id": asset.id,
+                "ingest_status": asset.ingest_status,
+                "stored_key": asset.stored_key,
+                "thumbnail_key": asset.thumbnail_key,
+                "preview_key": asset.preview_key,
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(
+                "ingestion_trigger_failed",
+                asset_id=asset_id,
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
 
 @router.post("/media/ingestion/retry/{asset_id}")

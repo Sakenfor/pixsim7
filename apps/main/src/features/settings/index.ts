@@ -19,6 +19,7 @@ export { WorkspaceProfileManager } from './components/WorkspaceProfileManager';
 
 export { AssetsSettings } from './components/modules/AssetsSettings';
 export { DebugSettings } from './components/modules/DebugSettings';
+export { GallerySettings } from './components/modules/GallerySettings';
 export { GeneralSettings } from './components/modules/GeneralSettings';
 export { GenerationSettings } from './components/modules/GenerationSettings';
 export { MediaSettings } from './components/modules/MediaSettings';
@@ -49,6 +50,7 @@ export { settingsSchemaRegistry } from './lib/core/settingsSchemaRegistry';
 // ============================================================================
 
 export { registerAssetSettings } from './lib/schemas/assets.settings';
+export { registerGallerySettings } from './lib/schemas/gallery.settings';
 export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerMediaSettings } from './lib/schemas/media.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';

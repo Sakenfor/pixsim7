@@ -130,6 +130,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               providerId={a.provider_id}
               providerAssetId={a.provider_asset_id}
               thumbUrl={a.thumbnail_url}
+              previewUrl={a.preview_url}
               remoteUrl={a.remote_url}
               width={a.width}
               height={a.height}
@@ -210,6 +211,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               providerId={a.provider_id}
               providerAssetId={a.provider_asset_id}
               thumbUrl={a.thumbnail_url}
+              previewUrl={a.preview_url}
               remoteUrl={a.remote_url}
               width={a.width}
               height={a.height}
