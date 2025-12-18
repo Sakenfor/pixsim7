@@ -64,6 +64,7 @@
       "@lib/analyzers": ["./src/lib/analyzers/index.ts"],
       "@lib/assets": ["./src/lib/assets/index.ts"],
       "@lib/context": ["./src/lib/context/index.ts"],
+      "@lib/dockview": ["./src/lib/dockview/index.ts"],
 
       // Packages
       "@pixsim7/types": ["../packages/types/dist"]

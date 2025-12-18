@@ -32,6 +32,7 @@ export default defineConfig({
       { find: '@lib/hooks', replacement: path.resolve(__dirname, './src/lib/hooks') },
       { find: '@lib/analyzers', replacement: path.resolve(__dirname, './src/lib/analyzers') },
       { find: '@lib/context', replacement: path.resolve(__dirname, './src/lib/context') },
+      { find: '@lib/dockview', replacement: path.resolve(__dirname, './src/lib/dockview') },
       { find: '@lib/devtools', replacement: path.resolve(__dirname, './src/lib/devtools') },
       { find: '@lib/plugins', replacement: path.resolve(__dirname, './src/lib/plugins') },
       { find: '@lib/assetProvider', replacement: path.resolve(__dirname, './src/lib/assetProvider') },

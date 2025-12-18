@@ -40,6 +40,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
+import { useInitializePanelSystem } from '@features/panels';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -53,6 +54,9 @@ function App() {
 
   // Register dev tool keyboard shortcuts
   useDevToolShortcuts();
+
+  // Initialize panel orchestration system
+  useInitializePanelSystem(true);
 
   useEffect(() => {
     // Initialize all application modules
