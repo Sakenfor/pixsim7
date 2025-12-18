@@ -52,14 +52,22 @@ class SettingsSchemaRegistry {
       this.categories.set(categoryId, cat);
     }
 
-    // Add tab if provided
+    // Add tab if provided (tabs use Map, so duplicates are automatically replaced)
     if (tab) {
       cat.tabs.set(tab.id, tab);
     }
 
-    // Add groups if provided
+    // Add groups if provided (check for duplicates first)
     if (groups) {
-      cat.groups.push(...groups);
+      groups.forEach((newGroup) => {
+        // Remove existing group with same ID if present
+        const existingIndex = cat!.groups.findIndex((g) => g.id === newGroup.id);
+        if (existingIndex >= 0) {
+          cat!.groups[existingIndex] = newGroup; // Replace existing
+        } else {
+          cat!.groups.push(newGroup); // Add new
+        }
+      });
     }
 
     this.notify();

@@ -12,6 +12,8 @@ import type { SettingGroup, SettingTab } from './types';
 
 interface DynamicSettingsPanelProps {
   categoryId: string;
+  /** Optional: Show only this specific tab (no tab navigation) */
+  tabId?: string;
 }
 
 function SettingGroupRenderer({
@@ -72,7 +74,7 @@ function TabContent({
   );
 }
 
-export function DynamicSettingsPanel({ categoryId }: DynamicSettingsPanelProps) {
+export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanelProps) {
   const [, forceUpdate] = useState(0);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
@@ -89,12 +91,12 @@ export function DynamicSettingsPanel({ categoryId }: DynamicSettingsPanelProps) 
     return Array.from(category.tabs.values());
   }, [category]);
 
-  // Set initial active tab
+  // Set initial active tab (use provided tabId or first tab)
   useEffect(() => {
     if (tabs.length > 0 && !activeTabId) {
-      setActiveTabId(tabs[0].id);
+      setActiveTabId(tabId || tabs[0].id);
     }
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, tabId]);
 
   if (!category) {
     return (
@@ -105,9 +107,18 @@ export function DynamicSettingsPanel({ categoryId }: DynamicSettingsPanelProps) 
   }
 
   const hasTabs = tabs.length > 0;
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const activeTab = tabs.find((t) => t.id === (tabId || activeTabId)) ?? tabs[0];
 
-  // Tabbed layout
+  // If specific tabId provided, show only that tab's content (no navigation)
+  if (tabId && activeTab) {
+    return (
+      <div className="text-xs text-neutral-800 dark:text-neutral-100 space-y-4">
+        <TabContent tab={activeTab} useStore={category.useStore} />
+      </div>
+    );
+  }
+
+  // Tabbed layout (show all tabs with navigation)
   if (hasTabs) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden text-xs text-neutral-800 dark:text-neutral-100">

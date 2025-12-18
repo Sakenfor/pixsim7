@@ -26,7 +26,7 @@ export { MediaSettings } from './components/modules/MediaSettings';
 export { PanelsSettings } from './components/modules/PanelsSettings';
 export { ProfilesSettings } from './components/modules/ProfilesSettings';
 export { PromptsSettings } from './components/modules/PromptsSettings';
-export { UISettings } from './components/modules/UISettings';
+// Note: UISettings is no longer exported - UI settings are now integrated into individual panels
 
 // ============================================================================
 // Components - Shared

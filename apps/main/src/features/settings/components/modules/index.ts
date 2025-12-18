@@ -8,7 +8,7 @@
 // Import all modules to trigger their registration
 import './GeneralSettings';
 import './UISettings';
-import './PanelsSettings';
+import './UnifiedPanelsSettings'; // Unified panel orchestration settings (replaces old PanelsSettings)
 import './PromptsSettings';
 import './ProfilesSettings';
 import './AssetsSettings';

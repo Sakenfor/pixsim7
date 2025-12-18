@@ -3,21 +3,22 @@
  *
  * Manage panel visibility, settings, and organization.
  * Part of Task 50 Phase 50.2 - Panel Configuration UI
+ *
+ * Redesigned with tab-based interface for better settings visibility
  */
 
 import { useState, useMemo } from 'react';
 import { usePanelConfigStore } from '@features/panels';
-import type { GalleryPanelSettings } from '@features/panels';
 import { useWorkspaceStore } from '@features/workspace';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
-import { mediaCardPresets } from '@lib/ui/overlay';
-import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
+import { panelRegistry } from '@features/panels/lib/panelRegistry';
+import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 
-type ViewMode = 'grid' | 'list';
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
 
 export function PanelConfigurationPanel() {
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -70,95 +71,122 @@ export function PanelConfigurationPanel() {
     openFloatingPanel(panelId as any, { width: 800, height: 600 });
   };
 
-  return (
-    <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
-      {/* Header */}
-      <div className="border-b border-neutral-200 dark:border-neutral-700 p-4">
-        <h2 className="text-xl font-bold mb-4">Panel Configuration</h2>
+  // Auto-select first panel if none selected
+  const selectedPanel = useMemo(() => {
+    if (!selectedPanelId && filteredPanels.length > 0) {
+      const firstPanel = filteredPanels[0];
+      setSelectedPanelId(firstPanel.id);
+      return firstPanel;
+    }
+    return filteredPanels.find(p => p.id === selectedPanelId) || null;
+  }, [selectedPanelId, filteredPanels]);
 
-        {/* Search */}
-        <div className="mb-4">
+  return (
+    <div className="h-full flex bg-white dark:bg-neutral-900">
+      {/* Sidebar - Panel List as Tabs */}
+      <div className="w-64 border-r border-neutral-200 dark:border-neutral-700 flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
+          <h2 className="text-lg font-bold mb-3">Panels</h2>
+
+          {/* Search */}
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search panels..."
-            className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+            placeholder="Search..."
+            className="w-full px-2 py-1.5 border rounded text-xs bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           />
         </div>
 
         {/* Category Filters */}
-        <div className="flex gap-2 flex-wrap mb-4">
-          {(['all', 'core', 'development', 'game', 'tools', 'custom'] as const).map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setFilterCategory(cat)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                filterCategory === cat
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
-              }`}
-            >
-              {cat.charAt(0).toUpperCase() + cat.slice(1)} ({categoryCounts[cat]})
-            </button>
-          ))}
+        <div className="p-2 border-b border-neutral-200 dark:border-neutral-700">
+          <div className="flex flex-col gap-1">
+            {(['all', 'core', 'development', 'game', 'tools', 'custom'] as const).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors text-left ${
+                  filterCategory === cat
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                }`}
+              >
+                {cat.charAt(0).toUpperCase() + cat.slice(1)} ({categoryCounts[cat]})
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* View Mode Toggle */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`px-3 py-1 rounded text-xs transition-colors ${
-              viewMode === 'grid'
-                ? 'bg-blue-500 text-white'
-                : 'bg-neutral-200 dark:bg-neutral-700'
-            }`}
-          >
-            Grid
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`px-3 py-1 rounded text-xs transition-colors ${
-              viewMode === 'list'
-                ? 'bg-blue-500 text-white'
-                : 'bg-neutral-200 dark:bg-neutral-700'
-            }`}
-          >
-            List
-          </button>
+        {/* Panel Tabs List */}
+        <div className="flex-1 overflow-y-auto">
+          {filteredPanels.length === 0 ? (
+            <div className="text-center py-8 px-4 text-xs text-neutral-500">
+              {searchQuery ? 'No panels match your search' : 'No panels available'}
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {filteredPanels.map((panel) => {
+                const pluginMeta = pluginCatalog.get(panel.id);
+                const isSelected = selectedPanelId === panel.id;
+                return (
+                  <button
+                    key={panel.id}
+                    onClick={() => setSelectedPanelId(panel.id)}
+                    className={`
+                      p-3 border-b border-neutral-200 dark:border-neutral-700 text-left transition-colors
+                      ${isSelected
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500'
+                        : 'hover:bg-neutral-50 dark:hover:bg-neutral-800 border-l-4 border-l-transparent'
+                      }
+                      ${!panel.enabled ? 'opacity-50' : ''}
+                    `}
+                  >
+                    <div className="flex items-start gap-2">
+                      {panel.icon && <span className="text-lg">{panel.icon}</span>}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-xs truncate">{panel.id}</div>
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                              panel.category === 'core'
+                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                : panel.category === 'development'
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                  : panel.category === 'game'
+                                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                            }`}
+                          >
+                            {panel.category}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Enabled indicator */}
+                      <div className={`w-2 h-2 rounded-full mt-1 ${panel.enabled ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'}`} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Panel List */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {filteredPanels.length === 0 ? (
-          <div className="text-center py-8 text-neutral-500">
-            {searchQuery ? 'No panels match your search' : 'No panels available'}
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredPanels.map((panel) => (
-              <PanelCard
-                key={panel.id}
-                panel={panel}
-                onToggle={() => handleTogglePanel(panel.id)}
-                onOpen={() => handleOpenPanel(panel.id)}
-                onUpdateSettings={(settings) =>
-                  updatePanelSettings(panel.id as any, settings)
-                }
-              />
-            ))}
-          </div>
+      {/* Main Content - Panel Details */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {selectedPanel ? (
+          <PanelDetailView
+            panel={selectedPanel}
+            onToggle={() => handleTogglePanel(selectedPanel.id)}
+            onOpen={() => handleOpenPanel(selectedPanel.id)}
+            onUpdateSettings={(settings) =>
+              updatePanelSettings(selectedPanel.id as any, settings)
+            }
+          />
         ) : (
-          <div className="space-y-2">
-            {filteredPanels.map((panel) => (
-              <PanelListItem
-                key={panel.id}
-                panel={panel}
-                onToggle={() => handleTogglePanel(panel.id)}
-                onOpen={() => handleOpenPanel(panel.id)}
-              />
-            ))}
+          <div className="flex items-center justify-center h-full text-neutral-500">
+            Select a panel to configure
           </div>
         )}
       </div>
@@ -166,8 +194,8 @@ export function PanelConfigurationPanel() {
   );
 }
 
-// Panel Card Component (Grid View)
-function PanelCard({
+// Panel Detail View Component (Tab Content)
+function PanelDetailView({
   panel,
   onToggle,
   onOpen,
@@ -181,418 +209,138 @@ function PanelCard({
   // Get plugin metadata
   const pluginMeta = pluginCatalog.get(panel.id);
 
-  return (
-    <div
-      className={`
-        p-4 rounded-lg border-2 transition-all
-        ${
-          panel.enabled
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-            : 'border-neutral-200 dark:border-neutral-700 opacity-60'
-        }
-      `}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {panel.icon && <span className="text-2xl">{panel.icon}</span>}
-          <div>
-            <h3 className="font-semibold text-sm">{panel.id}</h3>
-            <div className="flex gap-1 mt-1">
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full ${
-                  panel.category === 'core'
-                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : panel.category === 'development'
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                      : panel.category === 'game'
-                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
-                }`}
-              >
-                {panel.category}
-              </span>
-              {pluginMeta && pluginMeta.origin !== 'builtin' && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
-                  from: {pluginMeta.origin}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+  // Get panel definition from registry
+  const panelDefinition = panelRegistry.get(panel.id);
 
-        {/* Enable Toggle */}
-        <label className="flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={panel.enabled}
-            onChange={onToggle}
-            className="sr-only peer"
-          />
-          <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
-        </label>
-      </div>
-
-      {/* Description + Advanced Settings */}
-      <div className="mb-3 space-y-2">
-        {panel.description && (
-          <p className="text-xs text-neutral-600 dark:text-neutral-400">{panel.description}</p>
-        )}
-
-        {/* Graph panel advanced settings: choose active graph editor */}
-        {panel.id === 'graph' && (
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] text-neutral-500 dark:text-neutral-500">
-              Active editor:{' '}
-              <span className="font-mono">
-                {panel.settings?.graphEditorId || 'scene-graph-v2'}
-              </span>
-            </span>
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ graphEditorId: 'scene-graph-v2' })}
-                className={`flex-1 px-2 py-1 rounded text-[11px] border ${
-                  (panel.settings?.graphEditorId || 'scene-graph-v2') === 'scene-graph-v2'
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
-                }`}
-              >
-                Scene Graph
-              </button>
-              <button
-                type="button"
-                onClick={() => onUpdateSettings({ graphEditorId: 'arc-graph' })}
-                className={`flex-1 px-2 py-1 rounded text-[11px] border ${
-                  panel.settings?.graphEditorId === 'arc-graph'
-                    ? 'bg-blue-500 text-white border-blue-500'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
-                }`}
-              >
-                Arc Graph
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Gallery panel configuration */}
-        {panel.id === 'gallery' && (
-          <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
-              MediaCard Overlay
-            </span>
-
-            {/* Preset Selector */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Overlay Presets:</span>
-              <div className="grid grid-cols-2 gap-1">
-                {mediaCardPresets.map(preset => {
-                  const gallerySettings = panel.settings as GalleryPanelSettings;
-                  const derivedOverlayId =
-                    gallerySettings?.overlayPresetId ||
-                    deriveOverlayPresetIdFromBadgeConfig(gallerySettings?.badgeConfig);
-                  const isActive = (derivedOverlayId || 'media-card-default') === preset.id;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => onUpdateSettings({ overlayPresetId: preset.id })}
-                      className={`px-2 py-1 rounded text-[10px] border transition-colors text-left ${
-                        isActive
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600 hover:border-blue-400'
-                      }`}
-                      title={preset.configuration.description}
-                    >
-                      {preset.icon && <span className="mr-1">{preset.icon}</span>}
-                      {preset.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Individual Toggles */}
-            <div className="flex flex-col gap-1 pt-1 border-t border-neutral-200 dark:border-neutral-700">
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Advanced Overrides:</span>
-              <div className="grid grid-cols-2 gap-1.5">
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showPrimaryIcon ?? true}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showPrimaryIcon: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Media type icon</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showStatusIcon ?? true}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showStatusIcon: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Status icon</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showStatusTextOnHover ?? true}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showStatusTextOnHover: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Status text on hover</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showTagsInOverlay ?? true}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showTagsInOverlay: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Tags in overlay</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showFooterProvider ?? false}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showFooterProvider: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Footer provider</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showFooterDate ?? true}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showFooterDate: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Footer date</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.enableBadgePulse ?? false}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      enableBadgePulse: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                />
-                <span>Enable badge pulse</span>
-              </label>
-              </div>
-            </div>
-
-            {/* Generation Actions Section */}
-            <div className="flex flex-col gap-1 pt-2 border-t border-neutral-200 dark:border-neutral-700">
-              <span className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-400">Generation Actions:</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={panel.settings?.badgeConfig?.showGenerationBadge ?? true}
-                    onChange={(e) => onUpdateSettings({
-                      badgeConfig: {
-                        ...panel.settings?.badgeConfig,
-                        showGenerationBadge: e.target.checked,
-                      }
-                    })}
-                    className="w-3 h-3"
-                  />
-                  <span>⚡ Generation badge</span>
-                </label>
-                <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={panel.settings?.badgeConfig?.showGenerationInMenu ?? true}
-                    onChange={(e) => onUpdateSettings({
-                      badgeConfig: {
-                        ...panel.settings?.badgeConfig,
-                        showGenerationInMenu: e.target.checked,
-                      }
-                    })}
-                    className="w-3 h-3"
-                  />
-                  <span>Show in menu</span>
-                </label>
-              </div>
-              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showGenerationOnHoverOnly ?? true}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      showGenerationOnHoverOnly: e.target.checked,
-                    }
-                  })}
-                  className="w-3 h-3"
-                  disabled={!(panel.settings?.badgeConfig?.showGenerationBadge ?? true)}
-                />
-                <span>Only show on hover</span>
-              </label>
-
-              {/* Quick Action Selector */}
-              <div className="flex flex-col gap-1 mt-1">
-                <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Quick Action:</span>
-                <select
-                  value={panel.settings?.badgeConfig?.generationQuickAction ?? 'auto'}
-                  onChange={(e) => onUpdateSettings({
-                    badgeConfig: {
-                      ...panel.settings?.badgeConfig,
-                      generationQuickAction: e.target.value as any,
-                    }
-                  })}
-                  className="px-2 py-1 text-[10px] border rounded bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
-                >
-                  <option value="auto">Auto (Smart Default)</option>
-                  <option value="image_to_video">Image → Video</option>
-                  <option value="video_extend">Video Extend</option>
-                  <option value="add_to_transition">Add to Transition</option>
-                  <option value="none">None</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Tags */}
-      {panel.tags && panel.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {panel.tags.map((tag: string) => (
-            <span
-              key={tag}
-              className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={onOpen}
-          disabled={!panel.enabled}
-          className="flex-1 px-3 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
-        >
-          Open Panel
-        </button>
-      </div>
-    </div>
+  // Create settings helpers with debouncing
+  const settingsHelpers = usePanelSettingsHelpers(
+    panel.id,
+    panel.settings || {},
+    onUpdateSettings,
+    { delay: 300 }
   );
-}
-
-// Panel List Item Component (List View)
-function PanelListItem({
-  panel,
-  onToggle,
-  onOpen,
-}: {
-  panel: any;
-  onToggle: () => void;
-  onOpen: () => void;
-}) {
-  // Get plugin metadata
-  const pluginMeta = pluginCatalog.get(panel.id);
 
   return (
-    <div
-      className={`
-        p-3 rounded-lg border flex items-center justify-between transition-all
-        ${
-          panel.enabled
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-            : 'border-neutral-200 dark:border-neutral-700 opacity-60'
-        }
-      `}
-    >
-      <div className="flex items-center gap-3 flex-1">
-        {panel.icon && <span className="text-xl">{panel.icon}</span>}
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-sm">{panel.id}</h3>
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full ${
-                panel.category === 'core'
-                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : panel.category === 'development'
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                    : panel.category === 'game'
-                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="border-b border-neutral-200 dark:border-neutral-700 p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            {panel.icon && <span className="text-3xl">{panel.icon}</span>}
+            <div>
+              <h2 className="text-xl font-bold">{panel.id}</h2>
+              <div className="flex gap-2 mt-2">
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    panel.category === 'core'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : panel.category === 'development'
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                        : panel.category === 'game'
+                          ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                  }`}
+                >
+                  {panel.category}
+                </span>
+                {pluginMeta && pluginMeta.origin !== 'builtin' && (
+                  <span className="text-xs px-2 py-1 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                    from: {pluginMeta.origin}
+                  </span>
+                )}
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    panel.enabled
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                       : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
-              }`}
-            >
-              {panel.category}
-            </span>
-            {pluginMeta && pluginMeta.origin !== 'builtin' && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
-                from: {pluginMeta.origin}
-              </span>
-            )}
+                  }`}
+                >
+                  {panel.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+            </div>
           </div>
-          {panel.description && (
-            <p className="text-xs text-neutral-600 dark:text-neutral-400">
-              {panel.description}
-            </p>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={onOpen}
+              disabled={!panel.enabled}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
+            >
+              Open Panel
+            </button>
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={panel.enabled}
+                onChange={onToggle}
+                className="sr-only peer"
+              />
+              <div className="w-14 h-8 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-6 after:content-[''] after:absolute after:top-1 after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all relative"></div>
+            </label>
+          </div>
+        </div>
+
+        {panel.description && (
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-3">{panel.description}</p>
+        )}
+      </div>
+
+      {/* Settings Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-3xl space-y-6">
+          {panelDefinition?.settingsSections && panelDefinition.settingsSections.length > 0 ? (
+            // Render settings sections
+            panelDefinition.settingsSections.map((section) => (
+              <div key={section.id}>
+                {section.title && (
+                  <div className="mb-3">
+                    <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                      {section.title}
+                    </h3>
+                    {section.description && (
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                        {section.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <PanelSettingsErrorBoundary panelId={panel.id} sectionId={section.id}>
+                  <section.component settings={panel.settings || {}} helpers={settingsHelpers} />
+                </PanelSettingsErrorBoundary>
+              </div>
+            ))
+          ) : panelDefinition?.settingsComponent ? (
+            // Render single settings component
+            <PanelSettingsErrorBoundary panelId={panel.id}>
+              <panelDefinition.settingsComponent
+                settings={panel.settings || {}}
+                helpers={settingsHelpers}
+              />
+            </PanelSettingsErrorBoundary>
+          ) : panel.tags && panel.tags.length > 0 ? (
+            // Show tags if no settings component
+            <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-4">
+              <h3 className="text-sm font-semibold mb-3">Tags</h3>
+              <div className="flex flex-wrap gap-2">
+                {panel.tags.map((tag: string) => (
+                  <span
+                    key={tag}
+                    className="px-3 py-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full text-xs font-medium"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            // Default message
+            <div className="text-center py-12 text-neutral-500 text-sm">
+              No additional settings available for this panel
+            </div>
           )}
         </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onOpen}
-          disabled={!panel.enabled}
-          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
-        >
-          Open
-        </button>
-
-        <label className="flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={panel.enabled}
-            onChange={onToggle}
-            className="sr-only peer"
-          />
-          <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
-        </label>
       </div>
     </div>
   );
