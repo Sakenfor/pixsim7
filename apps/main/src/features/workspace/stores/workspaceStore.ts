@@ -27,16 +27,14 @@ export type PanelId =
   | "console"
   | "model-inspector";
 
-// Tree-based layout structure (replaces MosaicNode)
-export type LayoutNode<T> = T | LayoutBranch<T>;
+/**
+ * Preset scope determines which dockviews a preset applies to
+ */
+export type PresetScope = "workspace" | "control-center" | "asset-viewer" | "all";
 
-export interface LayoutBranch<T> {
-  direction: "row" | "column";
-  first: LayoutNode<T>;
-  second: LayoutNode<T>;
-  splitPercentage?: number;
-}
-
+/**
+ * Floating panel state for panels opened outside the main dockview
+ */
 export interface FloatingPanelState {
   id: PanelId | `dev-tool:${string}`;
   x: number;
@@ -44,48 +42,72 @@ export interface FloatingPanelState {
   width: number;
   height: number;
   zIndex: number;
-  context?: Record<string, any>; // Optional context data to pass to the panel component
+  context?: Record<string, any>;
 }
 
-export interface WorkspacePreset {
+/**
+ * Layout preset using dockview's native serialization format
+ */
+export interface LayoutPreset {
   id: string;
   name: string;
-  layout: LayoutNode<PanelId> | null;
-  description?: string; // Optional description
-  icon?: string; // Optional icon/emoji
-  visiblePanels?: PanelId[]; // Panels visible in this preset (if not specified, all are visible)
-  createdAt?: number; // Timestamp
-  isDefault?: boolean; // Whether this is a default preset (cannot be deleted)
-  // Optional: preferred graph editor surface for this profile (e.g., 'scene-graph-v2', 'arc-graph')
+  /** Scope determines which dockviews this preset applies to */
+  scope: PresetScope;
+  /** Dockview serialized layout (from api.toJSON()) - null means use default */
+  layout: any | null;
+  description?: string;
+  icon?: string;
+  isDefault?: boolean;
+  createdAt?: number;
+  /** Preferred graph editor for this preset */
   graphEditorId?: string;
 }
 
 export interface WorkspaceState {
-  currentLayout: LayoutNode<PanelId> | null; // Tree-based layout structure
-  dockviewLayout: any | null; // Dockview serialized layout
+  /** Current dockview serialized layout */
+  layout: any | null;
+  /** Closed panels (can be restored) */
   closedPanels: PanelId[];
+  /** Lock prevents layout changes */
   isLocked: boolean;
-  presets: WorkspacePreset[];
+  /** All saved presets (scoped) */
+  presets: LayoutPreset[];
+  /** Panel in fullscreen mode */
   fullscreenPanel: PanelId | null;
+  /** Floating panels outside main dockview */
   floatingPanels: FloatingPanelState[];
-  // ID of the currently active workspace preset/profile (if any)
+  /** Currently active preset ID */
   activePresetId: string | null;
 }
 
 export interface WorkspaceActions {
-  setLayout: (layout: LayoutNode<PanelId> | null) => void;
-  setDockviewLayout: (layout: any) => void;
+  /** Set the current layout (dockview serialized) */
+  setLayout: (layout: any | null) => void;
+  /** Close a panel */
   closePanel: (panelId: PanelId) => void;
+  /** Restore a closed panel */
   restorePanel: (panelId: PanelId) => void;
+  /** Clear all closed panels */
   clearClosedPanels: () => void;
+  /** Toggle layout lock */
   toggleLock: () => void;
+  /** Set fullscreen panel */
   setFullscreen: (panelId: PanelId | null) => void;
-  savePreset: (name: string) => void;
+  /** Save current layout as a new preset */
+  savePreset: (name: string, scope?: PresetScope) => void;
+  /** Save layout to an existing preset */
+  updatePreset: (id: string, layout: any) => void;
+  /** Load a preset */
   loadPreset: (id: string) => void;
+  /** Delete a preset */
   deletePreset: (id: string) => void;
-  // Update preset-specific metadata (currently used for graph editor selection)
+  /** Get presets for a specific scope */
+  getPresetsForScope: (scope: PresetScope) => LayoutPreset[];
+  /** Update preset metadata */
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
+  /** Reset to default state */
   reset: () => void;
+  // Floating panel actions
   openFloatingPanel: (
     panelId: PanelId | `dev-tool:${string}`,
     options?: {
@@ -112,261 +134,85 @@ export interface WorkspaceActions {
   bringFloatingPanelToFront: (panelId: PanelId | `dev-tool:${string}`) => void;
 }
 
-// Default presets
-const defaultPresets: WorkspacePreset[] = [
+/**
+ * Default presets - layout is null meaning "use dockview's default initialization"
+ * The actual layouts will be saved when the user first saves/modifies them
+ */
+const defaultPresets: LayoutPreset[] = [
   {
     id: "default",
     name: "Default Workspace",
+    scope: "workspace",
     description: "Balanced layout for general development",
     icon: "🏠",
     isDefault: true,
-    layout: {
-      direction: "row",
-      first: {
-        direction: "column",
-        first: "gallery",
-        second: "health",
-        splitPercentage: 70,
-      },
-      second: {
-        direction: "row",
-        first: "graph",
-        second: {
-          direction: "column",
-          first: "inspector",
-          second: "game",
-          splitPercentage: 40,
-        },
-        splitPercentage: 60,
-      },
-      splitPercentage: 20,
-    },
+    layout: null, // Will use dockview's default
   },
   {
     id: "minimal",
-    name: "Minimal (Graph + Game)",
+    name: "Minimal",
+    scope: "workspace",
     description: "Focus on graph editing and game preview",
     icon: "⚡",
     isDefault: true,
-    layout: {
-      direction: "row",
-      first: "graph",
-      second: "game",
-      splitPercentage: 60,
-    },
+    layout: null,
   },
   {
     id: "creative",
     name: "Creative Studio",
+    scope: "workspace",
     description: "Optimized for content creation",
     icon: "🎨",
     isDefault: true,
-    layout: {
-      direction: "row",
-      first: "gallery",
-      second: {
-        direction: "column",
-        first: "scene",
-        second: "game",
-        splitPercentage: 50,
-      },
-      splitPercentage: 25,
-    },
-  },
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Core Editor Workspace Presets
-  // These presets center the core editors (Game View, Flow View, World Editor)
-  // and group satellite panels around them.
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  {
-    id: "world-locations",
-    name: "World & Locations",
-    description:
-      "World editor-centric layout for managing locations, visual roles, and world theming",
-    icon: "🌍",
-    isDefault: true,
-    // Primary view: 'world', Mode: 'layout'
-    layout: {
-      direction: "row",
-      first: {
-        direction: "column",
-        first: "gallery",
-        second: "world-visual-roles",
-        splitPercentage: 50,
-      },
-      second: {
-        direction: "column",
-        first: "game-theming",
-        second: "game",
-        splitPercentage: 50,
-      },
-      splitPercentage: 40,
-    },
+    layout: null,
   },
   {
     id: "narrative-flow",
     name: "Narrative & Flow",
-    description:
-      "Flow View-centric layout for designing scenes, nodes, choices, and transitions",
+    scope: "workspace",
+    description: "Flow View-centric layout for designing scenes and transitions",
     icon: "🔀",
     isDefault: true,
+    layout: null,
     graphEditorId: "scene-graph-v2",
-    // Primary view: 'flow', Mode: 'edit-flow'
-    layout: {
-      direction: "row",
-      first: "graph",
-      second: {
-        direction: "column",
-        first: {
-          direction: "row",
-          first: "scene",
-          second: "inspector",
-          splitPercentage: 50,
-        },
-        second: {
-          direction: "row",
-          first: "scene-management",
-          second: "health",
-          splitPercentage: 50,
-        },
-        splitPercentage: 60,
-      },
-      splitPercentage: 55,
-    },
   },
   {
     id: "playtest-tuning",
     name: "Playtest & Tuning",
-    description:
-      "Game View-centric layout for playtesting, runtime tools, and HUD design",
+    scope: "workspace",
+    description: "Game View-centric layout for playtesting and HUD design",
     icon: "🎮",
     isDefault: true,
-    // Primary view: 'game', Mode: 'play' or 'debug'
-    layout: {
-      direction: "row",
-      first: {
-        direction: "column",
-        first: "game-tools",
-        second: "hud-designer",
-        splitPercentage: 50,
-      },
-      second: {
-        direction: "column",
-        first: "game",
-        second: "dev-tools",
-        splitPercentage: 70,
-      },
-      splitPercentage: 30,
-    },
+    layout: null,
   },
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Developer Presets
-  // ─────────────────────────────────────────────────────────────────────────────
-
   {
     id: "dev-default",
-    name: "Dev – Default Debug",
-    description: "Graph, session state, dev tools, and health monitoring",
+    name: "Dev – Debug",
+    scope: "workspace",
+    description: "Graph, dev tools, and health monitoring",
     icon: "🧪",
     isDefault: true,
-    layout: {
-      direction: "row",
-      first: "graph",
-      second: {
-        direction: "column",
-        first: "dev-tools",
-        second: "health",
-        splitPercentage: 60,
-      },
-      splitPercentage: 60,
-    },
-    graphEditorId: "scene-graph-v2",
-  },
-  {
-    id: "dev-plugins",
-    name: "Dev – Plugin Workshop",
-    description: "Focus on plugin development and testing",
-    icon: "🔌",
-    isDefault: true,
-    layout: {
-      direction: "row",
-      first: {
-        direction: "column",
-        first: "dev-tools",
-        second: "settings",
-        splitPercentage: 70,
-      },
-      second: "game",
-      splitPercentage: 40,
-    },
-  },
-  {
-    id: "dev-architecture",
-    name: "Dev – Architecture View",
-    description: "Graph editor with architecture and dependency visualization",
-    icon: "🏗️",
-    isDefault: true,
-    layout: {
-      direction: "row",
-      first: "graph",
-      second: "dev-tools",
-      splitPercentage: 50,
-    },
+    layout: null,
     graphEditorId: "scene-graph-v2",
   },
 ];
 
-const STORAGE_KEY = "workspace_v2";
-
-// Helper to get all leaf IDs from a layout tree
-const getAllLeaves = (node: LayoutNode<PanelId> | null): PanelId[] => {
-  if (!node) return [];
-  if (typeof node === "string") return [node];
-  return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
-};
-
-// Helper to validate and fix duplicate IDs in a layout
-const validateAndFixLayout = (
-  layout: LayoutNode<PanelId> | null,
-): LayoutNode<PanelId> | null => {
-  if (!layout) return null;
-
-  const leaves = getAllLeaves(layout);
-  const uniqueLeaves = Array.from(new Set(leaves));
-
-  // If no duplicates, return original layout
-  if (leaves.length === uniqueLeaves.length) {
-    return layout;
-  }
-
-  // Detected duplicate IDs in layout, resetting to default
-  return defaultPresets[0].layout;
-};
+const STORAGE_KEY = "workspace_v3"; // Bumped version for new format
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
-      currentLayout: defaultPresets[0].layout,
-      dockviewLayout: null,
+      layout: null,
       closedPanels: [],
       isLocked: false,
       presets: defaultPresets,
       fullscreenPanel: null,
       floatingPanels: [],
-      activePresetId: defaultPresets[0].id,
+      activePresetId: "default",
 
       setLayout: (layout) => {
         if (get().isLocked) return;
-        const validatedLayout = validateAndFixLayout(layout);
-        set({ currentLayout: validatedLayout });
-      },
-
-      setDockviewLayout: (layout) => {
-        if (get().isLocked) return;
-        set({ dockviewLayout: layout });
+        set({ layout });
       },
 
       closePanel: (panelId) => {
@@ -381,35 +227,13 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const pluginMeta = pluginCatalog.get(panelId);
         if (pluginMeta && pluginMeta.activationState === "inactive") {
           console.warn(
-            `Cannot restore panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`,
+            `Cannot restore panel "${panelId}": Panel is disabled.`,
           );
-          // TODO: Show user-facing notification
           return;
         }
-
-        const current = get().currentLayout;
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
-
-        // Check if panel already exists in current layout
-        const existingLeaves = getAllLeaves(current);
-        if (existingLeaves.includes(panelId)) {
-          // Panel already exists, just clear from closed list
-          set({ closedPanels });
-          return;
-        }
-
-        // Add panel to layout - append to the right side
-        const newLayout: LayoutNode<PanelId> = current
-          ? {
-              direction: "row",
-              first: current,
-              second: panelId,
-              splitPercentage: 75,
-            }
-          : panelId;
-
-        const validatedLayout = validateAndFixLayout(newLayout);
-        set({ currentLayout: validatedLayout, closedPanels });
+        set({ closedPanels });
+        // Note: Actual panel restoration is handled by the dockview component
       },
 
       clearClosedPanels: () => set({ closedPanels: [] }),
@@ -418,11 +242,12 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       setFullscreen: (panelId) => set({ fullscreenPanel: panelId }),
 
-      savePreset: (name) => {
-        const layout = get().currentLayout;
-        const newPreset: WorkspacePreset = {
+      savePreset: (name, scope = "workspace") => {
+        const layout = get().layout;
+        const newPreset: LayoutPreset = {
           id: `preset_${Date.now()}`,
           name,
+          scope,
           layout,
           createdAt: Date.now(),
           isDefault: false,
@@ -433,11 +258,19 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }));
       },
 
+      updatePreset: (id, layout) => {
+        set((s) => ({
+          presets: s.presets.map((p) =>
+            p.id === id ? { ...p, layout } : p,
+          ),
+        }));
+      },
+
       loadPreset: (id) => {
         const preset = get().presets.find((p) => p.id === id);
         if (preset) {
           set({
-            currentLayout: preset.layout,
+            layout: preset.layout,
             closedPanels: [],
             fullscreenPanel: null,
             activePresetId: id,
@@ -447,8 +280,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       deletePreset: (id) => {
         const preset = get().presets.find((p) => p.id === id);
-        // Don't delete default presets
-        if (preset?.isDefault) return;
+        if (preset?.isDefault) return; // Don't delete default presets
         set((s) => {
           const remaining = s.presets.filter((p) => p.id !== id);
           const newActiveId =
@@ -457,6 +289,12 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
               : s.activePresetId;
           return { presets: remaining, activePresetId: newActiveId };
         });
+      },
+
+      getPresetsForScope: (scope) => {
+        return get().presets.filter(
+          (p) => p.scope === scope || p.scope === "all"
+        );
       },
 
       setPresetGraphEditor: (presetId, graphEditorId) => {
@@ -469,34 +307,25 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       reset: () =>
         set({
-          currentLayout: defaultPresets[0].layout,
-          dockviewLayout: null,
+          layout: null,
           closedPanels: [],
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
-          activePresetId: defaultPresets[0].id,
+          activePresetId: "default",
         }),
 
       openFloatingPanel: (panelId, options = {}) => {
-        // Check if panel is disabled via plugin system
         const pluginMeta = pluginCatalog.get(panelId);
         if (pluginMeta && pluginMeta.activationState === "inactive") {
-          console.warn(
-            `Cannot open panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`,
-          );
-          // TODO: Show user-facing notification
+          console.warn(`Cannot open panel "${panelId}": Panel is disabled.`);
           return;
         }
 
         const { x, y, width, height, context } = options;
         const existing = get().floatingPanels.find((p) => p.id === panelId);
         if (existing) {
-          // Panel already floating, update context and bring to front
-          const maxZ = Math.max(
-            ...get().floatingPanels.map((p) => p.zIndex),
-            0,
-          );
+          const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
           set({
             floatingPanels: get().floatingPanels.map((p) =>
               p.id === panelId
@@ -507,7 +336,6 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           return;
         }
 
-        // Use provided position/size or calculate defaults
         const finalWidth = width ?? 600;
         const finalHeight = height ?? 400;
         const finalX = x ?? Math.max(0, (window.innerWidth - finalWidth) / 2);
@@ -537,14 +365,12 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       minimizeFloatingPanel: (panelId) => {
-        // Remove from floating panels (it will become a cube)
         set({
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
         });
       },
 
       restoreFloatingPanel: (panelState) => {
-        // Restore a panel from minimized cube state
         set({
           floatingPanels: [...get().floatingPanels, panelState],
         });
@@ -578,10 +404,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createBackendStorage("workspace"),
-      version: 1,
+      version: 3,
       partialize: (state) => ({
-        currentLayout: state.currentLayout,
-        dockviewLayout: state.dockviewLayout,
+        layout: state.layout,
         closedPanels: state.closedPanels,
         isLocked: state.isLocked,
         presets: state.presets,
@@ -590,18 +415,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         activePresetId: state.activePresetId,
       }),
       onRehydrateStorage: () => (state) => {
-        // Validate and fix the layout after loading from storage
-        if (state?.currentLayout) {
-          state.currentLayout = validateAndFixLayout(state.currentLayout);
-        }
-        // Validate all preset layouts
-        if (state?.presets) {
-          state.presets = state.presets.map((preset) => ({
-            ...preset,
-            layout: validateAndFixLayout(preset.layout),
-          }));
-        }
-        // Ensure floatingPanels is an array (defensive)
+        // Ensure floatingPanels is an array
         if (state && !Array.isArray(state.floatingPanels)) {
           state.floatingPanels = [];
         }
@@ -609,3 +423,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     },
   ),
 );
+
+// Legacy export for backwards compatibility during migration
+/** @deprecated Use LayoutPreset instead */
+export type WorkspacePreset = LayoutPreset;

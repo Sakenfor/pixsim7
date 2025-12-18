@@ -6,30 +6,14 @@
  * - Load Preset (nested menu)
  * - Reset to Default
  *
- * Presets are scoped to specific dockviews or can be global.
+ * Presets are scoped to specific dockviews.
  */
 
 import type { MenuAction, MenuActionContext } from '../types';
+import type { LayoutPreset, PresetScope } from '@features/workspace/stores/workspaceStore';
 
-/**
- * Preset scope determines which dockviews a preset applies to
- */
-export type PresetScope = 'workspace' | 'control-center' | 'asset-viewer' | 'all';
-
-/**
- * Layout preset stored in the system
- */
-export interface LayoutPreset {
-  id: string;
-  name: string;
-  scope: PresetScope;
-  /** Dockview serialized layout (from api.toJSON()) */
-  layout: any;
-  description?: string;
-  icon?: string;
-  isDefault?: boolean;
-  createdAt?: number;
-}
+// Re-export types for convenience
+export type { LayoutPreset, PresetScope };
 
 /**
  * Get presets for a specific scope from workspaceStore
@@ -38,20 +22,9 @@ function getPresetsForScope(ctx: MenuActionContext): LayoutPreset[] {
   if (!ctx.workspaceStore) return [];
 
   const state = ctx.workspaceStore.getState();
-  const currentScope = ctx.currentDockviewId || 'workspace';
+  const currentScope = (ctx.currentDockviewId || 'workspace') as PresetScope;
 
-  // Convert old WorkspacePreset to LayoutPreset format
-  // TODO: Migrate workspaceStore to use new LayoutPreset format
-  return state.presets.map(p => ({
-    id: p.id,
-    name: p.name,
-    scope: 'workspace' as PresetScope, // Old presets are workspace-scoped
-    layout: p.layout, // This is still old format, needs migration
-    description: p.description,
-    icon: p.icon,
-    isDefault: p.isDefault,
-    createdAt: p.createdAt,
-  })).filter(p => p.scope === currentScope || p.scope === 'all');
+  return state.getPresetsForScope(currentScope);
 }
 
 /**
@@ -71,17 +44,17 @@ export const savePresetAction: MenuAction = {
     const name = window.prompt('Enter preset name:');
     if (!name) return;
 
-    // Serialize the current dockview layout
-    const layout = ctx.api.toJSON();
-    const scope = ctx.currentDockviewId || 'workspace';
+    // Get scope from dockview ID
+    const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
 
-    // Save to workspaceStore
-    // TODO: Update workspaceStore to handle dockview serialized layouts
+    // Save to workspaceStore with scope
     if (ctx.workspaceStore) {
-      const state = ctx.workspaceStore.getState();
-      // For now, save using existing method (will need migration)
-      state.savePreset(name);
-      console.log('[PresetActions] Saved preset:', name, 'scope:', scope, 'layout:', layout);
+      // First update the current layout in store
+      const layout = ctx.api.toJSON();
+      ctx.workspaceStore.getState().setLayout(layout);
+      // Then save as preset
+      ctx.workspaceStore.getState().savePreset(name, scope);
+      console.log('[PresetActions] Saved preset:', name, 'scope:', scope);
     }
   },
 };
