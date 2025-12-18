@@ -722,6 +722,17 @@ class AssetIngestionService:
             # Handle EXIF orientation
             img = ImageOps.exif_transpose(img)
 
+            # Skip preview generation for low-quality images (avoid upscaling)
+            max_dimension = max(img.size)
+            if max_dimension < preview_size[0]:
+                logger.debug(
+                    "skip_image_preview_low_quality",
+                    asset_id=asset.id,
+                    resolution=f"{img.size[0]}x{img.size[1]}",
+                    reason=f"Image resolution ({max_dimension}px) is lower than preview size ({preview_size[0]}px)",
+                )
+                return
+
             # Convert to RGB if needed
             if img.mode in ('RGBA', 'LA', 'P'):
                 # Create white background for transparent images
@@ -757,6 +768,20 @@ class AssetIngestionService:
         """Generate high-quality poster frame for video."""
         import subprocess
 
+        preview_size = self.settings.preview_size
+
+        # Skip preview generation for low-quality videos (avoid upscaling)
+        if asset.width and asset.height:
+            max_dimension = max(asset.width, asset.height)
+            if max_dimension < preview_size[0]:
+                logger.debug(
+                    "skip_video_preview_low_quality",
+                    asset_id=asset.id,
+                    resolution=f"{asset.width}x{asset.height}",
+                    reason=f"Video resolution ({max_dimension}p) is lower than preview size ({preview_size[0]}px)",
+                )
+                return
+
         # Extract frame at 1 second (or middle if shorter)
         timestamp = min(1.0, (asset.duration_sec or 0) / 2)
 
@@ -765,7 +790,6 @@ class AssetIngestionService:
 
         Path(preview_path).parent.mkdir(parents=True, exist_ok=True)
 
-        preview_size = self.settings.preview_size
         preview_quality = self.settings.preview_quality
 
         # Map quality (1-100) to ffmpeg qscale (2-31, lower is better)
