@@ -13,6 +13,10 @@ Migration from v1/v2:
 
 All enhanced features (cameraMovement, consistency, intensityProgression) are
 now Optional fields on the unified ActionBlock.
+
+Extensibility:
+- ConceptRef types for ontology-backed fields (pose, mood, location, etc.)
+- extensions dict for plugin metadata without schema changes
 """
 
 from typing import Dict, Any, List, Optional, Union, Literal
@@ -29,6 +33,14 @@ from pydantic import (
 from pixsim7.backend.main.shared.schemas.entity_ref import (
     AssetRef,
     NpcRef,
+)
+from pixsim7.backend.main.shared.schemas.concept_ref import (
+    ConceptRef,
+    PoseConceptRef,
+    MoodConceptRef,
+    LocationConceptRef,
+    IntimacyLevelConceptRef,
+    BranchIntentConceptRef,
 )
 
 
@@ -206,10 +218,23 @@ class IntensityProgression(BaseModel):
 # UNIFIED TAGS
 # ============================================================================
 
+def _validate_extension_keys(extensions: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate extension keys follow namespacing convention."""
+    for key in extensions.keys():
+        if "." not in key:
+            raise ValueError(
+                f"Extension key '{key}' must be namespaced as '<plugin_id>.<key>'. "
+                f"Example: 'my_plugin.custom_data'"
+            )
+    return extensions
+
+
 class ActionBlockTags(BaseModel):
     """
     Unified semantic tags for action blocks.
+
     Uses typed refs for ontology-backed values where possible.
+    Supports plugin extensions via the 'extensions' field.
     """
     # Location (canonicalized to location:xxx)
     location: Optional[str] = Field(
@@ -253,6 +278,13 @@ class ActionBlockTags(BaseModel):
     # Custom tags for extensibility
     custom: List[str] = Field(default_factory=list)
 
+    # Plugin extensions namespace
+    # Keys must be namespaced as "<plugin_id>.<key>"
+    extensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Plugin metadata namespace. Keys must be '<plugin_id>.<key>'",
+    )
+
     model_config = ConfigDict(use_enum_values=True)
 
     @field_validator("location", mode="before")
@@ -274,6 +306,22 @@ class ActionBlockTags(BaseModel):
     @classmethod
     def canonicalize_mood(cls, v: Optional[str]) -> Optional[str]:
         return _canonicalize_mood(v)
+
+    @field_validator("extensions", mode="after")
+    @classmethod
+    def validate_extensions(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate extension keys follow namespacing convention."""
+        return _validate_extension_keys(v)
+
+    def get_extension(self, plugin_id: str, key: str, default: Any = None) -> Any:
+        """Get a plugin extension value."""
+        full_key = f"{plugin_id}.{key}"
+        return self.extensions.get(full_key, default)
+
+    def set_extension(self, plugin_id: str, key: str, value: Any) -> None:
+        """Set a plugin extension value. Note: ActionBlockTags is immutable by default."""
+        full_key = f"{plugin_id}.{key}"
+        self.extensions[full_key] = value
 
 
 # ============================================================================
@@ -366,6 +414,13 @@ class ActionBlock(BaseModel):
     description: Optional[str] = Field(None)
     worldOverride: Optional[str] = Field(None)
 
+    # === Plugin extensions ===
+    # Keys must be namespaced as "<plugin_id>.<key>"
+    extensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Plugin metadata namespace. Keys must be '<plugin_id>.<key>'",
+    )
+
     # === Validators ===
 
     @field_validator("startPose", "endPose", mode="before")
@@ -373,6 +428,12 @@ class ActionBlock(BaseModel):
     def canonicalize_poses(cls, v: Optional[str]) -> Optional[str]:
         """Canonicalize pose IDs."""
         return _canonicalize_pose(v)
+
+    @field_validator("extensions", mode="after")
+    @classmethod
+    def validate_extensions(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate extension keys follow namespacing convention."""
+        return _validate_extension_keys(v)
 
     @model_validator(mode="after")
     def validate_kind_fields(self) -> "ActionBlock":
@@ -422,6 +483,15 @@ class ActionBlock(BaseModel):
             self.consistency is not None,
             self.intensityProgression is not None,
         ])
+
+    def get_extension(self, plugin_id: str, key: str, default: Any = None) -> Any:
+        """Get a plugin extension value from block-level extensions."""
+        full_key = f"{plugin_id}.{key}"
+        return self.extensions.get(full_key, default)
+
+    def get_tag_extension(self, plugin_id: str, key: str, default: Any = None) -> Any:
+        """Get a plugin extension value from tag-level extensions."""
+        return self.tags.get_extension(plugin_id, key, default)
 
     def get_start_pose(self) -> Optional[str]:
         """Get starting pose regardless of kind."""
