@@ -206,117 +206,57 @@ class AssetSyncService:
         self,
         asset_id: int,
         user: User,
-        include_embedded: bool = True
+        include_embedded: bool = True,
+        generate_thumbnails: bool = True,
     ) -> Asset:
         """
         Sync (download) a remote provider asset to local storage.
 
-        Steps:
-          1. Authorization & status check
-          2. Mark DOWNLOADING
-          3. Download file to persistent path (data/storage/user/{user_id}/assets/)
-          4. Compute sha256 + size; mark DOWNLOADED
-          5. Optionally extract embedded assets via provider hook
+        Delegates to AssetIngestionService for the actual download, storage,
+        metadata extraction, and thumbnail generation. This ensures all assets
+        go through a single code path and get stored for serving.
 
         Args:
             asset_id: Asset to sync
-            user: Requesting user
+            user: Requesting user (for authorization check)
             include_embedded: Also create Asset rows for embedded inputs (images/prompts)
+            generate_thumbnails: Generate thumbnails during ingestion
 
         Returns:
-            Updated Asset (now DOWNLOADED) or existing if already downloaded.
+            Updated Asset (now DOWNLOADED with stored_key) or existing if already ingested.
         """
+        from pixsim7.backend.main.services.asset.ingestion_service import AssetIngestionService
+
+        # Authorization check
         asset = await self.get_asset_for_user(asset_id, user)
 
-        # Already downloaded – just return
-        if asset.sync_status == SyncStatus.DOWNLOADED:
+        # Already ingested? Return early (ingestion is idempotent anyway)
+        if asset.ingest_status == "completed" and asset.stored_key:
+            # Still do embedded extraction if requested
+            if include_embedded:
+                await self._extract_and_register_embedded(asset, user)
             return asset
 
-        # Transition to DOWNLOADING
-        asset.sync_status = SyncStatus.DOWNLOADING
-        await self.db.commit()
-        await self.db.refresh(asset)
-
-        # Prepare storage path (use pathlib for cross-platform compatibility)
-        from pathlib import Path
-        import shutil as shutil_module
-        storage_base = os.getenv("PIXSIM_STORAGE_PATH", "data/storage")
-        storage_root = Path(storage_base) / "user" / str(user.id) / "assets"
-        storage_root.mkdir(parents=True, exist_ok=True)
-
-        # Check available disk space before download
-        disk_usage = shutil_module.disk_usage(storage_root)
-        min_free_gb = float(os.getenv("PIXSIM_MIN_FREE_DISK_GB", "1.0"))
-        free_gb = disk_usage.free / (1024 ** 3)
-        if free_gb < min_free_gb:
-            from pixsim_logging import get_logger
-            logger = get_logger()
-            logger.error(
-                "insufficient_disk_space",
-                asset_id=asset.id,
-                free_gb=f"{free_gb:.2f}",
-                min_required_gb=min_free_gb,
-                detail="Insufficient disk space for asset download"
-            )
-            raise InvalidOperationError(f"Insufficient disk space: {free_gb:.2f}GB free, need at least {min_free_gb}GB")
-
-        # Determine extension (basic heuristic)
-        ext = ".mp4" if asset.media_type == MediaType.VIDEO else ".jpg"
-        local_path = str(storage_root / f"{asset.id}{ext}")
+        # Delegate to ingestion service
+        # store_for_serving=True ensures we don't reintroduce provider-only URLs
+        ingestion_service = AssetIngestionService(self.db)
 
         try:
-            # Download with retry logic for transient failures
-            max_retries = 3
-            retry_delay = 2.0  # seconds
-            last_error = None
-
-            for attempt in range(max_retries):
-                try:
-                    async with httpx.AsyncClient(timeout=60) as client:
-                        resp = await client.get(asset.remote_url, follow_redirects=True)
-                        resp.raise_for_status()
-                        with open(local_path, "wb") as f:
-                            f.write(resp.content)
-                    break  # Success, exit retry loop
-                except (httpx.TimeoutException, httpx.NetworkError) as e:
-                    last_error = e
-                    if attempt < max_retries - 1:
-                        from pixsim_logging import get_logger
-                        logger = get_logger()
-                        logger.warning(
-                            "asset_download_retry",
-                            asset_id=asset.id,
-                            attempt=attempt + 1,
-                            max_retries=max_retries,
-                            error=str(e),
-                            detail=f"Retrying download after {retry_delay}s delay"
-                        )
-                        import asyncio
-                        await asyncio.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                    else:
-                        # All retries exhausted
-                        raise InvalidOperationError(f"Failed to download after {max_retries} attempts: {e}")
-
-            file_size = os.path.getsize(local_path)
-            sha256 = self._compute_sha256(local_path)
-
-            # Mark downloaded
-            asset = await self.mark_downloaded(
-                asset_id=asset.id,
-                local_path=local_path,
-                file_size_bytes=file_size,
-                sha256=sha256
+            asset = await ingestion_service.ingest_asset(
+                asset_id,
+                store_for_serving=True,
+                extract_metadata=True,
+                generate_thumbnails=generate_thumbnails,
             )
 
-            # Embedded asset extraction
+            # Embedded asset extraction (provider-specific, kept in sync_service)
             if include_embedded:
                 await self._extract_and_register_embedded(asset, user)
 
             return asset
 
         except Exception as e:
-            await self.mark_download_failed(asset.id)
+            from pixsim7.backend.main.shared.errors import InvalidOperationError
             raise InvalidOperationError(f"Failed to sync asset {asset.id}: {e}")
 
     async def get_asset_for_provider(

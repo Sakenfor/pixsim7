@@ -188,6 +188,50 @@ class Asset(SQLModel, table=True):
         index=True
     )
 
+    # ===== INGESTION STATE =====
+    # Tracks media ingestion pipeline progress (download, store, generate derivatives)
+    ingest_status: Optional[str] = Field(
+        default=None,
+        max_length=16,
+        index=True,
+        description="Ingestion status: pending/processing/completed/failed"
+    )
+    ingest_error: Optional[str] = Field(
+        default=None,
+        description="Error message if ingestion failed"
+    )
+    ingested_at: Optional[datetime] = Field(
+        default=None,
+        description="When ingestion completed successfully"
+    )
+
+    # Storage keys (stable identifiers for serving, independent of local_path)
+    stored_key: Optional[str] = Field(
+        default=None,
+        max_length=512,
+        description="Storage key for main file (e.g., 'u/1/assets/123.mp4')"
+    )
+    thumbnail_key: Optional[str] = Field(
+        default=None,
+        max_length=512,
+        description="Storage key for generated thumbnail"
+    )
+    preview_key: Optional[str] = Field(
+        default=None,
+        max_length=512,
+        description="Storage key for preview/proxy image"
+    )
+
+    # Independent step completion timestamps (allow re-running one without the other)
+    metadata_extracted_at: Optional[datetime] = Field(
+        default=None,
+        description="When metadata extraction (dimensions, duration, etc.) completed"
+    )
+    thumbnail_generated_at: Optional[datetime] = Field(
+        default=None,
+        description="When thumbnail generation completed"
+    )
+
     # ===== PROVENANCE =====
     # Link back to creation generation (for audit trail)
     source_generation_id: Optional[int] = Field(
