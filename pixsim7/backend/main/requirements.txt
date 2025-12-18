@@ -24,6 +24,9 @@ arq==0.25.0  # Async task queue
 httpx==0.26.0  # Async HTTP client
 aiohttp==3.9.1
 
+# ===== File I/O =====
+aiofiles==25.1.0  # Async file operations
+
 # ===== Video Generation Providers =====
 # Install from local path or GitHub
 # Local: pip install -e G:/code/pixverse-py

@@ -107,6 +107,16 @@ export interface AssetGalleryProps<T> {
   getCreatedAt?: (asset: T) => string;
 
   /**
+   * Function to get asset width in pixels.
+   */
+  getWidth?: (asset: T) => number | undefined;
+
+  /**
+   * Function to get asset height in pixels.
+   */
+  getHeight?: (asset: T) => number | undefined;
+
+  /**
    * Function to get the upload state for an asset.
    */
   getUploadState?: (asset: T) => AssetUploadState;
@@ -253,6 +263,8 @@ function GalleryItem<T>({
   description,
   tags,
   createdAt,
+  width,
+  height,
   uploadState,
   uploadProgress,
   onOpen,
@@ -270,6 +282,8 @@ function GalleryItem<T>({
   description?: string;
   tags: string[];
   createdAt: string;
+  width?: number;
+  height?: number;
   uploadState?: AssetUploadState;
   uploadProgress?: number;
   onOpen?: () => void;
@@ -294,8 +308,8 @@ function GalleryItem<T>({
         providerAssetId={String(numericId)}
         thumbUrl={previewUrl || ''}
         remoteUrl={previewUrl || ''}
-        width={0}
-        height={0}
+        width={width}
+        height={height}
         tags={tags}
         description={description}
         createdAt={createdAt}
@@ -329,6 +343,8 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getDescription,
     getTags = () => [],
     getCreatedAt = () => new Date().toISOString(),
+    getWidth,
+    getHeight,
     getUploadState,
     getUploadProgress,
     onOpen,
@@ -392,6 +408,8 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       const description = getDescription?.(asset);
       const tags = getTags(asset);
       const createdAt = getCreatedAt(asset);
+      const width = getWidth?.(asset);
+      const height = getHeight?.(asset);
       const uploadState = getUploadState?.(asset);
       const uploadProgress = getUploadProgress?.(asset);
 
@@ -406,6 +424,8 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
           description={description}
           tags={tags}
           createdAt={createdAt}
+          width={width}
+          height={height}
           uploadState={uploadState}
           uploadProgress={uploadProgress}
           onOpen={onOpen ? () => onOpen(asset) : undefined}
@@ -426,6 +446,8 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getDescription,
     getTags,
     getCreatedAt,
+    getWidth,
+    getHeight,
     getUploadState,
     getUploadProgress,
     loadPreview,

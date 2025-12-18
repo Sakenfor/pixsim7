@@ -148,6 +148,10 @@ export function MediaCard(props: MediaCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
 
+  // For videos, fall back to remoteUrl if thumbnail is not available
+  // This allows aspect ratio detection via onLoadedMetadata even before thumbnails are generated
+  const videoSrc = mediaType === 'video' && !thumbSrc ? remoteUrl : thumbSrc;
+
   const videoAspectRatio = useMemo(() => {
     if (mediaType !== 'video') return null;
 
@@ -314,17 +318,17 @@ export function MediaCard(props: MediaCardProps) {
       >
         <div
           className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer ${
-            !thumbSrc ? 'aspect-[4/3]' : ''
+            !videoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
           style={mediaType === 'video' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
         >
-          {thumbSrc ? (
+          {videoSrc || thumbSrc ? (
             mediaType === 'video' ? (
               <video
                 ref={videoRef}
-                src={thumbSrc}
+                src={videoSrc}
                 className="h-full w-full object-cover"
                 preload="metadata"
                 muted
