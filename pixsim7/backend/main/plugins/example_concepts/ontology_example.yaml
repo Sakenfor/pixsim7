@@ -1,0 +1,59 @@
+# Example Plugin Ontology Pack
+#
+# Demonstrates adding new ontology concepts via plugins.
+# This file is auto-discovered by OntologyRegistry.
+
+id: "example_concepts_pack"
+version: "1.0.0"
+label: "Example Concepts Pack"
+description: |
+  Adds a new pose (standing_mysterious) and mood (mysterious) for demonstration.
+  Shows how plugins can extend the action block vocabulary.
+
+action_blocks:
+  # Add a new pose category concept
+  poses:
+    definitions:
+      - id: "pose:standing_mysterious"
+        label: "Standing Mysterious"
+        category: standing
+        parent: "pose:standing_neutral"
+        intimacy_min: 2
+        detector_labels: ["mysterious", "enigmatic", "shadowy"]
+        tags: ["full_body", "dramatic", "lighting"]
+
+      - id: "pose:leaning_mysterious"
+        label: "Leaning Mysterious"
+        category: leaning
+        parent: "pose:leaning_wall"
+        intimacy_min: 3
+        detector_labels: ["leaning_mysterious", "dark_lean"]
+        tags: ["dramatic", "moody"]
+
+  # Add new moods
+  moods:
+    - id: "mood:mysterious"
+      label: "Mysterious"
+      keywords: ["mysterious", "enigmatic", "cryptic", "intriguing", "dark"]
+      intensity_range: [4, 8]
+
+    - id: "mood:seductive"
+      label: "Seductive"
+      keywords: ["seductive", "alluring", "tempting", "enticing"]
+      intensity_range: [5, 9]
+
+  # Add a new location
+  locations:
+    - id: "location:secret_garden"
+      label: "Secret Garden"
+      indoor: false
+      romantic: true
+      private: true
+      keywords: ["garden", "hidden", "secret", "mysterious", "moonlit"]
+
+# Plugin scoring weight overrides
+# These can adjust how the plugin's concepts are scored
+scoring:
+  weights:
+    # Plugin can contribute additional weights
+    example_concepts.mysterious_boost: 0.15
