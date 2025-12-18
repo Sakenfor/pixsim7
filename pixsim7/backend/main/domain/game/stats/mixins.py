@@ -48,7 +48,7 @@ class HasStats:
     )
 
 
-class HasStatsWithMetadata:
+class HasStatsWithMetadata(HasStats):
     """
     Extended mixin with additional stat metadata.
 
@@ -66,12 +66,6 @@ class HasStatsWithMetadata:
     - Expiration times for buffs
     - Change history
     """
-
-    stats: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_type=JSON,
-        description="Entity stats. Structure: {stat_definition_id: {axis: value, ...}}"
-    )
 
     stats_metadata: Dict[str, Any] = Field(
         default_factory=dict,

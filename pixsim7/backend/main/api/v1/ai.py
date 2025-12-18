@@ -3,7 +3,7 @@ AI Hub API - LLM-powered operations for prompt editing and AI assistance
 """
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
@@ -23,6 +23,8 @@ router = APIRouter()
 
 class PromptEditRequest(BaseModel):
     """Request to edit a prompt using AI"""
+    model_config = ConfigDict(protected_namespaces=())
+
     provider_id: Optional[str] = Field(
         None,
         description="LLM provider ID (e.g., 'openai-llm', 'anthropic-llm'). Defaults to 'openai-llm'"
@@ -49,6 +51,8 @@ class PromptEditRequest(BaseModel):
 
 class PromptEditResponse(BaseModel):
     """Response from prompt edit operation"""
+    model_config = ConfigDict(protected_namespaces=())
+
     prompt_after: str = Field(
         ...,
         description="AI-edited prompt"
@@ -69,6 +73,8 @@ class PromptEditResponse(BaseModel):
 
 class AvailableProvidersResponse(BaseModel):
     """Response with available LLM providers"""
+    model_config = ConfigDict(protected_namespaces=())
+
     providers: list[dict] = Field(
         ...,
         description="List of available LLM providers"
@@ -77,6 +83,8 @@ class AvailableProvidersResponse(BaseModel):
 
 class AiInteractionItem(BaseModel):
   """Single AI interaction record (for debugging/inspection)"""
+  model_config = ConfigDict(protected_namespaces=())
+
   id: int
   generation_id: Optional[int]
   provider_id: str
@@ -88,6 +96,8 @@ class AiInteractionItem(BaseModel):
 
 class AiInteractionsResponse(BaseModel):
     """Response with AI interactions"""
+    model_config = ConfigDict(protected_namespaces=())
+
     interactions: List[AiInteractionItem] = Field(
         ...,
         description="List of AI interactions for the user (optionally filtered by generation)"

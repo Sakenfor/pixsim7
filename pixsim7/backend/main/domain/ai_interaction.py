@@ -13,6 +13,7 @@ Design:
 """
 from typing import Optional
 from datetime import datetime
+from pydantic import ConfigDict
 from sqlmodel import SQLModel, Field, Index
 
 
@@ -26,6 +27,8 @@ class AiInteraction(SQLModel, table=True):
         - Input and output prompts
         - Optional linkage to generation
     """
+    # Allow fields like model_id without Pydantic protected namespace warnings.
+    model_config = ConfigDict(protected_namespaces=())
     __tablename__ = "ai_interactions"
 
     # Primary key

@@ -2,8 +2,13 @@
  * API Client - Frontend API for backend services
  */
 
-export { apiClient, setApiBaseUrl, getApiBaseUrl } from './client';
-export { ApiError, handleApiError, isApiError } from './errorHandling';
+export { apiClient, BACKEND_BASE, API_BASE_URL } from './client';
+export {
+  extractErrorMessage,
+  isHttpError,
+  isNetworkError,
+  getErrorStatusCode
+} from './errorHandling';
 
 // Domain clients
 export * from './game';

@@ -8,11 +8,11 @@
 import { useEffect } from 'react';
 import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '../core';
 import { useMediaSettingsStore, type ServerMediaSettings } from '@/stores/mediaSettingsStore';
-import { api } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 
 // Fetch server settings on mount
 async function fetchServerSettings(): Promise<ServerMediaSettings> {
-  const response = await api.get('/api/v1/media/settings');
+  const response = await apiClient.get('/media/settings');
   return response.data;
 }
 
@@ -21,7 +21,7 @@ async function updateServerSetting(
   key: keyof ServerMediaSettings,
   value: any
 ): Promise<ServerMediaSettings> {
-  const response = await api.patch('/api/v1/media/settings', { [key]: value });
+  const response = await apiClient.patch('/media/settings', { [key]: value });
   return response.data;
 }
 
