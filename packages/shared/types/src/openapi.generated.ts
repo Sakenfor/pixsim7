@@ -2738,6 +2738,129 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/behavior/conditions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Conditions
+         * @description List all registered behavior conditions.
+         *
+         *     Returns metadata about all condition evaluators registered by core
+         *     and plugins, including parameter schemas for dynamic UI generation.
+         *
+         *     Results are sorted by condition_id for stability.
+         */
+        readonly get: operations["list_conditions_api_v1_behavior_conditions_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/behavior/effects": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Effects
+         * @description List all registered behavior effects.
+         *
+         *     Returns metadata about all effect handlers registered by core
+         *     and plugins, including parameter schemas for dynamic UI generation.
+         *
+         *     Results are sorted by effect_id for stability.
+         */
+        readonly get: operations["list_effects_api_v1_behavior_effects_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/behavior/registry": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Registry
+         * @description Get complete behavior registry information.
+         *
+         *     Returns all conditions, effects, and scoring factors in a single response.
+         *     This is a convenience endpoint that combines the three separate endpoints.
+         *
+         *     All lists are sorted for stability.
+         */
+        readonly get: operations["get_registry_api_v1_behavior_registry_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/behavior/scoring-factors": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Scoring Factors
+         * @description List all registered scoring factors.
+         *
+         *     Returns metadata about all scoring factors registered by core
+         *     and plugins, including default weights and parameter schemas.
+         *
+         *     Results are sorted by factor_id for stability.
+         */
+        readonly get: operations["list_scoring_factors_api_v1_behavior_scoring_factors_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/behavior/stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Stats
+         * @description Get behavior registry statistics.
+         *
+         *     Returns counts and lock status for the behavior registry.
+         *     Useful for debugging and monitoring.
+         */
+        readonly get: operations["get_stats_api_v1_behavior_stats_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/character-graph/character/{character_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -4885,6 +5008,37 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/sessions/{session_id}/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Session Events
+         * @description Get session events timeline.
+         *
+         *     Returns a list of events for the session, ordered by timestamp descending
+         *     (most recent first). Useful for playtesting and debugging session state changes.
+         *
+         *     Events include:
+         *     - session_created: Initial session creation
+         *     - advance: Scene graph progression
+         *     - session_update: World time/flags/stats updates
+         *     - inventory_add/remove/update/clear: Inventory mutations
+         *     - quest_add/status/progress/objective_complete: Quest changes
+         *     - stealth_pickpocket: Stealth mechanics
+         */
+        readonly get: operations["get_session_events_api_v1_game_sessions__session_id__events_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/stealth/pickpocket": {
         readonly parameters: {
             readonly query?: never;
@@ -6021,6 +6175,178 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/media/{key}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Serve Media
+         * @description Serve stored media files.
+         *
+         *     Returns file with appropriate caching headers:
+         *     - Cache-Control with configurable max-age
+         *     - ETag for conditional requests
+         *     - Content-Type based on file extension
+         *
+         *     Security: Files are served only if they belong to the authenticated user.
+         *     The key format is "u/{user_id}/..." so we validate ownership.
+         */
+        readonly get: operations["serve_media_api_v1_media__key__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        /**
+         * Head Media
+         * @description HEAD request for media files.
+         *
+         *     Returns headers without body, useful for checking existence and getting
+         *     metadata for conditional requests.
+         */
+        readonly head: operations["head_media_api_v1_media__key__head"];
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/ingestion/process-batch": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Process Pending Batch
+         * @description Process a batch of pending ingestion jobs.
+         *
+         *     Typically called by a background worker, but can be triggered manually.
+         */
+        readonly post: operations["process_pending_batch_api_v1_media_ingestion_process_batch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/ingestion/retry/{asset_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Retry Failed Ingestion
+         * @description Retry ingestion for a failed asset.
+         */
+        readonly post: operations["retry_failed_ingestion_api_v1_media_ingestion_retry__asset_id__post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/ingestion/stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Ingestion Stats
+         * @description Get ingestion queue statistics.
+         *
+         *     Returns counts of assets in each ingestion state.
+         */
+        readonly get: operations["get_ingestion_stats_api_v1_media_ingestion_stats_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/ingestion/trigger/{asset_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Trigger Ingestion
+         * @description Trigger ingestion for a specific asset.
+         *
+         *     Downloads the asset from provider, stores locally, extracts metadata,
+         *     and generates thumbnails.
+         */
+        readonly post: operations["trigger_ingestion_api_v1_media_ingestion_trigger__asset_id__post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/settings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Settings
+         * @description Get media settings.
+         *
+         *     Returns current media ingestion and serving settings.
+         */
+        readonly get: operations["get_settings_api_v1_media_settings_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Settings
+         * @description Update media settings.
+         *
+         *     Only admins can update media settings.
+         */
+        readonly patch: operations["update_settings_api_v1_media_settings_patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/media/storage/info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Storage Info
+         * @description Get storage system information.
+         *
+         *     Admin only.
+         */
+        readonly get: operations["get_storage_info_api_v1_media_storage_info_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plugins": {
         readonly parameters: {
             readonly query?: never;
@@ -6741,6 +7067,8 @@ export interface paths {
          * @description List all registered providers
          *
          *     Returns list of providers currently registered in the backend.
+         *     Provider metadata (domains, capabilities) is pulled dynamically from
+         *     each provider's manifest/adapter methods.
          */
         readonly get: operations["list_providers_api_v1_providers_get"];
         readonly put?: never;
@@ -8592,6 +8920,57 @@ export interface components {
             readonly variables?: Record<string, unknown>;
         };
         /**
+         * BehaviorConditionInfo
+         * @description Information about a registered behavior condition.
+         */
+        readonly BehaviorConditionInfo: {
+            /**
+             * Condition Id
+             * @description Fully qualified condition ID (e.g., 'plugin:game-stealth:has_disguise')
+             * @example evaluator:is_raining
+             * @example plugin:game-stealth:has_disguise
+             */
+            readonly condition_id: string;
+            /**
+             * Description
+             * @description Human-readable description of what this condition checks
+             * @example Check if it's currently raining
+             */
+            readonly description?: string | null;
+            /**
+             * Params Schema
+             * @description JSON Schema (Draft 7) for condition parameters
+             * @example {
+             *       "properties": {
+             *         "questId": {
+             *           "type": "string"
+             *         }
+             *       },
+             *       "required": [
+             *         "questId"
+             *       ],
+             *       "type": "object"
+             *     }
+             */
+            readonly params_schema?: Record<string, unknown> | null;
+            /**
+             * Plugin Id
+             * @description Plugin that registered this condition ('core' for built-ins)
+             * @example core
+             * @example game-stealth
+             */
+            readonly plugin_id: string;
+            /**
+             * Required Context
+             * @description Required context keys for this condition
+             * @example [
+             *       "session_flags",
+             *       "world_time"
+             *     ]
+             */
+            readonly required_context?: readonly string[];
+        };
+        /**
          * BehaviorConfigResponse
          * @description Response model for behavior config.
          */
@@ -8616,6 +8995,143 @@ export interface components {
             readonly simulationConfig?: Record<string, unknown> | null;
             /** Version */
             readonly version: number;
+        };
+        /**
+         * BehaviorEffectInfo
+         * @description Information about a registered behavior effect.
+         */
+        readonly BehaviorEffectInfo: {
+            /**
+             * Default Params
+             * @description Default parameters for this effect
+             * @example {
+             *       "itemId": "",
+             *       "quantity": 1
+             *     }
+             */
+            readonly default_params?: Record<string, unknown>;
+            /**
+             * Description
+             * @description Human-readable description of what this effect does
+             * @example Give an item to the player
+             */
+            readonly description?: string | null;
+            /**
+             * Effect Id
+             * @description Fully qualified effect ID (e.g., 'effect:give_item', 'effect:plugin:game-romance:arousal_boost')
+             * @example effect:give_item
+             * @example effect:plugin:game-romance:arousal_boost
+             */
+            readonly effect_id: string;
+            /**
+             * Params Schema
+             * @description JSON Schema (Draft 7) for effect parameters
+             * @example {
+             *       "properties": {
+             *         "itemId": {
+             *           "type": "string"
+             *         },
+             *         "quantity": {
+             *           "minimum": 1,
+             *           "type": "number"
+             *         }
+             *       },
+             *       "required": [
+             *         "itemId"
+             *       ],
+             *       "type": "object"
+             *     }
+             */
+            readonly params_schema?: Record<string, unknown> | null;
+            /**
+             * Plugin Id
+             * @description Plugin that registered this effect ('core' for built-ins)
+             * @example core
+             * @example game-romance
+             */
+            readonly plugin_id: string;
+        };
+        /**
+         * BehaviorRegistryInfo
+         * @description Complete behavior registry information.
+         */
+        readonly BehaviorRegistryInfo: {
+            /**
+             * Conditions
+             * @description All registered condition evaluators
+             */
+            readonly conditions?: readonly components["schemas"]["BehaviorConditionInfo"][];
+            /**
+             * Effects
+             * @description All registered effect handlers
+             */
+            readonly effects?: readonly components["schemas"]["BehaviorEffectInfo"][];
+            /**
+             * Scoring Factors
+             * @description All registered scoring factors
+             */
+            readonly scoring_factors?: readonly components["schemas"]["ScoringFactorInfo"][];
+        };
+        /**
+         * BehaviorStatsInfo
+         * @description Behavior registry statistics.
+         */
+        readonly BehaviorStatsInfo: {
+            /**
+             * Conditions By Plugin
+             * @description Condition counts by plugin
+             * @example {
+             *       "core": 12,
+             *       "game-stealth": 3
+             *     }
+             */
+            readonly conditions_by_plugin?: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Conditions Count
+             * @description Total number of registered conditions
+             * @example 15
+             */
+            readonly conditions_count: number;
+            /**
+             * Effects By Plugin
+             * @description Effect counts by plugin
+             * @example {
+             *       "core": 5,
+             *       "game-romance": 3
+             *     }
+             */
+            readonly effects_by_plugin?: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Effects Count
+             * @description Total number of registered effects
+             * @example 8
+             */
+            readonly effects_count: number;
+            /**
+             * Locked
+             * @description Whether the registry is locked (no more registrations allowed)
+             */
+            readonly locked: boolean;
+            /**
+             * Scoring Factors By Plugin
+             * @description Scoring factor counts by plugin
+             * @example {
+             *       "core": 7
+             *     }
+             */
+            readonly scoring_factors_by_plugin?: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Scoring Factors Count
+             * @description Total number of registered scoring factors
+             * @example 7
+             */
+            readonly scoring_factors_count: number;
         };
         /** Body_upload_asset_to_provider_api_v1_assets_upload_post */
         readonly Body_upload_asset_to_provider_api_v1_assets_upload_post: {
@@ -9162,8 +9678,7 @@ export interface components {
             readonly from_scene?: components["schemas"]["SceneRefSchema"] | null;
             /** Name */
             readonly name?: string | null;
-            /** Parent Generation Id */
-            readonly parent_generation_id?: number | null;
+            readonly parent_generation?: (components["schemas"]["EntityRef"] | null) | null;
             readonly player_context?: components["schemas"]["PlayerContextSnapshotSchema"] | null;
             /**
              * Priority
@@ -9182,8 +9697,7 @@ export interface components {
             /** Template Variables */
             readonly template_variables?: Record<string, unknown> | null;
             readonly to_scene?: components["schemas"]["SceneRefSchema"] | null;
-            /** Workspace Id */
-            readonly workspace_id?: number | null;
+            readonly workspace?: (components["schemas"]["EntityRef"] | null) | null;
         };
         /** CreatePromptFamilyRequest */
         readonly CreatePromptFamilyRequest: {
@@ -9486,6 +10000,43 @@ export interface components {
             readonly emotion: string;
             /** Intensity */
             readonly intensity: number;
+        };
+        /**
+         * EntityRef
+         * @description Canonical reference to an entity in the system.
+         *
+         *     Attributes:
+         *         type: Entity type identifier (e.g., 'asset', 'scene', 'npc')
+         *         id: Entity ID (integer primary key)
+         *         meta: Optional metadata for context-specific information
+         * @example {
+         *       "id": 123,
+         *       "type": "asset"
+         *     }
+         * @example {
+         *       "id": 456,
+         *       "meta": {
+         *         "label": "Main Scene"
+         *       },
+         *       "type": "scene"
+         *     }
+         */
+        readonly EntityRef: {
+            /**
+             * Id
+             * @description Entity ID
+             */
+            readonly id: number;
+            /**
+             * Meta
+             * @description Optional metadata
+             */
+            readonly meta?: Record<string, unknown> | null;
+            /**
+             * Type
+             * @description Entity type (e.g., 'asset', 'scene', 'npc')
+             */
+            readonly type: string;
         };
         /**
          * ExecuteInteractionRequest
@@ -9853,23 +10404,27 @@ export interface components {
              */
             readonly modifications?: string | null;
         };
-        /** GameHotspotDTO */
+        /**
+         * GameHotspotDTO
+         * @description A hotspot within a game location.
+         */
         readonly GameHotspotDTO: {
             /** Hotspot Id */
             readonly hotspot_id: string;
             /** Id */
             readonly id?: number | null;
-            /** Linked Scene Id */
-            readonly linked_scene_id?: number | null;
+            readonly linked_scene?: (components["schemas"]["EntityRef"] | null) | null;
             /** Meta */
             readonly meta?: Record<string, unknown> | null;
             /** Object Name */
             readonly object_name: string;
         };
-        /** GameLocationDetail */
+        /**
+         * GameLocationDetail
+         * @description Detailed game location with hotspots.
+         */
         readonly GameLocationDetail: {
-            /** Asset Id */
-            readonly asset_id?: number | null;
+            readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
             /** Default Spawn */
             readonly default_spawn?: string | null;
             /** Hotspots */
@@ -9881,10 +10436,12 @@ export interface components {
             /** Name */
             readonly name: string;
         };
-        /** GameLocationSummary */
+        /**
+         * GameLocationSummary
+         * @description Summary of a game location.
+         */
         readonly GameLocationSummary: {
-            /** Asset Id */
-            readonly asset_id?: number | null;
+            readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
             /** Default Spawn */
             readonly default_spawn?: string | null;
             /** Id */
@@ -10112,12 +10669,10 @@ export interface components {
          * @description Generation response - mirrors Generation model
          */
         readonly GenerationResponse: {
+            readonly account?: (components["schemas"]["EntityRef"] | null) | null;
             /** Account Email */
             readonly account_email?: string | null;
-            /** Account Id */
-            readonly account_id?: number | null;
-            /** Asset Id */
-            readonly asset_id: number | null;
+            readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
             /** Canonical Params */
             readonly canonical_params: Record<string, unknown>;
             /** Completed At */
@@ -10140,8 +10695,7 @@ export interface components {
             /** Name */
             readonly name: string | null;
             readonly operation_type: components["schemas"]["OperationType"];
-            /** Parent Generation Id */
-            readonly parent_generation_id: number | null;
+            readonly parent_generation?: (components["schemas"]["EntityRef"] | null) | null;
             /** Priority */
             readonly priority: number;
             /** Prompt Config */
@@ -10168,10 +10722,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
-            /** User Id */
-            readonly user_id: number;
-            /** Workspace Id */
-            readonly workspace_id: number | null;
+            readonly user: components["schemas"]["EntityRef"] | null;
+            readonly workspace?: (components["schemas"]["EntityRef"] | null) | null;
         };
         /**
          * GenerationSocialContextSchema
@@ -10244,6 +10796,22 @@ export interface components {
             readonly asset_ids: readonly number[];
         };
         /**
+         * IngestionStatsResponse
+         * @description Ingestion queue statistics
+         */
+        readonly IngestionStatsResponse: {
+            /** Completed */
+            readonly completed: number;
+            /** Failed */
+            readonly failed: number;
+            /** Not Ingested */
+            readonly not_ingested: number;
+            /** Pending */
+            readonly pending: number;
+            /** Processing */
+            readonly processing: number;
+        };
+        /**
          * InteractionContext
          * @description Context snapshot for gating checks
          */
@@ -10301,6 +10869,13 @@ export interface components {
              * @default 1
              */
             readonly quantity: number;
+        };
+        /** InventoryStatsResponse */
+        readonly InventoryStatsResponse: {
+            /** Total Quantity */
+            readonly total_quantity: number;
+            /** Unique Items */
+            readonly unique_items: number;
         };
         /**
          * ListInteractionsRequest
@@ -10569,11 +11144,91 @@ export interface components {
             readonly url: string;
         };
         /**
+         * MediaSettingsResponse
+         * @description Media settings response
+         */
+        readonly MediaSettingsResponse: {
+            /**
+             * Cache Control Max Age Seconds
+             * @description Cache-Control max-age
+             */
+            readonly cache_control_max_age_seconds: number;
+            /**
+             * Concurrency Limit
+             * @description Maximum concurrent ingestion jobs
+             */
+            readonly concurrency_limit: number;
+            /**
+             * Generate Thumbnails
+             * @description Generate thumbnails
+             */
+            readonly generate_thumbnails: boolean;
+            /**
+             * Generate Video Previews
+             * @description Generate video previews
+             */
+            readonly generate_video_previews: boolean;
+            /**
+             * Ingest On Asset Add
+             * @description Auto-ingest when assets are created
+             */
+            readonly ingest_on_asset_add: boolean;
+            /**
+             * Max Download Size Mb
+             * @description Maximum download size (MB)
+             */
+            readonly max_download_size_mb: number;
+            /**
+             * Prefer Local Over Provider
+             * @description Serve from local storage
+             */
+            readonly prefer_local_over_provider: boolean;
+            /**
+             * Preview Size
+             * @description Preview dimensions [width, height]
+             */
+            readonly preview_size: readonly number[];
+            /**
+             * Thumbnail Size
+             * @description Thumbnail dimensions [width, height]
+             */
+            readonly thumbnail_size: readonly number[];
+        };
+        /**
+         * MediaSettingsUpdate
+         * @description Media settings update request
+         */
+        readonly MediaSettingsUpdate: {
+            /** Cache Control Max Age Seconds */
+            readonly cache_control_max_age_seconds?: number | null;
+            /** Concurrency Limit */
+            readonly concurrency_limit?: number | null;
+            /** Generate Thumbnails */
+            readonly generate_thumbnails?: boolean | null;
+            /** Generate Video Previews */
+            readonly generate_video_previews?: boolean | null;
+            /** Ingest On Asset Add */
+            readonly ingest_on_asset_add?: boolean | null;
+            /** Max Download Size Mb */
+            readonly max_download_size_mb?: number | null;
+            /** Prefer Local Over Provider */
+            readonly prefer_local_over_provider?: boolean | null;
+            /** Preview Size */
+            readonly preview_size?: readonly number[] | null;
+            /** Thumbnail Size */
+            readonly thumbnail_size?: readonly number[] | null;
+        };
+        /**
          * MediaType
          * @description Asset media type
          * @enum {string}
          */
         readonly MediaType: "video" | "image" | "audio" | "3d_model";
+        /** MessageResponse */
+        readonly MessageResponse: {
+            /** Message */
+            readonly message: string;
+        };
         /**
          * MigrationOperation
          * @description Result of a migration operation
@@ -12073,6 +12728,48 @@ export interface components {
             readonly success: boolean;
         };
         /**
+         * ScoringFactorInfo
+         * @description Information about a registered scoring factor.
+         */
+        readonly ScoringFactorInfo: {
+            /**
+             * Default Weight
+             * @description Default weight for this factor in scoring config
+             * @default 1
+             * @example 1
+             * @example 0.8
+             * @example 1.2
+             */
+            readonly default_weight: number;
+            /**
+             * Description
+             * @description Human-readable description of what this factor scores
+             * @example Activity-specific preference scoring factor
+             */
+            readonly description?: string | null;
+            /**
+             * Factor Id
+             * @description Scoring factor ID (e.g., 'activityPreference', 'plugin:custom_factor')
+             * @example activityPreference
+             * @example categoryPreference
+             * @example plugin:my_plugin:weather_bonus
+             */
+            readonly factor_id: string;
+            /**
+             * Params Schema
+             * @description JSON Schema (Draft 7) for scoring factor parameters (optional, rarely used)
+             * @example null
+             */
+            readonly params_schema?: Record<string, unknown> | null;
+            /**
+             * Plugin Id
+             * @description Plugin that registered this factor ('core' for built-ins)
+             * @example core
+             * @example my_plugin
+             */
+            readonly plugin_id: string;
+        };
+        /**
          * SemanticPackCreateRequest
          * @description Request schema for creating or updating a semantic pack
          */
@@ -12306,6 +13003,53 @@ export interface components {
             readonly edge_id: number;
         };
         /**
+         * SessionEventResponse
+         * @description Response model for a single session event.
+         */
+        readonly SessionEventResponse: {
+            /**
+             * Action
+             * @description Action name (e.g., 'session_created', 'advance', 'inventory_add')
+             */
+            readonly action: string;
+            /**
+             * Diff
+             * @description Change details
+             */
+            readonly diff?: Record<string, unknown> | null;
+            /**
+             * Edge Id
+             * @description Scene edge ID if applicable
+             */
+            readonly edge_id?: number | null;
+            /** Id */
+            readonly id: number;
+            /**
+             * Node Id
+             * @description Scene node ID if applicable
+             */
+            readonly node_id?: number | null;
+            /**
+             * Ts
+             * Format: date-time
+             * @description Event timestamp
+             */
+            readonly ts: string;
+        };
+        /**
+         * SessionEventsResponse
+         * @description Response model for events list endpoint.
+         */
+        readonly SessionEventsResponse: {
+            /**
+             * Count
+             * @description Number of events returned
+             */
+            readonly count: number;
+            /** Events */
+            readonly events: readonly components["schemas"]["SessionEventResponse"][];
+        };
+        /**
          * SessionResponse
          * @description User session information
          */
@@ -12399,6 +13143,37 @@ export interface components {
             readonly prompt: string;
             /** Provider Id */
             readonly provider_id: string;
+        };
+        /**
+         * StorageInfoResponse
+         * @description Storage information
+         */
+        readonly StorageInfoResponse: {
+            /**
+             * Root Path
+             * @description Local storage path
+             */
+            readonly root_path: string | null;
+            /**
+             * Storage Mode
+             * @description Storage mode: local or cloud
+             */
+            readonly storage_mode: string;
+            /**
+             * Total Files
+             * @description Total files in storage
+             */
+            readonly total_files: number;
+            /**
+             * Total Size Bytes
+             * @description Total storage used (bytes)
+             */
+            readonly total_size_bytes: number;
+            /**
+             * Total Size Human
+             * @description Human-readable size
+             */
+            readonly total_size_human: string;
         };
         /**
          * StyleRulesSchema
@@ -17131,6 +17906,106 @@ export interface operations {
             };
         };
     };
+    readonly list_conditions_api_v1_behavior_conditions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["BehaviorConditionInfo"][];
+                };
+            };
+        };
+    };
+    readonly list_effects_api_v1_behavior_effects_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["BehaviorEffectInfo"][];
+                };
+            };
+        };
+    };
+    readonly get_registry_api_v1_behavior_registry_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BehaviorRegistryInfo"];
+                };
+            };
+        };
+    };
+    readonly list_scoring_factors_api_v1_behavior_scoring_factors_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ScoringFactorInfo"][];
+                };
+            };
+        };
+    };
+    readonly get_stats_api_v1_behavior_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BehaviorStatsInfo"];
+                };
+            };
+        };
+    };
     readonly get_character_graph_route_api_v1_character_graph_character__character_id__get: {
         readonly parameters: {
             readonly query?: {
@@ -19052,7 +19927,9 @@ export interface operations {
     readonly clear_inventory_api_v1_game_inventory_sessions__session_id__clear_delete: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly session_id: number;
             };
@@ -19066,7 +19943,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19083,7 +19960,9 @@ export interface operations {
     readonly list_inventory_items_api_v1_game_inventory_sessions__session_id__items_get: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly session_id: number;
             };
@@ -19114,7 +19993,9 @@ export interface operations {
     readonly add_item_to_inventory_api_v1_game_inventory_sessions__session_id__items_post: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly session_id: number;
             };
@@ -19149,7 +20030,9 @@ export interface operations {
     readonly get_inventory_item_api_v1_game_inventory_sessions__session_id__items__item_id__get: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly item_id: string;
                 readonly session_id: number;
@@ -19181,7 +20064,9 @@ export interface operations {
     readonly remove_item_from_inventory_api_v1_game_inventory_sessions__session_id__items__item_id__delete: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly item_id: string;
                 readonly session_id: number;
@@ -19200,9 +20085,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": {
-                        readonly [key: string]: string;
-                    };
+                    readonly "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19219,7 +20102,9 @@ export interface operations {
     readonly update_inventory_item_api_v1_game_inventory_sessions__session_id__items__item_id__patch: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly item_id: string;
                 readonly session_id: number;
@@ -19255,7 +20140,9 @@ export interface operations {
     readonly get_inventory_stats_api_v1_game_inventory_sessions__session_id__stats_get: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly session_id: number;
             };
@@ -19269,7 +20156,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["InventoryStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19622,7 +20509,9 @@ export interface operations {
             readonly query?: {
                 readonly status?: string | null;
             };
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly session_id: number;
             };
@@ -19653,7 +20542,9 @@ export interface operations {
     readonly add_quest_to_session_api_v1_game_quests_sessions__session_id__quests_post: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly session_id: number;
             };
@@ -19688,7 +20579,9 @@ export interface operations {
     readonly get_session_quest_api_v1_game_quests_sessions__session_id__quests__quest_id__get: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly quest_id: string;
                 readonly session_id: number;
@@ -19720,7 +20613,9 @@ export interface operations {
     readonly update_objective_progress_api_v1_game_quests_sessions__session_id__quests__quest_id__objectives_patch: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly quest_id: string;
                 readonly session_id: number;
@@ -19756,7 +20651,9 @@ export interface operations {
     readonly complete_objective_api_v1_game_quests_sessions__session_id__quests__quest_id__objectives__objective_id__complete_post: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly objective_id: string;
                 readonly quest_id: string;
@@ -19789,7 +20686,9 @@ export interface operations {
     readonly update_quest_status_api_v1_game_quests_sessions__session_id__quests__quest_id__status_patch: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
             readonly path: {
                 readonly quest_id: string;
                 readonly session_id: number;
@@ -20081,6 +20980,46 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["GameSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_session_events_api_v1_game_sessions__session_id__events_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description ISO timestamp - only return events after this time */
+                readonly after_ts?: string | null;
+                /** @description ISO timestamp - only return events before this time */
+                readonly before_ts?: string | null;
+                /** @description Maximum number of events to return */
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly session_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionEventsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21801,6 +22740,303 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["LogEntryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly serve_media_api_v1_media__key__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly key: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly head_media_api_v1_media__key__head: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly key: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly process_pending_batch_api_v1_media_ingestion_process_batch_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Maximum assets to process */
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly retry_failed_ingestion_api_v1_media_ingestion_retry__asset_id__post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_ingestion_stats_api_v1_media_ingestion_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["IngestionStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly trigger_ingestion_api_v1_media_ingestion_trigger__asset_id__post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Re-ingest even if already completed */
+                readonly force?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_settings_api_v1_media_settings_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_settings_api_v1_media_settings_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MediaSettingsUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MediaSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_storage_info_api_v1_media_storage_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StorageInfoResponse"];
                 };
             };
             /** @description Validation Error */

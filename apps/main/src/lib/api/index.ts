@@ -15,8 +15,5 @@ export * from './generations';
 export * from './generationOperations';
 export * from './analyzers';
 export * from './userPreferences';
-export * from './controlCenter';
-export * from './pixverseSync';
-export * from './pixverseCost';
 
 // Note: __simulate_extend.ts NOT exported (test utility)
