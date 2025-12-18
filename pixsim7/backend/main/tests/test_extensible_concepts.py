@@ -25,7 +25,7 @@ class TestConceptRef:
 
     def test_concept_ref_from_dict(self):
         """Test parsing ConceptRef from dict format."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import ConceptRef
+        from pixsim7.backend.main.domain.ontology import ConceptRef
 
         ref = ConceptRef.parse_flexible({"kind": "pose", "id": "standing_neutral"})
         assert ref is not None
@@ -35,7 +35,7 @@ class TestConceptRef:
 
     def test_concept_ref_from_canonical_string(self):
         """Test parsing from canonical 'kind:id' format."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import ConceptRef
+        from pixsim7.backend.main.domain.ontology import ConceptRef
 
         ref = ConceptRef.parse_flexible("mood:playful")
         assert ref is not None
@@ -44,7 +44,7 @@ class TestConceptRef:
 
     def test_concept_ref_from_raw_string_with_default(self):
         """Test parsing raw string when default_kind provided."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import ConceptRef
+        from pixsim7.backend.main.domain.ontology import ConceptRef
 
         ref = ConceptRef.parse_flexible("standing_neutral", default_kind="pose")
         assert ref is not None
@@ -53,20 +53,20 @@ class TestConceptRef:
 
     def test_concept_ref_from_raw_string_without_default_fails(self):
         """Test that raw string without default_kind raises error."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import ConceptRef
+        from pixsim7.backend.main.domain.ontology import ConceptRef
 
         with pytest.raises(ValueError, match="default_kind"):
             ConceptRef.parse_flexible("standing_neutral")
 
     def test_concept_ref_none_returns_none(self):
         """Test that None input returns None."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import ConceptRef
+        from pixsim7.backend.main.domain.ontology import ConceptRef
 
         assert ConceptRef.parse_flexible(None) is None
 
     def test_concept_ref_with_meta(self):
         """Test ConceptRef with metadata."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import ConceptRef
+        from pixsim7.backend.main.domain.ontology import ConceptRef
 
         ref = ConceptRef.parse_flexible({
             "kind": "pose",
@@ -78,7 +78,7 @@ class TestConceptRef:
 
     def test_pose_concept_ref_type_alias(self):
         """Test PoseConceptRef type alias in Pydantic model."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import PoseConceptRef
+        from pixsim7.backend.main.domain.ontology import PoseConceptRef
 
         class TestModel(BaseModel):
             pose: PoseConceptRef = None
@@ -96,7 +96,7 @@ class TestConceptRef:
 
     def test_mood_concept_ref_type_alias(self):
         """Test MoodConceptRef type alias."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import MoodConceptRef
+        from pixsim7.backend.main.domain.ontology import MoodConceptRef
 
         class TestModel(BaseModel):
             mood: MoodConceptRef = None
@@ -108,7 +108,7 @@ class TestConceptRef:
 
     def test_canonicalize_concept_id(self):
         """Test ID canonicalization utility."""
-        from pixsim7.backend.main.shared.schemas.concept_ref import canonicalize_concept_id
+        from pixsim7.backend.main.domain.ontology import canonicalize_concept_id
 
         assert canonicalize_concept_id("standing_neutral", "pose") == "pose:standing_neutral"
         assert canonicalize_concept_id("pose:standing_neutral", "pose") == "pose:standing_neutral"
@@ -126,7 +126,7 @@ class TestOntologyRegistry:
     @pytest.fixture
     def registry(self):
         """Create a fresh registry for each test."""
-        from pixsim7.backend.main.shared.ontology_registry import (
+        from pixsim7.backend.main.domain.ontology import (
             OntologyRegistry,
             reset_ontology_registry,
         )
@@ -210,7 +210,7 @@ class TestOntologyRegistry:
 
     def test_registry_strict_mode_validation(self):
         """Test strict mode concept validation."""
-        from pixsim7.backend.main.shared.ontology_registry import (
+        from pixsim7.backend.main.domain.ontology import (
             OntologyRegistry,
             reset_ontology_registry,
         )
@@ -227,7 +227,7 @@ class TestOntologyRegistry:
 
     def test_registry_non_strict_mode(self):
         """Test non-strict mode allows unknown concepts."""
-        from pixsim7.backend.main.shared.ontology_registry import (
+        from pixsim7.backend.main.domain.ontology import (
             OntologyRegistry,
             reset_ontology_registry,
         )
@@ -569,7 +569,7 @@ class TestDemoPluginConcepts:
     @pytest.fixture
     def registry(self):
         """Create a fresh registry."""
-        from pixsim7.backend.main.shared.ontology_registry import (
+        from pixsim7.backend.main.domain.ontology import (
             reset_ontology_registry,
             get_ontology_registry,
         )

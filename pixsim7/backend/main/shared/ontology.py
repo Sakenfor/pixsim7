@@ -1,13 +1,14 @@
 """
-PixSim7 Ontology Loader & Helper
+DEPRECATED: Legacy ontology loader - kept for backward compatibility.
 
-Thin class-based wrapper around `ontology.yaml` to provide a convenient,
-type-safe interface for parser, ActionBlocks, and game systems.
+This module provides the old Ontology class and load_ontology() function
+for existing code that uses entity/relationship lookups and keyword matching.
 
-Design goals:
-- Keep `ontology.yaml` as the single source of truth for IDs and categories.
-- Provide simple helper methods (lookup, compatibility checks) in Python.
-- Avoid coupling core logic directly to raw YAML/dicts.
+New code should use:
+    from pixsim7.backend.main.domain.ontology import get_ontology_registry
+
+This shim loads YAML from the new location (domain/ontology/data/) and maintains
+the legacy API.
 """
 from __future__ import annotations
 
@@ -17,8 +18,11 @@ from typing import Dict, List, Optional, Any
 
 import yaml
 
+from pixsim7.backend.main.domain.ontology.utils import match_keywords_in_domain
 
-ONTOLOGY_PATH = Path(__file__).with_name("ontology.yaml")
+
+# Point to the new ontology location
+ONTOLOGY_PATH = Path(__file__).parent.parent / "domain" / "ontology" / "data" / "ontology.yaml"
 
 
 @dataclass
@@ -137,54 +141,7 @@ class Ontology:
         Returns:
             List of ontology IDs (e.g., ["part:shaft", "state:erect"])
         """
-        matched_ids: List[str] = []
-        text_lower = text.lower()
-
-        # Get domain packs
-        packs = self.domain.get("packs", {})
-
-        # For now, just search the "default" pack
-        default_pack = packs.get("default", {})
-
-        # Helper to check keywords in a domain category
-        def check_category(category_name: str) -> None:
-            category = default_pack.get(category_name, [])
-            if not isinstance(category, list):
-                return
-
-            for item in category:
-                if not isinstance(item, dict):
-                    continue
-
-                item_id = item.get("id")
-                keywords = item.get("keywords", [])
-
-                if not item_id or not keywords:
-                    continue
-
-                # Check if any keyword appears in text
-                for keyword in keywords:
-                    if keyword.lower() in text_lower:
-                        if item_id not in matched_ids:
-                            matched_ids.append(item_id)
-                        break
-
-        # Check all domain categories
-        check_category("anatomy_parts")
-        check_category("anatomy_regions")
-        check_category("actions")
-        check_category("states_physical")
-        check_category("states_emotional")
-        check_category("states_positional")
-        check_category("spatial_location")
-        check_category("spatial_orientation")
-        check_category("spatial_contact")
-        check_category("camera_views")
-        check_category("camera_framing")
-        check_category("beats_sequence")
-        check_category("beats_micro")
-
-        return matched_ids
+        return match_keywords_in_domain(self.domain, text)
 
 
 _ONTOLOGY_CACHE: Optional[Ontology] = None
@@ -209,4 +166,3 @@ def load_ontology(force_reload: bool = False) -> Ontology:
 
     _ONTOLOGY_CACHE = Ontology(raw)
     return _ONTOLOGY_CACHE
-

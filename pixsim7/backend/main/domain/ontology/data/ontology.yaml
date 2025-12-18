@@ -1,0 +1,782 @@
+version: "0.1.0"
+label: "PixSim7 Core Prompt Ontology"
+description: >
+  Core semantic vocabulary for describing visual/narrative prompts in PixSim7.
+  This defines stable IDs for entities, actions, states, spatial relations,
+  camera concepts, and beats. Parser, ActionBlocks, graphs, and game systems
+  should normalize to these IDs rather than inventing new ad-hoc labels.
+
+# ===== CORE ONTOLOGY =====
+# Defines abstract entity types and relationships that are stable across all content domains.
+# Systems should rely on these categories; domain-specific content goes in the 'domain' section.
+core:
+  entities:
+    character:
+      label: "Character / Entity"
+      description: "Abstract character entity category. Domain packs define specific character types."
+      kinds:
+        primary:
+          id: "character.primary"
+          label: "Primary character"
+          description: "POV / focal character (she/her in most prompts)."
+          properties: ["pose", "emotional_state", "body_language", "breathing"]
+        secondary:
+          id: "character.secondary"
+          label: "Secondary / creature"
+          description: "Non-POV entities (minotaur, werewolf, partner, etc.)."
+          properties: ["species", "size", "appearance", "body_features"]
+
+    part:
+      label: "Anatomy Part"
+      description: "Abstract anatomical part category. Domain packs define specific parts."
+      properties: ["size", "color", "texture", "state", "pose", "position", "contact_state", "orientation"]
+
+    region:
+      label: "Body Region"
+      description: "Abstract body region category. Domain packs define specific regions."
+      properties: ["location", "contact_state"]
+
+    action:
+      label: "Action"
+      description: "Abstract action category. Domain packs define specific action types."
+      properties: ["target", "speed", "intensity", "duration"]
+
+    state:
+      label: "State"
+      description: "Abstract state category (physical, emotional, positional). Domain packs define specific states."
+      subcategories:
+        - physical
+        - emotional
+        - positional
+
+    spatial:
+      label: "Spatial Relation"
+      description: "Abstract spatial relationship category (location, orientation, contact)."
+      subcategories:
+        - location
+        - orientation
+        - contact
+
+    camera:
+      label: "Camera"
+      description: "Abstract camera category (views, framing, movement)."
+      subcategories:
+        - views
+        - framing
+        - movement
+
+    beat:
+      label: "Narrative Beat"
+      description: "Abstract narrative beat category (sequence, micro-beats)."
+      subcategories:
+        - sequence_kinds
+        - micro_beats
+
+  intensity:
+    label: "Intensity Scale"
+    description: "Core intensity scale (0-100)"
+    scale: "0-100"
+    labels:
+      - id: "intensity:soft"
+        range: [0, 30]
+      - id: "intensity:medium"
+        range: [30, 70]
+      - id: "intensity:high"
+        range: [70, 100]
+
+  speed:
+    label: "Speed Scale"
+    description: "Core speed scale"
+    labels:
+      slow:
+        id: "speed:slow"
+      medium:
+        id: "speed:medium"
+      fast:
+        id: "speed:fast"
+
+  relationships:
+    - id: "character_has_part"
+      from: "character"
+      to: "part"
+      predicate: "has_part"
+
+    - id: "part_located_at_region"
+      from: "part"
+      to: "region"
+      predicate: "located_at"
+
+    - id: "character_performs_action"
+      from: "character"
+      to: "action"
+      predicate: "performs"
+
+    - id: "action_targets_entity"
+      from: "action"
+      to: "character|part"
+      predicate: "targets"
+
+    - id: "action_has_state"
+      from: "action"
+      to: "state.physical"
+      predicate: "has_state"
+
+    - id: "action_has_speed"
+      from: "action"
+      to: "speed"
+      predicate: "has_speed"
+
+    - id: "scene_has_beat"
+      from: "scene"
+      to: "beat"
+      predicate: "has_beat"
+
+    - id: "beat_follows_beat"
+      from: "beat"
+      to: "beat"
+      predicate: "follows"
+
+    - id: "camera_frames_entity"
+      from: "camera"
+      to: "character|part"
+      predicate: "frames"
+
+
+# ===== DOMAIN ONTOLOGY =====
+# Concrete entities, parts, actions, states specific to current content.
+# These can be grouped by semantic pack / theme.
+domain:
+  packs:
+    default:
+      label: "Default Content Pack"
+      description: "Core intimate/romantic content entities"
+
+      anatomy_parts:
+        - id: "part:shaft"
+          label: "Shaft"
+          keywords: ["shaft", "member", "cock"]
+          properties: ["size", "color", "texture", "state"]
+
+        - id: "part:head"
+          label: "Head"
+          keywords: ["head", "tip", "glans"]
+          properties: ["size", "color", "texture", "state"]
+
+        - id: "part:hands"
+          label: "Hands"
+          keywords: ["hands", "fingers", "palm"]
+          properties: ["pose", "position", "contact_state"]
+
+        - id: "part:torso"
+          label: "Torso"
+          keywords: ["torso", "body", "chest"]
+          properties: ["orientation", "pose", "contact_state"]
+
+        - id: "part:buttocks"
+          label: "Buttocks"
+          keywords: ["buttocks", "ass", "rear", "bottom"]
+          properties: ["pose", "contact_state"]
+
+      anatomy_regions:
+        - id: "region:groin"
+          label: "Groin / crotch"
+          keywords: ["groin", "crotch", "pelvis"]
+
+        - id: "region:chest"
+          label: "Chest"
+          keywords: ["chest", "breast", "torso"]
+
+        - id: "region:back"
+          label: "Back"
+          keywords: ["back", "spine"]
+
+        - id: "region:between_legs"
+          label: "Between legs"
+          keywords: ["between legs", "thighs"]
+
+      actions:
+        - id: "act:movement"
+          label: "Movement"
+          keywords: ["enters", "walks", "leans", "adjusts", "moves", "approaches"]
+
+        - id: "act:touch"
+          label: "Touch / contact"
+          keywords: ["presses", "strokes", "grasps", "traces", "touches", "caresses"]
+
+        - id: "act:phys_response"
+          label: "Physiological response"
+          keywords: ["twitches", "hardens", "swells", "pulses", "throbs", "stiffens"]
+
+      states_physical:
+        - id: "state:erect"
+          label: "Erect"
+          keywords: ["erect", "hard", "rigid"]
+
+        - id: "state:flaccid"
+          label: "Flaccid"
+          keywords: ["flaccid", "soft", "limp"]
+
+        - id: "state:stiffening"
+          label: "Stiffening"
+          keywords: ["stiffening", "hardening", "rising"]
+
+        - id: "state:hardening"
+          label: "Hardening"
+          keywords: ["hardening", "growing", "swelling"]
+
+        - id: "state:swollen"
+          label: "Swollen"
+          keywords: ["swollen", "engorged", "throbbing"]
+
+      states_emotional:
+        - id: "mood:confident"
+          label: "Confident"
+          keywords: ["confident", "assured", "bold"]
+
+        - id: "mood:nervous"
+          label: "Nervous"
+          keywords: ["nervous", "anxious", "uncertain"]
+
+        - id: "mood:intimidated"
+          label: "Intimidated"
+          keywords: ["intimidated", "overwhelmed", "awed"]
+
+        - id: "mood:eager"
+          label: "Eager"
+          keywords: ["eager", "excited", "enthusiastic"]
+
+        - id: "mood:playful"
+          label: "Playful"
+          keywords: ["playful", "teasing", "mischievous"]
+
+      states_positional:
+        - id: "state:hanging"
+          label: "Hanging"
+          keywords: ["hanging", "dangling", "suspended"]
+
+        - id: "state:rising"
+          label: "Rising"
+          keywords: ["rising", "lifting", "elevating"]
+
+        - id: "state:extended"
+          label: "Extended"
+          keywords: ["extended", "stretched", "reaching"]
+
+        - id: "state:aligned"
+          label: "Aligned"
+          keywords: ["aligned", "positioned", "centered"]
+
+      spatial_location:
+        - id: "rel:between_legs"
+          label: "Between legs"
+          keywords: ["between legs", "between thighs"]
+
+        - id: "rel:at_crotch"
+          label: "At crotch"
+          keywords: ["at crotch", "at groin"]
+
+        - id: "rel:at_groin"
+          label: "At groin"
+          keywords: ["at groin", "groin area"]
+
+        - id: "rel:against_back"
+          label: "Against back"
+          keywords: ["against back", "pressed to back"]
+
+      spatial_orientation:
+        - id: "ori:perpendicular"
+          label: "Perpendicular"
+          keywords: ["perpendicular", "at right angle"]
+
+        - id: "ori:aligned"
+          label: "Aligned"
+          keywords: ["aligned", "parallel", "matched"]
+
+        - id: "ori:facing_forward"
+          label: "Facing forward"
+          keywords: ["facing forward", "forward-facing"]
+
+      spatial_contact:
+        - id: "contact:pressing"
+          label: "Pressing"
+          keywords: ["pressing", "pushing", "applying pressure"]
+
+        - id: "contact:touching"
+          label: "Touching"
+          keywords: ["touching", "brushing", "grazing"]
+
+        - id: "contact:inside"
+          label: "Inside"
+          keywords: ["inside", "within", "penetrating"]
+
+        - id: "contact:against"
+          label: "Against"
+          keywords: ["against", "on", "resting on"]
+
+      camera_views:
+        - id: "cam:pov"
+          label: "POV"
+          keywords: ["pov", "point of view", "first-person"]
+
+        - id: "cam:from_behind"
+          label: "From behind"
+          keywords: ["from behind", "rear view", "back view"]
+
+        - id: "cam:upper_body_focus"
+          label: "Upper body focus"
+          keywords: ["upper body", "torso focus", "chest focus"]
+
+      camera_framing:
+        - id: "cam:centered"
+          label: "Centered"
+          keywords: ["centered", "center frame", "middle"]
+
+        - id: "cam:bottom_of_frame"
+          label: "Bottom of frame"
+          keywords: ["bottom of frame", "lower frame", "bottom edge"]
+
+        - id: "cam:entering_frame"
+          label: "Entering frame"
+          keywords: ["entering frame", "coming into view", "appearing"]
+
+      beats_sequence:
+        - id: "beat:setup"
+          label: "Setup"
+          keywords: ["setup", "introduction", "establishing"]
+
+        - id: "beat:buildup"
+          label: "Buildup"
+          keywords: ["buildup", "escalation", "rising"]
+
+        - id: "beat:climax"
+          label: "Climax"
+          keywords: ["climax", "peak", "culmination"]
+
+        - id: "beat:hold"
+          label: "Hold"
+          keywords: ["hold", "sustain", "maintain"]
+
+      beats_micro:
+        - id: "beat:tease"
+          label: "Tease"
+          keywords: ["tease", "teasing", "playful"]
+
+        - id: "beat:adjustment"
+          label: "Adjustment"
+          keywords: ["adjustment", "positioning", "aligning"]
+
+        - id: "beat:entry"
+          label: "Entry"
+          keywords: ["entry", "entering", "penetration"]
+
+        - id: "beat:escalation"
+          label: "Escalation"
+          keywords: ["escalation", "intensifying", "building"]
+
+
+# ===== ACTION BLOCKS ONTOLOGY =====
+# Defines vocabulary for action block selection, filtering, and scoring.
+# These are used by ActionEngine and should be referenced via typed EntityRefs.
+action_blocks:
+
+  # Pose taxonomy for character positioning and chaining
+  poses:
+    categories:
+      - standing
+      - sitting
+      - lying
+      - leaning
+      - movement
+      - transition
+      - intimate
+
+    definitions:
+      # Standing poses
+      - id: "pose:standing_neutral"
+        label: "Standing Neutral"
+        category: standing
+        detector_labels: ["standing", "stand", "upright"]
+        tags: ["full_body", "neutral"]
+
+      - id: "pose:standing_near"
+        label: "Standing Near"
+        category: standing
+        parent: "pose:standing_neutral"
+        detector_labels: ["standing_near", "standing_by", "beside"]
+        tags: ["full_body", "proximity"]
+
+      - id: "pose:standing_facing"
+        label: "Standing Facing Partner"
+        category: standing
+        parent: "pose:standing_neutral"
+        intimacy_min: 2
+        detector_labels: ["facing", "standing_facing", "face_to_face"]
+        tags: ["full_body", "interaction"]
+
+      - id: "pose:standing_embrace"
+        label: "Standing Embrace"
+        category: standing
+        parent: "pose:standing_facing"
+        intimacy_min: 5
+        detector_labels: ["embracing", "hugging", "holding"]
+        tags: ["full_body", "intimate", "contact"]
+
+      # Sitting poses
+      - id: "pose:sitting_neutral"
+        label: "Sitting Neutral"
+        category: sitting
+        detector_labels: ["sitting", "seated", "sit"]
+        tags: ["seated", "neutral"]
+
+      - id: "pose:sitting_close"
+        label: "Sitting Close Together"
+        category: sitting
+        parent: "pose:sitting_neutral"
+        intimacy_min: 3
+        detector_labels: ["sitting_close", "seated_together", "side_by_side"]
+        tags: ["seated", "proximity", "intimate"]
+
+      - id: "pose:sitting_turned"
+        label: "Sitting Turned Toward"
+        category: sitting
+        parent: "pose:sitting_neutral"
+        intimacy_min: 4
+        detector_labels: ["turned_toward", "facing_seated", "angled_toward"]
+        tags: ["seated", "interaction", "engaged"]
+
+      - id: "pose:sitting_leaning"
+        label: "Sitting Leaning Together"
+        category: sitting
+        parent: "pose:sitting_close"
+        intimacy_min: 6
+        detector_labels: ["leaning_together", "leaning_in", "seated_lean"]
+        tags: ["seated", "intimate", "contact"]
+
+      # Lying poses
+      - id: "pose:lying_neutral"
+        label: "Lying Down"
+        category: lying
+        detector_labels: ["lying", "lying_down", "reclined", "reclining"]
+        tags: ["horizontal", "relaxed"]
+
+      - id: "pose:lying_side"
+        label: "Lying on Side"
+        category: lying
+        parent: "pose:lying_neutral"
+        detector_labels: ["lying_side", "side_lying", "lateral"]
+        tags: ["horizontal", "turned"]
+
+      - id: "pose:lying_facing"
+        label: "Lying Facing Partner"
+        category: lying
+        parent: "pose:lying_neutral"
+        intimacy_min: 7
+        detector_labels: ["lying_facing", "facing_horizontal", "bed_facing"]
+        tags: ["horizontal", "intimate", "interaction"]
+
+      - id: "pose:lying_embrace"
+        label: "Lying Embracing"
+        category: lying
+        parent: "pose:lying_facing"
+        intimacy_min: 8
+        detector_labels: ["lying_embrace", "horizontal_embrace", "cuddling"]
+        tags: ["horizontal", "intimate", "contact", "close"]
+
+      # Leaning poses
+      - id: "pose:leaning_wall"
+        label: "Leaning Against Wall"
+        category: leaning
+        detector_labels: ["leaning_wall", "against_wall", "wall_lean"]
+        tags: ["partial_support", "casual"]
+
+      - id: "pose:leaning_rail"
+        label: "Leaning on Railing/Bar"
+        category: leaning
+        detector_labels: ["leaning_rail", "leaning_bar", "rail_lean"]
+        tags: ["partial_support", "casual"]
+
+      - id: "pose:leaning_forward"
+        label: "Leaning Forward"
+        category: leaning
+        intimacy_min: 4
+        detector_labels: ["leaning_forward", "lean_in", "forward_lean"]
+        tags: ["engaged", "interested"]
+
+      # Movement poses
+      - id: "pose:walking_neutral"
+        label: "Walking"
+        category: movement
+        detector_labels: ["walking", "walk", "moving", "stride"]
+        tags: ["motion", "locomotion"]
+
+      - id: "pose:walking_together"
+        label: "Walking Together"
+        category: movement
+        parent: "pose:walking_neutral"
+        intimacy_min: 2
+        detector_labels: ["walking_together", "strolling", "side_walk"]
+        tags: ["motion", "proximity", "synchronized"]
+
+      - id: "pose:walking_holding_hands"
+        label: "Walking Holding Hands"
+        category: movement
+        parent: "pose:walking_together"
+        intimacy_min: 5
+        detector_labels: ["holding_hands", "hand_in_hand", "linked_walking"]
+        tags: ["motion", "intimate", "contact"]
+
+      # Transition poses
+      - id: "pose:rising"
+        label: "Rising/Getting Up"
+        category: transition
+        detector_labels: ["rising", "getting_up", "standing_up"]
+        tags: ["motion", "transition"]
+
+      - id: "pose:sitting_down"
+        label: "Sitting Down"
+        category: transition
+        detector_labels: ["sitting_down", "taking_seat", "descending"]
+        tags: ["motion", "transition"]
+
+      - id: "pose:turning"
+        label: "Turning"
+        category: transition
+        detector_labels: ["turning", "rotating", "pivoting"]
+        tags: ["motion", "rotation"]
+
+      # Intimate poses
+      - id: "pose:kissing"
+        label: "Kissing"
+        category: intimate
+        intimacy_min: 7
+        detector_labels: ["kissing", "kiss", "lips_touching"]
+        tags: ["intimate", "contact", "romantic"]
+
+      - id: "pose:almost_kiss"
+        label: "Almost Kissing"
+        category: intimate
+        intimacy_min: 6
+        detector_labels: ["almost_kiss", "near_kiss", "faces_close"]
+        tags: ["intimate", "tension", "proximity"]
+
+      - id: "pose:forehead_touch"
+        label: "Forehead Touch"
+        category: intimate
+        intimacy_min: 7
+        detector_labels: ["forehead_touch", "heads_together", "forehead_kiss"]
+        tags: ["intimate", "tender", "contact"]
+
+      - id: "pose:hand_holding"
+        label: "Holding Hands"
+        category: intimate
+        intimacy_min: 4
+        detector_labels: ["holding_hands", "hand_hold", "hands_clasped"]
+        tags: ["intimate", "contact", "connection"]
+
+  # Locations for action block filtering
+  locations:
+    - id: "location:bench_park"
+      label: "Park Bench"
+      indoor: false
+      romantic: true
+      keywords: ["bench", "park", "outdoor seat"]
+
+    - id: "location:bar_lounge"
+      label: "Bar/Lounge"
+      indoor: true
+      romantic: true
+      keywords: ["bar", "lounge", "club", "nightclub"]
+
+    - id: "location:bedroom"
+      label: "Bedroom"
+      indoor: true
+      private: true
+      keywords: ["bedroom", "bed", "private room"]
+
+    - id: "location:kitchen"
+      label: "Kitchen"
+      indoor: true
+      keywords: ["kitchen", "cooking area"]
+
+    - id: "location:living_room"
+      label: "Living Room"
+      indoor: true
+      keywords: ["living room", "lounge", "couch", "sofa"]
+
+    - id: "location:office"
+      label: "Office"
+      indoor: true
+      keywords: ["office", "desk", "workplace"]
+
+    - id: "location:restaurant"
+      label: "Restaurant"
+      indoor: true
+      romantic: true
+      keywords: ["restaurant", "dining", "table"]
+
+    - id: "location:beach"
+      label: "Beach"
+      indoor: false
+      romantic: true
+      keywords: ["beach", "shore", "sand", "ocean"]
+
+    - id: "location:forest"
+      label: "Forest/Woods"
+      indoor: false
+      keywords: ["forest", "woods", "trees", "nature"]
+
+    - id: "location:balcony"
+      label: "Balcony"
+      indoor: false
+      romantic: true
+      keywords: ["balcony", "terrace", "overlook"]
+
+  # Intimacy levels for relationship progression
+  intimacy_levels:
+    - id: "intimacy:none"
+      label: "None"
+      level: 0
+      range: [0, 0]
+
+    - id: "intimacy:acquaintance"
+      label: "Acquaintance"
+      level: 1
+      range: [1, 2]
+
+    - id: "intimacy:light_flirt"
+      label: "Light Flirt"
+      level: 2
+      range: [3, 4]
+
+    - id: "intimacy:deep_flirt"
+      label: "Deep Flirt"
+      level: 3
+      range: [5, 6]
+
+    - id: "intimacy:intimate"
+      label: "Intimate"
+      level: 4
+      range: [7, 8]
+
+    - id: "intimacy:very_intimate"
+      label: "Very Intimate"
+      level: 5
+      range: [9, 10]
+
+  # Content ratings for filtering
+  content_ratings:
+    - id: "rating:general"
+      label: "General"
+      level: 0
+      description: "Suitable for all audiences"
+
+    - id: "rating:suggestive"
+      label: "Suggestive"
+      level: 1
+      description: "Mild romantic/suggestive content"
+
+    - id: "rating:intimate"
+      label: "Intimate"
+      level: 2
+      description: "Intimate romantic content"
+
+    - id: "rating:explicit"
+      label: "Explicit"
+      level: 3
+      description: "Explicit adult content"
+      requires_age_verification: true
+
+  # Mood/emotional tone for blocks
+  moods:
+    - id: "mood:neutral"
+      label: "Neutral"
+      keywords: ["neutral", "calm", "composed"]
+
+    - id: "mood:playful"
+      label: "Playful"
+      keywords: ["playful", "teasing", "mischievous", "fun"]
+      intensity_range: [1, 5]
+
+    - id: "mood:tender"
+      label: "Tender"
+      keywords: ["tender", "gentle", "soft", "caring"]
+      intensity_range: [3, 7]
+
+    - id: "mood:passionate"
+      label: "Passionate"
+      keywords: ["passionate", "intense", "heated", "fervent"]
+      intensity_range: [6, 10]
+
+    - id: "mood:conflicted"
+      label: "Conflicted"
+      keywords: ["conflicted", "torn", "uncertain", "hesitant"]
+
+    - id: "mood:nervous"
+      label: "Nervous"
+      keywords: ["nervous", "anxious", "shy", "uncertain"]
+
+    - id: "mood:confident"
+      label: "Confident"
+      keywords: ["confident", "bold", "assured", "assertive"]
+
+    - id: "mood:romantic"
+      label: "Romantic"
+      keywords: ["romantic", "loving", "affectionate", "sweet"]
+      intensity_range: [4, 8]
+
+  # Branch intents for narrative direction
+  branch_intents:
+    - id: "branch:escalate"
+      label: "Escalate"
+      description: "Increase intimacy/intensity"
+
+    - id: "branch:cool_down"
+      label: "Cool Down"
+      description: "Reduce tension/intensity"
+
+    - id: "branch:maintain"
+      label: "Maintain"
+      description: "Keep current intensity level"
+
+    - id: "branch:side_branch"
+      label: "Side Branch"
+      description: "Divergent event (interruption, etc.)"
+
+    - id: "branch:resolve"
+      label: "Resolve"
+      description: "Resolve tension/conflict"
+
+
+# ===== SCORING CONFIGURATION =====
+# Configurable weights and rules for action block selection scoring.
+# ActionEngine uses these to rank candidate blocks.
+scoring:
+  version: "1.0.0"
+
+  # Weight distribution (must sum to 1.0)
+  weights:
+    chain_compatibility: 0.30    # Previous block compatible
+    location_match: 0.20         # Location tag match
+    pose_match: 0.15             # Pose compatibility
+    intimacy_match: 0.15         # Intimacy level match
+    mood_match: 0.10             # Mood/emotional tone match
+    branch_intent: 0.10          # Narrative direction match
+
+  # Partial credit rules (0.0 - 1.0)
+  partial_credit:
+    generic_block: 0.5           # Block with no specific tag gets 50%
+    parent_pose: 0.8             # Parent pose match gets 80%
+    same_category: 0.6           # Same pose category gets 60%
+    adjacent_intimacy: 0.7       # One level off gets 70%
+
+  # Chain building constraints
+  chain:
+    max_blocks: 3                # Maximum blocks in a chain
+    min_remaining_budget: 3.0    # Stop adding blocks if < 3s remaining
+
+  # Duration constraints
+  duration:
+    min_block: 3.0               # Minimum block duration (seconds)
+    max_block: 12.0              # Maximum block duration (seconds)
+    default_single: 6.0          # Default single-state duration
+    default_transition: 7.0      # Default transition duration

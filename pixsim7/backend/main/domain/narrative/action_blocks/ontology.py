@@ -3,7 +3,7 @@ OntologyService - Single source of truth for action block vocabulary.
 
 This module re-exports from the central OntologyRegistry for backward compatibility.
 All ontology functionality is now centralized in:
-    pixsim7.backend.main.shared.ontology_registry
+    pixsim7.backend.main.domain.ontology
 
 The OntologyRegistry provides:
 - Core ontology loading from ontology.yaml
@@ -18,7 +18,7 @@ Migration note:
 """
 
 # Re-export everything from the central registry
-from pixsim7.backend.main.shared.ontology_registry import (
+from pixsim7.backend.main.domain.ontology.registry import (
     # Main class (aliased for backward compatibility)
     OntologyRegistry as OntologyService,
     OntologyRegistry,
