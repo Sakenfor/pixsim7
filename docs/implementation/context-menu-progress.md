@@ -10,26 +10,30 @@ Building an extensible, registry-based context menu system for dockview and othe
 ### ✅ Phase 1: Core Infrastructure (COMPLETED)
 
 **Files Created:**
-1. ✅ `apps/main/src/lib/dockview/contextMenu/types.ts` (147 lines)
+1. ✅ `apps/main/src/lib/dockview/contextMenu/types.ts`
    - Generic context types: dockview, asset, node, canvas, custom
    - MenuActionContext with optional fields for different contexts
+   - Multi-dockview support: `currentDockviewId`, `getDockviewApi(id)`
    - MenuAction interface
    - MenuItem interface
 
-2. ✅ `apps/main/src/lib/dockview/contextMenu/ContextMenuRegistry.ts` (105 lines)
+2. ✅ `apps/main/src/lib/dockview/contextMenu/ContextMenuRegistry.ts`
    - Extends BaseRegistry<MenuAction>
    - `getActionsForContext()` - filters by context type and visibility
    - `toMenuItems()` - converts to MenuItem format
    - Global singleton: `contextMenuRegistry`
 
-3. ✅ `apps/main/src/lib/dockview/contextMenu/ContextMenuProvider.tsx` (96 lines)
-   - React context for menu state
+3. ✅ `apps/main/src/lib/dockview/contextMenu/ContextMenuProvider.tsx`
+   - **Global** React context for menu state (should be at app root)
+   - Multi-dockview tracking: `registerDockview(id, api)`, `unregisterDockview(id)`
+   - `getDockviewApi(id)` - get any registered dockview's API
+   - `getDockviewIds()` - list all registered dockviews
    - `showContextMenu()` - opens menu with context
    - `hideContextMenu()` - closes menu
-   - `useContextMenu()` hook
-   - Works with or without dockview API (generic)
+   - `useContextMenu()` hook (throws if outside provider)
+   - `useContextMenuOptional()` hook (returns null if outside provider)
 
-4. ✅ `apps/main/src/lib/dockview/contextMenu/DockviewContextMenu.tsx` (166 lines)
+4. ✅ `apps/main/src/lib/dockview/contextMenu/DockviewContextMenu.tsx`
    - `ContextMenuPortal` - renders menu as portal at cursor
    - `MenuItemComponent` - recursive menu item renderer
    - Viewport boundary detection
@@ -37,12 +41,18 @@ Building an extensible, registry-based context menu system for dockview and othe
    - Click-outside to close
    - Nested menu support with indentation
 
-5. ✅ `apps/main/src/lib/dockview/contextMenu/CustomTabComponent.tsx` (37 lines)
+5. ✅ `apps/main/src/lib/dockview/contextMenu/CustomTabComponent.tsx`
    - Wraps DockviewDefaultTab
    - Adds onContextMenu handler
-   - Calls showContextMenu with tab context
+   - Uses `useContextMenuOptional` (works without provider)
+   - Uses `useDockviewId` to know which dockview it's in
 
-6. ✅ `apps/main/src/lib/dockview/contextMenu/index.ts` (10 lines)
+6. ✅ `apps/main/src/lib/dockview/contextMenu/DockviewIdContext.tsx`
+   - Simple context to provide dockview ID to children
+   - `DockviewIdProvider` - wraps SmartDockview content
+   - `useDockviewId()` - returns current dockview's ID
+
+7. ✅ `apps/main/src/lib/dockview/contextMenu/index.ts`
    - Barrel export
 
 **Key Features Implemented:**
@@ -54,40 +64,66 @@ Building an extensible, registry-based context menu system for dockview and othe
 - ✅ Nested menus
 - ✅ Variant styles (default/danger/success)
 - ✅ Icon and shortcut display
+- ✅ **Multi-dockview support for cross-dockview communication**
 
 ### ✅ Phase 2: Dockview Integration (COMPLETED)
 
 **Files Modified:**
-1. ✅ `apps/main/src/lib/dockview/SmartDockview.tsx` (385 lines)
-   - ✅ Added imports for context menu
-   - ✅ Added props: `enableContextMenu`, `contextMenuRegistry`
-   - ✅ Renamed main function to `SmartDockviewInner`
-   - ✅ Created `SmartDockviewWithContextMenu` component with context menu hooks
-   - ✅ Created `SmartDockview` wrapper that conditionally wraps with `ContextMenuProvider`
+1. ✅ `apps/main/src/lib/dockview/SmartDockview.tsx`
+   - Unified single component (no inner/wrapper split)
+   - Uses `useContextMenuOptional` for optional context menu support
+   - Registers with global provider via `registerDockview(panelManagerId, api)`
+   - Unregisters on unmount
+   - Wraps with `DockviewIdProvider` so children know their dockview ID
+   - `enableContextMenu` prop enables context menu features
 
 2. ✅ `apps/main/src/lib/dockview/contextMenu/index.ts`
-   - ✅ Added `CustomTabComponent` export
+   - Added all exports including `DockviewIdContext`
 
-**Completed Work for Phase 2:**
-- [x] Add context menu hooks to `SmartDockviewWithContextMenu`
-- [x] Set dockview API when ready (call `setDockviewApi` in handleReady)
-- [x] Pass `tabComponents={{ default: CustomTabComponent }}` to DockviewReact when enabled
-- [x] Add background context menu handler (onContextMenu on wrapper div)
-- [x] Render `<ContextMenuPortal />` when enabled
-- [x] Create wrapper component that provides ContextMenuProvider
-- [x] Export wrapper as `SmartDockview`
-
-**Architecture:**
+**Architecture (Global Provider):**
 ```
-SmartDockview (exported)
-├── enableContextMenu=false → SmartDockviewInner (simple)
-└── enableContextMenu=true → ContextMenuProvider
-                              └── SmartDockviewWithContextMenu
-                                  ├── useContextMenu() hook
-                                  ├── setDockviewApi() on ready
-                                  ├── tabComponents with CustomTabComponent
-                                  ├── background onContextMenu handler
-                                  └── ContextMenuPortal
+App (root)
+└── ContextMenuProvider (GLOBAL - placed at app root)
+    ├── dockviewApis: Map<id, api>  ← tracks all dockviews
+    ├── registerDockview(id, api)
+    ├── unregisterDockview(id)
+    ├── getDockviewApi(id)          ← get specific dockview
+    └── showContextMenu()           ← global
+
+    ├── Workspace (SmartDockview panelManagerId="workspace")
+    │   ├── DockviewIdProvider (dockviewId="workspace")
+    │   ├── on ready: registerDockview('workspace', api)
+    │   └── on unmount: unregisterDockview('workspace')
+    │
+    ├── ControlCenter (SmartDockview panelManagerId="control-center")
+    │   ├── DockviewIdProvider (dockviewId="control-center")
+    │   ├── on ready: registerDockview('control-center', api)
+    │   └── on unmount: unregisterDockview('control-center')
+    │
+    └── AssetCard (anywhere in app)
+        └── showContextMenu({ contextType: 'asset' })
+            └── action can: getDockviewApi('workspace').addPanel(...)
+```
+
+**Cross-Dockview Communication:**
+```typescript
+// Action can target specific dockview
+contextMenuRegistry.register({
+  id: 'open-in-workspace',
+  label: 'Open in Workspace',
+  availableIn: ['asset', 'asset-card'],
+  execute: async (ctx) => {
+    // Get workspace dockview (even if triggered from control-center)
+    const workspaceApi = ctx.getDockviewApi?.('workspace');
+    if (workspaceApi) {
+      workspaceApi.addPanel({
+        id: `asset-${ctx.assetId}`,
+        component: 'asset-viewer',
+        params: { assetId: ctx.assetId },
+      });
+    }
+  },
+});
 ```
 
 ### ⏳ Phase 3: Menu Actions (TODO)
@@ -132,8 +168,21 @@ SmartDockview (exported)
 - [ ] Menu repositions when near viewport edge
 - [ ] Test with asset context (future)
 - [ ] Test with node context (future)
+- [ ] **Cross-dockview actions work (e.g., open asset from ControlCenter in Workspace)**
 
 ## Architecture Decisions
+
+### Global Context Menu Provider
+**Decision:** Single global ContextMenuProvider at app root (not per-dockview)
+
+**Rationale:**
+- Enables cross-dockview communication (e.g., asset in ControlCenter opens panel in Workspace)
+- Single source of truth for menu state
+- Dockviews register themselves; actions can target any registered dockview
+
+**Trade-offs:**
+- Requires ContextMenuProvider at app root
+- Components must handle case where provider doesn't exist (useContextMenuOptional)
 
 ### Generic Context System
 **Decision:** Made context menu system generic, not dockview-specific
@@ -158,72 +207,77 @@ type ContextMenuContext =
 - Plugins can add custom context types
 - Each context can have different menu actions
 
-### Optional Fields Pattern
-**Decision:** Made all context-specific fields optional in MenuActionContext
+### Multi-Dockview MenuActionContext
+**Decision:** Added multi-dockview fields to context
 
-**Example:**
 ```typescript
 interface MenuActionContext {
   contextType: ContextMenuContext;
   position: { x, y };
-  data?: any; // Generic payload
+  data?: any;
 
-  // Optional: Dockview
-  api?: DockviewApi;
-  panelId?: string;
+  // Multi-dockview support
+  currentDockviewId?: string;           // Which dockview triggered this
+  getDockviewApi?: (id) => DockviewApi; // Get any dockview's API
 
-  // Optional: Assets
+  // Convenience shortcut
+  api?: DockviewApi; // Current dockview's API (if applicable)
+
+  // Other optional fields...
   assetId?: string;
-
-  // Optional: Graph
   nodeId?: string;
-
-  [key: string]: any; // Custom fields
+  [key: string]: any;
 }
 ```
 
 **Benefits:**
-- Works with or without dockview API
-- Supports multiple context types
-- Extensible for future contexts
+- Actions know which dockview triggered them
+- Actions can target specific dockviews by ID
+- Backwards compatible (api still works for current dockview)
 
 ## Next Steps
 
-1. **Implement Menu Actions (Phase 3):**
+1. **Add ContextMenuProvider to App Root:**
+   ```typescript
+   // In App.tsx or main layout
+   import { ContextMenuProvider } from '@lib/dockview/contextMenu';
+
+   function App() {
+     return (
+       <ContextMenuProvider>
+         <MainLayout />
+       </ContextMenuProvider>
+     );
+   }
+   ```
+
+2. **Implement Menu Actions (Phase 3):**
    - Start with panelActions.ts (Add Panel with categories)
    - Then presetActions.ts (integrate workspace store)
    - Then layoutActions.ts (split right/down)
    - Finally panel operations
 
-2. **Enable in a Dockview Instance:**
-   ```typescript
-   <SmartDockview
-     registry={workspaceRegistry}
-     enableContextMenu={true}
-     storageKey="workspace-layout"
-     // ...
-   />
-   ```
-
 3. **Test Context Menu (Phase 4):**
    - Right-click on tabs
    - Right-click on dockview background
-   - Verify actions work correctly
+   - Cross-dockview actions
 
-4. **Extend to Other Contexts:**
-   - Add asset card context menu
-   - Add graph node context menu
-   - Register context-specific actions
+## Usage Examples
 
-## Usage Example (Future)
-
-### Dockview
+### Enable Context Menu on SmartDockview
 ```typescript
-<SmartDockview enableContextMenu={true} />
+<SmartDockview
+  components={components}
+  onReady={handleReady}
+  enableContextMenu
+  panelManagerId="workspace"  // Required for context menu
+/>
 ```
 
-### Asset Card
+### Asset Card with Context Menu
 ```typescript
+const { showContextMenu } = useContextMenu();
+
 <div onContextMenu={(e) => {
   e.preventDefault();
   showContextMenu({
@@ -231,39 +285,46 @@ interface MenuActionContext {
     assetId: asset.id,
     data: asset,
     position: { x: e.clientX, y: e.clientY },
+    // No currentDockviewId - asset card isn't in a dockview
   });
 }}>
   {/* Asset card content */}
 </div>
 ```
 
-### Custom Action Registration
+### Cross-Dockview Action
 ```typescript
 contextMenuRegistry.register({
-  id: 'export-asset',
-  label: 'Export Asset',
-  icon: 'download',
+  id: 'open-in-workspace',
+  label: 'Open in Workspace',
   availableIn: ['asset', 'asset-card'],
   execute: async (ctx) => {
-    const asset = ctx.data;
-    // Export logic
+    // Get workspace even if triggered elsewhere
+    const workspaceApi = ctx.getDockviewApi?.('workspace');
+    if (workspaceApi) {
+      workspaceApi.addPanel({
+        id: `asset-${ctx.assetId}`,
+        component: 'panel',
+        params: { panelId: 'inspector', assetId: ctx.assetId },
+      });
+    }
   },
 });
 ```
 
 ## Files Summary
 
-### Created (6 files) - Phase 1
-- `contextMenu/types.ts` - Type definitions
+### Created (7 files) - Phase 1 & 2
+- `contextMenu/types.ts` - Type definitions with multi-dockview support
 - `contextMenu/ContextMenuRegistry.ts` - Registry class
-- `contextMenu/ContextMenuProvider.tsx` - React context
+- `contextMenu/ContextMenuProvider.tsx` - Global React context with dockview tracking
 - `contextMenu/DockviewContextMenu.tsx` - Menu component
-- `contextMenu/CustomTabComponent.tsx` - Tab wrapper
+- `contextMenu/CustomTabComponent.tsx` - Tab wrapper with optional context menu
+- `contextMenu/DockviewIdContext.tsx` - Context for dockview ID
 - `contextMenu/index.ts` - Barrel export
 
-### Modified (2 files) - Phase 2
-- `SmartDockview.tsx` - Added `SmartDockviewWithContextMenu` and `SmartDockview` wrapper (385 lines)
-- `contextMenu/index.ts` - Added `CustomTabComponent` export
+### Modified (1 file) - Phase 2
+- `SmartDockview.tsx` - Simplified, uses global provider
 
 ### To Create (4 files) - Phase 3
 - `contextMenu/actions/panelActions.ts`

@@ -46,8 +46,15 @@ export interface MenuActionContext {
   /** Generic data payload for the clicked item */
   data?: any;
 
+  // Multi-dockview support
+  /** ID of the dockview where context menu was triggered (if applicable) */
+  currentDockviewId?: string;
+
+  /** Get any registered dockview's API by ID */
+  getDockviewApi?: (id: string) => DockviewApi | undefined;
+
   // Dockview-specific fields (optional)
-  /** Dockview API instance for panel operations */
+  /** Dockview API instance for the current dockview (convenience shortcut) */
   api?: DockviewApi;
 
   /** Panel ID if context is tab/panel-content */

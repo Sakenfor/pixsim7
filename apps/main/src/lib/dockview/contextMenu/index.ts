@@ -9,4 +9,5 @@ export * from './ContextMenuRegistry';
 export * from './ContextMenuProvider';
 export * from './DockviewContextMenu';
 export * from './CustomTabComponent';
+export * from './DockviewIdContext';
 export { contextMenuRegistry } from './ContextMenuRegistry';

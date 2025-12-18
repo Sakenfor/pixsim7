@@ -5,7 +5,7 @@
  * - Auto-hides tabs when a group has only 1 panel
  * - Shows tabs when 2+ panels are grouped together
  * - Optional layout persistence to localStorage
- * - Context menu support
+ * - Context menu support (requires global ContextMenuProvider)
  * - Minimal chrome styling
  *
  * Supports two usage patterns:
@@ -16,6 +16,7 @@
  *   registry={myRegistry}
  *   defaultLayout={(api) => { ... }}
  *   storageKey="my-feature-layout"
+ *   panelManagerId="feature-dockview"
  * />
  * ```
  *
@@ -24,8 +25,14 @@
  * <SmartDockview
  *   components={{ panel: MyPanel }}
  *   onReady={handleReady}
+ *   panelManagerId="workspace"
  * />
  * ```
+ *
+ * Context Menu:
+ * - Requires ContextMenuProvider at app root
+ * - Set enableContextMenu={true} to enable right-click menus
+ * - panelManagerId is used as the dockview ID for cross-dockview communication
  */
 
 import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
@@ -38,7 +45,7 @@ import { useSmartDockview } from './useSmartDockview';
 import type { LocalPanelRegistry } from './LocalPanelRegistry';
 import type { LocalPanelDefinition } from './types';
 import { panelRegistry } from '@features/panels';
-import { ContextMenuProvider, ContextMenuPortal, CustomTabComponent, useContextMenu, type ContextMenuRegistry } from './contextMenu';
+import { ContextMenuPortal, CustomTabComponent, useContextMenuOptional, DockviewIdProvider } from './contextMenu';
 
 /** Base props shared by both modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -54,14 +61,12 @@ interface SmartDockviewBaseProps<TContext = any> {
   onLayoutChange?: () => void;
   /** Callback when dockview is ready */
   onReady?: (api: DockviewReadyEvent['api']) => void;
-  /** Optional: Register with panel manager for orchestration */
+  /** ID for this dockview - used for panel manager and context menu cross-dockview communication */
   panelManagerId?: string;
   /** Optional: IDs of global panels to include from global registry */
   globalPanelIds?: string[];
-  /** Optional: Enable context menu support */
+  /** Optional: Enable context menu support (requires ContextMenuProvider at app root) */
   enableContextMenu?: boolean;
-  /** Optional: Custom context menu registry */
-  contextMenuRegistry?: ContextMenuRegistry;
   /** Optional: Custom watermark component */
   watermarkComponent?: React.ComponentType;
   /** Optional: Custom tab components */
@@ -118,31 +123,32 @@ function createPanelWrapper<TContext>(
   return PanelWrapper;
 }
 
-/** Options for the setup hook */
-interface UseSmartDockviewSetupOptions {
-  /** Optional callback to set dockview API (for context menu) */
-  setDockviewApi?: (api: DockviewApi) => void;
-}
-
 /**
- * Shared setup hook for SmartDockview
- * Extracts common logic used by both Inner and WithContextMenu variants
+ * SmartDockview
+ *
+ * Unified dockview wrapper with smart features.
+ * When enableContextMenu is true, requires ContextMenuProvider at app root.
  */
-function useSmartDockviewSetup<TContext = any, TPanelId extends string = string>(
-  props: SmartDockviewProps<TContext, TPanelId>,
-  options: UseSmartDockviewSetupOptions = {}
+export function SmartDockview<TContext = any, TPanelId extends string = string>(
+  props: SmartDockviewProps<TContext, TPanelId>
 ) {
   const {
     storageKey,
     context,
     minPanelsForTabs = 2,
+    className,
     onLayoutChange,
     onReady: onReadyProp,
     panelManagerId,
     globalPanelIds = [],
+    enableContextMenu = false,
+    watermarkComponent,
+    tabComponents: customTabComponents,
+    theme = 'dockview-theme-abyss',
   } = props;
 
-  const { setDockviewApi } = options;
+  // Context menu (optional - returns null if no provider)
+  const contextMenu = useContextMenuOptional();
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
@@ -202,11 +208,8 @@ function useSmartDockviewSetup<TContext = any, TPanelId extends string = string>
   // Handle dockview ready
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
-      console.log('[SmartDockview] Ready, storageKey:', storageKey);
+      console.log('[SmartDockview] Ready, id:', panelManagerId, 'storageKey:', storageKey);
       apiRef.current = event.api;
-
-      // Set dockview API for context menu (if provided)
-      setDockviewApi?.(event.api);
 
       // Initialize smart features (tab visibility, persistence)
       onSmartReady(event.api);
@@ -219,6 +222,11 @@ function useSmartDockviewSetup<TContext = any, TPanelId extends string = string>
         }).catch(err => {
           console.warn('[SmartDockview] Failed to register with panel manager:', err);
         });
+
+        // Register with global context menu provider (if available)
+        if (contextMenu) {
+          contextMenu.registerDockview(panelManagerId, event.api);
+        }
       }
 
       // Registry mode: try to load saved layout or create default
@@ -238,8 +246,17 @@ function useSmartDockviewSetup<TContext = any, TPanelId extends string = string>
       setIsReady(true);
       onReadyProp?.(event.api);
     },
-    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, storageKey, registryMode, setDockviewApi]
+    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, storageKey, registryMode, contextMenu]
   );
+
+  // Unregister on unmount
+  useEffect(() => {
+    return () => {
+      if (panelManagerId && contextMenu) {
+        contextMenu.unregisterDockview(panelManagerId);
+      }
+    };
+  }, [panelManagerId, contextMenu]);
 
   // Update panel params when context changes (registry mode only)
   useEffect(() => {
@@ -251,136 +268,46 @@ function useSmartDockviewSetup<TContext = any, TPanelId extends string = string>
     });
   }, [context, isReady, registryMode]);
 
-  return {
-    components,
-    handleReady,
-    contextRef,
-  };
-}
+  // Determine if context menu features should be active
+  const contextMenuActive = enableContextMenu && contextMenu !== null;
 
-/**
- * SmartDockview without context menu
- */
-function SmartDockviewInner<TContext = any, TPanelId extends string = string>(
-  props: SmartDockviewProps<TContext, TPanelId>
-) {
-  const {
-    className,
-    watermarkComponent,
-    tabComponents: customTabComponents,
-    theme = 'dockview-theme-abyss',
-  } = props;
-
-  const { components, handleReady } = useSmartDockviewSetup(props);
-
-  return (
-    <div className={clsx(styles.smartDockview, className)}>
-      <DockviewReact
-        components={components}
-        tabComponents={customTabComponents}
-        watermarkComponent={watermarkComponent}
-        onReady={handleReady}
-        className={theme}
-      />
-    </div>
-  );
-}
-
-/**
- * SmartDockview with context menu support
- * Must be used within ContextMenuProvider.
- */
-function SmartDockviewWithContextMenu<TContext = any, TPanelId extends string = string>(
-  props: Omit<SmartDockviewProps<TContext, TPanelId>, 'enableContextMenu' | 'contextMenuRegistry'>
-) {
-  const {
-    className,
-    watermarkComponent,
-    tabComponents: customTabComponents,
-    theme = 'dockview-theme-abyss',
-  } = props;
-
-  // Context menu hooks
-  const { showContextMenu, setDockviewApi } = useContextMenu();
-
-  // Use shared setup with context menu integration
-  const { components, handleReady } = useSmartDockviewSetup(
-    props as SmartDockviewProps<TContext, TPanelId>,
-    { setDockviewApi }
-  );
-
-  // Tab components - merge custom with context menu default
-  const tabComponents = useMemo(() => ({
-    default: CustomTabComponent,
-    ...customTabComponents,
-  }), [customTabComponents]);
+  // Tab components - add context menu tab if enabled
+  const tabComponents = useMemo(() => {
+    if (contextMenuActive) {
+      return {
+        default: CustomTabComponent,
+        ...customTabComponents,
+      };
+    }
+    return customTabComponents;
+  }, [contextMenuActive, customTabComponents]);
 
   // Handle background context menu (right-click on empty dockview area)
   const handleBackgroundContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!contextMenuActive || !contextMenu) return;
     e.preventDefault();
-    showContextMenu({
+    contextMenu.showContextMenu({
       contextType: 'background',
       position: { x: e.clientX, y: e.clientY },
+      currentDockviewId: panelManagerId,
     });
-  }, [showContextMenu]);
+  }, [contextMenuActive, contextMenu, panelManagerId]);
 
   return (
-    <div
-      className={clsx(styles.smartDockview, className)}
-      onContextMenu={handleBackgroundContextMenu}
-    >
-      <DockviewReact
-        components={components}
-        tabComponents={tabComponents}
-        watermarkComponent={watermarkComponent}
-        onReady={handleReady}
-        className={theme}
-      />
-      <ContextMenuPortal />
-    </div>
-  );
-}
-
-/**
- * SmartDockview
- *
- * Unified dockview wrapper with smart features.
- * Supports two usage modes:
- *
- * 1. Registry Mode (for feature-specific dockviews):
- * ```tsx
- * <SmartDockview
- *   registry={myRegistry}
- *   defaultLayout={(api) => { ... }}
- *   storageKey="my-feature-layout"
- *   enableContextMenu
- * />
- * ```
- *
- * 2. Components Mode (for main workspace):
- * ```tsx
- * <SmartDockview
- *   components={{ panel: MyPanel }}
- *   onReady={handleReady}
- *   enableContextMenu
- *   theme="dockview-theme-dark"
- * />
- * ```
- */
-export function SmartDockview<TContext = any, TPanelId extends string = string>(
-  props: SmartDockviewProps<TContext, TPanelId>
-) {
-  const { enableContextMenu, contextMenuRegistry, ...innerProps } = props;
-
-  // Without context menu - use simple inner component
-  if (!enableContextMenu) {
-    return <SmartDockviewInner {...props} />;
-  }
-
-  // With context menu - wrap with provider
-  return (
-    <ContextMenuProvider registry={contextMenuRegistry}>
-      <SmartDockviewWithContextMenu {...innerProps} />
-    </ContextMenuProvider>
+    <DockviewIdProvider dockviewId={panelManagerId}>
+      <div
+        className={clsx(styles.smartDockview, className)}
+        onContextMenu={contextMenuActive ? handleBackgroundContextMenu : undefined}
+      >
+        <DockviewReact
+          components={components}
+          tabComponents={tabComponents}
+          watermarkComponent={watermarkComponent}
+          onReady={handleReady}
+          className={theme}
+        />
+        {contextMenuActive && <ContextMenuPortal />}
+      </div>
+    </DockviewIdProvider>
   );
 }
