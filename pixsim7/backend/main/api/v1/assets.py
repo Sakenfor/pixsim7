@@ -178,6 +178,90 @@ async def get_asset(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get asset: {str(e)}")
 
+
+# ===== CHECK ASSET BY HASH =====
+
+class CheckByHashRequest(BaseModel):
+    """Request body for checking if an asset exists by SHA256 hash."""
+    sha256: str = Field(..., min_length=64, max_length=64, description="SHA256 hash of file content")
+    provider_id: Optional[str] = Field(None, description="Optional: Check if uploaded to specific provider")
+
+
+class CheckByHashResponse(BaseModel):
+    """Response for hash check - returns asset info if found."""
+    exists: bool = Field(..., description="Whether an asset with this hash exists")
+    asset_id: Optional[int] = Field(None, description="Asset ID if found")
+    provider_id: Optional[str] = Field(None, description="Original provider ID if found")
+    uploaded_to_providers: Optional[List[str]] = Field(None, description="List of providers this asset is uploaded to")
+    note: Optional[str] = Field(None, description="Additional information")
+
+
+@router.post("/assets/check-by-hash", response_model=CheckByHashResponse)
+async def check_asset_by_hash(
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    request: CheckByHashRequest,
+):
+    """
+    Check if an asset with the given SHA256 hash already exists for the current user.
+
+    Returns asset metadata if found. This is a read-only check that does NOT
+    update last_accessed_at or modify any data.
+
+    Use this before uploading to avoid duplicate uploads.
+    """
+    try:
+        # Find asset by hash (read-only, doesn't update last_accessed_at)
+        from sqlmodel import select
+        from pixsim7.backend.main.domain.asset import Asset
+
+        stmt = select(Asset).where(
+            Asset.user_id == user.id,
+            Asset.sha256 == request.sha256
+        )
+        result = await asset_service.db.execute(stmt)
+        asset = result.scalars().first()
+
+        if not asset:
+            return CheckByHashResponse(
+                exists=False,
+                note="No asset found with this hash"
+            )
+
+        # Build list of providers this asset is uploaded to
+        uploaded_providers = [asset.provider_id]
+        if asset.provider_uploads:
+            uploaded_providers.extend(asset.provider_uploads.keys())
+
+        # Check if uploaded to specific provider (if requested)
+        note = "Asset exists"
+        if request.provider_id:
+            if request.provider_id in uploaded_providers:
+                note = f"Asset already uploaded to {request.provider_id}"
+            else:
+                note = f"Asset exists but not uploaded to {request.provider_id}"
+
+        return CheckByHashResponse(
+            exists=True,
+            asset_id=asset.id,
+            provider_id=asset.provider_id,
+            uploaded_to_providers=uploaded_providers,
+            note=note
+        )
+
+    except Exception as e:
+        logger.error(
+            "check_by_hash_failed",
+            sha256=request.sha256[:16],
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check asset by hash: {str(e)}"
+        )
+
+
 @router.post("/assets/{asset_id}/sync", response_model=AssetResponse, status_code=http_status.HTTP_200_OK)
 async def sync_asset(asset_id: int, user: CurrentUser, asset_service: AssetSvc):
     """Download remote provider asset locally and optionally extract embedded assets."""
@@ -343,26 +427,48 @@ async def upload_asset_to_provider(
             )
         else:
             if existing:
-                # Reuse existing asset and avoid re-uploading to provider
-                try:
-                  os.unlink(tmp_path)
-                except Exception:
-                  pass
-
-                existing_external = existing.remote_url
-                if not existing_external or not (
-                    isinstance(existing_external, str)
-                    and (existing_external.startswith("http://") or existing_external.startswith("https://"))
-                ):
-                    existing_external = f"/api/v1/assets/{existing.id}/file"
-
-                return UploadAssetResponse(
-                    provider_id=provider_id,
-                    media_type=existing.media_type,
-                    external_url=existing_external,
-                    provider_asset_id=existing.provider_asset_id,
-                    note="Reused existing asset (deduplicated by sha256)",
+                # Check if already uploaded to THIS provider
+                already_on_provider = (
+                    existing.provider_id == provider_id or
+                    provider_id in (existing.provider_uploads or {})
                 )
+
+                if already_on_provider:
+                    # Already exists on this provider - reuse without re-uploading
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+
+                    existing_external = existing.remote_url
+                    if not existing_external or not (
+                        isinstance(existing_external, str)
+                        and (existing_external.startswith("http://") or existing_external.startswith("https://"))
+                    ):
+                        existing_external = f"/api/v1/assets/{existing.id}/file"
+
+                    # Get provider-specific asset ID
+                    provider_specific_id = existing.provider_uploads.get(provider_id) if existing.provider_uploads else None
+                    if not provider_specific_id:
+                        provider_specific_id = existing.provider_asset_id
+
+                    return UploadAssetResponse(
+                        provider_id=provider_id,
+                        media_type=existing.media_type,
+                        external_url=existing_external,
+                        provider_asset_id=provider_specific_id,
+                        note=f"Reused existing asset (deduplicated by sha256, already on {provider_id})",
+                    )
+                else:
+                    # Exists but NOT on this provider - upload to new provider and update provider_uploads
+                    logger.info(
+                        "asset_cross_provider_upload",
+                        asset_id=existing.id,
+                        original_provider=existing.provider_id,
+                        target_provider=provider_id,
+                        detail="Uploading duplicate asset to additional provider",
+                    )
+                    # Continue with upload, will update provider_uploads map below
 
     # Use UploadService
     from pixsim7.backend.main.services.upload.upload_service import UploadService
@@ -397,23 +503,52 @@ async def upload_asset_to_provider(
             media_metadata["upload_history"] = {"context": upload_context}
 
         try:
-            await add_asset(
-                db,
-                user_id=user.id,
-                media_type=media_type,
-                provider_id=provider_id,
-                provider_asset_id=provider_asset_id,
-                remote_url=remote_url,
-                thumbnail_url=result.external_url,
-                width=result.width,
-                height=result.height,
-                duration_sec=None,
-                mime_type=result.mime_type or content_type,
-                file_size_bytes=result.file_size_bytes,
-                 sha256=sha256,
-                media_metadata=media_metadata or None,
-            )
-            # TODO: Add "user_upload" tag using TagService after asset creation
+            # Check if we're updating an existing asset (cross-provider upload)
+            if existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
+                # Update existing asset with new provider mapping
+                if not existing.provider_uploads:
+                    existing.provider_uploads = {}
+                existing.provider_uploads[provider_id] = provider_asset_id
+
+                # Mark as modified
+                db.add(existing)
+                await db.commit()
+                await db.refresh(existing)
+
+                logger.info(
+                    "asset_provider_uploads_updated",
+                    asset_id=existing.id,
+                    provider_id=provider_id,
+                    provider_asset_id=provider_asset_id,
+                )
+
+                # Return existing asset with new provider info
+                return UploadAssetResponse(
+                    provider_id=provider_id,
+                    media_type=existing.media_type,
+                    external_url=remote_url,
+                    provider_asset_id=provider_asset_id,
+                    note=f"Reused existing asset (deduplicated by sha256, uploaded to {provider_id})",
+                )
+            else:
+                # Create new asset
+                await add_asset(
+                    db,
+                    user_id=user.id,
+                    media_type=media_type,
+                    provider_id=provider_id,
+                    provider_asset_id=provider_asset_id,
+                    remote_url=remote_url,
+                    thumbnail_url=result.external_url,
+                    width=result.width,
+                    height=result.height,
+                    duration_sec=None,
+                    mime_type=result.mime_type or content_type,
+                    file_size_bytes=result.file_size_bytes,
+                    sha256=sha256,
+                    media_metadata=media_metadata or None,
+                )
+                # TODO: Add "user_upload" tag using TagService after asset creation
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
             logger.error(
