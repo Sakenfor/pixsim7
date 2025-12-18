@@ -8,4 +8,5 @@ export * from './types';
 export * from './ContextMenuRegistry';
 export * from './ContextMenuProvider';
 export * from './DockviewContextMenu';
+export * from './CustomTabComponent';
 export { contextMenuRegistry } from './ContextMenuRegistry';

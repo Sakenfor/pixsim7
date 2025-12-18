@@ -1,11 +1,11 @@
 # Dockview Context Menu Implementation Progress
 
-**Last Updated:** 2024-12-18
+**Last Updated:** 2025-12-18
 
 ## Overview
 Building an extensible, registry-based context menu system for dockview and other clickable items (assets, nodes, etc.) across the application.
 
-## Current Status: Phase 2 - Dockview Integration (In Progress)
+## Current Status: Phase 3 - Menu Actions (TODO)
 
 ### ✅ Phase 1: Core Infrastructure (COMPLETED)
 
@@ -55,24 +55,40 @@ Building an extensible, registry-based context menu system for dockview and othe
 - ✅ Variant styles (default/danger/success)
 - ✅ Icon and shortcut display
 
-### 🚧 Phase 2: Dockview Integration (IN PROGRESS)
+### ✅ Phase 2: Dockview Integration (COMPLETED)
 
 **Files Modified:**
-1. 🚧 `apps/main/src/lib/dockview/SmartDockview.tsx` (partial)
+1. ✅ `apps/main/src/lib/dockview/SmartDockview.tsx` (385 lines)
    - ✅ Added imports for context menu
    - ✅ Added props: `enableContextMenu`, `contextMenuRegistry`
    - ✅ Renamed main function to `SmartDockviewInner`
-   - ⏳ Need to add: context menu hooks, tab components, background handler, portal
-   - ⏳ Need to: wrap with ContextMenuProvider and create wrapper component
+   - ✅ Created `SmartDockviewWithContextMenu` component with context menu hooks
+   - ✅ Created `SmartDockview` wrapper that conditionally wraps with `ContextMenuProvider`
 
-**Remaining Work for Phase 2:**
-- [ ] Add context menu hooks to SmartDockviewInner
-- [ ] Set dockview API when ready (call `setDockviewApi`)
-- [ ] Pass `tabComponents={{ default: CustomTabComponent }}` to DockviewReact when enabled
-- [ ] Add background context menu handler (onContextMenu on wrapper div)
-- [ ] Render `<ContextMenuPortal />` when enabled
-- [ ] Create wrapper component that provides ContextMenuProvider
-- [ ] Export wrapper as `SmartDockview`
+2. ✅ `apps/main/src/lib/dockview/contextMenu/index.ts`
+   - ✅ Added `CustomTabComponent` export
+
+**Completed Work for Phase 2:**
+- [x] Add context menu hooks to `SmartDockviewWithContextMenu`
+- [x] Set dockview API when ready (call `setDockviewApi` in handleReady)
+- [x] Pass `tabComponents={{ default: CustomTabComponent }}` to DockviewReact when enabled
+- [x] Add background context menu handler (onContextMenu on wrapper div)
+- [x] Render `<ContextMenuPortal />` when enabled
+- [x] Create wrapper component that provides ContextMenuProvider
+- [x] Export wrapper as `SmartDockview`
+
+**Architecture:**
+```
+SmartDockview (exported)
+├── enableContextMenu=false → SmartDockviewInner (simple)
+└── enableContextMenu=true → ContextMenuProvider
+                              └── SmartDockviewWithContextMenu
+                                  ├── useContextMenu() hook
+                                  ├── setDockviewApi() on ready
+                                  ├── tabComponents with CustomTabComponent
+                                  ├── background onContextMenu handler
+                                  └── ContextMenuPortal
+```
 
 ### ⏳ Phase 3: Menu Actions (TODO)
 
@@ -173,39 +189,13 @@ interface MenuActionContext {
 
 ## Next Steps
 
-1. **Finish SmartDockview Integration:**
-   ```typescript
-   // Add to SmartDockviewInner:
-   const { setDockviewApi } = useContextMenu();
-
-   // In handleReady:
-   setDockviewApi(event.api);
-
-   // Add tabComponents when enabled:
-   const tabComponents = useMemo(() => {
-     if (!enableContextMenu) return undefined;
-     return { default: CustomTabComponent };
-   }, [enableContextMenu]);
-
-   // Add background handler:
-   const handleBackgroundContextMenu = (e: React.MouseEvent) => {
-     e.preventDefault();
-     showContextMenu({
-       contextType: 'background',
-       position: { x: e.clientX, y: e.clientY },
-     });
-   };
-
-   // Wrap with provider and render portal
-   ```
-
-2. **Implement Menu Actions:**
+1. **Implement Menu Actions (Phase 3):**
    - Start with panelActions.ts (Add Panel with categories)
    - Then presetActions.ts (integrate workspace store)
    - Then layoutActions.ts (split right/down)
    - Finally panel operations
 
-3. **Test in DockviewWorkspace:**
+2. **Enable in a Dockview Instance:**
    ```typescript
    <SmartDockview
      registry={workspaceRegistry}
@@ -214,6 +204,11 @@ interface MenuActionContext {
      // ...
    />
    ```
+
+3. **Test Context Menu (Phase 4):**
+   - Right-click on tabs
+   - Right-click on dockview background
+   - Verify actions work correctly
 
 4. **Extend to Other Contexts:**
    - Add asset card context menu
@@ -258,7 +253,7 @@ contextMenuRegistry.register({
 
 ## Files Summary
 
-### Created (6 files)
+### Created (6 files) - Phase 1
 - `contextMenu/types.ts` - Type definitions
 - `contextMenu/ContextMenuRegistry.ts` - Registry class
 - `contextMenu/ContextMenuProvider.tsx` - React context
@@ -266,14 +261,12 @@ contextMenuRegistry.register({
 - `contextMenu/CustomTabComponent.tsx` - Tab wrapper
 - `contextMenu/index.ts` - Barrel export
 
-### Modified (1 file, partial)
-- `SmartDockview.tsx` - Added props and imports (incomplete)
+### Modified (2 files) - Phase 2
+- `SmartDockview.tsx` - Added `SmartDockviewWithContextMenu` and `SmartDockview` wrapper (385 lines)
+- `contextMenu/index.ts` - Added `CustomTabComponent` export
 
-### To Create (4 files)
+### To Create (4 files) - Phase 3
 - `contextMenu/actions/panelActions.ts`
 - `contextMenu/actions/layoutActions.ts`
 - `contextMenu/actions/presetActions.ts`
 - `contextMenu/actions/index.ts`
-
-## Plan File
-Reference: `C:\Users\Stefan\.claude\plans\soft-watching-honey.md`
