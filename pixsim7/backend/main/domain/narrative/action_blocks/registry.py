@@ -6,13 +6,14 @@ No business logic - that's in BlockSelector and strategies.
 """
 
 import json
-import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Iterator
 
+import pixsim_logging
+
 from .types_unified import ActionBlock
 
-logger = logging.getLogger(__name__)
+logger = pixsim_logging.get_logger()
 
 
 class BlockRegistry:

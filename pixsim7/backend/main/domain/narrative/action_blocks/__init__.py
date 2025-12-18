@@ -1,35 +1,53 @@
 """
 Action Blocks for Visual Generation
 
-This module provides the action prompt engine for generating short 5-8 second
-video clips from reference images. It works alongside the narrative engine
+This module provides the action block selection system for generating short 5-8
+second video clips from reference images. It works alongside the narrative engine
 to create visual content that matches the emotional and relational context.
 
-Architecture (v2):
+Architecture:
+- OntologyService: Single source of truth for poses, intimacy levels, ratings, etc.
 - BlockRegistry: Pure storage for action blocks
 - BlockSelector: Orchestrates selection with filters and scorers
 - Filters: Pluggable hard requirement checks
-- Scorers: Pluggable soft preference scoring
+- Scorers: Pluggable soft preference scoring with ontology-driven weights
 
-The unified ActionBlock type (from types_unified) combines v1 and v2 features
-with optional fields, eliminating hasattr() checks.
+Usage:
+    from pixsim7.backend.main.domain.narrative.action_blocks import (
+        ActionEngine,
+        ActionBlock,
+        ActionSelectionContext,
+        BlockRegistry,
+        BlockSelector,
+    )
+
+    # Using ActionEngine (high-level API)
+    engine = ActionEngine()
+    result = await engine.select_actions(context, db_session)
+
+    # Using BlockSelector directly (low-level API)
+    registry = BlockRegistry()
+    registry.load_from_directory(Path("blocks/"))
+    selector = BlockSelector(registry)
+    blocks = selector.select_chain(context)
 """
 
-# Legacy imports (v1 types) - for backward compatibility
-from .types import (
-    ActionBlock as LegacyActionBlock,
-    SingleStateBlock as LegacySingleStateBlock,
-    TransitionBlock as LegacyTransitionBlock,
-    ActionBlockTags as LegacyActionBlockTags,
-    ReferenceImage as LegacyReferenceImage,
-    TransitionEndpoint as LegacyTransitionEndpoint,
-    BranchIntent as LegacyBranchIntent,
-    ActionSelectionContext as LegacyActionSelectionContext,
-)
+# Engine (main entry point)
 from .engine import ActionEngine
-from .pose_taxonomy import PoseTaxonomy, POSE_TAXONOMY
 
-# New unified types (v2)
+# Ontology service
+from .ontology import (
+    OntologyService,
+    get_ontology,
+    PoseDefinition,
+    IntimacyLevel,
+    ContentRatingDef,
+    MoodDefinition,
+    BranchIntentDef,
+    LocationDefinition,
+)
+
+# Unified types
 from .types_unified import (
     # Enums
     BranchIntent,
@@ -49,11 +67,6 @@ from .types_unified import (
     ActionBlock,
     ActionSelectionContext,
     ActionSelectionResult,
-    # Backward compatibility aliases
-    SingleStateBlock,
-    TransitionBlock,
-    EnhancedSingleStateBlock,
-    EnhancedTransitionBlock,
 )
 
 # Registry
@@ -69,6 +82,7 @@ from .filters import (
     LocationFilter,
     BranchIntentFilter,
     IntimacyLevelFilter,
+    ChainCompatibilityFilter,
     CompositeFilter,
     create_default_filters,
 )
@@ -94,10 +108,17 @@ from .selector import (
 )
 
 __all__ = [
-    # Legacy engine (still works)
+    # Engine
     "ActionEngine",
-    "PoseTaxonomy",
-    "POSE_TAXONOMY",
+    # Ontology
+    "OntologyService",
+    "get_ontology",
+    "PoseDefinition",
+    "IntimacyLevel",
+    "ContentRatingDef",
+    "MoodDefinition",
+    "BranchIntentDef",
+    "LocationDefinition",
     # Enums
     "BranchIntent",
     "CameraMovementType",
@@ -116,11 +137,6 @@ __all__ = [
     "ActionBlock",
     "ActionSelectionContext",
     "ActionSelectionResult",
-    # Backward compat type aliases
-    "SingleStateBlock",
-    "TransitionBlock",
-    "EnhancedSingleStateBlock",
-    "EnhancedTransitionBlock",
     # Registry
     "BlockRegistry",
     # Filters
@@ -132,6 +148,7 @@ __all__ = [
     "LocationFilter",
     "BranchIntentFilter",
     "IntimacyLevelFilter",
+    "ChainCompatibilityFilter",
     "CompositeFilter",
     "create_default_filters",
     # Scorers

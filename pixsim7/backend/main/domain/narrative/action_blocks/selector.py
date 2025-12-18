@@ -5,10 +5,16 @@ This is the main entry point for selecting action blocks. It combines:
 - BlockRegistry for storage/retrieval
 - CompositeFilter for narrowing candidates
 - CompositeScorer for ranking matches
+
+Chain building uses constraints from ontology.yaml:
+- max_blocks: Maximum blocks in a chain
+- min_remaining_budget: Stop adding blocks if remaining time < this
+- duration constraints for validation
 """
 
-import logging
 from typing import List, Optional, Dict, Any, Tuple
+
+import pixsim_logging
 
 from .types_unified import (
     ActionBlock,
@@ -18,8 +24,9 @@ from .types_unified import (
 from .registry import BlockRegistry
 from .filters import CompositeFilter, create_default_filters
 from .scorers import CompositeScorer, ScoringConfig, create_default_scorers
+from .ontology import OntologyService, get_ontology
 
-logger = logging.getLogger(__name__)
+logger = pixsim_logging.get_logger()
 
 
 class BlockSelector:
@@ -30,6 +37,8 @@ class BlockSelector:
     1. Candidate retrieval (from registry)
     2. Filtering (hard requirements)
     3. Scoring (soft preferences)
+
+    Chain building respects ontology.yaml constraints.
     """
 
     def __init__(
@@ -37,7 +46,7 @@ class BlockSelector:
         registry: BlockRegistry,
         filters: Optional[CompositeFilter] = None,
         scorers: Optional[CompositeScorer] = None,
-        scoring_config: Optional[ScoringConfig] = None,
+        ontology: Optional[OntologyService] = None,
     ):
         """
         Initialize the selector.
@@ -46,14 +55,38 @@ class BlockSelector:
             registry: Block storage
             filters: Custom filter chain (uses defaults if None)
             scorers: Custom scorer chain (uses defaults if None)
-            scoring_config: Scoring weights config (for default scorers)
+            ontology: OntologyService for config and pose data
         """
         self.registry = registry
-        self.filters = filters or create_default_filters()
-        self.scorers = scorers or create_default_scorers(
-            config=scoring_config,
+        self._ontology = ontology
+
+        # Initialize filters and scorers with ontology
+        ont = self.ontology
+        self.filters = filters or create_default_filters(
+            ontology=ont,
             registry=registry,
         )
+        self.scorers = scorers or create_default_scorers(
+            ontology=ont,
+            registry=registry,
+        )
+
+    @property
+    def ontology(self) -> OntologyService:
+        """Get ontology service (lazy load if needed)."""
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
+
+    @property
+    def chain_constraints(self):
+        """Get chain constraints from ontology."""
+        return self.ontology.chain_constraints
+
+    @property
+    def duration_constraints(self):
+        """Get duration constraints from ontology."""
+        return self.ontology.duration_constraints
 
     # =========================================================================
     # Main Selection API
@@ -78,17 +111,23 @@ class BlockSelector:
         """
         # Phase 1: Get all candidates
         candidates = list(self.registry.all())
-        logger.debug(f"Starting selection with {len(candidates)} candidates")
+        logger.debug(
+            "selection_started",
+            candidate_count=len(candidates),
+        )
 
         # Phase 2: Filter
         filtered = [
             block for block in candidates
             if self.filters.filter(block, context)
         ]
-        logger.debug(f"After filtering: {len(filtered)} blocks remain")
+        logger.debug(
+            "selection_filtered",
+            filtered_count=len(filtered),
+        )
 
         if not filtered:
-            logger.warning("No blocks passed filters")
+            logger.warning("selection_no_blocks_passed_filters")
             return []
 
         # Phase 3: Score
@@ -108,8 +147,9 @@ class BlockSelector:
         ][:limit]
 
         logger.debug(
-            f"Selection complete: {len(result)} blocks "
-            f"(scores: {[f'{s:.2f}' for _, s in result]})"
+            "selection_complete",
+            result_count=len(result),
+            top_scores=[f"{s:.2f}" for _, s in result[:3]],
         )
 
         return result
@@ -135,36 +175,78 @@ class BlockSelector:
     def select_chain(
         self,
         context: ActionSelectionContext,
-        target_duration: float = 12.0,
-        max_blocks: int = 4,
+        target_duration: Optional[float] = None,
+        max_blocks: Optional[int] = None,
     ) -> ActionSelectionResult:
         """
         Select a chain of blocks for the target duration.
 
+        Uses ontology.yaml chain constraints:
+        - max_blocks: Maximum blocks (default from ontology)
+        - min_remaining_budget: Stop if remaining < this
+
         Args:
             context: Initial selection context
-            target_duration: Target total duration in seconds
-            max_blocks: Maximum number of blocks
+            target_duration: Target total duration (defaults to 12s)
+            max_blocks: Maximum blocks (defaults to ontology config)
 
         Returns:
             ActionSelectionResult with selected blocks
         """
+        # Use ontology constraints as defaults
+        chain_cfg = self.chain_constraints
+        dur_cfg = self.duration_constraints
+
+        effective_target = target_duration or (dur_cfg.max_block * 2)  # ~24s default
+        effective_max_blocks = max_blocks or chain_cfg.max_blocks
+        min_budget = chain_cfg.min_remaining_budget
+
         blocks: List[ActionBlock] = []
         total_duration = 0.0
         current_context = context
 
-        while total_duration < target_duration and len(blocks) < max_blocks:
+        while total_duration < effective_target and len(blocks) < effective_max_blocks:
+            # Calculate remaining budget
+            remaining = effective_target - total_duration
+
+            # Stop if remaining budget too small
+            if remaining < min_budget:
+                logger.debug(
+                    "chain_stopped_budget",
+                    remaining=remaining,
+                    min_budget=min_budget,
+                )
+                break
+
             # Select next block
             results = self.select(current_context, limit=3)
 
             if not results:
                 logger.warning(
-                    f"Chain ended early: no suitable blocks after {len(blocks)} blocks"
+                    "chain_ended_no_blocks",
+                    blocks_so_far=len(blocks),
                 )
                 break
 
-            # Pick the best
-            block, score = results[0]
+            # Pick the best that fits
+            selected = None
+            for block, score in results:
+                if block.durationSec <= remaining:
+                    selected = (block, score)
+                    break
+
+            if not selected:
+                # No block fits, take shortest available
+                sorted_by_duration = sorted(results, key=lambda x: x[0].durationSec)
+                selected = sorted_by_duration[0]
+                logger.debug(
+                    "chain_block_exceeds_budget",
+                    block_id=selected[0].id,
+                    block_duration=selected[0].durationSec,
+                    remaining=remaining,
+                )
+
+            block, score = selected
             blocks.append(block)
             total_duration += block.durationSec
 
@@ -344,10 +426,9 @@ class BlockSelector:
         new_data["previousBlockId"] = selected_block.id
 
         # Update pose to end pose of selected block
-        if selected_block.is_transition() and selected_block.to:
-            new_data["pose"] = selected_block.to.pose
-        elif selected_block.endPose:
-            new_data["pose"] = selected_block.endPose
+        end_pose = selected_block.get_end_pose()
+        if end_pose:
+            new_data["pose"] = end_pose
 
         return ActionSelectionContext(**new_data)
 
@@ -380,23 +461,19 @@ class BlockSelector:
 
 def create_selector(
     registry: BlockRegistry,
-    scoring_config: Optional[Dict[str, Any]] = None,
+    ontology: Optional[OntologyService] = None,
 ) -> BlockSelector:
     """
-    Create a selector with default configuration.
+    Create a selector with ontology-driven configuration.
 
     Args:
         registry: Block storage
-        scoring_config: Optional scoring weights from ontology.yaml
+        ontology: OntologyService instance (uses global if None)
 
     Returns:
         Configured BlockSelector
     """
-    config = None
-    if scoring_config:
-        config = ScoringConfig.from_dict(scoring_config)
-
     return BlockSelector(
         registry=registry,
-        scoring_config=config,
+        ontology=ontology,
     )

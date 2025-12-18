@@ -6,21 +6,31 @@ Scorers rank candidate blocks after filtering. Each scorer implements:
 - weight: float (how much this scorer contributes)
 
 The final score is: sum(scorer.score() * scorer.weight) / sum(weights)
+
+All scorers use OntologyService for ontology-driven data (poses, intimacy levels,
+partial credit rules, etc.) rather than hardcoded values.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
-import logging
+
+import pixsim_logging
 
 from .types_unified import ActionBlock, ActionSelectionContext
+from .ontology import OntologyService, get_ontology, ScoringConfig as OntologyScoringConfig
 
-logger = logging.getLogger(__name__)
+logger = pixsim_logging.get_logger()
 
 
 @dataclass
 class ScoringConfig:
-    """Configuration for scoring weights and partial credit rules."""
+    """
+    Configuration for scoring weights and partial credit rules.
+
+    This is a convenience wrapper around ontology scoring config.
+    Prefer using OntologyService.scoring directly when possible.
+    """
 
     # Weights (should sum to 1.0)
     chain_compatibility: float = 0.30
@@ -54,6 +64,23 @@ class ScoringConfig:
             adjacent_intimacy=partial.get("adjacent_intimacy", 0.7),
         )
 
+    @classmethod
+    def from_ontology(cls, ontology: OntologyService) -> "ScoringConfig":
+        """Load from OntologyService."""
+        scoring = ontology.scoring
+        return cls(
+            chain_compatibility=scoring.weights.chain_compatibility,
+            location_match=scoring.weights.location_match,
+            pose_match=scoring.weights.pose_match,
+            intimacy_match=scoring.weights.intimacy_match,
+            mood_match=scoring.weights.mood_match,
+            branch_intent=scoring.weights.branch_intent,
+            generic_block=scoring.partial_credit.generic_block,
+            parent_pose=scoring.partial_credit.parent_pose,
+            same_category=scoring.partial_credit.same_category,
+            adjacent_intimacy=scoring.partial_credit.adjacent_intimacy,
+        )
+
 
 class BlockScorer(ABC):
     """Base class for block scorers."""
@@ -84,7 +111,11 @@ class BlockScorer(ABC):
 class LocationScorer(BlockScorer):
     """Score based on location match."""
 
-    def __init__(self, weight: float = 0.20, partial_generic: float = 0.5):
+    def __init__(
+        self,
+        weight: float = 0.20,
+        partial_generic: float = 0.5,
+    ):
         super().__init__(weight)
         self.partial_generic = partial_generic
 
@@ -102,86 +133,70 @@ class LocationScorer(BlockScorer):
 
 
 class PoseScorer(BlockScorer):
-    """Score based on pose match."""
-
-    # Pose categories for same-category matching
-    POSE_CATEGORIES = {
-        "standing_neutral": "standing",
-        "standing_near": "standing",
-        "standing_facing": "standing",
-        "standing_embrace": "standing",
-        "sitting_neutral": "sitting",
-        "sitting_close": "sitting",
-        "sitting_turned": "sitting",
-        "sitting_leaning": "sitting",
-        "lying_neutral": "lying",
-        "lying_side": "lying",
-        "lying_facing": "lying",
-        "lying_embrace": "lying",
-    }
+    """Score based on pose match using ontology pose graph."""
 
     def __init__(
         self,
         weight: float = 0.15,
-        partial_category: float = 0.6,
+        ontology: Optional[OntologyService] = None,
     ):
         super().__init__(weight)
-        self.partial_category = partial_category
+        self._ontology = ontology
+
+    @property
+    def ontology(self) -> OntologyService:
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
 
     def score(self, block: ActionBlock, context: ActionSelectionContext) -> float:
         if not context.pose:
             return 1.0
 
-        block_pose = block.startPose if block.is_single_state() else None
-        if block.is_transition() and block.from_:
-            block_pose = block.from_.pose
+        block_pose = block.get_start_pose()
 
         if not block_pose:
-            return 0.5  # No pose info
+            return self.ontology.partial_credit.generic_block  # No pose info
 
-        if block_pose == context.pose:
-            return 1.0
-
-        # Same category partial credit
-        ctx_cat = self.POSE_CATEGORIES.get(context.pose)
-        block_cat = self.POSE_CATEGORIES.get(block_pose)
-        if ctx_cat and block_cat and ctx_cat == block_cat:
-            return self.partial_category
-
-        return 0.0
+        # Use ontology for pose similarity
+        return self.ontology.pose_similarity_score(context.pose, block_pose)
 
 
 class IntimacyScorer(BlockScorer):
-    """Score based on intimacy level match."""
+    """Score based on intimacy level match using ontology."""
 
-    LEVEL_ORDER = {
-        "none": 0,
-        "acquaintance": 1,
-        "light_flirt": 2,
-        "deep_flirt": 3,
-        "intimate": 4,
-        "very_intimate": 5,
-    }
-
-    def __init__(self, weight: float = 0.15, partial_adjacent: float = 0.7):
+    def __init__(
+        self,
+        weight: float = 0.15,
+        ontology: Optional[OntologyService] = None,
+    ):
         super().__init__(weight)
-        self.partial_adjacent = partial_adjacent
+        self._ontology = ontology
+
+    @property
+    def ontology(self) -> OntologyService:
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
 
     def score(self, block: ActionBlock, context: ActionSelectionContext) -> float:
         if not context.intimacy_level:
             return 1.0
 
         if not block.tags.intimacy_level:
-            return 0.5  # Generic block
+            return self.ontology.partial_credit.generic_block  # Generic block
 
-        ctx_level = self.LEVEL_ORDER.get(context.intimacy_level, 3)
-        block_level = self.LEVEL_ORDER.get(block.tags.intimacy_level, 3)
+        # Use ontology for level ordering
+        distance = self.ontology.intimacy_distance(
+            context.intimacy_level,
+            block.tags.intimacy_level,
+        )
 
-        if ctx_level == block_level:
+        if distance == 0:
             return 1.0
 
-        if abs(ctx_level - block_level) == 1:
-            return self.partial_adjacent  # Adjacent level
+        if distance == 1:
+            return self.ontology.partial_credit.adjacent_intimacy
 
         return 0.2  # Far off
 
@@ -189,7 +204,11 @@ class IntimacyScorer(BlockScorer):
 class MoodScorer(BlockScorer):
     """Score based on mood match."""
 
-    def __init__(self, weight: float = 0.10, partial_generic: float = 0.5):
+    def __init__(
+        self,
+        weight: float = 0.10,
+        partial_generic: float = 0.5,
+    ):
         super().__init__(weight)
         self.partial_generic = partial_generic
 
@@ -209,7 +228,11 @@ class MoodScorer(BlockScorer):
 class BranchIntentScorer(BlockScorer):
     """Score based on branch intent match."""
 
-    def __init__(self, weight: float = 0.10, partial_generic: float = 0.5):
+    def __init__(
+        self,
+        weight: float = 0.10,
+        partial_generic: float = 0.5,
+    ):
         super().__init__(weight)
         self.partial_generic = partial_generic
 
@@ -217,27 +240,42 @@ class BranchIntentScorer(BlockScorer):
         if not context.branchIntent:
             return 1.0
 
-        if block.tags.branch_type == context.branchIntent:
+        # Get intent values
+        ctx_intent = context.branchIntent
+        if hasattr(ctx_intent, "value"):
+            ctx_intent = ctx_intent.value
+
+        block_intent = block.tags.branch_type
+        if block_intent is not None and hasattr(block_intent, "value"):
+            block_intent = block_intent.value
+
+        if block_intent == ctx_intent:
             return 1.0
 
-        if block.tags.branch_type is None:
+        if block_intent is None:
             return self.partial_generic
 
         return 0.0
 
 
 class ChainCompatibilityScorer(BlockScorer):
-    """Score based on compatibility with previous block."""
+    """Score based on compatibility with previous block using ontology."""
 
     def __init__(
         self,
         weight: float = 0.30,
-        partial_pose: float = 0.7,
         registry=None,
+        ontology: Optional[OntologyService] = None,
     ):
         super().__init__(weight)
-        self.partial_pose = partial_pose
         self.registry = registry  # BlockRegistry for looking up previous block
+        self._ontology = ontology
+
+    @property
+    def ontology(self) -> OntologyService:
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
 
     def score(self, block: ActionBlock, context: ActionSelectionContext) -> float:
         if not context.previousBlockId:
@@ -250,29 +288,15 @@ class ChainCompatibilityScorer(BlockScorer):
         # Try pose-based compatibility if we have registry
         if self.registry:
             prev_block = self.registry.get(context.previousBlockId)
-            if prev_block and self._poses_compatible(prev_block, block):
-                return self.partial_pose
+            if prev_block:
+                prev_end = prev_block.get_end_pose()
+                curr_start = block.get_start_pose()
+
+                if prev_end and curr_start:
+                    # Use ontology for pose similarity
+                    return self.ontology.pose_similarity_score(prev_end, curr_start)
 
         return 0.1  # Fallback
-
-    def _poses_compatible(
-        self, prev_block: ActionBlock, curr_block: ActionBlock
-    ) -> bool:
-        """Check if poses are compatible for chaining."""
-        # Get end pose of previous block
-        prev_end = prev_block.endPose
-        if prev_block.is_transition() and prev_block.to:
-            prev_end = prev_block.to.pose
-
-        # Get start pose of current block
-        curr_start = curr_block.startPose
-        if curr_block.is_transition() and curr_block.from_:
-            curr_start = curr_block.from_.pose
-
-        if not prev_end or not curr_start:
-            return False
-
-        return prev_end == curr_start
 
 
 # =============================================================================
@@ -326,15 +350,25 @@ class CompositeScorer:
 def create_default_scorers(
     config: Optional[ScoringConfig] = None,
     registry=None,
+    ontology: Optional[OntologyService] = None,
 ) -> CompositeScorer:
-    """Create the default scorer chain."""
-    cfg = config or ScoringConfig()
+    """
+    Create the default scorer chain.
+
+    Args:
+        config: ScoringConfig with weights and partial credit rules.
+               If None, loads from ontology.
+        registry: BlockRegistry for chain compatibility scoring.
+        ontology: OntologyService instance (uses global if None).
+    """
+    ont = ontology or get_ontology()
+    cfg = config or ScoringConfig.from_ontology(ont)
 
     return CompositeScorer([
         ChainCompatibilityScorer(
             weight=cfg.chain_compatibility,
-            partial_pose=cfg.parent_pose,
             registry=registry,
+            ontology=ont,
         ),
         LocationScorer(
             weight=cfg.location_match,
@@ -342,11 +376,11 @@ def create_default_scorers(
         ),
         PoseScorer(
             weight=cfg.pose_match,
-            partial_category=cfg.same_category,
+            ontology=ont,
         ),
         IntimacyScorer(
             weight=cfg.intimacy_match,
-            partial_adjacent=cfg.adjacent_intimacy,
+            ontology=ont,
         ),
         MoodScorer(
             weight=cfg.mood_match,
