@@ -120,3 +120,6 @@ launcher/gui/launcher.json
 
 # OpenAPI schema cache (for freshness tracking)
 *.schema-hash
+
+# Local data (thumbs, assets)
+data/
