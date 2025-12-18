@@ -1,8 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import clsx from 'clsx';
-import { DockviewReact, DockviewReadyEvent } from 'dockview';
-import 'dockview/dist/styles/dockview.css';
-import styles from './QuickGenerateModule.module.css';
+import type { DockviewApi } from 'dockview-core';
+import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 import { resolvePromptLimit } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
@@ -10,7 +9,7 @@ import { useQuickGenerateController } from '@features/prompts';
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
-import { AssetPanel, PromptPanel, SettingsPanel, BlocksPanel, type QuickGenPanelContext } from './QuickGeneratePanels';
+import { type QuickGenPanelContext } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
 import { useAssetViewerStore } from '@features/assets';
 import { OPERATION_METADATA } from '@/types/operations';
@@ -79,10 +78,9 @@ export function QuickGenerateModule() {
   const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
   const [creditLoading, setCreditLoading] = useState(false);
 
-  // Dockview for minimal rearrangeable panels
-  const dockviewRef = useRef<DockviewReadyEvent['api'] | null>(null);
-  const previousLayoutRef = useRef<boolean | null>(null);
-  const [dockviewReady, setDockviewReady] = useState(0); // Counter to trigger re-render on ready
+  // Dockview wrapper ref for layout reset
+  const dockviewRef = useRef<QuickGenerateDockviewRef>(null);
+  const dockviewApiRef = useRef<DockviewApi | null>(null);
   const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
 
@@ -479,135 +477,18 @@ export function QuickGenerateModule() {
     renderSettingsPanel,
   ]);
 
-  // Layout management
-  const LAYOUT_STORAGE_KEY = 'quickGenerate-dockview-layout';
-
-  const saveLayout = useCallback(() => {
-    if (!dockviewRef.current) return;
-    try {
-      const layout = dockviewRef.current.toJSON();
-      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
-    } catch (error) {
-      console.error('Failed to save layout:', error);
-    }
-  }, []);
-
-  const loadSavedLayout = useCallback((api: DockviewReadyEvent['api']) => {
-    try {
-      const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
-      if (saved) {
-        const layout = JSON.parse(saved);
-        api.fromJSON(layout);
-        return true;
-      }
-    } catch (error) {
-      console.error('Failed to load saved layout:', error);
-    }
-    return false;
-  }, []);
-
-  // Helper to create panels for current layout
-  const createPanelsForLayout = useCallback((api: DockviewReadyEvent['api'], hasAssetPanel: boolean) => {
-    // Helper to safely add panel only if it doesn't exist
-    const addPanelIfNotExists = (config: any) => {
-      const existingPanel = api.panels.find(p => p.id === config.id);
-      if (!existingPanel) {
-        api.addPanel(config);
-      }
-    };
-
-    if (hasAssetPanel) {
-      // 4-panel layout: Asset | Prompt | Settings | Blocks
-      addPanelIfNotExists({
-        id: 'asset-panel',
-        component: 'asset',
-        params: panelContext,
-        title: 'Asset',
-      });
-
-      addPanelIfNotExists({
-        id: 'prompt-panel',
-        component: 'prompt',
-        params: panelContext,
-        title: 'Prompt',
-        position: { direction: 'right', referencePanel: 'asset-panel' },
-      });
-
-      addPanelIfNotExists({
-        id: 'settings-panel',
-        component: 'settings',
-        params: panelContext,
-        title: 'Settings',
-        position: { direction: 'right', referencePanel: 'prompt-panel' },
-      });
-
-      addPanelIfNotExists({
-        id: 'blocks-panel',
-        component: 'blocks',
-        params: panelContext,
-        title: 'Blocks',
-        position: { direction: 'below', referencePanel: 'prompt-panel' },
-      });
-    } else {
-      // 3-panel layout: Prompt | Settings | Blocks
-      addPanelIfNotExists({
-        id: 'prompt-panel',
-        component: 'prompt',
-        params: panelContext,
-        title: 'Prompt',
-      });
-
-      addPanelIfNotExists({
-        id: 'settings-panel',
-        component: 'settings',
-        params: panelContext,
-        title: 'Settings',
-        position: { direction: 'right', referencePanel: 'prompt-panel' },
-      });
-
-      addPanelIfNotExists({
-        id: 'blocks-panel',
-        component: 'blocks',
-        params: panelContext,
-        title: 'Blocks',
-        position: { direction: 'below', referencePanel: 'prompt-panel' },
-      });
-    }
-  }, [panelContext]);
-
-  const resetLayout = useCallback(() => {
-    if (!dockviewRef.current) return;
-    // Clear saved layout
-    localStorage.removeItem(LAYOUT_STORAGE_KEY);
-    // Rebuild with default layout
-    previousLayoutRef.current = null;
-    createPanelsForLayout(dockviewRef.current, showAssetPanelInLayout);
-  }, [showAssetPanelInLayout, createPanelsForLayout]);
-
   // Listen to global panel layout reset trigger
   const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
   useEffect(() => {
     if (panelLayoutResetTrigger > 0) {
-      resetLayout();
+      dockviewRef.current?.resetLayout();
     }
-  }, [panelLayoutResetTrigger, resetLayout]);
+  }, [panelLayoutResetTrigger]);
 
-  // Initialize dockview - load saved layout or create default
-  const handleDockviewReady = (event: DockviewReadyEvent) => {
-    dockviewRef.current = event.api;
-
-    // Try to load saved layout, if it fails or doesn't exist, force initial creation
-    const loaded = loadSavedLayout(event.api);
-    previousLayoutRef.current = loaded ? showAssetPanelInLayout : null;
-
-    // Auto-save layout on changes
-    event.api.onDidLayoutChange(() => {
-      saveLayout();
-    });
-
-    // Trigger re-render to update panels with context
-    setDockviewReady(c => c + 1);
-  };
+  // Handle dockview ready - store API reference and focus asset panel when queue grows
+  const handleDockviewReady = useCallback((api: DockviewApi) => {
+    dockviewApiRef.current = api;
+  }, []);
 
   // Focus asset panel when assets are added to queue
   const prevQueueLengthRef = useRef(mainQueue.length);
@@ -616,12 +497,11 @@ export function QuickGenerateModule() {
     const currentLength = mainQueue.length;
 
     // Asset was added (queue grew)
-    if (currentLength > prevLength && currentLength > 0 && dockviewRef.current) {
-      // Use requestAnimationFrame to ensure layout rebuild completes first
-      // The panel might not exist yet if layout is being rebuilt
+    if (currentLength > prevLength && currentLength > 0 && dockviewApiRef.current) {
+      // Use requestAnimationFrame to ensure layout is ready
       requestAnimationFrame(() => {
-        if (!dockviewRef.current) return;
-        const assetPanel = dockviewRef.current.panels.find(p => p.id === 'asset-panel');
+        if (!dockviewApiRef.current) return;
+        const assetPanel = dockviewApiRef.current.panels.find(p => p.id === 'asset-panel');
         if (assetPanel && !assetPanel.api.isActive) {
           assetPanel.api.setActive();
         }
@@ -629,41 +509,7 @@ export function QuickGenerateModule() {
     }
 
     prevQueueLengthRef.current = currentLength;
-  }, [mainQueue.length, showAssetPanelInLayout]);
-
-  // Manage panel lifecycle: create on mount, rebuild on layout change, update params on context change
-  useEffect(() => {
-    if (!dockviewRef.current) return;
-
-    const api = dockviewRef.current;
-    const needsRebuild = previousLayoutRef.current !== showAssetPanelInLayout;
-
-    if (needsRebuild || previousLayoutRef.current === null) {
-      // Layout type changed OR initial mount - clear and rebuild all panels
-      const panelIds = ['asset-panel', 'prompt-panel', 'settings-panel', 'blocks-panel'];
-      panelIds.forEach(id => {
-        const panel = api.panels.find(p => p.id === id);
-        if (panel) {
-          try {
-            api.removePanel(id);
-          } catch (e) {
-            // Silently ignore - expected during layout transitions
-          }
-        }
-      });
-
-      // Create new layout
-      createPanelsForLayout(api, showAssetPanelInLayout);
-      previousLayoutRef.current = showAssetPanelInLayout;
-    } else {
-      // Just update parameters for existing panels
-      api.panels.forEach(panel => {
-        if (panel?.api) {
-          panel.api.updateParameters(panelContext);
-        }
-      });
-    }
-  }, [showAssetPanelInLayout, panelContext, createPanelsForLayout, dockviewReady]);
+  }, [mainQueue.length]);
 
   // Render the main content area based on operation type and input mode
   const renderContent = () => {
@@ -811,23 +657,16 @@ export function QuickGenerateModule() {
       );
     }
 
-    // Use minimal dockview for asset+prompt or prompt+settings layout
+    // Use SmartDockview for asset+prompt or prompt+settings layout
     // Key includes mode to force remount when switching between single/multi modes
     return (
-      <div key={`dockview-${inputMode}`} className={clsx("flex-1 min-h-0 h-full relative", styles.minimalDockview)}>
-        <DockviewReact
+      <div key={`dockview-${inputMode}`} className="flex-1 min-h-0 h-full relative">
+        <QuickGenerateDockview
+          ref={dockviewRef}
+          context={panelContext}
+          showAssetPanel={showAssetPanelInLayout}
           onReady={handleDockviewReady}
-          components={{
-            asset: AssetPanel,
-            prompt: PromptPanel,
-            settings: SettingsPanel,
-            blocks: BlocksPanel,
-          }}
-          className="dockview-theme-light"
-          watermarkComponent={() => null}
-          hideBorders={true}
-          disableDnd={true}
-          defaultTabComponent={() => null}
+          panelManagerId="controlCenter"
         />
       </div>
     );

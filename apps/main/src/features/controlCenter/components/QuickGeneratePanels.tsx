@@ -1,7 +1,8 @@
 /**
  * QuickGeneratePanels - Minimal dockview panels for asset/prompt/settings
  *
- * Simple, lightweight panel components for use in QuickGenerateModule's dockview instance.
+ * Simple, lightweight panel components for use in QuickGenerateModule's SmartDockview instance.
+ * Panels receive context via SmartDockview's injected props.
  */
 import { useRef, useEffect } from 'react';
 import type { IDockviewPanelProps } from 'dockview-core';
@@ -38,16 +39,22 @@ export interface QuickGenPanelContext {
   renderSettingsPanel: () => React.ReactNode;
 }
 
+// Panel props with injected context from SmartDockview
+export interface QuickGenPanelProps extends IDockviewPanelProps {
+  context?: QuickGenPanelContext;
+  panelId: string;
+}
+
 /**
  * Asset Panel - Shows selected/queued assets
  * Supports mousewheel scrolling to cycle through queue
  * Navigation pill has grid popup for quick selection
  */
-export function AssetPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
-  const ctx = props.params;
+export function AssetPanel(props: QuickGenPanelProps) {
+  const ctx = props.context;
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe directly to store for queue data (dockview params may be stale)
+  // Subscribe directly to store for live queue data
   const storeMainQueue = useGenerationQueueStore(s => s.mainQueue);
   const storeMainQueueIndex = useGenerationQueueStore(s => s.mainQueueIndex);
   const storeSetQueueIndex = useGenerationQueueStore(s => s.setQueueIndex);
@@ -151,8 +158,8 @@ export function AssetPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
 /**
  * Prompt Panel - Text input for generation prompt
  */
-export function PromptPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
-  const ctx = props.params;
+export function PromptPanel(props: QuickGenPanelProps) {
+  const ctx = props.context;
   if (!ctx) return null;
 
   const {
@@ -207,8 +214,8 @@ export function PromptPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
 /**
  * Settings Panel - Generation settings and controls
  */
-export function SettingsPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
-  const ctx = props.params;
+export function SettingsPanel(props: QuickGenPanelProps) {
+  const ctx = props.context;
   if (!ctx) return null;
 
   const { renderSettingsPanel } = ctx;
@@ -228,8 +235,8 @@ export function SettingsPanel(props: IDockviewPanelProps<QuickGenPanelContext>) 
 /**
  * Blocks Panel - Prompt companion with block analysis tools
  */
-export function BlocksPanel(props: IDockviewPanelProps<QuickGenPanelContext>) {
-  const ctx = props.params;
+export function BlocksPanel(props: QuickGenPanelProps) {
+  const ctx = props.context;
   if (!ctx) return null;
 
   const { prompt, setPrompt, operationType, providerId } = ctx;

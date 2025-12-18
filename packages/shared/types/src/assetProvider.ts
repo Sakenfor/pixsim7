@@ -20,7 +20,7 @@ export type AssetMediaType = 'video' | 'image' | 'audio' | '3d_model';
 
 export type AssetSource = 'pre-made' | 'generated' | 'cached';
 
-export interface AssetMetadata {
+export interface ProviderAssetMetadata {
   /** Content description */
   description?: string;
   /** Content tags for filtering */
@@ -52,7 +52,7 @@ export interface Asset {
   /** Where this asset came from */
   source: AssetSource;
   /** Additional metadata */
-  metadata: AssetMetadata;
+  metadata: ProviderAssetMetadata;
 }
 
 // ============================================================================

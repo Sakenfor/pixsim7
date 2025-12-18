@@ -31,6 +31,7 @@ export function useQuickGenerateController() {
   const setProvider = useControlCenterStore(s => s.setProvider);
   const setOperationType = useControlCenterStore(s => s.setOperationType);
   const setGenerating = useControlCenterStore(s => s.setGenerating);
+  const setPresetParams = useControlCenterStore(s => s.setPresetParams);
   const prompt = useControlCenterStore(s => s.prompt);
   const setPrompt = useControlCenterStore(s => s.setPrompt);
 
@@ -230,6 +231,7 @@ export function useQuickGenerateController() {
     setProvider,
     setOperationType,
     setPrompt,
+    setPresetParams,
 
     // Error + generation ID
     error,

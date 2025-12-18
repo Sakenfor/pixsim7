@@ -17,6 +17,7 @@ import { PresetsModule } from './PresetsModule';
 import { ProviderOverviewModule } from '@features/providers';
 import { PanelLauncherModule } from './PanelLauncherModule';
 import { CubeSettingsPanel } from './CubeSettingsPanel';
+import { usePanel, usePanelIs } from '@features/panels';
 
 /**
  * Map control modules to cube types
@@ -44,6 +45,11 @@ export function CubeFormationControlCenter() {
   const [transitionProgress, setTransitionProgress] = useState(1);
   const [showCubeSettings, setShowCubeSettings] = useState(false);
 
+  // Panel orchestration hooks
+  const { state: panelState, open: panelOpen, close: panelClose, retract, expand } = usePanel('controlCenter');
+  const isRetracted = usePanelIs('controlCenter', 'retracted');
+
+  // Local store (for cube-specific state)
   const open = useControlCenterStore((s) => s.open);
   const pinned = useControlCenterStore((s) => s.pinned);
   const activeModule = useControlCenterStore((s) => s.activeModule);
@@ -51,6 +57,15 @@ export function CubeFormationControlCenter() {
   const setPinned = useControlCenterStore((s) => s.setPinned);
   const setActiveModule = useControlCenterStore((s) => s.setActiveModule);
   const toggleMode = useControlCenterStore((s) => s.toggleMode);
+
+  // Sync local store open state with panel manager
+  useEffect(() => {
+    if (open) {
+      panelOpen();
+    } else {
+      panelClose();
+    }
+  }, [open, panelOpen, panelClose]);
 
   const addCube = useControlCubeStore((s) => s.addCube);
   const updateCube = useControlCubeStore((s) => s.updateCube);
@@ -365,6 +380,15 @@ export function CubeFormationControlCenter() {
             )}
           >
             {pinned ? '📌 Pinned' : 'Pin'}
+          </button>
+
+          {/* Retract/Expand button */}
+          <button
+            onClick={isRetracted ? expand : retract}
+            className="px-3 py-2 text-xs border border-cyan-300/50 dark:border-cyan-500/30 rounded-lg bg-cyan-600/60 hover:bg-cyan-700/80 text-white backdrop-blur-sm transition-all hover:scale-105 active:scale-95"
+            title={isRetracted ? 'Expand Control Center' : 'Retract Control Center'}
+          >
+            {isRetracted ? '→ Expand' : '← Retract'}
           </button>
 
           {/* Mode toggle */}

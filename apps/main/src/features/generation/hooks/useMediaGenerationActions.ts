@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import type { AssetSummary } from '@features/assets';
+import type { AssetResponse } from '@features/assets';
 import { useGenerationQueueStore } from '../stores/generationQueueStore';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
@@ -36,7 +36,7 @@ export function useMediaGenerationActions() {
   }, [setActiveModule, setOpen]);
 
   // Helper to select asset in selection store
-  const selectAssetFromSummary = useCallback((asset: AssetSummary) => {
+  const selectAssetFromSummary = useCallback((asset: AssetResponse) => {
     selectAsset({
       id: asset.id,
       key: `asset-${asset.id}`,
@@ -49,7 +49,7 @@ export function useMediaGenerationActions() {
 
   // Smart queue action - automatically routes to main or multi-asset queue via enqueueAsset
   const createQueueAction = useCallback(
-    (operationType: OperationType) => (asset: AssetSummary) => {
+    (operationType: OperationType) => (asset: AssetResponse) => {
       // Use centralized enqueueAsset which handles queue routing automatically
       enqueueAsset({ asset, operationType });
 
@@ -72,7 +72,7 @@ export function useMediaGenerationActions() {
   const queueAddToTransition = useMemo(() => createQueueAction('video_transition'), [createQueueAction]);
 
   const queueAutoGenerate = useCallback(
-    (asset: AssetSummary) => {
+    (asset: AssetResponse) => {
       // Auto-generate uses current operation type for routing
       enqueueAsset({ asset, operationType: currentOperationType });
       selectAssetFromSummary(asset);
@@ -83,7 +83,7 @@ export function useMediaGenerationActions() {
 
   // Silent add - just adds to queue without opening control center
   const queueSilentAdd = useCallback(
-    (asset: AssetSummary) => {
+    (asset: AssetResponse) => {
       // Silent add uses current operation type for routing
       enqueueAsset({ asset, operationType: currentOperationType });
       selectAssetFromSummary(asset);

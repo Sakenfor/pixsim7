@@ -28,6 +28,8 @@ export interface GalleryAsset {
   description?: string;
   created_at: string;
   sync_status?: string;
+  /** Link to the generation that created this asset (if any) */
+  source_generation_id?: number;
 }
 
 /**

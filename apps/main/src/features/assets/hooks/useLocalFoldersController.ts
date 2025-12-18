@@ -168,15 +168,17 @@ export function useLocalFoldersController(): LocalFoldersController {
           return;
         }
 
-        // Generate a smaller thumbnail for images (much faster to render)
+        // Generate a smaller thumbnail for images and videos (much faster to render)
         const thumbnail = await generateThumbnail(file);
         if (thumbnail) {
           url = URL.createObjectURL(thumbnail);
           // Cache the smaller thumbnail for future sessions
           void setLocalThumbnailBlob(asset, thumbnail);
         } else {
-          // Fallback to original file if thumbnail generation fails
-          url = URL.createObjectURL(file);
+          // Skip preview if thumbnail generation fails - don't load full file to avoid memory issues
+          console.warn('Failed to generate thumbnail for', asset.name);
+          loadingPreviewsRef.current.delete(asset.key);
+          return;
         }
       } catch {
         loadingPreviewsRef.current.delete(asset.key);

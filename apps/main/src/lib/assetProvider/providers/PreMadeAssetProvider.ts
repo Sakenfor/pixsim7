@@ -19,9 +19,6 @@ import type { AssetResponse, AssetListResponse } from '@features/assets/lib/api'
 // Types
 // ============================================================================
 
-type AssetSummary = AssetResponse;
-type AssetsResponse = AssetListResponse;
-
 export interface PreMadeAssetProviderConfig {
   /** Maximum assets to fetch per query (default: 50) */
   queryLimit: number;
@@ -50,7 +47,7 @@ function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_mode
   }
 }
 
-function mapAssetSummaryToAsset(summary: AssetSummary): Asset {
+function mapAssetResponseToAsset(summary: AssetResponse): Asset {
   return {
     id: String(summary.id),
     url: summary.remote_url || summary.file_url || '',
@@ -109,7 +106,7 @@ function buildTagFromRequest(request: AssetRequest): string | undefined {
  *
  * Higher scores = better match
  */
-function scoreAsset(asset: AssetSummary, request: AssetRequest): number {
+function scoreAsset(asset: AssetResponse, request: AssetRequest): number {
   let score = 0;
   const tags = asset.tags ?? [];
 
@@ -272,12 +269,12 @@ export class PreMadeAssetProvider implements IAssetProvider {
       // Return the best match (must have some score)
       const best = scored[0];
       if (best.score > 0) {
-        return mapAssetSummaryToAsset(best.asset);
+        return mapAssetResponseToAsset(best.asset);
       }
 
       // If no scored matches, return the first asset if we had a tag match
       if (tag) {
-        return mapAssetSummaryToAsset(assets[0]);
+        return mapAssetResponseToAsset(assets[0]);
       }
 
       return null;

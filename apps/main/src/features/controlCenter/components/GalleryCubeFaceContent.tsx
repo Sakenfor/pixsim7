@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAssets, type AssetSummary } from '@features/assets';
+import { useAssets, type AssetResponse } from '@features/assets';
 import { useControlCubeStore } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
 import { BACKEND_BASE } from '@lib/api/client';
@@ -23,7 +23,7 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
   const pinnedAssets = cube?.pinnedAssets || {};
 
   // Helper to render asset thumbnail
-  const renderAssetThumbnail = (asset: AssetSummary | undefined, face: CubeFace) => {
+  const renderAssetThumbnail = (asset: AssetResponse | undefined, face: CubeFace) => {
     if (!asset) {
       // Map cube faces to icons
       const faceIcons: Record<CubeFace, keyof typeof Icons> = {

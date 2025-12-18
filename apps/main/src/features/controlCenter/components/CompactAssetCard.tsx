@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ThemedIcon } from '@lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import type { AssetSummary } from '@features/assets';
+import type { AssetResponse } from '@features/assets';
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -17,7 +17,7 @@ interface PopupPosition {
 }
 
 export interface CompactAssetCardProps {
-  asset: AssetSummary;
+  asset: AssetResponse;
   onRemove?: () => void;
   showRemoveButton?: boolean;
   className?: string;
@@ -104,7 +104,7 @@ export function CompactAssetCard({
     }
   }, [showQueueGrid, queueItems]);
 
-  // Use thumbnail_url from AssetSummary
+  // Use thumbnail_url from AssetResponse
   const thumbUrl = asset.thumbnail_url;
 
   // Shared hooks from MediaCard

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useAssets, type AssetSummary, type AssetFilters } from '@features/assets';
+import { useAssets, type AssetResponse, type AssetFilters } from '@features/assets';
 import { useMediaGenerationActions } from '@features/generation';
 import { useSelection } from '@/hooks/useSelection';
 import { createAssetActions } from '@features/assets';
@@ -97,7 +97,7 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
   }), [queueImageToImage, queueImageToVideo, queueVideoExtend, queueAddToTransition, queueAutoGenerate, queueSilentAdd]);
 
   // Get per-asset actions
-  const getAssetActions = useCallback((asset: AssetSummary) => {
+  const getAssetActions = useCallback((asset: AssetResponse) => {
     return createAssetActions(asset, actionHandlers);
   }, [actionHandlers]);
 

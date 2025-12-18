@@ -7,7 +7,7 @@
 
 import { useCallback } from 'react';
 import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
-import type { AssetSummary } from '@lib/api/assets';
+import type { AssetResponse } from '@lib/api/assets';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 interface UseAssetViewerOptions {
@@ -21,16 +21,17 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
   const updateAssetList = useAssetViewerStore((s) => s.updateAssetList);
 
   /**
-   * Convert gallery asset (AssetSummary) to ViewerAsset
+   * Convert gallery asset (AssetResponse) to ViewerAsset
    */
   const galleryAssetToViewer = useCallback(
-    (asset: AssetSummary): ViewerAsset => ({
+    (asset: AssetResponse): ViewerAsset => ({
       id: asset.id,
       name: asset.description || `Asset ${asset.id}`,
       type: asset.media_type as 'image' | 'video',
       url: asset.thumbnail_url || asset.remote_url || asset.file_url || '',
       fullUrl: asset.remote_url || undefined,
       source: 'gallery',
+      sourceGenerationId: asset.source_generation_id ?? undefined,
       metadata: {
         description: asset.description || undefined,
         tags: asset.tags,
@@ -67,7 +68,7 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
    * Open a gallery asset in the viewer
    */
   const openGalleryAsset = useCallback(
-    (asset: AssetSummary, allAssets?: AssetSummary[]) => {
+    (asset: AssetResponse, allAssets?: AssetResponse[]) => {
       const viewerAsset = galleryAssetToViewer(asset);
       const viewerList = allAssets?.map(galleryAssetToViewer);
       openViewer(viewerAsset, viewerList);
@@ -98,7 +99,7 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
    * Update the asset list (e.g., when filters change)
    */
   const updateGalleryList = useCallback(
-    (assets: AssetSummary[]) => {
+    (assets: AssetResponse[]) => {
       updateAssetList(assets.map(galleryAssetToViewer));
     },
     [updateAssetList, galleryAssetToViewer]

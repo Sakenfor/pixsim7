@@ -5,9 +5,9 @@
  * Used to bridge generation completions with gallery updates.
  */
 
-import type { AssetSummary } from '../hooks/useAssets';
+import type { AssetResponse } from '@lib/api/assets';
 
-type AssetEventCallback = (asset: AssetSummary) => void;
+type AssetEventCallback = (asset: AssetResponse) => void;
 
 class AssetEventEmitter {
   private listeners: Set<AssetEventCallback> = new Set();
@@ -25,7 +25,7 @@ class AssetEventEmitter {
   /**
    * Emit a new asset event (called when generation completes)
    */
-  emitAssetCreated(asset: AssetSummary): void {
+  emitAssetCreated(asset: AssetResponse): void {
     console.log('[AssetEvents] New asset created:', asset.id);
     this.listeners.forEach((callback) => {
       try {

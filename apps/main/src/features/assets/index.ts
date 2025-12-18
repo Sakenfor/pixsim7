@@ -36,7 +36,8 @@ export { MediaViewerCube } from './components/MediaViewerCube';
 export { useAsset } from './hooks/useAsset';
 
 export { useAssets } from './hooks/useAssets';
-export type { AssetSummary, AssetFilters } from './hooks/useAssets';
+export type { AssetFilters } from './hooks/useAssets';
+// AssetResponse is exported from ./lib/api below
 
 export { useAssetsController } from './hooks/useAssetsController';
 

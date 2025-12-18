@@ -3,8 +3,8 @@ import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse } from '@lib/api/assets';
 import { assetEvents } from '../lib/assetEvents';
 
-export type AssetSummary = AssetResponse;
-type AssetsResponse = AssetListResponse;
+// Re-export AssetResponse for convenience (previously aliased as AssetSummary)
+export type { AssetResponse } from '@lib/api/assets';
 
 export type AssetFilters = {
   q?: string;
@@ -19,7 +19,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   const limit = options?.limit ?? 20;
   const filters = options?.filters ?? {};
 
-  const [items, setItems] = useState<AssetSummary[]>([]);
+  const [items, setItems] = useState<AssetResponse[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +62,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       if (currentFilters.sort) params.set('sort', currentFilters.sort);
       if (currentFilters.media_type) params.set('media_type', currentFilters.media_type);
 
-      let data: AssetsResponse = await listAssets({
+      let data: AssetListResponse = await listAssets({
         limit,
         cursor: currentCursor || undefined,
         q: currentFilters.q,
@@ -110,7 +110,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   }, []);
 
   // Prepend a new asset (used when generation completes)
-  const prependAsset = useCallback((asset: AssetSummary) => {
+  const prependAsset = useCallback((asset: AssetResponse) => {
     setItems((prev) => {
       // Avoid duplicates
       if (prev.some((a) => a.id === asset.id)) {
