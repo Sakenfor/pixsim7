@@ -1,7 +1,5 @@
-import { useRef, useEffect, useState } from "react";
-import { DockviewReact } from "dockview";
+import { useRef, useEffect, useMemo } from "react";
 import type { DockviewReadyEvent, IDockviewPanelProps } from "dockview-core";
-import "dockview/dist/styles/dockview.css";
 import {
   useWorkspaceStore,
   type PanelId,
@@ -9,6 +7,7 @@ import {
 } from "../stores/workspaceStore";
 import { panelRegistry, initializePanels, PanelHostLite } from "@features/panels";
 import { initializeWidgets } from "@lib/ui/composer";
+import { SmartDockview } from "@lib/dockview";
 
 // Wrapper for panels to provide data-panel-id and a common header
 function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
@@ -102,9 +101,18 @@ function applyLayoutToDockview(
   buildPanels(layout);
 }
 
+// Watermark component for empty workspace
+function WorkspaceWatermark() {
+  return (
+    <div className="flex items-center justify-center h-full text-white/20 text-sm">
+      Pixsim7 Workspace
+    </div>
+  );
+}
+
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const isReadyRef = useRef(false);
   const lastAppliedLayoutRef = useRef<LayoutNode<PanelId> | null>(null);
 
   const dockviewLayout = useWorkspaceStore((s) => s.dockviewLayout);
@@ -122,33 +130,14 @@ export function DockviewWorkspace() {
     });
   }, []);
 
-  const onReady = (event: DockviewReadyEvent) => {
-    apiRef.current = event.api;
-    setIsReady(true);
-
-    // Load saved layout or create default
-    if (dockviewLayout) {
-      try {
-        event.api.fromJSON(dockviewLayout);
-      } catch (error) {
-        console.error("Failed to load layout:", error);
-        createDefaultLayout(event.api);
-      }
-    } else {
-      createDefaultLayout(event.api);
-    }
-
-    // Set locked state
-    if (isLocked) {
-      event.api.groups.forEach((group) => {
-        group.locked = "no-drop-target";
-      });
-    }
-  };
+  // Components map for SmartDockview
+  const components = useMemo(() => ({
+    panel: PanelWrapper,
+  }), []);
 
   const createDefaultLayout = (api: DockviewReadyEvent["api"]) => {
     // Create default layout similar to mosaic default
-    const galleryPanel = api.addPanel({
+    api.addPanel({
       id: "gallery-panel",
       component: "panel",
       params: { panelId: "gallery" as PanelId },
@@ -189,21 +178,37 @@ export function DockviewWorkspace() {
     });
   };
 
-  // Save layout on changes
-  useEffect(() => {
-    if (!apiRef.current || !isReady) return;
+  const handleReady = (api: DockviewReadyEvent["api"]) => {
+    apiRef.current = api;
+    isReadyRef.current = true;
 
-    const disposable = apiRef.current.onDidLayoutChange(() => {
+    // Load saved layout or create default
+    if (dockviewLayout) {
+      try {
+        api.fromJSON(dockviewLayout);
+      } catch (error) {
+        console.error("Failed to load layout:", error);
+        createDefaultLayout(api);
+      }
+    } else {
+      createDefaultLayout(api);
+    }
+
+    // Set locked state
+    if (isLocked) {
+      api.groups.forEach((group) => {
+        group.locked = "no-drop-target";
+      });
+    }
+
+    // Subscribe to layout changes to save to store
+    api.onDidLayoutChange(() => {
       if (apiRef.current) {
         const layout = apiRef.current.toJSON();
         setDockviewLayout(layout);
       }
     });
-
-    return () => {
-      disposable.dispose();
-    };
-  }, [isReady, setDockviewLayout]);
+  };
 
   // Update locked state
   useEffect(() => {
@@ -220,7 +225,7 @@ export function DockviewWorkspace() {
 
   // Handle preset loading and panel restoration from currentLayout
   useEffect(() => {
-    if (!apiRef.current || !isReady) return;
+    if (!apiRef.current || !isReadyRef.current) return;
     if (!currentLayout) return;
 
     // Only apply if the layout actually changed
@@ -235,23 +240,17 @@ export function DockviewWorkspace() {
     });
 
     applyLayoutToDockview(apiRef.current, currentLayout, panelTitles);
-  }, [currentLayout, isReady]);
-
-  const components = {
-    panel: PanelWrapper,
-  };
+  }, [currentLayout]);
 
   return (
-    <div className="h-full w-full dockview-theme-dark">
-      <DockviewReact
+    <div className="h-full w-full">
+      <SmartDockview
         components={components}
-        onReady={onReady}
-        className="dockview-theme-dark"
-        watermarkComponent={() => (
-          <div className="flex items-center justify-center h-full text-white/20 text-sm">
-            Pixsim7 Workspace
-          </div>
-        )}
+        onReady={handleReady}
+        enableContextMenu
+        theme="dockview-theme-dark"
+        watermarkComponent={WorkspaceWatermark}
+        panelManagerId="workspace"
       />
     </div>
   );
