@@ -5,6 +5,38 @@
  * Exports panel registry, components, stores, and utilities for panel management.
  */
 
+// Panel Orchestration System (declarative panel interactions)
+export type * from './lib/types';
+export { PanelManager, panelManager } from './lib/PanelManager';
+export {
+  CONTROL_CENTER_METADATA,
+  ASSET_VIEWER_METADATA,
+  GALLERY_METADATA,
+  GRAPH_METADATA,
+  ALL_PANEL_METADATA,
+  PANEL_METADATA_BY_ID,
+  registerAllPanels,
+  reloadPanelsWithSettings,
+} from './lib/panelMetadataRegistry';
+export {
+  usePanelState,
+  useZoneState,
+  usePanelsInZone,
+  useActivePanelInZone,
+  useOpenPanels,
+  usePanelManagerState,
+  usePanelManagerEvents,
+  usePanelActions,
+  usePanel,
+  useZoneActions,
+  usePanelIs,
+  usePanelManagerInstance,
+} from './hooks/usePanelManager';
+export {
+  usePanelSystemInitialization,
+  useInitializePanelSystem,
+} from './hooks/usePanelSystemInitialization';
+
 // Panel Registry System
 export {
   PanelRegistry,
@@ -13,7 +45,15 @@ export {
   type WorkspaceContext,
   type CoreEditorRole,
   type ContextLabelStrategy,
+  type PanelSettingsProps,
+  type PanelSettingsUpdateHelpers,
+  type PanelSettingsSection,
 } from "./lib/panelRegistry";
+
+export {
+  usePanelSettingsHelpers,
+  validateAndMigrateSettings,
+} from "./lib/panelSettingsHelpers";
 
 export {
   PANEL_CATEGORIES,

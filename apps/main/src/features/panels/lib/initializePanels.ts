@@ -7,6 +7,7 @@
 
 import { pluginManager } from "./panelPlugin";
 import { corePanelsPlugin } from "./corePanelsPlugin";
+import { helperPanelsPlugin } from "./helperPanelsPlugin";
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
 import { panelRegistry } from "./panelRegistry";
 
@@ -22,6 +23,11 @@ export async function initializePanels(): Promise<void> {
     // Load core panels plugin (skip if already loaded)
     if (!pluginManager.isPluginLoaded(corePanelsPlugin.id)) {
       await pluginManager.loadPlugin(corePanelsPlugin);
+    }
+
+    // Load helper panels plugin (global context-aware panels)
+    if (!pluginManager.isPluginLoaded(helperPanelsPlugin.id)) {
+      await pluginManager.loadPlugin(helperPanelsPlugin);
     }
   } catch (error) {
     console.error("Failed to initialize panels:", error);
