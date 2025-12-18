@@ -1,5 +1,15 @@
 """
 Provider Management API - Provider detection and information
+
+This module provides API endpoints for:
+- Provider detection from URLs
+- Listing registered providers
+- Provider settings management
+- AI provider (LLM) settings
+
+Provider metadata (domains, credit_types, capabilities) is now sourced from
+the Providers domain (domain/providers/). The registry provides dynamic
+domain mappings from provider manifests.
 """
 from typing import Optional, Literal
 from fastapi import APIRouter, HTTPException, status
@@ -9,7 +19,8 @@ import json
 from pathlib import Path
 
 from pixsim7.backend.main.api.dependencies import CurrentUser
-from pixsim7.backend.main.services.provider.registry import registry
+# Import registry from providers domain (canonical location)
+from pixsim7.backend.main.domain.providers.registry import registry
 from pixsim7.backend.main.services.provider.base import Provider
 from pixsim7.backend.main.services.generation.pixverse_pricing import (
     get_image_credit_change,
@@ -118,32 +129,11 @@ def get_provider_domains() -> dict[str, dict]:
 
     Returns dict mapping provider_id to {"name": str, "domains": list[str]}
 
-    This replaces the hardcoded PROVIDER_DOMAINS constant. Providers now define
-    their domains in their manifest (get_manifest().domains) or adapter (get_domains()).
+    This uses the registry's get_provider_domains() method which reads
+    from provider manifests (single source of truth).
     """
-    domains_map = {}
-
-    # Get domains from registered providers
-    for provider_id in registry.list_provider_ids():
-        try:
-            provider = registry.get(provider_id)
-
-            # Try to get manifest first (preferred)
-            manifest = provider.get_manifest() if hasattr(provider, 'get_manifest') else None
-
-            if manifest and manifest.domains:
-                domains_map[provider_id] = {
-                    "name": manifest.name,
-                    "domains": list(manifest.domains),
-                }
-            elif hasattr(provider, 'get_domains') and provider.get_domains():
-                # Fallback to get_domains() method
-                domains_map[provider_id] = {
-                    "name": provider.get_display_name() if hasattr(provider, 'get_display_name') else provider_id.title(),
-                    "domains": provider.get_domains(),
-                }
-        except Exception:
-            continue
+    # Get domains from registry (which reads from provider manifests)
+    domains_map = registry.get_provider_domains()
 
     # Add fallback domains for providers that aren't registered yet or don't have manifests
     for provider_id, config in _FALLBACK_PROVIDER_DOMAINS.items():

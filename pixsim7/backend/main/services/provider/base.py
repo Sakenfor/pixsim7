@@ -432,78 +432,21 @@ class Provider(ABC):
                 f"Supported: {[op.value for op in self.supported_operations]}"
             )
 
-    # ===== PROVIDER METADATA =====
+    # NOTE: Removed duplicate method definitions that were here.
+    # The canonical methods are defined earlier in this file (lines ~196-242):
+    # - get_manifest() - returns _manifest attached by registry
+    # - get_domains() - gets domains from manifest
+    # - get_credit_types() - gets credit_types from manifest
+    # - get_display_name() - gets name from manifest
+    # - requires_file_preparation() - returns False by default
+    # - prepare_execution_params() - returns params unchanged by default
+    #
+    # Providers should NOT override get_manifest() - metadata belongs in manifest.py.
+    # The registry attaches the manifest during plugin loading.
 
-    def get_manifest(self) -> Optional["ProviderManifest"]:
-        """
-        Return the provider's manifest with metadata.
+    # ===== FILE/INPUT RESOLUTION (async version for ProviderService) =====
 
-        Override this to return a ProviderManifest with domains, credit_types,
-        display name, etc. The manifest is used by:
-        - URL detection (domains)
-        - Credit handling (credit_types)
-        - UI display (name, description)
-
-        Returns:
-            ProviderManifest or None if not implemented
-
-        Example:
-            def get_manifest(self):
-                return ProviderManifest(
-                    id="myprovider",
-                    name="My Provider",
-                    domains=["myprovider.com"],
-                    credit_types=["web", "api"],
-                    ...
-                )
-        """
-        return None
-
-    def get_domains(self) -> list[str]:
-        """
-        Return domains associated with this provider for URL detection.
-
-        By default, tries to get domains from manifest. Override if needed.
-
-        Returns:
-            List of domain strings (e.g., ["pixverse.ai", "app.pixverse.ai"])
-        """
-        manifest = self.get_manifest()
-        if manifest and manifest.domains:
-            return list(manifest.domains)
-        return []
-
-    def get_credit_types(self) -> list[str]:
-        """
-        Return credit types supported by this provider.
-
-        Used by billing/credit tracking to know which credit types to update.
-        By default returns ["web"]. Override or set via manifest.
-
-        Returns:
-            List of credit type strings (e.g., ["web", "openapi", "standard"])
-        """
-        manifest = self.get_manifest()
-        if manifest and manifest.credit_types:
-            return list(manifest.credit_types)
-        return ["web"]
-
-    def get_display_name(self) -> str:
-        """
-        Return human-readable display name for this provider.
-
-        Returns:
-            Display name (e.g., "Pixverse AI")
-        """
-        manifest = self.get_manifest()
-        if manifest:
-            return manifest.name
-        # Fallback: capitalize provider_id
-        return self.provider_id.replace("_", " ").title()
-
-    # ===== FILE/INPUT RESOLUTION =====
-
-    async def prepare_execution_params(
+    async def prepare_execution_params_async(
         self,
         generation: Generation,
         mapped_params: Dict[str, Any],
@@ -536,7 +479,7 @@ class Provider(ABC):
             - "_temp_paths": list of temp file paths to clean up after execute()
 
         Example (Remaker inpaint):
-            async def prepare_execution_params(self, generation, mapped_params, resolve_source_fn):
+            async def prepare_execution_params_async(self, generation, mapped_params, resolve_source_fn):
                 original_path, temps1 = await resolve_source_fn(
                     mapped_params["original_image_source"], generation.user_id, ".jpg"
                 )
@@ -551,19 +494,6 @@ class Provider(ABC):
                 }
         """
         return mapped_params
-
-    def requires_file_preparation(self) -> bool:
-        """
-        Return True if this provider needs file preparation before execute().
-
-        Providers that override prepare_execution_params() to resolve files
-        should also override this to return True. This allows ProviderService
-        to skip the file resolution step for providers that don't need it.
-
-        Returns:
-            True if prepare_execution_params() does file resolution
-        """
-        return False
 
     # ===== CREDIT ESTIMATION =====
 
