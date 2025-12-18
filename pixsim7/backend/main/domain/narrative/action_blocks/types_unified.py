@@ -17,17 +17,18 @@ now Optional fields on the unified ActionBlock.
 
 from typing import Dict, Any, List, Optional, Union, Literal
 from enum import Enum
-from pydantic import BaseModel, Field, ConfigDict, AliasChoices
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    AliasChoices,
+    field_validator,
+    model_validator,
+)
 
 from pixsim7.backend.main.shared.schemas.entity_ref import (
     AssetRef,
     NpcRef,
-    PoseRef,
-    MoodRef,
-    IntimacyLevelRef,
-    ContentRatingRef,
-    BranchIntentRef,
-    LocationRef,
 )
 
 
@@ -84,21 +85,55 @@ class IntensityPattern(str, Enum):
 
 
 # ============================================================================
+# ID CANONICALIZATION HELPERS
+# ============================================================================
+
+def _canonicalize_id(value: Optional[str], prefix: str) -> Optional[str]:
+    """Ensure ID has proper prefix if not None."""
+    if value is None or not value:
+        return None
+    expected = f"{prefix}:"
+    if value.startswith(expected):
+        return value
+    return f"{expected}{value}"
+
+
+def _canonicalize_pose(value: Optional[str]) -> Optional[str]:
+    """Canonicalize pose ID."""
+    return _canonicalize_id(value, "pose")
+
+
+def _canonicalize_location(value: Optional[str]) -> Optional[str]:
+    """Canonicalize location ID."""
+    return _canonicalize_id(value, "location")
+
+
+def _canonicalize_intimacy(value: Optional[str]) -> Optional[str]:
+    """Canonicalize intimacy level ID."""
+    return _canonicalize_id(value, "intimacy")
+
+
+def _canonicalize_mood(value: Optional[str]) -> Optional[str]:
+    """Canonicalize mood ID."""
+    return _canonicalize_id(value, "mood")
+
+
+# ============================================================================
 # COMPONENT SCHEMAS
 # ============================================================================
 
 class ReferenceImage(BaseModel):
     """Reference to an image asset for video generation."""
 
-    # Specific asset reference
-    asset: AssetRef = Field(
+    # Specific asset reference (Optional - None means template query)
+    asset: Optional[AssetRef] = Field(
         default=None,
         validation_alias=AliasChoices("asset", "assetId"),
         description="Specific asset reference",
     )
 
     # Template query
-    npc: NpcRef = Field(
+    npc: Optional[NpcRef] = Field(
         default=None,
         validation_alias=AliasChoices("npc", "npcId"),
         description="NPC reference for template matching",
@@ -134,6 +169,14 @@ class TransitionEndpoint(BaseModel):
     referenceImage: ReferenceImage
     pose: str = Field(description="Abstract pose identifier for chaining")
 
+    @field_validator("pose", mode="before")
+    @classmethod
+    def canonicalize_pose(cls, v: Optional[str]) -> str:
+        """Ensure pose has proper prefix."""
+        if not v:
+            return ""
+        return _canonicalize_pose(v) or ""
+
 
 class CameraMovement(BaseModel):
     """Camera movement specification for a clip."""
@@ -168,25 +211,25 @@ class ActionBlockTags(BaseModel):
     Unified semantic tags for action blocks.
     Uses typed refs for ontology-backed values where possible.
     """
-    # Location (typed ref to ontology.yaml locations)
+    # Location (canonicalized to location:xxx)
     location: Optional[str] = Field(
         None,
         description="Location tag (e.g., bench_park, bar_lounge)",
     )
 
-    # Pose (typed ref to ontology.yaml poses)
+    # Pose (canonicalized to pose:xxx)
     pose: Optional[str] = Field(
         None,
         description="Pose/position identifier",
     )
 
-    # Intimacy level
+    # Intimacy level (canonicalized to intimacy:xxx)
     intimacy_level: Optional[str] = Field(
         None,
         description="Required intimacy level",
     )
 
-    # Mood/emotional tone
+    # Mood/emotional tone (canonicalized to mood:xxx)
     mood: Optional[str] = Field(
         None,
         description="Emotional tone",
@@ -210,8 +253,27 @@ class ActionBlockTags(BaseModel):
     # Custom tags for extensibility
     custom: List[str] = Field(default_factory=list)
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
+
+    @field_validator("location", mode="before")
+    @classmethod
+    def canonicalize_location(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_location(v)
+
+    @field_validator("pose", mode="before")
+    @classmethod
+    def canonicalize_pose(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_pose(v)
+
+    @field_validator("intimacy_level", mode="before")
+    @classmethod
+    def canonicalize_intimacy(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_intimacy(v)
+
+    @field_validator("mood", mode="before")
+    @classmethod
+    def canonicalize_mood(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_mood(v)
 
 
 # ============================================================================
@@ -225,6 +287,12 @@ class ActionBlock(BaseModel):
     Supports both single-state and transition blocks through optional fields.
     Enhanced features (camera, consistency, intensity) are always available
     as Optional fields - no more hasattr() checks needed.
+
+    Validation enforces:
+    - single_state: referenceImage required, from_/to/via forbidden
+    - transition: from_ and to required, referenceImage forbidden
+    - prompt must not be empty
+    - duration must be within bounds
     """
     model_config = ConfigDict(populate_by_name=True, use_enum_values=True)
 
@@ -267,7 +335,11 @@ class ActionBlock(BaseModel):
     )
 
     # === Prompt ===
-    prompt: str = Field(description="Text prompt for video generation")
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        description="Text prompt for video generation",
+    )
     negativePrompt: Optional[str] = Field(None)
     style: Optional[str] = Field("soft_cinema")
 
@@ -294,6 +366,40 @@ class ActionBlock(BaseModel):
     description: Optional[str] = Field(None)
     worldOverride: Optional[str] = Field(None)
 
+    # === Validators ===
+
+    @field_validator("startPose", "endPose", mode="before")
+    @classmethod
+    def canonicalize_poses(cls, v: Optional[str]) -> Optional[str]:
+        """Canonicalize pose IDs."""
+        return _canonicalize_pose(v)
+
+    @model_validator(mode="after")
+    def validate_kind_fields(self) -> "ActionBlock":
+        """Validate fields based on kind."""
+        if self.kind == "single_state":
+            # Single-state: require referenceImage, forbid from_/to
+            if self.referenceImage is None:
+                raise ValueError(
+                    "single_state blocks require 'referenceImage'"
+                )
+            if self.from_ is not None or self.to is not None:
+                raise ValueError(
+                    "single_state blocks cannot have 'from' or 'to' fields"
+                )
+        elif self.kind == "transition":
+            # Transition: require from_ and to, forbid referenceImage
+            if self.from_ is None or self.to is None:
+                raise ValueError(
+                    "transition blocks require both 'from' and 'to' fields"
+                )
+            if self.referenceImage is not None:
+                raise ValueError(
+                    "transition blocks cannot have 'referenceImage' field"
+                )
+
+        return self
+
     # === Helpers ===
     def is_single_state(self) -> bool:
         """Check if this is a single-state block."""
@@ -317,6 +423,22 @@ class ActionBlock(BaseModel):
             self.intensityProgression is not None,
         ])
 
+    def get_start_pose(self) -> Optional[str]:
+        """Get starting pose regardless of kind."""
+        if self.is_single_state():
+            return self.startPose
+        elif self.is_transition() and self.from_:
+            return self.from_.pose
+        return None
+
+    def get_end_pose(self) -> Optional[str]:
+        """Get ending pose regardless of kind."""
+        if self.is_single_state():
+            return self.endPose
+        elif self.is_transition() and self.to:
+            return self.to.pose
+        return None
+
 
 # ============================================================================
 # SELECTION CONTEXT AND RESULT
@@ -325,11 +447,11 @@ class ActionBlock(BaseModel):
 class ActionSelectionContext(BaseModel):
     """Context for action block selection."""
 
-    # Location and pose
+    # Location and pose (canonicalized)
     locationTag: Optional[str] = Field(None)
     pose: Optional[str] = Field(None)
 
-    # Relationship context
+    # Relationship context (canonicalized)
     intimacy_level: Optional[str] = Field(None)
     mood: Optional[str] = Field(None)
 
@@ -338,11 +460,11 @@ class ActionSelectionContext(BaseModel):
     previousBlockId: Optional[str] = Field(None)
 
     # Character references
-    leadNpc: NpcRef = Field(
-        ...,
+    leadNpc: Optional[NpcRef] = Field(
+        default=None,
         validation_alias=AliasChoices("leadNpc", "leadNpcId"),
     )
-    partnerNpc: NpcRef = Field(
+    partnerNpc: Optional[NpcRef] = Field(
         default=None,
         validation_alias=AliasChoices("partnerNpc", "partnerNpcId"),
     )
@@ -356,10 +478,33 @@ class ActionSelectionContext(BaseModel):
     max_content_rating: ContentRating = Field(ContentRating.INTIMATE)
     world_id: Optional[str] = Field(None)
 
+    model_config = ConfigDict(use_enum_values=True)
+
+    # Canonicalize IDs
+    @field_validator("locationTag", mode="before")
+    @classmethod
+    def canonicalize_location(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_location(v)
+
+    @field_validator("pose", mode="before")
+    @classmethod
+    def canonicalize_pose(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_pose(v)
+
+    @field_validator("intimacy_level", mode="before")
+    @classmethod
+    def canonicalize_intimacy(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_intimacy(v)
+
+    @field_validator("mood", mode="before")
+    @classmethod
+    def canonicalize_mood(cls, v: Optional[str]) -> Optional[str]:
+        return _canonicalize_mood(v)
+
     # Legacy accessors
     @property
-    def leadNpcId(self) -> int:
-        return self.leadNpc.id if self.leadNpc else 0
+    def leadNpcId(self) -> Optional[int]:
+        return self.leadNpc.id if self.leadNpc else None
 
     @property
     def partnerNpcId(self) -> Optional[int]:

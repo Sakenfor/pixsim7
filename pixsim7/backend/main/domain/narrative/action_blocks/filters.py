@@ -3,15 +3,20 @@ Block Filters - Pluggable filtering strategies for action block selection.
 
 Filters are used to narrow down candidate blocks before scoring.
 Each filter implements a simple interface: filter(block, context) -> bool
+
+All filters use OntologyService for ontology-driven data (intimacy levels,
+content ratings, etc.) rather than hardcoded values.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Set
-import logging
+from typing import List, Optional
+
+import pixsim_logging
 
 from .types_unified import ActionBlock, ActionSelectionContext, ContentRating
+from .ontology import OntologyService, get_ontology
 
-logger = logging.getLogger(__name__)
+logger = pixsim_logging.get_logger()
 
 
 class BlockFilter(ABC):
@@ -48,31 +53,35 @@ class WorldFilter(BlockFilter):
 
 
 class ContentRatingFilter(BlockFilter):
-    """Filter blocks by content rating."""
+    """Filter blocks by content rating using ontology-defined levels."""
 
-    # Rating levels for comparison
-    RATING_LEVELS = {
-        ContentRating.GENERAL: 0,
-        ContentRating.SUGGESTIVE: 1,
-        ContentRating.INTIMATE: 2,
-        ContentRating.EXPLICIT: 3,
-        # String fallbacks
-        "general": 0,
-        "suggestive": 1,
-        "intimate": 2,
-        "explicit": 3,
-    }
+    def __init__(self, ontology: Optional[OntologyService] = None):
+        self._ontology = ontology
+
+    @property
+    def ontology(self) -> OntologyService:
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
 
     def filter(self, block: ActionBlock, context: ActionSelectionContext) -> bool:
         block_rating = block.tags.content_rating
         max_rating = context.max_content_rating
 
-        block_level = self.RATING_LEVELS.get(block_rating, 0)
-        max_level = self.RATING_LEVELS.get(max_rating, 2)
+        # Get levels from ontology
+        block_level = self.ontology.get_rating_level(
+            block_rating if isinstance(block_rating, str) else block_rating.value
+        )
+        max_level = self.ontology.get_rating_level(
+            max_rating if isinstance(max_rating, str) else max_rating.value
+        )
 
         if block_level > max_level:
             logger.debug(
-                f"Filtered {block.id}: rating {block_rating} > max {max_rating}"
+                "filter_content_rating_rejected",
+                block_id=block.id,
+                block_rating=str(block_rating),
+                max_rating=str(max_rating),
             )
             return False
         return True
@@ -131,32 +140,43 @@ class BranchIntentFilter(BlockFilter):
         if not block.tags.branch_type:
             return True  # Generic blocks pass
 
+        # Get branch intent value
+        ctx_intent = context.branchIntent
+        if hasattr(ctx_intent, "value"):
+            ctx_intent = ctx_intent.value
+
         # MAINTAIN intent can use any block except specific escalate/cool_down
-        if context.branchIntent.value == "maintain":
+        if ctx_intent == "maintain":
             return True
 
-        return block.tags.branch_type == context.branchIntent
+        block_intent = block.tags.branch_type
+        if hasattr(block_intent, "value"):
+            block_intent = block_intent.value
+
+        return block_intent == ctx_intent
 
 
 class IntimacyLevelFilter(BlockFilter):
-    """Filter blocks by intimacy level compatibility."""
+    """Filter blocks by intimacy level compatibility using ontology."""
 
-    # Level ordering for comparison
-    LEVEL_ORDER = {
-        "none": 0,
-        "acquaintance": 1,
-        "light_flirt": 2,
-        "deep_flirt": 3,
-        "intimate": 4,
-        "very_intimate": 5,
-    }
-
-    def __init__(self, tolerance: int = 1):
+    def __init__(
+        self,
+        tolerance: int = 1,
+        ontology: Optional[OntologyService] = None,
+    ):
         """
         Args:
             tolerance: How many levels off is acceptable (default 1)
+            ontology: OntologyService instance (uses global if None)
         """
         self.tolerance = tolerance
+        self._ontology = ontology
+
+    @property
+    def ontology(self) -> OntologyService:
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
 
     def filter(self, block: ActionBlock, context: ActionSelectionContext) -> bool:
         if not context.intimacy_level:
@@ -165,11 +185,67 @@ class IntimacyLevelFilter(BlockFilter):
         if not block.tags.intimacy_level:
             return True  # Generic blocks pass
 
-        ctx_level = self.LEVEL_ORDER.get(context.intimacy_level, 3)
-        block_level = self.LEVEL_ORDER.get(block.tags.intimacy_level, 3)
+        # Use ontology for level ordering
+        ctx_level = self.ontology.get_intimacy_order(context.intimacy_level)
+        block_level = self.ontology.get_intimacy_order(block.tags.intimacy_level)
 
         # Allow blocks within tolerance
         return abs(ctx_level - block_level) <= self.tolerance
+
+
+class ChainCompatibilityFilter(BlockFilter):
+    """
+    Hard filter for chain compatibility.
+
+    Unlike ChainCompatibilityScorer which scores compatibility,
+    this filter rejects blocks that are incompatible for chaining.
+    """
+
+    def __init__(
+        self,
+        registry=None,
+        ontology: Optional[OntologyService] = None,
+    ):
+        """
+        Args:
+            registry: BlockRegistry for looking up previous block
+            ontology: OntologyService for pose compatibility
+        """
+        self._registry = registry
+        self._ontology = ontology
+
+    @property
+    def ontology(self) -> OntologyService:
+        if self._ontology is None:
+            self._ontology = get_ontology()
+        return self._ontology
+
+    def filter(self, block: ActionBlock, context: ActionSelectionContext) -> bool:
+        if not context.previousBlockId:
+            return True  # No chaining requirement
+
+        # Check explicit compatibility
+        if context.previousBlockId in block.compatiblePrev:
+            return True
+
+        # Check pose compatibility if we have registry
+        if self._registry:
+            prev_block = self._registry.get(context.previousBlockId)
+            if prev_block:
+                prev_end = prev_block.get_end_pose()
+                curr_start = block.get_start_pose()
+
+                if prev_end and curr_start:
+                    if self.ontology.are_poses_compatible(prev_end, curr_start):
+                        return True
+
+        # No compatibility found - reject
+        logger.debug(
+            "filter_chain_rejected",
+            block_id=block.id,
+            previous_block_id=context.previousBlockId,
+        )
+        return False
 
 
 # =============================================================================
@@ -201,14 +277,30 @@ class CompositeFilter(BlockFilter):
 # FACTORY
 # =============================================================================
 
-def create_default_filters() -> CompositeFilter:
-    """Create the default filter chain."""
-    return CompositeFilter([
+def create_default_filters(
+    ontology: Optional[OntologyService] = None,
+    registry=None,
+    include_chain_filter: bool = False,
+) -> CompositeFilter:
+    """
+    Create the default filter chain.
+
+    Args:
+        ontology: OntologyService instance (uses global if None)
+        registry: BlockRegistry for chain compatibility filter
+        include_chain_filter: Whether to include ChainCompatibilityFilter
+    """
+    filters = [
         WorldFilter(),
-        ContentRatingFilter(),
+        ContentRatingFilter(ontology=ontology),
         RequiredTagsFilter(),
         ExcludeTagsFilter(),
         LocationFilter(strict=False),
         BranchIntentFilter(),
-        IntimacyLevelFilter(tolerance=1),
-    ])
+        IntimacyLevelFilter(tolerance=1, ontology=ontology),
+    ]
+
+    if include_chain_filter:
+        filters.append(ChainCompatibilityFilter(registry=registry, ontology=ontology))
+
+    return CompositeFilter(filters)
