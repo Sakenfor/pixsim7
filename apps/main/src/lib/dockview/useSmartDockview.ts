@@ -1,0 +1,182 @@
+/**
+ * useSmartDockview Hook
+ *
+ * Manages smart tab visibility and layout persistence for dockview.
+ * - Auto-hides tabs when a group has only 1 panel
+ * - Shows tabs when 2+ panels are grouped together
+ * - Persists layout to localStorage
+ */
+
+import { useCallback, useEffect, useRef } from 'react';
+import type { DockviewApi } from 'dockview-core';
+
+export interface UseSmartDockviewOptions {
+  /** Storage key for persisting layout (optional) */
+  storageKey?: string;
+  /** Minimum panels in a group to show tabs (default: 2) */
+  minPanelsForTabs?: number;
+  /** Callback when layout changes */
+  onLayoutChange?: () => void;
+}
+
+export interface UseSmartDockviewReturn {
+  /** Call when dockview is ready */
+  onReady: (api: DockviewApi) => void;
+  /** Get the current API ref */
+  getApi: () => DockviewApi | null;
+  /** Reset layout to default */
+  resetLayout: () => void;
+  /** Save current layout */
+  saveLayout: () => void;
+  /** Load saved layout */
+  loadLayout: () => boolean;
+}
+
+export function useSmartDockview(
+  options: UseSmartDockviewOptions = {}
+): UseSmartDockviewReturn {
+  const { storageKey, minPanelsForTabs = 2, onLayoutChange } = options;
+  const apiRef = useRef<DockviewApi | null>(null);
+  const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
+
+  /**
+   * Update tab visibility for all groups
+   * Hides tabs when group has fewer than minPanelsForTabs panels
+   */
+  const updateTabVisibility = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+
+    api.groups.forEach((group) => {
+      const shouldShowTabs = group.size >= minPanelsForTabs;
+
+      // Access the header through the group's model
+      // Note: This accesses internal dockview structure
+      try {
+        const header = (group as any).header;
+        if (header && typeof header.hidden !== 'undefined') {
+          header.hidden = !shouldShowTabs;
+        }
+      } catch (e) {
+        // Fallback: try through model
+        try {
+          const model = (group as any).model;
+          if (model?.header) {
+            model.header.hidden = !shouldShowTabs;
+          }
+        } catch {
+          // Silently fail if structure doesn't match
+        }
+      }
+    });
+  }, [minPanelsForTabs]);
+
+  /**
+   * Save current layout to localStorage
+   */
+  const saveLayout = useCallback(() => {
+    if (!storageKey || !apiRef.current) return;
+
+    try {
+      const layout = apiRef.current.toJSON();
+
+      // Use a replacer to exclude circular references (like dockviewApi in context)
+      const replacer = (key: string, value: any) => {
+        // Skip dockviewApi to avoid circular references
+        if (key === 'dockviewApi') return undefined;
+        return value;
+      };
+
+      localStorage.setItem(storageKey, JSON.stringify(layout, replacer));
+    } catch (error) {
+      console.error('[SmartDockview] Failed to save layout:', error);
+    }
+  }, [storageKey]);
+
+  /**
+   * Load saved layout from localStorage
+   * @returns true if layout was loaded successfully
+   */
+  const loadLayout = useCallback((): boolean => {
+    if (!storageKey || !apiRef.current) return false;
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const layout = JSON.parse(saved);
+        apiRef.current.fromJSON(layout);
+        return true;
+      }
+    } catch (error) {
+      console.error('[SmartDockview] Failed to load layout:', error);
+    }
+    return false;
+  }, [storageKey]);
+
+  /**
+   * Reset layout by clearing saved state
+   */
+  const resetLayout = useCallback(() => {
+    if (storageKey) {
+      localStorage.removeItem(storageKey);
+    }
+  }, [storageKey]);
+
+  /**
+   * Initialize dockview with smart features
+   */
+  const onReady = useCallback(
+    (api: DockviewApi) => {
+      apiRef.current = api;
+
+      // Clean up any previous disposables
+      disposablesRef.current.forEach((d) => d.dispose());
+      disposablesRef.current = [];
+
+      // Subscribe to layout changes for tab visibility updates
+      const layoutDisposable = api.onDidLayoutChange(() => {
+        updateTabVisibility();
+        saveLayout();
+        onLayoutChange?.();
+      });
+      disposablesRef.current.push(layoutDisposable);
+
+      // Subscribe to panel add/remove for immediate tab visibility updates
+      const addDisposable = api.onDidAddPanel(() => {
+        // Use requestAnimationFrame to ensure DOM is updated
+        requestAnimationFrame(updateTabVisibility);
+      });
+      disposablesRef.current.push(addDisposable);
+
+      const removeDisposable = api.onDidRemovePanel(() => {
+        requestAnimationFrame(updateTabVisibility);
+      });
+      disposablesRef.current.push(removeDisposable);
+
+      // Initial tab visibility update
+      requestAnimationFrame(updateTabVisibility);
+    },
+    [updateTabVisibility, saveLayout, onLayoutChange]
+  );
+
+  /**
+   * Get the current API
+   */
+  const getApi = useCallback(() => apiRef.current, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      disposablesRef.current.forEach((d) => d.dispose());
+      disposablesRef.current = [];
+    };
+  }, []);
+
+  return {
+    onReady,
+    getApi,
+    resetLayout,
+    saveLayout,
+    loadLayout,
+  };
+}

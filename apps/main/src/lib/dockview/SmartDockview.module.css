@@ -1,0 +1,112 @@
+/**
+ * SmartDockview Styles
+ *
+ * Minimal dockview styling that:
+ * - Removes heavy chrome
+ * - Provides clean dividers for resizing
+ * - Tabs are shown/hidden dynamically via JS (not CSS)
+ */
+
+.smartDockview {
+  height: 100%;
+  width: 100%;
+}
+
+/* Clean background */
+.smartDockview :global(.dockview-theme-abyss),
+.smartDockview :global(.dockview-theme-light),
+.smartDockview :global(.dockview-theme-dark) {
+  --dv-background-color: transparent;
+  --dv-pane-background-color: transparent;
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: rgba(0, 0, 0, 0.05);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: rgba(0, 0, 0, 0.03);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-tab-divider-color: transparent;
+  --dv-separator-border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode adjustments */
+:global(.dark) .smartDockview :global(.dockview-theme-abyss),
+:global(.dark) .smartDockview :global(.dockview-theme-light),
+:global(.dark) .smartDockview :global(.dockview-theme-dark) {
+  --dv-activegroup-visiblepanel-tab-background-color: rgba(255, 255, 255, 0.08);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: rgba(255, 255, 255, 0.04);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-separator-border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Minimal tab styling when visible */
+.smartDockview :global(.dv-default-tab) {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: 4px 4px 0 0;
+  transition: background-color 0.15s ease;
+}
+
+.smartDockview :global(.dv-default-tab:hover) {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+:global(.dark) .smartDockview :global(.dv-default-tab:hover) {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Tab container - compact height */
+.smartDockview :global(.tabs-and-actions-container) {
+  min-height: 28px;
+  padding: 2px 4px;
+}
+
+/* Hide default tab close buttons (optional - can be enabled per-panel) */
+.smartDockview :global(.dv-default-tab-action) {
+  display: none;
+}
+
+/* Clean dividers for resize handles */
+.smartDockview :global(.split-view-view .sash) {
+  background: rgba(0, 0, 0, 0.08);
+  transition: background-color 0.15s ease;
+}
+
+:global(.dark) .smartDockview :global(.split-view-view .sash) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.smartDockview :global(.split-view-view .sash:hover),
+.smartDockview :global(.split-view-view .sash.active) {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+/* Panel content area */
+.smartDockview :global(.dockview-panel-content) {
+  padding: 0;
+}
+
+/* Group container */
+.smartDockview :global(.dockview-group) {
+  border: none;
+  background: transparent;
+}
+
+/* Panel body fills available space */
+.smartDockview :global(.part-panel-container) {
+  background: transparent;
+}
+
+/* When header is hidden, ensure content takes full height */
+.smartDockview :global(.content-container) {
+  padding-top: 0;
+}
+
+/* Drop target styling */
+.smartDockview :global(.drop-target-dropzone) {
+  background: rgba(59, 130, 246, 0.1);
+  border: 2px dashed rgba(59, 130, 246, 0.5);
+  border-radius: 4px;
+}
