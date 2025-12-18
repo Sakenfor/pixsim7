@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import clsx from 'clsx';
 
 const DEFAULT_PROMPT_MAX_CHARS = 800;
@@ -43,8 +43,17 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   const remaining = maxChars - value.length;
   const isOverLimit = remaining < 0;
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const cursorPosRef = useRef<number | null>(null);
+  const isUserTypingRef = useRef(false);
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
+
+    // Store cursor position before state update
+    cursorPosRef.current = e.target.selectionStart;
+    isUserTypingRef.current = true;
+
     if (enforceLimit && next.length > maxChars) {
       // Hard truncate if enforceLimit is true
       onChange(next.slice(0, maxChars));
@@ -54,6 +63,21 @@ export const PromptInput: React.FC<PromptInputProps> = ({
     }
   }, [onChange, maxChars, enforceLimit]);
 
+  // Restore cursor position after value updates
+  useEffect(() => {
+    if (isUserTypingRef.current && cursorPosRef.current !== null && textareaRef.current) {
+      const textarea = textareaRef.current;
+      const pos = cursorPosRef.current;
+
+      // Restore cursor position, clamping to current value length
+      const safePos = Math.min(pos, value.length);
+      textarea.setSelectionRange(safePos, safePos);
+
+      isUserTypingRef.current = false;
+      cursorPosRef.current = null;
+    }
+  }, [value]);
+
   // Calculate min-height: use prop if provided, else variant default
   const defaultMinHeight = variant === 'compact' ? 70 : 110;
   const effectiveMinHeight = minHeight ?? defaultMinHeight;
@@ -61,6 +85,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   return (
     <div className={clsx('flex flex-col', className)}>
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={handleChange}
         placeholder={placeholder}
