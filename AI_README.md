@@ -26,23 +26,23 @@ This guide helps AI assistants understand what's already implemented, where thin
 
 | Topic | Primary Doc | Also See |
 |-------|-------------|----------|
-| **Getting started** | `DEVELOPMENT_GUIDE.md` | `docs/INDEX.md` |
+| **Getting started** | `DEVELOPMENT_GUIDE.md` | `docs/README.md` |
 | **System architecture** | `docs/architecture/README.md` | `docs/architecture/diagrams.md` |
-| **Building plugins** | `docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md` | `docs/EXTENSION_ARCHITECTURE.md` |
+| **Building plugins** | `docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md` | `docs/plugins-and-extensibility/README.md` |
 | **Generation system** | `docs/systems/generation/GENERATION_SYSTEM.md` | `docs/systems/generation/README.md` |
-| **Backend services** | `docs/backend/SERVICES.md` | `docs/BACKEND_MODERNIZATION.md` |
+| **Backend services** | `docs/backend/SERVICES.md` | `docs/infrastructure/README.md` |
 | **Frontend components** | `docs/frontend/COMPONENTS.md` | `apps/main/src/components/README.md` |
-| **Game/NPC systems** | `docs/GAMEPLAY_SYSTEMS.md` | `docs/architecture/subsystems/npc-architecture.md` |
-| **Graph/scene editor** | `docs/GRAPH_SYSTEM.md` | `docs/NODE_EDITOR_DEVELOPMENT.md` |
-| **Assets & gallery** | `docs/CROSS_PROVIDER_ASSETS.md` | `apps/main/src/lib/gallery/README.md` |
-| **Overlays & HUD** | `docs/OVERLAY_DATA_BINDING.md` | `docs/HUD_LAYOUT_DESIGNER.md` |
-| **Relationships** | `docs/RELATIONSHIPS_AND_ARCS.md` | `docs/ABSTRACT_STAT_SYSTEM.md` |
+| **Game/NPC systems** | `docs/game-systems/SYSTEM_OVERVIEW.md` | `docs/architecture/subsystems/npc-architecture.md` |
+| **Graph/scene editor** | `docs/game-systems/GRAPH_SYSTEM.md` | `docs/game-systems/NODE_EDITOR_DEVELOPMENT.md` |
+| **Assets & gallery** | `docs/systems/generation/cross-provider-assets.md` | `apps/main/src/lib/gallery/README.md` |
+| **Overlays & HUD** | `docs/ui/OVERLAY_DATA_BINDING.md` | `docs/ui/HUD_LAYOUT_DESIGNER.md` |
+| **Relationships** | `docs/game/RELATIONSHIPS_AND_ARCS.md` | `docs/ABSTRACT_STAT_SYSTEM.md` |
 | **Chrome extension** | `chrome-extension/README.md` | `chrome-extension/QUICK_START.md` |
-| **Launcher** | `docs/LAUNCHER.md` | `launcher/README.md` |
-| **Logging** | `docs/LOGGING_STRUCTURE.md` | `docs/LOG_FILTERING_AND_SETTINGS.md` |
+| **Launcher** | `docs/getting-started/LAUNCHER.md` | `launcher/README.md` |
+| **Logging** | `docs/database-and-logging/LOGGING_STRUCTURE.md` | `docs/database-and-logging/LOG_FILTERING_AND_SETTINGS.md` |
 | **ADRs (why decisions)** | `docs/decisions/README.md` | Individual ADRs in `docs/decisions/` |
 | **Task tracking** | `claude-tasks/README.md` | `docs/TASK_TRACKING_OVERVIEW.md` |
-| **Full doc index** | `docs/INDEX.md` | — |
+| **Full doc index** | `docs/README.md` | `docs/INDEX.md` |
 
 ---
 
@@ -286,7 +286,7 @@ pixsim7/
 - ⚠️ **Admin is PORT 8002**
 - ⚠️ **PostgreSQL is PORT 5434** (not default 5432)
 - ⚠️ **Redis is PORT 6380** (not default 6379)
-- See `docs/PORT_CONFIGURATION.md` for details
+- See `docs/getting-started/PORT_CONFIGURATION.md` for details
 
 ### Don't Recreate These
 - ❌ Don't create a new asset upload system - use `UploadService.upload()` in `services/upload/upload_service.py`
@@ -317,10 +317,10 @@ pixsim7/
 
 ### Must-Read Documentation
 1. **MASTER_STATUS.md** - Complete project status (100% backend complete)
-2. **CROSS_PROVIDER_ASSETS.md** - Asset system architecture
+2. **systems/generation/cross-provider-assets.md** - Asset system architecture
 3. **LOGGING_STRUCTURE.md** - Logging spec and implementation
 4. **frontend/README.md** - Frontend architecture guide
-5. **docs/PORT_CONFIGURATION.md** - Port reference (critical!)
+5. **docs/getting-started/PORT_CONFIGURATION.md** - Port reference (critical!)
 
 ### Critical Backend Files
 - `pixsim7/backend/main/services/asset/asset_service.py` - Asset management (lines 338-503: cross-provider logic)

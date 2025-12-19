@@ -189,7 +189,7 @@ Always provide context:
 ```markdown
 ## Related Documentation
 
-- [System Overview](../../docs/SYSTEM_OVERVIEW.md) - Overall architecture
+- [System Overview](../../docs/game-systems/SYSTEM_OVERVIEW.md) - Overall architecture
 - [Integration Guide](./INTEGRATION_GUIDE.md) - Detailed integration steps
 - [API Reference](../../docs/API_REFERENCE.md) - Complete API docs
 ```

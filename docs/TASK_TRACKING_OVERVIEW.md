@@ -465,7 +465,7 @@ This document provides a **single source of truth** for what's been completed an
 - `apps/main/src/components/dev/DevToolsPanel.tsx`
 - `apps/main/src/lib/plugins/registryBridge.ts`
 - `docs/APP_MAP.md` (Dev Tools section)
-- `docs/SYSTEM_OVERVIEW.md` (Dev Tools section)
+- `docs/game-systems/SYSTEM_OVERVIEW.md` (Dev Tools section)
 - `claude-tasks/54-dev-tools-surface-and-debug-workspace.md`
 
 ---
@@ -756,7 +756,7 @@ This document provides a **single source of truth** for what's been completed an
 
 ### Core Architecture
 - `docs/APP_MAP.md` - Architecture index and system overview
-- `docs/SYSTEM_OVERVIEW.md` - Backend architecture
+- `docs/game-systems/SYSTEM_OVERVIEW.md` - Backend architecture
 - `docs/RELATIONSHIPS_AND_ARCS.md` - Relationship system conventions
 - `docs/SOCIAL_METRICS.md` - Social metrics and preview APIs
 - `docs/systems/generation/GENERATION_SYSTEM.md` - Generation system design

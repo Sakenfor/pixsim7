@@ -399,5 +399,5 @@ Existing code works unchanged. Social context is additive only.
 ## Contact
 
 For questions or issues, see:
-- `docs/SYSTEM_OVERVIEW.md` - High-level system map
+- `docs/game-systems/SYSTEM_OVERVIEW.md` - High-level system map
 - `claude-tasks/09-intimacy-and-scene-generation-prompts.md` - Implementation task

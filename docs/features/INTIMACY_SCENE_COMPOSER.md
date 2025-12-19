@@ -2264,6 +2264,6 @@ const presets = getPlaytestPresetList();
 ## Contact & Support
 
 For questions or issues:
-- See `docs/SYSTEM_OVERVIEW.md` for high-level architecture
+- See `docs/game-systems/SYSTEM_OVERVIEW.md` for high-level architecture
 - Check `claude-tasks/12-intimacy-scene-composer-and-progression-editor.md` for roadmap
 - Review related docs: `INTIMACY_AND_GENERATION.md`, `RELATIONSHIPS_AND_ARCS.md`

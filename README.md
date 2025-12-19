@@ -153,7 +153,7 @@ cd admin && npm install && npm run dev
 ### Getting Started
 - **[Architecture Overview](./docs/architecture/README.md)** - System design and component overview **← Start here!**
 - **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Setup, workflows, and contribution guide
-- **[docs/SETUP.md](./docs/SETUP.md)** - Detailed installation and configuration
+- **[Setup](./docs/getting-started/SETUP.md)** - Detailed installation and configuration
 - **[AI_README.md](./AI_README.md)** - Guide for AI assistants working with the codebase
 
 ### Backend
@@ -163,14 +163,14 @@ cd admin && npm install && npm run dev
 - **[Redis & Workers](./pixsim7/backend/main/REDIS_AND_WORKERS_SETUP.md)** - Job queue setup
 
 ### Frontend & Extensions
-- **[Admin Panel Guide](./docs/ADMIN_PANEL.md)** - Web UI features
+- **[Admin Panel Guide](./docs/getting-started/ADMIN_PANEL.md)** - Web UI features
 - **[Chrome Extension](./chrome-extension/README.md)** - Browser integration
 - **[Frontend Architecture](./frontend/README.md)** - Component library and design
 - **[Game Integration](./docs/NODE_EDITOR_DEVELOPMENT.md)** - Scene editor development
 
 ### Operations
-- **[Launcher Documentation](./docs/LAUNCHER.md)** - Single-click launcher
-- **[Port Configuration](./docs/PORT_CONFIGURATION.md)** - Network and port reference
+- **[Launcher Documentation](./docs/getting-started/LAUNCHER.md)** - Single-click launcher
+- **[Port Configuration](./docs/getting-started/PORT_CONFIGURATION.md)** - Network and port reference
 - **[Logging Structure](./LOGGING_STRUCTURE.md)** - Structured logging specification
 
 Full documentation index in the original README section.
@@ -384,7 +384,7 @@ docker-compose exec redis redis-cli PING
 docker-compose logs -f worker
 ```
 
-See [docs/SETUP.md](./docs/SETUP.md) for comprehensive troubleshooting.
+See [docs/getting-started/SETUP.md](./docs/getting-started/SETUP.md) for comprehensive troubleshooting.
 
 ---
 
@@ -422,4 +422,4 @@ Built with:
 
 ---
 
-**Ready to get started?** Follow the [Quick Start](#quick-start) guide above or read the full [Setup Documentation](./docs/SETUP.md).
+**Ready to get started?** Follow the [Quick Start](#quick-start) guide above or read the full [Setup Documentation](./docs/getting-started/SETUP.md).
