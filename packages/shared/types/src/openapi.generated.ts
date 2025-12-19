@@ -1633,6 +1633,8 @@ export interface paths {
          *
          *     Supports either offset or cursor pagination (cursor takes precedence if provided).
          *     Assets returned newest first (created_at DESC, id DESC for tie-break).
+         *
+         *     By default, archived assets are excluded. Set include_archived=true to show them.
          */
         readonly get: operations["list_assets_api_v1_assets_get"];
         readonly put?: never;
@@ -1725,6 +1727,34 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/{asset_id}/archive": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Archive Asset
+         * @description Archive or unarchive an asset.
+         *
+         *     Archived assets are soft-hidden from the default gallery view but remain
+         *     in the database and can be restored at any time.
+         *
+         *     Example request:
+         *     ```json
+         *     {"archived": true}
+         *     ```
+         */
+        readonly patch: operations["archive_asset_api_v1_assets__asset_id__archive_patch"];
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/{asset_id}/file": {
         readonly parameters: {
             readonly query?: never;
@@ -1739,6 +1769,9 @@ export interface paths {
          *     Returns the local file if it exists and the user owns the asset.
          *     This allows the frontend to display locally-stored assets even if
          *     the remote provider URL is unavailable or invalid.
+         *
+         *     Prioritizes stored_key (content-addressed) over local_path for
+         *     better deduplication support.
          */
         readonly get: operations["serve_asset_file_api_v1_assets__asset_id__file_get"];
         readonly put?: never;
@@ -1914,6 +1947,31 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/check-by-hash": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Check Asset By Hash
+         * @description Check if an asset with the given SHA256 hash already exists for the current user.
+         *
+         *     Returns asset metadata if found. This is a read-only check that does NOT
+         *     update last_accessed_at or modify any data.
+         *
+         *     Use this before uploading to avoid duplicate uploads.
+         */
+        readonly post: operations["check_asset_by_hash_api_v1_assets_check_by_hash_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/downloads/{filename}": {
         readonly parameters: {
             readonly query?: never;
@@ -1973,6 +2031,37 @@ export interface paths {
          *     - Asset includes lineage link to parent video via AssetLineage
          */
         readonly post: operations["extract_frame_api_v1_assets_extract_frame_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/filter-metadata": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Filter Metadata
+         * @description Get available filter definitions and options for the assets gallery.
+         *
+         *     Returns:
+         *     - filters: List of filter definitions (key, type, optional label)
+         *     - options: Available values for enum-type filters
+         *
+         *     The frontend should use this to dynamically render filter UI.
+         *     Filter types:
+         *     - enum: Dropdown with predefined options
+         *     - boolean: Toggle/checkbox
+         *     - search: Free-text search input
+         *     - autocomplete: Async search (use /tags endpoint for values)
+         */
+        readonly get: operations["get_filter_metadata_api_v1_assets_filter_metadata_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4029,6 +4118,48 @@ export interface paths {
          *         Detailed version info with analysis
          */
         readonly get: operations["get_version_detail_api_v1_dev_prompt_library_versions__version_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/example-concepts/demo-block": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Demo Block
+         * @description Return a demo ActionBlock JSON that uses plugin concepts and extensions.
+         *
+         *     This shows how blocks can use the new concepts and extensions.
+         */
+        readonly get: operations["get_demo_block_api_v1_example_concepts_demo_block_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/example-concepts/info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Plugin Info
+         * @description Get information about this example plugin.
+         */
+        readonly get: operations["get_plugin_info_api_v1_example_concepts_info_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -6288,7 +6419,13 @@ export interface paths {
          * @description Trigger ingestion for a specific asset.
          *
          *     Downloads the asset from provider, stores locally, extracts metadata,
-         *     and generates thumbnails.
+         *     and generates thumbnails and previews.
+         *
+         *     Selective regeneration:
+         *     - regenerate_thumbnails: Only regenerate thumbnails
+         *     - regenerate_previews: Only regenerate previews
+         *     - regenerate_metadata: Only extract metadata
+         *     - force: Full re-ingestion (all steps)
          */
         readonly post: operations["trigger_ingestion_api_v1_media_ingestion_trigger__asset_id__post"];
         readonly delete?: never;
@@ -7650,6 +7787,38 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/version": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Version
+         * @description Get API version information for client compatibility.
+         *
+         *     Returns version information useful for:
+         *     - Client version compatibility checks
+         *     - Debugging and support (build_sha)
+         *     - Clock synchronization (server_time)
+         *
+         *     Environment variables:
+         *     - BUILD_SHA: Git commit SHA (set during build/deploy)
+         *     - BUILD_TIME: Build timestamp in ISO 8601 format
+         *
+         *     Returns:
+         *         VersionResponse: API version and build information
+         */
+        readonly get: operations["get_version_api_v1_version_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/dev/architecture/map": {
         readonly parameters: {
             readonly query?: never;
@@ -8675,6 +8844,29 @@ export interface components {
             readonly success: boolean;
         };
         /**
+         * ArchiveAssetRequest
+         * @description Request body for archive/unarchive operation.
+         */
+        readonly ArchiveAssetRequest: {
+            /**
+             * Archived
+             * @description True to archive, False to unarchive
+             */
+            readonly archived: boolean;
+        };
+        /**
+         * ArchiveAssetResponse
+         * @description Response for archive operation.
+         */
+        readonly ArchiveAssetResponse: {
+            /** Id */
+            readonly id: number;
+            /** Is Archived */
+            readonly is_archived: boolean;
+            /** Message */
+            readonly message: string;
+        };
+        /**
          * AssetListResponse
          * @description Asset list response with pagination (offset-based, legacy)
          */
@@ -8715,6 +8907,11 @@ export interface components {
             readonly height?: number | null;
             /** Id */
             readonly id: number;
+            /**
+             * Is Archived
+             * @default false
+             */
+            readonly is_archived: boolean;
             /** Last Upload Status By Provider */
             readonly last_upload_status_by_provider?: {
                 readonly [key: string]: "success" | "error";
@@ -8724,6 +8921,10 @@ export interface components {
             readonly media_type: components["schemas"]["MediaType"];
             /** Mime Type */
             readonly mime_type?: string | null;
+            /** Preview Key */
+            readonly preview_key?: string | null;
+            /** Preview Url */
+            readonly preview_url?: string | null;
             /** Provider Asset Id */
             readonly provider_asset_id: string;
             /** Provider Id */
@@ -8732,9 +8933,15 @@ export interface components {
             readonly provider_status?: ("ok" | "local_only" | "unknown" | "flagged") | null;
             /** Remote Url */
             readonly remote_url?: string | null;
+            /** Source Generation Id */
+            readonly source_generation_id?: number | null;
+            /** Stored Key */
+            readonly stored_key?: string | null;
             readonly sync_status: components["schemas"]["SyncStatus"];
             /** Tags */
             readonly tags?: readonly components["schemas"]["TagSummary"][];
+            /** Thumbnail Key */
+            readonly thumbnail_key?: string | null;
             /** Thumbnail Url */
             readonly thumbnail_url?: string | null;
             /** User Id */
@@ -9286,6 +9493,53 @@ export interface components {
             readonly version: number;
             /** Visual Traits */
             readonly visual_traits: Record<string, unknown>;
+        };
+        /**
+         * CheckByHashRequest
+         * @description Request body for checking if an asset exists by SHA256 hash.
+         */
+        readonly CheckByHashRequest: {
+            /**
+             * Provider Id
+             * @description Optional: Check if uploaded to specific provider
+             */
+            readonly provider_id?: string | null;
+            /**
+             * Sha256
+             * @description SHA256 hash of file content
+             */
+            readonly sha256: string;
+        };
+        /**
+         * CheckByHashResponse
+         * @description Response for hash check - returns asset info if found.
+         */
+        readonly CheckByHashResponse: {
+            /**
+             * Asset Id
+             * @description Asset ID if found
+             */
+            readonly asset_id?: number | null;
+            /**
+             * Exists
+             * @description Whether an asset with this hash exists
+             */
+            readonly exists: boolean;
+            /**
+             * Note
+             * @description Additional information
+             */
+            readonly note?: string | null;
+            /**
+             * Provider Id
+             * @description Original provider ID if found
+             */
+            readonly provider_id?: string | null;
+            /**
+             * Uploaded To Providers
+             * @description List of providers this asset is uploaded to
+             */
+            readonly uploaded_to_providers?: readonly string[] | null;
         };
         /**
          * ClearExecutionsResponse
@@ -10318,6 +10572,66 @@ export interface components {
             readonly timeout_ms?: number | null;
         };
         /**
+         * FilterDefinition
+         * @description Definition of a single filter field.
+         */
+        readonly FilterDefinition: {
+            /**
+             * Key
+             * @description Filter parameter key (matches query param name)
+             */
+            readonly key: string;
+            /**
+             * Label
+             * @description Display label (optional, frontend can override)
+             */
+            readonly label?: string | null;
+            /**
+             * Type
+             * @description Filter type: enum, boolean, search, autocomplete
+             */
+            readonly type: string;
+        };
+        /**
+         * FilterMetadataResponse
+         * @description Response containing available filters and their options.
+         */
+        readonly FilterMetadataResponse: {
+            /**
+             * Filters
+             * @description Available filter definitions
+             */
+            readonly filters: readonly components["schemas"]["FilterDefinition"][];
+            /**
+             * Options
+             * @description Available options per filter key (for enum types)
+             */
+            readonly options?: {
+                readonly [key: string]: readonly components["schemas"]["FilterOptionValue"][];
+            };
+        };
+        /**
+         * FilterOptionValue
+         * @description A single option value for enum/autocomplete filters.
+         */
+        readonly FilterOptionValue: {
+            /**
+             * Count
+             * @description Number of assets with this value
+             */
+            readonly count?: number | null;
+            /**
+             * Label
+             * @description Display label
+             */
+            readonly label?: string | null;
+            /**
+             * Value
+             * @description The filter value to use in query
+             */
+            readonly value: string;
+        };
+        /**
          * FitRatingListResponse
          * @description Response for listing fit ratings.
          */
@@ -11159,15 +11473,15 @@ export interface components {
              */
             readonly concurrency_limit: number;
             /**
+             * Generate Previews
+             * @description Generate preview derivatives
+             */
+            readonly generate_previews: boolean;
+            /**
              * Generate Thumbnails
              * @description Generate thumbnails
              */
             readonly generate_thumbnails: boolean;
-            /**
-             * Generate Video Previews
-             * @description Generate video previews
-             */
-            readonly generate_video_previews: boolean;
             /**
              * Ingest On Asset Add
              * @description Auto-ingest when assets are created
@@ -11184,10 +11498,20 @@ export interface components {
              */
             readonly prefer_local_over_provider: boolean;
             /**
+             * Preview Quality
+             * @description JPEG quality for previews (1-100)
+             */
+            readonly preview_quality: number;
+            /**
              * Preview Size
              * @description Preview dimensions [width, height]
              */
             readonly preview_size: readonly number[];
+            /**
+             * Thumbnail Quality
+             * @description JPEG quality for thumbnails (1-100)
+             */
+            readonly thumbnail_quality: number;
             /**
              * Thumbnail Size
              * @description Thumbnail dimensions [width, height]
@@ -11203,18 +11527,22 @@ export interface components {
             readonly cache_control_max_age_seconds?: number | null;
             /** Concurrency Limit */
             readonly concurrency_limit?: number | null;
+            /** Generate Previews */
+            readonly generate_previews?: boolean | null;
             /** Generate Thumbnails */
             readonly generate_thumbnails?: boolean | null;
-            /** Generate Video Previews */
-            readonly generate_video_previews?: boolean | null;
             /** Ingest On Asset Add */
             readonly ingest_on_asset_add?: boolean | null;
             /** Max Download Size Mb */
             readonly max_download_size_mb?: number | null;
             /** Prefer Local Over Provider */
             readonly prefer_local_over_provider?: boolean | null;
+            /** Preview Quality */
+            readonly preview_quality?: number | null;
             /** Preview Size */
             readonly preview_size?: readonly number[] | null;
+            /** Thumbnail Quality */
+            readonly thumbnail_quality?: number | null;
             /** Thumbnail Size */
             readonly thumbnail_size?: readonly number[] | null;
         };
@@ -13872,6 +14200,38 @@ export interface components {
             readonly warnings: readonly string[];
         };
         /**
+         * VersionResponse
+         * @description API version information for client compatibility checks.
+         */
+        readonly VersionResponse: {
+            /**
+             * Api Version
+             * @description API version string (e.g., 'v1', '0.1.0')
+             * @example v1
+             * @example 0.1.0
+             */
+            readonly api_version: string;
+            /**
+             * Build Sha
+             * @description Git commit SHA of the build (null if not available)
+             * @example abc123def456
+             * @example null
+             */
+            readonly build_sha?: string | null;
+            /**
+             * Build Time
+             * @description ISO 8601 timestamp when the build was created
+             * @example 2024-01-15T10:30:00Z
+             */
+            readonly build_time?: string | null;
+            /**
+             * Server Time
+             * @description Current server time in ISO 8601 format (for clock sync checks)
+             * @example 2024-01-15T14:25:00Z
+             */
+            readonly server_time: string;
+        };
+        /**
          * WorldSchemaReport
          * @description Detailed schema validation report for a single world.
          */
@@ -16246,6 +16606,8 @@ export interface operations {
             readonly query?: {
                 /** @description Opaque cursor for pagination */
                 readonly cursor?: string | null;
+                /** @description Include archived assets (default: false) */
+                readonly include_archived?: boolean;
                 /** @description Results per page */
                 readonly limit?: number;
                 /** @description Filter by media type */
@@ -16417,6 +16779,43 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AnalysisResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly archive_asset_api_v1_assets__asset_id__archive_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ArchiveAssetRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ArchiveAssetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16675,6 +17074,41 @@ export interface operations {
             };
         };
     };
+    readonly check_asset_by_hash_api_v1_assets_check_by_hash_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CheckByHashRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CheckByHashResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly download_export_api_v1_assets_downloads__filename__get: {
         readonly parameters: {
             readonly query?: never;
@@ -16730,6 +17164,40 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_filter_metadata_api_v1_assets_filter_metadata_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include asset counts per option (slower) */
+                readonly include_counts?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["FilterMetadataResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19471,6 +19939,46 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_demo_block_api_v1_example_concepts_demo_block_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+        };
+    };
+    readonly get_plugin_info_api_v1_example_concepts_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -22922,6 +23430,12 @@ export interface operations {
             readonly query?: {
                 /** @description Re-ingest even if already completed */
                 readonly force?: boolean;
+                /** @description Force extract metadata only */
+                readonly regenerate_metadata?: boolean;
+                /** @description Force regenerate previews only */
+                readonly regenerate_previews?: boolean;
+                /** @description Force regenerate thumbnails only */
+                readonly regenerate_thumbnails?: boolean;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -25101,6 +25615,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_version_api_v1_version_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionResponse"];
                 };
             };
         };
