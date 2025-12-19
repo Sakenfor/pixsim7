@@ -320,7 +320,106 @@ graph = await lineage_service.get_lineage_graph(new_asset.id)
 
 ---
 
-### **8. SubmissionPipeline** (`services/submission/pipeline.py`)
+### **8. StorageService** (`services/storage/storage_service.py`)
+
+Media file storage abstraction with content-addressed deduplication.
+
+**Key Methods:**
+```python
+async def store(key: str, content: bytes, content_type: str = None) -> str
+async def store_from_path(key: str, source_path: str) -> str
+async def get(key: str) -> bytes | None
+async def delete(key: str) -> bool
+async def exists(key: str) -> bool
+def get_path(key: str) -> str
+def get_url(key: str) -> str
+async def get_metadata(key: str) -> dict | None
+
+# Content-addressed storage (deduplication)
+def get_content_addressed_key(user_id: int, sha256: str, extension: str) -> str
+async def store_with_hash(user_id: int, sha256: str, content: bytes, ...) -> str
+async def store_from_path_with_hash(user_id: int, sha256: str, source_path: str, ...) -> str
+```
+
+**Storage Key Formats:**
+
+**Legacy (Asset ID-based):**
+```python
+key = f"u/{user_id}/assets/{asset_id}.mp4"
+# Problem: Same file uploaded twice = two copies on disk
+```
+
+**Content-Addressed (Recommended):**
+```python
+key = get_content_addressed_key(user_id, sha256, ".mp4")
+# Returns: "u/{user_id}/content/{hash[:2]}/{sha256}.mp4"
+# Benefit: Same file = same storage location = automatic deduplication
+```
+
+**Automatic Deduplication:**
+```python
+storage = get_storage_service()
+
+# Store file by hash (skips write if already exists)
+stored_key = await storage.store_from_path_with_hash(
+    user_id=1,
+    sha256="abc123def456...",
+    source_path="/tmp/video.mp4",
+    extension=".mp4"
+)
+# If file already exists at u/1/content/ab/abc123...mp4, returns key immediately
+# Otherwise, copies file to content-addressed location
+
+# Get local path for serving
+local_path = storage.get_path(stored_key)
+# Returns: "data/media/u/1/content/ab/abc123...mp4"
+```
+
+**Usage Example:**
+```python
+from pixsim7.backend.main.services.storage import get_storage_service
+
+@router.post("/assets/upload-from-url")
+async def upload_from_url(request: UploadRequest, user: CurrentUser):
+    # Download to temp location
+    temp_path = await download_file(request.url)
+
+    # Compute SHA256
+    sha256 = compute_sha256(temp_path)
+
+    # Store using content-addressed key (automatic deduplication)
+    storage = get_storage_service()
+    stored_key = await storage.store_from_path_with_hash(
+        user_id=user.id,
+        sha256=sha256,
+        source_path=temp_path,
+        extension=".mp4"
+    )
+
+    # Create asset with stored_key
+    asset = await add_asset(
+        ...,
+        stored_key=stored_key,
+        local_path=storage.get_path(stored_key),
+        sha256=sha256,
+    )
+
+    return AssetResponse.from_orm(asset)
+```
+
+**Implementation Details:**
+- **Local Storage:** Files stored under `data/media/` by default
+- **Two-level directories:** `{hash[:2]}/` prevents too many files in one directory
+- **Per-user scoping:** Privacy and quota isolation
+- **Chunked hashing:** Efficient SHA256 computation for large files
+- **Async I/O:** Non-blocking file operations via `aiofiles`
+
+**See Also:**
+- `docs/implementation/asset-deduplication-implementation-status.md` - Complete deduplication guide
+
+---
+
+### **9. SubmissionPipeline** (`services/submission/pipeline.py`)
 
 Job submission orchestration with structured logging.
 

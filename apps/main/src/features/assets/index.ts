@@ -30,6 +30,12 @@ export { GalleryCubeExpansion } from './components/GalleryCubeExpansion';
 export { MediaViewerCube } from './components/MediaViewerCube';
 
 // ============================================================================
+// Components - Filters
+// ============================================================================
+
+export { DynamicFilters } from './components/DynamicFilters';
+
+// ============================================================================
 // Hooks
 // ============================================================================
 
@@ -42,6 +48,8 @@ export type { AssetFilters } from './hooks/useAssets';
 export { useAssetsController } from './hooks/useAssetsController';
 
 export { useAssetViewer } from './hooks/useAssetViewer';
+
+export { useFilterMetadata } from './hooks/useFilterMetadata';
 
 export { useLocalFoldersController } from './hooks/useLocalFoldersController';
 
@@ -87,8 +95,12 @@ export {
   deleteAsset,
   uploadAssetToProvider,
   getAsset,
+  getFilterMetadata,
   extractFrame,
   downloadAsset,
   type AssetResponse,
   type ExtractFrameRequest,
+  type FilterDefinition,
+  type FilterMetadataResponse,
+  type FilterOptionValue,
 } from './lib/api';

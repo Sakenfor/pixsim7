@@ -119,6 +119,234 @@ if existing:
 
 ---
 
+## ✅ COMPLETED: Content-Addressed Storage (Filesystem Deduplication)
+
+**Date:** 2025-12-19
+**Status:** Implemented - Backend Complete
+
+### Overview
+
+While database-level SHA256 deduplication prevents duplicate Asset records, files were still being duplicated on disk when stored by asset ID. Content-addressed storage eliminates this by storing files based on their SHA256 hash.
+
+### Storage Key Format
+
+**Before:**
+```
+u/{user_id}/assets/{asset_id}.mp4
+```
+Problem: Same file uploaded twice = two copies on disk
+
+**After:**
+```
+u/{user_id}/content/{hash[:2]}/{sha256}{extension}
+```
+Benefit: Same file = same storage location = automatic deduplication
+
+**Example:**
+```
+SHA256: abc123def456...789
+User: 1
+Extension: .mp4
+
+Storage Key: u/1/content/ab/abc123def456...789.mp4
+Local Path:  data/media/u/1/content/ab/abc123def456...789.mp4
+```
+
+### Implementation Details
+
+#### 1. StorageService Enhancements
+**File:** `pixsim7/backend/main/services/storage/storage_service.py` (Lines 292-412)
+
+**New Methods:**
+```python
+def get_content_addressed_key(user_id: int, sha256: str, extension: str) -> str:
+    """Generate content-addressed storage key"""
+    hash_prefix = sha256[:2]  # Two-level directory for performance
+    return f"u/{user_id}/content/{hash_prefix}/{sha256}{extension}"
+
+async def store_with_hash(...) -> str:
+    """Store file by hash, skip if already exists"""
+    key = get_content_addressed_key(user_id, sha256, extension)
+    if await self.exists(key):
+        return key  # Already stored - instant deduplication!
+    await self.store(key, content, content_type)
+    return key
+
+async def store_from_path_with_hash(...) -> str:
+    """Copy file to content-addressed location, skip if exists"""
+```
+
+**Automatic Deduplication:**
+- Checks if file exists at content-addressed location before writing
+- Returns existing key immediately if duplicate
+- Logs deduplication events for monitoring
+
+#### 2. Asset Model Updates
+**File:** `pixsim7/backend/main/domain/asset.py`
+
+**New Field Priority:**
+```python
+stored_key: Optional[str]   # Content-addressed storage key (PRIMARY)
+local_path: Optional[str]   # Computed from stored_key (DERIVED)
+sha256: Optional[str]       # File hash (indexed per-user)
+```
+
+#### 3. Asset Factory Integration
+**File:** `pixsim7/backend/main/services/asset/asset_factory.py` (Lines 22-50, 133-186)
+
+**Changes:**
+- Added `stored_key` parameter to `add_asset()`
+- Stores `stored_key` on new assets
+- Updates `stored_key` on existing assets (non-destructive fill)
+
+#### 4. Upload Endpoint Refactoring
+**File:** `pixsim7/backend/main/api/v1/assets.py` (Lines 772-1013)
+
+**Updated Flow:**
+```python
+# 1. Download to temp location
+temp_path = download_from_url(url)
+
+# 2. Compute SHA256
+sha256 = compute_sha256(temp_path)
+
+# 3. Check database dedup (existing asset with same hash?)
+existing = find_asset_by_hash(sha256, user_id)
+if existing:
+    return existing  # Database-level deduplication
+
+# 4. Store using content-addressed key (filesystem dedup)
+storage = get_storage_service()
+stored_key = await storage.store_from_path_with_hash(
+    user_id=user.id,
+    sha256=sha256,
+    source_path=temp_path,
+    extension=".mp4"
+)
+# If file exists at content-addressed location, storage is skipped!
+
+# 5. Get final path and create asset
+final_path = storage.get_path(stored_key)
+asset = await add_asset(
+    ...,
+    stored_key=stored_key,
+    local_path=final_path,
+    sha256=sha256,
+)
+```
+
+#### 5. File Serving Updates
+**File:** `pixsim7/backend/main/api/v1/assets.py` (Lines 373-420)
+
+**Priority Order:**
+```python
+# Prioritize stored_key (content-addressed) over local_path (legacy)
+file_path = None
+if asset.stored_key:
+    storage_service = get_storage_service()
+    file_path = storage_service.get_path(asset.stored_key)
+elif asset.local_path:
+    file_path = asset.local_path  # Fallback for old assets
+```
+
+**Media Endpoint:** `/api/v1/media/{key:path}` already uses storage service, works seamlessly
+
+### Benefits
+
+**1. Eliminates File Duplication**
+
+Scenario: User uploads same file multiple times
+- **Before:** 3 uploads = 3 files on disk (waste)
+- **After:** 3 uploads = 1 file on disk ✅
+
+**2. Instant Deduplication**
+
+```python
+# File already exists? Skip write entirely
+if await storage.exists(content_addressed_key):
+    logger.debug("file_already_exists_skipping_storage")
+    return key  # Instant, no I/O
+```
+
+**3. Cross-Asset File Sharing**
+
+Multiple Asset records can reference the same physical file:
+```
+Asset 42: stored_key = u/1/content/ab/abc123...mp4
+Asset 99: stored_key = u/1/content/ab/abc123...mp4  # Same file!
+```
+
+**4. Stable Storage Keys**
+
+- Files never move after creation
+- `stored_key` remains constant across asset deletions
+- Enables safe cleanup of unreferenced files (future)
+
+### Backward Compatibility
+
+**Old Assets (pre-2025-12-19):**
+- Have `local_path` set (format: `u/{user_id}/assets/{asset_id}.ext`)
+- Have `stored_key = None`
+- Continue to work via fallback in file serving
+
+**New Assets:**
+- Have both `stored_key` and `local_path` set
+- Use content-addressed storage
+- Automatic filesystem deduplication
+
+**No migration required** - system works with both old and new formats
+
+### Performance Impact
+
+**Storage Operations:**
+```python
+# Before: Always write
+shutil.copy2(source, f"u/{user_id}/assets/{asset_id}.ext")
+
+# After: Check first, skip if exists
+if await storage.exists(content_key):
+    return key  # No I/O for duplicates!
+```
+
+**Impact:** Faster uploads for duplicate files (common for reference images, templates)
+
+### Testing Scenarios
+
+- [x] Upload same file twice → Same `stored_key`, one file on disk
+- [x] Different users upload same file → Different `stored_key` (per-user scoping)
+- [ ] Large file (500MB) → No memory issues (chunked hashing already supported)
+- [ ] File serving → Works with both `stored_key` and `local_path` fallback
+- [ ] Migration → Existing assets without `stored_key` still accessible
+
+### Future Enhancements
+
+**1. Reference Counting for File Cleanup**
+```python
+# When deleting asset, only delete file if no other assets reference it
+ref_count = count_assets_with_stored_key(stored_key)
+if ref_count == 0:
+    await storage.delete(stored_key)
+```
+
+**2. Cross-User Deduplication (Admin Feature)**
+- Current: Per-user (`u/{user_id}/content/...`)
+- Possible: Global pool (`content/{hash}/...`) with ACLs
+- Trade-off: Disk savings vs. privacy concerns
+
+**3. Content-Addressable Thumbnails**
+```python
+# Apply same pattern to thumbnails
+thumbnail_key = f"u/{user_id}/content/{thumb_hash[:2]}/{thumb_hash}.jpg"
+```
+
+### Files Modified
+
+- ✅ `pixsim7/backend/main/services/storage/storage_service.py` (Lines 292-412)
+- ✅ `pixsim7/backend/main/services/asset/asset_factory.py` (Lines 22-50, 133-186)
+- ✅ `pixsim7/backend/main/api/v1/assets.py` (Lines 373-420, 772-1013)
+
+---
+
 ## ❌ PENDING: Frontend Implementation
 
 ### 4. Streaming SHA256 Computation (Web Worker)
@@ -513,9 +741,16 @@ User re-adds SAME folder
 ## Files Modified Summary
 
 ### Backend (Completed)
-- ✅ `pixsim7/backend/main/domain/asset.py`
-- ✅ `pixsim7/backend/main/api/v1/assets.py`
+
+**Database Deduplication:**
+- ✅ `pixsim7/backend/main/domain/asset.py` (SHA256 field + composite unique index)
+- ✅ `pixsim7/backend/main/api/v1/assets.py` (Check-by-hash endpoint + provider_uploads map)
 - ✅ `pixsim7/backend/main/infrastructure/database/migrations/versions/20251218_0100_fix_sha256_per_user_dedup.py`
+
+**Content-Addressed Storage:**
+- ✅ `pixsim7/backend/main/services/storage/storage_service.py` (Content-addressed methods)
+- ✅ `pixsim7/backend/main/services/asset/asset_factory.py` (stored_key support)
+- ✅ `pixsim7/backend/main/api/v1/assets.py` (Upload flow + file serving)
 
 ### Frontend (Pending)
 - ❌ `apps/main/src/workers/sha256.worker.ts` (new file)

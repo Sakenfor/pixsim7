@@ -36,6 +36,7 @@ async def add_asset(
     source_generation_id: Optional[int] = None,
     sha256: Optional[str] = None,
     local_path: Optional[str] = None,
+    stored_key: Optional[str] = None,
     file_size_bytes: Optional[int] = None,
     mime_type: Optional[str] = None,
     description: Optional[str] = None,
@@ -140,6 +141,7 @@ async def add_asset(
         _fill(existing, "mime_type", mime_type)
         _fill(existing, "description", description)
         _fill(existing, "local_path", local_path)
+        _fill(existing, "stored_key", stored_key)
         _fill(existing, "sha256", sha256)
         _fill(existing, "file_size_bytes", file_size_bytes)
         _fill(existing, "image_hash", image_hash)
@@ -172,6 +174,7 @@ async def add_asset(
         source_generation_id=source_generation_id,
         sha256=sha256,
         local_path=local_path,
+        stored_key=stored_key,
         file_size_bytes=file_size_bytes,
         mime_type=mime_type,
         description=description,

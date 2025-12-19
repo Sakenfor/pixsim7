@@ -13,6 +13,7 @@ export type AssetFilters = {
   sort?: 'new' | 'old' | 'alpha';
   media_type?: 'video' | 'image' | 'audio' | '3d_model';
   provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
+  include_archived?: boolean;
 };
 
 export function useAssets(options?: { limit?: number; filters?: AssetFilters }) {
@@ -34,7 +35,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     sort: filters.sort || undefined,
     media_type: filters.media_type || undefined,
     provider_status: filters.provider_status || undefined,
-  }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type, filters.provider_status]);
+    include_archived: filters.include_archived || undefined,
+  }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type, filters.provider_status, filters.include_archived]);
 
   // Use ref to always access current filterParams in loadMore without stale closures
   const filterParamsRef = useRef(filterParams);
@@ -69,6 +71,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
         tag: currentFilters.tag,
         provider_id: currentFilters.provider_id || undefined,
         media_type: currentFilters.media_type || undefined,
+        include_archived: currentFilters.include_archived || undefined,
       });
 
       // Client-side filter for provider_status (backend doesn't support this yet)
@@ -145,7 +148,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   // Reset when filters change
   useEffect(() => {
     reset();
-  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit, reset]);
+  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, filterParams.include_archived, limit, reset]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
   useEffect(() => {

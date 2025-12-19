@@ -289,6 +289,128 @@ class LocalStorageService(StorageService):
 
         return sha256_hash.hexdigest()
 
+    def get_content_addressed_key(self, user_id: int, sha256: str, extension: str = "") -> str:
+        """
+        Generate content-addressed storage key.
+
+        Uses SHA256 hash to create a unique, deterministic key that prevents
+        duplicate file storage. Files with identical content will map to the
+        same storage location.
+
+        Args:
+            user_id: User ID (for per-user scoping)
+            sha256: SHA256 hash of file content (64 hex chars)
+            extension: File extension including dot (e.g., ".mp4", ".jpg")
+
+        Returns:
+            Storage key in format: u/{user_id}/content/{hash[:2]}/{hash}{ext}
+
+        Example:
+            sha256 = "abc123..."
+            -> "u/1/content/ab/abc123...def.mp4"
+        """
+        if not extension.startswith(".") and extension:
+            extension = f".{extension}"
+
+        # Two-level directory structure for filesystem performance
+        # First 2 chars as subdirectory to avoid too many files in one dir
+        hash_prefix = sha256[:2]
+        return f"u/{user_id}/content/{hash_prefix}/{sha256}{extension}"
+
+    async def store_with_hash(
+        self,
+        user_id: int,
+        sha256: str,
+        content: Union[bytes, BinaryIO],
+        extension: str = "",
+        content_type: Optional[str] = None,
+    ) -> str:
+        """
+        Store content using content-addressed key (by SHA256 hash).
+
+        If a file with this hash already exists, skips storage and returns
+        the existing key. This provides automatic deduplication at the
+        filesystem level.
+
+        Args:
+            user_id: User ID
+            sha256: SHA256 hash of content (must match actual content)
+            content: File content as bytes or file-like object
+            extension: File extension including dot (e.g., ".mp4")
+            content_type: MIME type (optional)
+
+        Returns:
+            The content-addressed storage key
+        """
+        key = self.get_content_addressed_key(user_id, sha256, extension)
+
+        # Check if file already exists (deduplication)
+        if await self.exists(key):
+            logger.debug(
+                "file_already_exists_skipping_storage",
+                key=key,
+                sha256=sha256[:16],
+                detail="Content-addressed storage: file with this hash already exists"
+            )
+            return key
+
+        # Store new file
+        await self.store(key, content, content_type)
+
+        logger.debug(
+            "file_stored_content_addressed",
+            key=key,
+            sha256=sha256[:16]
+        )
+
+        return key
+
+    async def store_from_path_with_hash(
+        self,
+        user_id: int,
+        sha256: str,
+        source_path: str,
+        extension: str = "",
+    ) -> str:
+        """
+        Store content from local file using content-addressed key.
+
+        Efficient copy from existing file path. If file already exists at
+        the content-addressed location, skips copy.
+
+        Args:
+            user_id: User ID
+            sha256: SHA256 hash of content
+            source_path: Path to source file
+            extension: File extension including dot
+
+        Returns:
+            The content-addressed storage key
+        """
+        key = self.get_content_addressed_key(user_id, sha256, extension)
+
+        # Check if file already exists (deduplication)
+        if await self.exists(key):
+            logger.debug(
+                "file_already_exists_skipping_copy",
+                key=key,
+                sha256=sha256[:16],
+                source=source_path
+            )
+            return key
+
+        # Copy file to content-addressed location
+        await self.store_from_path(key, source_path)
+
+        logger.debug(
+            "file_copied_content_addressed",
+            key=key,
+            sha256=sha256[:16],
+            source=source_path
+        )
+
+        return key
+
 
 # Global storage service instance
 _storage_service: Optional[StorageService] = None

@@ -151,6 +151,119 @@ async def list_assets(
         raise HTTPException(status_code=500, detail=f"Failed to list assets: {str(e)}")
 
 
+# ===== FILTER METADATA =====
+
+class FilterDefinition(BaseModel):
+    """Definition of a single filter field."""
+    key: str = Field(description="Filter parameter key (matches query param name)")
+    type: str = Field(description="Filter type: enum, boolean, search, autocomplete")
+    label: Optional[str] = Field(None, description="Display label (optional, frontend can override)")
+
+
+class FilterOptionValue(BaseModel):
+    """A single option value for enum/autocomplete filters."""
+    value: str = Field(description="The filter value to use in query")
+    label: Optional[str] = Field(None, description="Display label")
+    count: Optional[int] = Field(None, description="Number of assets with this value")
+
+
+class FilterMetadataResponse(BaseModel):
+    """Response containing available filters and their options."""
+    filters: List[FilterDefinition] = Field(description="Available filter definitions")
+    options: dict[str, List[FilterOptionValue]] = Field(
+        default_factory=dict,
+        description="Available options per filter key (for enum types)"
+    )
+
+
+@router.get("/assets/filter-metadata", response_model=FilterMetadataResponse)
+async def get_filter_metadata(
+    user: CurrentUser,
+    db: DatabaseSession,
+    include_counts: bool = Query(False, description="Include asset counts per option (slower)"),
+):
+    """
+    Get available filter definitions and options for the assets gallery.
+
+    Returns:
+    - filters: List of filter definitions (key, type, optional label)
+    - options: Available values for enum-type filters
+
+    The frontend should use this to dynamically render filter UI.
+    Filter types:
+    - enum: Dropdown with predefined options
+    - boolean: Toggle/checkbox
+    - search: Free-text search input
+    - autocomplete: Async search (use /tags endpoint for values)
+    """
+    from sqlalchemy import select, func, distinct
+    from pixsim7.backend.main.domain.asset import Asset
+
+    # Define available filters (schema-driven)
+    filters = [
+        FilterDefinition(key="media_type", type="enum", label="Media Type"),
+        FilterDefinition(key="provider_id", type="enum", label="Provider"),
+        FilterDefinition(key="include_archived", type="boolean", label="Show Archived"),
+        FilterDefinition(key="tag", type="autocomplete", label="Tag"),
+        FilterDefinition(key="q", type="search", label="Search"),
+    ]
+
+    options: dict[str, List[FilterOptionValue]] = {}
+
+    try:
+        # Get distinct media_types for current user
+        if include_counts:
+            media_type_query = (
+                select(Asset.media_type, func.count(Asset.id).label("count"))
+                .where(Asset.user_id == user.id, Asset.is_archived == False)
+                .group_by(Asset.media_type)
+            )
+            result = await db.execute(media_type_query)
+            options["media_type"] = [
+                FilterOptionValue(value=row.media_type.value, label=row.media_type.value.title(), count=row.count)
+                for row in result.all()
+            ]
+        else:
+            media_type_query = (
+                select(distinct(Asset.media_type))
+                .where(Asset.user_id == user.id, Asset.is_archived == False)
+            )
+            result = await db.execute(media_type_query)
+            options["media_type"] = [
+                FilterOptionValue(value=mt.value, label=mt.value.title())
+                for mt in result.scalars().all()
+            ]
+
+        # Get distinct provider_ids for current user
+        if include_counts:
+            provider_query = (
+                select(Asset.provider_id, func.count(Asset.id).label("count"))
+                .where(Asset.user_id == user.id, Asset.is_archived == False)
+                .group_by(Asset.provider_id)
+            )
+            result = await db.execute(provider_query)
+            options["provider_id"] = [
+                FilterOptionValue(value=row.provider_id, label=row.provider_id.title(), count=row.count)
+                for row in result.all()
+            ]
+        else:
+            provider_query = (
+                select(distinct(Asset.provider_id))
+                .where(Asset.user_id == user.id, Asset.is_archived == False)
+            )
+            result = await db.execute(provider_query)
+            options["provider_id"] = [
+                FilterOptionValue(value=pid, label=pid.title())
+                for pid in result.scalars().all()
+            ]
+
+        return FilterMetadataResponse(filters=filters, options=options)
+
+    except Exception as e:
+        logger.error("filter_metadata_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get filter metadata: {str(e)}")
+
+
 # ===== GET ASSET =====
 
 @router.get("/assets/{asset_id}", response_model=AssetResponse)
@@ -382,29 +495,41 @@ async def serve_asset_file(
     Returns the local file if it exists and the user owns the asset.
     This allows the frontend to display locally-stored assets even if
     the remote provider URL is unavailable or invalid.
+
+    Prioritizes stored_key (content-addressed) over local_path for
+    better deduplication support.
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
 
-        if not asset.local_path:
+        # Determine file path to serve (prioritize stored_key for content-addressed storage)
+        file_path = None
+        if asset.stored_key:
+            from pixsim7.backend.main.services.storage.storage_service import get_storage_service
+            storage_service = get_storage_service()
+            file_path = storage_service.get_path(asset.stored_key)
+        elif asset.local_path:
+            file_path = asset.local_path
+
+        if not file_path:
             raise HTTPException(
                 status_code=404,
                 detail="Asset has no local file (sync_status is REMOTE)"
             )
 
-        if not os.path.exists(asset.local_path):
+        if not os.path.exists(file_path):
             raise HTTPException(
                 status_code=404,
-                detail=f"Local file not found at {asset.local_path}"
+                detail=f"Local file not found at {file_path}"
             )
 
         # Determine media type
         media_type = asset.mime_type or "application/octet-stream"
 
         return FileResponse(
-            path=asset.local_path,
+            path=file_path,
             media_type=media_type,
-            filename=f"asset_{asset.id}{os.path.splitext(asset.local_path)[1]}"
+            filename=f"asset_{asset.id}{os.path.splitext(file_path)[1]}"
         )
 
     except HTTPException:
@@ -775,18 +900,13 @@ async def upload_asset_from_url(
     import shutil
     from PIL import Image
 
-    # Step 1: Prepare local storage path (use pathlib for cross-platform compatibility)
-    # pathlib.Path works consistently across Windows, Linux, and Docker environments
-    from pathlib import Path
-    storage_root = Path("data/storage/user") / str(user.id) / "assets"
-    storage_root.mkdir(parents=True, exist_ok=True)
-
-    # Generate temporary asset ID (will be replaced with actual ID after DB insert)
-    temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
+    # Step 1: Save to temporary file for processing
     ext = mimetypes.guess_extension(content_type) or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
-    temp_local_path = str(storage_root / f"temp_{temp_id}{ext}")
+    temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
+    import tempfile
+    temp_local_path = tempfile.mktemp(suffix=ext)
 
-    # Step 2: Save to permanent local storage
+    # Step 2: Save to temp location and compute metadata
     try:
         shutil.copy2(tmp_path, temp_local_path)
         file_size_bytes = os.path.getsize(temp_local_path)
@@ -918,8 +1038,42 @@ async def upload_asset_from_url(
             pass
         raise HTTPException(status_code=500, detail=f"Failed to save to local storage: {e}")
 
-    # Step 3: Create asset in database with local storage (sync_status=DOWNLOADED)
-    # Use placeholder provider_asset_id initially
+    # Step 3: Store file using content-addressed storage
+    # This ensures files with identical content are stored only once
+    from pixsim7.backend.main.services.storage.storage_service import get_storage_service
+    storage_service = get_storage_service()
+
+    try:
+        # Store file using SHA256-based key (automatic deduplication)
+        stored_key = await storage_service.store_from_path_with_hash(
+            user_id=user.id,
+            sha256=sha256,
+            source_path=temp_local_path,
+            extension=ext
+        )
+
+        # Get local path for the stored file
+        final_local_path = storage_service.get_path(stored_key)
+
+        logger.info(
+            "file_stored_content_addressed",
+            user_id=user.id,
+            sha256=sha256[:16],
+            stored_key=stored_key,
+            local_path=final_local_path
+        )
+
+    except Exception as e:
+        # Clean up temp files on storage failure
+        try:
+            os.unlink(tmp_path)
+            if os.path.exists(temp_local_path):
+                os.unlink(temp_local_path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to store file: {e}")
+
+    # Step 4: Create asset in database with content-addressed storage key
     placeholder_provider_asset_id = f"local_{sha256[:16]}"
 
     # Build upload context metadata for extension uploads
@@ -944,7 +1098,8 @@ async def upload_asset_from_url(
             provider_asset_id=placeholder_provider_asset_id,
             remote_url=None,  # Will be set after provider upload
             thumbnail_url=None,  # Will use local file
-            local_path=temp_local_path,  # Temporary path, will be renamed
+            local_path=final_local_path,  # Content-addressed path
+            stored_key=stored_key,  # Stable storage key
             sync_status=SyncStatus.DOWNLOADED,  # Already have it locally!
             width=width,
             height=height,
@@ -958,17 +1113,8 @@ async def upload_asset_from_url(
         )
         # TODO: Add "user_upload" and "from_url" tags using TagService after asset creation
 
-        # Rename file to use actual asset ID
-        final_local_path = str(storage_root / f"{asset.id}{ext}")
-        shutil.move(temp_local_path, final_local_path)
-
-        # Update asset with final local_path
-        asset.local_path = final_local_path
-        await db.commit()
-        await db.refresh(asset)
-
     except Exception as e:
-        # Clean up on failure
+        # Clean up temp files on failure
         try:
             os.unlink(tmp_path)
             if os.path.exists(temp_local_path):
@@ -983,8 +1129,15 @@ async def upload_asset_from_url(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to create asset: {e}")
+    finally:
+        # Clean up temp file (stored_key file is already in permanent location)
+        try:
+            if os.path.exists(temp_local_path):
+                os.unlink(temp_local_path)
+        except Exception:
+            pass
 
-    # Step 4: Try to upload to provider (BEST-EFFORT, non-blocking)
+    # Step 5: Try to upload to provider (BEST-EFFORT, non-blocking)
     # If this fails, the asset is still accessible via local storage
     provider_upload_result = None
     provider_upload_note = None

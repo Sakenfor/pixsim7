@@ -86,6 +86,39 @@ export async function uploadAssetToProvider(assetId: number, providerId: string)
  * Download an asset to the user's device.
  * Uses the asset's remote_url or falls back to the file endpoint.
  */
+// ============================================================================
+// Filter Metadata Types
+// ============================================================================
+
+export interface FilterDefinition {
+  key: string;
+  type: 'enum' | 'boolean' | 'search' | 'autocomplete';
+  label?: string;
+}
+
+export interface FilterOptionValue {
+  value: string;
+  label?: string;
+  count?: number;
+}
+
+export interface FilterMetadataResponse {
+  filters: FilterDefinition[];
+  options: Record<string, FilterOptionValue[]>;
+}
+
+/**
+ * Get available filter definitions and options for the assets gallery.
+ * Returns filter schema + available values for enum types.
+ */
+export async function getFilterMetadata(
+  includeCounts = false
+): Promise<FilterMetadataResponse> {
+  const params = includeCounts ? '?include_counts=true' : '';
+  const res = await apiClient.get<FilterMetadataResponse>(`/assets/filter-metadata${params}`);
+  return res.data;
+}
+
 export async function downloadAsset(asset: AssetResponse): Promise<void> {
   const downloadUrl = asset.remote_url || asset.file_url || `/api/v1/assets/${asset.id}/file`;
 
