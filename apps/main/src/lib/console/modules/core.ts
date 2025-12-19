@@ -29,14 +29,13 @@ function registerStores(): void {
     description: 'Workspace layout, presets, and panel state',
     store: useWorkspaceStore,
     readableKeys: [
-      'currentLayout',
-      'dockviewLayout',
+      'layoutByScope',
       'closedPanels',
       'isLocked',
       'presets',
       'fullscreenPanel',
       'floatingPanels',
-      'activePresetId',
+      'activePresetByScope',
     ],
   });
 

@@ -58,16 +58,18 @@ export function useEditorContext(): EditorContext {
   const { selectedNodeIds } = useSelectionStore();
   const gameContext = useGameStateStore((s) => s.context);
   // Use separate selectors to avoid creating new objects on every call
-  const activePresetId = useWorkspaceStore((s) => s.activePresetId);
-  const dockviewLayout = useWorkspaceStore((s) => s.dockviewLayout);
+  const activePresetId = useWorkspaceStore((s) => s.activePresetByScope.workspace ?? null);
+  const dockviewLayout = useWorkspaceStore((s) => s.layoutByScope.workspace ?? null);
 
   // Derive active panels from dockview layout
   const activePanels = useMemo(() => {
     const panels: string[] = [];
-    if (dockviewLayout?.panels && Array.isArray(dockviewLayout.panels)) {
-      for (const p of dockviewLayout.panels) {
-        if (p?.id) {
-          panels.push(String(p.id));
+    const layoutPanels = (dockviewLayout as any)?.panels;
+    if (Array.isArray(layoutPanels)) {
+      for (const p of layoutPanels) {
+        const panelId = p?.params?.panelId;
+        if (typeof panelId === 'string') {
+          panels.push(panelId);
         }
       }
     }
@@ -136,4 +138,3 @@ export function useEditorContext(): EditorContext {
     ]
   );
 }
-

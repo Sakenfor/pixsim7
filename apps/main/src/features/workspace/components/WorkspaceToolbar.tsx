@@ -10,7 +10,7 @@ export function WorkspaceToolbar() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
-  const presets = useWorkspaceStore((s) => s.presets);
+  const presets = useWorkspaceStore((s) => s.getPresetsForScope("workspace"));
   const loadPreset = useWorkspaceStore((s) => s.loadPreset);
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const deletePreset = useWorkspaceStore((s) => s.deletePreset);
@@ -20,9 +20,10 @@ export function WorkspaceToolbar() {
   const isLocked = useWorkspaceStore((s) => s.isLocked);
   const toggleLock = useWorkspaceStore((s) => s.toggleLock);
   const reset = useWorkspaceStore((s) => s.reset);
+  const currentLayout = useWorkspaceStore((s) => s.getLayout("workspace"));
 
   const handleSavePreset = (name: string) => {
-    savePreset(name);
+    savePreset(name, "workspace", currentLayout);
     setShowSaveDialog(false);
   };
 

@@ -17,9 +17,10 @@ export function WorkspaceModule({ }: ControlCenterModuleProps) {
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
-  const presets = useWorkspaceStore((s) => s.presets);
+  const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const loadPreset = useWorkspaceStore((s) => s.loadPreset);
+  const currentLayout = useWorkspaceStore((s) => s.getLayout('workspace'));
 
   const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
 
@@ -128,7 +129,7 @@ export function WorkspaceModule({ }: ControlCenterModuleProps) {
           onClick={() => {
             const name = prompt('Preset name:');
             if (name) {
-              savePreset(name, `Saved on ${new Date().toLocaleDateString()}`);
+              savePreset(name, 'workspace', currentLayout);
             }
           }}
           className="w-full px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"

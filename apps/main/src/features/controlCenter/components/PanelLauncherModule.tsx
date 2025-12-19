@@ -1,12 +1,10 @@
 import { useMemo } from 'react';
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
-import { ThemedIcon } from '@lib/icons';
 import { panelRegistry } from '@features/panels';
 
 export function PanelLauncherModule() {
-  const currentLayout = useWorkspaceStore((s) => s.currentLayout);
+  const layout = useWorkspaceStore((s) => s.getLayout('workspace'));
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
-  const closedPanels = useWorkspaceStore((s) => s.closedPanels);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
 
@@ -16,14 +14,19 @@ export function PanelLauncherModule() {
   // Get list of currently open panels (docked)
   const openPanels = useMemo(() => {
     const panels = new Set<PanelId>();
-    const getLeaves = (node: any): PanelId[] => {
-      if (!node) return [];
-      if (typeof node === 'string') return [node];
-      return [...getLeaves(node.first), ...getLeaves(node.second)];
-    };
-    getLeaves(currentLayout).forEach((id) => panels.add(id));
+
+    const layoutPanels = (layout as any)?.panels;
+    if (Array.isArray(layoutPanels)) {
+      for (const panel of layoutPanels) {
+        const panelId = panel?.params?.panelId;
+        if (typeof panelId === 'string') {
+          panels.add(panelId as PanelId);
+        }
+      }
+    }
+
     return panels;
-  }, [currentLayout]);
+  }, [layout]);
 
   // Get list of floating panels
   const floatingPanelIds = useMemo(
@@ -154,4 +157,3 @@ export function PanelLauncherModule() {
     </div>
   );
 }
-

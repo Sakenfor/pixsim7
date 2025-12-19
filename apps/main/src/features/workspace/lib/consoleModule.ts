@@ -42,7 +42,8 @@ function registerWorkspaceOps(): void {
     description: "Save current layout as a new preset",
     execute: (name: unknown) => {
       if (typeof name !== "string") throw new Error("name must be a string");
-      useWorkspaceStore.getState().savePreset(name);
+      const store = useWorkspaceStore.getState();
+      store.savePreset(name, "workspace", store.getLayout("workspace"));
       return `Saved preset: ${name}`;
     },
     params: [

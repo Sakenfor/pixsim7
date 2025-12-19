@@ -23,8 +23,9 @@ export { WorkspaceRoute } from "./routes/Workspace";
 export {
   useWorkspaceStore,
   type PanelId,
-  type LayoutNode,
-  type LayoutBranch,
+  type PresetScope,
+  type DockviewLayout,
+  type LayoutPreset,
   type FloatingPanelState,
   type WorkspacePreset,
   type WorkspaceState,

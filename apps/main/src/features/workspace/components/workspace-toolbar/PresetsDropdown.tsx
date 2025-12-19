@@ -31,7 +31,7 @@ export function PresetsDropdown({
           >
             {preset.name}
           </DropdownItem>
-          {!["default", "minimal", "creative"].includes(preset.id) && (
+          {!preset.isDefault && (
             <button
               className="text-xs px-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
               onClick={() => onDeletePreset(preset.id)}

@@ -24,14 +24,17 @@ export function getEditorContextSnapshot(): EditorContext {
   const currentScene = graphState.getCurrentScene();
   const { selectedNodeIds } = useSelectionStore.getState();
   const gameContext = useGameStateStore.getState().context;
-  const { activePresetId, dockviewLayout } = useWorkspaceStore.getState();
+  const workspaceState = useWorkspaceStore.getState();
+  const activePresetId = workspaceState.getActivePresetId('workspace');
+  const dockviewLayout = workspaceState.getLayout('workspace');
 
   // Derive active panels
   const activePanels: string[] = [];
-  if (dockviewLayout?.panels && Array.isArray(dockviewLayout.panels)) {
-    for (const p of dockviewLayout.panels) {
-      if (p?.id) {
-        activePanels.push(String(p.id));
+  if (dockviewLayout?.panels && Array.isArray((dockviewLayout as any).panels)) {
+    for (const p of (dockviewLayout as any).panels) {
+      const panelId = p?.params?.panelId;
+      if (typeof panelId === 'string') {
+        activePanels.push(panelId);
       }
     }
   }

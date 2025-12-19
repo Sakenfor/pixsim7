@@ -100,7 +100,7 @@ export interface WorkspaceActions {
   /** Set fullscreen panel */
   setFullscreen: (panelId: PanelId | null) => void;
   /** Save current layout as a new preset */
-  savePreset: (name: string, scope: PresetScope, layout: DockviewLayout) => void;
+  savePreset: (name: string, scope: PresetScope, layout: DockviewLayout | null) => void;
   /** Update an existing preset's layout */
   updatePreset: (id: string, layout: DockviewLayout) => void;
   /** Load a preset (returns the layout to apply) */

@@ -1,8 +1,5 @@
-import {
-  useWorkspaceStore,
-  type PanelId,
-  type LayoutNode,
-} from "../../stores/workspaceStore";
+import { useMemo } from "react";
+import { useWorkspaceStore, type PanelId } from "../../stores/workspaceStore";
 import { Icon } from "@lib/icons";
 import { panelRegistry } from "@features/panels";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
@@ -16,15 +13,23 @@ export function AddPanelDropdown({
   onRestorePanel,
   onClose,
 }: AddPanelDropdownProps) {
-  const currentLayout = useWorkspaceStore((s) => s.currentLayout);
+  const layout = useWorkspaceStore((s) => s.getLayout("workspace"));
 
-  const getAllLeaves = (node: LayoutNode<PanelId> | null): PanelId[] => {
-    if (!node) return [];
-    if (typeof node === "string") return [node as PanelId];
-    return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
-  };
+  const existingPanels = useMemo(() => {
+    const ids = new Set<PanelId>();
+    const layoutPanels = (layout as any)?.panels;
 
-  const existingPanels = getAllLeaves(currentLayout);
+    if (Array.isArray(layoutPanels)) {
+      for (const panel of layoutPanels) {
+        const panelId = panel?.params?.panelId;
+        if (typeof panelId === "string") {
+          ids.add(panelId as PanelId);
+        }
+      }
+    }
+
+    return ids;
+  }, [layout]);
   const allPanels = panelRegistry.getAll();
 
   // Group panels by category
@@ -43,7 +48,7 @@ export function AddPanelDropdown({
             </div>
             <div className="space-y-0.5">
               {panels.map((panel) => {
-                const alreadyExists = existingPanels.includes(panel.id);
+                const alreadyExists = existingPanels.has(panel.id as PanelId);
 
                 return (
                   <button

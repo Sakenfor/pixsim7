@@ -9,8 +9,8 @@ import { useState } from 'react';
 import { useWorkspaceStore } from '@features/workspace';
 
 export function WorkspaceProfileManager() {
-  const presets = useWorkspaceStore((s) => s.presets);
-  const currentLayout = useWorkspaceStore((s) => s.currentLayout);
+  const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
+  const currentLayout = useWorkspaceStore((s) => s.getLayout('workspace'));
   const loadPreset = useWorkspaceStore((s) => s.loadPreset);
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const deletePreset = useWorkspaceStore((s) => s.deletePreset);
@@ -21,7 +21,7 @@ export function WorkspaceProfileManager() {
 
   const handleSavePreset = () => {
     if (newPresetName.trim()) {
-      savePreset(newPresetName.trim());
+      savePreset(newPresetName.trim(), 'workspace', currentLayout);
       setNewPresetName('');
       setShowCreateForm(false);
     }

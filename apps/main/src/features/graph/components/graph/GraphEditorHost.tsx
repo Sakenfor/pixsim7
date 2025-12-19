@@ -26,8 +26,8 @@ export interface GraphEditorHostProps {
 export function GraphEditorHost({ editorId }: GraphEditorHostProps) {
   // Allow panel config to override the default editor for the Graph panel
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.graph);
-  const activePresetId = useWorkspaceStore((s) => s.activePresetId);
-  const presets = useWorkspaceStore((s) => s.presets);
+  const activePresetId = useWorkspaceStore((s) => s.getActivePresetId('workspace'));
+  const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
 
   const presetGraphEditorId = activePresetId
     ? presets.find((p) => p.id === activePresetId)?.graphEditorId
