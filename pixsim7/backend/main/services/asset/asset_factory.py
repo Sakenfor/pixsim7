@@ -13,7 +13,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7.backend.main.domain.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
@@ -237,7 +237,7 @@ async def create_lineage_links(
     This centralizes lineage writing so callers don't duplicate
     AssetLineage construction logic.
     """
-    from pixsim7.backend.main.domain.asset_lineage import AssetLineage
+    from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
     for order, parent_id in enumerate(parent_asset_ids):
         if parent_id == child_asset_id:

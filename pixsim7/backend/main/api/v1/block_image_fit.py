@@ -19,10 +19,10 @@ from uuid import UUID
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
-from pixsim7.backend.main.domain.asset import Asset
-from pixsim7.backend.main.domain.generation import Generation
-from pixsim7.backend.main.domain.block_image_fit import BlockImageFit
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
 from pixsim7.backend.main.services.asset.tags import tag_asset_from_metadata
 from pixsim7.backend.main.services.action_blocks.fit_scoring import (
     compute_block_asset_fit,

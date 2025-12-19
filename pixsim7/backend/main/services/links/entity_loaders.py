@@ -141,7 +141,7 @@ def register_default_loaders():
     """
     from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
     from pixsim7.backend.main.domain.game.core.models import GameNPC, GameLocation, GameScene
-    from pixsim7.backend.main.domain.asset import Asset
+    from pixsim7.backend.main.domain.assets.models import Asset
 
     registry = get_entity_loader_registry()
 

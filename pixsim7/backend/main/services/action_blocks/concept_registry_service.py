@@ -12,7 +12,7 @@ from uuid import uuid4, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 
 
 class ConceptRegistry:

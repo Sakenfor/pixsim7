@@ -17,7 +17,7 @@ from pixsim7.backend.main.domain import (
     User,
     Asset,
 )
-from pixsim7.backend.main.domain.asset_analysis import (
+from pixsim7.backend.main.domain.assets.analysis import (
     AssetAnalysis,
     AnalysisStatus,
     AnalyzerType,

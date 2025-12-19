@@ -5,8 +5,8 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.asset_lineage import AssetLineage
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.assets.lineage import AssetLineage
+from pixsim7.backend.main.domain.assets.models import Asset
 
 
 class AssetLineageService:

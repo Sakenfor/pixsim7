@@ -19,8 +19,8 @@ from typing import Optional, Dict, Any
 from sqlmodel import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.domain.generation import Generation
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.services.prompt_dsl_adapter import parse_prompt_to_blocks, analyze_prompt
 from pixsim_logging import get_logger
 from pydantic import BaseModel

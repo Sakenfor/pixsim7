@@ -6,8 +6,8 @@ based on their generation prompts and provider metadata.
 from typing import Dict, Any, List, Optional
 from sqlmodel import Session
 
-from pixsim7.backend.main.domain.asset import Asset
-from pixsim7.backend.main.domain.generation import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.ontology import match_keywords
 from pixsim7.backend.main.services.prompt_parser import SimplePromptParser
 

@@ -17,8 +17,8 @@ from pixsim7.backend.main.domain.prompt_versioning import (
     PromptFamily,
     PromptVersion,
 )
-from pixsim7.backend.main.domain.generation import Generation
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
 from .similarity_utils import calculate_text_similarity as calculate_similarity
 
 
@@ -220,7 +220,7 @@ class PromptOperationsService:
         Returns:
             List of created versions
         """
-        from pixsim7.backend.main.domain.asset import Asset
+        from pixsim7.backend.main.domain.assets.models import Asset
 
         created_versions = []
 

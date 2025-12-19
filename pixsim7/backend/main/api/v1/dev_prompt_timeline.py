@@ -26,10 +26,10 @@ from sqlalchemy.orm import selectinload
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompts import PromptVersionService
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
-from pixsim7.backend.main.domain.block_image_fit import BlockImageFit
-from pixsim7.backend.main.domain.generation import Generation
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
+from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim_logging import get_logger
 
 logger = get_logger()

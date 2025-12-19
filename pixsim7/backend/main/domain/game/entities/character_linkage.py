@@ -13,8 +13,8 @@ from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
 
 from ..core.models import GameScene, GameSceneNode
-from pixsim7.backend.main.domain.asset import Asset
-from pixsim7.backend.main.domain.generation import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
 
 
 # ============================================================================

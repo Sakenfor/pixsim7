@@ -7,7 +7,7 @@ that can be persisted via the existing API.
 from typing import Optional
 from datetime import datetime
 
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 from pixsim7.backend.main.shared.schemas.discovery_schemas import SuggestedActionBlock
 
 

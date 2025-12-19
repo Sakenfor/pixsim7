@@ -15,8 +15,8 @@ from pixsim7.backend.main.domain.prompt_versioning import (
     PromptVersion,
     PromptVariantFeedback,
 )
-from pixsim7.backend.main.domain.generation import Generation
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
 
 
 class PromptVariantService:

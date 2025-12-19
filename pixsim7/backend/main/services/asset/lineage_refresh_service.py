@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from pixsim7.backend.main.domain import Asset, User
-from pixsim7.backend.main.domain.asset_lineage import AssetLineage
+from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 from pixsim_logging import get_logger
 
 

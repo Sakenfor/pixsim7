@@ -24,7 +24,7 @@ from pixsim7.backend.main.domain import (
 )
 from pixsim7.backend.main.domain.providers import ProviderSubmission, ProviderAccount
 from pixsim7.backend.main.domain.providers.registry import registry
-from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis
+from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis
 from pixsim7.backend.main.services.provider.base import (
     GenerationResult,
     ProviderStatusResult,

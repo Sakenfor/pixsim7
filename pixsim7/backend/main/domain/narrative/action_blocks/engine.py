@@ -301,7 +301,7 @@ class ActionEngine:
         """Resolve a single reference image to an asset."""
         # Already resolved by asset ID
         if ref.asset:
-            from pixsim7.backend.main.domain.asset import Asset
+            from pixsim7.backend.main.domain.assets.models import Asset
 
             asset = await db_session.get(Asset, ref.asset.id)
             if asset:
@@ -324,7 +324,7 @@ class ActionEngine:
 
         # Template query - find matching asset
         if ref.npc and ref.tags:
-            from pixsim7.backend.main.domain.asset import Asset
+            from pixsim7.backend.main.domain.assets.models import Asset
             from pixsim7.backend.main.domain.game.core.models import NpcExpression
 
             # First try NpcExpression for this NPC

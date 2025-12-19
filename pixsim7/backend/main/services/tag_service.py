@@ -11,7 +11,7 @@ Handles:
 from typing import Optional, List
 from sqlmodel import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from pixsim7.backend.main.domain.tag import (
+from pixsim7.backend.main.domain.assets.tag import (
     Tag,
     AssetTag,
     normalize_namespace,

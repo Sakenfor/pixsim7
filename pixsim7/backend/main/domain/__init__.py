@@ -69,12 +69,12 @@ from .enums import (
 # Core models
 from .user import User, UserSession, UserQuotaUsage, UserRole
 from .workspace import Workspace
-from .asset import Asset, AssetVariant
-from .generation import Generation
+from .assets.models import Asset, AssetVariant
+from .generation.models import Generation
 from .providers import ProviderSubmission, ProviderAccount, ProviderCredit
 
 # Asset metadata tables
-from .asset_metadata import (
+from .assets.metadata import (
     Asset3DMetadata,
     AssetAudioMetadata,
     AssetTemporalSegment,
@@ -82,7 +82,7 @@ from .asset_metadata import (
 )
 
 # Asset lineage and branching
-from .asset_lineage import (
+from .assets.lineage import (
     AssetLineage,
     AssetBranch,
     AssetBranchVariant,
@@ -102,7 +102,7 @@ from .prompt_versioning import PromptFamily, PromptVersion, PromptVariantFeedbac
 from .ai_interaction import AiInteraction
 
 # Asset analysis
-from .asset_analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
+from .assets.analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
 
 __all__ = [
     # Enums

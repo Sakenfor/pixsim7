@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 from pixsim7.backend.main.services.action_blocks.action_block_service import ActionBlockService
 from pixsim7.backend.main.services.action_blocks.concept_registry_service import ConceptRegistry
 from pixsim7.backend.main.services.llm import LLMService, LLMRequest

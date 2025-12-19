@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 from pixsim7.backend.main.services.action_blocks.action_block_service import ActionBlockService
 
 

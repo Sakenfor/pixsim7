@@ -7,9 +7,9 @@ Contains:
 - BlockImageFit model (fit scoring between blocks and images)
 
 Usage:
-    from pixsim7.backend.main.domain.generation import Generation
-    from pixsim7.backend.main.domain.generation import ActionBlockDB
-    from pixsim7.backend.main.domain.generation import BlockImageFit
+    from pixsim7.backend.main.domain.generation.models import Generation
+    from pixsim7.backend.main.domain.generation.models import ActionBlockDB
+    from pixsim7.backend.main.domain.generation.models import BlockImageFit
 """
 from .models import Generation
 from .action_block import ActionBlockDB

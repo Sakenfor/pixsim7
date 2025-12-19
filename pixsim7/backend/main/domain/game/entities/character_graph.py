@@ -23,8 +23,8 @@ from .character_integrations import (
     SceneCharacterManifest,
 )
 from ..core.models import GameNPC, GameScene, GameSceneNode, NpcExpression
-from pixsim7.backend.main.domain.asset import Asset
-from pixsim7.backend.main.domain.generation import Generation
+from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.generation.models import Generation
 
 
 # ============================================================================

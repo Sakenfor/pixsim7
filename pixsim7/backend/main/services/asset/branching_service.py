@@ -8,8 +8,8 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.asset_branching import AssetBranch, AssetBranchVariant, AssetClip
-from pixsim7.backend.main.domain.asset import Asset
+from pixsim7.backend.main.domain.assets.branching import AssetBranch, AssetBranchVariant, AssetClip
+from pixsim7.backend.main.domain.assets.models import Asset
 
 
 class AssetBranchingService:

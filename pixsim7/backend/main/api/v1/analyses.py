@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisSvc
-from pixsim7.backend.main.domain.asset_analysis import AnalyzerType, AnalysisStatus
+from pixsim7.backend.main.domain.assets.analysis import AnalyzerType, AnalysisStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 
 router = APIRouter()

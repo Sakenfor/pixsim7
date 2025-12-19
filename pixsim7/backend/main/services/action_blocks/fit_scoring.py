@@ -4,7 +4,7 @@ Heuristic scoring to determine how well an ActionBlock fits a specific asset/ima
 based on ontology-aligned tags.
 """
 from typing import Dict, Any, Tuple, List, Set
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 from pixsim7.backend.main.services.action_blocks.tagging import extract_ontology_ids_from_tags
 
 

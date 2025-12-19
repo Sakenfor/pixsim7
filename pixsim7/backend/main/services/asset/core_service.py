@@ -487,7 +487,7 @@ class AssetCoreService:
         Removes the database record and best-effort deletes the local file.
         Also deletes any generations that reference this asset.
         """
-        from pixsim7.backend.main.domain.generation import Generation
+        from pixsim7.backend.main.domain.generation.models import Generation
         from sqlalchemy import delete as sql_delete
 
         asset = await self.get_asset_for_user(asset_id, user)

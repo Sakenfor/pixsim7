@@ -24,7 +24,7 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 from pixsim7.backend.main.services.semantic_packs.utils import (
     build_draft_pack_from_suggestion,
     merge_parser_hints,

@@ -16,7 +16,7 @@ from pixsim7.backend.main.domain.prompt_versioning import (
     PromptFamily,
     PromptVersion,
 )
-from pixsim7.backend.main.domain.generation import Generation
+from pixsim7.backend.main.domain.generation.models import Generation
 
 
 def _slugify(text: str) -> str:

@@ -15,7 +15,7 @@ from sqlmodel import func
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
 from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.shared.schemas.semantic_pack_schemas import (
     SemanticPackManifest,

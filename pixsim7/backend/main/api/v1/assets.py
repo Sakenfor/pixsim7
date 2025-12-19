@@ -197,7 +197,7 @@ async def get_filter_metadata(
     - autocomplete: Async search (use /tags endpoint for values)
     """
     from sqlalchemy import select, func, distinct
-    from pixsim7.backend.main.domain.asset import Asset
+    from pixsim7.backend.main.domain.assets.models import Asset
 
     # Define available filters (schema-driven)
     filters = [
@@ -330,7 +330,7 @@ async def check_asset_by_hash(
     try:
         # Find asset by hash (read-only, doesn't update last_accessed_at)
         from sqlmodel import select
-        from pixsim7.backend.main.domain.asset import Asset
+        from pixsim7.backend.main.domain.assets.models import Asset
 
         stmt = select(Asset).where(
             Asset.user_id == user.id,
