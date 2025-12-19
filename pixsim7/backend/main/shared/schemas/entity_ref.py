@@ -181,6 +181,27 @@ GenerationRef = _make_entity_ref_type("generation")
 WorkspaceRef = _make_entity_ref_type("workspace")
 AccountRef = _make_entity_ref_type("account")
 
+# Lineage and asset relationship refs
+LineageRef = _make_entity_ref_type("lineage")
+"""Reference to an AssetLineage edge (parent→child relationship)"""
+
+AssetBranchRef = _make_entity_ref_type("asset_branch")
+"""Reference to an AssetBranch (branching point in video timeline)"""
+
+ClipRef = _make_entity_ref_type("clip")
+"""Reference to an AssetClip (video segment with start/end times)"""
+
+# Prompt and generation refs
+PromptVersionRef = _make_entity_ref_type("prompt_version")
+"""Reference to a PromptVersion (immutable prompt snapshot)"""
+
+SubmissionRef = _make_entity_ref_type("submission")
+"""Reference to a ProviderSubmission (job submitted to AI provider)"""
+
+# Content organization refs
+TagRef = _make_entity_ref_type("tag")
+"""Reference to a Tag (for asset categorization)"""
+
 # Ontology-backed refs for action blocks (validated against ontology.yaml)
 PoseRef = _make_entity_ref_type("pose")
 MoodRef = _make_entity_ref_type("mood")
@@ -335,6 +356,15 @@ __all__ = [
     "GenerationRef",
     "WorkspaceRef",
     "AccountRef",
+    # Lineage and asset relationship refs
+    "LineageRef",
+    "AssetBranchRef",
+    "ClipRef",
+    # Prompt and generation refs
+    "PromptVersionRef",
+    "SubmissionRef",
+    # Content organization refs
+    "TagRef",
     # Ontology-backed refs (action blocks)
     "PoseRef",
     "MoodRef",
