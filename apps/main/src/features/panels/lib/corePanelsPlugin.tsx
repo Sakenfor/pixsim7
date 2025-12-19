@@ -30,6 +30,8 @@ import { ConsolePanel } from "@features/panels/components/console/ConsolePanel";
 import { ModelInspectorPanel } from "@features/panels/components/tools/ModelInspectorPanel";
 import { galleryPanelSettingsSections } from "@features/gallery/components/GalleryPanelSettings";
 import { GraphPanelSettingsComponent } from "@features/graph/components/GraphPanelSettings";
+import { AssetViewerPanel } from "@/components/media/AssetViewerPanel";
+import { ControlCenterManager } from "@features/controlCenter";
 
 export const corePanelsPlugin: PanelPlugin = {
   id: "core-panels",
@@ -40,6 +42,70 @@ export const corePanelsPlugin: PanelPlugin = {
 
   panels: [
     {
+      id: "controlCenter",
+      title: "Control Center",
+      component: ControlCenterManager,
+      category: "system",
+      tags: ["control-center", "generation", "modules"],
+      icon: "dY-д",
+      description: "Control Center dock and generation modules",
+      isInternal: true,
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+      orchestration: {
+        type: "dockview-container",
+        defaultZone: "left",
+        canChangeZone: false,
+        retraction: {
+          canRetract: true,
+          retractedWidth: 48,
+          animationDuration: 200,
+        },
+        dockview: {
+          hasDockview: true,
+          subPanelRegistry: "quickGenPanelRegistry",
+          subPanelsCanBreakout: false,
+          persistLayout: true,
+          storageKey: "quickGenerate-dockview-layout",
+        },
+        priority: 40,
+        interactionRules: {
+          whenOpens: {
+            assetViewer: "retract",
+            gallery: "nothing",
+          },
+          whenCloses: {
+            assetViewer: "expand",
+          },
+        },
+      },
+    },
+    {
+      id: "assetViewer",
+      title: "Asset Viewer",
+      component: AssetViewerPanel,
+      category: "workspace",
+      tags: ["assets", "viewer", "media"],
+      icon: "dY-п",
+      description: "Asset viewer with docked sub-panels",
+      isInternal: true,
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+      orchestration: {
+        type: "dockview-container",
+        defaultZone: "center",
+        canChangeZone: true,
+        dockview: {
+          hasDockview: true,
+          subPanelRegistry: "viewerPanelRegistry",
+          subPanelsCanBreakout: true,
+          persistLayout: true,
+          storageKey: "asset-viewer-dockview-layout",
+        },
+        priority: 80,
+      },
+    },
+    {
       id: "gallery",
       title: "Gallery",
       component: AssetsRoute,
@@ -49,6 +115,20 @@ export const corePanelsPlugin: PanelPlugin = {
       description: "Browse and manage project assets",
       supportsCompactMode: false,
       supportsMultipleInstances: false,
+      orchestration: {
+        type: "zone-panel",
+        defaultZone: "center",
+        canChangeZone: false,
+        priority: 60,
+        interactionRules: {
+          whenOpens: {
+            assetViewer: "minimize",
+          },
+          whenCloses: {
+            assetViewer: "restore",
+          },
+        },
+      },
       settingsSections: galleryPanelSettingsSections,
     },
     {
@@ -71,6 +151,17 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ["graph", "nodes", "flow"],
       icon: "🕸️",
       description: "Visual node-based editor",
+      orchestration: {
+        type: "zone-panel",
+        defaultZone: "center",
+        canChangeZone: true,
+        priority: 55,
+        interactionRules: {
+          whenOpens: {
+            assetViewer: "minimize",
+          },
+        },
+      },
       // Core Flow View: The canonical logic/flow editor for designing scenes, nodes, choices, transitions
       coreEditorRole: "flow-view",
       contextLabel: (ctx) =>

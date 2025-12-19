@@ -53,6 +53,11 @@ export interface PanelInteractionSettingsState {
   setPanelSettings: (panelId: string, settings: Partial<PanelInteractionSettings>) => void;
   setInteractionOverride: (panelId: string, targetPanelId: string, override: PanelInteractionOverride) => void;
   removeInteractionOverride: (panelId: string, targetPanelId: string) => void;
+  removeInteractionOverrideDirection: (
+    panelId: string,
+    targetPanelId: string,
+    direction: keyof PanelInteractionOverride,
+  ) => void;
   setEnableAutomaticInteractions: (enabled: boolean) => void;
   setGlobalAnimationDuration: (duration: number) => void;
   resetPanelSettings: (panelId: string) => void;
@@ -96,6 +101,7 @@ export const usePanelInteractionSettingsStore = create<PanelInteractionSettingsS
         set(state => {
           const currentSettings = state.panelSettings[panelId] || {};
           const currentOverrides = currentSettings.interactionOverrides || {};
+          const existingOverride = currentOverrides[targetPanelId] || {};
 
           return {
             panelSettings: {
@@ -104,7 +110,10 @@ export const usePanelInteractionSettingsStore = create<PanelInteractionSettingsS
                 ...currentSettings,
                 interactionOverrides: {
                   ...currentOverrides,
-                  [targetPanelId]: override,
+                  [targetPanelId]: {
+                    ...existingOverride,
+                    ...override,
+                  },
                 },
               },
             },
@@ -125,6 +134,36 @@ export const usePanelInteractionSettingsStore = create<PanelInteractionSettingsS
               [panelId]: {
                 ...currentSettings,
                 interactionOverrides: remainingOverrides,
+              },
+            },
+          };
+        });
+      },
+      removeInteractionOverrideDirection: (panelId, targetPanelId, direction) => {
+        set(state => {
+          const currentSettings = state.panelSettings[panelId];
+          const currentOverrides = currentSettings?.interactionOverrides;
+          if (!currentSettings || !currentOverrides) return state;
+
+          const existingOverride = currentOverrides[targetPanelId];
+          if (!existingOverride || !existingOverride[direction]) return state;
+
+          const nextOverride: PanelInteractionOverride = { ...existingOverride };
+          delete nextOverride[direction];
+
+          const nextOverrides = { ...currentOverrides };
+          if (!nextOverride.whenOpens && !nextOverride.whenCloses) {
+            delete nextOverrides[targetPanelId];
+          } else {
+            nextOverrides[targetPanelId] = nextOverride;
+          }
+
+          return {
+            panelSettings: {
+              ...state.panelSettings,
+              [panelId]: {
+                ...currentSettings,
+                interactionOverrides: nextOverrides,
               },
             },
           };

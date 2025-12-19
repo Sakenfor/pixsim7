@@ -30,7 +30,7 @@ export function AddPanelDropdown({
 
     return ids;
   }, [layout]);
-  const allPanels = panelRegistry.getAll();
+  const allPanels = panelRegistry.getPublicPanels();
 
   // Group panels by category
   const panelsByCategory = CATEGORY_ORDER.map((category) => ({

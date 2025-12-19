@@ -5,6 +5,8 @@ import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
 import type { DockviewApi } from "dockview-core";
 
 export type PanelId =
+  | "assetViewer"
+  | "controlCenter"
   | "gallery"
   | "scene"
   | "graph"

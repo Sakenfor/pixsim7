@@ -9,7 +9,7 @@ export function PanelLauncherModule() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
 
   // Get all panels from registry
-  const allPanels = useMemo(() => panelRegistry.getAll(), []);
+  const allPanels = useMemo(() => panelRegistry.getPublicPanels(), []);
 
   // Get list of currently open panels (docked)
   const openPanels = useMemo(() => {

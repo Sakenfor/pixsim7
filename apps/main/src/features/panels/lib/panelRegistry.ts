@@ -11,6 +11,7 @@ import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 import type { EditorContext } from "../../context/editorContext";
 import type { PanelCategory } from "./panelConstants";
 import type { z } from "zod";
+import type { PanelMetadata } from "./types";
 
 // Re-export PanelCategory for backwards compatibility
 export type { PanelCategory } from "./panelConstants";
@@ -47,6 +48,8 @@ export interface WorkspaceContext {
  * - 'world-editor': The world/location editor (GameWorld)
  */
 export type CoreEditorRole = "game-view" | "flow-view" | "world-editor";
+
+export type PanelOrchestrationMetadata = Omit<PanelMetadata, "id" | "title">;
 
 /**
  * Settings update helpers provided to panel settings components.
@@ -94,6 +97,11 @@ export interface PanelDefinition<TSettings = any> {
   tags: string[];
   icon?: string;
   description?: string;
+  /**
+   * Internal panels are registered for orchestration but should not be shown
+   * in user-facing panel lists (launcher, add-panel menu).
+   */
+  isInternal?: boolean;
 
   // Settings System
   /**
@@ -157,6 +165,12 @@ export interface PanelDefinition<TSettings = any> {
   // Visibility predicates
   showWhen?: (context: WorkspaceContext) => boolean;
 
+  /**
+   * Orchestration metadata for PanelManager (zones, interactions, dockview).
+   * When provided, this panel participates in the panel interaction system.
+   */
+  orchestration?: PanelOrchestrationMetadata;
+
   // Lifecycle hooks
   onMount?: () => void;
   onUnmount?: () => void;
@@ -197,6 +211,13 @@ export class PanelRegistry extends BaseRegistry<PanelDefinition> {
    */
   getByCategory(category: string): PanelDefinition[] {
     return this.getAll().filter((panel) => panel.category === category);
+  }
+
+  /**
+   * Get panels that should appear in user-facing lists.
+   */
+  getPublicPanels(): PanelDefinition[] {
+    return this.getAll().filter((panel) => !panel.isInternal);
   }
 
   /**

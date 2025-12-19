@@ -3,10 +3,12 @@
  *
  * Metadata registry for panel orchestration system.
  * Defines interaction rules and zone behaviors for workspace panels.
- * This is separate from the plugin-based panel registry.
+ * Metadata now pulls from the panel registry to keep sources in sync.
  */
 
 import type { PanelMetadata } from './types';
+import { panelRegistry } from './panelRegistry';
+import { arePanelsInitialized, initializePanels } from './initializePanels';
 
 /**
  * Control Center Panel
@@ -75,71 +77,44 @@ export const ASSET_VIEWER_METADATA: PanelMetadata = {
   // (handled by control center's whenOpens rule)
 };
 
-/**
- * Gallery Panel
- * - Main media browsing surface
- * - Lives in center
- * - Minimizes when asset viewer opens
- */
-export const GALLERY_METADATA: PanelMetadata = {
-  id: 'gallery',
-  title: 'Gallery',
-  type: 'zone-panel',  // Simple panel, no dockview
-  defaultZone: 'center',
-  canChangeZone: false,
+const EXTERNAL_PANEL_METADATA: PanelMetadata[] = [
+  CONTROL_CENTER_METADATA,
+  ASSET_VIEWER_METADATA,
+];
 
-  priority: 60,
-
-  interactionRules: {
-    whenOpens: {
-      assetViewer: 'minimize',  // Minimize to tab when viewer opens
-    },
-    whenCloses: {
-      assetViewer: 'restore',   // Restore when viewer closes
-    },
-  },
-};
-
-/**
- * Graph Panel (if exists)
- * - Workflow/node graph editor
- * - Can live in center or as a separate tab
- */
-export const GRAPH_METADATA: PanelMetadata = {
-  id: 'graph',
-  title: 'Graph',
-  type: 'zone-panel',
-  defaultZone: 'center',
-  canChangeZone: true,
-
-  priority: 55,
-
-  interactionRules: {
-    whenOpens: {
-      assetViewer: 'minimize',
-    },
-  },
-};
+function getRegistryPanelMetadata(): PanelMetadata[] {
+  return panelRegistry
+    .getAll()
+    .filter((panel) => !!panel.orchestration)
+    .map((panel) => ({
+      id: panel.id,
+      title: panel.title,
+      ...panel.orchestration!,
+    }));
+}
 
 /**
  * All panel metadata
  */
-export const ALL_PANEL_METADATA: PanelMetadata[] = [
-  CONTROL_CENTER_METADATA,
-  ASSET_VIEWER_METADATA,
-  GALLERY_METADATA,
-  GRAPH_METADATA,
-];
+export function getAllPanelMetadata(): PanelMetadata[] {
+  const merged = new Map<string, PanelMetadata>();
+  for (const panel of getRegistryPanelMetadata()) {
+    merged.set(panel.id, panel);
+  }
+  for (const panel of EXTERNAL_PANEL_METADATA) {
+    if (!merged.has(panel.id)) {
+      merged.set(panel.id, panel);
+    }
+  }
+  return Array.from(merged.values());
+}
 
 /**
  * Panel metadata lookup by ID
  */
-export const PANEL_METADATA_BY_ID: Record<string, PanelMetadata> = {
-  controlCenter: CONTROL_CENTER_METADATA,
-  assetViewer: ASSET_VIEWER_METADATA,
-  gallery: GALLERY_METADATA,
-  graph: GRAPH_METADATA,
-};
+export function getPanelMetadataById(panelId: string): PanelMetadata | undefined {
+  return getAllPanelMetadata().find((panel) => panel.id === panelId);
+}
 
 /**
  * Initialize all panels in the panel manager
@@ -151,7 +126,11 @@ export async function registerAllPanels(applySettings = true) {
   try {
     const { panelManager } = await import('./PanelManager');
 
-    let metadata = ALL_PANEL_METADATA;
+    if (!arePanelsInitialized()) {
+      await initializePanels();
+    }
+
+    let metadata = getAllPanelMetadata();
 
     // Apply user settings overrides if enabled
     if (applySettings) {
@@ -162,7 +141,7 @@ export async function registerAllPanels(applySettings = true) {
         const { applySettingsOverridesToAll } = await import('./applySettingsOverrides');
 
         const settings = usePanelInteractionSettingsStore.getState();
-        metadata = applySettingsOverridesToAll(ALL_PANEL_METADATA, settings);
+        metadata = applySettingsOverridesToAll(getAllPanelMetadata(), settings);
 
         console.log('[PanelMetadataRegistry] Applied user settings overrides');
       } catch (err) {
@@ -193,7 +172,7 @@ export async function reloadPanelsWithSettings() {
     const { applySettingsOverridesToAll } = await import('./applySettingsOverrides');
 
     const settings = usePanelInteractionSettingsStore.getState();
-    const metadata = applySettingsOverridesToAll(ALL_PANEL_METADATA, settings);
+    const metadata = applySettingsOverridesToAll(getAllPanelMetadata(), settings);
 
     // Re-register panels with updated metadata
     metadata.forEach(m => panelManager.registerPanel(m));

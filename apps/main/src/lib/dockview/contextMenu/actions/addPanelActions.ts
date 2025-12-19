@@ -15,7 +15,9 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: st
   if (!ctx.panelRegistry) return new Map();
 
   const categories = new Map<string, Array<{ id: string; title: string; icon?: string }>>();
-  const allPanels = ctx.panelRegistry.getAll();
+  const allPanels = ctx.panelRegistry.getPublicPanels
+    ? ctx.panelRegistry.getPublicPanels()
+    : ctx.panelRegistry.getAll();
 
   for (const panel of allPanels) {
     const category = panel.category || 'Other';

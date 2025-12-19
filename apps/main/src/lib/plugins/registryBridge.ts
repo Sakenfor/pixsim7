@@ -575,6 +575,10 @@ export function registerBuiltinPanel(panel: PanelDefinition): void {
   if (panelRegistry.has(panel.id as any)) {
     return;
   }
+  if (panel.isInternal) {
+    panelRegistry.register(panel);
+    return;
+  }
   registerPanelWithPlugin(panel, { origin: 'builtin', canDisable: false });
 }
 
@@ -683,7 +687,7 @@ export function syncCatalogFromRegistries(): void {
   }
 
   // Sync workspace panels
-  for (const panel of panelRegistry.getAll()) {
+  for (const panel of panelRegistry.getPublicPanels()) {
     if (!pluginCatalog.get(panel.id)) {
       registerPanelWithPlugin(panel, { origin: 'builtin' });
     }
@@ -708,6 +712,6 @@ export function printRegistryComparison(): void {
   console.log(`Renderers: ${nodeRendererRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('renderer').length} in catalog`);
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
   console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
-  console.log(`Workspace Panels: ${panelRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
+  console.log(`Workspace Panels: ${panelRegistry.getPublicPanels().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
   console.log(`Gizmo Surfaces: ${gizmoSurfaceRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('gizmo-surface').length} in catalog`);
 }

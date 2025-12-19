@@ -11,10 +11,8 @@ export { PanelManager, panelManager } from './lib/PanelManager';
 export {
   CONTROL_CENTER_METADATA,
   ASSET_VIEWER_METADATA,
-  GALLERY_METADATA,
-  GRAPH_METADATA,
-  ALL_PANEL_METADATA,
-  PANEL_METADATA_BY_ID,
+  getAllPanelMetadata,
+  getPanelMetadataById,
   registerAllPanels,
   reloadPanelsWithSettings,
 } from './lib/panelMetadataRegistry';

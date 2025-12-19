@@ -92,7 +92,7 @@ export function GameToolsPanel() {
     setHasUserOverride(true);
   };
 
-  const panels = useMemo(() => panelRegistry.getAll(), []);
+  const panels = useMemo(() => panelRegistry.getPublicPanels(), []);
   const widgets = useMemo(() => widgetRegistry.getAll(), []);
   const worldTools = useMemo(() => worldToolRegistry.getAll(), []);
   const interactions = useMemo(() => interactionRegistry.getAll(), []);

@@ -5,9 +5,9 @@
  * Allows users to customize how panels interact with each other.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePanelInteractionSettingsStore } from '../stores/panelInteractionSettingsStore';
-import { ALL_PANEL_METADATA, type PanelAction } from '@features/panels';
+import { getAllPanelMetadata, type PanelAction } from '@features/panels';
 
 const PANEL_ACTIONS: Array<{ value: PanelAction; label: string; description: string }> = [
   { value: 'nothing', label: 'Do Nothing', description: 'Panel stays as-is' },
@@ -25,26 +25,32 @@ export function PanelInteractionSettings() {
     enableAutomaticInteractions,
     globalAnimationDuration,
     setInteractionOverride,
-    removeInteractionOverride,
+    removeInteractionOverrideDirection,
     setEnableAutomaticInteractions,
     setGlobalAnimationDuration,
     resetAllSettings,
   } = usePanelInteractionSettingsStore();
 
+  const allPanels = useMemo(() => getAllPanelMetadata(), []);
+  const [ruleSourceId, setRuleSourceId] = useState(allPanels[0]?.id || '');
+  const [ruleTargetId, setRuleTargetId] = useState(allPanels[0]?.id || '');
+  const [ruleDirection, setRuleDirection] = useState<'whenOpens' | 'whenCloses'>('whenOpens');
+  const [ruleAction, setRuleAction] = useState<PanelAction>('nothing');
+
   // Get all panels that have interaction rules
   const panelsWithRules = useMemo(() => {
-    return ALL_PANEL_METADATA.filter(
+    return allPanels.filter(
       panel => panel.interactionRules?.whenOpens || panel.interactionRules?.whenCloses
     );
-  }, []);
+  }, [allPanels]);
 
   // Get all panels that can be targets
   const targetPanels = useMemo(() => {
-    return ALL_PANEL_METADATA.map(panel => ({
+    return allPanels.map(panel => ({
       id: panel.id,
       title: panel.title,
     }));
-  }, []);
+  }, [allPanels]);
 
   const getEffectiveAction = (
     panelId: string,
@@ -58,13 +64,60 @@ export function PanelInteractionSettings() {
     }
 
     // Fall back to default from metadata
-    const metadata = ALL_PANEL_METADATA.find(p => p.id === panelId);
+    const metadata = allPanels.find(p => p.id === panelId);
     return metadata?.interactionRules?.[direction]?.[targetPanelId] || 'nothing';
   };
 
   const isOverridden = (panelId: string, targetPanelId: string): boolean => {
     return !!panelSettings[panelId]?.interactionOverrides?.[targetPanelId];
   };
+
+  const ruleCatalog = useMemo(() => {
+    const catalog = new Map<string, {
+      sourceId: string;
+      targetId: string;
+      direction: 'whenOpens' | 'whenCloses';
+      action: PanelAction;
+      overridden: boolean;
+    }>();
+
+    const addRule = (
+      sourceId: string,
+      targetId: string,
+      direction: 'whenOpens' | 'whenCloses',
+      action: PanelAction,
+      overridden: boolean,
+    ) => {
+      if (action === 'nothing') return;
+      const key = `${sourceId}:${direction}:${targetId}`;
+      catalog.set(key, { sourceId, targetId, direction, action, overridden });
+    };
+
+    allPanels.forEach(panel => {
+      const defaults = panel.interactionRules;
+      if (!defaults) return;
+      Object.entries(defaults.whenOpens || {}).forEach(([targetId, action]) => {
+        addRule(panel.id, targetId, 'whenOpens', action, false);
+      });
+      Object.entries(defaults.whenCloses || {}).forEach(([targetId, action]) => {
+        addRule(panel.id, targetId, 'whenCloses', action, false);
+      });
+    });
+
+    Object.entries(panelSettings).forEach(([panelId, settings]) => {
+      const overrides = settings.interactionOverrides || {};
+      Object.entries(overrides).forEach(([targetId, override]) => {
+        if (override.whenOpens) {
+          addRule(panelId, targetId, 'whenOpens', override.whenOpens, true);
+        }
+        if (override.whenCloses) {
+          addRule(panelId, targetId, 'whenCloses', override.whenCloses, true);
+        }
+      });
+    });
+
+    return Array.from(catalog.values());
+  }, [allPanels, panelSettings]);
 
   return (
     <div className="space-y-6">
@@ -132,6 +185,151 @@ export function PanelInteractionSettings() {
         </button>
       </div>
 
+      {/* Rule Editor */}
+      <div className="space-y-4 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+        <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          Rule Editor
+        </h3>
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+              Source Panel
+            </label>
+            <select
+              value={ruleSourceId}
+              onChange={(e) => setRuleSourceId(e.target.value)}
+              className="w-full rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 text-xs"
+            >
+              {allPanels.map(panel => (
+                <option key={panel.id} value={panel.id}>
+                  {panel.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+              Trigger
+            </label>
+            <select
+              value={ruleDirection}
+              onChange={(e) => setRuleDirection(e.target.value as 'whenOpens' | 'whenCloses')}
+              className="w-full rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 text-xs"
+            >
+              <option value="whenOpens">When target opens</option>
+              <option value="whenCloses">When target closes</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+              Target Panel
+            </label>
+            <select
+              value={ruleTargetId}
+              onChange={(e) => setRuleTargetId(e.target.value)}
+              className="w-full rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 text-xs"
+            >
+              {allPanels.map(panel => (
+                <option key={panel.id} value={panel.id}>
+                  {panel.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+              Action
+            </label>
+            <select
+              value={ruleAction}
+              onChange={(e) => setRuleAction(e.target.value as PanelAction)}
+              className="w-full rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 text-xs"
+            >
+              {PANEL_ACTIONS.map(action => (
+                <option key={action.value} value={action.value}>
+                  {action.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+          <button
+            onClick={() => {
+              if (!ruleSourceId || !ruleTargetId || ruleSourceId === ruleTargetId) return;
+              if (ruleAction === 'nothing') {
+                removeInteractionOverrideDirection(
+                  ruleSourceId,
+                  ruleTargetId,
+                  ruleDirection
+                );
+                return;
+              }
+              setInteractionOverride(ruleSourceId, ruleTargetId, {
+                [ruleDirection]: ruleAction,
+              });
+            }}
+            disabled={!ruleSourceId || !ruleTargetId || ruleSourceId === ruleTargetId}
+            className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Save Rule
+          </button>
+          <span>
+            Setting action to “Do Nothing” removes the custom rule.
+          </span>
+        </div>
+      </div>
+
+      {/* Rule Catalog */}
+      <div className="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            Rule Catalog
+          </h3>
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {ruleCatalog.length} active rule{ruleCatalog.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        {ruleCatalog.length === 0 ? (
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            No active rules. Use the editor above to add one.
+          </p>
+        ) : (
+          <div className="space-y-2 text-xs">
+            {ruleCatalog.map((rule) => {
+              const sourcePanel = allPanels.find(p => p.id === rule.sourceId);
+              const targetPanel = allPanels.find(p => p.id === rule.targetId);
+              return (
+                <div
+                  key={`${rule.sourceId}:${rule.direction}:${rule.targetId}`}
+                  className="flex items-center justify-between rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-neutral-800 dark:text-neutral-100">
+                      {sourcePanel?.title || rule.sourceId}
+                    </span>
+                    <span className="text-neutral-500 dark:text-neutral-400">
+                      {rule.direction === 'whenOpens' ? '← opens' : '← closes'}
+                    </span>
+                    <span className="font-medium text-neutral-800 dark:text-neutral-100">
+                      {targetPanel?.title || rule.targetId}
+                    </span>
+                    <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                      {rule.action}
+                    </span>
+                  </div>
+                  {rule.overridden && (
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400">
+                      custom
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Panel Interaction Rules */}
       <div className="space-y-4">
         <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
@@ -145,7 +343,7 @@ export function PanelInteractionSettings() {
         ) : (
           <div className="space-y-4">
             {panelsWithRules.map(panel => {
-              const metadata = ALL_PANEL_METADATA.find(p => p.id === panel.id);
+              const metadata = allPanels.find(p => p.id === panel.id);
               const hasOpenRules = !!metadata?.interactionRules?.whenOpens;
               const hasCloseRules = !!metadata?.interactionRules?.whenCloses;
 
@@ -188,7 +386,7 @@ export function PanelInteractionSettings() {
                                     metadata.interactionRules!.whenOpens![targetId];
 
                                   if (newAction === defaultAction) {
-                                    removeInteractionOverride(panel.id, targetId);
+                                    removeInteractionOverrideDirection(panel.id, targetId, 'whenOpens');
                                   } else {
                                     setInteractionOverride(panel.id, targetId, {
                                       whenOpens: newAction,
@@ -251,7 +449,7 @@ export function PanelInteractionSettings() {
                                     metadata.interactionRules!.whenCloses![targetId];
 
                                   if (newAction === defaultAction) {
-                                    removeInteractionOverride(panel.id, targetId);
+                                    removeInteractionOverrideDirection(panel.id, targetId, 'whenCloses');
                                   } else {
                                     setInteractionOverride(panel.id, targetId, {
                                       whenCloses: newAction,

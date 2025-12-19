@@ -8,7 +8,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import {
-  ALL_PANEL_METADATA,
+  getAllPanelMetadata,
   type PanelMetadata,
   panelRegistry,
   usePanelConfigStore,
@@ -31,6 +31,7 @@ interface PanelDetailViewProps {
 }
 
 function PanelDetailView({ metadata }: PanelDetailViewProps) {
+  const allPanels = useMemo(() => getAllPanelMetadata(), []);
   // Get panel definition from registry (for panel-specific settings)
   const panelDefinition = useMemo(
     () => panelRegistry.getAll().find((p) => p.id === metadata.id),
@@ -161,7 +162,7 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
                           className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
                         >
                           <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                            {ALL_PANEL_METADATA.find((p) => p.id === panelId)?.title || panelId}
+                            {allPanels.find((p) => p.id === panelId)?.title || panelId}
                           </span>
                           <span className="text-xs font-mono px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
                             {action}
@@ -187,7 +188,7 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
                           className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
                         >
                           <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                            {ALL_PANEL_METADATA.find((p) => p.id === panelId)?.title || panelId}
+                            {allPanels.find((p) => p.id === panelId)?.title || panelId}
                           </span>
                           <span className="text-xs font-mono px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
                             {action}
@@ -281,22 +282,23 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
 }
 
 export function PanelCentricSettings() {
-  const [selectedPanelId, setSelectedPanelId] = useState<string>(ALL_PANEL_METADATA[0]?.id);
+  const allPanels = useMemo(() => getAllPanelMetadata(), []);
+  const [selectedPanelId, setSelectedPanelId] = useState<string>(allPanels[0]?.id);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter panels by search
   const filteredPanels = useMemo(() => {
-    if (!searchQuery.trim()) return ALL_PANEL_METADATA;
+    if (!searchQuery.trim()) return allPanels;
 
     const query = searchQuery.toLowerCase();
-    return ALL_PANEL_METADATA.filter((p) =>
+    return allPanels.filter((p) =>
       p.title.toLowerCase().includes(query)
     );
-  }, [searchQuery]);
+  }, [allPanels, searchQuery]);
 
   const selectedPanel = useMemo(
-    () => ALL_PANEL_METADATA.find((p) => p.id === selectedPanelId),
-    [selectedPanelId]
+    () => allPanels.find((p) => p.id === selectedPanelId),
+    [allPanels, selectedPanelId]
   );
 
   return (
