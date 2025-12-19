@@ -15,7 +15,10 @@ from .base import (
     RateLimitError,
     UnsupportedOperationError,
 )
-from .registry import registry, register_default_providers
+from pixsim7.backend.main.domain.providers.registry.provider_registry import (
+    registry,
+    register_default_providers,
+)
 from .adapters import PixverseProvider
 from .provider_service import ProviderService
 
