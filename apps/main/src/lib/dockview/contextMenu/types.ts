@@ -69,6 +69,13 @@ export interface MenuActionContext {
   /** Reference to panel registry for querying available panels */
   panelRegistry?: PanelRegistry;
 
+  /** Handler for floating panels (if dockview supports it) */
+  floatPanelHandler?: (
+    dockviewPanelId: string,
+    panel: any,
+    options?: { width?: number; height?: number }
+  ) => void;
+
   // Asset-specific fields (optional)
   /** Asset ID if context is asset/asset-card */
   assetId?: string;

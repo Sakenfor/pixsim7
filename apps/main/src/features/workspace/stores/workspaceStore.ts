@@ -242,8 +242,50 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         if (pluginMeta && pluginMeta.activationState === "inactive") {
           return;
         }
+
+        // Remove from closed panels
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
         set({ closedPanels });
+
+        // Actually restore the panel to the workspace dockview
+        import("@features/panels/lib/PanelManager").then(({ panelManager }) => {
+          const api = panelManager.getPanelState("workspace")?.dockview?.api;
+          if (!api) {
+            console.warn(`[restorePanel] Workspace dockview not available`);
+            return;
+          }
+
+          // Check if panel already exists
+          const existingPanel = api.panels.find(
+            (p) => p.params?.panelId === panelId
+          );
+          if (existingPanel) {
+            // Panel already in dockview, just activate it
+            existingPanel.api.setActive();
+            return;
+          }
+
+          // Add the panel to the workspace dockview
+          import("@features/panels").then(({ panelRegistry }) => {
+            const panelMeta = panelRegistry.get(panelId);
+            if (!panelMeta) {
+              console.warn(`[restorePanel] Panel "${panelId}" not found in registry`);
+              return;
+            }
+
+            api.addPanel({
+              id: `${panelId}-panel`,
+              component: "panel",
+              params: { panelId },
+              title: panelMeta.title,
+              position: { direction: "right" },
+            });
+          }).catch((error) => {
+            console.error("[restorePanel] Failed to import panel registry:", error);
+          });
+        }).catch((error) => {
+          console.error("[restorePanel] Failed to import panel manager:", error);
+        });
       },
 
       clearClosedPanels: () => set({ closedPanels: [] }),

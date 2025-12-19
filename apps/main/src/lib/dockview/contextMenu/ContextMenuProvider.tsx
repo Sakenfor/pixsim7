@@ -38,8 +38,14 @@ interface ContextMenuContextValue {
   registry: ContextMenuRegistry;
   /** Current menu state */
   state: ContextMenuState;
-  /** Register a dockview instance */
-  registerDockview: (id: string, api: DockviewApi) => void;
+  /** Register a dockview instance with optional capabilities */
+  registerDockview: (
+    id: string,
+    api: DockviewApi,
+    capabilities?: {
+      floatPanelHandler?: MenuActionContext['floatPanelHandler'];
+    }
+  ) => void;
   /** Unregister a dockview instance */
   unregisterDockview: (id: string) => void;
   /** Get a dockview API by ID */
@@ -83,12 +89,28 @@ export function ContextMenuProvider({
   // Track multiple dockview APIs by ID
   const dockviewApisRef = useRef<Map<string, DockviewApi>>(new Map());
 
-  const registerDockview = useCallback((id: string, api: DockviewApi) => {
-    dockviewApisRef.current.set(id, api);
-  }, []);
+  // Track per-dockview capabilities (like float handlers)
+  const dockviewCapabilitiesRef = useRef<
+    Map<string, { floatPanelHandler?: MenuActionContext['floatPanelHandler'] }>
+  >(new Map());
+
+  const registerDockview = useCallback(
+    (
+      id: string,
+      api: DockviewApi,
+      capabilities?: { floatPanelHandler?: MenuActionContext['floatPanelHandler'] }
+    ) => {
+      dockviewApisRef.current.set(id, api);
+      if (capabilities) {
+        dockviewCapabilitiesRef.current.set(id, capabilities);
+      }
+    },
+    []
+  );
 
   const unregisterDockview = useCallback((id: string) => {
     dockviewApisRef.current.delete(id);
+    dockviewCapabilitiesRef.current.delete(id);
   }, []);
 
   const getDockviewApi = useCallback((id: string): DockviewApi | undefined => {
@@ -104,7 +126,10 @@ export function ContextMenuProvider({
     const currentDockviewId = partial.currentDockviewId;
     const currentApi = currentDockviewId ? dockviewApisRef.current.get(currentDockviewId) : undefined;
 
-    // Build full context with injected services
+    // Get capabilities for current dockview
+    const capabilities = currentDockviewId ? dockviewCapabilitiesRef.current.get(currentDockviewId) : undefined;
+
+    // Build full context with injected services and dockview capabilities
     const fullContext: MenuActionContext = {
       contextType: partial.contextType!,
       position: partial.position!,
@@ -113,9 +138,11 @@ export function ContextMenuProvider({
       getDockviewApi,
       // Convenience: set api to current dockview's API
       api: currentApi,
-      // Inject services from props
+      // Inject global services from props
       workspaceStore: servicesRef.current.workspaceStore,
       panelRegistry: servicesRef.current.panelRegistry,
+      // Inject dockview-specific capabilities
+      floatPanelHandler: capabilities?.floatPanelHandler,
       ...partial,
     };
 

@@ -73,6 +73,10 @@ interface SmartDockviewBaseProps<TContext = any> {
   tabComponents?: Record<string, React.ComponentType<IDockviewPanelProps>>;
   /** Optional: Dockview theme class (default: dockview-theme-abyss) */
   theme?: string;
+  /** Optional: Dockview capabilities for context menu actions */
+  capabilities?: {
+    floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
+  };
 }
 
 /** Registry mode props - uses LocalPanelRegistry */
@@ -145,6 +149,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     watermarkComponent,
     tabComponents: customTabComponents,
     theme = 'dockview-theme-abyss',
+    capabilities,
   } = props;
 
   // Context menu (optional - returns null if no provider)
@@ -223,7 +228,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
         // Register with global context menu provider (if available)
         if (contextMenu) {
-          contextMenu.registerDockview(panelManagerId, event.api);
+          contextMenu.registerDockview(panelManagerId, event.api, capabilities);
         }
       }
 
@@ -250,16 +255,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       }
     };
   }, [panelManagerId, contextMenu]);
-
-  // Update panel params when context changes (registry mode only)
-  useEffect(() => {
-    if (!isReady || !apiRef.current || !registryMode) return;
-
-    const api = apiRef.current;
-    api.panels.forEach((panel) => {
-      panel.api.updateParameters({ context });
-    });
-  }, [context, isReady, registryMode]);
 
   // Determine if context menu features should be active
   const contextMenuActive = enableContextMenu && contextMenu !== null;

@@ -56,7 +56,9 @@ export const maximizePanelAction: MenuAction = {
 
 /**
  * Float the panel as a separate window
- * Uses workspaceStore.openFloatingPanel
+ *
+ * This action is available for any dockview that provides a floatPanelHandler.
+ * No assumptions about implementation - fully dynamic and extensible.
  */
 export const floatPanelAction: MenuAction = {
   id: 'panel:float',
@@ -64,24 +66,24 @@ export const floatPanelAction: MenuAction = {
   icon: 'external-link',
   category: 'panel',
   availableIn: ['tab'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.workspaceStore,
+  visible: (ctx) => {
+    // Only requires a float handler - no assumptions about implementation
+    return !!ctx.panelId && !!ctx.floatPanelHandler;
+  },
   execute: (ctx) => {
-    if (!ctx.panelId || !ctx.workspaceStore) return;
+    if (!ctx.panelId || !ctx.floatPanelHandler || !ctx.api) return;
 
-    // Get panel title for the floating window
-    const panel = ctx.api?.getPanel(ctx.panelId);
-    const panelTitle = panel?.title || ctx.panelId;
+    const panel = ctx.api.getPanel(ctx.panelId);
+    if (!panel) return;
 
-    // Open as floating panel
-    ctx.workspaceStore.getState().openFloatingPanel(ctx.panelId as any, {
+    // Call the dockview's float handler with panel info
+    ctx.floatPanelHandler(ctx.panelId, panel, {
       width: 600,
       height: 400,
     });
 
-    // Optionally close from dockview after floating
-    if (panel && ctx.api) {
-      ctx.api.removePanel(panel);
-    }
+    // Close from dockview after floating
+    ctx.api.removePanel(panel);
   },
 };
 

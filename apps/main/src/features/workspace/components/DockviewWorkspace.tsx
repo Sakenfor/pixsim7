@@ -47,6 +47,7 @@ function WorkspaceWatermark() {
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const isReadyRef = useRef(false);
+  const isApplyingLayoutRef = useRef(false);
 
   const savedLayout = useWorkspaceStore((s) => s.getLayout("workspace"));
   const setLayout = useWorkspaceStore((s) => s.setLayout);
@@ -115,15 +116,24 @@ export function DockviewWorkspace() {
     isReadyRef.current = true;
 
     // Load saved layout or create default
-    if (savedLayout) {
-      try {
-        api.fromJSON(savedLayout);
-      } catch (error) {
-        console.error("Failed to load layout:", error);
+    // Set flag to prevent initial layout from triggering a save
+    isApplyingLayoutRef.current = true;
+    try {
+      if (savedLayout) {
+        try {
+          api.fromJSON(savedLayout);
+        } catch (error) {
+          console.error("Failed to load layout:", error);
+          createDefaultLayout(api);
+        }
+      } else {
         createDefaultLayout(api);
       }
-    } else {
-      createDefaultLayout(api);
+    } finally {
+      // Clear flag after layout is applied
+      setTimeout(() => {
+        isApplyingLayoutRef.current = false;
+      }, 100);
     }
 
     // Set locked state
@@ -135,6 +145,12 @@ export function DockviewWorkspace() {
 
     // Subscribe to layout changes to save to store
     api.onDidLayoutChange(() => {
+      // Skip saving if we're currently applying a layout from the store
+      // to prevent feedback loops
+      if (isApplyingLayoutRef.current) {
+        return;
+      }
+
       if (apiRef.current) {
         const layout = apiRef.current.toJSON() as DockviewLayout;
         setLayout("workspace", layout);
@@ -162,9 +178,16 @@ export function DockviewWorkspace() {
     // If layout in store changed (e.g., preset loaded), apply it
     if (savedLayout) {
       try {
+        // Set flag to prevent feedback loop
+        isApplyingLayoutRef.current = true;
         apiRef.current.fromJSON(savedLayout);
       } catch (error) {
         console.error("Failed to apply layout from store:", error);
+      } finally {
+        // Clear flag after a short delay to allow layout changes to settle
+        setTimeout(() => {
+          isApplyingLayoutRef.current = false;
+        }, 100);
       }
     }
   }, [savedLayout]);
@@ -178,6 +201,15 @@ export function DockviewWorkspace() {
         theme="dockview-theme-dark"
         watermarkComponent={WorkspaceWatermark}
         panelManagerId="workspace"
+        capabilities={{
+          floatPanelHandler: (dockviewPanelId, panel, options) => {
+            // Extract workspace PanelId from panel params
+            const workspacePanelId = panel?.params?.panelId;
+            if (workspacePanelId) {
+              useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
+            }
+          },
+        }}
       />
     </div>
   );
