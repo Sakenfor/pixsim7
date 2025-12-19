@@ -100,7 +100,6 @@ class AssetCoreService:
             response.get("video_url") or
             response.get("image_url")
         )
-        thumbnail_url = response.get("thumbnail_url")
 
         if not provider_asset_id or not asset_url:
             raise InvalidOperationError(
@@ -190,7 +189,6 @@ class AssetCoreService:
             provider_asset_id=provider_asset_id,
             provider_account_id=submission.account_id,
             remote_url=asset_url,
-            thumbnail_url=thumbnail_url,
             width=width,
             height=height,
             duration_sec=duration_sec,  # None for images

@@ -28,7 +28,6 @@ async def add_asset(
     provider_asset_id: str,
     remote_url: str,
     provider_account_id: Optional[int] = None,
-    thumbnail_url: Optional[str] = None,
     width: Optional[int] = None,
     height: Optional[int] = None,
     duration_sec: Optional[float] = None,
@@ -134,7 +133,6 @@ async def add_asset(
     if existing:
         # Non-destructive updates: only fill in missing fields
         _fill = _fill_missing
-        _fill(existing, "thumbnail_url", thumbnail_url)
         _fill(existing, "width", width)
         _fill(existing, "height", height)
         _fill(existing, "duration_sec", duration_sec)
@@ -166,7 +164,6 @@ async def add_asset(
         provider_asset_id=provider_asset_id,
         provider_account_id=provider_account_id,
         remote_url=remote_url,
-        thumbnail_url=thumbnail_url,
         width=width,
         height=height,
         duration_sec=duration_sec,

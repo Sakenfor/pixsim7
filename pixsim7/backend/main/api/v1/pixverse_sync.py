@@ -291,7 +291,6 @@ async def sync_pixverse_assets(
 
             # Create asset
             remote_url = _extract_video_url(v)
-            thumbnail_url = _extract_video_thumbnail(v)
 
             if not remote_url:
                 logger.warning(
@@ -309,7 +308,6 @@ async def sync_pixverse_assets(
                 provider_asset_id=vid,
                 provider_account_id=account.id,
                 remote_url=remote_url,
-                thumbnail_url=thumbnail_url,
                 sync_status=SyncStatus.REMOTE,
                 media_metadata=v,  # Full Pixverse payload
             )
@@ -366,7 +364,6 @@ async def sync_pixverse_assets(
                 provider_asset_id=img_id,
                 provider_account_id=account.id,
                 remote_url=remote_url,
-                thumbnail_url=remote_url,  # Image URL is its own thumbnail
                 sync_status=SyncStatus.REMOTE,
                 media_metadata=img,  # Full Pixverse payload
             )

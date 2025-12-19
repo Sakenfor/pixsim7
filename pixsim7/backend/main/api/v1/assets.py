@@ -730,7 +730,6 @@ async def upload_asset_to_provider(
                     provider_id=provider_id,
                     provider_asset_id=provider_asset_id,
                     remote_url=remote_url,
-                    thumbnail_url=result.external_url,
                     width=result.width,
                     height=result.height,
                     duration_sec=None,
@@ -1097,7 +1096,6 @@ async def upload_asset_from_url(
             provider_id=request.provider_id,
             provider_asset_id=placeholder_provider_asset_id,
             remote_url=None,  # Will be set after provider upload
-            thumbnail_url=None,  # Will use local file
             local_path=final_local_path,  # Content-addressed path
             stored_key=stored_key,  # Stable storage key
             sync_status=SyncStatus.DOWNLOADED,  # Already have it locally!

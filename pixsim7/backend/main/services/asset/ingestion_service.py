@@ -156,7 +156,7 @@ class MediaSettings:
         # Support legacy key for backward compatibility
         return self._settings.get(
             "generate_previews",
-            self._settings.get("generate_video_previews", True)
+            self._settings.get("generate_video_previews", False)
         )
 
     def update(self, updates: Dict[str, Any]) -> None:
