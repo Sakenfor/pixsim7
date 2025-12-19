@@ -4,8 +4,7 @@ ActionBlock Tagging Helpers
 Provides utilities for normalizing and aligning ActionBlock tags with ontology IDs.
 This helps ensure consistent semantic metadata across the system.
 """
-from typing import Dict, Any, Optional
-from pixsim7.backend.main.shared.ontology import load_ontology
+from typing import Dict, Any
 
 
 def normalize_tags(raw_tags: Dict[str, Any]) -> Dict[str, Any]:
@@ -35,8 +34,6 @@ def normalize_tags(raw_tags: Dict[str, Any]) -> Dict[str, Any]:
     normalized = raw_tags.copy()
 
     try:
-        ontology = load_ontology()
-
         # Normalize intensity-related tags
         if "intimacy_level" in normalized:
             level = str(normalized["intimacy_level"]).lower()

@@ -18,7 +18,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.shared.ontology import load_ontology
+from pixsim7.backend.main.domain.ontology import get_ontology_registry
 from pixsim7.backend.main.domain.action_block import ActionBlockDB
 from pixsim7.backend.main.services.action_blocks.tagging import extract_ontology_ids_from_tags
 from sqlalchemy import select
@@ -51,17 +51,21 @@ class OntologyUsageResponse(BaseModel):
 
 # ===== Helper Functions =====
 
-def extract_all_domain_ids(ontology) -> Dict[str, Dict[str, Any]]:
+def extract_all_domain_ids_from_registry() -> Dict[str, Dict[str, Any]]:
     """
-    Extract all ontology IDs from the domain section.
+    Extract all ontology IDs from the domain section using the registry.
 
     Returns:
         Dict mapping ontology ID to metadata {label, category}
     """
+    registry = get_ontology_registry()
+    raw_core = registry._raw_core
+
     id_map: Dict[str, Dict[str, Any]] = {}
 
-    # Get domain packs
-    packs = ontology.domain.get("packs", {})
+    # Get domain packs from raw data
+    domain = raw_core.get("domain", {})
+    packs = domain.get("packs", {})
     default_pack = packs.get("default", {})
 
     # Helper to extract IDs from a category
@@ -99,7 +103,8 @@ def extract_all_domain_ids(ontology) -> Dict[str, Dict[str, Any]]:
     extract_from_category("beats_micro", "beat.micro")
 
     # Add core intensity and speed IDs
-    intensity_labels = ontology.intensity.get("labels", [])
+    core = raw_core.get("core", {})
+    intensity_labels = core.get("intensity", {}).get("labels", [])
     if isinstance(intensity_labels, list):
         for intensity_item in intensity_labels:
             if isinstance(intensity_item, dict):
@@ -110,7 +115,7 @@ def extract_all_domain_ids(ontology) -> Dict[str, Dict[str, Any]]:
                         "category": "intensity"
                     }
 
-    speed_labels = ontology.speed.get("labels", {})
+    speed_labels = core.get("speed", {}).get("labels", {})
     for speed_key, speed_data in speed_labels.items():
         if isinstance(speed_data, dict):
             item_id = speed_data.get("id")
@@ -180,11 +185,12 @@ async def get_ontology_usage(
         - Example ActionBlock IDs using each ID
     """
     try:
-        # Load ontology
-        ontology = load_ontology()
+        # Get registry and extract version
+        registry = get_ontology_registry()
+        version = registry._raw_core.get("version", "unknown")
 
         # Extract all domain IDs
-        id_map = extract_all_domain_ids(ontology)
+        id_map = extract_all_domain_ids_from_registry()
 
         # Build usage report for each ID
         id_usages: List[OntologyIdUsage] = []
@@ -211,7 +217,7 @@ async def get_ontology_usage(
         total_blocks = len(result.scalars().all())
 
         response = OntologyUsageResponse(
-            ontology_version=ontology.version,
+            ontology_version=version,
             total_ids=len(id_usages),
             total_action_blocks_scanned=total_blocks,
             ids=id_usages,
@@ -247,14 +253,15 @@ async def get_ontology_info(
         Ontology metadata (version, label, description)
     """
     try:
-        ontology = load_ontology()
+        registry = get_ontology_registry()
+        raw_core = registry._raw_core
 
         info = {
-            "version": ontology.version,
-            "label": ontology.label,
-            "description": ontology.description,
-            "has_core_section": bool(ontology.raw.get("core")),
-            "has_domain_section": bool(ontology.raw.get("domain")),
+            "version": raw_core.get("version", "unknown"),
+            "label": raw_core.get("label", ""),
+            "description": raw_core.get("description", ""),
+            "has_core_section": bool(raw_core.get("core")),
+            "has_domain_section": bool(raw_core.get("domain")),
         }
 
         logger.info(

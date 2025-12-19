@@ -70,6 +70,28 @@ def match_keywords_in_domain(domain_data: Dict[str, Any], text: str) -> List[str
     return matched_ids
 
 
+def match_keywords(text: str) -> List[str]:
+    """
+    Match keywords in text to ontology IDs using the global registry.
+
+    Convenience function that wraps match_keywords_in_domain with the
+    current ontology registry's domain data.
+
+    Args:
+        text: Text to match (case-insensitive)
+
+    Returns:
+        List of ontology IDs (e.g., ["part:shaft", "state:erect"])
+    """
+    # Import here to avoid circular import
+    from pixsim7.backend.main.domain.ontology.registry import get_ontology_registry
+
+    registry = get_ontology_registry()
+    domain_data = registry._raw_core.get("domain", {})
+    return match_keywords_in_domain(domain_data, text)
+
+
 __all__ = [
     "match_keywords_in_domain",
+    "match_keywords",
 ]

@@ -66,6 +66,7 @@ from pixsim7.backend.main.domain.ontology.concept_ref import (
 # Utilities
 from pixsim7.backend.main.domain.ontology.utils import (
     match_keywords_in_domain,
+    match_keywords,
 )
 
 
@@ -102,4 +103,5 @@ __all__ = [
     "strip_concept_prefix",
     # Utilities
     "match_keywords_in_domain",
+    "match_keywords",
 ]
