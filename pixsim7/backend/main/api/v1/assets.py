@@ -813,6 +813,7 @@ async def upload_asset_from_url(
     """
     import httpx
     import mimetypes
+    import tempfile
 
     url = request.url
     if not (url.startswith("http://") or url.startswith("https://")):
@@ -902,7 +903,6 @@ async def upload_asset_from_url(
     # Step 1: Save to temporary file for processing
     ext = mimetypes.guess_extension(content_type) or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
     temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
-    import tempfile
     temp_local_path = tempfile.mktemp(suffix=ext)
 
     # Step 2: Save to temp location and compute metadata
