@@ -156,6 +156,7 @@ async def get_lineage_graph(
             "media_type": n.media_type.value,
             "provider_id": n.provider_id,
             "thumbnail_url": storage_key_to_url(n.thumbnail_key) or n.remote_url,
+            "preview_url": storage_key_to_url(n.preview_key) or n.remote_url,
             "duration_sec": n.duration_sec,
         }
         for n in node_rows
