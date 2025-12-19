@@ -378,7 +378,8 @@ class PixverseProvider(
         # ==== Common field specs ====
         base_prompt = {
             "name": "prompt", "type": "string", "required": True, "default": None,
-            "enum": None, "description": "Primary text prompt", "group": "core"
+            "enum": None, "description": "Primary text prompt", "group": "core",
+            "max_length": 2048
         }
         quality = {
             "name": "quality", "type": "enum", "required": False, "default": "720p",

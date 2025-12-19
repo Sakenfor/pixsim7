@@ -396,37 +396,27 @@ class PromptOperationsService:
                 "truncated": bool
             }
         """
-        # Known provider limits (will be replaced with dynamic capability registry)
-        PROVIDER_LIMITS = {
-            "pixverse": {
-                "prompt_limit": 800,
-                "supported_operations": [
-                    "text_to_image", "image_to_image",
-                    "text_to_video", "image_to_video",
-                    "video_extend", "video_transition", "fusion"
-                ]
-            },
-            "runway": {
-                "prompt_limit": 2000,
-                "supported_operations": ["text_to_video", "image_to_video", "video_extend"]
-            },
-            "pika": {
-                "prompt_limit": 1000,
-                "supported_operations": ["text_to_video", "image_to_video"]
-            }
-        }
+        # Get provider limits dynamically from registry
+        from pixsim7.backend.main.domain.providers.registry.provider_registry import registry
+        from pixsim7.backend.main.api.v1.providers import extract_provider_capabilities
 
         errors = []
         warnings = []
         char_count = len(prompt_text)
 
-        # Get provider limits
-        provider_limits = PROVIDER_LIMITS.get(provider_id)
-        if not provider_limits:
-            warnings.append(f"Unknown provider '{provider_id}', validation limited")
-            provider_limits = {"prompt_limit": 800}  # Conservative default
+        # Try to get limit from provider capabilities
+        prompt_limit = None
+        try:
+            provider = registry.get(provider_id)
+            capabilities = extract_provider_capabilities(provider)
+            prompt_limit = capabilities.get('limits', {}).get('prompt_max_chars')
+        except Exception:
+            pass
 
-        prompt_limit = provider_limits.get("prompt_limit", 800)
+        # Fallback if provider not found or no limit defined
+        if prompt_limit is None:
+            warnings.append(f"Could not determine prompt limit for '{provider_id}', using default")
+            prompt_limit = 2000  # Conservative default
 
         # Check prompt length
         if char_count > prompt_limit:

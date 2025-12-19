@@ -327,6 +327,22 @@ def extract_provider_capabilities(provider) -> dict:
         "operation_specs": operation_specs,
     }
 
+    # Extract limits from operation specs (e.g., prompt max_length)
+    limits = {}
+    if operation_specs:
+        # Look for prompt field across all operations and extract max_length
+        for op_name, op_spec in operation_specs.items():
+            if isinstance(op_spec, dict) and 'fields' in op_spec:
+                for field in op_spec['fields']:
+                    if field.get('name') == 'prompt' and 'max_length' in field:
+                        limits['prompt_max_chars'] = field['max_length']
+                        break
+            if 'prompt_max_chars' in limits:
+                break
+
+    if limits:
+        base['limits'] = limits
+
     # Add credit types from manifest
     if manifest and manifest.credit_types:
         base["credit_types"] = list(manifest.credit_types)
