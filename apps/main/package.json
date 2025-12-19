@@ -19,6 +19,7 @@
     ]
   },
   "dependencies": {
+    "@pixsim7/api-client": "workspace:*",
     "@pixsim7/game.components": "workspace:*",
     "@pixsim7/game.engine": "workspace:*",
     "@pixsim7/scene.cubes": "workspace:*",

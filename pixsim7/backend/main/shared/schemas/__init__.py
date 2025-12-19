@@ -55,6 +55,12 @@ from pixsim7.backend.main.shared.schemas.entity_ref import (
     entity_ref_field,
 )
 
+# Standardized error response for all API errors
+from pixsim7.backend.main.shared.schemas.error_response import (
+    ErrorResponse,
+    ErrorCodes,
+)
+
 __all__ = [
     # EntityRef - canonical reference type for API boundaries
     "EntityRef",
@@ -69,4 +75,7 @@ __all__ = [
     "WorkspaceRef",
     "AccountRef",
     "entity_ref_field",
+    # ErrorResponse - standardized error format for all API errors
+    "ErrorResponse",
+    "ErrorCodes",
 ]

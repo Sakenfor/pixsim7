@@ -197,6 +197,10 @@ app = FastAPI(
     debug=settings.debug,
 )
 
+# Register global exception handlers for consistent error responses
+from pixsim7.backend.main.api.exception_handlers import register_exception_handlers
+register_exception_handlers(app)
+
 # Initialize middleware plugin system
 # Middleware is loaded and registered here (before app startup)
 init_middleware_manager(app, str(settings.middleware_dir))

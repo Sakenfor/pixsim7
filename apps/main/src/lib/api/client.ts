@@ -1,116 +1,129 @@
-import axios, { AxiosError } from 'axios';
-import type { AxiosInstance, AxiosRequestConfig } from 'axios';
+/**
+ * API Client - Browser-specific wrapper for @pixsim7/api-client
+ *
+ * This module provides a pre-configured API client instance for the web app.
+ * It uses the environment-neutral @pixsim7/api-client package with browser-specific
+ * token storage and redirect handling.
+ */
+import { createApiClient, type PixSimApiClient } from '@pixsim7/api-client';
+import {
+  createBrowserTokenProvider,
+  computeBackendUrl,
+} from '@pixsim7/api-client/browser';
 
-// Build backend base URL similar to admin app: prefer VITE_BACKEND_URL, else infer from location, fallback to 8001
-function computeBackendUrl(): string {
-  const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
-  console.log('[DEBUG] VITE_BACKEND_URL:', envUrl);
-  if (envUrl) return envUrl.replace(/\/$/, '');
-  if (typeof window !== 'undefined' && window.location) {
-    const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:8000`;
-  }
-  return 'http://localhost:8000';
-}
+/**
+ * Backend base URL (without /api/v1 suffix).
+ * Uses VITE_BACKEND_URL env var, or infers from window.location, or falls back to localhost.
+ */
+export const BACKEND_BASE = computeBackendUrl({
+  envUrl: import.meta.env.VITE_BACKEND_URL as string | undefined,
+  defaultPort: 8000,
+  fallbackUrl: 'http://localhost:8000',
+});
 
-export const BACKEND_BASE = computeBackendUrl();
+/**
+ * Full API base URL (with /api/v1 suffix).
+ */
 export const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
 
 /**
- * API Client with centralized 401 handling.
- *
- * **Invariant**: At most one redirect to /login is allowed at a time.
- * This prevents "redirect storms" and login flash effects when multiple
- * parallel API requests fail with 401.
- *
- * The redirect guard ensures:
- * - Only one redirect happens even if multiple 401s occur simultaneously
- * - No redirect if already on /login page
- * - Redirect flag is never reset (single redirect per page load)
+ * Static flag to prevent multiple redirects to /login.
+ * Once set to true, remains true for the lifetime of the page.
+ * This ensures parallel 401 responses only trigger one redirect.
  */
-class ApiClient {
-  private client: AxiosInstance;
+let isRedirecting = false;
 
-  /**
-   * Static flag to prevent multiple redirects to /login.
-   *
-   * Once set to true, remains true for the lifetime of the page.
-   * This ensures parallel 401 responses only trigger one redirect.
-   */
-  private static isRedirecting = false;
+/**
+ * Browser token provider using localStorage.
+ */
+const browserTokenProvider = createBrowserTokenProvider({
+  tokenKey: 'access_token',
+  userKey: 'user',
+});
 
-  constructor() {
-    this.client = axios.create({
-      baseURL: API_BASE_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    // Request interceptor to add auth token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('access_token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    /**
-     * Response interceptor for centralized error handling.
-     *
-     * **401 Unauthorized Handling**:
-     * When a 401 response is received, redirect to /login page.
-     * The redirect guard ensures:
-     * 1. No redirect if already on /login (prevents infinite loops)
-     * 2. Only one redirect per page load (prevents "login flash" from parallel 401s)
-     *
-     * **Invariant**: window.location.href = '/login' is called at most once per page load
-     */
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          // Token expired or invalid - redirect once (prevent flash loops from parallel requests)
-          if (!window.location.pathname.startsWith('/login') && !ApiClient.isRedirecting) {
-            ApiClient.isRedirecting = true;
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('user');
-            window.location.href = '/login';
-          }
-        }
-        return Promise.reject(error);
+/**
+ * Pre-configured API client instance for the web app.
+ *
+ * Features:
+ * - Automatic token injection from localStorage
+ * - Centralized 401 handling with redirect to /login
+ * - Redirect storm prevention (only one redirect per page load)
+ */
+const client = createApiClient({
+  baseUrl: BACKEND_BASE,
+  tokenProvider: browserTokenProvider,
+  onUnauthorized: () => {
+    // Token expired or invalid - redirect once (prevent flash loops from parallel requests)
+    if (typeof window !== 'undefined') {
+      if (!window.location.pathname.startsWith('/login') && !isRedirecting) {
+        isRedirecting = true;
+        window.location.href = '/login';
       }
-    );
+    }
+  },
+});
+
+/**
+ * Legacy API client wrapper for backward compatibility.
+ *
+ * Provides the same interface as the old ApiClient class.
+ * New code should import from @pixsim7/api-client directly.
+ */
+class ApiClientWrapper {
+  private client: PixSimApiClient;
+
+  constructor(pixSimClient: PixSimApiClient) {
+    this.client = pixSimClient;
   }
 
-  get<T>(url: string, config?: AxiosRequestConfig) {
-    return this.client.get<T>(url, config);
+  get<T>(url: string, config?: Parameters<PixSimApiClient['get']>[1]) {
+    // Return AxiosResponse shape for backward compatibility
+    return this.client.getRawClient().get<T>(url, config);
   }
 
-  post<T>(url: string, data?: any, config?: AxiosRequestConfig) {
-    return this.client.post<T>(url, data, config);
+  post<T>(url: string, data?: unknown, config?: Parameters<PixSimApiClient['post']>[2]) {
+    return this.client.getRawClient().post<T>(url, data, config);
   }
 
-  put<T>(url: string, data?: any, config?: AxiosRequestConfig) {
-    return this.client.put<T>(url, data, config);
+  put<T>(url: string, data?: unknown, config?: Parameters<PixSimApiClient['put']>[2]) {
+    return this.client.getRawClient().put<T>(url, data, config);
   }
 
-  patch<T>(url: string, data?: any, config?: AxiosRequestConfig) {
-    return this.client.patch<T>(url, data, config);
+  patch<T>(url: string, data?: unknown, config?: Parameters<PixSimApiClient['patch']>[2]) {
+    return this.client.getRawClient().patch<T>(url, data, config);
   }
 
-  delete<T>(url: string, config?: AxiosRequestConfig) {
-    return this.client.delete<T>(url, config);
+  delete<T>(url: string, config?: Parameters<PixSimApiClient['delete']>[1]) {
+    return this.client.getRawClient().delete<T>(url, config);
   }
 
-  // Direct access to axios instance for special cases
   getRawClient() {
-    return this.client;
+    return this.client.getRawClient();
   }
 }
 
-export const apiClient = new ApiClient();
+/**
+ * Singleton API client instance.
+ *
+ * @example
+ * ```ts
+ * import { apiClient } from '@lib/api';
+ *
+ * const response = await apiClient.get('/assets');
+ * const assets = response.data;
+ * ```
+ */
+export const apiClient = new ApiClientWrapper(client);
+
+/**
+ * Direct access to the new PixSimApiClient.
+ * Prefer this for new code.
+ *
+ * @example
+ * ```ts
+ * import { pixsimClient } from '@lib/api';
+ *
+ * const assets = await pixsimClient.get<Asset[]>('/assets');
+ * ```
+ */
+export const pixsimClient = client;
