@@ -274,60 +274,6 @@ def assert_entity_type(ref: Optional[EntityRef], entity_type: str) -> EntityRef:
     return ref
 
 
-def is_asset_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "asset")
-
-
-def assert_asset_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "asset")
-
-
-def is_lineage_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "lineage")
-
-
-def assert_lineage_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "lineage")
-
-
-def is_asset_branch_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "asset_branch")
-
-
-def assert_asset_branch_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "asset_branch")
-
-
-def is_clip_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "clip")
-
-
-def assert_clip_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "clip")
-
-
-def is_prompt_version_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "prompt_version")
-
-
-def assert_prompt_version_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "prompt_version")
-
-
-def is_submission_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "submission")
-
-
-def assert_submission_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "submission")
-
-
-def is_tag_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
-    return is_entity_type(ref, "tag")
-
-
-def assert_tag_ref(ref: Optional[EntityRef]) -> EntityRef:
-    return assert_entity_type(ref, "tag")
 
 
 # ===================
@@ -479,20 +425,6 @@ __all__ = [
     # Type guards
     "is_entity_type",
     "assert_entity_type",
-    "is_asset_ref",
-    "assert_asset_ref",
-    "is_lineage_ref",
-    "assert_lineage_ref",
-    "is_asset_branch_ref",
-    "assert_asset_branch_ref",
-    "is_clip_ref",
-    "assert_clip_ref",
-    "is_prompt_version_ref",
-    "assert_prompt_version_ref",
-    "is_submission_ref",
-    "assert_submission_ref",
-    "is_tag_ref",
-    "assert_tag_ref",
     # Location helpers
     "location_id_to_ref",
     "location_ref_to_id",
