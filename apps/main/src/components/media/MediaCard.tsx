@@ -21,7 +21,7 @@
  * - [ ] Multi-provider support in UI
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -150,10 +150,36 @@ export function MediaCard(props: MediaCardProps) {
   const thumbSrc = useMediaThumbnail(thumbUrl, previewUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
+  const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
 
   // For videos, fall back to remoteUrl if thumbnail is not available
   // This allows aspect ratio detection via onLoadedMetadata even before thumbnails are generated
   const videoSrc = mediaType === 'video' && !thumbSrc ? remoteUrl : thumbSrc;
+
+  useEffect(() => {
+    if (mediaType !== 'video' || !thumbSrc) {
+      setIntrinsicThumbAspectRatio(null);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const next = img.naturalWidth / img.naturalHeight;
+        setIntrinsicThumbAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
+      }
+    };
+    img.onerror = () => {
+      if (!cancelled) setIntrinsicThumbAspectRatio(null);
+    };
+    img.src = thumbSrc;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaType, thumbSrc]);
 
   const videoAspectRatio = useMemo(() => {
     if (mediaType !== 'video') return null;
@@ -162,8 +188,8 @@ export function MediaCard(props: MediaCardProps) {
       return width / height;
     }
 
-    return intrinsicVideoAspectRatio ?? 16 / 9;
-  }, [mediaType, width, height, intrinsicVideoAspectRatio]);
+    return intrinsicThumbAspectRatio ?? intrinsicVideoAspectRatio ?? 16 / 9;
+  }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio]);
 
   // Resolve badge configuration
   const badges = useMemo(

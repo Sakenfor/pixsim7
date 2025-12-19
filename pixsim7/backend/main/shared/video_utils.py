@@ -46,8 +46,11 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
             "ffprobe",
             "-v", "error",
             "-select_streams", "v:0",  # First video stream
-            "-show_entries", "stream=width,height,duration,r_frame_rate,codec_name,bit_rate",
-            "-show_entries", "format=format_name,size",
+            "-show_entries", (
+                "stream=width,height,duration,r_frame_rate,codec_name,bit_rate,side_data_list"
+                ":stream_tags=rotate"
+                ":format=format_name,size"
+            ),
             "-of", "json",
             video_path
         ]
@@ -79,15 +82,47 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
         # Get duration (prefer stream duration, fallback to format duration)
         duration = float(stream.get("duration") or format_info.get("duration") or 0)
 
+        # Extract rotation metadata (if present)
+        rotation = None
+        tags = stream.get("tags") or {}
+        if isinstance(tags, dict):
+            rotate_tag = tags.get("rotate")
+            if rotate_tag is not None:
+                try:
+                    rotation = int(float(rotate_tag))
+                except (TypeError, ValueError):
+                    rotation = None
+        if rotation is None:
+            for side_data in stream.get("side_data_list") or []:
+                if not isinstance(side_data, dict):
+                    continue
+                if "rotation" in side_data:
+                    try:
+                        rotation = int(float(side_data["rotation"]))
+                    except (TypeError, ValueError):
+                        rotation = None
+                    break
+
+        if rotation is not None:
+            rotation = rotation % 360
+            if rotation > 180:
+                rotation -= 360
+
+        width = int(stream.get("width", 0))
+        height = int(stream.get("height", 0))
+        if rotation in (90, -90):
+            width, height = height, width
+
         return {
-            "width": int(stream.get("width", 0)),
-            "height": int(stream.get("height", 0)),
+            "width": width,
+            "height": height,
             "duration": duration,
             "fps": fps,
             "codec": stream.get("codec_name", "unknown"),
             "bitrate": int(stream.get("bit_rate") or format_info.get("bit_rate") or 0),
             "format": format_info.get("format_name", "unknown"),
             "size_bytes": int(format_info.get("size", 0)),
+            "rotation": rotation,
         }
 
     except subprocess.TimeoutExpired:

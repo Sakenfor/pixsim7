@@ -561,6 +561,7 @@ class AssetIngestionService:
                 "codec": metadata.get("codec"),
                 "bitrate": metadata.get("bitrate"),
                 "format": metadata.get("format"),
+                "rotation": metadata.get("rotation"),
             }
 
             logger.debug(
@@ -647,13 +648,30 @@ class AssetIngestionService:
 
         thumb_size = self.settings.thumbnail_size
 
+        rotation = None
+        if asset.media_metadata and isinstance(asset.media_metadata, dict):
+            rotation = (
+                asset.media_metadata.get("video_info", {}) or {}
+            ).get("rotation")
+
+        vf_parts = []
+        if rotation in (90, -270):
+            vf_parts.append("transpose=1")
+        elif rotation in (-90, 270):
+            vf_parts.append("transpose=2")
+        elif rotation in (180, -180):
+            vf_parts.append("hflip,vflip")
+        vf_parts.append(
+            f"scale={thumb_size[0]}:{thumb_size[1]}:force_original_aspect_ratio=decrease"
+        )
+
         cmd = [
             "ffmpeg",
             "-y",
             "-ss", str(timestamp),
             "-i", local_path,
             "-vframes", "1",
-            "-vf", f"scale={thumb_size[0]}:{thumb_size[1]}:force_original_aspect_ratio=decrease",
+            "-vf", ",".join(vf_parts),
             "-q:v", "3",
             thumb_path
         ]
@@ -793,13 +811,30 @@ class AssetIngestionService:
         # Quality 92 -> qscale 2, Quality 75 -> qscale 5
         qscale = max(2, min(31, int(2 + (100 - preview_quality) / 10)))
 
+        rotation = None
+        if asset.media_metadata and isinstance(asset.media_metadata, dict):
+            rotation = (
+                asset.media_metadata.get("video_info", {}) or {}
+            ).get("rotation")
+
+        vf_parts = []
+        if rotation in (90, -270):
+            vf_parts.append("transpose=1")
+        elif rotation in (-90, 270):
+            vf_parts.append("transpose=2")
+        elif rotation in (180, -180):
+            vf_parts.append("hflip,vflip")
+        vf_parts.append(
+            f"scale={preview_size[0]}:{preview_size[1]}:force_original_aspect_ratio=decrease"
+        )
+
         cmd = [
             "ffmpeg",
             "-y",
             "-ss", str(timestamp),
             "-i", local_path,
             "-vframes", "1",
-            "-vf", f"scale={preview_size[0]}:{preview_size[1]}:force_original_aspect_ratio=decrease",
+            "-vf", ",".join(vf_parts),
             "-q:v", str(qscale),
             preview_path
         ]
