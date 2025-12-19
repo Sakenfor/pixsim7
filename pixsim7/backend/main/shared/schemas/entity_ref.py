@@ -24,6 +24,7 @@ Accepts (via BeforeValidator):
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union, Annotated, TypeGuard
 
 from pydantic import BaseModel, Field, BeforeValidator, WithJsonSchema
@@ -227,6 +228,32 @@ def entity_ref_field(entity_type: str) -> type:
         Annotated type alias for Optional[EntityRef] with schema extension
     """
     return _make_entity_ref_type(entity_type)
+
+
+# ===================
+# EntityRef Kind Helpers
+# ===================
+
+
+@dataclass(frozen=True)
+class RefKind:
+    """Helper for working with EntityRef types without per-type functions."""
+
+    type: str
+
+    def is_(self, ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+        return bool(ref) and ref.type == self.type
+
+    def assert_(self, ref: Optional[EntityRef]) -> EntityRef:
+        if not self.is_(ref):
+            actual = getattr(ref, "type", None)
+            raise TypeError(f"Expected {self.type} ref, got {actual!r}")
+        return ref
+
+
+def ref_kind(entity_type: str) -> RefKind:
+    """Create a RefKind helper for an entity type."""
+    return RefKind(entity_type)
 
 
 # ===================
@@ -447,6 +474,8 @@ __all__ = [
     "BranchIntentRef",
     # Factory
     "entity_ref_field",
+    "RefKind",
+    "ref_kind",
     # Type guards
     "is_entity_type",
     "assert_entity_type",
