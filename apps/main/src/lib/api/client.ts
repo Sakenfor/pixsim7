@@ -68,6 +68,8 @@ const client = createApiClient({
  *
  * Provides the same interface as the old ApiClient class.
  * New code should import from @pixsim7/api-client directly.
+ *
+ * @deprecated Prefer `pixsimClient` (returns data directly) or `pixsimClient.getRawClient()` if you need AxiosResponse.
  */
 class ApiClientWrapper {
   private client: PixSimApiClient;
@@ -112,6 +114,8 @@ class ApiClientWrapper {
  * const response = await apiClient.get('/assets');
  * const assets = response.data;
  * ```
+ *
+ * @deprecated Prefer `pixsimClient` (data-returning) or domain helpers in `@pixsim7/api-client/domains`.
  */
 export const apiClient = new ApiClientWrapper(client);
 
