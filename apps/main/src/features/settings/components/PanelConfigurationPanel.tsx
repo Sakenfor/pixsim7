@@ -1,4 +1,6 @@
 /**
+ * @deprecated Use PanelCentricSettings instead.
+ *
  * Panel Configuration Panel
  *
  * Manage panel visibility, settings, and organization.

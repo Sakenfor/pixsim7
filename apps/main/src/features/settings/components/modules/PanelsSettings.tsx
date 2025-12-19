@@ -1,13 +1,13 @@
 /**
  * Panels Settings Module
  *
- * Wrapper for PanelConfigurationPanel to register it in the settings registry.
+ * Wrapper for PanelCentricSettings to register it in the settings registry.
  */
-import { PanelConfigurationPanel } from '../PanelConfigurationPanel';
+import { PanelCentricSettings } from '../PanelCentricSettings';
 import { settingsRegistry } from '../../lib/core/registry';
 
 export function PanelsSettings() {
-  return <PanelConfigurationPanel />;
+  return <PanelCentricSettings />;
 }
 
 // Register this module
