@@ -7,16 +7,43 @@ Endpoints:
 - GET / - Liveness probe (lightweight, always 200)
 - GET /health - Health check (always 200, detailed status)
 - GET /ready - Readiness probe (503 if DB down, 200 otherwise)
+- GET /api/v1/version - API version info for client compatibility
 
 See docs/BACKEND_STARTUP.md for semantics and usage in k8s/ECS.
 """
+import os
+from datetime import datetime, timezone
 from fastapi import APIRouter, Response, Request, status as http_status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 
 from pixsim7.backend.main.shared.config import settings
 
 router = APIRouter(tags=["Health"])
+
+
+class VersionResponse(BaseModel):
+    """API version information for client compatibility checks."""
+    api_version: str = Field(
+        ...,
+        description="API version string (e.g., 'v1', '0.1.0')",
+        examples=["v1", "0.1.0"]
+    )
+    build_sha: str | None = Field(
+        default=None,
+        description="Git commit SHA of the build (null if not available)",
+        examples=["abc123def456", None]
+    )
+    build_time: str | None = Field(
+        default=None,
+        description="ISO 8601 timestamp when the build was created",
+        examples=["2024-01-15T10:30:00Z"]
+    )
+    server_time: str = Field(
+        ...,
+        description="Current server time in ISO 8601 format (for clock sync checks)",
+        examples=["2024-01-15T14:25:00Z"]
+    )
 
 
 class HealthResponse(BaseModel):
@@ -186,4 +213,29 @@ async def readiness_check(response: Response, request: Request):
         database=db_status,
         redis=redis_status,
         plugins_loaded=plugins_loaded,
+    )
+
+
+@router.get("/api/v1/version", response_model=VersionResponse, tags=["Version"])
+async def get_version():
+    """
+    Get API version information for client compatibility.
+
+    Returns version information useful for:
+    - Client version compatibility checks
+    - Debugging and support (build_sha)
+    - Clock synchronization (server_time)
+
+    Environment variables:
+    - BUILD_SHA: Git commit SHA (set during build/deploy)
+    - BUILD_TIME: Build timestamp in ISO 8601 format
+
+    Returns:
+        VersionResponse: API version and build information
+    """
+    return VersionResponse(
+        api_version=settings.api_version,
+        build_sha=os.environ.get("BUILD_SHA") or os.environ.get("GIT_SHA"),
+        build_time=os.environ.get("BUILD_TIME"),
+        server_time=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     )

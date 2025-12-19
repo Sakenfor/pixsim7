@@ -2,13 +2,36 @@
  * API Client - Frontend API for backend services
  */
 
-export { apiClient, BACKEND_BASE, API_BASE_URL } from './client';
+export { apiClient, pixsimClient, BACKEND_BASE, API_BASE_URL } from './client';
 export {
+  // Error message extraction
   extractErrorMessage,
+  getErrorResponse,
+  getErrorCode,
+  isErrorCode,
+  isErrorResponse,
+
+  // Validation errors
+  getValidationErrors,
+  getFieldError,
+  isValidationError,
+
+  // HTTP status checks
   isHttpError,
   isNetworkError,
-  getErrorStatusCode
+  getErrorStatusCode,
+
+  // Common error type checks
+  isUnauthorizedError,
+  isNotFoundError,
+  isConflictError,
+
+  // Error codes
+  ErrorCodes,
 } from './errorHandling';
+
+// Re-export types
+export type { ErrorResponse, ErrorCode } from './errorHandling';
 
 // Domain clients
 export * from './game';

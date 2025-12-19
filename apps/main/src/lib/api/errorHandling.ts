@@ -1,101 +1,39 @@
 /**
  * API Error Handling Utilities
  *
- * Centralized error extraction and formatting for API responses.
- * Use these instead of inline error?.response?.data?.detail checks.
- */
-
-import type { AxiosError } from 'axios';
-
-/**
- * Extract error message from API error response
+ * Re-exports error handling utilities from @pixsim7/api-client.
+ * This module is kept for backward compatibility with existing imports.
  *
- * Handles various error shapes:
- * - Axios errors with response.data.detail
- * - Error objects with message property
- * - Plain strings
- * - Unknown error types
- *
- * @param error - The error to extract message from
- * @param fallback - Default message if extraction fails
- * @returns User-friendly error message
- *
- * @example
- * ```ts
- * try {
- *   await api.call();
- * } catch (err) {
- *   const message = extractErrorMessage(err, 'Operation failed');
- *   setError(message);
- * }
- * ```
+ * For new code, prefer importing directly from @pixsim7/api-client.
  */
-export function extractErrorMessage(error: unknown, fallback = 'An error occurred'): string {
-  // Handle null/undefined
-  if (!error) {
-    return fallback;
-  }
 
-  // Try Axios error shape first (most common in our API calls)
-  const axiosError = error as AxiosError<{ detail?: string | string[] }>;
-  if (axiosError.response?.data?.detail) {
-    const detail = axiosError.response.data.detail;
-    // Handle array of errors (some endpoints return multiple)
-    if (Array.isArray(detail)) {
-      return detail.join(', ');
-    }
-    return String(detail);
-  }
+// Re-export all error handling utilities from the api-client package
+export {
+  // Core error extraction
+  extractErrorMessage,
+  getErrorResponse,
+  getErrorCode,
+  isErrorCode,
+  isErrorResponse,
 
-  // Try standard Error object
-  if (error instanceof Error) {
-    return error.message || fallback;
-  }
+  // Validation errors
+  getValidationErrors,
+  getFieldError,
+  isValidationError,
 
-  // Try plain object with message property
-  const errorObj = error as { message?: string };
-  if (errorObj.message) {
-    return errorObj.message;
-  }
+  // HTTP status checks
+  isHttpError,
+  isNetworkError,
+  getErrorStatusCode,
 
-  // Try converting to string
-  if (typeof error === 'string') {
-    return error;
-  }
+  // Common error type checks
+  isUnauthorizedError,
+  isNotFoundError,
+  isConflictError,
 
-  // Give up, return fallback
-  return fallback;
-}
+  // Error codes
+  ErrorCodes,
+} from '@pixsim7/api-client';
 
-/**
- * Check if error is a specific HTTP status code
- *
- * @example
- * ```ts
- * if (isHttpError(err, 401)) {
- *   // Handle unauthorized
- * } else if (isHttpError(err, 409)) {
- *   // Handle conflict
- * }
- * ```
- */
-export function isHttpError(error: unknown, statusCode: number): boolean {
-  const axiosError = error as AxiosError;
-  return axiosError.response?.status === statusCode;
-}
-
-/**
- * Check if error is a network error (no response from server)
- */
-export function isNetworkError(error: unknown): boolean {
-  const axiosError = error as AxiosError;
-  return axiosError.isAxiosError === true && !axiosError.response;
-}
-
-/**
- * Get HTTP status code from error, if available
- */
-export function getErrorStatusCode(error: unknown): number | null {
-  const axiosError = error as AxiosError;
-  return axiosError.response?.status ?? null;
-}
+// Re-export types
+export type { ErrorResponse, ErrorCode } from '@pixsim7/api-client';

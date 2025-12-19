@@ -81,6 +81,9 @@ importers:
 
   apps/main:
     dependencies:
+      '@pixsim7/api-client':
+        specifier: workspace:*
+        version: link:../../packages/shared/api-client
       '@pixsim7/game.components':
         specifier: workspace:*
         version: link:../../packages/game/components
@@ -309,6 +312,15 @@ importers:
         specifier: workspace:*
         version: link:../../shared/types
     devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/api-client:
+    devDependencies:
+      axios:
+        specifier: ^1.6.0
+        version: 1.13.2
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
