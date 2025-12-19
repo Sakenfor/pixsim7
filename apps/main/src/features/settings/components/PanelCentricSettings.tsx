@@ -41,6 +41,7 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
   const hasPanelSettings = !!(
     panelDefinition?.settingsComponent || panelDefinition?.settingsSections
   );
+  const hasCustomTabs = !!panelDefinition?.settingsTabs?.length;
 
   // Get panel enabled state
   const isEnabled = usePanelConfigStore((state) =>
@@ -67,6 +68,174 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
 
   // Get helpers for panel settings
   const helpers = usePanelSettingsHelpers(metadata.id, panelSettings, onUpdateSettings);
+
+  const tabs = useMemo(() => {
+    const baseTabs: Array<{ id: string; label: string; order: number; content: JSX.Element }> = [];
+
+    if (hasPanelSettings && panelDefinition) {
+      baseTabs.push({
+        id: "panel-settings",
+        label: "Panel Settings",
+        order: 10,
+        content: (
+          <PanelSettingsErrorBoundary panelId={metadata.id}>
+            {panelDefinition.settingsComponent ? (
+              <panelDefinition.settingsComponent settings={panelSettings} helpers={helpers} />
+            ) : panelDefinition.settingsSections ? (
+              <div className="space-y-6">
+                {panelDefinition.settingsSections.map((section) => (
+                  <div key={section.id} className="space-y-2">
+                    <div>
+                      <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                        {section.title}
+                      </h4>
+                      {section.description && (
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                          {section.description}
+                        </p>
+                      )}
+                    </div>
+                    <section.component settings={panelSettings} helpers={helpers} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </PanelSettingsErrorBoundary>
+        ),
+      });
+    }
+
+    if (hasInteractionRules) {
+      baseTabs.push({
+        id: "panel-interactions",
+        label: "Interactions",
+        order: 20,
+        content: (
+          <div className="space-y-3">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+              How this panel behaves when other panels open or close.
+            </p>
+
+            {metadata.interactionRules?.whenOpens && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  When Other Panels Open
+                </h4>
+                <div className="space-y-1.5">
+                  {Object.entries(metadata.interactionRules.whenOpens).map(
+                    ([panelId, action]) => (
+                      <div
+                        key={panelId}
+                        className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
+                      >
+                        <span className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {allPanels.find((p) => p.id === panelId)?.title || panelId}
+                        </span>
+                        <span className="text-xs font-mono px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                          {action}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {metadata.interactionRules?.whenCloses && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  When Other Panels Close
+                </h4>
+                <div className="space-y-1.5">
+                  {Object.entries(metadata.interactionRules.whenCloses).map(
+                    ([panelId, action]) => (
+                      <div
+                        key={panelId}
+                        className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
+                      >
+                        <span className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {allPanels.find((p) => p.id === panelId)?.title || panelId}
+                        </span>
+                        <span className="text-xs font-mono px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                          {action}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {metadata.retraction?.canRetract && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Retraction Behavior
+                </h4>
+                <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-neutral-600 dark:text-neutral-400">Can retract:</span>
+                      <span className="font-medium text-neutral-900 dark:text-neutral-100">Yes</span>
+                    </div>
+                    {metadata.retraction.retractedWidth && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-600 dark:text-neutral-400">Retracted width:</span>
+                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                          {metadata.retraction.retractedWidth}px
+                        </span>
+                      </div>
+                    )}
+                    {metadata.retraction.animationDuration && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-600 dark:text-neutral-400">Animation:</span>
+                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                          {metadata.retraction.animationDuration}ms
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ),
+      });
+    }
+
+    if (hasCustomTabs && panelDefinition?.settingsTabs) {
+      panelDefinition.settingsTabs.forEach((tab) => {
+        baseTabs.push({
+          id: tab.id,
+          label: tab.label,
+          order: tab.order ?? 50,
+          content: (
+            <PanelSettingsErrorBoundary panelId={metadata.id} sectionId={tab.id}>
+              <tab.component settings={panelSettings} helpers={helpers} />
+            </PanelSettingsErrorBoundary>
+          ),
+        });
+      });
+    }
+
+    return baseTabs.sort((a, b) => a.order - b.order);
+  }, [
+    allPanels,
+    hasCustomTabs,
+    hasInteractionRules,
+    hasPanelSettings,
+    helpers,
+    metadata.id,
+    metadata.interactionRules,
+    metadata.retraction,
+    panelDefinition,
+    panelSettings,
+  ]);
+
+  const [activeTabId, setActiveTabId] = useState<string | null>(
+    tabs[0]?.id ?? null
+  );
+
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 
   return (
     <div className="h-full overflow-auto">
@@ -113,140 +282,28 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
         </div>
 
         {/* Settings Sections */}
-        <div className="space-y-6">
-          {/* Interaction Rules Section */}
-          {hasInteractionRules && (
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100 border-b border-neutral-200 dark:border-neutral-700 pb-2">
-                Panel Interactions
-              </h3>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                How this panel behaves when other panels open or close.
-              </p>
-
-              {/* When Other Panels Open */}
-              {metadata.interactionRules?.whenOpens && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    When Other Panels Open
-                  </h4>
-                  <div className="space-y-1.5">
-                    {Object.entries(metadata.interactionRules.whenOpens).map(
-                      ([panelId, action]) => (
-                        <div
-                          key={panelId}
-                          className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
-                        >
-                          <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                            {allPanels.find((p) => p.id === panelId)?.title || panelId}
-                          </span>
-                          <span className="text-xs font-mono px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                            {action}
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* When Other Panels Close */}
-              {metadata.interactionRules?.whenCloses && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    When Other Panels Close
-                  </h4>
-                  <div className="space-y-1.5">
-                    {Object.entries(metadata.interactionRules.whenCloses).map(
-                      ([panelId, action]) => (
-                        <div
-                          key={panelId}
-                          className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
-                        >
-                          <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                            {allPanels.find((p) => p.id === panelId)?.title || panelId}
-                          </span>
-                          <span className="text-xs font-mono px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
-                            {action}
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Retraction Settings */}
-              {metadata.retraction?.canRetract && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    Retraction Behavior
-                  </h4>
-                  <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-neutral-600 dark:text-neutral-400">Can retract:</span>
-                        <span className="font-medium text-neutral-900 dark:text-neutral-100">Yes</span>
-                      </div>
-                      {metadata.retraction.retractedWidth && (
-                        <div className="flex justify-between">
-                          <span className="text-neutral-600 dark:text-neutral-400">Retracted width:</span>
-                          <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                            {metadata.retraction.retractedWidth}px
-                          </span>
-                        </div>
-                      )}
-                      {metadata.retraction.animationDuration && (
-                        <div className="flex justify-between">
-                          <span className="text-neutral-600 dark:text-neutral-400">Animation:</span>
-                          <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                            {metadata.retraction.animationDuration}ms
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+        <div className="space-y-4">
+          {tabs.length > 1 && (
+            <div className="flex flex-wrap gap-2 border-b border-neutral-200 dark:border-neutral-700 pb-2">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTabId(tab.id)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeTab?.id === tab.id
+                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                      : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           )}
 
-          {/* Panel-Specific Settings Section */}
-          {hasPanelSettings && panelDefinition && (
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100 border-b border-neutral-200 dark:border-neutral-700 pb-2">
-                Panel-Specific Settings
-              </h3>
-              <PanelSettingsErrorBoundary panelId={metadata.id}>
-                {panelDefinition.settingsComponent ? (
-                  // Single settings component
-                  <panelDefinition.settingsComponent settings={panelSettings} helpers={helpers} />
-                ) : panelDefinition.settingsSections ? (
-                  // Multiple settings sections
-                  <div className="space-y-6">
-                    {panelDefinition.settingsSections.map((section) => (
-                      <div key={section.id} className="space-y-2">
-                        <div>
-                          <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                            {section.title}
-                          </h4>
-                          {section.description && (
-                            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
-                              {section.description}
-                            </p>
-                          )}
-                        </div>
-                        <section.component settings={panelSettings} helpers={helpers} />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </PanelSettingsErrorBoundary>
-            </div>
-          )}
-
-          {/* No settings available */}
-          {!hasInteractionRules && !hasPanelSettings && (
+          {activeTab ? (
+            <div className="space-y-3">{activeTab.content}</div>
+          ) : (
             <div className="text-center py-12 text-neutral-500 dark:text-neutral-400">
               No additional settings available for this panel.
             </div>

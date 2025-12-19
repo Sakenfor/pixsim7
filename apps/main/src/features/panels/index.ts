@@ -46,6 +46,7 @@ export {
   type PanelSettingsProps,
   type PanelSettingsUpdateHelpers,
   type PanelSettingsSection,
+  type PanelSettingsTab,
 } from "./lib/panelRegistry";
 
 export {

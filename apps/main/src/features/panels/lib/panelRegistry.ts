@@ -89,6 +89,22 @@ export interface PanelSettingsSection<TSettings = any> {
   component: ComponentType<PanelSettingsProps<TSettings>>;
 }
 
+/**
+ * Optional settings tab definition for panel settings UI.
+ */
+export interface PanelSettingsTab<TSettings = any> {
+  /** Unique tab ID */
+  id: string;
+  /** Tab label shown in the UI */
+  label: string;
+  /** Optional tab description */
+  description?: string;
+  /** Tab sort order (lower first) */
+  order?: number;
+  /** Component that renders the tab content */
+  component: ComponentType<PanelSettingsProps<TSettings>>;
+}
+
 export interface PanelDefinition<TSettings = any> {
   id: PanelId;
   title: string;
@@ -128,6 +144,12 @@ export interface PanelDefinition<TSettings = any> {
    * Mutually exclusive with settingsComponent.
    */
   settingsSections?: PanelSettingsSection<TSettings>[];
+
+  /**
+   * Optional extra tabs for panel settings UI.
+   * These are additive and rendered alongside default tabs.
+   */
+  settingsTabs?: PanelSettingsTab<TSettings>[];
 
   /**
    * Settings version for migration support.
