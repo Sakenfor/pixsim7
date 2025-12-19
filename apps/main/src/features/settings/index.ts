@@ -54,4 +54,4 @@ export { registerGallerySettings } from './lib/schemas/gallery.settings';
 export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerMediaSettings } from './lib/schemas/media.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';
-export { registerUISettings } from './lib/schemas/ui.settings';
+export { registerPanelSettings } from './lib/schemas/panel.settings';

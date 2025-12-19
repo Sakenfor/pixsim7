@@ -32,6 +32,7 @@ import { galleryPanelSettingsSections } from "@features/gallery/components/Galle
 import { GraphPanelSettingsComponent } from "@features/graph/components/GraphPanelSettings";
 import { AssetViewerPanel } from "@/components/media/AssetViewerPanel";
 import { ControlCenterManager } from "@features/controlCenter";
+import { createPanelSchemaSettingsSection } from "@features/settings/components/shared/panelSchemaSettings";
 
 export const corePanelsPlugin: PanelPlugin = {
   id: "core-panels",
@@ -52,6 +53,14 @@ export const corePanelsPlugin: PanelPlugin = {
       isInternal: true,
       supportsCompactMode: false,
       supportsMultipleInstances: false,
+      settingsSections: [
+        {
+          id: "ui-settings",
+          title: "UI Settings",
+          description: "Dock layout and interaction preferences.",
+          component: createPanelSchemaSettingsSection("panels", "control-center"),
+        },
+      ],
       orchestration: {
         type: "dockview-container",
         defaultZone: "left",
@@ -91,6 +100,14 @@ export const corePanelsPlugin: PanelPlugin = {
       isInternal: true,
       supportsCompactMode: false,
       supportsMultipleInstances: false,
+      settingsSections: [
+        {
+          id: "ui-settings",
+          title: "UI Settings",
+          description: "Viewer defaults and playback behavior.",
+          component: createPanelSchemaSettingsSection("panels", "asset-viewer"),
+        },
+      ],
       orchestration: {
         type: "dockview-container",
         defaultZone: "center",

@@ -13,18 +13,11 @@ import {
   panelRegistry,
   usePanelConfigStore,
 } from '@features/panels';
-import { DynamicSettingsPanel } from './shared/DynamicSettingsPanel';
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
 
 // Stable empty object to avoid re-renders
 const EMPTY_SETTINGS = {};
-
-// Map panel IDs to their UI settings tab IDs
-const PANEL_UI_SETTINGS: Record<string, { categoryId: string; tabId: string }> = {
-  assetViewer: { categoryId: 'ui', tabId: 'media-viewer' },
-  controlCenter: { categoryId: 'ui', tabId: 'control-center' },
-};
 
 interface PanelDetailViewProps {
   metadata: PanelMetadata;
@@ -37,10 +30,6 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
     () => panelRegistry.getAll().find((p) => p.id === metadata.id),
     [metadata.id]
   );
-
-  // Get UI settings info
-  const uiSettingsInfo = PANEL_UI_SETTINGS[metadata.id];
-  const hasUISettings = !!uiSettingsInfo;
 
   // Check if has interaction rules
   const hasInteractionRules = !!(
@@ -125,19 +114,6 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
 
         {/* Settings Sections */}
         <div className="space-y-6">
-          {/* UI Settings Section */}
-          {hasUISettings && (
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100 border-b border-neutral-200 dark:border-neutral-700 pb-2">
-                UI Settings
-              </h3>
-              <DynamicSettingsPanel
-                categoryId={uiSettingsInfo.categoryId}
-                tabId={uiSettingsInfo.tabId}
-              />
-            </div>
-          )}
-
           {/* Interaction Rules Section */}
           {hasInteractionRules && (
             <div className="space-y-3">
@@ -270,7 +246,7 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
           )}
 
           {/* No settings available */}
-          {!hasUISettings && !hasInteractionRules && !hasPanelSettings && (
+          {!hasInteractionRules && !hasPanelSettings && (
             <div className="text-center py-12 text-neutral-500 dark:text-neutral-400">
               No additional settings available for this panel.
             </div>
