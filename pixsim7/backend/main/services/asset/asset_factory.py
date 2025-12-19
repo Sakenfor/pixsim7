@@ -236,6 +236,9 @@ async def create_lineage_links(
 
     This centralizes lineage writing so callers don't duplicate
     AssetLineage construction logic.
+
+    For simple cases with uniform relation_type. For per-parent metadata,
+    use create_lineage_links_with_metadata instead.
     """
     from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
@@ -252,3 +255,93 @@ async def create_lineage_links(
             )
         )
     await db.commit()
+
+
+async def create_lineage_links_with_metadata(
+    db: AsyncSession,
+    *,
+    child_asset_id: int,
+    parent_inputs: List[Dict[str, Any]],
+    operation_type: OperationType,
+    default_relation_type: str = DERIVATION,
+) -> int:
+    """
+    Create AssetLineage rows with per-parent metadata.
+
+    This extended version supports:
+    - Per-parent relation_type (via role mapping)
+    - Time ranges (parent_start_time, parent_end_time)
+    - Frame numbers (parent_frame)
+    - Sequence ordering
+
+    Args:
+        db: Database session
+        child_asset_id: ID of the created child asset
+        parent_inputs: List of input dicts from Generation.inputs, each containing:
+            - asset: "asset:123" (required for lineage)
+            - role: Input role for relation_type mapping
+            - sequence_order: Order in multi-input ops
+            - time: {"start": float, "end": float} (optional)
+            - frame: int (optional)
+        operation_type: The operation that created the child
+        default_relation_type: Fallback if role not mapped
+
+    Returns:
+        Number of lineage edges created
+    """
+    from pixsim7.backend.main.domain.assets.lineage import AssetLineage
+    from pixsim7.backend.main.services.generation.creation_service import get_relation_type_for_role
+
+    created_count = 0
+
+    for input_entry in parent_inputs:
+        # Extract asset ID from "asset:123" format
+        asset_ref = input_entry.get("asset")
+        if not asset_ref or not isinstance(asset_ref, str):
+            continue
+
+        if not asset_ref.startswith("asset:"):
+            continue
+
+        try:
+            parent_id = int(asset_ref.split(":", 1)[1])
+        except (ValueError, IndexError):
+            continue
+
+        # Skip self-reference
+        if parent_id == child_asset_id:
+            continue
+
+        # Get relation_type from role
+        role = input_entry.get("role", "")
+        relation_type = get_relation_type_for_role(role) if role else default_relation_type
+
+        # Get sequence order
+        sequence_order = input_entry.get("sequence_order", 0)
+
+        # Get time metadata
+        time_info = input_entry.get("time", {})
+        start_time = time_info.get("start") if isinstance(time_info, dict) else None
+        end_time = time_info.get("end") if isinstance(time_info, dict) else None
+
+        # Get frame metadata
+        frame = input_entry.get("frame")
+
+        db.add(
+            AssetLineage(
+                child_asset_id=child_asset_id,
+                parent_asset_id=parent_id,
+                relation_type=relation_type,
+                operation_type=operation_type,
+                sequence_order=sequence_order,
+                parent_start_time=start_time,
+                parent_end_time=end_time,
+                parent_frame=frame,
+            )
+        )
+        created_count += 1
+
+    if created_count > 0:
+        await db.commit()
+
+    return created_count

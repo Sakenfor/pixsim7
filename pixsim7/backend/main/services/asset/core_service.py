@@ -215,6 +215,9 @@ class AssetCoreService:
             "provider_id": submission.provider_id,
         })
 
+        # Create lineage edges from generation inputs to output asset
+        await self._create_generation_lineage(asset, generation)
+
         return asset
 
     # ===== ASSET RETRIEVAL =====
@@ -547,3 +550,61 @@ class AssetCoreService:
                 return prompt
 
         return None
+
+    async def _create_generation_lineage(self, asset: Asset, generation) -> None:
+        """
+        Create lineage edges from generation inputs to the output asset.
+
+        Reads generation.inputs (populated by _extract_inputs) and creates
+        AssetLineage rows linking parent assets to the child asset.
+
+        Only creates lineage for inputs that have resolvable asset references
+        (in "asset:123" format).
+
+        Args:
+            asset: The newly created child asset
+            generation: The generation that created this asset
+        """
+        from pixsim7.backend.main.services.asset.asset_factory import create_lineage_links_with_metadata
+
+        # Check if generation has inputs
+        if not hasattr(generation, 'inputs') or not generation.inputs:
+            return
+
+        inputs = generation.inputs
+        if not isinstance(inputs, list) or len(inputs) == 0:
+            return
+
+        # Filter to only inputs with asset references
+        inputs_with_assets = [
+            inp for inp in inputs
+            if isinstance(inp, dict) and inp.get("asset")
+        ]
+
+        if not inputs_with_assets:
+            logger.debug(
+                f"No asset inputs found for generation {generation.id}, skipping lineage creation"
+            )
+            return
+
+        # Get operation_type from generation
+        operation_type = generation.operation_type
+
+        try:
+            created_count = await create_lineage_links_with_metadata(
+                self.db,
+                child_asset_id=asset.id,
+                parent_inputs=inputs_with_assets,
+                operation_type=operation_type,
+            )
+
+            if created_count > 0:
+                logger.info(
+                    f"Created {created_count} lineage edge(s) for asset {asset.id} "
+                    f"from generation {generation.id} ({operation_type.value})"
+                )
+        except Exception as e:
+            # Log but don't fail asset creation if lineage fails
+            logger.warning(
+                f"Failed to create lineage for asset {asset.id}: {e}"
+            )

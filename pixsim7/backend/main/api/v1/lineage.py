@@ -52,41 +52,93 @@ async def get_lineage_graph(
     Strategy: BFS outward from root for both parents (reverse traversal) and children.
 
     For MVP we traverse separately: up (parents) and down (children) each to given depth.
+
+    Edges include full metadata:
+    - relation_type: Semantic role (SOURCE_IMAGE, TRANSITION_INPUT, etc.)
+    - operation_type: Operation that created the edge
+    - sequence_order: Order in multi-input operations
+    - time/frame metadata when available
     """
     asset = await db.get(Asset, asset_id)
     if not asset or asset.user_id != user.id:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    lineage_svc = AssetLineageService(db)
-
-    # BFS down (children)
+    # BFS down (children) - query lineage edges directly
     down_nodes = {asset_id}
     down_edges = []
     frontier = [asset_id]
     for _ in range(depth):
+        if not frontier:
+            break
         next_frontier = []
-        for aid in frontier:
-            children = await lineage_svc.get_children(aid)
-            for child in children:
-                if child.id not in down_nodes:
-                    down_nodes.add(child.id)
-                    next_frontier.append(child.id)
-                down_edges.append({"source": aid, "target": child.id, "relation_type": "DERIVATION"})
+        # Query children edges for all frontier nodes
+        stmt = select(AssetLineage).where(AssetLineage.parent_asset_id.in_(frontier))
+        result = await db.execute(stmt)
+        edges = result.scalars().all()
+
+        for edge in edges:
+            child_id = edge.child_asset_id
+            if child_id not in down_nodes:
+                down_nodes.add(child_id)
+                next_frontier.append(child_id)
+            # Build edge with full metadata
+            edge_data = {
+                "source": edge.parent_asset_id,
+                "target": edge.child_asset_id,
+                "relation_type": edge.relation_type,
+                "operation_type": edge.operation_type.value if edge.operation_type else None,
+                "sequence_order": edge.sequence_order,
+            }
+            # Add time metadata if present
+            if edge.parent_start_time is not None or edge.parent_end_time is not None:
+                edge_data["time"] = {}
+                if edge.parent_start_time is not None:
+                    edge_data["time"]["start"] = edge.parent_start_time
+                if edge.parent_end_time is not None:
+                    edge_data["time"]["end"] = edge.parent_end_time
+            if edge.parent_frame is not None:
+                edge_data["frame"] = edge.parent_frame
+
+            down_edges.append(edge_data)
         frontier = next_frontier
 
-    # BFS up (parents)
+    # BFS up (parents) - query lineage edges directly
     up_nodes = {asset_id}
     up_edges = []
     frontier = [asset_id]
     for _ in range(depth):
+        if not frontier:
+            break
         next_frontier = []
-        for aid in frontier:
-            parents = await lineage_svc.get_parents(aid)
-            for parent in parents:
-                if parent.id not in up_nodes:
-                    up_nodes.add(parent.id)
-                    next_frontier.append(parent.id)
-                up_edges.append({"source": parent.id, "target": aid, "relation_type": "DERIVATION"})
+        # Query parent edges for all frontier nodes
+        stmt = select(AssetLineage).where(AssetLineage.child_asset_id.in_(frontier))
+        result = await db.execute(stmt)
+        edges = result.scalars().all()
+
+        for edge in edges:
+            parent_id = edge.parent_asset_id
+            if parent_id not in up_nodes:
+                up_nodes.add(parent_id)
+                next_frontier.append(parent_id)
+            # Build edge with full metadata
+            edge_data = {
+                "source": edge.parent_asset_id,
+                "target": edge.child_asset_id,
+                "relation_type": edge.relation_type,
+                "operation_type": edge.operation_type.value if edge.operation_type else None,
+                "sequence_order": edge.sequence_order,
+            }
+            # Add time metadata if present
+            if edge.parent_start_time is not None or edge.parent_end_time is not None:
+                edge_data["time"] = {}
+                if edge.parent_start_time is not None:
+                    edge_data["time"]["start"] = edge.parent_start_time
+                if edge.parent_end_time is not None:
+                    edge_data["time"]["end"] = edge.parent_end_time
+            if edge.parent_frame is not None:
+                edge_data["frame"] = edge.parent_frame
+
+            up_edges.append(edge_data)
         frontier = next_frontier
 
     all_node_ids = sorted(set(list(down_nodes) + list(up_nodes)))
@@ -109,11 +161,20 @@ async def get_lineage_graph(
         for n in node_rows
     ]
 
+    # Deduplicate edges (same edge might appear in both up and down traversal)
+    seen_edges = set()
+    unique_edges = []
+    for edge in down_edges + up_edges:
+        edge_key = (edge["source"], edge["target"], edge.get("relation_type"), edge.get("sequence_order", 0))
+        if edge_key not in seen_edges:
+            seen_edges.add(edge_key)
+            unique_edges.append(edge)
+
     return {
         "root_asset_id": asset_id,
         "depth": depth,
         "nodes": nodes,
-        "edges": down_edges + up_edges,
+        "edges": unique_edges,
     }
 
 

@@ -34,8 +34,59 @@ from pixsim7.backend.main.services.generation.social_context_builder import RATI
 from pixsim7.backend.main.services.generation.cache_service import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
 from pixsim7.backend.main.shared.debug import DebugLogger
+from pixsim7.backend.main.shared.schemas.entity_ref import EntityRef
+from pixsim7.backend.main.domain import relation_types
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Role → Relation Type Mapping
+# ============================================================================
+# Maps input roles (used in Generation.inputs) to relation_type constants
+
+ROLE_TO_RELATION_TYPE = {
+    # IMAGE_TO_VIDEO roles
+    "source_image": relation_types.SOURCE_IMAGE,
+    "seed_image": relation_types.SOURCE_IMAGE,
+    "image": relation_types.SOURCE_IMAGE,
+
+    # VIDEO_EXTEND roles
+    "source_video": relation_types.SOURCE_VIDEO,
+    "video": relation_types.SOURCE_VIDEO,
+
+    # VIDEO_TRANSITION roles
+    "transition_input": relation_types.TRANSITION_INPUT,
+    "from_image": relation_types.TRANSITION_INPUT,
+    "to_image": relation_types.TRANSITION_INPUT,
+
+    # Paused frame
+    "paused_frame": relation_types.PAUSED_FRAME,
+
+    # Keyframe (Sora storyboard)
+    "keyframe": relation_types.KEYFRAME,
+
+    # Reference images
+    "reference_image": relation_types.REFERENCE_IMAGE,
+    "reference": relation_types.REFERENCE,
+
+    # Fusion roles
+    "fusion_character": relation_types.FUSION_CHARACTER,
+    "fusion_background": relation_types.FUSION_BACKGROUND,
+    "fusion_reference": relation_types.FUSION_REFERENCE,
+
+    # Generic
+    "source": relation_types.SOURCE,
+
+    # Scene-based (legacy, maps to generic)
+    "from_scene": relation_types.SOURCE_IMAGE,
+    "to_scene": relation_types.TRANSITION_INPUT,
+}
+
+
+def get_relation_type_for_role(role: str) -> str:
+    """Map a role string to a relation_type constant."""
+    return ROLE_TO_RELATION_TYPE.get(role, relation_types.DERIVATION)
 
 
 class GenerationCreationService:
@@ -596,20 +647,136 @@ class GenerationCreationService:
         """
         Extract input references from structured params.
 
-        Extracts scene context information to create input references for
-        deduplication and reproducibility tracking.
+        Extracts asset references and scene context information to create input
+        references for lineage tracking, deduplication, and reproducibility.
 
-        Note: Only structured params are supported. Legacy flat params were removed in
-        Task 128 (Drop Legacy Generation Payloads).
+        Input sources (in priority order):
+        1. Asset refs from generation_config (image_url, video_url, image_urls, etc.)
+        2. Scene context metadata (from_scene, to_scene)
+
+        Asset refs can be:
+        - EntityRef format: {"type": "asset", "id": 123} or "asset:123"
+        - URL with asset ID: Contains /assets/{id}/ or asset_id=123
+        - Raw asset ID: 123
 
         Returns:
             List of input references like:
-            [{"role": "from_scene", "scene_id": "...", "metadata": {...}}]
-            [{"role": "seed_image", "scene_id": "...", "metadata": {...}}]
+            [
+                {
+                    "role": "source_image",
+                    "asset": "asset:123",
+                    "sequence_order": 0,
+                    "time": {"start": 10.5, "end": 10.5},  # optional
+                    "frame": 48,                           # optional
+                    "meta": {...}                          # optional
+                }
+            ]
         """
         inputs = []
+        gen_config = params.get("generation_config", {})
+        if not isinstance(gen_config, dict):
+            gen_config = {}
 
-        # Extract inputs from scene context
+        # ==========================
+        # Extract asset-based inputs
+        # ==========================
+
+        if operation_type == OperationType.IMAGE_TO_VIDEO:
+            # Single image input
+            image_url = gen_config.get("image_url") or params.get("image_url")
+            if image_url:
+                asset_input = self._parse_asset_input(
+                    value=image_url,
+                    role="source_image",
+                    sequence_order=0,
+                    gen_config=gen_config,
+                )
+                if asset_input:
+                    inputs.append(asset_input)
+
+        elif operation_type == OperationType.IMAGE_TO_IMAGE:
+            # Single or multiple image inputs
+            image_urls = gen_config.get("image_urls") or params.get("image_urls")
+            image_url = gen_config.get("image_url") or params.get("image_url")
+
+            urls_to_process = []
+            if image_urls and isinstance(image_urls, list):
+                urls_to_process = image_urls
+            elif image_url:
+                urls_to_process = [image_url]
+
+            for i, url in enumerate(urls_to_process):
+                asset_input = self._parse_asset_input(
+                    value=url,
+                    role="source_image",
+                    sequence_order=i,
+                    gen_config=gen_config,
+                )
+                if asset_input:
+                    inputs.append(asset_input)
+
+        elif operation_type == OperationType.VIDEO_EXTEND:
+            # Video input
+            video_url = gen_config.get("video_url") or params.get("video_url")
+            original_video_id = gen_config.get("original_video_id") or params.get("original_video_id")
+
+            # Prefer original_video_id (direct asset reference)
+            video_ref = original_video_id or video_url
+            if video_ref:
+                asset_input = self._parse_asset_input(
+                    value=video_ref,
+                    role="source_video",
+                    sequence_order=0,
+                    gen_config=gen_config,
+                )
+                if asset_input:
+                    inputs.append(asset_input)
+
+        elif operation_type == OperationType.VIDEO_TRANSITION:
+            # Multiple image inputs for transition
+            image_urls = gen_config.get("image_urls") or params.get("image_urls")
+            if image_urls and isinstance(image_urls, list):
+                for i, url in enumerate(image_urls):
+                    asset_input = self._parse_asset_input(
+                        value=url,
+                        role="transition_input",
+                        sequence_order=i,
+                        gen_config=gen_config,
+                    )
+                    if asset_input:
+                        inputs.append(asset_input)
+
+        elif operation_type == OperationType.FUSION:
+            # Fusion assets with specific roles
+            fusion_assets = gen_config.get("fusion_assets") or params.get("fusion_assets")
+            if fusion_assets and isinstance(fusion_assets, list):
+                for i, fa in enumerate(fusion_assets):
+                    if isinstance(fa, dict):
+                        role = fa.get("role", "fusion_reference")
+                        value = fa.get("asset") or fa.get("asset_id") or fa.get("url")
+                        if value:
+                            asset_input = self._parse_asset_input(
+                                value=value,
+                                role=role,
+                                sequence_order=i,
+                                gen_config=gen_config,
+                            )
+                            if asset_input:
+                                inputs.append(asset_input)
+                    else:
+                        # Simple reference
+                        asset_input = self._parse_asset_input(
+                            value=fa,
+                            role="fusion_reference",
+                            sequence_order=i,
+                            gen_config=gen_config,
+                        )
+                        if asset_input:
+                            inputs.append(asset_input)
+
+        # ==========================
+        # Extract scene-based inputs (fallback/supplement)
+        # ==========================
         scene_context = params.get("scene_context", {})
         if not isinstance(scene_context, dict):
             scene_context = {}
@@ -617,30 +784,211 @@ class GenerationCreationService:
         from_scene = scene_context.get("from_scene")
         to_scene = scene_context.get("to_scene")
 
-        # For transitions, both scenes are inputs
+        # For transitions, check scenes if no asset inputs found
         if operation_type == OperationType.VIDEO_TRANSITION:
-            if from_scene:
-                inputs.append({
-                    "role": "from_scene",
-                    "scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None,
-                    "metadata": from_scene
-                })
-            if to_scene:
-                inputs.append({
-                    "role": "to_scene",
-                    "scene_id": to_scene.get("id") if isinstance(to_scene, dict) else None,
-                    "metadata": to_scene
-                })
-        # For image_to_video, from_scene might have an asset
+            if not inputs:  # Only use scene context if no asset inputs
+                if from_scene:
+                    scene_asset = self._extract_asset_from_scene(from_scene)
+                    if scene_asset:
+                        inputs.append({
+                            "role": "transition_input",
+                            "asset": scene_asset,
+                            "sequence_order": 0,
+                            "meta": {"scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None}
+                        })
+                if to_scene:
+                    scene_asset = self._extract_asset_from_scene(to_scene)
+                    if scene_asset:
+                        inputs.append({
+                            "role": "transition_input",
+                            "asset": scene_asset,
+                            "sequence_order": len(inputs),
+                            "meta": {"scene_id": to_scene.get("id") if isinstance(to_scene, dict) else None}
+                        })
+
+        # For image_to_video, check from_scene if no asset inputs found
         elif operation_type == OperationType.IMAGE_TO_VIDEO:
-            if from_scene:
-                inputs.append({
-                    "role": "seed_image",
-                    "scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None,
-                    "metadata": from_scene
-                })
+            if not inputs and from_scene:
+                scene_asset = self._extract_asset_from_scene(from_scene)
+                if scene_asset:
+                    # Check for paused frame metadata
+                    paused_time = None
+                    paused_frame = None
+                    if isinstance(from_scene, dict):
+                        paused_time = from_scene.get("paused_at") or from_scene.get("time")
+                        paused_frame = from_scene.get("frame")
+
+                    role = "paused_frame" if paused_time is not None else "source_image"
+                    input_entry = {
+                        "role": role,
+                        "asset": scene_asset,
+                        "sequence_order": 0,
+                        "meta": {"scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None}
+                    }
+                    if paused_time is not None:
+                        input_entry["time"] = {"start": paused_time, "end": paused_time}
+                    if paused_frame is not None:
+                        input_entry["frame"] = paused_frame
+                    inputs.append(input_entry)
+
+        # Always include scene metadata for reproducibility (even without asset refs)
+        if not inputs:
+            if operation_type == OperationType.VIDEO_TRANSITION:
+                if from_scene:
+                    inputs.append({
+                        "role": "from_scene",
+                        "scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None,
+                        "metadata": from_scene
+                    })
+                if to_scene:
+                    inputs.append({
+                        "role": "to_scene",
+                        "scene_id": to_scene.get("id") if isinstance(to_scene, dict) else None,
+                        "metadata": to_scene
+                    })
+            elif operation_type == OperationType.IMAGE_TO_VIDEO:
+                if from_scene:
+                    inputs.append({
+                        "role": "seed_image",
+                        "scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None,
+                        "metadata": from_scene
+                    })
 
         return inputs
+
+    def _parse_asset_input(
+        self,
+        value: Any,
+        role: str,
+        sequence_order: int,
+        gen_config: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Parse an asset reference from various formats into a standardized input entry.
+
+        Supported formats:
+        - EntityRef: {"type": "asset", "id": 123}
+        - String ref: "asset:123"
+        - URL with asset ID: Contains /assets/{id}/ pattern
+        - Raw asset ID: 123
+
+        Returns:
+            Input dict with role, asset ref, sequence_order, and optional time/frame
+            Returns None if value cannot be parsed to an asset ref
+        """
+        import re
+
+        asset_ref = None
+        url_value = None
+
+        if value is None:
+            return None
+
+        # Try to parse as EntityRef
+        try:
+            if isinstance(value, dict) and value.get("type") == "asset":
+                asset_ref = f"asset:{value['id']}"
+            elif isinstance(value, str):
+                if value.startswith("asset:"):
+                    asset_ref = value
+                elif "://" in value:
+                    # It's a URL - try to extract asset ID from path
+                    url_value = value
+                    # Pattern: /assets/{id}/ or /asset/{id}/ or asset_id={id}
+                    match = re.search(r'/assets?/(\d+)(?:/|$|\?)', value)
+                    if match:
+                        asset_ref = f"asset:{match.group(1)}"
+                    else:
+                        # Try query param
+                        match = re.search(r'[?&]asset_id=(\d+)', value)
+                        if match:
+                            asset_ref = f"asset:{match.group(1)}"
+                else:
+                    # Try parsing as integer string
+                    try:
+                        asset_id = int(value)
+                        asset_ref = f"asset:{asset_id}"
+                    except ValueError:
+                        pass
+            elif isinstance(value, int):
+                asset_ref = f"asset:{value}"
+        except Exception:
+            pass
+
+        # Build input entry
+        input_entry: Dict[str, Any] = {
+            "role": role,
+            "sequence_order": sequence_order,
+        }
+
+        if asset_ref:
+            input_entry["asset"] = asset_ref
+        elif url_value:
+            # Store URL even without asset ID for reference
+            input_entry["url"] = url_value
+
+        # Return None if we couldn't get either asset ref or URL
+        if not asset_ref and not url_value:
+            return None
+
+        # Extract time/frame metadata from gen_config if available
+        # Common fields: paused_at, start_time, end_time, frame
+        paused_at = gen_config.get("paused_at") or gen_config.get("time")
+        start_time = gen_config.get("start_time")
+        end_time = gen_config.get("end_time")
+        frame = gen_config.get("frame")
+
+        if paused_at is not None or start_time is not None or end_time is not None:
+            time_info = {}
+            if paused_at is not None:
+                time_info["start"] = paused_at
+                time_info["end"] = paused_at
+            else:
+                if start_time is not None:
+                    time_info["start"] = start_time
+                if end_time is not None:
+                    time_info["end"] = end_time
+            if time_info:
+                input_entry["time"] = time_info
+                # Mark as paused_frame if this is a paused video
+                if paused_at is not None and role == "source_image":
+                    input_entry["role"] = "paused_frame"
+
+        if frame is not None:
+            input_entry["frame"] = frame
+
+        return input_entry
+
+    def _extract_asset_from_scene(self, scene: Any) -> Optional[str]:
+        """
+        Extract asset reference from a scene object.
+
+        Looks for asset_id, asset, image_asset_id, video_asset_id in scene dict.
+
+        Returns:
+            Asset ref string like "asset:123" or None
+        """
+        if not isinstance(scene, dict):
+            return None
+
+        # Try various asset field names
+        for field in ["asset_id", "asset", "image_asset_id", "video_asset_id", "assetId"]:
+            value = scene.get(field)
+            if value:
+                if isinstance(value, int):
+                    return f"asset:{value}"
+                elif isinstance(value, str):
+                    if value.startswith("asset:"):
+                        return value
+                    try:
+                        asset_id = int(value)
+                        return f"asset:{asset_id}"
+                    except ValueError:
+                        pass
+                elif isinstance(value, dict) and value.get("type") == "asset":
+                    return f"asset:{value['id']}"
+
+        return None
 
     def _validate_structured_params(
         self,
