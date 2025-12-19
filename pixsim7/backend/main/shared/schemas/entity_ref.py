@@ -24,7 +24,7 @@ Accepts (via BeforeValidator):
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Union, Annotated
+from typing import Any, Dict, Optional, Union, Annotated, TypeGuard
 
 from pydantic import BaseModel, Field, BeforeValidator, WithJsonSchema
 
@@ -230,6 +230,80 @@ def entity_ref_field(entity_type: str) -> type:
 
 
 # ===================
+# EntityRef Type Guards
+# ===================
+
+
+def is_entity_type(ref: Optional[EntityRef], entity_type: str) -> TypeGuard[EntityRef]:
+    """Check whether an EntityRef matches the expected entity type."""
+    return bool(ref) and ref.type == entity_type
+
+
+def assert_entity_type(ref: Optional[EntityRef], entity_type: str) -> EntityRef:
+    """Assert that a ref is present and matches the expected entity type."""
+    if not is_entity_type(ref, entity_type):
+        actual = getattr(ref, "type", None)
+        raise TypeError(f"Expected {entity_type} ref, got {actual!r}")
+    return ref
+
+
+def is_asset_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "asset")
+
+
+def assert_asset_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "asset")
+
+
+def is_lineage_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "lineage")
+
+
+def assert_lineage_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "lineage")
+
+
+def is_asset_branch_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "asset_branch")
+
+
+def assert_asset_branch_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "asset_branch")
+
+
+def is_clip_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "clip")
+
+
+def assert_clip_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "clip")
+
+
+def is_prompt_version_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "prompt_version")
+
+
+def assert_prompt_version_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "prompt_version")
+
+
+def is_submission_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "submission")
+
+
+def assert_submission_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "submission")
+
+
+def is_tag_ref(ref: Optional[EntityRef]) -> TypeGuard[EntityRef]:
+    return is_entity_type(ref, "tag")
+
+
+def assert_tag_ref(ref: Optional[EntityRef]) -> EntityRef:
+    return assert_entity_type(ref, "tag")
+
+
+# ===================
 # Location Reference Helpers
 # ===================
 # These helpers provide easy conversion between:
@@ -373,6 +447,23 @@ __all__ = [
     "BranchIntentRef",
     # Factory
     "entity_ref_field",
+    # Type guards
+    "is_entity_type",
+    "assert_entity_type",
+    "is_asset_ref",
+    "assert_asset_ref",
+    "is_lineage_ref",
+    "assert_lineage_ref",
+    "is_asset_branch_ref",
+    "assert_asset_branch_ref",
+    "is_clip_ref",
+    "assert_clip_ref",
+    "is_prompt_version_ref",
+    "assert_prompt_version_ref",
+    "is_submission_ref",
+    "assert_submission_ref",
+    "is_tag_ref",
+    "assert_tag_ref",
     # Location helpers
     "location_id_to_ref",
     "location_ref_to_id",
