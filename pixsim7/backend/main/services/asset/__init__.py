@@ -11,6 +11,7 @@ Services:
 - AssetBranchingService: Asset versioning and branching
 - AssetLineageService: Asset lineage tracking
 - AssetIngestionService: Media ingestion pipeline (download, store, derivatives)
+- tags: Asset tagging from ontology-aligned metadata
 """
 from .core_service import AssetCoreService
 from .sync_service import AssetSyncService
@@ -19,6 +20,7 @@ from .quota_service import AssetQuotaService
 from .branching_service import AssetBranchingService
 from .lineage_service import AssetLineageService
 from .ingestion_service import AssetIngestionService, get_media_settings
+from .tags import tag_asset_from_metadata, extract_ontology_ids_from_asset_tags
 
 # Backward compatibility - maintain old import
 from .asset_service import AssetService
@@ -33,4 +35,7 @@ __all__ = [
     "AssetIngestionService",
     "AssetService",  # Legacy
     "get_media_settings",
+    # Tags
+    "tag_asset_from_metadata",
+    "extract_ontology_ids_from_asset_tags",
 ]

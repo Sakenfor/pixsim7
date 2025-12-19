@@ -23,7 +23,7 @@ from pixsim7.backend.main.domain.action_block import ActionBlockDB
 from pixsim7.backend.main.domain.asset import Asset
 from pixsim7.backend.main.domain.generation import Generation
 from pixsim7.backend.main.domain.block_image_fit import BlockImageFit
-from pixsim7.backend.main.services.assets.tags import tag_asset_from_metadata
+from pixsim7.backend.main.services.asset.tags import tag_asset_from_metadata
 from pixsim7.backend.main.services.action_blocks.fit_scoring import (
     compute_block_asset_fit,
     explain_fit_score

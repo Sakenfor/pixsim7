@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 from .ontology import ROLE_KEYWORDS, ACTION_VERBS
-from pixsim7.backend.main.shared.ontology import load_ontology
+from pixsim7.backend.main.domain.ontology import match_keywords
 
 
 # ===== TYPES =====
@@ -203,8 +203,7 @@ class SimplePromptParser:
 
         # Match keywords to ontology IDs (Task 84, Task B)
         try:
-            ontology = load_ontology()
-            ontology_ids = ontology.match_keywords(text_lower)
+            ontology_ids = match_keywords(text_lower)
             if ontology_ids:
                 metadata["ontology_ids"] = ontology_ids
         except Exception:

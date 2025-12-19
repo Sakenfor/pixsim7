@@ -1,28 +1,44 @@
 """
-DEPRECATED: Legacy ontology loader - kept for backward compatibility.
+DEPRECATED: Legacy ontology shim - Re-exports from domain.ontology.
 
-This module provides the old Ontology class and load_ontology() function
-for existing code that uses entity/relationship lookups and keyword matching.
+This module provides backward compatibility for code that imports from shared.ontology.
+All functionality has moved to pixsim7.backend.main.domain.ontology.
 
-New code should use:
-    from pixsim7.backend.main.domain.ontology import get_ontology_registry
+Migration guide:
+    # Old (deprecated):
+    from pixsim7.backend.main.shared.ontology import load_ontology, Ontology
 
-This shim loads YAML from the new location (domain/ontology/data/) and maintains
-the legacy API.
+    # New (preferred):
+    from pixsim7.backend.main.domain.ontology import (
+        get_ontology_registry,  # Instead of load_ontology()
+        match_keywords,         # Instead of ontology.match_keywords()
+    )
+
+This shim will be removed in a future version.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-import yaml
+# Re-export from the canonical location
+from pixsim7.backend.main.domain.ontology import (
+    get_ontology_registry,
+    match_keywords,
+    match_keywords_in_domain,
+)
 
-from pixsim7.backend.main.domain.ontology.utils import match_keywords_in_domain
-
-
-# Point to the new ontology location
-ONTOLOGY_PATH = Path(__file__).parent.parent / "domain" / "ontology" / "data" / "ontology.yaml"
+__all__ = [
+    "Ontology",
+    "OntologyEntityKind",
+    "OntologyRelationship",
+    "load_ontology",
+    # Re-exports from domain.ontology
+    "get_ontology_registry",
+    "match_keywords",
+    "match_keywords_in_domain",
+]
 
 
 @dataclass
@@ -45,13 +61,11 @@ class OntologyRelationship:
 
 class Ontology:
     """
-    In-memory representation of ontology.yaml.
+    DEPRECATED: Legacy in-memory representation of ontology.yaml.
 
-    Provides lookup and simple helper methods for use in parser / game systems.
+    Use get_ontology_registry() from domain.ontology instead.
 
-    Supports both core and domain sections:
-    - core: Abstract entity types and relationships (stable across all content)
-    - domain: Concrete entities, parts, actions, states (content-specific)
+    This class is kept for backward compatibility with existing code.
     """
 
     def __init__(self, raw: Dict[str, Any]) -> None:
@@ -132,14 +146,7 @@ class Ontology:
         """
         Match keywords in text to ontology IDs from the domain section.
 
-        Very small helper: given lowercased text, return a list of ontology IDs
-        that apply based on keyword matching.
-
-        Args:
-            text: Lowercased text to match
-
-        Returns:
-            List of ontology IDs (e.g., ["part:shaft", "state:erect"])
+        DEPRECATED: Use match_keywords() from domain.ontology instead.
         """
         return match_keywords_in_domain(self.domain, text)
 
@@ -149,20 +156,20 @@ _ONTOLOGY_CACHE: Optional[Ontology] = None
 
 def load_ontology(force_reload: bool = False) -> Ontology:
     """
-    Load ontology.yaml into an Ontology instance.
+    DEPRECATED: Load ontology.yaml into an Ontology instance.
 
-    Uses a simple module-level cache to avoid re-reading the file repeatedly.
+    Use get_ontology_registry() from domain.ontology instead.
+
+    This function is kept for backward compatibility.
     """
     global _ONTOLOGY_CACHE
 
     if _ONTOLOGY_CACHE is not None and not force_reload:
         return _ONTOLOGY_CACHE
 
-    if not ONTOLOGY_PATH.exists():
-        raise FileNotFoundError(f"Ontology file not found at {ONTOLOGY_PATH}")
-
-    with ONTOLOGY_PATH.open("r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
+    # Use the registry to get the raw data
+    registry = get_ontology_registry(reload=force_reload)
+    raw = registry._raw_core
 
     _ONTOLOGY_CACHE = Ontology(raw)
     return _ONTOLOGY_CACHE
