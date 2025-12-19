@@ -54,13 +54,8 @@ export const PromptInput: React.FC<PromptInputProps> = ({
     cursorPosRef.current = e.target.selectionStart;
     isUserTypingRef.current = true;
 
-    if (enforceLimit && next.length > maxChars) {
-      // Hard truncate if enforceLimit is true
-      onChange(next.slice(0, maxChars));
-    } else {
-      // Allow exceeding limit, visual warning will be shown
-      onChange(next);
-    }
+    const valueToSend = enforceLimit && next.length > maxChars ? next.slice(0, maxChars) : next;
+    onChange(valueToSend);
   }, [onChange, maxChars, enforceLimit]);
 
   // Restore cursor position after value updates
@@ -69,12 +64,16 @@ export const PromptInput: React.FC<PromptInputProps> = ({
       const textarea = textareaRef.current;
       const pos = cursorPosRef.current;
 
-      // Restore cursor position, clamping to current value length
-      const safePos = Math.min(pos, value.length);
-      textarea.setSelectionRange(safePos, safePos);
-
-      isUserTypingRef.current = false;
-      cursorPosRef.current = null;
+      try {
+        // Restore cursor position, clamping to current value length
+        const safePos = Math.min(pos, value.length);
+        textarea.setSelectionRange(safePos, safePos);
+      } catch {
+        // Silently fail if setSelectionRange fails (e.g., textarea not focused)
+      } finally {
+        isUserTypingRef.current = false;
+        cursorPosRef.current = null;
+      }
     }
   }, [value]);
 

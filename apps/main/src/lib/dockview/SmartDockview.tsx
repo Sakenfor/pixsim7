@@ -165,10 +165,20 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const defaultLayout = registryMode ? props.defaultLayout : undefined;
   const directComponents = !registryMode ? props.components : undefined;
 
-  // Keep context ref updated
+  // Keep context ref updated and force panels to re-render
   useEffect(() => {
+    const prevContext = contextRef.current;
     contextRef.current = context;
-  }, [context]);
+
+    // Force all panels to re-render when context changes
+    if (isReady && apiRef.current && context !== prevContext) {
+      const panels = apiRef.current.panels;
+      panels.forEach((panel) => {
+        // Trigger re-render by updating params (even if params don't change)
+        panel.api.updateParameters({});
+      });
+    }
+  }, [context, isReady]);
 
   const { onReady: onSmartReady, loadLayout } = useSmartDockview({
     storageKey,
