@@ -21,7 +21,7 @@ export async function listNpcInteractions(
   req: ListInteractionsRequest
 ): Promise<ListInteractionsResponse> {
   const response = await apiClient.post<ListInteractionsResponse>(
-    '/api/v1/game/interactions/list',
+    '/game/interactions/list',
     req
   );
   return response.data;
@@ -34,7 +34,7 @@ export async function executeNpcInteraction(
   req: ExecuteInteractionRequest
 ): Promise<ExecuteInteractionResponse> {
   const response = await apiClient.post<ExecuteInteractionResponse>(
-    '/api/v1/game/interactions/execute',
+    '/game/interactions/execute',
     req
   );
   return response.data;
@@ -117,7 +117,7 @@ export async function getPendingDialogue(
   metadata?: Record<string, unknown>;
 }>> {
   const response = await apiClient.get(
-    `/api/v1/game/sessions/${sessionId}`
+    `/game/sessions/${sessionId}`
   );
   const session = response.data;
   return session.flags?.pendingDialogue || [];
@@ -143,7 +143,7 @@ export async function executePendingDialogue(
   }
 
   // Call the dialogue generation endpoint directly
-  const response = await apiClient.post('/api/v1/game/dialogue/next-line/execute', {
+  const response = await apiClient.post('/game/dialogue/next-line/execute', {
     npc_id: request.npcId,
     session_id: sessionId,
     player_input: request.playerInput,
@@ -168,13 +168,13 @@ export async function clearPendingDialogue(
   // This would need a backend endpoint to modify session flags
   // For now, we'll handle it client-side by filtering
   const response = await apiClient.get(
-    `/api/v1/game/sessions/${sessionId}`
+    `/game/sessions/${sessionId}`
   );
   const session = response.data;
   const pending = session.flags?.pendingDialogue || [];
   const filtered = pending.filter((r: any) => r.requestId !== requestId);
 
-  await apiClient.patch(`/api/v1/game/sessions/${sessionId}`, {
+  await apiClient.patch(`/game/sessions/${sessionId}`, {
     flags: {
       ...session.flags,
       pendingDialogue: filtered,

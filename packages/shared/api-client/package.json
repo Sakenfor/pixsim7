@@ -12,6 +12,11 @@
       "require": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./domains": {
+      "import": "./src/domains/index.ts",
+      "require": "./src/domains/index.ts",
+      "types": "./src/domains/index.ts"
+    },
     "./browser": {
       "import": "./src/browser/index.ts",
       "require": "./src/browser/index.ts",
@@ -25,6 +30,9 @@
   },
   "peerDependencies": {
     "axios": "^1.6.0"
+  },
+  "dependencies": {
+    "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {
     "axios": "^1.6.0",

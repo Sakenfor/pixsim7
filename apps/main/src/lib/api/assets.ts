@@ -4,120 +4,65 @@
  * Typed API client for /api/v1/assets endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { apiClient } from './client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import { pixsimClient } from './client';
+import { createAssetsApi } from '@pixsim7/api-client/domains';
+import type {
+  AssetListResponse,
+  AssetResponse,
+  ExtractFrameRequest,
+  FilterDefinition,
+  FilterMetadataResponse,
+  FilterOptionValue,
+  ListAssetsQuery,
+  ReuploadAssetRequest,
+} from '@pixsim7/api-client/domains';
 
-// ============================================================================
-// OpenAPI-Derived Types (Generated from backend contract)
-// ============================================================================
+export type {
+  AssetListResponse,
+  AssetResponse,
+  ExtractFrameRequest,
+  ReuploadAssetRequest,
+  ListAssetsQuery,
+  FilterDefinition,
+  FilterOptionValue,
+  FilterMetadataResponse,
+} from '@pixsim7/api-client/domains';
 
-export type AssetResponse = ApiComponents['schemas']['AssetResponse'];
-export type AssetListResponse = ApiComponents['schemas']['AssetListResponse'];
-export type ExtractFrameRequest = ApiComponents['schemas']['ExtractFrameRequest'];
-export type ReuploadAssetRequest = ApiComponents['schemas']['ReuploadAssetRequest'];
-
-export type ListAssetsQuery =
-  ApiOperations['list_assets_api_v1_assets_get']['parameters']['query'];
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function buildQueryString(query?: Record<string, unknown>): string {
-  if (!query) return '';
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null) continue;
-    params.set(key, String(value));
-  }
-  const s = params.toString();
-  return s ? `?${s}` : '';
-}
+const assetsApi = createAssetsApi(pixsimClient);
 
 // ============================================================================
 // API Functions
 // ============================================================================
 
-export async function listAssets(query?: ListAssetsQuery): Promise<AssetListResponse> {
-  const res = await apiClient.get<AssetListResponse>(`/assets${buildQueryString(query as any)}`);
-  return res.data;
-}
-
-export async function getAsset(assetId: number): Promise<AssetResponse> {
-  const res = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
-  return res.data;
-}
-
-export async function deleteAsset(assetId: number): Promise<void> {
-  await apiClient.delete(`/assets/${assetId}`);
-}
+export const listAssets = assetsApi.listAssets;
+export const getAsset = assetsApi.getAsset;
+export const deleteAsset = assetsApi.deleteAsset;
 
 /**
  * Archive or unarchive an asset.
  * Archived assets are soft-hidden from the default gallery view.
  */
-export async function archiveAsset(
-  assetId: number,
-  archived: boolean
-): Promise<{ id: number; is_archived: boolean; message: string }> {
-  const res = await apiClient.patch<{ id: number; is_archived: boolean; message: string }>(
-    `/assets/${assetId}/archive`,
-    { archived }
-  );
-  return res.data;
-}
+export const archiveAsset = assetsApi.archiveAsset;
 
 /**
  * Extract a frame from a video at a specific timestamp.
  * Returns an image asset that can be used for image_to_video or transitions.
  * The extracted frame is linked to the parent video via PAUSED_FRAME lineage.
  */
-export async function extractFrame(request: ExtractFrameRequest): Promise<AssetResponse> {
-  const res = await apiClient.post<AssetResponse>('/assets/extract-frame', request);
-  return res.data;
-}
+export const extractFrame = assetsApi.extractFrame;
 
-export async function uploadAssetToProvider(assetId: number, providerId: string): Promise<void> {
-  const payload: ReuploadAssetRequest = { provider_id: providerId };
-  await apiClient.post(`/assets/${assetId}/reupload`, payload);
-}
+export const uploadAssetToProvider = assetsApi.uploadAssetToProvider;
 
 /**
  * Download an asset to the user's device.
  * Uses the asset's remote_url or falls back to the file endpoint.
  */
-// ============================================================================
-// Filter Metadata Types
-// ============================================================================
-
-export interface FilterDefinition {
-  key: string;
-  type: 'enum' | 'boolean' | 'search' | 'autocomplete';
-  label?: string;
-}
-
-export interface FilterOptionValue {
-  value: string;
-  label?: string;
-  count?: number;
-}
-
-export interface FilterMetadataResponse {
-  filters: FilterDefinition[];
-  options: Record<string, FilterOptionValue[]>;
-}
-
 /**
  * Get available filter definitions and options for the assets gallery.
  * Returns filter schema + available values for enum types.
  */
-export async function getFilterMetadata(
-  includeCounts = false
-): Promise<FilterMetadataResponse> {
-  const params = includeCounts ? '?include_counts=true' : '';
-  const res = await apiClient.get<FilterMetadataResponse>(`/assets/filter-metadata${params}`);
-  return res.data;
-}
+export const getFilterMetadata: (includeCounts?: boolean) => Promise<FilterMetadataResponse> =
+  assetsApi.getFilterMetadata;
 
 export async function downloadAsset(asset: AssetResponse): Promise<void> {
   const downloadUrl = asset.remote_url || asset.file_url || `/api/v1/assets/${asset.id}/file`;
@@ -133,4 +78,3 @@ export async function downloadAsset(asset: AssetResponse): Promise<void> {
   link.click();
   document.body.removeChild(link);
 }
-

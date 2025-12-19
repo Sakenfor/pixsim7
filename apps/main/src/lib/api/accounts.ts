@@ -4,34 +4,14 @@
  * Typed API client for /api/v1/accounts endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { apiClient } from './client';
+import { pixsimClient } from './client';
 import { logEvent } from '@lib/utils/logging';
-import type { ApiComponents } from '@pixsim7/shared.types';
+import { createAccountsApi } from '@pixsim7/api-client/domains';
+import type { AccountResponse, AccountStatus, AccountUpdate, CreateApiKeyResponse } from '@pixsim7/api-client/domains';
 
-// ============================================================================
-// OpenAPI-Derived Types (Generated from backend contract)
-// ============================================================================
+export type { AccountResponse, AccountUpdate, AccountStatus, CreateApiKeyResponse } from '@pixsim7/api-client/domains';
 
-export type AccountResponse = ApiComponents['schemas']['AccountResponse'];
-export type AccountUpdate = ApiComponents['schemas']['AccountUpdate'];
-export type AccountStatus = ApiComponents['schemas']['AccountStatus'];
-
-// ============================================================================
-// Local Response Types (not yet in OpenAPI contract)
-// ============================================================================
-
-/**
- * Response from creating an API key.
- * Note: Backend returns `unknown` type; keeping local interface until schema is added.
- */
-export interface CreateApiKeyResponse {
-  success: boolean;
-  api_key_id?: number;
-  api_key_name?: string;
-  api_key?: string;
-  already_exists?: boolean;
-  account: AccountResponse;
-}
+const accountsApi = createAccountsApi(pixsimClient);
 
 // ============================================================================
 // API Functions
@@ -41,8 +21,7 @@ export interface CreateApiKeyResponse {
  * List all provider accounts
  */
 export async function getAccounts(): Promise<AccountResponse[]> {
-  const response = await apiClient.get<AccountResponse[]>('/accounts');
-  return response.data;
+  return accountsApi.getAccounts();
 }
 
 /**
@@ -56,26 +35,22 @@ export async function updateAccount(
     accountId,
     fields: Object.keys(updates),
   });
-
-  const response = await apiClient.patch<AccountResponse>(
-    `/accounts/${accountId}`,
-    updates
-  );
+  const account = await accountsApi.updateAccount(accountId, updates);
 
   logEvent('INFO', 'account_updated', {
     accountId,
-    email: response.data.email,
-    status: response.data.status,
+    email: account.email,
+    status: account.status,
   });
 
-  return response.data;
+  return account;
 }
 
 /**
  * Delete a provider account
  */
 export async function deleteAccount(accountId: number): Promise<void> {
-  await apiClient.delete(`/accounts/${accountId}`);
+  await accountsApi.deleteAccount(accountId);
 }
 
 /**
@@ -106,13 +81,7 @@ export async function dryRunPixverseSync(
   accountId: number,
   options?: { limit?: number; offset?: number }
 ): Promise<any> {
-  const params = new URLSearchParams();
-  params.set('account_id', String(accountId));
-  if (options?.limit !== undefined) params.set('limit', String(options.limit));
-  if (options?.offset !== undefined) params.set('offset', String(options.offset));
-
-  const response = await apiClient.get(`/dev/pixverse-sync/dry-run?${params.toString()}`);
-  return response.data;
+  return accountsApi.dryRunPixverseSync(accountId, options);
 }
 
 /**
@@ -125,10 +94,7 @@ export async function dryRunPixverseSync(
 export async function connectPixverseWithGoogle(
   accountId: number
 ): Promise<AccountResponse> {
-  const response = await apiClient.post(`/accounts/${accountId}/connect-google`, {
-    id_token: 'manual',
-  });
-  return response.data.account as AccountResponse;
+  return accountsApi.connectPixverseWithGoogle(accountId);
 }
 
 /**
@@ -144,8 +110,5 @@ export async function connectPixverseWithGoogle(
 export async function createApiKey(
   accountId: number
 ): Promise<CreateApiKeyResponse> {
-  const response = await apiClient.post<CreateApiKeyResponse>(
-    `/accounts/${accountId}/create-api-key`
-  );
-  return response.data;
+  return accountsApi.createApiKey(accountId);
 }

@@ -1,18 +1,14 @@
-import { apiClient } from './client';
-
-export interface GenerationOperationMetadataItem {
-  generation_type: string;
-  operation_type: string;
-}
-
 /**
- * Fetch generation_type → OperationType mapping metadata from the backend.
+ * Generation Operations API Client (web wrapper)
  *
- * This mirrors the registry in pixsim7/backend/main/shared/operation_mapping.py
- * so that frontends and tools don't need to duplicate the mapping.
+ * Delegates to environment-neutral domain client in @pixsim7/api-client.
  */
-export async function getGenerationOperationMetadata(): Promise<GenerationOperationMetadataItem[]> {
-  const response = await apiClient.get<GenerationOperationMetadataItem[]>('/api/v1/generation-operations');
-  return response.data;
-}
+import { pixsimClient } from './client';
+import { createGenerationOperationsApi } from '@pixsim7/api-client/domains';
+
+export type { GenerationOperationMetadataItem } from '@pixsim7/api-client/domains';
+
+const generationOperationsApi = createGenerationOperationsApi(pixsimClient);
+
+export const getGenerationOperationMetadata = generationOperationsApi.getGenerationOperationMetadata;
 

@@ -4,26 +4,29 @@
  * Canonical API client for the unified /api/v1/generations endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { apiClient } from './client';
+import { pixsimClient } from './client';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import { createGenerationsApi } from '@pixsim7/api-client/domains';
+import type {
+  CreateGenerationRequest,
+  GenerationListResponse,
+  GenerationResponse,
+  ListGenerationsQuery,
+  GenerationSocialContext,
+} from '@pixsim7/api-client/domains';
 
-// ============================================================================
-// OpenAPI-Derived Types (Generated from backend contract)
-// ============================================================================
-
-export type GenerationResponse = ApiComponents['schemas']['GenerationResponse'];
-export type GenerationListResponse = ApiComponents['schemas']['GenerationListResponse'];
-export type CreateGenerationRequest = ApiComponents['schemas']['CreateGenerationRequest'];
-export type GenerationStatus = ApiComponents['schemas']['GenerationStatus'];
-export type OperationType = ApiComponents['schemas']['OperationType'];
-export type GenerationNodeConfigSchema = ApiComponents['schemas']['GenerationNodeConfigSchema'];
-export type GenerationSocialContext = ApiComponents['schemas']['GenerationSocialContextSchema'];
-export type SceneRef = ApiComponents['schemas']['SceneRefSchema'];
-export type PlayerContextSnapshot = ApiComponents['schemas']['PlayerContextSnapshotSchema'];
-
-export type ListGenerationsQuery =
-  ApiOperations['list_generations_api_v1_generations_get']['parameters']['query'];
+export type {
+  GenerationResponse,
+  GenerationListResponse,
+  CreateGenerationRequest,
+  GenerationStatus,
+  OperationType,
+  GenerationNodeConfigSchema,
+  GenerationSocialContext,
+  SceneRef,
+  PlayerContextSnapshot,
+  ListGenerationsQuery,
+} from '@pixsim7/api-client/domains';
 
 // ============================================================================
 // Legacy Type Re-exports (for backward compatibility)
@@ -34,6 +37,8 @@ export type {
   GenerateContentRequest,
   GenerateContentResponse,
 } from '@lib/registries';
+
+const generationsApi = createGenerationsApi(pixsimClient);
 
 // ============================================================================
 // API Functions
@@ -55,34 +60,28 @@ export async function createGeneration(
     enrichedRequest.analyzer_id = settings.defaultAnalyzer;
   }
 
-  const res = await apiClient.post<GenerationResponse>('/generations?_=new', enrichedRequest);
-  return res.data;
+  return generationsApi.createGeneration(enrichedRequest);
 }
 
 /**
  * Get generation by ID
  */
 export async function getGeneration(id: number): Promise<GenerationResponse> {
-  const res = await apiClient.get<GenerationResponse>(`/generations/${id}?_=details`);
-  return res.data;
+  return generationsApi.getGeneration(id);
 }
 
 /**
  * List generations with filters
  */
 export async function listGenerations(query?: ListGenerationsQuery): Promise<GenerationListResponse> {
-  const res = await apiClient.get<GenerationListResponse>('/generations', {
-    params: { ...query, _: 'list' },
-  });
-  return res.data;
+  return generationsApi.listGenerations(query);
 }
 
 /**
  * Cancel a generation
  */
 export async function cancelGeneration(id: number): Promise<GenerationResponse> {
-  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/cancel?_=cancel`);
-  return res.data;
+  return generationsApi.cancelGeneration(id);
 }
 
 /**
@@ -92,8 +91,7 @@ export async function cancelGeneration(id: number): Promise<GenerationResponse> 
  * Useful for content filter rejections or temporary errors.
  */
 export async function retryGeneration(id: number): Promise<GenerationResponse> {
-  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/retry?_=retry`);
-  return res.data;
+  return generationsApi.retryGeneration(id);
 }
 
 /**
@@ -103,7 +101,7 @@ export async function retryGeneration(id: number): Promise<GenerationResponse> {
  * Only terminal generations (completed, failed, cancelled) can be deleted.
  */
 export async function deleteGeneration(id: number): Promise<void> {
-  await apiClient.delete(`/generations/${id}?_=delete`);
+  await generationsApi.deleteGeneration(id);
 }
 
 /**
@@ -117,8 +115,7 @@ export async function validateGenerationConfig(
   warnings: string[];
   suggestions: string[];
 }> {
-  const res = await apiClient.post('/generations/validate?_=validate', request);
-  return res.data;
+  return generationsApi.validateGenerationConfig(request);
 }
 
 /**
@@ -130,10 +127,5 @@ export async function buildSocialContext(params: {
   npc_id?: string;
   user_max_rating?: string;
 }): Promise<GenerationSocialContext> {
-  const res = await apiClient.post<GenerationSocialContext>(
-    '/generations/social-context/build',
-    null,
-    { params: { ...params, _: 'social' } }
-  );
-  return res.data;
+  return generationsApi.buildSocialContext(params);
 }

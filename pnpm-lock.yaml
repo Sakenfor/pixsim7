@@ -317,6 +317,10 @@ importers:
         version: 5.9.3
 
   packages/shared/api-client:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       axios:
         specifier: ^1.6.0

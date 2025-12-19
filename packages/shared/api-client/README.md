@@ -80,6 +80,20 @@ const version = await client.getVersion();
 console.log(`API version: ${version.api_version}`);
 ```
 
+### Domain clients
+
+Reusable domain helpers live under `@pixsim7/api-client/domains` and accept a `PixSimApiClient`:
+
+```ts
+import { createApiClient } from '@pixsim7/api-client';
+import { createAssetsApi } from '@pixsim7/api-client/domains';
+
+const client = createApiClient({ baseUrl: 'http://localhost:8000' });
+const assets = createAssetsApi(client);
+
+const list = await assets.listAssets({ limit: 20 });
+```
+
 ### Error Handling
 
 ```typescript

@@ -1,64 +1,20 @@
-import { apiClient } from './client';
-
-export interface DebugPreferences {
-  // Backend debug (server/worker logs)
-  generation?: boolean; // Generation pipeline debug (dedup, cache, params)
-  provider?: boolean; // Provider API calls and responses
-  worker?: boolean; // Worker job processing
-
-  // Frontend debug (browser console)
-  persistence?: boolean; // localStorage read/write operations
-  rehydration?: boolean; // Store rehydration from localStorage
-  stores?: boolean; // Store initialization and creation
-  backend?: boolean; // Backend API synchronization
-  registry?: boolean; // Plugin/feature/route registration logs
-}
-
-export interface UserPreferences {
-  cubes?: any; // Cube state
-  workspace?: any; // Workspace layout
-  theme?: string;
-  notifications?: any;
-  debug?: DebugPreferences; // Backend debug toggles
-  [key: string]: any; // Allow arbitrary preferences
-}
-
-export interface UserPreferencesResponse {
-  preferences: UserPreferences;
-}
-
 /**
- * Get current user preferences
- */
-export async function getUserPreferences(): Promise<UserPreferences> {
-  const response = await apiClient.get<UserPreferencesResponse>('/users/me/preferences');
-  return response.data.preferences || {};
-}
-
-/**
- * Update user preferences (merges with existing)
+ * User Preferences API Client (web wrapper)
  *
- * @param preferences - Preferences to update (partial)
+ * Delegates to environment-neutral domain client in @pixsim7/api-client.
  */
-export async function updateUserPreferences(
-  preferences: Partial<UserPreferences>
-): Promise<UserPreferences> {
-  const response = await apiClient.patch<UserPreferencesResponse>(
-    '/users/me/preferences',
-    { preferences }
-  );
-  return response.data.preferences || {};
-}
+import { pixsimClient } from './client';
+import { createUserPreferencesApi } from '@pixsim7/api-client/domains';
 
-/**
- * Update a specific preference key
- *
- * @param key - Preference key (e.g., 'cubes')
- * @param value - Value to set
- */
-export async function updatePreferenceKey<K extends keyof UserPreferences>(
-  key: K,
-  value: UserPreferences[K]
-): Promise<UserPreferences> {
-  return updateUserPreferences({ [key]: value });
-}
+export type {
+  DebugPreferences,
+  UserPreferences,
+  UserPreferencesResponse,
+} from '@pixsim7/api-client/domains';
+
+const userPreferencesApi = createUserPreferencesApi(pixsimClient);
+
+export const getUserPreferences = userPreferencesApi.getUserPreferences;
+export const updateUserPreferences = userPreferencesApi.updateUserPreferences;
+export const updatePreferenceKey = userPreferencesApi.updatePreferenceKey;
+
