@@ -74,8 +74,6 @@ class Asset(SQLModel, table=True):
         default=None,
         description="Provider URL (original). Optional - assets can be stored locally only."
     )
-    thumbnail_url: Optional[str] = None
-    preview_url: Optional[str] = None
     local_path: Optional[str] = Field(
         default=None,
         max_length=512,

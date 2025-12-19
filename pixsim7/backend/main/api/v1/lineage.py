@@ -11,6 +11,7 @@ from pixsim7.backend.main.domain.asset_lineage import AssetLineage
 from pixsim7.backend.main.services.asset.lineage_service import AssetLineageService
 from pixsim7.backend.main.services.asset.branching_service import AssetBranchingService
 from pixsim7.backend.main.services.asset.lineage_refresh_service import LineageRefreshService
+from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -102,7 +103,7 @@ async def get_lineage_graph(
             "id": n.id,
             "media_type": n.media_type.value,
             "provider_id": n.provider_id,
-            "thumbnail_url": n.thumbnail_url or n.remote_url,
+            "thumbnail_url": storage_key_to_url(n.thumbnail_key) or n.remote_url,
             "duration_sec": n.duration_sec,
         }
         for n in node_rows

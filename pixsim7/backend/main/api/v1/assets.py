@@ -1157,7 +1157,7 @@ async def upload_asset_from_url(
             # Only set remote_url if it's a valid HTTP(S) URL
             if result.external_url.startswith("http://") or result.external_url.startswith("https://"):
                 asset.remote_url = result.external_url
-                asset.thumbnail_url = result.external_url
+                # Note: thumbnail_url will be computed from remote_url in AssetResponse
 
         if result.provider_asset_id:
             asset.provider_asset_id = result.provider_asset_id

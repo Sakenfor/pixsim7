@@ -6,6 +6,7 @@ from typing import Optional, List, Literal, Dict
 from pydantic import BaseModel, Field, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
+from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 
 
 # ===== REQUEST SCHEMAS =====
@@ -36,10 +37,15 @@ class AssetResponse(BaseModel):
     # Provenance
     source_generation_id: Optional[int] = None
 
-    # URLs / paths
+    # Storage keys (source of truth for file locations)
+    stored_key: Optional[str] = None
+    thumbnail_key: Optional[str] = None
+    preview_key: Optional[str] = None
+
+    # URLs / paths (computed from keys or remote sources)
     remote_url: Optional[str] = None  # Now optional (may be None if only stored locally)
-    thumbnail_url: Optional[str] = None
-    preview_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None  # Computed from thumbnail_key
+    preview_url: Optional[str] = None  # Computed from preview_key
     local_path: Optional[str] = None
 
     # Computed field for frontend to use
@@ -75,24 +81,35 @@ class AssetResponse(BaseModel):
     @model_validator(mode="after")
     def compute_urls(self):
         """
-        Compute file_url and thumbnail_url with smart fallbacks.
+        Compute file_url, thumbnail_url, and preview_url with smart fallbacks.
 
         Priority for file_url:
-        1. Local file endpoint (if local_path exists)
-        2. Remote URL (if valid HTTP(S) URL)
-        3. None
+        1. Local file endpoint (from stored_key if exists)
+        2. Legacy local_path endpoint (if local_path exists)
+        3. Remote URL (if valid HTTP(S) URL)
+        4. None
 
         Priority for thumbnail_url:
-        1. Explicit thumbnail_url (if set)
-        2. file_url (computed above)
+        1. Generated from thumbnail_key
+        2. file_url (fallback)
+
+        Priority for preview_url:
+        1. Generated from preview_key
+        2. file_url (fallback)
         """
         asset_id = getattr(self, "id", None)
+        stored_key = getattr(self, "stored_key", None)
+        thumbnail_key = getattr(self, "thumbnail_key", None)
+        preview_key = getattr(self, "preview_key", None)
         local_path = getattr(self, "local_path", None)
         remote_url = getattr(self, "remote_url", None)
 
         # Compute file_url
-        if local_path:
-            # Prefer local file endpoint
+        if stored_key:
+            # Prefer content-addressed storage key
+            object.__setattr__(self, "file_url", storage_key_to_url(stored_key))
+        elif local_path:
+            # Legacy: local file endpoint
             object.__setattr__(self, "file_url", f"/api/v1/assets/{asset_id}/file")
         elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
             # Use remote URL if it's valid
@@ -101,11 +118,23 @@ class AssetResponse(BaseModel):
             # No valid URL available
             object.__setattr__(self, "file_url", None)
 
-        # Compute thumbnail_url fallback
-        if getattr(self, "thumbnail_url", None) is None:
+        # Compute thumbnail_url from key
+        if thumbnail_key:
+            object.__setattr__(self, "thumbnail_url", storage_key_to_url(thumbnail_key))
+        elif getattr(self, "thumbnail_url", None) is None:
+            # Fallback to file_url if no thumbnail
             file_url = getattr(self, "file_url", None)
             if file_url:
                 object.__setattr__(self, "thumbnail_url", file_url)
+
+        # Compute preview_url from key
+        if preview_key:
+            object.__setattr__(self, "preview_url", storage_key_to_url(preview_key))
+        elif getattr(self, "preview_url", None) is None:
+            # Fallback to file_url if no preview
+            file_url = getattr(self, "file_url", None)
+            if file_url:
+                object.__setattr__(self, "preview_url", file_url)
 
         return self
 

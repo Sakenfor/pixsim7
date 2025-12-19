@@ -626,7 +626,6 @@ class AssetIngestionService:
             img.save(thumb_path, "JPEG", quality=thumb_quality, optimize=True)
 
         asset.thumbnail_key = thumb_key
-        asset.thumbnail_url = self.storage.get_url(thumb_key)
 
         logger.debug(
             "thumbnail_generated",
@@ -675,7 +674,6 @@ class AssetIngestionService:
                 return
 
             asset.thumbnail_key = thumb_key
-            asset.thumbnail_url = self.storage.get_url(thumb_key)
 
             logger.debug(
                 "video_thumbnail_generated",
@@ -755,7 +753,6 @@ class AssetIngestionService:
             img.save(preview_path, "JPEG", quality=preview_quality, optimize=True)
 
         asset.preview_key = preview_key
-        asset.preview_url = self.storage.get_url(preview_key)
 
         logger.debug(
             "preview_generated",
@@ -823,7 +820,6 @@ class AssetIngestionService:
                 return
 
             asset.preview_key = preview_key
-            asset.preview_url = self.storage.get_url(preview_key)
 
             logger.debug(
                 "video_preview_generated",

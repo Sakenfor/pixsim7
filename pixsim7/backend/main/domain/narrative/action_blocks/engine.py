@@ -15,6 +15,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy import select
 
 import pixsim_logging
+from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 
 from .types_unified import (
     ActionBlock,
@@ -304,10 +305,13 @@ class ActionEngine:
 
             asset = await db_session.get(Asset, ref.asset.id)
             if asset:
+                # Compute thumbnail URL from key or fallback to main URL
+                thumbnail = storage_key_to_url(asset.thumbnail_key) or asset.remote_url
+
                 return {
                     "assetId": asset.id,
                     "url": asset.remote_url or asset.local_path,
-                    "thumbnail": asset.thumbnail_url,
+                    "thumbnail": thumbnail,
                     "crop": ref.crop,
                 }
 
@@ -345,10 +349,13 @@ class ActionEngine:
             if expr:
                 asset = await db_session.get(Asset, expr.asset_id)
                 if asset:
+                    # Compute thumbnail URL from key or fallback to main URL
+                    thumbnail = storage_key_to_url(asset.thumbnail_key) or asset.remote_url
+
                     return {
                         "assetId": asset.id,
                         "url": asset.remote_url or asset.local_path,
-                        "thumbnail": asset.thumbnail_url,
+                        "thumbnail": thumbnail,
                         "crop": ref.crop or expr.crop,
                     }
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompts import PromptVersionService
+from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from .schemas import (
     CreatePromptFamilyRequest,
     CreatePromptVersionRequest,
@@ -278,7 +279,7 @@ async def get_version_assets(
                 "id": a.id,
                 "media_type": a.media_type.value,
                 "remote_url": a.remote_url,
-                "thumbnail_url": a.thumbnail_url,
+                "thumbnail_url": storage_key_to_url(a.thumbnail_key) or a.remote_url,
                 "created_at": str(a.created_at)
             }
             for a in assets
