@@ -5,8 +5,22 @@
  */
 
 import type { DockviewApi } from 'dockview-core';
-import type { PanelRegistry } from '@features/panels';
 import type { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
+export interface PanelRegistryLike {
+  getAll: () => Array<{
+    id: string;
+    title: string;
+    icon?: string;
+    category?: string;
+  }>;
+  getPublicPanels?: () => Array<{
+    id: string;
+    title: string;
+    icon?: string;
+    category?: string;
+  }>;
+}
 
 /**
  * Context types for different areas where context menu can appear
@@ -46,6 +60,9 @@ export interface MenuActionContext {
   /** Generic data payload for the clicked item */
   data?: any;
 
+  /** ContextHub capability snapshots (optional) */
+  capabilities?: Record<string, unknown>;
+
   // Multi-dockview support
   /** ID of the dockview where context menu was triggered (if applicable) */
   currentDockviewId?: string;
@@ -67,7 +84,9 @@ export interface MenuActionContext {
   workspaceStore?: typeof useWorkspaceStore;
 
   /** Reference to panel registry for querying available panels */
-  panelRegistry?: PanelRegistry;
+  panelRegistry?: PanelRegistryLike;
+  /** Reset the current dockview layout (if available) */
+  resetDockviewLayout?: () => void;
 
   /** Handler for floating panels (if dockview supports it) */
   floatPanelHandler?: (

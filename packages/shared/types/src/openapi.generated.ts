@@ -514,6 +514,35 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/accounts/cleanup": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Cleanup Account States
+         * @description Maintenance endpoint to clean up account states:
+         *     - Clear expired cooldowns
+         *     - Fix incorrectly marked EXHAUSTED accounts (that have credits)
+         *     - Mark accounts with 0 credits as EXHAUSTED
+         *
+         *     Args:
+         *         provider_id: Optional provider filter (e.g., "pixverse")
+         *
+         *     Returns:
+         *         Cleanup statistics
+         */
+        readonly post: operations["cleanup_account_states_api_v1_accounts_cleanup_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/accounts/credits/bulk-update": {
         readonly parameters: {
             readonly query?: never;
@@ -3476,35 +3505,6 @@ export interface paths {
          *     Returns which character references are valid/invalid.
          */
         readonly post: operations["validate_template_api_v1_characters_validate_template_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/cleanup": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Cleanup Account States
-         * @description Maintenance endpoint to clean up account states:
-         *     - Clear expired cooldowns
-         *     - Fix incorrectly marked EXHAUSTED accounts (that have credits)
-         *     - Mark accounts with 0 credits as EXHAUSTED
-         *
-         *     Args:
-         *         provider_id: Optional provider filter (e.g., "pixverse")
-         *
-         *     Returns:
-         *         Cleanup statistics
-         */
-        readonly post: operations["cleanup_account_states_api_v1_cleanup_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -15030,6 +15030,39 @@ export interface operations {
             };
         };
     };
+    readonly cleanup_account_states_api_v1_accounts_cleanup_post: {
+        readonly parameters: {
+            readonly query?: {
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly bulk_update_credits_api_v1_accounts_credits_bulk_update_post: {
         readonly parameters: {
             readonly query?: never;
@@ -19195,39 +19228,6 @@ export interface operations {
                 readonly prompt_text: string;
             };
             readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": Record<string, unknown>;
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly cleanup_account_states_api_v1_cleanup_post: {
-        readonly parameters: {
-            readonly query?: {
-                readonly provider_id?: string | null;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
             readonly path?: never;
             readonly cookie?: never;
         };

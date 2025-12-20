@@ -7,6 +7,7 @@ import {
 } from "@lib/context/editorContext";
 import type { PanelId } from "@features/workspace";
 import { PanelHeader } from "@features/panels/components/shared/PanelHeader";
+import { ContextHubHost } from "@features/contextHub";
 import {
   panelRegistry,
   type ContextLabelStrategy,
@@ -171,7 +172,9 @@ export function PanelHostLite({
       <div
         className={clsx(fill ? "flex-1 min-h-0" : undefined, "overflow-auto")}
       >
-        <Component />
+        <ContextHubHost hostId={`panel:${panelId}`}>
+          <Component />
+        </ContextHubHost>
       </div>
     </div>
   );

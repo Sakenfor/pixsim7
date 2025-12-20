@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAssetsController } from '@features/assets';
+import { useAssetsController, useAssetViewer } from '@features/assets';
 import { useGenerationWebSocket } from '@features/generation';
 import { useControlCenterLayout, useControlCenterStore } from '@features/controlCenter';
 import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
@@ -20,11 +20,17 @@ import {
 import { mediaCardPresets } from '@lib/ui/overlay';
 import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
+import {
+  CAP_ASSET_SELECTION,
+  useProvideCapability,
+  type AssetSelection,
+} from '@features/contextHub';
 
 export function AssetsRoute() {
   const navigate = useNavigate();
   const location = useLocation();
   const controller = useAssetsController();
+  const { galleryAssetToViewer } = useAssetViewer({ source: 'gallery' });
   const { isConnected: generationWsConnected } = useGenerationWebSocket();
   const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -78,6 +84,43 @@ export function AssetsRoute() {
     }
     return 'media-card-default';
   }, [panelConfig]);
+
+  const selectedGalleryAssets = useMemo(() => {
+    return controller.assets.filter((asset) =>
+      controller.selectedAssetIds.has(String(asset.id)),
+    );
+  }, [controller.assets, controller.selectedAssetIds]);
+
+  const assetSelectionValue = useMemo<AssetSelection>(
+    () => ({
+      asset:
+        selectedGalleryAssets.length > 0
+          ? galleryAssetToViewer(selectedGalleryAssets[0])
+          : null,
+      assets: selectedGalleryAssets.map(galleryAssetToViewer),
+      source: 'gallery',
+    }),
+    [selectedGalleryAssets, galleryAssetToViewer],
+  );
+
+  const assetSelectionProvider = useMemo(
+    () => ({
+      id: 'gallery',
+      label: 'Gallery Selection',
+      priority: 30,
+      exposeToContextMenu: true,
+      isAvailable: () => selectedGalleryAssets.length > 0,
+      getValue: () => assetSelectionValue,
+    }),
+    [selectedGalleryAssets.length, assetSelectionValue],
+  );
+
+  useProvideCapability(
+    CAP_ASSET_SELECTION,
+    assetSelectionProvider,
+    [selectedGalleryAssets],
+    { scope: 'root' },
+  );
 
   // Handle overlay preset change
   const handleOverlayPresetChange = (presetId: string) => {

@@ -47,6 +47,8 @@ import {
   registerContextMenuActions,
 } from '@lib/dockview/contextMenu';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+import { ContextHubHost } from '@features/contextHub';
+import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -100,70 +102,73 @@ function App() {
 
   return (
     <BrowserRouter>
-      <ContextMenuProvider
-        services={{
-          workspaceStore: useWorkspaceStore,
-          panelRegistry,
-        }}
-      >
-        <div className="min-h-screen flex flex-col">
-          <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-          <Route path="/assets" element={<ProtectedRoute><AssetsRoute /></ProtectedRoute>} />
-          <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
-          <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
-          <Route path="/arc-graph" element={<ProtectedRoute><ArcGraphRoute /></ProtectedRoute>} />
-          <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
-          <Route path="/automation" element={<ProtectedRoute><AutomationRoute /></ProtectedRoute>} />
-          <Route path="/game-2d" element={<ProtectedRoute><Game2D /></ProtectedRoute>} />
-          <Route path="/game-world" element={<ProtectedRoute><GameWorld /></ProtectedRoute>} />
-          <Route path="/npc-portraits" element={<ProtectedRoute><NpcPortraits /></ProtectedRoute>} />
-          <Route path="/npc-brain-lab" element={<ProtectedRoute><NpcBrainLab /></ProtectedRoute>} />
-          <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} />
-          <Route path="/simulation" element={<ProtectedRoute><SimulationPlayground /></ProtectedRoute>} />
-          <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
-          <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
-          <Route path="/settings/overlays" element={<ProtectedRoute><OverlayConfig /></ProtectedRoute>} />
-          <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
-          <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
-          <Route path="/interaction-studio" element={<ProtectedRoute><InteractionStudio /></ProtectedRoute>} />
-          <Route path="/interaction-demo" element={<ProtectedRoute><InteractionComponentsDemo /></ProtectedRoute>} />
-          <Route path="/dev/modules" element={<ProtectedRoute><ModulesDev /></ProtectedRoute>} />
-          <Route path="/dev/prompt-inspector" element={<ProtectedRoute><PromptInspectorDev /></ProtectedRoute>} />
-          <Route path="/dev/prompt-importer" element={<ProtectedRoute><DevPromptImporter /></ProtectedRoute>} />
-          <Route path="/dev/prompt-lab" element={<ProtectedRoute><PromptLabDev /></ProtectedRoute>} />
-          <Route path="/dev/action-block-graph" element={<ProtectedRoute><ActionBlockGraphDev /></ProtectedRoute>} />
-          <Route path="/dev/block-fit" element={<ProtectedRoute><BlockFitDev /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
-        {/* Control Center - plugin-based (only when authenticated) */}
-        {isAuthenticated && (
-          <ErrorBoundary>
-            <ControlCenterManager />
-          </ErrorBoundary>
-        )}
-        {/* Floating panels (only when authenticated) */}
-        {isAuthenticated && (
-          <ErrorBoundary>
-            <FloatingPanelsManager />
-          </ErrorBoundary>
-        )}
-        {/* Global toast notifications */}
-        <ToastContainer />
-        {/* Plugin overlays (only when authenticated) */}
-        {isAuthenticated && (
-          <ErrorBoundary>
-            <PluginOverlays />
-          </ErrorBoundary>
-        )}
-        {/* Dev tool quick access modal (Ctrl+Shift+D) */}
-        {isAuthenticated && <DevToolQuickAccess />}
-        {/* Global context menu portal */}
-        <ContextMenuPortal />
-      </ContextMenuProvider>
+      <ContextHubHost hostId="app">
+        <ContextHubRootProviders />
+        <ContextMenuProvider
+          services={{
+            workspaceStore: useWorkspaceStore,
+            panelRegistry,
+          }}
+        >
+          <div className="min-h-screen flex flex-col">
+            <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+            <Route path="/assets" element={<ProtectedRoute><AssetsRoute /></ProtectedRoute>} />
+            <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
+            <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
+            <Route path="/arc-graph" element={<ProtectedRoute><ArcGraphRoute /></ProtectedRoute>} />
+            <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
+            <Route path="/automation" element={<ProtectedRoute><AutomationRoute /></ProtectedRoute>} />
+            <Route path="/game-2d" element={<ProtectedRoute><Game2D /></ProtectedRoute>} />
+            <Route path="/game-world" element={<ProtectedRoute><GameWorld /></ProtectedRoute>} />
+            <Route path="/npc-portraits" element={<ProtectedRoute><NpcPortraits /></ProtectedRoute>} />
+            <Route path="/npc-brain-lab" element={<ProtectedRoute><NpcBrainLab /></ProtectedRoute>} />
+            <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} />
+            <Route path="/simulation" element={<ProtectedRoute><SimulationPlayground /></ProtectedRoute>} />
+            <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
+            <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
+            <Route path="/settings/overlays" element={<ProtectedRoute><OverlayConfig /></ProtectedRoute>} />
+            <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
+            <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
+            <Route path="/interaction-studio" element={<ProtectedRoute><InteractionStudio /></ProtectedRoute>} />
+            <Route path="/interaction-demo" element={<ProtectedRoute><InteractionComponentsDemo /></ProtectedRoute>} />
+            <Route path="/dev/modules" element={<ProtectedRoute><ModulesDev /></ProtectedRoute>} />
+            <Route path="/dev/prompt-inspector" element={<ProtectedRoute><PromptInspectorDev /></ProtectedRoute>} />
+            <Route path="/dev/prompt-importer" element={<ProtectedRoute><DevPromptImporter /></ProtectedRoute>} />
+            <Route path="/dev/prompt-lab" element={<ProtectedRoute><PromptLabDev /></ProtectedRoute>} />
+            <Route path="/dev/action-block-graph" element={<ProtectedRoute><ActionBlockGraphDev /></ProtectedRoute>} />
+            <Route path="/dev/block-fit" element={<ProtectedRoute><BlockFitDev /></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+          {/* Control Center - plugin-based (only when authenticated) */}
+          {isAuthenticated && (
+            <ErrorBoundary>
+              <ControlCenterManager />
+            </ErrorBoundary>
+          )}
+          {/* Floating panels (only when authenticated) */}
+          {isAuthenticated && (
+            <ErrorBoundary>
+              <FloatingPanelsManager />
+            </ErrorBoundary>
+          )}
+          {/* Global toast notifications */}
+          <ToastContainer />
+          {/* Plugin overlays (only when authenticated) */}
+          {isAuthenticated && (
+            <ErrorBoundary>
+              <PluginOverlays />
+            </ErrorBoundary>
+          )}
+          {/* Dev tool quick access modal (Ctrl+Shift+D) */}
+          {isAuthenticated && <DevToolQuickAccess />}
+          {/* Global context menu portal */}
+          <ContextMenuPortal />
+        </ContextMenuProvider>
+      </ContextHubHost>
     </BrowserRouter>
   );
 }

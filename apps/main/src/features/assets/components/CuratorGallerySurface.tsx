@@ -175,6 +175,8 @@ export function CuratorGallerySurface() {
                       createdAt={asset.created_at}
                       status={asset.sync_status}
                       providerStatus={asset.provider_status}
+                      contextMenuAsset={asset}
+                      contextMenuSelection={selectedAssets as any}
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -216,6 +218,8 @@ export function CuratorGallerySurface() {
                     createdAt={asset.created_at}
                     status={asset.sync_status}
                     providerStatus={asset.provider_status}
+                    contextMenuAsset={asset}
+                    contextMenuSelection={selectedAssets as any}
                   />
                   {isSelected && (
                     <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg">
@@ -245,4 +249,3 @@ export function CuratorGallerySurface() {
     </div>
   );
 }
-

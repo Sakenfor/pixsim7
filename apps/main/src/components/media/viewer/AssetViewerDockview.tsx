@@ -194,7 +194,12 @@ export function AssetViewerDockview({
       className={className}
       panelManagerId={panelManagerId}
       globalPanelIds={['quickGenerate', 'info']}
+      panelRegistryOverrides={{
+        quickGenerate: { title: 'Generate' },
+        info: { title: 'Metadata' },
+      }}
       onReady={handleReady}
+      enableContextMenu
     />
   );
 }

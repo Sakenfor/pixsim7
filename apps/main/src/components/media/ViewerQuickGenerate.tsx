@@ -10,16 +10,27 @@
  * - "controlCenter": Shows the main Control Center settings (default behavior)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { GenerationSettingsPanel } from '@features/generation';
+import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
-import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '@/utils/prompt/limits';
 import { getGeneration, type GenerationResponse } from '@lib/api/generations';
 import type { ViewerAsset } from '@features/assets';
 import type { OperationType } from '@/types/operations';
+import {
+  CAP_GENERATION_CONTEXT,
+  useProvideCapability,
+  type GenerationContextSummary,
+} from '@features/contextHub';
+import {
+  ViewerQuickGenPromptPanel,
+  ViewerQuickGenSettingsPanel,
+  ViewerQuickGenInfoPanel,
+  type ViewerQuickGenContext,
+  type ViewerQuickGenSettingsMode,
+} from './viewer/ViewerQuickGeneratePanels';
 
 type SettingsMode = 'asset' | 'controlCenter';
 
@@ -39,6 +50,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   const [assetPrompt, setAssetPrompt] = useState('');
   const [assetLoading, setAssetLoading] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [dockviewApi, setDockviewApi] = useState<import('dockview-core').DockviewApi | null>(null);
 
   // Control Center controller
   const {
@@ -123,6 +135,32 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     }
   }, [asset.fullUrl, asset.url, asset.type, setDynamicParams]);
 
+  const generationContextValue = useMemo<GenerationContextSummary>(
+    () => ({
+      id: 'assetViewer',
+      label: 'Asset Viewer',
+      mode: settingsMode === 'asset' ? 'asset' : 'controlCenter',
+      supportsMultiAsset: false,
+    }),
+    [settingsMode],
+  );
+
+  const generationContextProvider = useMemo(
+    () => ({
+      id: 'generation:assetViewer',
+      label: 'Asset Viewer',
+      priority: 40,
+      exposeToContextMenu: true,
+      isAvailable: () => !controlCenterOpen,
+      getValue: () => generationContextValue,
+    }),
+    [controlCenterOpen, generationContextValue],
+  );
+
+  useProvideCapability(CAP_GENERATION_CONTEXT, generationContextProvider, [generationContextValue, controlCenterOpen], {
+    scope: 'root',
+  });
+
   // Don't show if control center is open
   if (controlCenterOpen) {
     return null;
@@ -166,6 +204,31 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     setSettingsMode(mode);
   };
 
+  const ensureViewerPanels = useCallback((api: import('dockview-core').DockviewApi) => {
+    const hasPrompt = !!api.getPanel('prompt');
+    if (!hasPrompt) {
+      api.addPanel({ id: 'prompt', component: 'prompt', title: 'Prompt' });
+    }
+
+    if (!api.getPanel('settings')) {
+      api.addPanel({
+        id: 'settings',
+        component: 'settings',
+        title: 'Settings',
+        position: { direction: 'right', referencePanel: 'prompt' },
+      });
+    }
+
+    if (!api.getPanel('info')) {
+      api.addPanel({
+        id: 'info',
+        component: 'info',
+        title: 'Info',
+        position: { referencePanel: 'settings' },
+      });
+    }
+  }, []);
+
   // Collapsed state - just show icon button (skip if alwaysExpanded)
   if (!isExpanded && !alwaysExpanded) {
     return (
@@ -179,7 +242,32 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     );
   }
 
-  // Expanded state - show full generation panel
+  const canGenerate = !!activePrompt.trim();
+
+  const quickGenContext: ViewerQuickGenContext = {
+    asset,
+    activePrompt,
+    setActivePrompt,
+    maxChars,
+    generating,
+    activeError: activeError || null,
+    assetLoading,
+    settingsMode: settingsMode as ViewerQuickGenSettingsMode,
+    setSettingsMode: handleModeChange,
+    hasSourceGeneration,
+    assetGeneration,
+    handleGenerate,
+    handleKeyDown,
+    canGenerate,
+  };
+
+  useEffect(() => {
+    if (!dockviewApi) return;
+    // Ensure all default panels exist even if a stale layout is loaded.
+    requestAnimationFrame(() => ensureViewerPanels(dockviewApi));
+  }, [dockviewApi, ensureViewerPanels]);
+
+  // Expanded state - show dockview layout
   return (
     <div className="space-y-2">
       {/* Header with mode toggle and close button */}
@@ -187,98 +275,75 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
         <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
           Quick Generate
         </span>
-        {!alwaysExpanded && (
-          <button
-            onClick={() => setIsExpanded(false)}
-            className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
-            title="Close"
-          >
-            <Icon name="x" size={12} />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {!alwaysExpanded && (
+            <button
+              onClick={() => setIsExpanded(false)}
+              className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
+              title="Close"
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Mode Toggle */}
-      <div className="flex rounded-lg bg-neutral-100 dark:bg-neutral-800 p-0.5">
-        <button
-          onClick={() => handleModeChange('asset')}
-          disabled={!hasSourceGeneration}
-          className={`flex-1 px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
-            settingsMode === 'asset'
-              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
-              : hasSourceGeneration
-                ? 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
-                : 'text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
-          }`}
-          title={hasSourceGeneration ? 'Use original generation settings' : 'No source generation for this asset'}
-        >
-          Asset
-        </button>
-        <button
-          onClick={() => handleModeChange('controlCenter')}
-          className={`flex-1 px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
-            settingsMode === 'controlCenter'
-              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
-              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
-          }`}
-          title="Use Control Center settings"
-        >
-          My Settings
-        </button>
+      <div className="h-[360px] min-h-[280px]">
+        <SmartDockview
+          registry={viewerQuickGenRegistry}
+          storageKey="viewer-quickgen-layout"
+          context={quickGenContext}
+          defaultLayout={createViewerQuickGenLayout}
+          minPanelsForTabs={1}
+          panelManagerId="viewerQuickGen"
+          enableContextMenu
+          onReady={(api) => {
+            setDockviewApi(api);
+            ensureViewerPanels(api);
+          }}
+        />
       </div>
-
-      {/* Loading state for asset mode */}
-      {settingsMode === 'asset' && assetLoading && (
-        <div className="flex items-center justify-center py-4 text-neutral-500">
-          <Icon name="loader" size={16} className="animate-spin mr-2" />
-          <span className="text-xs">Loading generation settings...</span>
-        </div>
-      )}
-
-      {/* Asset mode info */}
-      {settingsMode === 'asset' && assetGeneration && !assetLoading && (
-        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 px-1">
-          Original: {assetGeneration.provider_id} · {assetGeneration.operation_type}
-        </div>
-      )}
-
-      {/* Prompt input */}
-      {(!assetLoading || settingsMode === 'controlCenter') && (
-        <>
-          <div
-            className={`transition-all duration-300 ${activeError ? 'ring-2 ring-red-500 ring-offset-2 rounded-lg animate-pulse' : ''}`}
-            onKeyDown={handleKeyDown}
-          >
-            <PromptInput
-              value={activePrompt}
-              onChange={setActivePrompt}
-              maxChars={maxChars}
-              placeholder={settingsMode === 'asset' ? 'Edit original prompt...' : 'Describe the generation...'}
-              disabled={generating || (settingsMode === 'asset' && assetLoading)}
-              autoFocus
-              variant="compact"
-              resizable
-              minHeight={48}
-              showCounter={true}
-            />
-          </div>
-
-          {/* Settings panel with all generation options */}
-          <div className="-mx-2">
-            <GenerationSettingsPanel
-              showOperationType={false}
-              generating={generating}
-              canGenerate={!!activePrompt.trim()}
-              onGenerate={handleGenerate}
-              error={activeError || undefined}
-            />
-          </div>
-
-          <p className="text-[10px] text-neutral-400 dark:text-neutral-500">
-            Press Enter to generate, Esc to close
-          </p>
-        </>
-      )}
     </div>
   );
+}
+
+type ViewerQuickGenPanelId = 'prompt' | 'settings' | 'info';
+
+const viewerQuickGenRegistry = createLocalPanelRegistry<ViewerQuickGenPanelId>();
+
+viewerQuickGenRegistry.registerAll([
+  {
+    id: 'prompt',
+    title: 'Prompt',
+    component: ViewerQuickGenPromptPanel,
+    size: { minHeight: 140 },
+  },
+  {
+    id: 'settings',
+    title: 'Settings',
+    component: ViewerQuickGenSettingsPanel,
+    size: { minHeight: 160 },
+  },
+  {
+    id: 'info',
+    title: 'Info',
+    component: ViewerQuickGenInfoPanel,
+    size: { minHeight: 120 },
+  },
+]);
+
+function createViewerQuickGenLayout(api: import('dockview-core').DockviewApi) {
+  api.addPanel({ id: 'prompt', component: 'prompt', title: 'Prompt' });
+  api.addPanel({
+    id: 'settings',
+    component: 'settings',
+    title: 'Settings',
+    position: { direction: 'right', referencePanel: 'prompt' },
+  });
+  api.addPanel({
+    id: 'info',
+    component: 'info',
+    title: 'Info',
+    position: { referencePanel: 'settings' },
+  });
 }

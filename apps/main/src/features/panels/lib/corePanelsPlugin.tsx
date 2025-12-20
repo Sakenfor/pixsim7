@@ -28,6 +28,7 @@ import { WorldContextPanel } from "@/components/game/panels/WorldContextPanel";
 import { EdgeEffectsPanel } from "@features/panels/components/tools/EdgeEffectsPanel";
 import { ConsolePanel } from "@features/panels/components/console/ConsolePanel";
 import { ModelInspectorPanel } from "@features/panels/components/tools/ModelInspectorPanel";
+import { ContextHubInspectorPanel } from "@features/contextHub/components/ContextHubInspectorPanel";
 import { galleryPanelSettingsSections } from "@features/gallery/components/GalleryPanelSettings";
 import { GraphPanelSettingsComponent } from "@features/graph/components/GraphPanelSettings";
 import { AssetViewerPanel } from "@/components/media/AssetViewerPanel";
@@ -304,6 +305,17 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ["dev", "debug", "tools", "diagnostics", "developer"],
       icon: "🛠️",
       description: "Developer tools and diagnostics",
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: "context-hub",
+      title: "Context Hub",
+      component: ContextHubInspectorPanel,
+      category: "dev",
+      tags: ["context", "capabilities", "debug"],
+      icon: "dY'?`",
+      description: "Inspect active context providers and overrides",
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

@@ -28,6 +28,31 @@ class DeviceSyncService:
         updated = 0
         offline = 0
 
+        # Try to connect to devices before scanning
+        # 1. Try previously known device ports
+        result = await self.db.execute(
+            select(AndroidDevice).where(
+                AndroidDevice.connection_method == ConnectionMethod.ADB,
+                AndroidDevice.instance_port.isnot(None)
+            )
+        )
+        known_devices = result.scalars().all()
+        ports_to_try = set()
+        for device in known_devices:
+            if device.instance_port:
+                ports_to_try.add(device.instance_port)
+
+        # 2. Also try common BlueStacks ports for first-time discovery
+        common_ports = [5555, 5556, 5557, 5558, 5559]
+        ports_to_try.update(common_ports)
+
+        # 3. Attempt connections
+        for port in ports_to_try:
+            try:
+                await self.adb.connect(f"127.0.0.1:{port}")
+            except Exception:
+                pass  # Ignore connection failures
+
         # Mark all as offline initially (optional optimization: only for ADB connection_method)
         result = await self.db.execute(select(AndroidDevice))
         all_devices = result.scalars().all()
@@ -35,7 +60,7 @@ class DeviceSyncService:
             d.status = DeviceStatus.OFFLINE
         await self.db.commit()
 
-        # Scan
+        # Scan (will also try common emulator ports)
         devices = await self.adb.devices()
         scanned = len(devices)
         now = datetime.utcnow()

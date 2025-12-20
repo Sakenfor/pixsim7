@@ -16,3 +16,4 @@ import './MediaSettings';
 import './GenerationSettings';
 import './PluginsSettings';
 import './DebugSettings';
+import './ContextSettings';

@@ -25,6 +25,7 @@ const DEBUG_CATEGORIES: DebugCategory[] = [
   { id: 'stores', label: 'Stores', description: 'Store initialization and creation', location: 'frontend' },
   { id: 'backend', label: 'Backend Sync', description: 'Backend API synchronization', location: 'frontend' },
   { id: 'registry', label: 'Registry', description: 'Plugin/feature/route/renderer registration', location: 'frontend' },
+  { id: 'websocket', label: 'WebSocket', description: 'WebSocket connection and message handling', location: 'frontend' },
 
   // Backend categories (server logs)
   { id: 'generation', label: 'Generation Pipeline', description: 'Dedup, cache, params canonicalization', location: 'backend' },

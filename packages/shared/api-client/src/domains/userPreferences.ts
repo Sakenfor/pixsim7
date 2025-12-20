@@ -9,6 +9,7 @@ export interface DebugPreferences {
   stores?: boolean;
   backend?: boolean;
   registry?: boolean;
+  websocket?: boolean;
 }
 
 export interface UserPreferences {

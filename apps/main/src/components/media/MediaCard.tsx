@@ -21,7 +21,8 @@
  * - [ ] Multi-provider support in UI
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -33,6 +34,9 @@ import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import { ThemedIcon } from '@lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
+import { useContextMenuOptional } from '@lib/dockview/contextMenu';
+import type { AssetResponse } from '@features/assets';
+import { useContextHubSettingsStore } from '@features/contextHub';
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
@@ -91,6 +95,8 @@ export interface MediaCardProps {
   uploadNote?: string;
   actions?: MediaCardActions;
   badgeConfig?: MediaCardBadgeConfig;
+  contextMenuAsset?: AssetResponse;
+  contextMenuSelection?: AssetResponse[];
 
   // Generation status (separate from provider status)
   generationStatus?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
@@ -128,6 +134,7 @@ export function MediaCard(props: MediaCardProps) {
     id,
     mediaType,
     providerId,
+    providerAssetId,
     thumbUrl,
     previewUrl,
     remoteUrl,
@@ -144,9 +151,15 @@ export function MediaCard(props: MediaCardProps) {
     overlayPresetId,
     width,
     height,
+    contextMenuAsset,
+    contextMenuSelection,
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
+  const contextMenu = useContextMenuOptional();
+  const enableMediaCardContextMenu = useContextHubSettingsStore(
+    (state) => state.enableMediaCardContextMenu,
+  );
   const thumbSrc = useMediaThumbnail(thumbUrl, previewUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
@@ -234,6 +247,66 @@ export function MediaCard(props: MediaCardProps) {
       onOpen(id);
     }
   };
+
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent) => {
+      if (!contextMenu || !enableMediaCardContextMenu) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+
+      const assetPayload: Partial<AssetResponse> =
+        contextMenuAsset ?? {
+          id,
+          media_type: mediaType,
+          provider_id: providerId,
+          provider_asset_id: providerAssetId,
+          thumbnail_url: thumbUrl,
+          preview_url: previewUrl,
+          remote_url: remoteUrl,
+          width,
+          height,
+          duration_sec: durationSec,
+          tags: props.tags,
+          description,
+          created_at: createdAt,
+          provider_status: providerStatus,
+          sync_status: props.status,
+        };
+
+      contextMenu.showContextMenu({
+        contextType: 'asset-card',
+        position: { x: event.clientX, y: event.clientY },
+        assetId: String(id),
+        data: {
+          asset: assetPayload,
+          selection: contextMenuSelection,
+        },
+      });
+    },
+    [
+      contextMenu,
+      enableMediaCardContextMenu,
+      contextMenuAsset,
+      contextMenuSelection,
+      id,
+      mediaType,
+      providerId,
+      providerAssetId,
+      thumbUrl,
+      previewUrl,
+      remoteUrl,
+      width,
+      height,
+      durationSec,
+      props.tags,
+      description,
+      createdAt,
+      providerStatus,
+      props.status,
+    ],
+  );
 
   // Build overlay configuration dynamically
   const overlayConfig: OverlayConfiguration = useMemo(() => {
@@ -341,6 +414,7 @@ export function MediaCard(props: MediaCardProps) {
       data-pixsim7="media-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >
       <OverlayContainer
         configuration={overlayConfig}

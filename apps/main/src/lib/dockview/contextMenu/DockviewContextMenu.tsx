@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
+import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
 import { useContextMenu } from './ContextMenuProvider';
 import type { MenuItem } from './types';
 
@@ -24,29 +25,31 @@ export function ContextMenuPortal() {
   useEffect(() => {
     if (!state.isOpen || !state.context) return;
 
-    // Calculate position with viewport boundary detection
     const { x, y } = state.context.position;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    setPosition({ x, y });
 
-    // Estimate menu size (will adjust after render)
-    const estimatedMenuWidth = 250;
-    const estimatedMenuHeight = 400;
+    const raf = requestAnimationFrame(() => {
+      if (!menuRef.current) return;
 
-    let finalX = x;
-    let finalY = y;
+      const rect = menuRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
 
-    // Adjust if menu would overflow right edge
-    if (x + estimatedMenuWidth > viewportWidth) {
-      finalX = viewportWidth - estimatedMenuWidth - 10;
-    }
+      let finalX = x;
+      let finalY = y;
 
-    // Adjust if menu would overflow bottom edge
-    if (y + estimatedMenuHeight > viewportHeight) {
-      finalY = viewportHeight - estimatedMenuHeight - 10;
-    }
+      if (x + rect.width > viewportWidth) {
+        finalX = viewportWidth - rect.width - 10;
+      }
 
-    setPosition({ x: Math.max(10, finalX), y: Math.max(10, finalY) });
+      if (y + rect.height > viewportHeight) {
+        finalY = viewportHeight - rect.height - 10;
+      }
+
+      setPosition({ x: Math.max(10, finalX), y: Math.max(10, finalY) });
+    });
+
+    return () => cancelAnimationFrame(raf);
   }, [state.isOpen, state.context]);
 
   // Close on escape key
@@ -68,9 +71,9 @@ export function ContextMenuPortal() {
     if (!state.isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        hideContextMenu();
-      }
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('[data-context-menu]')) return;
+      hideContextMenu();
     };
 
     // Delay to avoid immediate close from the context menu trigger
@@ -97,8 +100,16 @@ export function ContextMenuPortal() {
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
+      data-context-menu
     >
-      <div className="min-w-[200px] max-w-[300px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl py-1">
+      <Dropdown
+        isOpen
+        onClose={hideContextMenu}
+        positionMode="static"
+        closeOnOutsideClick={false}
+        minWidth="200px"
+        className="min-w-[200px] max-w-[300px]"
+      >
         {items.map(item => (
           <MenuItemComponent
             key={item.id}
@@ -111,7 +122,7 @@ export function ContextMenuPortal() {
             No actions available
           </div>
         )}
-      </div>
+      </Dropdown>
     </div>,
     document.body
   );
@@ -130,6 +141,8 @@ interface MenuItemComponentProps {
 function MenuItemComponent({ item, onClose, depth = 0 }: MenuItemComponentProps) {
   const [showChildren, setShowChildren] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
+  const [submenuPos, setSubmenuPos] = useState<{ x: number; y: number } | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
 
   const hasChildren = item.children && item.children.length > 0;
   const isDisabled = !!item.disabled;
@@ -138,7 +151,7 @@ function MenuItemComponent({ item, onClose, depth = 0 }: MenuItemComponentProps)
     if (isDisabled) return;
 
     if (hasChildren) {
-      setShowChildren(!showChildren);
+      setShowChildren(true);
     } else {
       item.onClick?.();
       onClose();
@@ -154,52 +167,117 @@ function MenuItemComponent({ item, onClose, depth = 0 }: MenuItemComponentProps)
 
   const variant = item.variant || 'default';
 
+  useEffect(() => {
+    if (!showChildren || !itemRef.current) return;
+    const rect = itemRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let x = rect.right + 6;
+    let y = rect.top;
+
+    // Prevent overflow to the right
+    const estimatedWidth = 220;
+    if (x + estimatedWidth > viewportWidth) {
+      x = rect.left - estimatedWidth - 6;
+    }
+
+    // Prevent overflow to the bottom
+    const estimatedHeight = 240;
+    if (y + estimatedHeight > viewportHeight) {
+      y = Math.max(10, viewportHeight - estimatedHeight - 10);
+    }
+
+    setSubmenuPos({ x, y });
+  }, [showChildren]);
+
+  const cancelHide = () => {
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  };
+
+  const scheduleHide = () => {
+    cancelHide();
+    hideTimerRef.current = window.setTimeout(() => {
+      setShowChildren(false);
+    }, 150);
+  };
+
   return (
     <>
       <div
         ref={itemRef}
-        className={`
-          flex items-center justify-between px-3 py-1.5 cursor-pointer text-sm
-          ${variantClasses[variant]}
-          ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
-        style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={handleClick}
+        onMouseEnter={() => {
+          if (!hasChildren) return;
+          cancelHide();
+          setShowChildren(true);
+        }}
+        onMouseLeave={() => {
+          if (!hasChildren) return;
+          scheduleHide();
+        }}
+        title={typeof item.disabled === 'string' ? item.disabled : undefined}
       >
-        <div className="flex items-center gap-2 flex-1">
-          {item.icon && (
+        <DropdownItem
+          onClick={handleClick}
+          disabled={isDisabled}
+          variant={variant === 'success' ? 'success' : variant === 'danger' ? 'danger' : variant === 'default' ? 'default' : 'primary'}
+          className="text-sm"
+          icon={item.icon ? (
             <Icon
               name={item.icon as any}
               size={14}
               className={item.iconColor || 'text-current'}
             />
+          ) : undefined}
+          rightSlot={(
+            <>
+              {item.shortcut && <span>{item.shortcut}</span>}
+              {hasChildren && <Icon name="chevronRight" size={12} />}
+            </>
           )}
-          <span>{item.label}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {item.shortcut && (
-            <span className="text-xs text-neutral-400">{item.shortcut}</span>
-          )}
-          {hasChildren && (
-            <Icon name="chevronRight" size={12} className="text-neutral-400" />
-          )}
-        </div>
+        >
+          <span style={{ paddingLeft: `${12 + depth * 16}px` }}>{item.label}</span>
+        </DropdownItem>
       </div>
 
       {item.divider && (
-        <div className="h-px bg-neutral-200 dark:bg-neutral-700 my-1" />
+        <DropdownDivider />
       )}
 
       {/* Nested children */}
-      {hasChildren && showChildren && item.children!.map(child => (
-        <MenuItemComponent
-          key={child.id}
-          item={child}
-          onClose={onClose}
-          depth={depth + 1}
-        />
-      ))}
+      {hasChildren && showChildren && submenuPos && (
+        <div
+          className="fixed z-[10000]"
+          style={{ left: submenuPos.x, top: submenuPos.y }}
+          data-context-menu
+          onMouseEnter={() => {
+            cancelHide();
+            setShowChildren(true);
+          }}
+          onMouseLeave={() => scheduleHide()}
+        >
+          <Dropdown
+            isOpen
+            onClose={() => setShowChildren(false)}
+            positionMode="static"
+            closeOnOutsideClick={false}
+            minWidth="200px"
+            className="min-w-[200px] max-w-[300px]"
+          >
+            {item.children!.map(child => (
+              <MenuItemComponent
+                key={child.id}
+                item={child}
+                onClose={onClose}
+                depth={0}
+              />
+            ))}
+          </Dropdown>
+        </div>
+      )}
     </>
   );
 }

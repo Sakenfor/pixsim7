@@ -418,7 +418,7 @@ async def create_account_api_key(
         )
 
 
-@router.post("/cleanup")
+@router.post("/accounts/cleanup")
 async def cleanup_account_states(
     provider_id: Optional[str] = None,
     user: CurrentUser = None,

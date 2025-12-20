@@ -154,6 +154,7 @@ class DebugFlags {
       'generation',
       'provider',
       'worker',
+      'websocket',
     ];
 
     categories.forEach(cat => {

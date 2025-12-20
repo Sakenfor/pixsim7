@@ -77,7 +77,7 @@ export function useQuickGenerateController() {
     setError('Content filtered: Your prompt may contain sensitive content. Please revise and try again.');
   }, [generationId, watchedStatus, watchedErrorMessage]);
 
-  async function generate() {
+  async function generate(options?: { overrideDynamicParams?: Record<string, any> }) {
     setError(null);
     setGenerating(true);
     setGenerationId(null);
@@ -85,7 +85,10 @@ export function useQuickGenerateController() {
 
     try {
       // Handle frame extraction for video assets with locked timestamps
-      let modifiedDynamicParams = { ...bindings.dynamicParams };
+      let modifiedDynamicParams = {
+        ...bindings.dynamicParams,
+        ...(options?.overrideDynamicParams || {}),
+      };
       let modifiedImageUrls = [...bindings.imageUrls];
 
       // Get current queue state directly from store to avoid stale React hook values

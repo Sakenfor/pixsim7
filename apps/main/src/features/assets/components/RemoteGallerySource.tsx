@@ -142,6 +142,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               providerStatus={a.provider_status}
               onOpen={undefined}
               actions={controller.getAssetActions(a)}
+              contextMenuAsset={a}
+              contextMenuSelection={selectedAssets}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}
             />
@@ -223,6 +225,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               providerStatus={a.provider_status}
               onOpen={() => openGalleryAsset(a, controller.assets)}
               actions={actions}
+              contextMenuAsset={a}
+              contextMenuSelection={selectedAssets}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}
             />

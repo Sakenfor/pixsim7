@@ -5,9 +5,24 @@
  * - Split Right
  * - Split Down
  * - Move to New Group
+ * - Join Left/Right Group
  */
 
 import type { MenuAction } from '../types';
+
+type JoinDirection = 'left' | 'right';
+
+const findAdjacentGroup = (
+  ctx: { api?: any; groupId?: string },
+  direction: JoinDirection
+) => {
+  if (!ctx.api || !ctx.groupId) return null;
+  const groups = ctx.api.groups ?? [];
+  const index = groups.findIndex((group: any) => group.id === ctx.groupId);
+  if (index === -1) return null;
+  const neighborIndex = direction === 'left' ? index - 1 : index + 1;
+  return groups[neighborIndex] ?? null;
+};
 
 /**
  * Split the current panel to the right
@@ -101,10 +116,68 @@ export const moveToNewGroupAction: MenuAction = {
 };
 
 /**
+ * Join the panel into the group on the left
+ */
+export const joinLeftGroupAction: MenuAction = {
+  id: 'layout:join-left-group',
+  label: 'Join Left Group',
+  icon: 'arrow-left',
+  category: 'layout',
+  availableIn: ['tab'],
+  visible: (ctx) => !!ctx.api && !!ctx.panelId && !!ctx.groupId,
+  disabled: (ctx) => {
+    if (!ctx.api || !ctx.panelId || !ctx.groupId) return true;
+    return findAdjacentGroup(ctx, 'left') ? false : 'No group to the left';
+  },
+  execute: (ctx) => {
+    if (!ctx.api || !ctx.panelId || !ctx.groupId) return;
+    const panel = ctx.api.getPanel(ctx.panelId);
+    if (!panel) return;
+    const targetGroup = findAdjacentGroup(ctx, 'left');
+    if (!targetGroup) return;
+
+    ctx.api.moveGroupOrPanel({
+      from: { groupId: ctx.groupId, panelId: ctx.panelId },
+      to: { group: targetGroup },
+    });
+  },
+};
+
+/**
+ * Join the panel into the group on the right
+ */
+export const joinRightGroupAction: MenuAction = {
+  id: 'layout:join-right-group',
+  label: 'Join Right Group',
+  icon: 'arrow-right',
+  category: 'layout',
+  availableIn: ['tab'],
+  visible: (ctx) => !!ctx.api && !!ctx.panelId && !!ctx.groupId,
+  disabled: (ctx) => {
+    if (!ctx.api || !ctx.panelId || !ctx.groupId) return true;
+    return findAdjacentGroup(ctx, 'right') ? false : 'No group to the right';
+  },
+  execute: (ctx) => {
+    if (!ctx.api || !ctx.panelId || !ctx.groupId) return;
+    const panel = ctx.api.getPanel(ctx.panelId);
+    if (!panel) return;
+    const targetGroup = findAdjacentGroup(ctx, 'right');
+    if (!targetGroup) return;
+
+    ctx.api.moveGroupOrPanel({
+      from: { groupId: ctx.groupId, panelId: ctx.panelId },
+      to: { group: targetGroup },
+    });
+  },
+};
+
+/**
  * All layout actions
  */
 export const layoutActions: MenuAction[] = [
   splitRightAction,
   splitDownAction,
   moveToNewGroupAction,
+  joinLeftGroupAction,
+  joinRightGroupAction,
 ];

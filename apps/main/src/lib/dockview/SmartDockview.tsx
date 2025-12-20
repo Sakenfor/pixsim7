@@ -45,7 +45,12 @@ import { useSmartDockview } from './useSmartDockview';
 import type { LocalPanelRegistry } from './LocalPanelRegistry';
 import type { LocalPanelDefinition } from './types';
 import { panelRegistry } from '@features/panels';
-import { CustomTabComponent, useContextMenuOptional, DockviewIdProvider } from './contextMenu';
+import {
+  CustomTabComponent,
+  useContextMenuOptional,
+  DockviewIdProvider,
+  useDockviewId,
+} from './contextMenu';
 
 /** Base props shared by both modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -67,6 +72,10 @@ interface SmartDockviewBaseProps<TContext = any> {
   globalPanelIds?: string[];
   /** Optional: Enable context menu support (requires ContextMenuProvider at app root) */
   enableContextMenu?: boolean;
+  /** Optional: Enable panel-content context menus (default: show when context menu is enabled) */
+  enablePanelContentContextMenu?: boolean;
+  /** Optional: Override panel titles/icons/categories for context menu */
+  panelRegistryOverrides?: Record<string, { title?: string; icon?: string; category?: string }>;
   /** Optional: Custom watermark component */
   watermarkComponent?: React.ComponentType;
   /** Optional: Custom tab components */
@@ -139,13 +148,15 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const {
     storageKey,
     context,
-    minPanelsForTabs = 2,
+    minPanelsForTabs = 1,
     className,
     onLayoutChange,
     onReady: onReadyProp,
     panelManagerId,
     globalPanelIds = [],
     enableContextMenu = false,
+    enablePanelContentContextMenu = true,
+    panelRegistryOverrides = {},
     watermarkComponent,
     tabComponents: customTabComponents,
     theme = 'dockview-theme-abyss',
@@ -157,6 +168,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
+  const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent['api'] | null>(null);
   const contextRef = useRef<TContext | undefined>(context);
 
   // Determine mode
@@ -186,18 +198,166 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     onLayoutChange,
   });
 
+  const resetDockviewLayout = useCallback(() => {
+    if (storageKey) {
+      localStorage.removeItem(storageKey);
+    }
+    if (!apiRef.current) return;
+
+    // Clear existing panels
+    apiRef.current.panels.forEach((panel) => {
+      apiRef.current?.removePanel(panel);
+    });
+
+    // Rebuild default layout when available
+    if (registryMode && registry && defaultLayout) {
+      defaultLayout(apiRef.current, registry);
+    }
+  }, [storageKey, registryMode, registry, defaultLayout]);
+
   // Build components map from local registry + global registry (registry mode)
   // Or use direct components (components mode)
+  // Determine if context menu features should be active
+  const contextMenuActive = enableContextMenu && contextMenu !== null;
+
+  const dockviewPanelRegistry = useMemo(() => {
+    const entries: Array<{ id: string; title: string; icon?: string; category?: string }> = [];
+    const seen = new Set<string>();
+
+    if (registry) {
+      registry.getAll().forEach((def) => {
+        if (seen.has(def.id)) return;
+        seen.add(def.id);
+        const override = panelRegistryOverrides[def.id] ?? {};
+        entries.push({
+          id: def.id,
+          title: override.title ?? def.title,
+          icon: override.icon ?? def.icon,
+          category: override.category,
+        });
+      });
+    }
+
+    if (globalPanelIds.length > 0) {
+      globalPanelIds.forEach((panelId) => {
+        if (seen.has(panelId)) return;
+        const globalDef = panelRegistry.get(panelId);
+        if (!globalDef) return;
+        seen.add(panelId);
+        const override = panelRegistryOverrides[globalDef.id] ?? {};
+        entries.push({
+          id: globalDef.id,
+          title: override.title ?? globalDef.title,
+          icon: override.icon ?? globalDef.icon,
+          category: override.category ?? globalDef.category,
+        });
+      });
+    }
+
+    if (!registry && panelManagerId === 'workspace') {
+      const panels = panelRegistry.getPublicPanels
+        ? panelRegistry.getPublicPanels()
+        : panelRegistry.getAll();
+      panels.forEach((panel) => {
+        if (seen.has(panel.id)) return;
+        seen.add(panel.id);
+        const override = panelRegistryOverrides[panel.id] ?? {};
+        entries.push({
+          id: panel.id,
+          title: override.title ?? panel.title,
+          icon: override.icon ?? panel.icon,
+          category: override.category ?? panel.category,
+        });
+      });
+    }
+
+    if (entries.length === 0) return undefined;
+
+    return {
+      getAll: () => entries,
+    };
+  }, [registry, globalPanelIds, panelManagerId, panelRegistryOverrides]);
+
   const components = useMemo(() => {
     if (directComponents) {
-      return directComponents;
+      if (!enablePanelContentContextMenu || !contextMenuActive) {
+        return directComponents;
+      }
+
+      const wrapped: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
+      Object.entries(directComponents).forEach(([key, Component]) => {
+        const Wrapped = (panelProps: IDockviewPanelProps) => {
+          const menu = useContextMenuOptional();
+          const dockviewId = useDockviewId();
+
+          const handleContextMenu = (event: React.MouseEvent) => {
+            if (!menu) return;
+            event.preventDefault();
+            event.stopPropagation();
+            menu.showContextMenu({
+              contextType: 'panel-content',
+              position: { x: event.clientX, y: event.clientY },
+              panelId: panelProps.api.id,
+              groupId: panelProps.api.group.id,
+              currentDockviewId: dockviewId,
+              panelRegistry: dockviewPanelRegistry,
+              api: apiRef.current ?? undefined,
+              resetDockviewLayout,
+              data: panelProps.params,
+            });
+          };
+
+          return (
+            <div className="h-full w-full" onContextMenuCapture={handleContextMenu}>
+              <Component {...panelProps} />
+            </div>
+          );
+        };
+        Wrapped.displayName = `SmartPanelContentMenu(${key})`;
+        wrapped[key] = Wrapped;
+      });
+
+      return wrapped;
     }
 
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
 
     if (registry) {
       registry.getAll().forEach((def) => {
-        map[def.id] = createPanelWrapper(def, contextRef);
+        const BaseComponent = createPanelWrapper(def, contextRef);
+        if (!enablePanelContentContextMenu || !contextMenuActive) {
+          map[def.id] = BaseComponent;
+          return;
+        }
+        const Wrapped = (panelProps: IDockviewPanelProps) => {
+          const menu = useContextMenuOptional();
+          const dockviewId = useDockviewId();
+
+          const handleContextMenu = (event: React.MouseEvent) => {
+            if (!menu) return;
+            event.preventDefault();
+            event.stopPropagation();
+            menu.showContextMenu({
+              contextType: 'panel-content',
+              position: { x: event.clientX, y: event.clientY },
+              panelId: panelProps.api.id,
+              groupId: panelProps.api.group.id,
+              currentDockviewId: dockviewId,
+              panelRegistry: dockviewPanelRegistry,
+              api: apiRef.current ?? undefined,
+              resetDockviewLayout,
+              data: panelProps.params,
+            });
+          };
+
+          return (
+            <div className="h-full w-full" onContextMenuCapture={handleContextMenu}>
+              <BaseComponent {...panelProps} />
+            </div>
+          );
+        };
+        Wrapped.displayName = `SmartPanelContentMenu(${def.id})`;
+        map[def.id] = Wrapped;
       });
     }
 
@@ -210,7 +370,39 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             return <Component context={contextRef.current} params={dockviewProps.params} />;
           };
           GlobalPanelWrapper.displayName = `GlobalPanel(${panelId})`;
-          map[panelId] = GlobalPanelWrapper;
+          if (!enablePanelContentContextMenu || !contextMenuActive) {
+            map[panelId] = GlobalPanelWrapper;
+            return;
+          }
+          const Wrapped = (panelProps: IDockviewPanelProps) => {
+            const menu = useContextMenuOptional();
+            const dockviewId = useDockviewId();
+
+            const handleContextMenu = (event: React.MouseEvent) => {
+              if (!menu) return;
+              event.preventDefault();
+              event.stopPropagation();
+            menu.showContextMenu({
+              contextType: 'panel-content',
+              position: { x: event.clientX, y: event.clientY },
+              panelId: panelProps.api.id,
+              groupId: panelProps.api.group.id,
+              currentDockviewId: dockviewId,
+              panelRegistry: dockviewPanelRegistry,
+              api: apiRef.current ?? undefined,
+              resetDockviewLayout,
+              data: panelProps.params,
+            });
+          };
+
+            return (
+              <div className="h-full w-full" onContextMenuCapture={handleContextMenu}>
+                <GlobalPanelWrapper {...panelProps} />
+              </div>
+            );
+          };
+          Wrapped.displayName = `SmartPanelContentMenu(${panelId})`;
+          map[panelId] = Wrapped;
         } else {
           console.warn(`[SmartDockview] Global panel "${panelId}" not found in registry`);
         }
@@ -218,12 +410,20 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
 
     return map;
-  }, [registry, globalPanelIds, directComponents]);
+  }, [
+    registry,
+    globalPanelIds,
+    directComponents,
+    contextMenuActive,
+    enablePanelContentContextMenu,
+    dockviewPanelRegistry,
+  ]);
 
   // Handle dockview ready
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
       apiRef.current = event.api;
+      setDockviewApi(event.api);
 
       // Initialize smart features (tab visibility, persistence)
       onSmartReady(event.api);
@@ -231,7 +431,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       // Register with panel manager if ID provided
       if (panelManagerId) {
         import('@features/panels/lib/PanelManager').then(({ panelManager }) => {
-          panelManager.registerDockview(panelManagerId, event.api);
+          const meta = panelManager.getPanelMetadata(panelManagerId);
+          if (meta?.dockview?.hasDockview) {
+            panelManager.registerDockview(panelManagerId, event.api);
+          }
         }).catch(() => {
           // Panel manager not available
         });
@@ -254,7 +457,17 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       setIsReady(true);
       onReadyProp?.(event.api);
     },
-    [onSmartReady, loadLayout, defaultLayout, registry, onReadyProp, panelManagerId, registryMode, contextMenu]
+    [
+      onSmartReady,
+      loadLayout,
+      defaultLayout,
+      registry,
+      onReadyProp,
+      panelManagerId,
+      registryMode,
+      contextMenu,
+      capabilities,
+    ]
   );
 
   // Unregister on unmount
@@ -265,9 +478,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       }
     };
   }, [panelManagerId, contextMenu]);
-
-  // Determine if context menu features should be active
-  const contextMenuActive = enableContextMenu && contextMenu !== null;
 
   // Tab components - add context menu tab if enabled
   const tabComponents = useMemo(() => {
@@ -288,11 +498,17 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       contextType: 'background',
       position: { x: e.clientX, y: e.clientY },
       currentDockviewId: panelManagerId,
+      panelRegistry: dockviewPanelRegistry,
+      resetDockviewLayout,
     });
-  }, [contextMenuActive, contextMenu, panelManagerId]);
+  }, [contextMenuActive, contextMenu, panelManagerId, resetDockviewLayout, dockviewPanelRegistry]);
 
   return (
-    <DockviewIdProvider dockviewId={panelManagerId}>
+    <DockviewIdProvider
+      dockviewId={panelManagerId}
+      panelRegistry={dockviewPanelRegistry}
+      dockviewApi={dockviewApi}
+    >
       <div
         className={clsx(styles.smartDockview, className)}
         onContextMenu={contextMenuActive ? handleBackgroundContextMenu : undefined}

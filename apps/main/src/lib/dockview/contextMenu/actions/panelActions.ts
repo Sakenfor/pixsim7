@@ -19,7 +19,7 @@ export const closePanelAction: MenuAction = {
   icon: 'x',
   category: 'panel',
   shortcut: '⌘W',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => !!ctx.panelId && !!ctx.api,
   execute: (ctx) => {
     if (!ctx.api || !ctx.panelId) return;
@@ -38,7 +38,7 @@ export const maximizePanelAction: MenuAction = {
   label: 'Maximize Panel',
   icon: 'maximize-2',
   category: 'panel',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => !!ctx.panelId && !!ctx.api,
   execute: (ctx) => {
     if (!ctx.api || !ctx.panelId) return;
@@ -65,7 +65,7 @@ export const floatPanelAction: MenuAction = {
   label: 'Float Panel',
   icon: 'external-link',
   category: 'panel',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
     // Only requires a float handler - no assumptions about implementation
     return !!ctx.panelId && !!ctx.floatPanelHandler;
@@ -95,7 +95,7 @@ export const closeOtherPanelsAction: MenuAction = {
   label: 'Close Other Tabs',
   icon: 'x-circle',
   category: 'panel',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
     if (!ctx.api || !ctx.groupId) return false;
     const group = ctx.api.getGroup(ctx.groupId);
@@ -124,7 +124,7 @@ export const closeAllInGroupAction: MenuAction = {
   category: 'panel',
   variant: 'danger',
   divider: true,
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
     if (!ctx.api || !ctx.groupId) return false;
     const group = ctx.api.getGroup(ctx.groupId);

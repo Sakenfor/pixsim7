@@ -8,6 +8,7 @@ export interface Toast {
   type: ToastType;
   duration?: number;
   title?: string;
+  description?: string;
   icon?: string;
   fromCubeId?: string;
   toCubeId?: string;
@@ -51,20 +52,43 @@ export const useToastStore = create<ToastState>((set) => ({
   clearAll: () => set({ toasts: [] }),
 }));
 
+export interface ToastOptions {
+  title?: string;
+  description?: string;
+  message?: string;
+  variant?: 'success' | 'error' | 'info' | 'warning';
+  duration?: number;
+}
+
 /**
  * Hook for easy toast usage
+ * Supports both object-based and string-based APIs
  */
 export function useToast() {
   const addToast = useToastStore((s) => s.addToast);
 
-  return {
-    success: (message: string, duration?: number) =>
-      addToast({ message, type: 'success', duration }),
-    error: (message: string, duration?: number) =>
-      addToast({ message, type: 'error', duration }),
-    info: (message: string, duration?: number) =>
-      addToast({ message, type: 'info', duration }),
-    warning: (message: string, duration?: number) =>
-      addToast({ message, type: 'warning', duration }),
+  // Function-style API: toast({ title, description, variant })
+  const toast = (options: ToastOptions) => {
+    const message = options.description || options.message || options.title || '';
+    const type = options.variant || 'info';
+    return addToast({
+      message,
+      type,
+      duration: options.duration,
+      title: options.title,
+      description: options.description,
+    });
   };
+
+  // Method-style API: toast.success(message)
+  toast.success = (message: string, duration?: number) =>
+    addToast({ message, type: 'success', duration });
+  toast.error = (message: string, duration?: number) =>
+    addToast({ message, type: 'error', duration });
+  toast.info = (message: string, duration?: number) =>
+    addToast({ message, type: 'info', duration });
+  toast.warning = (message: string, duration?: number) =>
+    addToast({ message, type: 'warning', duration });
+
+  return toast;
 }

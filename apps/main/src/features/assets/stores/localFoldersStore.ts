@@ -2,6 +2,7 @@
  * Persists directory handles in IndexedDB so each user can add their own folders.
  */
 import { create } from 'zustand';
+import { useAuthStore } from '@/stores/authStore';
 import type {
   AssetCandidate,
   FolderCandidate,
@@ -54,6 +55,9 @@ type LocalFoldersState = {
   refreshFolder: (id: string) => Promise<void>;
   loadPersisted: () => Promise<void>;
   getFileForAsset: (asset: LocalAsset) => Promise<File | undefined>;
+  updateAssetHash: (assetKey: string, sha256: string, file: File) => Promise<void>;
+  getUploadRecordByHash: (sha256: string) => Promise<UploadRecord | undefined>;
+  setUploadRecordByHash: (sha256: string, record: UploadRecord) => Promise<void>;
   // Task 104: Update upload history for an asset
   updateAssetUploadStatus: (
     assetKey: string,
@@ -64,10 +68,44 @@ type LocalFoldersState = {
 
 // --- minimal IndexedDB helpers ---
 const DB_VERSION = 2; // Bumped for AssetCandidate migration
+const DB_NAME = 'ps7_local_folders';
+const STORAGE_KEY_PREFIX = 'ps7_local_folders';
+
+function getUserNamespace(): string {
+  const userId = useAuthStore.getState().user?.id;
+  return userId ? `user_${userId}` : 'anonymous';
+}
+
+function getFoldersKey(): string {
+  return `${STORAGE_KEY_PREFIX}_folders_${getUserNamespace()}`;
+}
+
+function getAssetsKey(folderId: string): string {
+  return `${STORAGE_KEY_PREFIX}_assets_${getUserNamespace()}_${folderId}`;
+}
+
+function getThumbnailKey(asset: LocalAsset): string {
+  const version = asset.lastModified ?? 0;
+  return `${STORAGE_KEY_PREFIX}_thumb_${getUserNamespace()}_${asset.key}_${version}`;
+}
+
+function getUploadsKey(): string {
+  return `${STORAGE_KEY_PREFIX}_uploads_${getUserNamespace()}`;
+}
+
+async function requestStoragePersistence(): Promise<void> {
+  try {
+    if (navigator.storage?.persist) {
+      await navigator.storage.persist();
+    }
+  } catch {
+    // Ignore persistence request failures (best-effort).
+  }
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('ps7_local_folders', DB_VERSION);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (event) => {
       const db = req.result;
       const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
@@ -153,6 +191,21 @@ type AssetMeta = {
   lastUploadNote?: string; // Old format
   lastUploadAt?: number; // Old format
 };
+
+type UploadRecord = {
+  status: 'success';
+  note?: string;
+  provider_id?: string;
+  uploaded_at?: number;
+};
+
+async function getUploadRecords(): Promise<Record<string, UploadRecord>> {
+  return (await idbGet<Record<string, UploadRecord>>(getUploadsKey())) || {};
+}
+
+async function setUploadRecords(records: Record<string, UploadRecord>): Promise<void> {
+  await idbSet(getUploadsKey(), records);
+}
 
 // Chunked folder scanning - yields to main thread every N files for responsiveness
 const SCAN_CHUNK_SIZE = 50;  // Process this many files before yielding
@@ -272,7 +325,7 @@ async function getFileHandle(root: DirHandle, relativePath: string): Promise<Fil
 // Load assets from cache and reconstruct file handles
 async function loadCachedAssets(id: string, _handle: DirHandle): Promise<LocalAsset[]> {
   try {
-    const cached = await idbGet<AssetMeta[]>(`assets_${id}`);
+    const cached = await idbGet<AssetMeta[]>(getAssetsKey(id));
     if (!cached) return [];
 
     // For large folders, reconstructing FileSystemFileHandle for every asset on
@@ -362,7 +415,7 @@ async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
       lastUploadNote: a.last_upload_note,
       lastUploadAt: a.last_upload_at,
     }));
-    await idbSet(`assets_${id}`, meta);
+    await idbSet(getAssetsKey(id), meta);
   } catch (e) {
     console.warn('cacheAssets error', e);
   }
@@ -379,7 +432,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   loadPersisted: async () => {
     if (!isFSASupported()) return;
     try {
-      const stored = await idbGet<FolderEntry[]>('folders');
+      void requestStoragePersistence();
+      set({ folders: [], assets: {}, error: undefined });
+      const stored = await idbGet<FolderEntry[]>(getFoldersKey());
       if (stored && stored.length) {
         // Request permission again if needed
         // IMPORTANT: Keep all folders even if permission fails - prevents data loss
@@ -455,13 +510,14 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     }
     set({ adding: true, error: undefined });
     try {
+      void requestStoragePersistence();
       // @ts-ignore
       const dir: DirHandle = await (window as any).showDirectoryPicker();
-      const id = `${dir.name}-${Date.now()}`;
+      const id = `${dir.name}-${Date.now()}-${getUserNamespace()}`;
       const entry: FolderEntry = { id, name: dir.name, handle: dir };
       const folders = [...get().folders, entry];
       set({ folders });
-      await idbSet('folders', folders);
+      await idbSet(getFoldersKey(), folders);
 
       // Use chunked scanner with progress reporting
       set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
@@ -481,13 +537,13 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   removeFolder: async (id: string) => {
     const remain = get().folders.filter(f => f.id !== id);
     set({ folders: remain, assets: Object.fromEntries(Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'))) });
-    await idbSet('folders', remain);
+    await idbSet(getFoldersKey(), remain);
     // Remove cached assets for this folder
     try {
       const db = await openDB();
       const tx = db.transaction('kv', 'readwrite');
       const store = tx.objectStore('kv');
-      store.delete(`assets_${id}`);
+      store.delete(getAssetsKey(id));
     } catch (e) {
       console.warn('Failed to remove cached assets', e);
     }
@@ -547,6 +603,37 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     }
   },
 
+  updateAssetHash: async (assetKey: string, sha256: string, file: File) => {
+    const asset = get().assets[assetKey];
+    if (!asset) return;
+
+    const updated = {
+      ...asset,
+      sha256,
+      sha256_computed_at: Date.now(),
+      sha256_file_size: file.size,
+      sha256_last_modified: file.lastModified,
+    };
+
+    set(s => ({
+      assets: { ...s.assets, [assetKey]: updated },
+    }));
+
+    const folderAssets = Object.values(get().assets).filter(a => a.folderId === updated.folderId);
+    await cacheAssets(updated.folderId, folderAssets);
+  },
+
+  getUploadRecordByHash: async (sha256: string) => {
+    const records = await getUploadRecords();
+    return records[sha256];
+  },
+
+  setUploadRecordByHash: async (sha256: string, record: UploadRecord) => {
+    const records = await getUploadRecords();
+    records[sha256] = record;
+    await setUploadRecords(records);
+  },
+
   // Task 104: Update upload history for an asset and persist to cache
   updateAssetUploadStatus: async (assetKey, status, note) => {
     const asset = get().assets[assetKey];
@@ -579,8 +666,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
  * old thumbnails.
  */
 export async function getLocalThumbnailBlob(asset: LocalAsset): Promise<Blob | undefined> {
-  const version = asset.lastModified ?? 0;
-  const key = `thumb_${asset.key}_${version}`;
+  const key = getThumbnailKey(asset);
   try {
     return await idbGet<Blob>(key);
   } catch {
@@ -589,8 +675,7 @@ export async function getLocalThumbnailBlob(asset: LocalAsset): Promise<Blob | u
 }
 
 export async function setLocalThumbnailBlob(asset: LocalAsset, blob: Blob): Promise<void> {
-  const version = asset.lastModified ?? 0;
-  const key = `thumb_${asset.key}_${version}`;
+  const key = getThumbnailKey(asset);
   try {
     await idbSet<Blob>(key, blob);
   } catch (e) {

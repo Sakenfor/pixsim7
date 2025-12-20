@@ -173,6 +173,7 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
         className={className}
         onReady={handleReady}
         panelManagerId={panelManagerId}
+        enableContextMenu
       />
     );
   }

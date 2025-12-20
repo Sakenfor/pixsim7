@@ -10,17 +10,20 @@ import { panelActions } from './panelActions';
 import { layoutActions } from './layoutActions';
 import { presetActions } from './presetActions';
 import { addPanelActions } from './addPanelActions';
+import { assetActions } from './assetActions';
 
 // Export individual action modules
 export * from './panelActions';
 export * from './layoutActions';
 export * from './presetActions';
 export * from './addPanelActions';
+export * from './assetActions';
 
 /**
  * All actions combined
  */
 export const allActions = [
+  ...assetActions,
   ...panelActions,
   ...layoutActions,
   ...presetActions,

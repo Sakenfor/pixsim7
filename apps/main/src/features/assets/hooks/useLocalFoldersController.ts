@@ -13,6 +13,8 @@ import {
   generateThumbnail,
   type LocalAsset,
 } from '../stores/localFoldersStore';
+import { useAuthStore } from '@/stores/authStore';
+import { computeFileSha256 } from '@/lib/utils';
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
@@ -37,8 +39,12 @@ export function useLocalFoldersController(): LocalFoldersController {
     scanning,
     error,
     getFileForAsset,
+    updateAssetHash,
+    getUploadRecordByHash,
+    setUploadRecordByHash,
     updateAssetUploadStatus,
   } = useLocalFolders();
+  const userId = useAuthStore((state) => state.user?.id);
 
   // View state (persisted)
   const [viewMode, setViewMode] = usePersistentState<ViewMode>(
@@ -75,7 +81,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Load persisted folders on mount
   useEffect(() => {
     loadPersisted();
-  }, []);
+  }, [loadPersisted, userId]);
 
   // Task 104: Initialize upload status from cached assets
   useEffect(() => {
@@ -168,6 +174,27 @@ export function useLocalFoldersController(): LocalFoldersController {
           return;
         }
 
+        if (crypto.subtle) {
+          try {
+            let sha256 = asset.sha256;
+            const needsHash = !sha256
+              || asset.sha256_file_size !== file.size
+              || asset.sha256_last_modified !== file.lastModified;
+            if (needsHash) {
+              sha256 = await computeFileSha256(file);
+              await updateAssetHash(asset.key, sha256, file);
+            }
+            if (sha256 && asset.lastUploadStatus !== 'success') {
+              const record = await getUploadRecordByHash(sha256);
+              if (record?.status === 'success') {
+                await updateAssetUploadStatus(asset.key, 'success', record.note);
+              }
+            }
+          } catch (hashError) {
+            console.warn('Failed to compute hash for local asset', asset.name, hashError);
+          }
+        }
+
         // Generate a smaller thumbnail for images and videos (much faster to render)
         const thumbnail = await generateThumbnail(file);
         if (thumbnail) {
@@ -256,6 +283,21 @@ export function useLocalFoldersController(): LocalFoldersController {
     try {
       const file = await getFileForAsset(asset);
       if (!file) throw new Error('Unable to read local file');
+      let sha256: string | undefined;
+      if (crypto.subtle) {
+        try {
+          sha256 = asset.sha256;
+          const needsHash = !sha256
+            || asset.sha256_file_size !== file.size
+            || asset.sha256_last_modified !== file.lastModified;
+          if (needsHash) {
+            sha256 = await computeFileSha256(file);
+            await updateAssetHash(asset.key, sha256, file);
+          }
+        } catch (hashError) {
+          console.warn('Failed to compute hash before upload', asset.name, hashError);
+        }
+      }
       const form = new FormData();
       form.append('file', file, asset.name);
       form.append('provider_id', providerId);
@@ -291,6 +333,15 @@ export function useLocalFoldersController(): LocalFoldersController {
 
       setUploadNotes(n => ({ ...n, [asset.key]: note }));
       setUploadStatus(s => ({ ...s, [asset.key]: 'success' }));
+
+      if (sha256) {
+        await setUploadRecordByHash(sha256, {
+          status: 'success',
+          note,
+          provider_id: providerId,
+          uploaded_at: Date.now(),
+        });
+      }
 
       // Task 104: Persist upload success to cache
       await updateAssetUploadStatus(asset.key, 'success', note);

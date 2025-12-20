@@ -19,8 +19,11 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: st
     ? ctx.panelRegistry.getPublicPanels()
     : ctx.panelRegistry.getAll();
 
+  const groupByCategory = ctx.currentDockviewId === 'workspace';
+  const defaultCategory = groupByCategory ? 'Other' : 'Panels';
+
   for (const panel of allPanels) {
-    const category = panel.category || 'Other';
+    const category = groupByCategory ? (panel.category || defaultCategory) : defaultCategory;
     if (!categories.has(category)) {
       categories.set(category, []);
     }
@@ -37,9 +40,17 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: st
 /**
  * Check if a panel is already open in the current dockview
  */
+function isWorkspaceDockview(ctx: MenuActionContext): boolean {
+  return ctx.currentDockviewId === 'workspace';
+}
+
 function isPanelOpen(ctx: MenuActionContext, panelId: string): boolean {
-  if (!ctx.api) return false;
-  return ctx.api.panels.some(p => p.id === panelId);
+  const panels = Array.isArray(ctx.api?.panels) ? ctx.api.panels : [];
+  if (panels.length === 0) return false;
+  if (isWorkspaceDockview(ctx)) {
+    return panels.some(p => p.params?.panelId === panelId);
+  }
+  return panels.some(p => p.id === panelId);
 }
 
 /**
@@ -48,21 +59,36 @@ function isPanelOpen(ctx: MenuActionContext, panelId: string): boolean {
 function addPanel(ctx: MenuActionContext, panelId: string) {
   if (!ctx.api) return;
 
+  const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
+  const panelTitle = registryEntry?.title ?? panelId;
+
   // Check if already open
   if (isPanelOpen(ctx, panelId)) {
     // Focus existing panel instead
-    const existingPanel = ctx.api.getPanel(panelId);
+    const existingPanel = isWorkspaceDockview(ctx)
+      ? (Array.isArray(ctx.api.panels) ? ctx.api.panels.find(p => p.params?.panelId === panelId) : undefined)
+      : ctx.api.getPanel(panelId);
     if (existingPanel) {
       existingPanel.api.setActive();
     }
     return;
   }
 
-  // Add new panel
+  if (isWorkspaceDockview(ctx)) {
+    ctx.api.addPanel({
+      id: `${panelId}-panel-${Date.now()}`,
+      component: 'panel',
+      params: { panelId },
+      title: panelTitle,
+      position: { direction: 'right' },
+    });
+    return;
+  }
+
   ctx.api.addPanel({
     id: panelId,
     component: panelId,
-    title: panelId, // Will be overridden by panel component
+    title: panelTitle,
   });
 }
 
@@ -74,16 +100,26 @@ export const addPanelAction: MenuAction = {
   label: 'Add Panel',
   icon: 'plus-square',
   category: 'add',
-  availableIn: ['background', 'tab'],
-  visible: (ctx) => !!ctx.api && !!ctx.panelRegistry,
+  availableIn: ['background', 'tab', 'panel-content'],
+  visible: (ctx) => !!ctx.api,
   children: (ctx) => {
+    if (!ctx.panelRegistry) {
+      return [{
+        id: 'panel:add:missing',
+        label: 'Panels unavailable',
+        availableIn: ['background', 'tab', 'panel-content'],
+        disabled: () => true,
+        execute: () => {},
+      }];
+    }
+
     const categories = getPanelsByCategory(ctx);
 
     if (categories.size === 0) {
       return [{
         id: 'panel:add:empty',
         label: 'No panels available',
-        availableIn: ['background'],
+        availableIn: ['background', 'tab', 'panel-content'],
         disabled: () => true,
         execute: () => {},
       }];
@@ -108,7 +144,7 @@ export const addPanelAction: MenuAction = {
           id: `panel:add:${panel.id}`,
           label: panel.title,
           icon: panel.icon,
-          availableIn: ['background', 'tab'] as const,
+          availableIn: ['background', 'tab', 'panel-content'] as const,
           disabled: () => isPanelOpen(ctx, panel.id) ? 'Already open' : false,
           execute: () => addPanel(ctx, panel.id),
         }));
@@ -118,12 +154,12 @@ export const addPanelAction: MenuAction = {
       categoryActions.push({
         id: `panel:add:category:${category}`,
         label: category,
-        availableIn: ['background', 'tab'],
+        availableIn: ['background', 'tab', 'panel-content'],
         children: panels.map(panel => ({
           id: `panel:add:${panel.id}`,
           label: panel.title,
           icon: panel.icon,
-          availableIn: ['background', 'tab'] as const,
+          availableIn: ['background', 'tab', 'panel-content'] as const,
           disabled: () => isPanelOpen(ctx, panel.id) ? 'Already open' : false,
           execute: () => addPanel(ctx, panel.id),
         })),

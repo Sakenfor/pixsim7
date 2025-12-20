@@ -163,7 +163,21 @@
       "Bash(pnpm typecheck:ui:*)",
       "Bash(node node_modules/.bin/tsc:*)",
       "Bash(node -e:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(apps/main/src/features/workspace/components/DockviewWorkspace.tsx )",
+      "Bash(apps/main/src/features/workspace/lib/workspacePanelRegistry.ts )",
+      "Bash(apps/main/src/features/workspace/stores/workspaceStore.ts )",
+      "Bash(apps/main/src/features/workspace/components/WorkspaceToolbar.tsx )",
+      "Bash(apps/main/src/features/workspace/components/QuickPanelSwitcher.tsx )",
+      "Bash(apps/main/src/features/workspace/components/workspace-toolbar/AddPanelDropdown.tsx )",
+      "Bash(apps/main/src/features/workspace/lib/consoleModule.ts )",
+      "Bash(apps/main/src/lib/dockview/contextMenu/actions/presetActions.ts )",
+      "Bash(apps/main/src/lib/console/registerCoreOps.ts )",
+      "Bash(apps/main/src/lib/console/getEditorContextSnapshot.ts )",
+      "Bash(apps/main/src/features/controlCenter/components/modules/WorkspaceModule.tsx )",
+      "Bash(apps/main/src/features/controlCenter/components/PanelLauncherModule.tsx )",
+      "Bash(apps/main/src/features/settings/components/WorkspaceProfileManager.tsx )",
+      "Bash(docs/repo-map.md)"
     ],
     "deny": [],
     "ask": []

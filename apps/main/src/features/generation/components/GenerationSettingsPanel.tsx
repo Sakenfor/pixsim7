@@ -130,8 +130,13 @@ export interface GenerationSettingsPanelProps {
   onGenerate: () => void;
   /** Custom class name for the container */
   className?: string;
-  /** Additional controls to show above Go button (e.g., "Use Viewed Asset" toggle) */
-  extraControls?: React.ReactNode;
+  /** Secondary "Go with Asset" button configuration */
+  secondaryButton?: {
+    /** Callback when secondary Go button is clicked */
+    onGenerate: () => void;
+    /** Label override (default: "Go ⚡") */
+    label?: string;
+  };
   /** Params to filter out from display (default: ['image_url', 'image_urls', 'negative_prompt', 'prompt']) */
   excludeParams?: string[];
   /** Error message to display */
@@ -145,7 +150,7 @@ export function GenerationSettingsPanel({
   canGenerate,
   onGenerate,
   className,
-  extraControls,
+  secondaryButton,
   excludeParams = ['image_url', 'image_urls', 'negative_prompt', 'prompt'],
   error,
 }: GenerationSettingsPanelProps) {
@@ -554,11 +559,8 @@ export function GenerationSettingsPanel({
         })}
       </div>
 
-      {/* Fixed bottom section - Extra controls + Go button */}
+      {/* Fixed bottom section - Go button */}
       <div className="flex-shrink-0 flex flex-col gap-1.5 mt-auto">
-        {/* Extra controls (e.g., "Use Viewed Asset" toggle) */}
-        {extraControls}
-
         {/* Error message - for prompt rejections only */}
         {error && (
           <div
@@ -578,7 +580,7 @@ export function GenerationSettingsPanel({
             disabled={generating}
           />
 
-          {/* Go button with cost */}
+          {/* Primary Go button */}
           <button
             onClick={onGenerate}
             disabled={generating || !canGenerate}
@@ -605,6 +607,37 @@ export function GenerationSettingsPanel({
               'Go ⚡'
             )}
           </button>
+
+          {/* Secondary Go button (with media viewer asset) */}
+          {secondaryButton && (
+            <button
+              onClick={secondaryButton.onGenerate}
+              disabled={generating || !canGenerate}
+              className={clsx(
+                'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                generating || !canGenerate
+                  ? 'bg-neutral-400'
+                  : error
+                  ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title="Generate using Media Viewer asset"
+            >
+              {generating ? (
+                '...'
+              ) : creditLoading ? (
+                secondaryButton.label || 'Go ⚡'
+              ) : creditEstimate !== null ? (
+                <span className="flex items-center justify-center gap-1">
+                  {secondaryButton.label || 'Go ⚡'} <span className="text-amber-200 text-[10px]">◆{Math.round(creditEstimate)}</span>
+                </span>
+              ) : (
+                secondaryButton.label || 'Go ⚡'
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

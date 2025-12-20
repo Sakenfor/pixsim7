@@ -14,6 +14,9 @@ export { debugFlags } from './debugFlags';
 // Storage
 export { createBackendStorage } from './storage';
 
+// Hash utilities
+export { computeFileSha256 } from './hash';
+
 // Zustand persistence workaround
 export { manuallyRehydrateStore, exposeStoreForDebugging } from './zustandPersist';
 

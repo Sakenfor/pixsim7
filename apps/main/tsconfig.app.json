@@ -42,6 +42,8 @@
       "@features/workspace": ["./src/features/workspace/index.ts"],
       "@features/panels/*": ["./src/features/panels/*"],
       "@features/panels": ["./src/features/panels/index.ts"],
+      "@features/contextHub/*": ["./src/features/contextHub/*"],
+      "@features/contextHub": ["./src/features/contextHub/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

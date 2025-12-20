@@ -261,6 +261,8 @@ export function ReviewGallerySurface() {
                 status={asset.sync_status}
                 providerStatus={asset.provider_status}
                 actions={controller.getAssetActions(asset)}
+                contextMenuAsset={asset}
+                contextMenuSelection={controller.selectedAssets as any}
               />
 
               {/* Review Actions */}

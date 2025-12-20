@@ -29,6 +29,7 @@ import {
   FolderOpen,
   Search,
   Plus,
+  PlusSquare,
   Minus,
   Upload,
   Play,
@@ -42,11 +43,13 @@ import {
   XCircle,
   Loader,
   Trash,
+  Trash2,
   Edit,
   Copy,
   Eye,
   EyeOff,
   RefreshCw,
+  RotateCcw,
   Heart,
   Network,
   Zap,
@@ -69,6 +72,7 @@ import {
   Drama,
   ClipboardList,
   LayoutGrid,
+  Grid3x3,
   LightbulbIcon,
   KeyRound,
   Lock,
@@ -121,10 +125,14 @@ export const Icons = {
   x: X,
   add: Plus,
   plus: Plus,      // Alias for add
+  plusSquare: PlusSquare,
+  'plus-square': PlusSquare,  // Kebab-case alias
   remove: Minus,
   minus: Minus,    // Alias for remove
   delete: Trash,
   trash: Trash,
+  trash2: Trash2,
+  'trash-2': Trash2,  // Kebab-case alias
   archive: Archive,
   edit: Edit,
   copy: Copy,
@@ -133,6 +141,8 @@ export const Icons = {
   download: Download,
   refresh: RefreshCw,
   refreshCw: RefreshCw,  // Alias for consistency
+  rotateCcw: RotateCcw,
+  'rotate-ccw': RotateCcw,  // Kebab-case alias
   cut: Scissors,
   clipboard: Clipboard,
   link: Link2,
@@ -153,6 +163,7 @@ export const Icons = {
   search: Search,
   folder: Folder,
   folderOpen: FolderOpen,
+  'folder-open': FolderOpen,  // Kebab-case alias
   eye: Eye,
   eyeOff: EyeOff,
   sliders: Sliders,
@@ -160,7 +171,9 @@ export const Icons = {
   clock: Clock,
   code: Code,
   maximize2: Maximize2,
+  'maximize-2': Maximize2,  // Kebab-case alias
   minimize2: Minimize2,
+  'minimize-2': Minimize2,  // Kebab-case alias
 
   // Panels & Features
   heart: Heart,
@@ -170,6 +183,7 @@ export const Icons = {
   zap: Zap,
   barChart: BarChart3,
   sparkles: Sparkles,
+  '✨': Sparkles,  // Emoji alias
   target: Target,
   bot: Bot,
   globe: Globe,
@@ -179,6 +193,8 @@ export const Icons = {
   drama: Drama,
   clipboardList: ClipboardList,
   layoutGrid: LayoutGrid,
+  grid: Grid3x3,
+  'grid-3x3': Grid3x3,  // Kebab-case alias
   lightbulb: LightbulbIcon,
   key: KeyRound,
   map: Map,
@@ -198,6 +214,7 @@ export const Icons = {
   'alert-circle': AlertCircle,
   alertTriangle: AlertTriangle,
   info: Info,
+  'ℹ️': Info,  // Emoji alias
 
   // Directional
   chevronLeft: ChevronLeft,

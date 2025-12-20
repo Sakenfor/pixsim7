@@ -6,7 +6,7 @@
  * Fullscreen mode uses a fixed overlay layout.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   useAssetViewerStore,
   selectCanNavigatePrev,
@@ -15,6 +15,11 @@ import {
 import { Icon } from '@lib/icons';
 import { AssetViewerDockview } from './viewer';
 import { usePanel } from '@features/panels';
+import {
+  CAP_ASSET_SELECTION,
+  useProvideCapability,
+  type AssetSelection,
+} from '@features/contextHub';
 
 export function AssetViewerPanel() {
   // Panel orchestration hook
@@ -25,6 +30,7 @@ export function AssetViewerPanel() {
   const settings = useAssetViewerStore((s) => s.settings);
   const showMetadata = useAssetViewerStore((s) => s.showMetadata);
   const currentIndex = useAssetViewerStore((s) => s.currentIndex);
+  const assetList = useAssetViewerStore((s) => s.assetList);
   const assetListLength = useAssetViewerStore((s) => s.assetList.length);
   const canNavigatePrev = useAssetViewerStore(selectCanNavigatePrev);
   const canNavigateNext = useAssetViewerStore(selectCanNavigateNext);
@@ -36,6 +42,32 @@ export function AssetViewerPanel() {
   const toggleMetadata = useAssetViewerStore((s) => s.toggleMetadata);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const assetSelectionValue = useMemo<AssetSelection>(
+    () => ({
+      asset: currentAsset,
+      assets: assetList,
+      source: 'assetViewer',
+    }),
+    [currentAsset, assetList],
+  );
+
+  const assetSelectionProvider = useMemo(
+    () => ({
+      id: 'assetViewer',
+      label: 'Asset Viewer',
+      priority: 50,
+      exposeToContextMenu: true,
+      isAvailable: () => currentAsset !== null,
+      getValue: () => assetSelectionValue,
+    }),
+    [currentAsset, assetSelectionValue],
+  );
+
+  useProvideCapability(CAP_ASSET_SELECTION, assetSelectionProvider, [
+    currentAsset,
+    assetList,
+  ], { scope: 'root' });
 
   // Sync viewer state with panel manager
   useEffect(() => {

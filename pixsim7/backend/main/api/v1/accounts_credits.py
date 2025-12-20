@@ -365,10 +365,7 @@ async def sync_account_credits(
     - Skips if 0 credits and synced today
     """
     logger.info(
-        "sync_credits_requested",
-        account_id=account_id,
-        user_id=user.id,
-        force=force,
+        f"sync_credits_requested account_id={account_id} user_id={user.id} force={force}"
     )
     try:
         account = await account_service.get_account(account_id)
@@ -382,9 +379,7 @@ async def sync_account_credits(
         should_skip, skip_reason = should_skip_credit_sync(account, force=force)
         if should_skip:
             logger.info(
-                "sync_credits_skipped",
-                account_id=account_id,
-                reason=skip_reason,
+                f"sync_credits_skipped account_id={account_id} reason={skip_reason}"
             )
             # Return current cached credits
             credits = {}
@@ -408,26 +403,17 @@ async def sync_account_credits(
                 if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
                     # Enable auto-reauth for user-triggered sync
                     logger.info(
-                        "sync_credits_calling_provider",
-                        account_id=account.id,
-                        provider_id=account.provider_id,
+                        f"sync_credits_calling_provider account_id={account.id} provider_id={account.provider_id}"
                     )
                     credits_data = await provider.get_credits_basic(account, retry_on_session_error=True)
                     logger.info(
-                        "sync_credits_provider_success",
-                        account_id=account.id,
-                        credits=credits_data,
+                        f"sync_credits_provider_success account_id={account.id} credits={credits_data}"
                     )
                 else:
                     credits_data = await provider.get_credits(account)
             except Exception as e:
                 logger.error(
-                    "sync_account_credits_provider_error",
-                    account_id=account.id,
-                    email=account.email,
-                    provider_id=account.provider_id,
-                    error=str(e),
-                    error_type=e.__class__.__name__,
+                    f"sync_account_credits_provider_error account_id={account.id} email={account.email} provider_id={account.provider_id} error={str(e)} error_type={e.__class__.__name__}",
                     exc_info=True,
                 )
                 # If the provider call left the DB session in a bad state (e.g.

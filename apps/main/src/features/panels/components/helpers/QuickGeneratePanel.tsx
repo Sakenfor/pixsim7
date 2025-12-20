@@ -10,6 +10,7 @@
 import { useMemo } from 'react';
 import { ViewerQuickGenerate } from '../../../../components/media/ViewerQuickGenerate';
 import type { ViewerAsset } from '@features/assets';
+import { CAP_ASSET_SELECTION, useCapability, type AssetSelection } from '@features/contextHub';
 
 export interface QuickGeneratePanelContext {
   /** Current asset being viewed */
@@ -28,10 +29,12 @@ export interface QuickGeneratePanelProps {
 }
 
 export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps) {
+  const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
+
   const asset = useMemo(() => {
     // Try to get asset from context or params
-    return context?.currentAsset || params?.asset;
-  }, [context?.currentAsset, params?.asset]);
+    return context?.currentAsset || params?.asset || selection?.asset || null;
+  }, [context?.currentAsset, params?.asset, selection?.asset]);
 
   // Asset context - Generate from asset
   if (asset) {

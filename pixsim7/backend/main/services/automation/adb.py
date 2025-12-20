@@ -25,6 +25,12 @@ class ADB:
         """Run ADB command in thread pool to avoid Windows asyncio subprocess issues"""
         return await asyncio.to_thread(self._run_sync, args, capture_output)
 
+    async def connect(self, host_port: str) -> bool:
+        """Connect to a device via TCP/IP. Returns True if successful."""
+        code, out, err = await self._run(["connect", host_port])
+        # Success if output contains "connected to" or "already connected"
+        return code == 0 and ("connected to" in out.lower() or "already connected" in out.lower())
+
     async def devices(self) -> List[tuple[str, str]]:
         """Return list of (serial, state) from `adb devices`."""
         code, out, _ = await self._run(["devices"])

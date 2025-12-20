@@ -11,9 +11,16 @@ import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
 import { type QuickGenPanelContext } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
-import { useAssetViewerStore } from '@features/assets';
 import { OPERATION_METADATA } from '@/types/operations';
 import { PromptInput } from '@pixsim7/shared.ui';
+import {
+  CAP_ASSET_SELECTION,
+  CAP_GENERATION_CONTEXT,
+  useCapability,
+  useProvideCapability,
+  type AssetSelection,
+  type GenerationContextSummary,
+} from '@features/contextHub';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -84,54 +91,38 @@ export function QuickGenerateModule() {
   const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
 
-  // Toggle to use asset from Media Viewer
-  const [useViewedAsset, setUseViewedAsset] = useState(false);
-  const currentAsset = useAssetViewerStore(s => s.currentAsset);
-  const isViewerOpen = useAssetViewerStore(s => s.mode !== 'closed');
+  const { value: assetSelection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
+  const currentAsset = assetSelection?.asset ?? null;
+  const hasViewedAssetAvailable = currentAsset !== null;
 
-  // Check if viewed asset is available (regardless of queue state)
-  const hasViewedAssetAvailable = useViewedAsset && isViewerOpen && currentAsset;
+  const generationContextValue = useMemo<GenerationContextSummary>(
+    () => ({
+      id: 'controlCenter',
+      label: 'Control Center',
+      mode: operationType,
+      supportsMultiAsset: isInMultiMode,
+    }),
+    [operationType, isInMultiMode],
+  );
+
+  const generationContextProvider = useMemo(
+    () => ({
+      id: 'generation:controlCenter',
+      label: 'Control Center',
+      priority: 60,
+      exposeToContextMenu: true,
+      isAvailable: () => true,
+      getValue: () => generationContextValue,
+    }),
+    [generationContextValue],
+  );
+
+  useProvideCapability(CAP_GENERATION_CONTEXT, generationContextProvider, [generationContextValue], {
+    scope: 'root',
+  });
 
   // Always show asset panel for these operations (to show queue or allow drag-drop)
   const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
-
-  // Auto-populate image_url/video_url when using viewed asset
-  // Track previous state to detect when to clear params
-  const prevUseViewedAssetRef = useRef(useViewedAsset);
-
-  useEffect(() => {
-    // Clear params when toggle is disabled (transitions from true to false)
-    if (prevUseViewedAssetRef.current && !useViewedAsset) {
-      if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-        if (workbench.dynamicParams.image_url) {
-          workbench.handleParamChange('image_url', undefined);
-        }
-      } else if (operationType === 'video_extend') {
-        if (workbench.dynamicParams.video_url) {
-          workbench.handleParamChange('video_url', undefined);
-        }
-      }
-    }
-    prevUseViewedAssetRef.current = useViewedAsset;
-
-    if (!hasViewedAssetAvailable || !currentAsset) {
-      return;
-    }
-
-    const assetUrl = currentAsset.fullUrl || currentAsset.url;
-
-    // Determine which parameter to set based on operation type and asset type
-    // Only update if the value is different to avoid infinite loops
-    if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-      if (currentAsset.type === 'image' && workbench.dynamicParams.image_url !== assetUrl) {
-        workbench.handleParamChange('image_url', assetUrl);
-      }
-    } else if (operationType === 'video_extend') {
-      if (currentAsset.type === 'video' && workbench.dynamicParams.video_url !== assetUrl) {
-        workbench.handleParamChange('video_url', assetUrl);
-      }
-    }
-  }, [hasViewedAssetAvailable, useViewedAsset, currentAsset, operationType, workbench.dynamicParams.image_url, workbench.dynamicParams.video_url, workbench.handleParamChange]);
 
   // Infer pixverse provider from model
   const inferredProviderId = useMemo(() => {
@@ -229,6 +220,50 @@ export function QuickGenerateModule() {
   const requiresPrompt = promptRequiredOps.has(operationType);
   const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
 
+  // Handler for secondary "Generate with Asset" button
+  const generateWithAsset = useCallback(() => {
+    if (!currentAsset) return;
+
+    const assetUrl = currentAsset.fullUrl || currentAsset.url;
+
+    const overrideParams: Record<string, any> = {};
+
+    // Auto-populate appropriate parameter based on operation and asset type
+    if (operationType === 'image_to_video' || operationType === 'image_to_image') {
+      if (currentAsset.type === 'image') {
+        overrideParams.image_url = assetUrl;
+      }
+    } else if (operationType === 'video_extend') {
+      if (currentAsset.type === 'video') {
+        overrideParams.video_url = assetUrl;
+      }
+    }
+
+    if (Object.keys(overrideParams).length === 0) return;
+
+    generate({ overrideDynamicParams: overrideParams });
+  }, [currentAsset, operationType, generate]);
+
+  // Secondary button configuration (only for flexible operations with available asset)
+  const secondaryButton = useMemo(() => {
+    // Only for operations that support viewer assets
+    if (!(isSingleAssetOp || isFlexibleOp)) return undefined;
+
+    // Only when asset is available
+    if (!hasViewedAssetAvailable) return undefined;
+
+    // Validate asset type matches operation requirements
+    if (operationType === 'image_to_video' || operationType === 'image_to_image') {
+      if (currentAsset?.type !== 'image') return undefined;
+    } else if (operationType === 'video_extend') {
+      if (currentAsset?.type !== 'video') return undefined;
+    }
+
+    return {
+      onGenerate: generateWithAsset,
+      label: 'Go ⚡',
+    };
+  }, [isSingleAssetOp, isFlexibleOp, hasViewedAssetAvailable, currentAsset, operationType, generateWithAsset]);
 
   // Get the asset to display based on operation type and input mode
   const getDisplayAssets = () => {
@@ -404,38 +439,16 @@ export function QuickGenerateModule() {
     }
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
 
-  // Extra controls for GenerationSettingsPanel
-  const extraControls = useMemo(() => {
-    if (!(isSingleAssetOp || isFlexibleOp)) return null;
-
-    return (
-      <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 cursor-pointer hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors">
-        <input
-          type="checkbox"
-          checked={useViewedAsset}
-          onChange={(e) => setUseViewedAsset(e.target.checked)}
-          disabled={generating}
-          className="w-3 h-3 rounded"
-        />
-        <span className="flex items-center gap-1">
-          Use Media Viewer Asset
-          {hasViewedAssetAvailable && <span className="text-green-500">✓</span>}
-          {useViewedAsset && !hasViewedAssetAvailable && <span className="text-amber-500" title="No asset in viewer">⚠</span>}
-        </span>
-      </label>
-    );
-  }, [isSingleAssetOp, isFlexibleOp, useViewedAsset, hasViewedAssetAvailable, generating]);
-
   // Render the settings panel (right side) - using shared GenerationSettingsPanel
   const renderSettingsPanel = useCallback(() => (
     <GenerationSettingsPanel
       generating={generating}
       canGenerate={canGenerate}
       onGenerate={generate}
-      extraControls={extraControls}
+      secondaryButton={secondaryButton}
       error={error}
     />
-  ), [generating, canGenerate, generate, extraControls, error]);
+  ), [generating, canGenerate, generate, secondaryButton, error]);
 
   // Wrapper to set main queue index directly
   const setMainQueueIndex = useCallback((index: number) => {
