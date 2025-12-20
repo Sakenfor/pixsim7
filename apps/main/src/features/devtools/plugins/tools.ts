@@ -7,7 +7,7 @@
  * These tools are registered with devToolRegistry on app startup.
  */
 
-import type { DevToolDefinition } from '@lib/devtools/types';
+import type { DevToolDefinition } from '@lib/dev/devtools/types';
 
 // Import dev tool components
 import { SessionStateViewer } from '@features/panels/components/dev/SessionStateViewer';

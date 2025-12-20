@@ -7,8 +7,8 @@
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { ThemedIcon } from "@lib/icons";
-import { useConsoleStore } from "@lib/console";
-import { pixsim } from "@lib/console";
+import { useConsoleStore } from "@lib/dev/console";
+import { pixsim } from "@lib/dev/console";
 
 /**
  * Get completions for a partial path in the pixsim namespace

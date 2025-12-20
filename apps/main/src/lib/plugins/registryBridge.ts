@@ -26,7 +26,7 @@ import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererReg
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
-import { devToolRegistry, type DevToolDefinition } from '../devtools';
+import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
 import { panelRegistry, type PanelDefinition } from '@features/panels';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 

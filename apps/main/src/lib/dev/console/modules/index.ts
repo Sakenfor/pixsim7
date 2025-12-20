@@ -6,14 +6,14 @@
  *
  * @example
  * ```ts
- * import { moduleRegistry } from '@lib/console';
- * import { defaultModules } from '@lib/console/modules';
+ * import { moduleRegistry } from '@lib/dev/console';
+ * import { defaultModules } from '@lib/dev/console/modules';
  *
  * // Register all default modules
  * moduleRegistry.registerAll(defaultModules);
  *
  * // Or register individually
- * import { toolsModule } from '@lib/console/modules';
+ * import { toolsModule } from '@lib/dev/console/modules';
  * moduleRegistry.register(toolsModule);
  * ```
  */

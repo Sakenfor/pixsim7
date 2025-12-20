@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { pixsim, initializeConsole, moduleRegistry } from '@lib/console';
+ * import { pixsim, initializeConsole, moduleRegistry } from '@lib/dev/console';
  *
  * // Initialize with default modules
  * initializeConsole();

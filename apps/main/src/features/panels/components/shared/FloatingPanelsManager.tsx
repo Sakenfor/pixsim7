@@ -5,7 +5,7 @@ import { panelRegistry } from "@features/panels";
 import { ContextHubHost } from "@features/contextHub";
 import { BASE_CUBE_SIZE } from "@/config/cubeConstants";
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
-import { devToolRegistry } from "@lib/devtools/devToolRegistry";
+import { devToolRegistry } from "@lib/dev/devtools/devToolRegistry";
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);

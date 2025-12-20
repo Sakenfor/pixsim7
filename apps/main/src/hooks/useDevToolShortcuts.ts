@@ -5,7 +5,7 @@
  */
 
 import { useEffect } from 'react';
-import { useDevToolContext } from '../lib/devtools/devToolContext';
+import { useDevToolContext } from '@lib/dev/devtools/devToolContext';
 
 /**
  * Keyboard shortcuts for dev tools:

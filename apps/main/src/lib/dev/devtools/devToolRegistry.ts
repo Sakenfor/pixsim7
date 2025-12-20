@@ -7,7 +7,7 @@
  */
 
 import type { DevToolDefinition, DevToolId } from './types';
-import { BaseRegistry } from '../core/BaseRegistry';
+import { BaseRegistry } from '@lib/core/BaseRegistry';
 
 export class DevToolRegistry extends BaseRegistry<DevToolDefinition> {
 

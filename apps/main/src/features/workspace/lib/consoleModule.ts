@@ -4,8 +4,8 @@
  * Registers workspace and selection operations.
  */
 
-import type { ConsoleModule } from "@lib/console/moduleRegistry";
-import { opsRegistry } from "@lib/console/opsRegistry";
+import type { ConsoleModule } from "@lib/dev/console/moduleRegistry";
+import { opsRegistry } from "@lib/dev/console/opsRegistry";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSelectionStore } from "@/stores/selectionStore";
 import { panelManager } from "@features/panels/lib/PanelManager";

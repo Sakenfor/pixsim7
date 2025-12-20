@@ -66,7 +66,7 @@ export function registerGizmoConsole(): void {
   registered = true; // Set immediately to prevent double registration
 
   // Lazy import to avoid circular dependencies
-  import('@/lib/console').then(({ opsRegistry, dataRegistry, isConsoleInitialized }) => {
+  import('@/lib/dev/console').then(({ opsRegistry, dataRegistry, isConsoleInitialized }) => {
     if (!isConsoleInitialized()) {
       return;
     }

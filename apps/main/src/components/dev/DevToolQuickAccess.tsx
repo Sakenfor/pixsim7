@@ -6,9 +6,9 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { devToolRegistry } from '@lib/devtools/devToolRegistry';
-import type { DevToolDefinition } from '@lib/devtools/types';
-import { useDevToolContext } from '@lib/devtools/devToolContext';
+import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
+import type { DevToolDefinition } from '@lib/dev/devtools/types';
+import { useDevToolContext } from '@lib/dev/devtools/devToolContext';
 import { useWorkspaceStore } from '@features/workspace';
 
 export function DevToolQuickAccess() {

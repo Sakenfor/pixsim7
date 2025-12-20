@@ -6,10 +6,10 @@
  */
 
 import { useState, useMemo } from "react";
-import { devToolRegistry } from "@lib/devtools/devToolRegistry";
-import type { DevToolDefinition, DevToolCategory } from "@lib/devtools/types";
+import { devToolRegistry } from "@lib/dev/devtools/devToolRegistry";
+import type { DevToolDefinition, DevToolCategory } from "@lib/dev/devtools/types";
 import { useWorkspaceStore } from "@features/workspace";
-import { useDevToolContext } from "@lib/devtools/devToolContext";
+import { useDevToolContext } from "@lib/dev/devtools/devToolContext";
 import { Icon, IconBadge, type IconName } from "@lib/icons";
 
 const CATEGORY_LABELS: Record<DevToolCategory, string> = {
