@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import clsx from 'clsx';
 
 const DEFAULT_PROMPT_MAX_CHARS = 800;
@@ -45,36 +45,65 @@ export const PromptInput: React.FC<PromptInputProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const cursorPosRef = useRef<number | null>(null);
+  const scrollPosRef = useRef<number | null>(null);
   const isUserTypingRef = useRef(false);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
+    const cursorPos = e.target.selectionStart;
 
-    // Store cursor position before state update
-    cursorPosRef.current = e.target.selectionStart;
+    // Store cursor position AND scroll position before state update
+    cursorPosRef.current = cursorPos;
+    scrollPosRef.current = e.target.scrollTop;
     isUserTypingRef.current = true;
 
     const valueToSend = enforceLimit && next.length > maxChars ? next.slice(0, maxChars) : next;
+
+    // If we're enforcing and truncating, adjust cursor position
+    if (enforceLimit && next.length > maxChars && cursorPos > maxChars) {
+      cursorPosRef.current = maxChars;
+    }
+
     onChange(valueToSend);
   }, [onChange, maxChars, enforceLimit]);
 
-  // Restore cursor position after value updates
-  useEffect(() => {
-    if (isUserTypingRef.current && cursorPosRef.current !== null && textareaRef.current) {
-      const textarea = textareaRef.current;
-      const pos = cursorPosRef.current;
-
-      try {
-        // Restore cursor position, clamping to current value length
-        const safePos = Math.min(pos, value.length);
-        textarea.setSelectionRange(safePos, safePos);
-      } catch {
-        // Silently fail if setSelectionRange fails (e.g., textarea not focused)
-      } finally {
-        isUserTypingRef.current = false;
-        cursorPosRef.current = null;
-      }
+  // Restore cursor position and scroll position after value updates
+  // Use useLayoutEffect to run synchronously before browser paint (prevents flash)
+  useLayoutEffect(() => {
+    if (!isUserTypingRef.current || cursorPosRef.current === null || !textareaRef.current) {
+      return;
     }
+
+    const textarea = textareaRef.current;
+    const pos = cursorPosRef.current;
+    const scrollPos = scrollPosRef.current;
+
+    try {
+      // Only restore if the textarea is still focused
+      if (document.activeElement === textarea) {
+        // Restore scroll position FIRST to prevent auto-scroll
+        if (scrollPos !== null) {
+          textarea.scrollTop = scrollPos;
+        }
+
+        // Then restore cursor position, clamping to current value length
+        const safePos = Math.min(pos, textarea.value.length);
+        textarea.setSelectionRange(safePos, safePos);
+
+        // Restore scroll position AGAIN after cursor restoration
+        // (setSelectionRange can trigger auto-scroll in some browsers)
+        if (scrollPos !== null) {
+          textarea.scrollTop = scrollPos;
+        }
+      }
+    } catch {
+      // Silently fail if setSelectionRange fails
+    }
+
+    // Reset flags after restoration
+    isUserTypingRef.current = false;
+    cursorPosRef.current = null;
+    scrollPosRef.current = null;
   }, [value]);
 
   // Calculate min-height: use prop if provided, else variant default
