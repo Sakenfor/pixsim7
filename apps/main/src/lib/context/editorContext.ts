@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useWorldContextStore } from '@/stores/worldContextStore';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { useWorkspaceStore } from '@features/workspace';
+import { panelManager } from '@features/panels/lib/PanelManager';
 import {
   derivePrimaryView,
   deriveEditorMode,
@@ -57,24 +58,39 @@ export function useEditorContext(): EditorContext {
   const currentScene = useGraphStore((s: GraphState) => s.getCurrentScene());
   const { selectedNodeIds } = useSelectionStore();
   const gameContext = useGameStateStore((s) => s.context);
-  // Use separate selectors to avoid creating new objects on every call
-  const activePresetId = useWorkspaceStore((s) => s.activePresetByScope.workspace ?? null);
-  const dockviewLayout = useWorkspaceStore((s) => s.layoutByScope.workspace ?? null);
+  const activePresetId = useWorkspaceStore((s) => s.activePresetByScope?.workspace ?? null);
 
-  // Derive active panels from dockview layout
-  const activePanels = useMemo(() => {
-    const panels: string[] = [];
-    const layoutPanels = (dockviewLayout as any)?.panels;
-    if (Array.isArray(layoutPanels)) {
-      for (const p of layoutPanels) {
-        const panelId = p?.params?.panelId;
+  // Get active panels from panelManager's dockview API
+  const [activePanels, setActivePanels] = useState<string[]>([]);
+
+  useEffect(() => {
+    const updateActivePanels = () => {
+      const api = panelManager.getPanelState('workspace')?.dockview?.api;
+      if (!api) {
+        setActivePanels([]);
+        return;
+      }
+
+      const panels: string[] = [];
+      for (const panel of api.panels) {
+        const panelId = panel.params?.panelId;
         if (typeof panelId === 'string') {
           panels.push(panelId);
         }
       }
-    }
-    return panels;
-  }, [dockviewLayout]);
+      setActivePanels(panels);
+    };
+
+    // Initial update
+    updateActivePanels();
+
+    // Subscribe to panelManager changes
+    const unsubscribe = panelManager.subscribe(() => {
+      updateActivePanels();
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Extract primitives for stable memoization
   const sceneTitle = currentScene?.title ?? null;
