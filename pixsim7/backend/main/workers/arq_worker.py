@@ -210,7 +210,14 @@ class WorkerSettings:
             update_heartbeat,
             second={0, 30},
             run_at_startup=False,  # Will be called in startup
-        )
+        ),
+        # Reconcile account counters every 5 minutes
+        cron(
+            reconcile_account_counters,
+            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            second={5},
+            run_at_startup=False,
+        ),
     ]
 
     # Lifecycle handlers

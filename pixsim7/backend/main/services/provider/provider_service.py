@@ -526,6 +526,37 @@ class ProviderService:
             operation_type=operation_type,
         )
 
+        # Pixverse image fallback: bypass message list after a threshold.
+        if (
+            submission.provider_id == "pixverse"
+            and operation_type in get_image_operations()
+            and status_result.status == ProviderStatus.PROCESSING
+            and submission.submitted_at
+            and hasattr(provider, "check_image_status_from_list")
+        ):
+            model = None
+            if submission.payload and isinstance(submission.payload, dict):
+                model = submission.payload.get("model")
+            model_name = str(model or "").lower()
+            threshold_seconds = 180 if ("qwen" in model_name or "seedream" in model_name) else 420
+            elapsed_seconds = (datetime.utcnow() - submission.submitted_at).total_seconds()
+
+            if elapsed_seconds >= threshold_seconds:
+                try:
+                    fallback_result = await provider.check_image_status_from_list(
+                        account=account,
+                        image_id=submission.provider_job_id,
+                    )
+                    if fallback_result.status != ProviderStatus.PROCESSING:
+                        status_result = fallback_result
+                except Exception as fallback_err:
+                    logger.warning(
+                        "pixverse_image_fallback_failed",
+                        submission_id=submission.id,
+                        provider_job_id=submission.provider_job_id,
+                        error=str(fallback_err),
+                    )
+
         # Update submission response with latest status
         if submission.response is None:
             submission.response = {}

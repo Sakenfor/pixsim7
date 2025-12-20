@@ -9,7 +9,7 @@ Runs periodically to:
 """
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, func, distinct
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation
@@ -540,7 +540,7 @@ async def reconcile_account_counters(ctx: dict) -> dict:
     2. Jobs are orphaned without proper counter decrement
 
     For each account with current_processing_jobs > 0, we count actual
-    PROCESSING generations and reset the counter to match reality.
+    PROCESSING generations + analyses and reset the counter to match reality.
 
     Args:
         ctx: ARQ worker context
@@ -553,8 +553,6 @@ async def reconcile_account_counters(ctx: dict) -> dict:
 
     async for db in get_db():
         try:
-            from sqlalchemy import func
-
             # Find all accounts that think they have processing jobs
             result = await db.execute(
                 select(ProviderAccount).where(
@@ -572,13 +570,27 @@ async def reconcile_account_counters(ctx: dict) -> dict:
             for account in accounts_with_jobs:
                 try:
                     # Count actual PROCESSING generations for this account
-                    count_result = await db.execute(
+                    gen_count_result = await db.execute(
                         select(func.count(Generation.id)).where(
                             Generation.account_id == account.id,
                             Generation.status == GenerationStatus.PROCESSING,
                         )
                     )
-                    actual_count = count_result.scalar() or 0
+                    generation_count = gen_count_result.scalar() or 0
+
+                    # Count actual PROCESSING analyses for this account
+                    analysis_count_result = await db.execute(
+                        select(func.count(distinct(AssetAnalysis.id)))
+                        .select_from(AssetAnalysis)
+                        .join(ProviderSubmission, ProviderSubmission.analysis_id == AssetAnalysis.id)
+                        .where(
+                            AssetAnalysis.status == AnalysisStatus.PROCESSING,
+                            ProviderSubmission.account_id == account.id,
+                        )
+                    )
+                    analysis_count = analysis_count_result.scalar() or 0
+
+                    actual_count = generation_count + analysis_count
 
                     old_count = account.current_processing_jobs
                     if old_count != actual_count:
@@ -589,6 +601,8 @@ async def reconcile_account_counters(ctx: dict) -> dict:
                             email=account.email,
                             old_count=old_count,
                             new_count=actual_count,
+                            generation_count=generation_count,
+                            analysis_count=analysis_count,
                         )
                         reconciled += 1
 

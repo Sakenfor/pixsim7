@@ -438,14 +438,22 @@ async def cleanup_account_states(
     """
     try:
         stats = await account_service.cleanup_account_states(provider_id)
+        # Also reconcile concurrency counters so stuck jobs don't block capacity.
+        from pixsim7.backend.main.workers.status_poller import reconcile_account_counters
+        reconcile_stats = await reconcile_account_counters({})
 
         return {
             "success": True,
             "provider_id": provider_id or "all",
             "stats": stats,
-            "message": f"Cleaned up {stats['cooldowns_cleared']} cooldowns, "
-                      f"reactivated {stats['reactivated']} accounts, "
-                      f"marked {stats['marked_exhausted']} as exhausted"
+            "reconcile": reconcile_stats,
+            "message": (
+                f"Cleaned up {stats['cooldowns_cleared']} cooldowns, "
+                f"reactivated {stats['reactivated']} accounts, "
+                f"marked {stats['marked_exhausted']} as exhausted. "
+                f"Reconciled {reconcile_stats.get('reconciled', 0)} counters "
+                f"({reconcile_stats.get('errors', 0)} errors)."
+            ),
         }
 
     except Exception as e:

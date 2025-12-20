@@ -644,6 +644,67 @@ class PixverseOperationsMixin:
             retry_on_session_error=True,
         )
 
+    async def check_image_status_from_list(
+        self,
+        account: ProviderAccount,
+        image_id: str,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> ProviderStatusResult:
+        """
+        Fallback image status check using the personal image list.
+
+        This bypasses the message list gate used by the Web API polling path,
+        which can miss IDs when the message window rolls over.
+        """
+        async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
+            client = self._create_client_from_session(session, account)
+            # Use the image list endpoint directly (Web API only).
+            images = await client.api._image_ops.list_images(  # type: ignore[attr-defined]
+                account=client.pool.get_next(),
+                limit=limit,
+                offset=offset,
+            )
+
+            for img in images:
+                if str(img.get("image_id")) == str(image_id):
+                    raw_status = img.get("image_status") or img.get("status") or 0
+                    image_url = img.get("image_url") or img.get("url")
+
+                    if raw_status == 1 or raw_status == "completed":
+                        status = ProviderStatus.COMPLETED
+                    elif raw_status == 7 or raw_status == "filtered":
+                        status = ProviderStatus.FILTERED
+                    elif raw_status in (-1, 8, 9) or raw_status == "failed":
+                        status = ProviderStatus.FAILED
+                    else:
+                        status = ProviderStatus.PROCESSING
+
+                    return ProviderStatusResult(
+                        status=status,
+                        video_url=image_url,
+                        thumbnail_url=image_url,
+                        width=img.get("width"),
+                        height=img.get("height"),
+                        duration_sec=None,
+                        provider_video_id=str(img.get("image_id") or image_id),
+                        metadata={"provider_status": raw_status, "is_image": True, "source": "list_fallback"},
+                    )
+
+            return ProviderStatusResult(
+                status=ProviderStatus.PROCESSING,
+                provider_video_id=str(image_id),
+                metadata={"is_image": True, "source": "list_fallback"},
+            )
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="check_image_status_from_list",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
+
 
     async def upload_asset(
         self,

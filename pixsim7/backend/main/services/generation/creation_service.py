@@ -1344,7 +1344,8 @@ class GenerationCreationService:
         Check if user has access to an account with sufficient credits.
 
         This is a fail-fast check to reject generations that would fail
-        due to insufficient credits.
+        due to insufficient credits. If credits are stale/unknown for all
+        accounts, skip the fail-fast rejection and let the worker validate.
 
         Args:
             user_id: User ID
@@ -1352,7 +1353,8 @@ class GenerationCreationService:
             required_credits: Minimum credits required
 
         Returns:
-            True if an account with sufficient credits exists
+            True if an account with sufficient credits exists, or credits are
+            stale/unknown for all accounts.
         """
         from pixsim7.backend.main.services.account import AccountService
 
@@ -1366,4 +1368,44 @@ class GenerationCreationService:
             )
             return True
         except NoAccountAvailableError:
+            # If we have no accounts at all, this is a real failure.
+            accounts = await account_service.list_accounts(
+                provider_id=provider_id,
+                user_id=user_id,
+                include_shared=True,
+            )
+            if not accounts:
+                return False
+
+            # If credits haven't been synced recently for any account,
+            # skip fail-fast so the worker can refresh and decide.
+            from datetime import datetime, timezone, timedelta
+
+            stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+            has_recent_sync = False
+
+            for account in accounts:
+                metadata = account.provider_metadata or {}
+                synced_at_raw = metadata.get("credits_synced_at")
+                if not synced_at_raw:
+                    continue
+                try:
+                    synced_at = datetime.fromisoformat(str(synced_at_raw).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if synced_at >= stale_cutoff:
+                    has_recent_sync = True
+                    break
+
+            if not has_recent_sync:
+                logger.info(
+                    "credits_unverified_skip_fail_fast",
+                    extra={
+                        "user_id": user_id,
+                        "provider_id": provider_id,
+                        "required_credits": required_credits,
+                    },
+                )
+                return True
+
             return False
