@@ -15,6 +15,8 @@ import {
   ChevronDown,
   ArrowLeft,
   ArrowRight,
+  MoveLeft,
+  MoveRight,
   Download,
   Video,
   Camera,
@@ -225,6 +227,10 @@ export const Icons = {
   arrowRight: ArrowRight,
   'arrow-left': ArrowLeft,
   'arrow-right': ArrowRight,
+  moveLeft: MoveLeft,
+  moveRight: MoveRight,
+  'move-left': MoveLeft,
+  'move-right': MoveRight,
 
   // Misc
   folderTree: FolderTree,
