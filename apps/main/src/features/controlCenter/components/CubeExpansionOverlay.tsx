@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { useControlCubeStore, type CubeState } from '@features/controlCenter/stores/controlCubeStore';
-import { cubeExpansionRegistry, getExpansionSize } from '../lib/cubes/cubeExpansionRegistry';
+import { cubeExpansionRegistry, getExpansionSize } from '@/plugins/ui/cube-formation-v1/lib/cubeExpansionRegistry';
 import { CubeErrorBoundary } from './CubeErrorBoundary';
 
 export interface CubeExpansionOverlayProps {

@@ -10,7 +10,7 @@ import {
   interpolatePosition,
   easeInOutCubic,
   type FormationPattern,
-} from '@features/controlCenter/lib/cubes/cubeFormations';
+} from '@/plugins/ui/cube-formation-v1/lib/cubeFormations';
 import { clsx } from 'clsx';
 import { QuickGenerateModule } from './QuickGenerateModule';
 import { PresetsModule } from './PresetsModule';

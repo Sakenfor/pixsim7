@@ -6,7 +6,7 @@ import {
 } from '@pixsim7/scene.cubes';
 import { useControlCubeStore, type CubeFace } from '@features/controlCenter/stores/controlCubeStore';
 import { useCubeSettingsStore } from '@features/controlCenter/stores/cubeSettingsStore';
-import { cubeExpansionRegistry } from '../lib/cubes/cubeExpansionRegistry';
+import { cubeExpansionRegistry } from '@/plugins/ui/cube-formation-v1/lib/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { CubeTooltip, useTooltipDismissal } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';

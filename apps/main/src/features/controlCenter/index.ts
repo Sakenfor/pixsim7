@@ -72,9 +72,6 @@ export {
   type GenerateAssetResponse,
 } from './lib/api';
 
-// Cube system - re-export from cubes barrel
-export * from './lib/cubes';
-
 // Control center module registry
 export {
   controlCenterModuleRegistry,

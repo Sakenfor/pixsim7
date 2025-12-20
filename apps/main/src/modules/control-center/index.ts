@@ -1,5 +1,5 @@
 import type { Module } from '../types';
-import { registerCubeExpansions } from '@features/controlCenter';
+import { registerCubeExpansions } from '@/plugins/ui/cube-formation-v1/lib';
 import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
 import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
 import { ProviderOverviewModule } from '@features/providers';

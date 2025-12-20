@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { validateScene, type ValidationResult } from '@/modules/scene-builder/validation';
-import type { ExpansionComponentProps } from '@features/controlCenter/lib/cubes/cubeExpansionRegistry';
+import type { ExpansionComponentProps } from '@/plugins/ui/cube-formation-v1/lib/cubeExpansionRegistry';
 
 /**
  * Health status expansion for cube
