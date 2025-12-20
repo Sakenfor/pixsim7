@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
 import { panelRegistry } from '@features/panels';
+import { panelManager } from '@features/panels/lib/PanelManager';
 
 export function PanelLauncherModule() {
-  const layout = useWorkspaceStore((s) => s.getLayout('workspace'));
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
@@ -11,22 +11,31 @@ export function PanelLauncherModule() {
   // Get all panels from registry
   const allPanels = useMemo(() => panelRegistry.getPublicPanels(), []);
 
-  // Get list of currently open panels (docked)
-  const openPanels = useMemo(() => {
-    const panels = new Set<PanelId>();
+  // Get list of currently open panels (docked) from dockview API
+  const [openPanels, setOpenPanels] = useState<Set<PanelId>>(new Set());
 
-    const layoutPanels = (layout as any)?.panels;
-    if (Array.isArray(layoutPanels)) {
-      for (const panel of layoutPanels) {
-        const panelId = panel?.params?.panelId;
+  useEffect(() => {
+    const api = panelManager.getPanelState('workspace')?.dockview?.api;
+    if (!api) return;
+
+    const updateOpenPanels = () => {
+      const panels = new Set<PanelId>();
+      for (const panel of api.panels) {
+        const panelId = panel.params?.panelId;
         if (typeof panelId === 'string') {
           panels.add(panelId as PanelId);
         }
       }
-    }
+      setOpenPanels(panels);
+    };
 
-    return panels;
-  }, [layout]);
+    // Initial update
+    updateOpenPanels();
+
+    // Subscribe to layout changes
+    const disposable = api.onDidLayoutChange(updateOpenPanels);
+    return () => disposable.dispose();
+  }, []);
 
   // Get list of floating panels
   const floatingPanelIds = useMemo(

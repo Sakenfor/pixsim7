@@ -70,13 +70,11 @@ export interface LayoutPreset {
 }
 
 export interface WorkspaceState {
-  /** Current layouts by scope - each dockview has its own layout */
-  layoutByScope: Partial<Record<PresetScope, DockviewLayout | null>>;
   /** Closed panels (can be restored) */
   closedPanels: PanelId[];
   /** Lock prevents layout changes */
   isLocked: boolean;
-  /** All saved presets (scoped) */
+  /** All saved presets (scoped) - presets are just named layout snapshots */
   presets: LayoutPreset[];
   /** Panel in fullscreen mode */
   fullscreenPanel: PanelId | null;
@@ -87,10 +85,6 @@ export interface WorkspaceState {
 }
 
 export interface WorkspaceActions {
-  /** Get layout for a specific scope */
-  getLayout: (scope: PresetScope) => DockviewLayout | null;
-  /** Set layout for a specific scope */
-  setLayout: (scope: PresetScope, layout: DockviewLayout | null) => void;
   /** Close a panel */
   closePanel: (panelId: PanelId) => void;
   /** Restore a closed panel */
@@ -101,12 +95,12 @@ export interface WorkspaceActions {
   toggleLock: () => void;
   /** Set fullscreen panel */
   setFullscreen: (panelId: PanelId | null) => void;
-  /** Save current layout as a new preset */
-  savePreset: (name: string, scope: PresetScope, layout: DockviewLayout | null) => void;
+  /** Save current layout as a new preset (layout from api.toJSON()) */
+  savePreset: (name: string, scope: PresetScope, layout: DockviewLayout) => void;
   /** Update an existing preset's layout */
   updatePreset: (id: string, layout: DockviewLayout) => void;
-  /** Load a preset (returns the layout to apply) */
-  loadPreset: (id: string) => DockviewLayout | null;
+  /** Get a preset's layout (caller applies via api.fromJSON()) */
+  getPresetLayout: (id: string) => DockviewLayout | null;
   /** Delete a preset */
   deletePreset: (id: string) => void;
   /** Get presets for a specific scope */
@@ -115,8 +109,8 @@ export interface WorkspaceActions {
   getActivePresetId: (scope: PresetScope) => string | null;
   /** Update preset metadata */
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
-  /** Reset a specific scope to default */
-  resetScope: (scope: PresetScope) => void;
+  /** Set active preset ID for a scope (UI state only, layout handled by SmartDockview) */
+  setActivePreset: (scope: PresetScope, presetId: string | null) => void;
   /** Reset all state */
   reset: () => void;
   // Floating panel actions
@@ -208,29 +202,17 @@ const defaultPresets: LayoutPreset[] = [
   },
 ];
 
-const STORAGE_KEY = "workspace_v4"; // Bumped for layoutByScope
+const STORAGE_KEY = "workspace_v5"; // v5: removed layoutByScope (layouts now in localStorage via SmartDockview)
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
-      layoutByScope: {},
       closedPanels: [],
       isLocked: false,
       presets: defaultPresets,
       fullscreenPanel: null,
       floatingPanels: [],
       activePresetByScope: { workspace: "default" },
-
-      getLayout: (scope) => {
-        return get().layoutByScope[scope] ?? null;
-      },
-
-      setLayout: (scope, layout) => {
-        if (get().isLocked) return;
-        set((s) => ({
-          layoutByScope: { ...s.layoutByScope, [scope]: layout },
-        }));
-      },
 
       closePanel: (panelId) => {
         const closedPanels = get().closedPanels;
@@ -322,21 +304,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }));
       },
 
-      loadPreset: (id) => {
+      getPresetLayout: (id) => {
         const preset = get().presets.find((p) => p.id === id);
-        if (!preset) return null;
-
-        set((s) => ({
-          layoutByScope: { ...s.layoutByScope, [preset.scope]: preset.layout },
-          activePresetByScope: {
-            ...s.activePresetByScope,
-            [preset.scope]: id,
-          },
-          closedPanels: [],
-          fullscreenPanel: null,
-        }));
-
-        return preset.layout;
+        return preset?.layout ?? null;
       },
 
       deletePreset: (id) => {
@@ -376,22 +346,17 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }));
       },
 
-      resetScope: (scope) => {
-        const defaultPreset = get().presets.find(
-          (p) => p.isDefault && p.scope === scope
-        );
+      setActivePreset: (scope, presetId) => {
         set((s) => ({
-          layoutByScope: { ...s.layoutByScope, [scope]: null },
           activePresetByScope: {
             ...s.activePresetByScope,
-            [scope]: defaultPreset?.id ?? null,
+            [scope]: presetId,
           },
         }));
       },
 
       reset: () =>
         set({
-          layoutByScope: {},
           closedPanels: [],
           isLocked: false,
           fullscreenPanel: null,
@@ -487,9 +452,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createBackendStorage("workspace"),
-      version: 4,
+      version: 5, // Bumped: removed layoutByScope (now in localStorage via SmartDockview)
       partialize: (state) => ({
-        layoutByScope: state.layoutByScope,
         closedPanels: state.closedPanels,
         isLocked: state.isLocked,
         presets: state.presets,

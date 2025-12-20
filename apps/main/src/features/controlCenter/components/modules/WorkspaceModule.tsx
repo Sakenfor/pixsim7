@@ -8,9 +8,14 @@
  * - Recent workspaces
  */
 
+import { useCallback } from 'react';
 import { useWorkspaceStore } from '@features/workspace';
 import { usePanelConfigStore } from '@features/panels';
+import { panelManager } from '@features/panels/lib/PanelManager';
 import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
+
+/** Storage key for workspace layout (must match DockviewWorkspace) */
+const WORKSPACE_STORAGE_KEY = 'workspace-layout-v1';
 
 export function WorkspaceModule({ }: ControlCenterModuleProps) {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
@@ -19,10 +24,37 @@ export function WorkspaceModule({ }: ControlCenterModuleProps) {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
   const savePreset = useWorkspaceStore((s) => s.savePreset);
-  const loadPreset = useWorkspaceStore((s) => s.loadPreset);
-  const currentLayout = useWorkspaceStore((s) => s.getLayout('workspace'));
+  const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
+  const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
 
   const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
+
+  /** Get workspace dockview API from panelManager */
+  const getWorkspaceApi = useCallback(() => {
+    return panelManager.getPanelState('workspace')?.dockview?.api;
+  }, []);
+
+  const handleLoadPreset = useCallback((presetId: string) => {
+    const api = getWorkspaceApi();
+    if (!api) return;
+
+    const layout = getPresetLayout(presetId);
+    if (layout) {
+      api.fromJSON(layout);
+    } else {
+      localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+      window.location.reload();
+    }
+    setActivePreset('workspace', presetId);
+  }, [getWorkspaceApi, getPresetLayout, setActivePreset]);
+
+  const handleSavePreset = useCallback((name: string) => {
+    const api = getWorkspaceApi();
+    if (!api) return;
+
+    const layout = api.toJSON();
+    savePreset(name, 'workspace', layout);
+  }, [getWorkspaceApi, savePreset]);
 
   // Get enabled panels
   const enabledPanels = Object.values(panelConfigs).filter(p => p.enabled);
@@ -112,7 +144,7 @@ export function WorkspaceModule({ }: ControlCenterModuleProps) {
             {presets.slice(0, 3).map(preset => (
               <button
                 key={preset.id}
-                onClick={() => loadPreset(preset.id)}
+                onClick={() => handleLoadPreset(preset.id)}
                 className="w-full px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-left"
               >
                 <div className="font-medium">{preset.name}</div>
@@ -129,7 +161,7 @@ export function WorkspaceModule({ }: ControlCenterModuleProps) {
           onClick={() => {
             const name = prompt('Preset name:');
             if (name) {
-              savePreset(name, 'workspace', currentLayout);
+              handleSavePreset(name);
             }
           }}
           className="w-full px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"

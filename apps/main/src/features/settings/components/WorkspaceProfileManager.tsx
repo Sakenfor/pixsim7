@@ -5,13 +5,17 @@
  * Part of Task 50 Phase 50.2 - Panel Configuration UI
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useWorkspaceStore } from '@features/workspace';
+import { panelManager } from '@features/panels/lib/PanelManager';
+
+/** Storage key for workspace layout (must match DockviewWorkspace) */
+const WORKSPACE_STORAGE_KEY = 'workspace-layout-v1';
 
 export function WorkspaceProfileManager() {
   const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
-  const currentLayout = useWorkspaceStore((s) => s.getLayout('workspace'));
-  const loadPreset = useWorkspaceStore((s) => s.loadPreset);
+  const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
+  const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const deletePreset = useWorkspaceStore((s) => s.deletePreset);
   const setPresetGraphEditor = useWorkspaceStore((s) => s.setPresetGraphEditor);
@@ -19,13 +23,36 @@ export function WorkspaceProfileManager() {
   const [newPresetName, setNewPresetName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  const handleSavePreset = () => {
-    if (newPresetName.trim()) {
-      savePreset(newPresetName.trim(), 'workspace', currentLayout);
-      setNewPresetName('');
-      setShowCreateForm(false);
+  /** Get workspace dockview API from panelManager */
+  const getWorkspaceApi = useCallback(() => {
+    return panelManager.getPanelState('workspace')?.dockview?.api;
+  }, []);
+
+  const handleLoadPreset = useCallback((presetId: string) => {
+    const api = getWorkspaceApi();
+    if (!api) return;
+
+    const layout = getPresetLayout(presetId);
+    if (layout) {
+      api.fromJSON(layout);
+    } else {
+      localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+      window.location.reload();
     }
-  };
+    setActivePreset('workspace', presetId);
+  }, [getWorkspaceApi, getPresetLayout, setActivePreset]);
+
+  const handleSavePreset = useCallback(() => {
+    if (!newPresetName.trim()) return;
+
+    const api = getWorkspaceApi();
+    if (!api) return;
+
+    const layout = api.toJSON();
+    savePreset(newPresetName.trim(), 'workspace', layout);
+    setNewPresetName('');
+    setShowCreateForm(false);
+  }, [newPresetName, getWorkspaceApi, savePreset]);
 
   const handleDeletePreset = (id: string) => {
     if (confirm('Are you sure you want to delete this preset?')) {
@@ -93,7 +120,7 @@ export function WorkspaceProfileManager() {
               <ProfileCard
                 key={preset.id}
                 preset={preset}
-                onLoad={() => loadPreset(preset.id)}
+                onLoad={() => handleLoadPreset(preset.id)}
                 onDelete={() => handleDeletePreset(preset.id)}
                 onSetGraphEditorId={(graphEditorId) =>
                   setPresetGraphEditor(preset.id, graphEditorId)

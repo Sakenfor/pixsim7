@@ -8,6 +8,15 @@ import type { ConsoleModule } from "@lib/console/moduleRegistry";
 import { opsRegistry } from "@lib/console/opsRegistry";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSelectionStore } from "@/stores/selectionStore";
+import { panelManager } from "@features/panels/lib/PanelManager";
+
+/** Storage key for workspace layout (must match DockviewWorkspace) */
+const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
+
+/** Get the workspace dockview API */
+function getWorkspaceApi() {
+  return panelManager.getPanelState("workspace")?.dockview?.api;
+}
 
 function registerWorkspaceOps(): void {
   opsRegistry.registerCategory(
@@ -23,7 +32,22 @@ function registerWorkspaceOps(): void {
     execute: (presetId: unknown) => {
       if (typeof presetId !== "string")
         throw new Error("presetId must be a string");
-      useWorkspaceStore.getState().loadPreset(presetId);
+
+      const api = getWorkspaceApi();
+      if (!api) throw new Error("Workspace dockview not available");
+
+      const store = useWorkspaceStore.getState();
+      const layout = store.getPresetLayout(presetId);
+
+      if (layout) {
+        api.fromJSON(layout);
+      } else {
+        // Null layout means use default - would need to reset
+        localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+        throw new Error("Preset has null layout - please reload the page");
+      }
+
+      store.setActivePreset("workspace", presetId);
       return `Loaded preset: ${presetId}`;
     },
     params: [
@@ -42,8 +66,12 @@ function registerWorkspaceOps(): void {
     description: "Save current layout as a new preset",
     execute: (name: unknown) => {
       if (typeof name !== "string") throw new Error("name must be a string");
-      const store = useWorkspaceStore.getState();
-      store.savePreset(name, "workspace", store.getLayout("workspace"));
+
+      const api = getWorkspaceApi();
+      if (!api) throw new Error("Workspace dockview not available");
+
+      const layout = api.toJSON();
+      useWorkspaceStore.getState().savePreset(name, "workspace", layout);
       return `Saved preset: ${name}`;
     },
     params: [

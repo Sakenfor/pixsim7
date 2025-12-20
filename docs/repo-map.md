@@ -188,6 +188,45 @@ features/
 - Pure utilities or shared components
 - Existing aliased domains (`@/gizmos`, `@/narrative`, etc.)
 
+## Workspace & Dockview Architecture
+
+The workspace uses **SmartDockview** as the single layout engine for all dockview-based panels. Layout persistence is handled via localStorage, not backend storage.
+
+### Architecture Overview
+
+| Component | Persistence | Pattern |
+|-----------|-------------|---------|
+| **DockviewWorkspace** | localStorage (`workspace-layout-v1`) | SmartDockview registry mode |
+| **QuickGenerateDockview** | localStorage (`quickGenerate-dockview-layout:*`) | SmartDockview registry mode |
+| **AssetViewerDockview** | localStorage (`asset-viewer-layout-v2`) | SmartDockview registry mode |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `features/workspace/components/DockviewWorkspace.tsx` | Main workspace dockview |
+| `features/workspace/lib/workspacePanelRegistry.ts` | Workspace panel registry + default layout |
+| `features/workspace/stores/workspaceStore.ts` | Presets, floating panels, lock state |
+| `lib/dockview/SmartDockview.tsx` | Unified dockview wrapper with localStorage persistence |
+| `lib/dockview/useSmartDockview.ts` | Hook for layout persistence and tab visibility |
+| `features/panels/lib/PanelManager.ts` | Panel metadata and visibility tracking |
+
+### How It Works
+
+1. **SmartDockview** owns layout persistence via `storageKey` prop
+2. **Presets** are named snapshots stored in `workspaceStore.presets`
+   - Save: `api.toJSON()` → store in presets list
+   - Load: `api.fromJSON(preset.layout)` directly
+3. **Reset to default**: Clear localStorage + remount (via `resetDockviewLayout`)
+4. **PanelManager** tracks panel metadata and open/close state (no layout)
+
+### Adding a New Dockview Panel
+
+1. Create a `LocalPanelRegistry` with panel entries
+2. Create a `defaultLayout` function
+3. Use `SmartDockview` with `registry`, `storageKey`, and `defaultLayout` props
+4. Set `panelManagerId` if cross-dockview communication is needed
+
 ## Game Engine (`packages/game/engine/src`)
 
 - `narrative/` — Narrative runtime (ConditionEvaluator, EffectApplicator, executor, integration hooks, scene bridge).

@@ -5,9 +5,13 @@
  * Part of Task 50 Phase 50.2 - Panel Configuration UI
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { usePanelConfigStore } from "@features/panels";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { panelManager } from "@features/panels/lib/PanelManager";
+
+/** Storage key for workspace layout (must match DockviewWorkspace) */
+const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
 
 export function QuickPanelSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
@@ -18,7 +22,8 @@ export function QuickPanelSwitcher() {
   const getEnabledPanels = usePanelConfigStore((s) => s.getEnabledPanels);
 
   const presets = useWorkspaceStore((s) => s.presets);
-  const loadPreset = useWorkspaceStore((s) => s.loadPreset);
+  const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
+  const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
 
@@ -53,10 +58,21 @@ export function QuickPanelSwitcher() {
     setIsOpen(false);
   };
 
-  const handleLoadPreset = (presetId: string) => {
-    loadPreset(presetId);
+  const handleLoadPreset = useCallback((presetId: string) => {
+    const api = panelManager.getPanelState("workspace")?.dockview?.api;
+    if (!api) return;
+
+    const layout = getPresetLayout(presetId);
+    if (layout) {
+      api.fromJSON(layout);
+    } else {
+      // Null layout means use default - reset
+      localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+      window.location.reload();
+    }
+    setActivePreset("workspace", presetId);
     setIsOpen(false);
-  };
+  }, [getPresetLayout, setActivePreset]);
 
   return (
     <div className="relative" ref={dropdownRef}>

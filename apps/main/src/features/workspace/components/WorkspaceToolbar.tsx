@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
 import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";
 import { RestoreClosedPanelsMenu } from "./workspace-toolbar/RestoreClosedPanelsMenu";
 import { SavePresetDialog } from "./workspace-toolbar/SavePresetDialog";
+import { panelManager } from "@features/panels/lib/PanelManager";
+
+/** Storage key for workspace layout (must match DockviewWorkspace) */
+const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
 
 export function WorkspaceToolbar() {
   const [showPresets, setShowPresets] = useState(false);
@@ -11,8 +15,9 @@ export function WorkspaceToolbar() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   const presets = useWorkspaceStore((s) => s.getPresetsForScope("workspace"));
-  const loadPreset = useWorkspaceStore((s) => s.loadPreset);
   const savePreset = useWorkspaceStore((s) => s.savePreset);
+  const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
+  const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const deletePreset = useWorkspaceStore((s) => s.deletePreset);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
@@ -20,12 +25,44 @@ export function WorkspaceToolbar() {
   const isLocked = useWorkspaceStore((s) => s.isLocked);
   const toggleLock = useWorkspaceStore((s) => s.toggleLock);
   const reset = useWorkspaceStore((s) => s.reset);
-  const currentLayout = useWorkspaceStore((s) => s.getLayout("workspace"));
 
-  const handleSavePreset = (name: string) => {
-    savePreset(name, "workspace", currentLayout);
+  /** Get workspace dockview API from panelManager */
+  const getWorkspaceApi = useCallback(() => {
+    return panelManager.getPanelState("workspace")?.dockview?.api;
+  }, []);
+
+  const handleLoadPreset = useCallback((presetId: string) => {
+    const api = getWorkspaceApi();
+    if (!api) return;
+
+    const layout = getPresetLayout(presetId);
+    if (layout) {
+      api.fromJSON(layout);
+    } else {
+      // Null layout means use default - reset
+      localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+      // Force remount by reloading (or we could trigger a state change)
+      window.location.reload();
+    }
+    setActivePreset("workspace", presetId);
+  }, [getWorkspaceApi, getPresetLayout, setActivePreset]);
+
+  const handleSavePreset = useCallback((name: string) => {
+    const api = getWorkspaceApi();
+    if (!api) return;
+
+    const layout = api.toJSON();
+    savePreset(name, "workspace", layout);
     setShowSaveDialog(false);
-  };
+  }, [getWorkspaceApi, savePreset]);
+
+  const handleReset = useCallback(() => {
+    // Clear layout from localStorage and reset store state
+    localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    reset();
+    // Reload to apply default layout
+    window.location.reload();
+  }, [reset]);
 
   return (
     <div className="border-b px-3 py-2 flex gap-2 items-center bg-neutral-50 dark:bg-neutral-800 relative">
@@ -57,7 +94,7 @@ export function WorkspaceToolbar() {
         <PresetsDropdown
           isOpen={showPresets}
           presets={presets}
-          onLoadPreset={loadPreset}
+          onLoadPreset={handleLoadPreset}
           onDeletePreset={deletePreset}
           onSaveClick={() => setShowSaveDialog(true)}
           onClose={() => setShowPresets(false)}
@@ -100,7 +137,7 @@ export function WorkspaceToolbar() {
       {/* Reset */}
       <button
         className="text-xs px-2 py-1 border rounded text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-        onClick={reset}
+        onClick={handleReset}
       >
         Reset
       </button>

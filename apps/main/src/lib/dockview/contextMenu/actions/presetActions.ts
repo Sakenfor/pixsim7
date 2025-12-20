@@ -35,7 +35,7 @@ export const savePresetAction: MenuAction = {
   label: 'Save Layout as Preset...',
   icon: 'save',
   category: 'preset',
-  availableIn: ['background'],
+  availableIn: ['background', 'tab', 'panel-content'],
   visible: (ctx) => !!ctx.api,
   execute: async (ctx) => {
     if (!ctx.api) return;
@@ -63,7 +63,7 @@ export const loadPresetAction: MenuAction = {
   label: 'Load Preset',
   icon: 'folder-open',
   category: 'preset',
-  availableIn: ['background'],
+  availableIn: ['background', 'tab', 'panel-content'],
   visible: (ctx) => !!ctx.workspaceStore,
   children: (ctx) => {
     const presets = getPresetsForScope(ctx);
@@ -83,9 +83,21 @@ export const loadPresetAction: MenuAction = {
       label: `${preset.icon || '📋'} ${preset.name}`,
       availableIn: ['background'] as const,
       execute: () => {
-        if (ctx.workspaceStore) {
-          ctx.workspaceStore.getState().loadPreset(preset.id);
+        if (!ctx.workspaceStore || !ctx.api) return;
+        const state = ctx.workspaceStore.getState();
+        const layout = state.getPresetLayout(preset.id);
+
+        if (layout) {
+          // Apply layout via dockview API
+          ctx.api.fromJSON(layout);
+        } else if (ctx.resetDockviewLayout) {
+          // Preset has null layout (use default) - reset to default
+          ctx.resetDockviewLayout();
         }
+
+        // Update active preset in store
+        const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+        state.setActivePreset(scope, preset.id);
       },
     }));
   },
@@ -101,7 +113,7 @@ export const deletePresetAction: MenuAction = {
   icon: 'trash',
   category: 'preset',
   variant: 'danger',
-  availableIn: ['background'],
+  availableIn: ['background', 'tab', 'panel-content'],
   visible: (ctx) => {
     if (!ctx.workspaceStore) return false;
     const presets = getPresetsForScope(ctx);
@@ -145,15 +157,23 @@ export const resetLayoutAction: MenuAction = {
   icon: 'rotate-ccw',
   category: 'preset',
   divider: true,
-  availableIn: ['background'],
-  visible: (ctx) => !!ctx.workspaceStore,
+  availableIn: ['background', 'tab', 'panel-content'],
+  visible: (ctx) => !!ctx.resetDockviewLayout,
   execute: (ctx) => {
-    if (!ctx.workspaceStore) return;
-
-    const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
-
     if (window.confirm('Reset layout to default? This will lose any unsaved changes.')) {
-      ctx.workspaceStore.getState().resetScope(scope);
+      if (ctx.resetDockviewLayout) {
+        ctx.resetDockviewLayout();
+
+        // Reset active preset to default for this scope
+        if (ctx.workspaceStore) {
+          const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+          const state = ctx.workspaceStore.getState();
+          const defaultPreset = state.presets.find(
+            (p) => p.isDefault && p.scope === scope
+          );
+          state.setActivePreset(scope, defaultPreset?.id ?? null);
+        }
+      }
     }
   },
 };

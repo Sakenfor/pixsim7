@@ -12,6 +12,7 @@ import { useWorldContextStore } from '@/stores/worldContextStore';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
+import { panelManager } from '@features/panels/lib/PanelManager';
 
 /**
  * Get a snapshot of the current editor context (non-hook version)
@@ -26,13 +27,13 @@ export function getEditorContextSnapshot(): EditorContext {
   const gameContext = useGameStateStore.getState().context;
   const workspaceState = useWorkspaceStore.getState();
   const activePresetId = workspaceState.getActivePresetId('workspace');
-  const dockviewLayout = workspaceState.getLayout('workspace');
 
-  // Derive active panels
+  // Get active panels from dockview API
   const activePanels: string[] = [];
-  if (dockviewLayout?.panels && Array.isArray((dockviewLayout as any).panels)) {
-    for (const p of (dockviewLayout as any).panels) {
-      const panelId = p?.params?.panelId;
+  const api = panelManager.getPanelState('workspace')?.dockview?.api;
+  if (api) {
+    for (const panel of api.panels) {
+      const panelId = panel.params?.panelId;
       if (typeof panelId === 'string') {
         activePanels.push(panelId);
       }

@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import { useWorkspaceStore, type PanelId } from "../../stores/workspaceStore";
+import { useMemo, useState, useEffect } from "react";
+import { type PanelId } from "../../stores/workspaceStore";
 import { Icon } from "@lib/icons";
 import { panelRegistry } from "@features/panels";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
+import { panelManager } from "@features/panels/lib/PanelManager";
 
 interface AddPanelDropdownProps {
   onRestorePanel: (panelId: PanelId) => void;
@@ -13,23 +14,22 @@ export function AddPanelDropdown({
   onRestorePanel,
   onClose,
 }: AddPanelDropdownProps) {
-  const layout = useWorkspaceStore((s) => s.getLayout("workspace"));
+  const [existingPanels, setExistingPanels] = useState<Set<PanelId>>(new Set());
 
-  const existingPanels = useMemo(() => {
+  // Get existing panels from the dockview API
+  useEffect(() => {
+    const api = panelManager.getPanelState("workspace")?.dockview?.api;
+    if (!api) return;
+
     const ids = new Set<PanelId>();
-    const layoutPanels = (layout as any)?.panels;
-
-    if (Array.isArray(layoutPanels)) {
-      for (const panel of layoutPanels) {
-        const panelId = panel?.params?.panelId;
-        if (typeof panelId === "string") {
-          ids.add(panelId as PanelId);
-        }
+    for (const panel of api.panels) {
+      const panelId = panel.params?.panelId;
+      if (typeof panelId === "string") {
+        ids.add(panelId as PanelId);
       }
     }
-
-    return ids;
-  }, [layout]);
+    setExistingPanels(ids);
+  }, []);
   const allPanels = panelRegistry.getPublicPanels();
 
   // Group panels by category
