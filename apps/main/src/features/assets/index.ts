@@ -12,6 +12,7 @@ export { CuratorGallerySurface } from './components/CuratorGallerySurface';
 export { DebugGallerySurface } from './components/DebugGallerySurface';
 export { DefaultGallerySurface } from './components/DefaultGallerySurface';
 export { ReviewGallerySurface } from './components/ReviewGallerySurface';
+export { AssetDetailModal } from './components/AssetDetailModal';
 
 // ============================================================================
 // Components - Asset Sources & Panels
@@ -61,6 +62,8 @@ export { useAssetPickerStore } from './stores/assetPickerStore';
 
 export { useAssetSelectionStore } from './stores/assetSelectionStore';
 
+export { useAssetDetailStore } from './stores/assetDetailStore';
+
 export {
   useAssetViewerStore,
   selectIsViewerOpen,
@@ -90,6 +93,12 @@ export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
 // ============================================================================
 
 export { assetEvents } from './lib/assetEvents';
+
+export {
+  assetContextCache,
+  useRegisterAssetContext,
+  registerAssetResolver,
+} from './lib/assetContextResolver';
 
 export {
   deleteAsset,

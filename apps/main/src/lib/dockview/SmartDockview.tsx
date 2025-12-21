@@ -56,6 +56,8 @@ import {
   useContextMenuOptional,
   DockviewIdProvider,
   useDockviewId,
+  extractContextFromElement,
+  contextDataRegistry,
 } from './contextMenu';
 
 /** Base props shared by both modes */
@@ -415,6 +417,28 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
             event.preventDefault();
             event.stopPropagation();
+
+            // Check for component-level context (data-context-type attribute)
+            const componentContext = extractContextFromElement(event.target);
+            if (componentContext) {
+              // Resolve full data from registry
+              const resolvedData = contextDataRegistry.resolve(
+                componentContext.type,
+                componentContext.id,
+              );
+              menu.showContextMenu({
+                contextType: componentContext.type,
+                position: { x: event.clientX, y: event.clientY },
+                data: resolvedData ?? {
+                  id: componentContext.id,
+                  name: componentContext.label,
+                },
+                currentDockviewId: dockviewId,
+              });
+              return;
+            }
+
+            // Fall back to panel-content context
             menu.showContextMenu({
               contextType: 'panel-content',
               position: { x: event.clientX, y: event.clientY },
@@ -465,6 +489,27 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
             event.preventDefault();
             event.stopPropagation();
+
+            // Check for component-level context (data-context-type attribute)
+            const componentContext = extractContextFromElement(event.target);
+            if (componentContext) {
+              const resolvedData = contextDataRegistry.resolve(
+                componentContext.type,
+                componentContext.id,
+              );
+              menu.showContextMenu({
+                contextType: componentContext.type,
+                position: { x: event.clientX, y: event.clientY },
+                data: resolvedData ?? {
+                  id: componentContext.id,
+                  name: componentContext.label,
+                },
+                currentDockviewId: dockviewId,
+              });
+              return;
+            }
+
+            // Fall back to panel-content context
             menu.showContextMenu({
               contextType: 'panel-content',
               position: { x: event.clientX, y: event.clientY },
@@ -516,6 +561,27 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
           event.preventDefault();
           event.stopPropagation();
+
+          // Check for component-level context (data-context-type attribute)
+          const componentContext = extractContextFromElement(event.target);
+          if (componentContext) {
+            const resolvedData = contextDataRegistry.resolve(
+              componentContext.type,
+              componentContext.id,
+            );
+            menu.showContextMenu({
+              contextType: componentContext.type,
+              position: { x: event.clientX, y: event.clientY },
+              data: resolvedData ?? {
+                id: componentContext.id,
+                name: componentContext.label,
+              },
+              currentDockviewId: dockviewId,
+            });
+            return;
+          }
+
+          // Fall back to panel-content context
           menu.showContextMenu({
             contextType: 'panel-content',
             position: { x: event.clientX, y: event.clientY },

@@ -12,6 +12,7 @@ export * from './PanelPropertiesPopup';
 export * from './CustomTabComponent';
 export * from './DockviewIdContext';
 export * from './useComponentContextMenu';
+export * from './contextDataResolver';
 export { contextMenuRegistry } from './ContextMenuRegistry';
 
 // Actions - import to register with the global registry

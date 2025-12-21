@@ -50,6 +50,7 @@ import { PanelPropertiesPopup } from '@lib/dockview/contextMenu';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
+import { registerAssetResolver } from '@features/assets';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -77,8 +78,9 @@ function App() {
     registerModules();
     moduleRegistry.initializeAll();
 
-    // Register context menu actions
+    // Register context menu actions and data resolvers
     registerContextMenuActions();
+    registerAssetResolver();
 
     // Initialize auth state
     initialize();
