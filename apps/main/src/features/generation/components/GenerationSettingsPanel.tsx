@@ -9,8 +9,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationWorkbench, useGenerationQueueStore } from '@features/generation';
+import { useGenerationWorkbench, useGenerationQueueStore, useGenerationScopeStores } from '@features/generation';
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { estimatePixverseCost } from '@features/providers';
 import { OPERATION_METADATA } from '@/types/operations';
@@ -154,10 +153,11 @@ export function GenerationSettingsPanel({
   excludeParams = ['image_url', 'image_urls', 'negative_prompt', 'prompt'],
   error,
 }: GenerationSettingsPanelProps) {
-  const operationType = useControlCenterStore(s => s.operationType);
-  const providerId = useControlCenterStore(s => s.providerId);
-  const setProvider = useControlCenterStore(s => s.setProvider);
-  const setOperationType = useControlCenterStore(s => s.setOperationType);
+  const { useSessionStore } = useGenerationScopeStores();
+  const operationType = useSessionStore(s => s.operationType);
+  const providerId = useSessionStore(s => s.providerId);
+  const setProvider = useSessionStore(s => s.setProvider);
+  const setOperationType = useSessionStore(s => s.setOperationType);
 
   // Input mode for optional multi-asset operations
   // Subscribe directly to operationInputModePrefs to trigger re-render on changes

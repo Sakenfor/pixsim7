@@ -1,9 +1,20 @@
+import { useCallback } from "react";
 import type { IDockviewPanelProps } from "dockview-core";
 import { PromptInput } from "@pixsim7/shared.ui";
 import { GenerationSettingsPanel } from "@features/generation";
 import { Icon } from "@lib/icons";
 import type { ViewerAsset } from "@features/assets";
 import type { GenerationResponse } from "@lib/api/generations";
+import {
+  CAP_PROMPT_BOX,
+  CAP_ASSET_INPUT,
+  CAP_GENERATE_ACTION,
+  useCapability,
+  useProvideCapability,
+  type PromptBoxContext,
+  type AssetInputContext,
+  type GenerateActionContext,
+} from "@features/contextHub";
 
 export type ViewerQuickGenSettingsMode = "asset" | "controlCenter";
 
@@ -27,20 +38,52 @@ export interface ViewerQuickGenContext {
 type PanelProps = IDockviewPanelProps & { context?: ViewerQuickGenContext };
 
 export function ViewerQuickGenPromptPanel({ context }: PanelProps) {
-  if (!context) {
-    return null;
-  }
+  const noop = useCallback((..._args: any[]) => {}, []);
+  const asset = context?.asset ?? null;
+  const activePrompt = context?.activePrompt ?? "";
+  const setActivePrompt = context?.setActivePrompt ?? noop;
+  const maxChars = context?.maxChars ?? 0;
+  const generating = context?.generating ?? false;
+  const activeError = context?.activeError ?? null;
+  const assetLoading = context?.assetLoading ?? false;
+  const settingsMode = context?.settingsMode ?? "controlCenter";
+  const handleKeyDown = context?.handleKeyDown ?? noop;
+  const isReady = !!context;
 
-  const {
-    activePrompt,
-    setActivePrompt,
-    maxChars,
-    generating,
-    activeError,
-    assetLoading,
-    settingsMode,
-    handleKeyDown,
-  } = context;
+  useProvideCapability<PromptBoxContext>(
+    CAP_PROMPT_BOX,
+    {
+      id: "viewer-quickgen:prompt-box",
+      label: "Prompt Box",
+      priority: 50,
+      isAvailable: () => isReady,
+      getValue: () => ({
+        prompt: activePrompt,
+        setPrompt: setActivePrompt,
+        maxChars,
+      }),
+    },
+    [activePrompt, setActivePrompt, maxChars, isReady],
+  );
+
+  useProvideCapability<AssetInputContext>(
+    CAP_ASSET_INPUT,
+    {
+      id: "viewer-quickgen:asset-input",
+      label: "Asset Input",
+      priority: 40,
+      isAvailable: () => isReady,
+      getValue: () => ({
+        assets: asset ? [asset] : [],
+        supportsMulti: false,
+      }),
+    },
+    [asset, isReady],
+  );
+
+  if (!context) {
+    return <div className="h-full w-full" />;
+  }
 
   return (
     <div className="h-full w-full p-2 flex flex-col gap-2">
@@ -76,21 +119,42 @@ export function ViewerQuickGenPromptPanel({ context }: PanelProps) {
 }
 
 export function ViewerQuickGenSettingsPanel({ context }: PanelProps) {
-  if (!context) {
-    return null;
-  }
+  const { value: promptBox } = useCapability<PromptBoxContext>(CAP_PROMPT_BOX);
+  const noop = useCallback((..._args: any[]) => {}, []);
+  const settingsMode = context?.settingsMode ?? "controlCenter";
+  const setSettingsMode = context?.setSettingsMode ?? noop;
+  const hasSourceGeneration = context?.hasSourceGeneration ?? false;
+  const assetGeneration = context?.assetGeneration ?? null;
+  const assetLoading = context?.assetLoading ?? false;
+  const generating = context?.generating ?? false;
+  const canGenerate = context?.canGenerate ?? false;
+  const handleGenerate = context?.handleGenerate ?? noop;
+  const activeError = context?.activeError ?? null;
+  const isReady = !!context;
 
-  const {
-    settingsMode,
-    setSettingsMode,
-    hasSourceGeneration,
-    assetGeneration,
-    assetLoading,
-    generating,
-    canGenerate,
-    handleGenerate,
-    activeError,
-  } = context;
+  const resolvedCanGenerate =
+    promptBox?.prompt?.trim().length ? promptBox.prompt.trim().length > 0 : canGenerate;
+
+  useProvideCapability<GenerateActionContext>(
+    CAP_GENERATE_ACTION,
+    {
+      id: "viewer-quickgen:generate-action",
+      label: "Generate Action",
+      priority: 40,
+      isAvailable: () => isReady,
+      getValue: () => ({
+        canGenerate: resolvedCanGenerate,
+        generating,
+        error: activeError,
+        generate: handleGenerate,
+      }),
+    },
+    [resolvedCanGenerate, generating, activeError, handleGenerate, isReady],
+  );
+
+  if (!context) {
+    return <div className="h-full w-full" />;
+  }
 
   return (
     <div className="h-full p-2 space-y-2">
@@ -143,7 +207,7 @@ export function ViewerQuickGenSettingsPanel({ context }: PanelProps) {
         <GenerationSettingsPanel
           showOperationType={true}
           generating={generating}
-          canGenerate={canGenerate}
+          canGenerate={resolvedCanGenerate}
           onGenerate={handleGenerate}
           error={activeError || undefined}
         />

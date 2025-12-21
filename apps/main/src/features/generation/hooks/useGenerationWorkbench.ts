@@ -1,6 +1,5 @@
 import { useMemo, useEffect, useCallback } from 'react';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
+import { useGenerationScopeStores } from './useGenerationScope';
 import { useProviders } from '@features/providers';
 import { useProviderSpecs } from '@features/providers';
 import type { ParamSpec } from '../components/control/DynamicParamForm';
@@ -100,27 +99,29 @@ export function useGenerationWorkbench(
     excludeParams = ['prompt', 'image_urls', 'prompts'],
   } = options;
 
+  const { useSessionStore, useSettingsStore } = useGenerationScopeStores();
+
   // Core state from stores
-  const storeOperationType = useControlCenterStore(s => s.operationType);
-  const storeProviderId = useControlCenterStore(s => s.providerId);
-  const presetId = useControlCenterStore(s => s.presetId);
-  const presetParams = useControlCenterStore(s => s.presetParams);
-  const generating = useControlCenterStore(s => s.generating);
-  const setStoreProvider = useControlCenterStore(s => s.setProvider);
+  const storeOperationType = useSessionStore((s) => s.operationType);
+  const storeProviderId = useSessionStore((s) => s.providerId);
+  const presetId = useSessionStore((s) => s.presetId);
+  const presetParams = useSessionStore((s) => s.presetParams);
+  const generating = useSessionStore((s) => s.generating);
+  const setStoreProvider = useSessionStore((s) => s.setProvider);
 
   // Use override or store values
   const operationType = options.operationType ?? storeOperationType;
   const providerId = options.providerId ?? storeProviderId;
 
   // Dynamic params and settings visibility from settings store
-  const dynamicParams = useGenerationSettingsStore(s => s.params);
-  const setDynamicParams = useGenerationSettingsStore(s => s.setDynamicParams);
-  const showSettings = useGenerationSettingsStore(s => s.showSettings);
-  const setShowSettings = useGenerationSettingsStore(s => s.setShowSettings);
-  const toggleSettings = useGenerationSettingsStore(s => s.toggleSettings);
-  const hasHydrated = useGenerationSettingsStore(s => s._hasHydrated);
-  const setActiveOperationType = useGenerationSettingsStore(s => s.setActiveOperationType);
-  const activeOperationType = useGenerationSettingsStore(s => s.activeOperationType);
+  const dynamicParams = useSettingsStore((s) => s.params);
+  const setDynamicParams = useSettingsStore((s) => s.setDynamicParams);
+  const showSettings = useSettingsStore((s) => s.showSettings);
+  const setShowSettings = useSettingsStore((s) => s.setShowSettings);
+  const toggleSettings = useSettingsStore((s) => s.toggleSettings);
+  const hasHydrated = useSettingsStore((s) => s._hasHydrated);
+  const setActiveOperationType = useSettingsStore((s) => s.setActiveOperationType);
+  const activeOperationType = useSettingsStore((s) => s.activeOperationType);
 
   // Sync operation type to settings store for per-operation params
   useEffect(() => {

@@ -60,6 +60,11 @@ export {
   CATEGORY_ORDER,
   type PanelCategory,
 } from "./lib/panelConstants";
+export {
+  panelSettingsScopeRegistry,
+  type PanelSettingsScopeDefinition,
+  type PanelSettingsScopeMode,
+} from "./lib/panelSettingsScopes";
 
 export {
   type PanelPlugin,
@@ -87,6 +92,12 @@ export {
   type PanelConfigActions,
   type GalleryPanelSettings,
 } from "./stores/panelConfigStore";
+export {
+  usePanelInstanceSettingsStore,
+  type PanelInstanceSettings,
+  type PanelInstanceSettingsState,
+  type PanelInstanceSettingsActions,
+} from "./stores/panelInstanceSettingsStore";
 
 // Re-export lib index for convenience
 export * from "./lib";

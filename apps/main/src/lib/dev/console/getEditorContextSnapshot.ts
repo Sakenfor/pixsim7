@@ -5,8 +5,8 @@
  * Returns a snapshot of the current editor context by reading from stores directly.
  */
 
-import type { EditorContext } from '../context/editorContext';
-import { derivePrimaryView, deriveEditorMode } from '../context/deriveEditorState';
+import type { EditorContext } from '@lib/context';
+import { derivePrimaryView, deriveEditorMode } from '@lib/context';
 import { useWorkspaceStore } from '@features/workspace';
 import { useWorldContextStore } from '@/stores/worldContextStore';
 import { useGraphStore, type GraphState } from '@features/graph';

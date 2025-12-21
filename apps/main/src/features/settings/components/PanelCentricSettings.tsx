@@ -6,24 +6,30 @@
  * - Right panel: All settings for the selected panel
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   getAllPanelMetadata,
   type PanelMetadata,
   panelRegistry,
   usePanelConfigStore,
+  panelSettingsScopeRegistry,
+  type PanelSettingsScopeMode,
+  usePanelInstanceSettingsStore,
 } from '@features/panels';
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+import { usePanelSettingsUiStore } from '../stores/panelSettingsUiStore';
 
 // Stable empty object to avoid re-renders
 const EMPTY_SETTINGS = {};
 
 interface PanelDetailViewProps {
   metadata: PanelMetadata;
+  selectedInstanceId?: string | null;
+  onClearInstance?: () => void;
 }
 
-function PanelDetailView({ metadata }: PanelDetailViewProps) {
+function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: PanelDetailViewProps) {
   const allPanels = useMemo(() => getAllPanelMetadata(), []);
   // Get panel definition from registry (for panel-specific settings)
   const panelDefinition = useMemo(
@@ -69,8 +75,94 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
   // Get helpers for panel settings
   const helpers = usePanelSettingsHelpers(metadata.id, panelSettings, onUpdateSettings);
 
+  const [scopeDefinitions, setScopeDefinitions] = useState(() =>
+    panelSettingsScopeRegistry.getAll()
+  );
+
+  useEffect(() => {
+    return panelSettingsScopeRegistry.subscribe(() => {
+      setScopeDefinitions(panelSettingsScopeRegistry.getAll());
+    });
+  }, []);
+
+  const instanceScopes = usePanelInstanceSettingsStore((state) =>
+    selectedInstanceId ? state.instances[selectedInstanceId]?.scopes ?? {} : {}
+  );
+  const setScope = usePanelInstanceSettingsStore((state) => state.setScope);
+
   const tabs = useMemo(() => {
     const baseTabs: Array<{ id: string; label: string; order: number; content: JSX.Element }> = [];
+
+    if (selectedInstanceId) {
+      baseTabs.push({
+        id: "instance-settings",
+        label: "Instance",
+        order: 5,
+        content: (
+          <div className="space-y-3">
+            <div className="text-xs text-neutral-500">
+              Instance: <span className="font-mono">{selectedInstanceId}</span>
+            </div>
+
+            {scopeDefinitions.length === 0 ? (
+              <div className="text-sm text-neutral-500">
+                No instance-scoped settings available.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {scopeDefinitions.map((scope) => {
+                  const mode =
+                    (instanceScopes?.[scope.id] ?? scope.defaultMode ?? "global") as PanelSettingsScopeMode;
+
+                  return (
+                    <div
+                      key={scope.id}
+                      className="flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                          {scope.label}
+                        </div>
+                        {scope.description && (
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            {scope.description}
+                          </div>
+                        )}
+                      </div>
+                      <select
+                        value={mode}
+                        onChange={(event) =>
+                          setScope(
+                            selectedInstanceId,
+                            metadata.id,
+                            scope.id,
+                            event.target.value as PanelSettingsScopeMode
+                          )
+                        }
+                        className="text-xs border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 bg-white dark:bg-neutral-900"
+                      >
+                        <option value="global">Global</option>
+                        <option value="local">Local</option>
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {onClearInstance && (
+              <button
+                type="button"
+                onClick={onClearInstance}
+                className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+              >
+                Clear instance selection
+              </button>
+            )}
+          </div>
+        ),
+      });
+    }
 
     if (hasPanelSettings && panelDefinition) {
       baseTabs.push({
@@ -220,6 +312,10 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
     return baseTabs.sort((a, b) => a.order - b.order);
   }, [
     allPanels,
+    instanceScopes,
+    scopeDefinitions,
+    selectedInstanceId,
+    setScope,
     hasCustomTabs,
     hasInteractionRules,
     hasPanelSettings,
@@ -229,6 +325,7 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
     metadata.retraction,
     panelDefinition,
     panelSettings,
+    onClearInstance,
   ]);
 
   const [activeTabId, setActiveTabId] = useState<string | null>(
@@ -316,8 +413,17 @@ function PanelDetailView({ metadata }: PanelDetailViewProps) {
 
 export function PanelCentricSettings() {
   const allPanels = useMemo(() => getAllPanelMetadata(), []);
-  const [selectedPanelId, setSelectedPanelId] = useState<string>(allPanels[0]?.id);
+  const selectedPanelId = usePanelSettingsUiStore((state) => state.selectedPanelId);
+  const selectedInstanceId = usePanelSettingsUiStore((state) => state.selectedInstanceId);
+  const setSelection = usePanelSettingsUiStore((state) => state.setSelection);
+  const clearInstanceSelection = usePanelSettingsUiStore((state) => state.clearInstanceSelection);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (!selectedPanelId && allPanels.length > 0) {
+      setSelection(allPanels[0].id, null);
+    }
+  }, [selectedPanelId, allPanels, setSelection]);
 
   // Filter panels by search
   const filteredPanels = useMemo(() => {
@@ -360,7 +466,7 @@ export function PanelCentricSettings() {
               {filteredPanels.map((panel) => (
                 <button
                   key={panel.id}
-                  onClick={() => setSelectedPanelId(panel.id)}
+                  onClick={() => setSelection(panel.id, null)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-colors ${
                     selectedPanelId === panel.id
                       ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100'
@@ -386,7 +492,11 @@ export function PanelCentricSettings() {
       {/* Right Panel - Panel Details */}
       <div className="flex-1 bg-white dark:bg-neutral-900">
         {selectedPanel ? (
-          <PanelDetailView metadata={selectedPanel} />
+          <PanelDetailView
+            metadata={selectedPanel}
+            selectedInstanceId={selectedInstanceId}
+            onClearInstance={clearInstanceSelection}
+          />
         ) : (
           <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
             Select a panel to view its settings

@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, Suspense } from 'react';
 import { settingsRegistry, type SettingsModule } from '@features/settings';
+import { useSettingsUiStore } from '../stores/settingsUiStore';
 
 // Import modules to trigger registration
 import './modules';
@@ -51,10 +52,8 @@ function SettingsTabContent({ module }: { module: SettingsModule }) {
 
 export function SettingsPanel() {
   const [modules, setModules] = useState<SettingsModule[]>(() => settingsRegistry.getAll());
-  const [activeTabId, setActiveTabId] = useState<string>(() => {
-    const all = settingsRegistry.getAll();
-    return all.length > 0 ? all[0].id : '';
-  });
+  const activeTabId = useSettingsUiStore((state) => state.activeTabId);
+  const setActiveTabId = useSettingsUiStore((state) => state.setActiveTabId);
 
   // Subscribe to registry changes
   useEffect(() => {
@@ -67,7 +66,13 @@ export function SettingsPanel() {
       }
     });
     return unsubscribe;
-  }, [activeTabId]);
+  }, [activeTabId, setActiveTabId]);
+
+  useEffect(() => {
+    if (!activeTabId && modules.length > 0) {
+      setActiveTabId(modules[0].id);
+    }
+  }, [activeTabId, modules, setActiveTabId]);
 
   const activeModule = modules.find(m => m.id === activeTabId);
 

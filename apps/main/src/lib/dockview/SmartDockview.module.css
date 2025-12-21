@@ -63,6 +63,11 @@
   padding: 2px 4px;
 }
 
+/* Hide tabs when group has a single panel (JS toggles dv-tabs-hidden) */
+.smartDockview :global(.dv-tabs-hidden .dv-tabs-and-actions-container) {
+  display: none;
+}
+
 /* Hide default tab close buttons (optional - can be enabled per-panel) */
 .smartDockview :global(.dv-default-tab-action) {
   display: none;

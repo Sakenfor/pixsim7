@@ -28,7 +28,12 @@ export type PanelId =
   | "world-context"
   | "edge-effects"
   | "console"
-  | "model-inspector";
+  | "model-inspector"
+  | "quickgen-asset"
+  | "quickgen-prompt"
+  | "quickgen-settings"
+  | "quickgen-blocks"
+  | "media-preview";
 
 /**
  * Preset scope determines which dockviews a preset applies to

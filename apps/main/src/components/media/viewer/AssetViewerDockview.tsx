@@ -17,9 +17,8 @@
 
 import { useMemo, useState, useCallback } from 'react';
 import type { DockviewApi } from 'dockview-core';
-import { SmartDockview } from '@lib/dockview';
-import { viewerPanelRegistry } from './viewerPanelRegistry';
-import type { ViewerPanelContext, ViewerSettings } from './types';
+import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
+import type { ViewerSettings } from './types';
 import type { ViewerAsset } from '@features/assets';
 
 export interface AssetViewerDockviewProps {
@@ -49,6 +48,8 @@ export interface AssetViewerDockviewProps {
   panelManagerId?: string;
 }
 
+const emptyViewerRegistry = createLocalPanelRegistry<string>();
+
 /**
  * Create the default panel layout
  */
@@ -57,8 +58,8 @@ function createDefaultLayout(api: DockviewApi, _registry?: any) {
 
   // Media panel takes the top area
   api.addPanel({
-    id: 'media',
-    component: 'media',
+    id: 'media-preview',
+    component: 'media-preview',
     title: 'Preview',
   });
   console.log('[AssetViewerDockview] Added media panel');
@@ -70,7 +71,7 @@ function createDefaultLayout(api: DockviewApi, _registry?: any) {
     title: 'Generate',
     position: {
       direction: 'below',
-      referencePanel: 'media',
+      referencePanel: 'media-preview',
     },
   });
   console.log('[AssetViewerDockview] Added quickGenerate panel (global)');
@@ -98,7 +99,7 @@ function createDefaultLayout(api: DockviewApi, _registry?: any) {
       title: 'Metadata',
       position: {
         direction: 'below',
-        referencePanel: 'media',
+        referencePanel: 'media-preview',
       },
     });
     console.log('[AssetViewerDockview] Added info panel (global) as separate panel');
@@ -180,14 +181,10 @@ export function AssetViewerDockview({
     setDockviewApi(api);
   }, []);
 
-  // Log registry info for debugging
-  console.log('[AssetViewerDockview] Registry panels:', viewerPanelRegistry.getAll().map(p => p.id));
-  console.log('[AssetViewerDockview] Using global panels: quickGenerate, info');
-
   return (
     <SmartDockview
-      registry={viewerPanelRegistry}
-      storageKey="asset-viewer-layout-v2" // Changed key to force new layout
+      registry={emptyViewerRegistry}
+      storageKey="asset-viewer-dockview-layout:v3" // Changed key to force new layout
       context={context}
       defaultLayout={createDefaultLayout}
       minPanelsForTabs={2}
@@ -195,11 +192,13 @@ export function AssetViewerDockview({
       panelManagerId={panelManagerId}
       globalPanelIds={['quickGenerate', 'info']}
       panelRegistryOverrides={{
+        'media-preview': { title: 'Preview' },
         quickGenerate: { title: 'Generate' },
         info: { title: 'Metadata' },
       }}
       onReady={handleReady}
       enableContextMenu
+      includeGlobalPanels
     />
   );
 }

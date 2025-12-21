@@ -6,6 +6,13 @@
  */
 
 import { QuickGeneratePanel, InfoPanel } from '../components/helpers';
+import {
+  AssetPanel as QuickGenAssetPanel,
+  PromptPanel as QuickGenPromptPanel,
+  SettingsPanel as QuickGenSettingsPanel,
+  BlocksPanel as QuickGenBlocksPanel,
+} from '@features/controlCenter/components/QuickGeneratePanels';
+import { MediaPanel } from '@/components/media/viewer/panels/MediaPanel';
 import type { PanelPlugin } from './panelPlugin';
 
 export const helperPanelsPlugin: PanelPlugin = {
@@ -22,7 +29,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       component: QuickGeneratePanel,
       category: 'tools',
       tags: ['generation', 'helper', 'context-aware'],
-      icon: '✨',
+      icon: 'sparkles',
       description: 'Quick generation panel that adapts to current context (asset or scene)',
 
       // Show when there's an asset or scene context
@@ -42,7 +49,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       component: InfoPanel,
       category: 'tools',
       tags: ['metadata', 'info', 'helper', 'context-aware'],
-      icon: 'ℹ️',
+      icon: 'info',
       description: 'Information panel that shows metadata for the current context',
 
       // Show when there's an asset or scene context
@@ -53,6 +60,65 @@ export const helperPanelsPlugin: PanelPlugin = {
 
       // Settings (none for now)
       defaultSettings: {},
+    },
+
+    // Quick Generate Modules - building blocks for custom workflows
+    {
+      id: 'quickgen-asset',
+      title: 'QuickGen Asset',
+      component: QuickGenAssetPanel,
+      category: 'tools',
+      tags: ['generation', 'queue', 'asset', 'quickgen'],
+      icon: 'image',
+      description: 'Asset input panel for quick generation workflows',
+      supportsCompactMode: true,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'quickgen-prompt',
+      title: 'QuickGen Prompt',
+      component: QuickGenPromptPanel,
+      category: 'tools',
+      tags: ['generation', 'prompt', 'quickgen'],
+      icon: 'edit',
+      description: 'Prompt editor for quick generation workflows',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'quickgen-settings',
+      title: 'QuickGen Settings',
+      component: QuickGenSettingsPanel,
+      category: 'tools',
+      tags: ['generation', 'settings', 'quickgen'],
+      icon: 'settings',
+      description: 'Generation settings and Go button for quick workflows',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'quickgen-blocks',
+      title: 'QuickGen Blocks',
+      component: QuickGenBlocksPanel,
+      category: 'tools',
+      tags: ['generation', 'prompt', 'blocks', 'quickgen'],
+      icon: 'grid',
+      description: 'Prompt companion blocks for quick generation',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+
+    // Media Preview - lightweight viewer panel
+    {
+      id: 'media-preview',
+      title: 'Media Preview',
+      component: MediaPanel,
+      category: 'workspace',
+      tags: ['media', 'preview', 'viewer'],
+      icon: 'image',
+      description: 'Lightweight media preview panel for selected assets',
+      supportsCompactMode: false,
+      supportsMultipleInstances: true,
     },
   ],
 

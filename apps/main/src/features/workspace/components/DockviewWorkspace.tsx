@@ -67,6 +67,7 @@ export function DockviewWorkspace() {
         defaultLayout={createDefaultLayout}
         onReady={handleReady}
         enableContextMenu
+        includeGlobalPanels
         theme="dockview-theme-dark"
         watermarkComponent={WorkspaceWatermark}
         panelManagerId="workspace"

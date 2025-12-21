@@ -26,11 +26,13 @@ export { useGenerationWorkbench } from './hooks/useGenerationWorkbench';
 export { useMediaCardGenerationStatus } from './hooks/useMediaCardGenerationStatus';
 export { useMediaGenerationActions } from './hooks/useMediaGenerationActions';
 export { useRecentGenerations } from './hooks/useRecentGenerations';
+export { useGenerationScopeStores, GenerationScopeProvider } from './hooks/useGenerationScope';
 
 // Stores
 export { useGenerationQueueStore, getQueueForOperation } from './stores/generationQueueStore';
 export type { GenerationQueueState, QueuedAsset, EnqueueOptions, InputMode } from './stores/generationQueueStore';
-export { useGenerationSettingsStore } from './stores/generationSettingsStore';
+export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
+export { createGenerationSessionStore } from './stores/generationSessionStore';
 export {
   useGenerationsStore,
   generationsSelectors,
@@ -45,6 +47,7 @@ export * from './lib/core';
 
 // Lib - Generation Types (from @shared/types)
 export * from './lib/generationTypes';
+export { registerGenerationScopes } from './lib/registerGenerationScopes';
 
 // Namespace export for generation types
 export * as Generation from './lib/generationTypes';

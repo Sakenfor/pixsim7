@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, type StateStorage } from 'zustand/middleware';
 import { createBackendStorage, manuallyRehydrateStore, exposeStoreForDebugging, debugFlags } from '@lib/utils';
 import type { OperationType } from '@/types/operations';
 
@@ -75,37 +75,41 @@ export interface GenerationSettingsState {
 
 const STORAGE_KEY = 'generation_settings_v4';
 
-export const useGenerationSettingsStore = create<GenerationSettingsState>()(
-  persist(
-    (set, get) => ({
-      params: {},
-      paramsPerOperation: {},
-      paramsPerModel: {},
-      activeOperationType: 'image_to_video' as OperationType,
-      showSettings: true,
-      _hasHydrated: false,
+export function createGenerationSettingsStore(
+  storageKey: string,
+  storage: StateStorage,
+) {
+  return create<GenerationSettingsState>()(
+    persist(
+      (set, get) => ({
+        params: {},
+        paramsPerOperation: {},
+        paramsPerModel: {},
+        activeOperationType: 'image_to_video' as OperationType,
+        showSettings: true,
+        _hasHydrated: false,
 
-      setActiveOperationType: (operationType) => {
-        const state = get();
-        // Save current params to the current operation before switching
-        const updatedParamsPerOp = {
-          ...state.paramsPerOperation,
-          [state.activeOperationType]: state.params,
-        };
-        // Load params for the new operation (or empty if none saved)
-        const newParams = updatedParamsPerOp[operationType] || {};
-        set({
-          activeOperationType: operationType,
-          paramsPerOperation: updatedParamsPerOp,
-          params: newParams,
-        });
-      },
+        setActiveOperationType: (operationType) => {
+          const state = get();
+          // Save current params to the current operation before switching
+          const updatedParamsPerOp = {
+            ...state.paramsPerOperation,
+            [state.activeOperationType]: state.params,
+          };
+          // Load params for the new operation (or empty if none saved)
+          const newParams = updatedParamsPerOp[operationType] || {};
+          set({
+            activeOperationType: operationType,
+            paramsPerOperation: updatedParamsPerOp,
+            params: newParams,
+          });
+        },
 
-      setDynamicParams: (updater) =>
-        set((prev) => {
-          const newParams = typeof updater === 'function'
-            ? (updater as (p: Record<string, any>) => Record<string, any>)(prev.params)
-            : updater;
+        setDynamicParams: (updater) =>
+          set((prev) => {
+            const newParams = typeof updater === 'function'
+              ? (updater as (p: Record<string, any>) => Record<string, any>)(prev.params)
+              : updater;
 
           // Check if model changed - if so, load per-model params
           const prevModel = prev.params.model;
@@ -158,20 +162,20 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>()(
             }
           }
 
-          return {
-            params: finalParams,
-            paramsPerOperation: {
-              ...prev.paramsPerOperation,
-              [prev.activeOperationType]: finalParams,
-            },
-            paramsPerModel: updatedParamsPerModel,
-          };
-        }),
+            return {
+              params: finalParams,
+              paramsPerOperation: {
+                ...prev.paramsPerOperation,
+                [prev.activeOperationType]: finalParams,
+              },
+              paramsPerModel: updatedParamsPerModel,
+            };
+          }),
 
-      setParam: (name, value) =>
-        set((prev) => {
-          const newParams = { ...prev.params, [name]: value };
-          let updatedParamsPerModel = prev.paramsPerModel;
+        setParam: (name, value) =>
+          set((prev) => {
+            const newParams = { ...prev.params, [name]: value };
+            let updatedParamsPerModel = prev.paramsPerModel;
 
           // If model is changing, handle per-model param save/load
           if (name === 'model' && value && value !== prev.params.model) {
@@ -216,47 +220,53 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>()(
             };
           }
 
-          return {
-            params: newParams,
-            paramsPerOperation: {
-              ...prev.paramsPerOperation,
-              [prev.activeOperationType]: newParams,
-            },
-            paramsPerModel: updatedParamsPerModel,
-          };
+            return {
+              params: newParams,
+              paramsPerOperation: {
+                ...prev.paramsPerOperation,
+                [prev.activeOperationType]: newParams,
+              },
+              paramsPerModel: updatedParamsPerModel,
+            };
+          }),
+
+        setShowSettings: (show) => set({ showSettings: show }),
+        toggleSettings: () => set((prev) => ({ showSettings: !prev.showSettings })),
+
+        reset: () => set({
+          params: {},
+          paramsPerOperation: {},
+          paramsPerModel: {},
+          showSettings: true,
+          _hasHydrated: true,
         }),
-
-      setShowSettings: (show) => set({ showSettings: show }),
-      toggleSettings: () => set((prev) => ({ showSettings: !prev.showSettings })),
-
-      reset: () => set({
-        params: {},
-        paramsPerOperation: {},
-        paramsPerModel: {},
-        showSettings: true,
-        _hasHydrated: true,
       }),
-    }),
-    {
-      name: STORAGE_KEY,
-      storage: createBackendStorage('generationSettings'),
-      partialize: (state) => ({
-        paramsPerOperation: state.paramsPerOperation,
-        paramsPerModel: state.paramsPerModel,
-        activeOperationType: state.activeOperationType,
-        showSettings: state.showSettings,
-        // Note: params is derived from paramsPerOperation, _hasHydrated is not persisted
-      }),
-      version: 1,
-      onRehydrateStorage: () => (state) => {
-        // After rehydration, set params from paramsPerOperation for active operation
-        if (state) {
-          const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
-          state.params = activeParams;
-        }
-      },
-    }
-  )
+      {
+        name: storageKey,
+        storage,
+        partialize: (state) => ({
+          paramsPerOperation: state.paramsPerOperation,
+          paramsPerModel: state.paramsPerModel,
+          activeOperationType: state.activeOperationType,
+          showSettings: state.showSettings,
+          // Note: params is derived from paramsPerOperation, _hasHydrated is not persisted
+        }),
+        version: 1,
+        onRehydrateStorage: () => (state) => {
+          // After rehydration, set params from paramsPerOperation for active operation
+          if (state) {
+            const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
+            state.params = activeParams;
+          }
+        },
+      }
+    )
+  );
+}
+
+export const useGenerationSettingsStore = createGenerationSettingsStore(
+  STORAGE_KEY,
+  createBackendStorage('generationSettings'),
 );
 
 // Manual rehydration workaround for async storage (see zustandPersistWorkaround.ts)

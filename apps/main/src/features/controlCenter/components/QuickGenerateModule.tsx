@@ -514,7 +514,7 @@ export function QuickGenerateModule() {
       // Use requestAnimationFrame to ensure layout is ready
       requestAnimationFrame(() => {
         if (!dockviewApiRef.current) return;
-        const assetPanel = dockviewApiRef.current.panels.find(p => p.id === 'asset-panel');
+        const assetPanel = dockviewApiRef.current.panels.find(p => p.id === 'quickgen-asset');
         if (assetPanel && !assetPanel.api.isActive) {
           assetPanel.api.setActive();
         }

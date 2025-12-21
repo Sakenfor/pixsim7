@@ -46,6 +46,7 @@ import {
   ContextMenuPortal,
   registerContextMenuActions,
 } from '@lib/dockview/contextMenu';
+import { PanelPropertiesPopup } from '@lib/dockview/contextMenu';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
@@ -167,6 +168,7 @@ function App() {
           {isAuthenticated && <DevToolQuickAccess />}
           {/* Global context menu portal */}
           <ContextMenuPortal />
+          <PanelPropertiesPopup />
         </ContextMenuProvider>
       </ContextHubHost>
     </BrowserRouter>

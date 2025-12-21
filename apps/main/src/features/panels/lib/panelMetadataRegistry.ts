@@ -29,12 +29,11 @@ export const CONTROL_CENTER_METADATA: PanelMetadata = {
     animationDuration: 200,
   },
 
-  dockview: {
+ dockview: {
     hasDockview: true,
-    subPanelRegistry: 'quickGenPanelRegistry',
     subPanelsCanBreakout: false,  // QuickGen sub-panels stay internal
     persistLayout: true,
-    storageKey: 'quickGenerate-dockview-layout',
+    storageKey: 'quickGenerate-dockview-layout:v2',
   },
 
   priority: 40,
@@ -65,10 +64,9 @@ export const ASSET_VIEWER_METADATA: PanelMetadata = {
 
   dockview: {
     hasDockview: true,
-    subPanelRegistry: 'viewerPanelRegistry',
     subPanelsCanBreakout: true,  // Sub-panels can pop out
     persistLayout: true,
-    storageKey: 'asset-viewer-dockview-layout',
+    storageKey: 'asset-viewer-dockview-layout:v3',
   },
 
   priority: 80,  // High priority - gets space preference

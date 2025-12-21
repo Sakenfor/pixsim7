@@ -161,10 +161,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     scope: 'root',
   });
 
-  // Don't show if control center is open
-  if (controlCenterOpen) {
-    return null;
-  }
+  const shouldHide = controlCenterOpen && !alwaysExpanded;
 
   const handleGenerate = async () => {
     if (!activePrompt.trim() || generating) return;
@@ -229,19 +226,6 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     }
   }, []);
 
-  // Collapsed state - just show icon button (skip if alwaysExpanded)
-  if (!isExpanded && !alwaysExpanded) {
-    return (
-      <button
-        onClick={() => setIsExpanded(true)}
-        className="w-full px-3 py-2 text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center justify-center"
-        title="Quick Generate"
-      >
-        <Icon name="sparkles" size={16} />
-      </button>
-    );
-  }
-
   const canGenerate = !!activePrompt.trim();
 
   const quickGenContext: ViewerQuickGenContext = {
@@ -266,6 +250,24 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     // Ensure all default panels exist even if a stale layout is loaded.
     requestAnimationFrame(() => ensureViewerPanels(dockviewApi));
   }, [dockviewApi, ensureViewerPanels]);
+
+  // Don't show if control center is open (unless forced via alwaysExpanded)
+  if (shouldHide) {
+    return null;
+  }
+
+  // Collapsed state - just show icon button (skip if alwaysExpanded)
+  if (!isExpanded && !alwaysExpanded) {
+    return (
+      <button
+        onClick={() => setIsExpanded(true)}
+        className="w-full px-3 py-2 text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center justify-center"
+        title="Quick Generate"
+      >
+        <Icon name="sparkles" size={16} />
+      </button>
+    );
+  }
 
   // Expanded state - show dockview layout
   return (
@@ -295,8 +297,6 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
           context={quickGenContext}
           defaultLayout={createViewerQuickGenLayout}
           minPanelsForTabs={1}
-          panelManagerId="viewerQuickGen"
-          enableContextMenu
           onReady={(api) => {
             setDockviewApi(api);
             ensureViewerPanels(api);

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationsStore, useGenerationQueueStore } from '@features/generation';
-import { ccSelectors } from '@/stores/selectors';
+import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/controlCenter/lib/api';
 import { extractFrame } from '@features/assets';
 import { logEvent } from '@lib/utils/logging';
@@ -21,19 +20,21 @@ import { extractErrorMessage } from '@lib/api/errorHandling';
  * This keeps QuickGenerateModule focused on rendering/layout.
  */
 export function useQuickGenerateController() {
-  // Control Center core state
-  const operationType = useControlCenterStore(ccSelectors.operationType);
-  const providerId = useControlCenterStore(ccSelectors.providerId);
-  const presetId = useControlCenterStore(ccSelectors.presetId);
-  const presetParams = useControlCenterStore(ccSelectors.presetParams);
-  const generating = useControlCenterStore(ccSelectors.generating);
+  const { useSessionStore } = useGenerationScopeStores();
 
-  const setProvider = useControlCenterStore(s => s.setProvider);
-  const setOperationType = useControlCenterStore(s => s.setOperationType);
-  const setGenerating = useControlCenterStore(s => s.setGenerating);
-  const setPresetParams = useControlCenterStore(s => s.setPresetParams);
-  const prompt = useControlCenterStore(s => s.prompt);
-  const setPrompt = useControlCenterStore(s => s.setPrompt);
+  // Generation session state (scoped)
+  const operationType = useSessionStore((s) => s.operationType);
+  const providerId = useSessionStore((s) => s.providerId);
+  const presetId = useSessionStore((s) => s.presetId);
+  const presetParams = useSessionStore((s) => s.presetParams);
+  const generating = useSessionStore((s) => s.generating);
+
+  const setProvider = useSessionStore((s) => s.setProvider);
+  const setOperationType = useSessionStore((s) => s.setOperationType);
+  const setGenerating = useSessionStore((s) => s.setGenerating);
+  const setPresetParams = useSessionStore((s) => s.setPresetParams);
+  const prompt = useSessionStore((s) => s.prompt);
+  const setPrompt = useSessionStore((s) => s.setPrompt);
 
   // Bindings to active asset and queues
   const bindings = useQuickGenerateBindings(operationType, setOperationType);
@@ -84,10 +85,16 @@ export function useQuickGenerateController() {
     errorShownForRef.current = null; // Reset so new generation can show errors
 
     try {
+      const overrideParams = options?.overrideDynamicParams || {};
+      const hasOverrideInput =
+        overrideParams.image_url ||
+        overrideParams.video_url ||
+        overrideParams.original_video_id;
+
       // Handle frame extraction for video assets with locked timestamps
       let modifiedDynamicParams = {
         ...bindings.dynamicParams,
-        ...(options?.overrideDynamicParams || {}),
+        ...overrideParams,
       };
       let modifiedImageUrls = [...bindings.imageUrls];
 
@@ -100,6 +107,28 @@ export function useQuickGenerateController() {
       // Get current queue item based on index (1-based index, convert to 0-based)
       const currentIdx = Math.max(0, Math.min(currentMainQueueIndex - 1, currentMainQueue.length - 1));
       const currentQueueItem = currentMainQueue.length > 0 ? currentMainQueue[currentIdx] : null;
+
+      if (!hasOverrideInput && currentQueueItem) {
+        const asset = currentQueueItem.asset;
+        if (operationType === 'image_to_video' || operationType === 'image_to_image') {
+          if (asset.media_type === 'image') {
+            modifiedDynamicParams = {
+              ...modifiedDynamicParams,
+              image_url: asset.remote_url,
+            };
+            delete modifiedDynamicParams.video_url;
+            delete modifiedDynamicParams.original_video_id;
+          }
+        } else if (operationType === 'video_extend') {
+          if (asset.media_type === 'video') {
+            modifiedDynamicParams = {
+              ...modifiedDynamicParams,
+              video_url: asset.remote_url,
+            };
+            delete modifiedDynamicParams.image_url;
+          }
+        }
+      }
 
       // For image_to_video: extract frame if video has locked timestamp
       if (operationType === 'image_to_video' && currentQueueItem) {

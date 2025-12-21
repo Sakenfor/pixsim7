@@ -6,6 +6,5 @@
 
 export * from './panels';
 export * from './types';
-export { viewerPanelRegistry, createViewerPanelRegistry, type ViewerPanelId } from './viewerPanelRegistry';
 export { AssetViewerDockview } from './AssetViewerDockview';
 export type { AssetViewerDockviewProps } from './AssetViewerDockview';

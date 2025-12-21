@@ -48,25 +48,43 @@ export function useSmartDockview(
     if (!api) return;
 
     api.groups.forEach((group) => {
-      const shouldShowTabs = group.size >= minPanelsForTabs;
+      const model = (group as any).model;
+      const modelSize =
+        typeof model?.size === 'number'
+          ? model.size
+          : undefined;
+      const panelCount =
+        typeof modelSize === 'number'
+          ? modelSize
+          : Array.isArray((group as any).panels)
+            ? (group as any).panels.length
+            : typeof (group as any).panels?.length === 'number'
+              ? (group as any).panels.length
+              : 0;
+      const shouldShowTabs = panelCount >= minPanelsForTabs;
 
       // Access the header through the group's model
       // Note: This accesses internal dockview structure
       try {
-        const header = (group as any).header;
+        const header = (group as any).header ?? model?.header;
         if (header && typeof header.hidden !== 'undefined') {
           header.hidden = !shouldShowTabs;
         }
       } catch (e) {
         // Fallback: try through model
         try {
-          const model = (group as any).model;
           if (model?.header) {
             model.header.hidden = !shouldShowTabs;
           }
         } catch {
           // Silently fail if structure doesn't match
         }
+      }
+
+      // CSS fallback for cases where header hiding doesn't apply
+      const groupElement = (group as any).element;
+      if (groupElement && groupElement.classList) {
+        groupElement.classList.toggle('dv-tabs-hidden', !shouldShowTabs);
       }
     });
   }, [minPanelsForTabs]);
@@ -152,6 +170,11 @@ export function useSmartDockview(
         requestAnimationFrame(updateTabVisibility);
       });
       disposablesRef.current.push(removeDisposable);
+
+      const layoutFromJsonDisposable = api.onDidLayoutFromJSON(() => {
+        requestAnimationFrame(updateTabVisibility);
+      });
+      disposablesRef.current.push(layoutFromJsonDisposable);
 
       // Initial tab visibility update
       requestAnimationFrame(updateTabVisibility);

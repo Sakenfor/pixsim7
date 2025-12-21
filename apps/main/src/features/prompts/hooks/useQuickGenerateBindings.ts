@@ -5,7 +5,7 @@ import {
   type GenerationQueueState,
   type QueuedAsset,
 } from '@features/generation';
-import { useGenerationSettingsStore } from '@features/generation';
+import { useGenerationScopeStores } from '@features/generation';
 import { useCubeSettingsStore } from '@features/controlCenter/stores/cubeSettingsStore';
 import type { OperationType } from '@/types/operations';
 
@@ -66,9 +66,11 @@ export function useQuickGenerateBindings(
   // Settings for auto-selection behavior
   const autoSelectOperationType = useCubeSettingsStore(s => s.autoSelectOperationType);
 
-  // Dynamic params from operation_specs (shared across UIs via store)
-  const dynamicParams = useGenerationSettingsStore(s => s.params);
-  const setDynamicParams = useGenerationSettingsStore(s => s.setDynamicParams);
+  const { useSettingsStore } = useGenerationScopeStores();
+
+  // Dynamic params from operation_specs (scoped store)
+  const dynamicParams = useSettingsStore((s) => s.params);
+  const setDynamicParams = useSettingsStore((s) => s.setDynamicParams);
 
   // Operation-specific array fields for video_transition
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -78,6 +80,7 @@ export function useQuickGenerateBindings(
   // Track previous queue state to detect adds vs cycles vs initial hydration
   const prevMainQueueLengthRef = useRef<number | null>(null);
   const prevTransitionQueueLengthRef = useRef<number | null>(null);
+  const prevMainQueueItemIdRef = useRef<number | null>(null);
 
   // Function to use active asset explicitly (e.g., "Use Asset" button)
   const useActiveAsset = () => {
@@ -114,21 +117,31 @@ export function useQuickGenerateBindings(
     prevMainQueueLengthRef.current = currentLength;
     prevMainQueueIndexRef.current = mainQueueIndex;
 
-    if (currentLength === 0) return;
+    if (currentLength === 0) {
+      prevMainQueueItemIdRef.current = null;
+      return;
+    }
 
     // Get current item based on index (1-based index, convert to 0-based)
     const currentIdx = Math.max(0, Math.min(mainQueueIndex - 1, currentLength - 1));
     const currentItem = mainQueue[currentIdx];
-    if (!currentItem) return;
+    if (!currentItem) {
+      prevMainQueueItemIdRef.current = null;
+      return;
+    }
+    const currentItemId = currentItem.asset?.id ?? null;
+    const prevItemId = prevMainQueueItemIdRef.current;
 
     const { asset, operation } = currentItem;
 
     // Detect different scenarios:
     // - itemsWereAdded: new items added to queue (switch operation + fill params)
     // - indexChanged: user cycled through queue (update params to current item)
+    // - itemChanged: queue mutated while index stayed the same
     // - initialHydration: first render with data (fill only if empty)
     const itemsWereAdded = prevLength !== null && currentLength > prevLength;
     const indexChanged = prevIndex !== null && prevIndex !== mainQueueIndex;
+    const itemChanged = prevItemId !== null && currentItemId !== null && prevItemId !== currentItemId;
 
     if (itemsWereAdded) {
       // Set operation type if explicitly specified in queue item
@@ -150,7 +163,7 @@ export function useQuickGenerateBindings(
           setOperationType('video_extend');
         }
       }
-    } else if (indexChanged) {
+    } else if (indexChanged || itemChanged) {
       // Index changed (user cycled) - update params to reflect the current item
       if (asset.media_type === 'image') {
         setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
@@ -165,6 +178,7 @@ export function useQuickGenerateBindings(
         setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
       }
     }
+    prevMainQueueItemIdRef.current = currentItemId;
   }, [mainQueue, mainQueueIndex, setOperationType, autoSelectOperationType]);
 
   // Auto-fill transition queue data (but don't auto-switch operation type on load)

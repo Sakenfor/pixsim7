@@ -11,8 +11,7 @@
 
 import { useMemo, useCallback, forwardRef, useImperativeHandle, useState } from 'react';
 import type { DockviewApi } from 'dockview-core';
-import { SmartDockview } from '@lib/dockview';
-import { quickGenPanelRegistry } from './quickGenPanelRegistry';
+import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
 import type { QuickGenPanelContext } from './QuickGeneratePanels';
 
 export interface QuickGenerateDockviewProps {
@@ -35,47 +34,49 @@ export interface QuickGenerateDockviewRef {
   getApi: () => DockviewApi | null;
 }
 
+const emptyQuickGenRegistry = createLocalPanelRegistry<string>();
+
 /**
  * Create the default 4-panel layout (with asset panel)
  */
 function createLayoutWithAsset(api: DockviewApi) {
   // Asset panel on the left
   api.addPanel({
-    id: 'asset-panel',
-    component: 'asset',
+    id: 'quickgen-asset',
+    component: 'quickgen-asset',
     title: 'Asset',
   });
 
   // Prompt panel in the center
   api.addPanel({
-    id: 'prompt-panel',
-    component: 'prompt',
+    id: 'quickgen-prompt',
+    component: 'quickgen-prompt',
     title: 'Prompt',
     position: {
       direction: 'right',
-      referencePanel: 'asset-panel',
+      referencePanel: 'quickgen-asset',
     },
   });
 
   // Settings panel on the right
   api.addPanel({
-    id: 'settings-panel',
-    component: 'settings',
+    id: 'quickgen-settings',
+    component: 'quickgen-settings',
     title: 'Settings',
     position: {
       direction: 'right',
-      referencePanel: 'prompt-panel',
+      referencePanel: 'quickgen-prompt',
     },
   });
 
   // Blocks panel below prompt
   api.addPanel({
-    id: 'blocks-panel',
-    component: 'blocks',
+    id: 'quickgen-blocks',
+    component: 'quickgen-blocks',
     title: 'Blocks',
     position: {
       direction: 'below',
-      referencePanel: 'prompt-panel',
+      referencePanel: 'quickgen-prompt',
     },
   });
 }
@@ -86,30 +87,30 @@ function createLayoutWithAsset(api: DockviewApi) {
 function createLayoutWithoutAsset(api: DockviewApi) {
   // Prompt panel on the left
   api.addPanel({
-    id: 'prompt-panel',
-    component: 'prompt',
+    id: 'quickgen-prompt',
+    component: 'quickgen-prompt',
     title: 'Prompt',
   });
 
   // Settings panel on the right
   api.addPanel({
-    id: 'settings-panel',
-    component: 'settings',
+    id: 'quickgen-settings',
+    component: 'quickgen-settings',
     title: 'Settings',
     position: {
       direction: 'right',
-      referencePanel: 'prompt-panel',
+      referencePanel: 'quickgen-prompt',
     },
   });
 
   // Blocks panel below prompt
   api.addPanel({
-    id: 'blocks-panel',
-    component: 'blocks',
+    id: 'quickgen-blocks',
+    component: 'quickgen-blocks',
     title: 'Blocks',
     position: {
       direction: 'below',
-      referencePanel: 'prompt-panel',
+      referencePanel: 'quickgen-prompt',
     },
   });
 }
@@ -119,8 +120,8 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
     // Use different storage keys for different layouts to avoid conflicts
     const storageKey = useMemo(
       () => (showAssetPanel
-        ? 'quickGenerate-dockview-layout:with-asset'
-        : 'quickGenerate-dockview-layout:no-asset'),
+        ? 'quickGenerate-dockview-layout:v2:with-asset'
+        : 'quickGenerate-dockview-layout:v2:no-asset'),
       [showAssetPanel]
     );
 
@@ -165,7 +166,7 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
     return (
       <SmartDockview
         key={resetKey}
-        registry={quickGenPanelRegistry}
+        registry={emptyQuickGenRegistry}
         storageKey={storageKey}
         context={context}
         defaultLayout={defaultLayout}
@@ -174,6 +175,13 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
         onReady={handleReady}
         panelManagerId={panelManagerId}
         enableContextMenu
+        includeGlobalPanels
+        panelRegistryOverrides={{
+          'quickgen-asset': { title: 'Asset' },
+          'quickgen-prompt': { title: 'Prompt' },
+          'quickgen-settings': { title: 'Settings' },
+          'quickgen-blocks': { title: 'Blocks' },
+        }}
       />
     );
   }

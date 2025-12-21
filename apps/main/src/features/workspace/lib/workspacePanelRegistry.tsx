@@ -97,6 +97,7 @@ function createWorkspacePanelRegistry() {
     id: "panel",
     title: "Panel",
     component: WorkspacePanelWrapper,
+    isInternal: true,
   });
 
   return registry;
