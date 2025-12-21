@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">PixSim7</string>
+    <string name="connect_button">Connect to PixSim</string>
+    <string name="waiting_status">Tap button to start pairing</string>
+    <string name="enter_code">Enter this code on pixsim.com</string>
+    <string name="connected">✓ Connected successfully!</string>
+    <string name="error_prefix">Error: </string>
+</resources>

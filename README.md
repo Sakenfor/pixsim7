@@ -36,6 +36,7 @@ PixSim7 is a **provider-agnostic video generation platform** that unifies multip
 
 ### Developer Tools
 - **Chrome Extension** - Cookie import, account switching, provider detection
+- **Android App** - Native Android agent for device automation and remote control
 - **AI Hub** - LLM-powered prompt editing (OpenAI, Anthropic) with logging
 - **Structured Logging** - JSON logs with advanced filtering and search
 - **OpenAPI Docs** - Auto-generated Swagger documentation
@@ -165,6 +166,7 @@ cd admin && npm install && npm run dev
 ### Frontend & Extensions
 - **[Admin Panel Guide](./docs/getting-started/ADMIN_PANEL.md)** - Web UI features
 - **[Chrome Extension](./chrome-extension/README.md)** - Browser integration
+- **[Android App](./apps/pixsim7-android/README.md)** - Native Android automation agent
 - **[Frontend Architecture](./frontend/README.md)** - Component library and design
 - **[Game Integration](./docs/NODE_EDITOR_DEVELOPMENT.md)** - Scene editor development
 

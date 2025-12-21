@@ -123,3 +123,18 @@ launcher/gui/launcher.json
 
 # Local data (thumbs, assets)
 data/
+
+# Android
+apps/pixsim7-android/.gradle/
+apps/pixsim7-android/build/
+apps/pixsim7-android/app/build/
+apps/pixsim7-android/local.properties
+apps/pixsim7-android/.idea/
+apps/pixsim7-android/*.iml
+apps/pixsim7-android/*.apk
+apps/pixsim7-android/*.aab
+apps/pixsim7-android/*.jks
+apps/pixsim7-android/*.keystore
+apps/pixsim7-android/captures/
+apps/pixsim7-android/.cxx/
+apps/pixsim7-android/.externalNativeBuild/
