@@ -20,9 +20,14 @@ const ACCOUNTS_CACHE_KEY = 'pixsim7AccountCache';
 const ACCOUNTS_CACHE_SCOPE_ALL = '__all__';
 const ACCOUNTS_CACHE_TTL_MS = 60 * 1000;
 let accountsRequestSeq = 0;
-const PIXVERSE_STATUS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours (ad watch tasks reset daily)
-const PIXVERSE_STATUS_CACHE_STORAGE_KEY = 'pixsim7PixverseStatusCache';
-const pixverseStatusCache = new Map();
+// Unified account extended info cache (per-field TTLs)
+const ACCOUNT_EXTENDED_INFO_CACHE_STORAGE_KEY = 'pixsim7AccountExtendedInfoCache';
+const ACCOUNT_EXTENDED_INFO_TTLs = {
+  ad_watch_task: 24 * 60 * 60 * 1000,  // 24 hours (resets daily)
+  account_stats: 60 * 60 * 1000,        // 1 hour (changes infrequently)
+  credits: 5 * 60 * 1000,               // 5 minutes (for future use)
+};
+const accountExtendedInfoCache = new Map();
 const DEVICE_SELECTION_STORAGE_KEY = 'pixsim7SelectedDeviceId';
 const PRESET_SELECTION_STORAGE_KEY = 'pixsim7SelectedPresetId';
 const LOOP_SELECTION_STORAGE_KEY = 'pixsim7SelectedLoopId';
@@ -49,9 +54,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Restore filter state (sort, hide empty, etc.)
   await loadFilterState();
 
-  // Restore cached Pixverse ad status (if any) so we can show
-  // previously-fetched values without hitting the API on every popup open.
-  await loadPixverseStatusCacheFromStorage();
+  // Restore cached account extended info (ad status, stats, etc.)
+  await loadAccountExtendedInfoCacheFromStorage();
 
   // Check backend connection
   await checkBackendConnection();

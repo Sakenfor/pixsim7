@@ -112,3 +112,57 @@ export async function createApiKey(
 ): Promise<CreateApiKeyResponse> {
   return accountsApi.createApiKey(accountId);
 }
+
+/**
+ * Get account statistics (invited count, user info)
+ *
+ * Returns cached stats if available (TTL: 1 hour), otherwise fetches fresh data.
+ * Only available for Pixverse accounts.
+ *
+ * @param accountId - The account ID
+ * @param force - Force refresh (bypass cache)
+ * @returns Account stats including invited count and user info
+ */
+export async function getAccountStats(
+  accountId: number,
+  force = false
+): Promise<{ invited_count: number; user_info: Record<string, any> }> {
+  const params = force ? '?force=true' : '';
+  const response = await pixsimClient.get(`/accounts/${accountId}/stats${params}`);
+  return response.data;
+}
+
+/**
+ * Get full list of invited/referred accounts
+ *
+ * Returns detailed information about users who registered using this account's
+ * referral code. Only available for Pixverse accounts.
+ *
+ * @param accountId - The account ID
+ * @param pageSize - Number of results per page (default: 20)
+ * @param offset - Pagination offset (default: 0)
+ * @returns List of invited accounts with details
+ */
+export async function getInvitedAccounts(
+  accountId: number,
+  pageSize = 20,
+  offset = 0
+): Promise<{
+  items: Array<{
+    account_id: number;
+    account_avatar: string;
+    nick_name: string;
+    user_name: string;
+    register_at: string;
+    followed: boolean;
+  }>;
+  total: number;
+  next_offset: number;
+}> {
+  const params = new URLSearchParams({
+    page_size: pageSize.toString(),
+    offset: offset.toString(),
+  });
+  const response = await pixsimClient.get(`/accounts/${accountId}/invited-accounts?${params}`);
+  return response.data;
+}

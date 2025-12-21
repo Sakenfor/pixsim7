@@ -5,6 +5,44 @@
  */
 
 
+// ===== UNIFIED CACHE HELPERS =====
+
+function getCachedField(accountId, fieldName) {
+  const accountData = accountExtendedInfoCache.get(accountId);
+  if (!accountData || !accountData[fieldName]) return null;
+
+  const field = accountData[fieldName];
+  const ttl = ACCOUNT_EXTENDED_INFO_TTLs[fieldName];
+  if (!ttl) return null;
+
+  const age = Date.now() - field.updatedAt;
+  if (age > ttl) return null; // Expired
+
+  return field.data;
+}
+
+function setCachedField(accountId, fieldName, data) {
+  let accountData = accountExtendedInfoCache.get(accountId);
+  if (!accountData) {
+    accountData = {};
+    accountExtendedInfoCache.set(accountId, accountData);
+  }
+
+  accountData[fieldName] = {
+    data,
+    updatedAt: Date.now()
+  };
+
+  persistAccountExtendedInfoCache();
+
+  // Cleanup: limit cache size
+  if (accountExtendedInfoCache.size > 200) {
+    const firstKey = accountExtendedInfoCache.keys().next().value;
+    accountExtendedInfoCache.delete(firstKey);
+  }
+}
+
+
 // ===== CREDIT SYNC (THROTTLED) =====
 
 const CREDIT_SYNC_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
@@ -47,8 +85,8 @@ async function syncCreditsThrottled(reason, options = {}) {
       await chrome.storage.local.set({ lastCreditSyncAt: now });
 
       // Clear ad status cache so it gets refreshed on next view
-      pixverseStatusCache.clear();
-      persistPixverseStatusCache();
+      accountExtendedInfoCache.clear();
+      persistAccountExtendedInfoCache();
 
       // Refresh accounts to show updated credits if Accounts tab is active
       if (currentUser && document.getElementById('tab-accounts').classList.contains('active')) {
@@ -610,14 +648,14 @@ function createAccountCard(account) {
     }
   });
 
-  // If we have a cached Pixverse status for this account, render it
+  // If we have cached Pixverse status for this account, render it
   // immediately so the pill persists across popup opens without having
   // to re-hit the backend every time.
   if (showAdPill) {
     const pillEl = card.querySelector('.account-ad-pill');
-    const cacheEntry = pixverseStatusCache.get(account.id);
-    if (pillEl && cacheEntry && (Date.now() - cacheEntry.updatedAt) < PIXVERSE_STATUS_CACHE_TTL_MS) {
-      renderPixverseAdPill(pillEl, cacheEntry.data);
+    const cachedAdTask = getCachedField(account.id, 'ad_watch_task');
+    if (pillEl && cachedAdTask) {
+      renderPixverseAdPill(pillEl, cachedAdTask);
     }
   }
 
@@ -627,9 +665,9 @@ function createAccountCard(account) {
 function attachPixverseAdStatus(account, pillEl) {
   if (!pillEl) return;
 
-  const cacheEntry = pixverseStatusCache.get(account.id);
-  if (cacheEntry && (Date.now() - cacheEntry.updatedAt) < PIXVERSE_STATUS_CACHE_TTL_MS) {
-    renderPixverseAdPill(pillEl, cacheEntry.data);
+  const cachedAdTask = getCachedField(account.id, 'ad_watch_task');
+  if (cachedAdTask) {
+    renderPixverseAdPill(pillEl, cachedAdTask);
     return;
   }
 
@@ -654,12 +692,7 @@ function attachPixverseAdStatus(account, pillEl) {
       }
 
       console.log('[Ads] Status for account', account.id, res.data);
-      pixverseStatusCache.set(account.id, { data: res.data, updatedAt: Date.now() });
-      persistPixverseStatusCache();
-      if (pixverseStatusCache.size > 200) {
-        const firstKey = pixverseStatusCache.keys().next().value;
-        pixverseStatusCache.delete(firstKey);
-      }
+      setCachedField(account.id, 'ad_watch_task', res.data.ad_watch_task);
       renderPixverseAdPill(pillEl, res.data);
     }
   );

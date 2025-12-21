@@ -4,10 +4,11 @@ GenerationBillingService - Generation billing finalization
 Handles credit deduction and billing state management for completed generations.
 Provides idempotent billing finalization to prevent double-charging.
 """
-import logging
 from typing import Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from pixsim_logging import configure_logging
 
 from pixsim7.backend.main.domain import (
     Generation,
@@ -18,7 +19,7 @@ from pixsim7.backend.main.domain import (
 )
 from pixsim7.backend.main.services.account import AccountService
 
-logger = logging.getLogger(__name__)
+logger = configure_logging("service.generation.billing")
 
 
 class GenerationBillingService:

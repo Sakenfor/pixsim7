@@ -20,35 +20,36 @@ async function loadSettings() {
   }
 }
 
-async function loadPixverseStatusCacheFromStorage() {
+async function loadAccountExtendedInfoCacheFromStorage() {
   try {
-    const stored = await chrome.storage.local.get(PIXVERSE_STATUS_CACHE_STORAGE_KEY);
-    const raw = stored[PIXVERSE_STATUS_CACHE_STORAGE_KEY];
+    const stored = await chrome.storage.local.get(ACCOUNT_EXTENDED_INFO_CACHE_STORAGE_KEY);
+    const raw = stored[ACCOUNT_EXTENDED_INFO_CACHE_STORAGE_KEY];
     if (!raw || typeof raw !== 'object') return;
 
-    Object.entries(raw).forEach(([key, entry]) => {
+    Object.entries(raw).forEach(([key, accountData]) => {
       const accountId = parseInt(key, 10);
       if (!Number.isFinite(accountId)) return;
-      if (!entry || typeof entry !== 'object') return;
-      const data = entry.data;
-      const updatedAt = entry.updatedAt;
-      if (!data || typeof updatedAt !== 'number') return;
-      pixverseStatusCache.set(accountId, { data, updatedAt });
+      if (!accountData || typeof accountData !== 'object') return;
+
+      // accountData structure: { ad_watch_task: {data, updatedAt}, account_stats: {data, updatedAt}, ... }
+      accountExtendedInfoCache.set(accountId, accountData);
     });
+
+    console.log('[Popup] Loaded extended info cache for', accountExtendedInfoCache.size, 'accounts');
   } catch (e) {
-    console.warn('[Popup] Failed to restore Pixverse status cache from storage', e);
+    console.warn('[Popup] Failed to restore account extended info cache from storage', e);
   }
 }
 
-function persistPixverseStatusCache() {
+function persistAccountExtendedInfoCache() {
   try {
     const serialized = {};
-    pixverseStatusCache.forEach((entry, accountId) => {
-      serialized[accountId] = entry;
+    accountExtendedInfoCache.forEach((accountData, accountId) => {
+      serialized[accountId] = accountData;
     });
-    chrome.storage.local.set({ [PIXVERSE_STATUS_CACHE_STORAGE_KEY]: serialized });
+    chrome.storage.local.set({ [ACCOUNT_EXTENDED_INFO_CACHE_STORAGE_KEY]: serialized });
   } catch (e) {
-    console.warn('[Popup] Failed to persist Pixverse status cache', e);
+    console.warn('[Popup] Failed to persist account extended info cache', e);
   }
 }
 

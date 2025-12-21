@@ -4,10 +4,11 @@
  * Table row for displaying a provider account with status, credits, and actions.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@pixsim7/shared.ui';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
-import { dryRunPixverseSync, createApiKey } from '../lib/api/accounts';
+import { dryRunPixverseSync, createApiKey, getAccountStats } from '../lib/api/accounts';
+import { AccountInfoModal } from './AccountInfoModal';
 
 /** Status color mapping */
 const STATUS_COLORS: Record<string, string> = {
@@ -31,7 +32,27 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefres
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
   const statusColor = STATUS_COLORS[account.status] || STATUS_COLORS.DISABLED;
 
+  const [accountStats, setAccountStats] = useState<{ invited_count: number; user_info: Record<string, any> } | null>(null);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+
+  // Fetch account stats for Pixverse accounts
+  useEffect(() => {
+    if (account.provider_id === 'pixverse') {
+      getAccountStats(account.id)
+        .then(setAccountStats)
+        .catch(err => console.error('Failed to fetch account stats:', err));
+    }
+  }, [account.id, account.provider_id]);
+
   return (
+    <>
+      {showInfoModal && (
+        <AccountInfoModal
+          accountId={account.id}
+          accountEmail={account.email}
+          onClose={() => setShowInfoModal(false)}
+        />
+      )}
     <tr className="border-b dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
       {/* Name/Email */}
       <td className="px-3 py-2 text-sm">
@@ -90,6 +111,15 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefres
               JWT EXPIRED
             </span>
           )}
+          {accountStats && accountStats.invited_count > 0 && (
+            <span
+              className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded w-fit cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800/40"
+              onClick={() => setShowInfoModal(true)}
+              title={`${accountStats.invited_count} invited user${accountStats.invited_count === 1 ? '' : 's'}`}
+            >
+              👥 {accountStats.invited_count}
+            </span>
+          )}
         </div>
       </td>
 
@@ -131,6 +161,13 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefres
           {/* Pixverse-specific buttons */}
           {account.provider_id === 'pixverse' && (
             <>
+              <button
+                onClick={() => setShowInfoModal(true)}
+                className="px-2 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-700 transition-colors"
+                title="View account details and invited users"
+              >
+                ℹ️ Info
+              </button>
               <PixverseDryRunButton accountId={account.id} />
               {!account.has_api_key_paid && account.has_jwt && (
                 <CreateApiKeyButton accountId={account.id} onSuccess={onRefresh} />
@@ -140,6 +177,7 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefres
         </div>
       </td>
     </tr>
+    </>
   );
 }
 

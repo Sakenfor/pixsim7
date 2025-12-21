@@ -95,11 +95,9 @@ async def refresh_account_credits(
     try:
         provider = registry.get(account.provider_id)
 
-        # Use get_credits_basic (faster, no ad-task lookup)
-        if hasattr(provider, 'get_credits_basic'):
-            credits_data = await provider.get_credits_basic(account, retry_on_session_error=False)
-        elif hasattr(provider, 'get_credits'):
-            credits_data = await provider.get_credits(account)
+        # Use get_credits (fast, no ad-task lookup)
+        if hasattr(provider, 'get_credits'):
+            credits_data = await provider.get_credits(account, retry_on_session_error=False)
         else:
             gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
             return {}

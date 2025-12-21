@@ -24,8 +24,11 @@ PIXVERSE_CREDITS_TIMEOUT_SEC = 8.0
 class PixverseCreditsMixin:
     """Mixin for Pixverse credits operations"""
 
-    async def get_credits(self, account: ProviderAccount, *, retry_on_session_error: bool = True) -> dict:
-        """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
+    async def get_credits_with_ad_task(self, account: ProviderAccount, *, retry_on_session_error: bool = True) -> dict:
+        """Fetch current Pixverse credits (web + OpenAPI) + ad watch task status.
+
+        Includes ad_watch_task in response dict for displaying daily watch progress.
+        Use get_credits() for bulk operations where ad task data isn't needed.
 
         The `retry_on_session_error` flag controls whether session-invalid errors
         (10003/10005) should trigger PixverseSessionManager's auto-reauth logic.
@@ -134,16 +137,17 @@ class PixverseCreditsMixin:
 
         return await self.session_manager.run_with_session(
             account=account,
-            op_name="get_credits",
+            op_name="get_credits_with_ad_task",
             operation=_operation,
             retry_on_session_error=retry_on_session_error,
         )
 
 
-    async def get_credits_basic(self, account: ProviderAccount, *, retry_on_session_error: bool = False) -> dict:
+    async def get_credits(self, account: ProviderAccount, *, retry_on_session_error: bool = False) -> dict:
         """Fetch Pixverse credits (web + OpenAPI) without ad-task lookup.
 
-        Used by bulk credit sync to avoid unnecessary ad-task traffic.
+        This is the default/fast method for credit syncing. For ad task status,
+        use get_credits_with_ad_task() instead.
 
         Args:
             account: Provider account
@@ -246,7 +250,7 @@ class PixverseCreditsMixin:
 
         return await self.session_manager.run_with_session(
             account=account,
-            op_name="get_credits_basic",
+            op_name="get_credits",
             operation=_operation,
             retry_on_session_error=retry_on_session_error,
         )
@@ -348,6 +352,12 @@ class PixverseCreditsMixin:
             logger.debug(f"Ad task API response: {data}")
 
         if not isinstance(data, dict):
+            logger.warning(
+                "Pixverse ad task invalid response type",
+                account_id=account.id,
+                email=account.email,
+                response_type=type(data).__name__,
+            )
             return None
 
         err_code = data.get("ErrCode")
@@ -373,6 +383,21 @@ class PixverseCreditsMixin:
             )
             return None
 
+        # Log all tasks for debugging
+        if tasks:
+            task_summary = [
+                {"task_type": t.get("task_type"), "sub_type": t.get("sub_type")}
+                for t in tasks
+                if isinstance(t, dict)
+            ]
+            logger.info(
+                "Pixverse ad task list received",
+                account_id=account.id,
+                email=account.email,
+                task_count=len(tasks),
+                task_types=task_summary,
+            )
+
         # Only treat the daily watch-ad task (task_type=1, sub_type=11) as the
         # one we expose in ad_watch_task. Other tasks (one-time rewards, etc.)
         # are intentionally ignored so the pill reflects just the daily watch
@@ -383,6 +408,14 @@ class PixverseCreditsMixin:
                 and task.get("task_type") == 1
                 and task.get("sub_type") == 11
             ):
+                logger.info(
+                    "Pixverse ad task found",
+                    account_id=account.id,
+                    email=account.email,
+                    progress=task.get("progress"),
+                    total=task.get("total_counts"),
+                    reward=task.get("reward"),
+                )
                 return {
                     "reward": task.get("reward"),
                     "progress": task.get("progress"),
@@ -397,7 +430,59 @@ class PixverseCreditsMixin:
             account_id=account.id,
             email=account.email,
             err_code=err_code,
-            resp=data.get("Resp"),
+            task_count=len(tasks),
+            available_task_types=task_summary if tasks else [],
         )
         return None
+
+
+    async def get_account_stats(self, account: ProviderAccount) -> Optional[Dict[str, Any]]:
+        """Fetch lightweight account statistics (invited count, basic user info).
+
+        This is designed to be cached in provider_metadata for quick access.
+        Use get_invited_accounts_full() for the complete list of invited users.
+
+        Args:
+            account: Provider account
+
+        Returns:
+            Dictionary with invited_count and user_info, or None on failure
+        """
+        try:
+            from pixverse import Account  # type: ignore
+        except ImportError:  # pragma: no cover
+            return None
+
+        try:
+            from pixverse.api.client import PixverseAPI  # type: ignore
+        except ImportError:  # pragma: no cover
+            return None
+
+        async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
+            temp_account = Account(
+                email=account.email,
+                session={
+                    "jwt_token": session.get("jwt_token"),
+                    "cookies": session.get("cookies", {}),
+                },
+            )
+            api = self._get_cached_api(account)
+
+            try:
+                stats = await api.get_account_stats(temp_account)
+                return stats
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch account stats for %s: %s",
+                    account.id,
+                    str(e),
+                )
+                return None
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="get_account_stats",
+            operation=_operation,
+            retry_on_session_error=False,  # Don't trigger heavy reauth for stats
+        )
 

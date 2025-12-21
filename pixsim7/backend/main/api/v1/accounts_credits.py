@@ -109,6 +109,19 @@ class PixverseStatusResponse(BaseModel):
     ad_watch_task: Optional[Dict[str, Any]] = None
 
 
+class AccountStatsResponse(BaseModel):
+    """Account statistics (invited count, user info)"""
+    invited_count: int
+    user_info: Dict[str, Any]
+
+
+class InvitedAccountsResponse(BaseModel):
+    """List of invited/referred accounts"""
+    items: List[Dict[str, Any]]
+    total: int
+    next_offset: int
+
+
 # ===== ENDPOINTS =====
 
 @router.post("/accounts/sync-all-credits", response_model=BatchSyncCreditsResponse)
@@ -202,10 +215,8 @@ async def sync_all_account_credits(
             credits_data = None
             if hasattr(provider, "get_credits"):
                 try:
-                    if account_provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
-                        credits_data = await provider.get_credits_basic(account, retry_on_session_error=True)
-                    else:
-                        credits_data = await provider.get_credits(account)
+                    # All providers use get_credits() for basic credit sync (no ad task)
+                    credits_data = await provider.get_credits(account, retry_on_session_error=True)
                 except Exception as e:
                     logger.debug(f"Provider get_credits failed for {account_email}: {e}")
 
@@ -400,17 +411,14 @@ async def sync_account_credits(
         credits_data = None
         if hasattr(provider, "get_credits"):
             try:
-                if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
-                    # Enable auto-reauth for user-triggered sync
-                    logger.info(
-                        f"sync_credits_calling_provider account_id={account.id} provider_id={account.provider_id}"
-                    )
-                    credits_data = await provider.get_credits_basic(account, retry_on_session_error=True)
-                    logger.info(
-                        f"sync_credits_provider_success account_id={account.id} credits={credits_data}"
-                    )
-                else:
-                    credits_data = await provider.get_credits(account)
+                # Enable auto-reauth for user-triggered sync
+                logger.info(
+                    f"sync_credits_calling_provider account_id={account.id} provider_id={account.provider_id}"
+                )
+                credits_data = await provider.get_credits(account, retry_on_session_error=True)
+                logger.info(
+                    f"sync_credits_provider_success account_id={account.id} credits={credits_data}"
+                )
             except Exception as e:
                 logger.error(
                     f"sync_account_credits_provider_error account_id={account.id} email={account.email} provider_id={account.provider_id} error={str(e)} error_type={e.__class__.__name__}",
@@ -513,14 +521,20 @@ async def get_pixverse_status(
     user: CurrentUser,
     account_service: AccountSvc,
     db: DatabaseSession,
+    force: bool = False,
 ):
     """Get combined Pixverse credits + ad task status for an account.
+
+    Uses cached ad task data if synced within 5 minutes, unless force=True.
+    Credits are always fetched fresh (they have their own caching logic).
 
     Security:
     - Only the owner or an admin can query this endpoint.
     - Intended for tooling / extensions that need a quick snapshot of
       current web/OpenAPI credits plus daily watch-ad task state.
     """
+    AD_TASK_CACHE_TTL_SECONDS = 5 * 60  # 5 minutes
+
     try:
         account = await account_service.get_account(account_id)
 
@@ -537,6 +551,28 @@ async def get_pixverse_status(
         account_email = account.email
         account_provider_id = account.provider_id
 
+        # Check cached ad task status
+        metadata = account.provider_metadata or {}
+        cached_ad_task = metadata.get("ad_watch_task")
+        use_cached_ad_task = False
+
+        if not force and cached_ad_task and isinstance(cached_ad_task, dict):
+            synced_at_str = cached_ad_task.get("synced_at")
+            if synced_at_str:
+                try:
+                    from datetime import datetime, timezone
+                    synced_at = datetime.fromisoformat(synced_at_str.replace("Z", "+00:00"))
+                    age_seconds = (datetime.now(timezone.utc) - synced_at).total_seconds()
+                    if age_seconds < AD_TASK_CACHE_TTL_SECONDS:
+                        use_cached_ad_task = True
+                        logger.debug(
+                            "Using cached ad task status",
+                            account_id=account_id,
+                            age_seconds=age_seconds,
+                        )
+                except (ValueError, AttributeError):
+                    pass
+
         # Get provider adapter
         provider = registry.get(account_provider_id)
 
@@ -547,10 +583,18 @@ async def get_pixverse_status(
         try:
             if hasattr(provider, "get_credits"):
                 if getattr(provider, "provider_id", None) == "pixverse":
-                    credits_data = await provider.get_credits(  # type: ignore[arg-type]
-                        account,
-                        retry_on_session_error=False,
-                    ) or {}
+                    # If using cached ad task, fetch credits only to save API call
+                    # Otherwise fetch credits with fresh ad task data
+                    if use_cached_ad_task:
+                        credits_data = await provider.get_credits(  # type: ignore[arg-type]
+                            account,
+                            retry_on_session_error=False,
+                        ) or {}
+                    else:
+                        credits_data = await provider.get_credits_with_ad_task(  # type: ignore[arg-type]
+                            account,
+                            retry_on_session_error=False,
+                        ) or {}
                 else:
                     credits_data = await provider.get_credits(account) or {}
         except Exception as e:  # pragma: no cover - defensive
@@ -579,10 +623,24 @@ async def get_pixverse_status(
         ad_watch_task: Optional[Dict[str, Any]] = None
 
         if isinstance(credits_data, dict):
-            # Extract ad task metadata if present
+            # Extract ad task metadata if present (from fresh fetch)
             ad = credits_data.get("ad_watch_task")
             if isinstance(ad, dict):
+                # Cache the fresh ad task data
+                from datetime import datetime, timezone
+                ad_with_timestamp = {**ad, "synced_at": datetime.now(timezone.utc).isoformat()}
+                metadata["ad_watch_task"] = ad_with_timestamp
+                account.provider_metadata = metadata
+                db.add(account)
+                await db.commit()
+                await db.refresh(account)
                 ad_watch_task = ad
+                logger.debug(
+                    "Cached fresh ad task status",
+                    account_id=account_id,
+                    progress=ad.get("progress"),
+                    total=ad.get("total_counts"),
+                )
 
             # Copy numeric credit buckets
             for key, value in credits_data.items():
@@ -593,12 +651,177 @@ async def get_pixverse_status(
                 except (TypeError, ValueError):
                     continue
 
+        # Use cached ad task if we didn't get a fresh one
+        if ad_watch_task is None and use_cached_ad_task and cached_ad_task:
+            # Remove synced_at from the response (internal field)
+            ad_watch_task = {k: v for k, v in cached_ad_task.items() if k != "synced_at"}
+            logger.debug(
+                "Returning cached ad task status",
+                account_id=account_id,
+                progress=ad_watch_task.get("progress"),
+                total=ad_watch_task.get("total_counts"),
+            )
+
         # Fallback: if provider is not pixverse, ad_watch_task will be None
         return PixverseStatusResponse(
             provider_id=account_provider_id,
             email=account_email,
             credits=credits,
             ad_watch_task=ad_watch_task,
+        )
+
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+
+@router.get("/accounts/{account_id}/stats", response_model=AccountStatsResponse)
+async def get_account_stats(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+    force: bool = False,
+):
+    """Get cached account statistics (invited count, user info).
+
+    Uses cached stats if synced within 1 hour, unless force=True.
+    Lightweight alternative to full account info fetch.
+
+    Security:
+    - Only the owner or an admin can query this endpoint.
+    """
+    STATS_CACHE_TTL_SECONDS = 60 * 60  # 1 hour
+
+    try:
+        account = await account_service.get_account(account_id)
+
+        # Ownership or admin required
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot query system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to query this account")
+
+        # Only support Pixverse for now
+        if account.provider_id != "pixverse":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account stats only available for Pixverse accounts")
+
+        # Check cached stats
+        metadata = account.provider_metadata or {}
+        cached_stats = metadata.get("account_stats")
+        use_cached_stats = False
+
+        if not force and cached_stats and isinstance(cached_stats, dict):
+            synced_at_str = cached_stats.get("synced_at")
+            if synced_at_str:
+                try:
+                    from datetime import datetime, timezone
+                    synced_at = datetime.fromisoformat(synced_at_str.replace("Z", "+00:00"))
+                    age_seconds = (datetime.now(timezone.utc) - synced_at).total_seconds()
+                    if age_seconds < STATS_CACHE_TTL_SECONDS:
+                        use_cached_stats = True
+                except (ValueError, AttributeError):
+                    pass
+
+        if use_cached_stats:
+            return AccountStatsResponse(
+                invited_count=cached_stats.get("invited_count", 0),
+                user_info=cached_stats.get("user_info", {})
+            )
+
+        # Fetch fresh stats
+        provider = registry.get(account.provider_id)
+
+        if not hasattr(provider, "get_account_stats"):
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Provider does not support account stats")
+
+        stats = await provider.get_account_stats(account)
+
+        if stats:
+            # Cache the stats
+            from datetime import datetime, timezone
+            stats_with_timestamp = {**stats, "synced_at": datetime.now(timezone.utc).isoformat()}
+            metadata["account_stats"] = stats_with_timestamp
+            account.provider_metadata = metadata
+            db.add(account)
+            await db.commit()
+            await db.refresh(account)
+
+            return AccountStatsResponse(
+                invited_count=stats.get("invited_count", 0),
+                user_info=stats.get("user_info", {})
+            )
+        else:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Failed to fetch account stats")
+
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+
+@router.get("/accounts/{account_id}/invited-accounts", response_model=InvitedAccountsResponse)
+async def get_invited_accounts(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    page_size: int = 20,
+    offset: int = 0,
+):
+    """Get full list of invited/referred accounts (on-demand, not cached).
+
+    Returns detailed information about users who registered using this account's referral code.
+
+    Security:
+    - Only the owner or an admin can query this endpoint.
+    """
+    try:
+        account = await account_service.get_account(account_id)
+
+        # Ownership or admin required
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot query system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to query this account")
+
+        # Only support Pixverse for now
+        if account.provider_id != "pixverse":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invited accounts only available for Pixverse accounts")
+
+        provider = registry.get(account.provider_id)
+
+        # Use pixverse-py to fetch invited accounts
+        try:
+            from pixverse import Account as PixverseAccount  # type: ignore
+            from pixverse.api.client import PixverseAPI  # type: ignore
+        except ImportError:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "pixverse-py not installed")
+
+        # Get session data
+        from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseAdapter
+        if not isinstance(provider, PixverseAdapter):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid provider adapter")
+
+        # Use session manager to get valid session
+        async def _fetch_invited(session):
+            temp_account = PixverseAccount(
+                email=account.email,
+                session={
+                    "jwt_token": session.get("jwt_token"),
+                    "cookies": session.get("cookies", {}),
+                },
+            )
+            api = provider._get_cached_api(account)
+            return await api.get_invited_accounts(temp_account, page_size=page_size, offset=offset)
+
+        result = await provider.session_manager.run_with_session(
+            account=account,
+            op_name="get_invited_accounts",
+            operation=_fetch_invited,
+            retry_on_session_error=False,
+        )
+
+        return InvitedAccountsResponse(
+            items=result.get("items", []),
+            total=result.get("total", 0),
+            next_offset=result.get("next_offset", 0)
         )
 
     except ResourceNotFoundError:

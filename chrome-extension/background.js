@@ -777,6 +777,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Get account stats (invited count, user info) - cached
+  if (message.action === 'getAccountStats') {
+    (async () => {
+      try {
+        const { accountId, force } = message;
+        if (!accountId) throw new Error('accountId is required');
+        const params = force ? '?force=true' : '';
+        const data = await backendRequest(`/api/v1/accounts/${accountId}/stats${params}`);
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Get invited accounts list (full details) - on-demand
+  if (message.action === 'getInvitedAccounts') {
+    (async () => {
+      try {
+        const { accountId, pageSize = 20, offset = 0 } = message;
+        if (!accountId) throw new Error('accountId is required');
+        const params = new URLSearchParams({ page_size: pageSize, offset });
+        const data = await backendRequest(`/api/v1/accounts/${accountId}/invited-accounts?${params}`);
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Dev: Pixverse dry-run sync for a specific account
   if (message.action === 'pixverseDryRunSync') {
     (async () => {
