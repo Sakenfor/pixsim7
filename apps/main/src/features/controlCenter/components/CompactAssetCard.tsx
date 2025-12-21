@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { ThemedIcon } from '@lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import { contextMenuAttrs } from '@lib/dockview/contextMenu';
-import { useRegisterAssetContext, type AssetResponse } from '@features/assets';
+import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
+import type { AssetResponse } from '@features/assets';
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -134,11 +134,20 @@ export function CompactAssetCard({
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
 
-  // Register asset in context cache for context menu resolution
-  useRegisterAssetContext(asset);
-
   // Asset label for context menu display
   const assetLabel = asset.description || asset.provider_asset_id || `Asset ${asset.id}`;
+
+  // Register asset data for context menu resolution (generic component-level pattern)
+  useRegisterContextData('asset', asset.id, {
+    id: asset.id,
+    name: assetLabel,
+    type: asset.media_type,
+    asset, // full object for actions
+    provider: asset.provider_id,
+    providerAssetId: asset.provider_asset_id,
+    thumbnailUrl: asset.thumbnail_url,
+    isLocalOnly,
+  }, [asset.id, asset.updated_at]);
 
   return (
     <div

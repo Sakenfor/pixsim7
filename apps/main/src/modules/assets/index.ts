@@ -6,6 +6,9 @@ import { registerAssetsFeature } from '../../lib/capabilities/registerCoreFeatur
  *
  * Manages asset library and media management capabilities.
  * Registers assets feature capabilities with the capability registry.
+ *
+ * Note: Context menu data for assets is registered at the component level
+ * using useRegisterContextData() - no module-level resolver needed.
  */
 export const assetsModule: Module = {
   id: 'assets',
@@ -13,7 +16,6 @@ export const assetsModule: Module = {
 
   async initialize() {
     registerAssetsFeature();
-    // Future: Register gallery tools bootstrap if needed
   },
 
   page: {

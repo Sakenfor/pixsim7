@@ -94,11 +94,7 @@ export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
 
 export { assetEvents } from './lib/assetEvents';
 
-export {
-  assetContextCache,
-  useRegisterAssetContext,
-  registerAssetResolver,
-} from './lib/assetContextResolver';
+export { useRegisterAssetContext } from './lib/assetContextResolver';
 
 export {
   deleteAsset,
