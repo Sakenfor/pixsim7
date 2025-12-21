@@ -8,6 +8,7 @@ import {
   usePanelInstanceSettingsStore,
   type PanelSettingsScopeMode,
 } from "@features/panels";
+import { useContextHubState, type CapabilityConsumption } from "@features/contextHub";
 import type { ContextMenuContext } from "./types";
 
 type PopupPosition = { x: number; y: number };
@@ -23,6 +24,8 @@ interface PropertiesPayload {
   instanceId?: string;
   /** Panel title (for local registries that aren't in global panelRegistry) */
   panelTitle?: string;
+  /** ContextHub hostId for consumption tracking */
+  hostId?: string;
   /** Item-specific data */
   data?: Record<string, unknown>;
   /** ContextHub capabilities snapshot */
@@ -252,6 +255,49 @@ function CapabilitiesSection({ capabilities }: { capabilities?: Record<string, u
   );
 }
 
+/**
+ * Renders consumption info: what this panel consumes and from which provider.
+ */
+function ConsumesSection({ hostId }: { hostId?: string }) {
+  const hub = useContextHubState();
+  const [consumption, setConsumption] = useState<CapabilityConsumption[]>([]);
+
+  useEffect(() => {
+    if (!hub || !hostId) {
+      setConsumption([]);
+      return;
+    }
+    // Get consumption for this host from the registry
+    const records = hub.registry.getConsumptionForHost(hostId);
+    setConsumption(records);
+  }, [hub, hostId]);
+
+  if (!hostId || consumption.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-700">
+      <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-2">
+        Consumes From
+      </div>
+      <div className="space-y-1.5">
+        {consumption.map((record) => (
+          <div
+            key={record.key}
+            className="flex items-center justify-between gap-2 text-xs"
+          >
+            <span className="text-neutral-500 truncate">{record.key}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[10px] truncate max-w-[140px]">
+              {record.providerLabel || record.providerId}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function formatValue(value: unknown): string {
   if (value === true) return 'Yes';
   if (value === false) return 'No';
@@ -346,7 +392,7 @@ export function PropertiesPopup() {
 
   if (!isOpen || !payload) return null;
 
-  const { contextType, panelId, instanceId, panelTitle, data, capabilities } = payload;
+  const { contextType, panelId, instanceId, panelTitle, hostId, data, capabilities } = payload;
   const isPanelContext = contextType === 'tab' || contextType === 'panel-content';
   const title = getContextTitle(contextType);
   const itemName = data?.title ?? data?.name ?? data?.id ?? panelTitle ?? panelId ?? contextType;
@@ -378,6 +424,7 @@ export function PropertiesPopup() {
         {isPanelContext ? (
           <>
             <PanelProperties panelId={panelId} instanceId={instanceId} panelTitle={panelTitle} />
+            <ConsumesSection hostId={hostId} />
             <CapabilitiesSection capabilities={capabilities} />
           </>
         ) : (

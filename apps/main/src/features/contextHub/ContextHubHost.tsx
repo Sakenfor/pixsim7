@@ -40,3 +40,12 @@ export function ContextHubHost({ children, hostId }: ContextHubHostProps) {
 export function useContextHubState(): ContextHubState | null {
   return useContext(ContextHubContext);
 }
+
+/**
+ * Returns the hostId of the nearest ContextHubHost.
+ * Used for consumption tracking.
+ */
+export function useContextHubHostId(): string | undefined {
+  const state = useContext(ContextHubContext);
+  return state?.hostId;
+}

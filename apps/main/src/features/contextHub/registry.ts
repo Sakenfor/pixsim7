@@ -1,4 +1,9 @@
-import type { CapabilityKey, CapabilityProvider, CapabilityRegistry } from "./types";
+import type {
+  CapabilityKey,
+  CapabilityProvider,
+  CapabilityRegistry,
+  CapabilityConsumption,
+} from "./types";
 
 type ProviderEntry = {
   provider: CapabilityProvider;
@@ -6,10 +11,16 @@ type ProviderEntry = {
   key: CapabilityKey;
 };
 
+// Throttle interval for consumption recording (ms)
+const CONSUMPTION_THROTTLE_MS = 500;
+
 export function createCapabilityRegistry(): CapabilityRegistry {
   const providers = new Map<CapabilityKey, ProviderEntry[]>();
   const listeners = new Set<() => void>();
   let orderCounter = 0;
+
+  // Consumption tracking: Map<key, Map<consumerHostId, record>>
+  const consumption = new Map<CapabilityKey, Map<string, CapabilityConsumption>>();
 
   const notify = () => {
     listeners.forEach((listener) => listener());
@@ -94,6 +105,66 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     };
   };
 
+  // =========================================================================
+  // Consumption tracking (for debugging/visualization)
+  // =========================================================================
+
+  const recordConsumption = (
+    key: CapabilityKey,
+    consumerHostId: string,
+    provider: CapabilityProvider | null,
+  ) => {
+    if (!provider || !consumerHostId) return;
+
+    const now = Date.now();
+    let keyMap = consumption.get(key);
+    if (!keyMap) {
+      keyMap = new Map();
+      consumption.set(key, keyMap);
+    }
+
+    const existing = keyMap.get(consumerHostId);
+    // Throttle: only update if >CONSUMPTION_THROTTLE_MS since last
+    if (existing && now - existing.lastSeenAt < CONSUMPTION_THROTTLE_MS) {
+      return;
+    }
+
+    keyMap.set(consumerHostId, {
+      key,
+      consumerHostId,
+      providerId: provider.id ?? 'anonymous',
+      providerLabel: provider.label,
+      lastSeenAt: now,
+    });
+  };
+
+  const getConsumers = (key: CapabilityKey): CapabilityConsumption[] => {
+    const keyMap = consumption.get(key);
+    if (!keyMap) return [];
+    return Array.from(keyMap.values());
+  };
+
+  const getConsumptionForHost = (hostId: string): CapabilityConsumption[] => {
+    const results: CapabilityConsumption[] = [];
+    for (const keyMap of consumption.values()) {
+      const record = keyMap.get(hostId);
+      if (record) {
+        results.push(record);
+      }
+    }
+    return results;
+  };
+
+  const getAllConsumption = (): CapabilityConsumption[] => {
+    const results: CapabilityConsumption[] = [];
+    for (const keyMap of consumption.values()) {
+      for (const record of keyMap.values()) {
+        results.push(record);
+      }
+    }
+    return results;
+  };
+
   return {
     register,
     getBest,
@@ -101,5 +172,10 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     getKeys,
     getExposedKeys,
     subscribe,
+    // Consumption tracking
+    recordConsumption,
+    getConsumers,
+    getConsumptionForHost,
+    getAllConsumption,
   };
 }

@@ -133,6 +133,7 @@ export const propertiesAction: MenuAction = {
       panelId: panelDefinitionId,
       instanceId: ctx.instanceId ?? ctx.panelId,
       panelTitle,
+      hostId: ctx.contextHubState?.hostId,
       data: ctx.data as Record<string, unknown> | undefined,
       capabilities: ctx.capabilities,
     });

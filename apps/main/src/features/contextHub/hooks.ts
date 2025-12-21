@@ -6,7 +6,7 @@ import type {
   CapabilitySnapshot,
   CapabilityScope,
 } from "./types";
-import { useContextHubState } from "./ContextHubHost";
+import { useContextHubState, useContextHubHostId } from "./ContextHubHost";
 import type { ContextHubState } from "./ContextHubHost";
 import { useContextHubOverridesStore } from "./store/contextHubOverridesStore";
 
@@ -82,6 +82,7 @@ function resolveProvider<T>(
 
 export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   const hub = useContextHubState();
+  const hostId = useContextHubHostId();
   const preferredProviderId = useContextHubOverridesStore(
     (state) => state.overrides[key]?.preferredProviderId,
   );
@@ -110,6 +111,13 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
       return next;
     },
   );
+
+  // Record consumption for debugging/visualization (throttled internally)
+  useEffect(() => {
+    if (hostId && hub && snapshot.provider) {
+      hub.registry.recordConsumption(key, hostId, snapshot.provider);
+    }
+  }, [hub, hostId, key, snapshot.provider]);
 
   return snapshot;
 }

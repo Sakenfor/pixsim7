@@ -1,4 +1,4 @@
-export { ContextHubHost, useContextHubState } from "./ContextHubHost";
+export { ContextHubHost, useContextHubState, useContextHubHostId } from "./ContextHubHost";
 export type { ContextHubState } from "./ContextHubHost";
 export { useCapability, useProvideCapability } from "./hooks";
 export {
@@ -31,4 +31,5 @@ export type {
   CapabilityRegistry,
   CapabilitySnapshot,
   CapabilityScope,
+  CapabilityConsumption,
 } from "./types";
