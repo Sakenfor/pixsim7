@@ -127,13 +127,20 @@ export const propertiesAction: MenuAction = {
       panelTitle = panelDef?.title;
     }
 
+    // For panel contexts, use the panel's instanceId as hostId (matches per-panel ContextHubHost)
+    // For other contexts, fall back to the contextHubState's hostId
+    const isPanelContext = ctx.contextType === 'tab' || ctx.contextType === 'panel-content';
+    const effectiveHostId = isPanelContext
+      ? (ctx.instanceId ?? ctx.panelId)
+      : ctx.contextHubState?.hostId;
+
     usePropertiesPopupStore.getState().open({
       position: ctx.position,
       contextType: ctx.contextType,
       panelId: panelDefinitionId,
       instanceId: ctx.instanceId ?? ctx.panelId,
       panelTitle,
-      hostId: ctx.contextHubState?.hostId,
+      hostId: effectiveHostId,
       data: ctx.data as Record<string, unknown> | undefined,
       capabilities: ctx.capabilities,
     });

@@ -113,9 +113,14 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   );
 
   // Record consumption for debugging/visualization (throttled internally)
+  // Always record at root level so it's accessible from Properties popup
   useEffect(() => {
     if (hostId && hub && snapshot.provider) {
-      hub.registry.recordConsumption(key, hostId, snapshot.provider);
+      let root = hub;
+      while (root.parent) {
+        root = root.parent;
+      }
+      root.registry.recordConsumption(key, hostId, snapshot.provider);
     }
   }, [hub, hostId, key, snapshot.provider]);
 

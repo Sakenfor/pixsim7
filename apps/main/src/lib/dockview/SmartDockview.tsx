@@ -461,9 +461,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
                 contextMenuActive && enablePanelContentContextMenu ? handleContextMenu : undefined
               }
             >
-              <ScopeWrapper instanceId={instanceId}>
-                <Component {...panelProps} />
-              </ScopeWrapper>
+              <ContextHubHost hostId={instanceId}>
+                <ScopeWrapper instanceId={instanceId}>
+                  <Component {...panelProps} />
+                </ScopeWrapper>
+              </ContextHubHost>
             </div>
           );
         };
@@ -532,9 +534,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
                 contextMenuActive && enablePanelContentContextMenu ? handleContextMenu : undefined
               }
             >
-              <ScopeWrapper instanceId={instanceId}>
-                <BaseComponent {...panelProps} />
-              </ScopeWrapper>
+              <ContextHubHost hostId={instanceId}>
+                <ScopeWrapper instanceId={instanceId}>
+                  <BaseComponent {...panelProps} />
+                </ScopeWrapper>
+              </ContextHubHost>
             </div>
           );
         };
@@ -604,9 +608,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               contextMenuActive && enablePanelContentContextMenu ? handleContextMenu : undefined
             }
           >
-            <ScopeWrapper instanceId={instanceId}>
-              <Component {...panelProps} context={contextRef.current} panelId={globalDef.id} />
-            </ScopeWrapper>
+            <ContextHubHost hostId={instanceId}>
+              <ScopeWrapper instanceId={instanceId}>
+                <Component {...panelProps} context={contextRef.current} panelId={globalDef.id} />
+              </ScopeWrapper>
+            </ContextHubHost>
           </div>
         );
       };

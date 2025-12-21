@@ -257,6 +257,7 @@ function CapabilitiesSection({ capabilities }: { capabilities?: Record<string, u
 
 /**
  * Renders consumption info: what this panel consumes and from which provider.
+ * Subscribes to registry changes for live updates.
  */
 function ConsumesSection({ hostId }: { hostId?: string }) {
   const hub = useContextHubState();
@@ -267,9 +268,25 @@ function ConsumesSection({ hostId }: { hostId?: string }) {
       setConsumption([]);
       return;
     }
-    // Get consumption for this host from the registry
-    const records = hub.registry.getConsumptionForHost(hostId);
-    setConsumption(records);
+
+    // Consumption is always recorded at root level
+    let root = hub;
+    while (root.parent) {
+      root = root.parent;
+    }
+
+    // Helper to read consumption
+    const readConsumption = () => root.registry.getConsumptionForHost(hostId);
+
+    // Initial read
+    setConsumption(readConsumption());
+
+    // Subscribe for live updates
+    const unsubscribe = root.registry.subscribe(() => {
+      setConsumption(readConsumption());
+    });
+
+    return unsubscribe;
   }, [hub, hostId]);
 
   if (!hostId || consumption.length === 0) {

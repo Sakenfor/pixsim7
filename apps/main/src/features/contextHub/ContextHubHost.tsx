@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { createContext, useContext, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { createCapabilityRegistry } from "./registry";
 import type { CapabilityRegistry } from "./types";
 
@@ -23,6 +23,19 @@ export function ContextHubHost({ children, hostId }: ContextHubHostProps) {
   if (!registryRef.current) {
     registryRef.current = createCapabilityRegistry();
   }
+
+  // Clean up consumption records when this host unmounts
+  useEffect(() => {
+    if (!hostId || !parent) return;
+    return () => {
+      // Consumption is recorded at root level, so clear from there
+      let root = parent;
+      while (root.parent) {
+        root = root.parent;
+      }
+      root.registry.clearConsumptionForHost(hostId);
+    };
+  }, [hostId, parent]);
 
   const state: ContextHubState = {
     registry: registryRef.current,

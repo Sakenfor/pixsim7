@@ -165,6 +165,14 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     return results;
   };
 
+  const clearConsumptionForHost = (hostId: string) => {
+    for (const keyMap of consumption.values()) {
+      keyMap.delete(hostId);
+    }
+    // Notify listeners so UI updates
+    notify();
+  };
+
   return {
     register,
     getBest,
@@ -177,5 +185,6 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     getConsumers,
     getConsumptionForHost,
     getAllConsumption,
+    clearConsumptionForHost,
   };
 }

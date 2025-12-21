@@ -42,4 +42,5 @@ export interface CapabilityRegistry {
   getConsumers(key: CapabilityKey): CapabilityConsumption[];
   getConsumptionForHost(hostId: string): CapabilityConsumption[];
   getAllConsumption(): CapabilityConsumption[];
+  clearConsumptionForHost(hostId: string): void;
 }
