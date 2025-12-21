@@ -27,7 +27,6 @@ import {
 import {
   ViewerQuickGenPromptPanel,
   ViewerQuickGenSettingsPanel,
-  ViewerQuickGenInfoPanel,
   type ViewerQuickGenContext,
   type ViewerQuickGenSettingsMode,
 } from './viewer/ViewerQuickGeneratePanels';
@@ -215,15 +214,6 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
         position: { direction: 'right', referencePanel: 'prompt' },
       });
     }
-
-    if (!api.getPanel('info')) {
-      api.addPanel({
-        id: 'info',
-        component: 'info',
-        title: 'Info',
-        position: { referencePanel: 'settings' },
-      });
-    }
   }, []);
 
   const canGenerate = !!activePrompt.trim();
@@ -297,6 +287,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
           context={quickGenContext}
           defaultLayout={createViewerQuickGenLayout}
           minPanelsForTabs={1}
+          deprecatedPanels={['info']}
           onReady={(api) => {
             setDockviewApi(api);
             ensureViewerPanels(api);
@@ -307,7 +298,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   );
 }
 
-type ViewerQuickGenPanelId = 'prompt' | 'settings' | 'info';
+type ViewerQuickGenPanelId = 'prompt' | 'settings';
 
 const viewerQuickGenRegistry = createLocalPanelRegistry<ViewerQuickGenPanelId>();
 
@@ -324,12 +315,6 @@ viewerQuickGenRegistry.registerAll([
     component: ViewerQuickGenSettingsPanel,
     size: { minHeight: 160 },
   },
-  {
-    id: 'info',
-    title: 'Info',
-    component: ViewerQuickGenInfoPanel,
-    size: { minHeight: 120 },
-  },
 ]);
 
 function createViewerQuickGenLayout(api: import('dockview-core').DockviewApi) {
@@ -339,11 +324,5 @@ function createViewerQuickGenLayout(api: import('dockview-core').DockviewApi) {
     component: 'settings',
     title: 'Settings',
     position: { direction: 'right', referencePanel: 'prompt' },
-  });
-  api.addPanel({
-    id: 'info',
-    component: 'info',
-    title: 'Info',
-    position: { referencePanel: 'settings' },
   });
 }

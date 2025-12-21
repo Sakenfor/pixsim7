@@ -17,6 +17,12 @@ export interface UseSmartDockviewOptions {
   minPanelsForTabs?: number;
   /** Callback when layout changes */
   onLayoutChange?: () => void;
+  /**
+   * List of deprecated panel IDs that should trigger layout reset.
+   * If saved layout contains any of these panels, it will be cleared.
+   * Useful when removing panels to prevent deserialization errors.
+   */
+  deprecatedPanels?: string[];
 }
 
 export interface UseSmartDockviewReturn {
@@ -35,7 +41,7 @@ export interface UseSmartDockviewReturn {
 export function useSmartDockview(
   options: UseSmartDockviewOptions = {}
 ): UseSmartDockviewReturn {
-  const { storageKey, minPanelsForTabs = 2, onLayoutChange } = options;
+  const { storageKey, minPanelsForTabs = 2, onLayoutChange, deprecatedPanels = [] } = options;
   const apiRef = useRef<DockviewApi | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
 
@@ -121,6 +127,21 @@ export function useSmartDockview(
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
+        // Check for deprecated panels before loading
+        if (deprecatedPanels.length > 0) {
+          const hasDeprecatedPanel = deprecatedPanels.some(panelId =>
+            saved.includes(`"${panelId}"`)
+          );
+
+          if (hasDeprecatedPanel) {
+            console.log(
+              `[SmartDockview] Layout contains deprecated panels [${deprecatedPanels.join(', ')}]. Clearing layout.`
+            );
+            localStorage.removeItem(storageKey);
+            return false;
+          }
+        }
+
         const layout = JSON.parse(saved);
         apiRef.current.fromJSON(layout);
         return true;
@@ -129,7 +150,7 @@ export function useSmartDockview(
       console.error('[SmartDockview] Failed to load layout:', error);
     }
     return false;
-  }, [storageKey]);
+  }, [storageKey, deprecatedPanels]);
 
   /**
    * Reset layout by clearing saved state

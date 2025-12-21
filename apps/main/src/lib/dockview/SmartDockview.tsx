@@ -89,6 +89,13 @@ interface SmartDockviewBaseProps<TContext = any> {
   capabilities?: {
     floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
   };
+  /**
+   * Optional: List of deprecated panel IDs.
+   * If saved layout contains these panels, it will be automatically cleared.
+   * Useful when removing panels from registry to prevent deserialization errors.
+   * @example deprecatedPanels={['info', 'oldPanel']}
+   */
+  deprecatedPanels?: string[];
 }
 
 /** Registry mode props - uses LocalPanelRegistry */
@@ -158,13 +165,14 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     panelManagerId,
     globalPanelIds = [],
     includeGlobalPanels = false,
-    enableContextMenu = false,
+    enableContextMenu = true,
     enablePanelContentContextMenu = true,
     panelRegistryOverrides = {},
     watermarkComponent,
     tabComponents: customTabComponents,
     theme = 'dockview-theme-abyss',
     capabilities,
+    deprecatedPanels = [],
   } = props;
 
   // Context menu (optional - returns null if no provider)
@@ -183,6 +191,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         : `dockview:${Math.random().toString(36).slice(2, 9)}`,
     [panelManagerId],
   );
+  const contextMenuDockviewId = panelManagerId ?? dockviewHostId;
 
   // Determine mode
   const registryMode = isRegistryMode(props);
@@ -221,6 +230,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     storageKey,
     minPanelsForTabs,
     onLayoutChange,
+    deprecatedPanels,
   });
 
   const scopeDefinitions = useMemo(
@@ -550,11 +560,9 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         }).catch(() => {
           // Panel manager not available
         });
-
-        // Register with global context menu provider (if available)
-        if (contextMenu) {
-          contextMenu.registerDockview(panelManagerId, event.api, capabilities);
-        }
+      }
+      if (enableContextMenu && contextMenu) {
+        contextMenu.registerDockview(contextMenuDockviewId, event.api, capabilities);
       }
 
       // Registry mode: try to load saved layout or create default
@@ -585,11 +593,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Unregister on unmount
   useEffect(() => {
     return () => {
-      if (panelManagerId && contextMenu) {
-        contextMenu.unregisterDockview(panelManagerId);
+      if (enableContextMenu && contextMenu) {
+        contextMenu.unregisterDockview(contextMenuDockviewId);
       }
     };
-  }, [panelManagerId, contextMenu]);
+  }, [panelManagerId, contextMenu, enableContextMenu, contextMenuDockviewId]);
 
   // Tab components - add context menu tab if enabled
   const tabComponents = useMemo(() => {
@@ -609,15 +617,15 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     contextMenu.showContextMenu({
       contextType: 'background',
       position: { x: e.clientX, y: e.clientY },
-      currentDockviewId: panelManagerId,
+      currentDockviewId: contextMenuDockviewId,
       panelRegistry: dockviewPanelRegistry,
       resetDockviewLayout,
     });
-  }, [contextMenuActive, contextMenu, panelManagerId, resetDockviewLayout, dockviewPanelRegistry]);
+  }, [contextMenuActive, contextMenu, contextMenuDockviewId, resetDockviewLayout, dockviewPanelRegistry]);
 
   return (
     <DockviewIdProvider
-      dockviewId={panelManagerId}
+      dockviewId={contextMenuDockviewId}
       panelRegistry={dockviewPanelRegistry}
       dockviewApi={dockviewApi}
     >
