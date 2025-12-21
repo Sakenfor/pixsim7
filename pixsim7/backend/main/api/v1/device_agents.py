@@ -6,13 +6,13 @@ Handles registration and heartbeat from remote device agents.
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Dict, Optional
+from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import secrets
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
-from pixsim7.backend.main.domain.automation import DeviceAgent, AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod
+from pixsim7.backend.main.domain.automation import DeviceAgent, AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod, PairingRequest
 from pixsim7.backend.main.api.dependencies import CurrentUser
 
 router = APIRouter(prefix="/automation/agents", tags=["device-agents"])
@@ -29,28 +29,11 @@ class AgentRegisterRequest(BaseModel):
 
 
 class AgentHeartbeatRequest(BaseModel):
-    devices: List[Dict[str, str]]  # [{"serial": "...", "state": "device"}]
+    devices: List[dict[str, str]]  # [{"serial": "...", "state": "device"}]
     timestamp: str
 
 
-# In-memory pairing state (per-process, short-lived).
-# This is intended for developer convenience and simple deployments;
-# production setups should back this with a shared store.
-class PairingRequestState(BaseModel):
-    agent_id: str
-    pairing_code: str
-    name: str
-    host: str
-    port: int
-    api_port: int
-    version: str
-    os_info: str
-    created_at: datetime
-    paired_user_id: Optional[int] = None
-
-
-PAIRING_REQUESTS: Dict[str, PairingRequestState] = {}
-PAIRING_CODE_INDEX: Dict[str, str] = {}  # pairing_code -> agent_id
+# Pairing TTL constant (moved from in-memory implementation to database-backed)
 PAIRING_TTL_MINUTES = 15
 
 
@@ -157,20 +140,28 @@ async def register_agent(
 async def request_pairing(
     data: PairingStartRequest,
     req: Request,
+    db: AsyncSession = Depends(get_db),
 ) -> PairingStartResponse:
     """Start pairing flow for a remote agent (no auth required).
 
     Agent calls this to obtain a short-lived pairing code. The user then enters
     this code in the web UI to associate the agent with their account.
     """
-    # Basic cleanup of expired requests
     now = datetime.utcnow()
+
+    # Cleanup expired requests (older than TTL)
     expiry_cutoff = now - timedelta(minutes=PAIRING_TTL_MINUTES)
-    expired_ids = [aid for aid, state in PAIRING_REQUESTS.items() if state.created_at < expiry_cutoff]
-    for aid in expired_ids:
-        code = PAIRING_REQUESTS[aid].pairing_code
-        PAIRING_REQUESTS.pop(aid, None)
-        PAIRING_CODE_INDEX.pop(code, None)
+    await db.execute(
+        select(PairingRequest).where(PairingRequest.expires_at < expiry_cutoff)
+    )
+    expired_requests = (await db.execute(
+        select(PairingRequest).where(PairingRequest.expires_at < expiry_cutoff)
+    )).scalars().all()
+
+    for expired in expired_requests:
+        await db.delete(expired)
+
+    await db.commit()
 
     # Generate a short pairing code: 4+4 hex segments (e.g., "A1B2-C3D4")
     raw = secrets.token_hex(4).upper()
@@ -180,19 +171,42 @@ async def request_pairing(
     if host == "auto" and req.client:
         host = req.client.host
 
-    state = PairingRequestState(
-        agent_id=data.agent_id,
-        pairing_code=pairing_code,
-        name=data.name,
-        host=host,
-        port=data.port,
-        api_port=data.api_port,
-        version=data.version,
-        os_info=data.os_info,
-        created_at=now,
-    )
-    PAIRING_REQUESTS[data.agent_id] = state
-    PAIRING_CODE_INDEX[pairing_code] = data.agent_id
+    # Check if pairing request already exists for this agent_id
+    existing = (await db.execute(
+        select(PairingRequest).where(PairingRequest.agent_id == data.agent_id)
+    )).scalars().first()
+
+    expires_at = now + timedelta(minutes=PAIRING_TTL_MINUTES)
+
+    if existing:
+        # Update existing request
+        existing.pairing_code = pairing_code
+        existing.name = data.name
+        existing.host = host
+        existing.port = data.port
+        existing.api_port = data.api_port
+        existing.version = data.version
+        existing.os_info = data.os_info
+        existing.created_at = now
+        existing.expires_at = expires_at
+        existing.paired_user_id = None  # Reset pairing status
+    else:
+        # Create new pairing request
+        pairing_request = PairingRequest(
+            agent_id=data.agent_id,
+            pairing_code=pairing_code,
+            name=data.name,
+            host=host,
+            port=data.port,
+            api_port=data.api_port,
+            version=data.version,
+            os_info=data.os_info,
+            created_at=now,
+            expires_at=expires_at,
+        )
+        db.add(pairing_request)
+
+    await db.commit()
 
     return PairingStartResponse(pairing_code=pairing_code, agent_id=data.agent_id)
 
@@ -210,51 +224,53 @@ async def complete_pairing(
     record. Agents can then poll pairing-status to know when pairing is done.
     """
     now = datetime.utcnow()
-    agent_id = PAIRING_CODE_INDEX.get(body.pairing_code)
-    if not agent_id:
+
+    # Look up pairing request by code
+    pairing_request = (await db.execute(
+        select(PairingRequest).where(PairingRequest.pairing_code == body.pairing_code)
+    )).scalars().first()
+
+    if not pairing_request:
         raise HTTPException(status_code=404, detail="Invalid or expired pairing code")
 
-    state = PAIRING_REQUESTS.get(agent_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Pairing request not found")
-
     # Enforce TTL
-    if state.created_at < now - timedelta(minutes=PAIRING_TTL_MINUTES):
-        # Clean up
-        PAIRING_REQUESTS.pop(agent_id, None)
-        PAIRING_CODE_INDEX.pop(body.pairing_code, None)
+    if pairing_request.expires_at < now:
+        # Clean up expired request
+        await db.delete(pairing_request)
+        await db.commit()
         raise HTTPException(status_code=410, detail="Pairing code has expired")
 
-    state.paired_user_id = user.id
+    # Mark as paired
+    pairing_request.paired_user_id = user.id
 
     # Create or update DeviceAgent for this user/agent_id
     result = await db.execute(
-        select(DeviceAgent).where(DeviceAgent.agent_id == agent_id)
+        select(DeviceAgent).where(DeviceAgent.agent_id == pairing_request.agent_id)
     )
     existing = result.scalars().first()
 
     if existing:
         existing.user_id = user.id
-        existing.name = state.name
-        existing.host = state.host
-        existing.port = state.port
-        existing.api_port = state.api_port
-        existing.version = state.version
-        existing.os_info = state.os_info
+        existing.name = pairing_request.name
+        existing.host = pairing_request.host
+        existing.port = pairing_request.port
+        existing.api_port = pairing_request.api_port
+        existing.version = pairing_request.version
+        existing.os_info = pairing_request.os_info
         existing.status = "online"
         existing.updated_at = now
         agent = existing
     else:
         agent = DeviceAgent(
-            agent_id=agent_id,
-            name=state.name,
-            host=state.host,
-            port=state.port,
-            api_port=state.api_port,
+            agent_id=pairing_request.agent_id,
+            name=pairing_request.name,
+            host=pairing_request.host,
+            port=pairing_request.port,
+            api_port=pairing_request.api_port,
             user_id=user.id,
             status="online",
-            version=state.version,
-            os_info=state.os_info,
+            version=pairing_request.version,
+            os_info=pairing_request.os_info,
             last_heartbeat=None,
             created_at=now,
             updated_at=now,
@@ -268,17 +284,23 @@ async def complete_pairing(
 
 
 @router.get("/pairing-status/{agent_id}", response_model=PairingStatusResponse)
-async def get_pairing_status(agent_id: str) -> PairingStatusResponse:
+async def get_pairing_status(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db)
+) -> PairingStatusResponse:
     """Check pairing status for an agent (used by agent to know when user has paired it)."""
-    state = PAIRING_REQUESTS.get(agent_id)
-    if not state:
+    pairing_request = (await db.execute(
+        select(PairingRequest).where(PairingRequest.agent_id == agent_id)
+    )).scalars().first()
+
+    if not pairing_request:
         return PairingStatusResponse(status="unknown")
 
     now = datetime.utcnow()
-    if state.created_at < now - timedelta(minutes=PAIRING_TTL_MINUTES):
+    if pairing_request.expires_at < now:
         return PairingStatusResponse(status="expired")
 
-    if state.paired_user_id is not None:
+    if pairing_request.paired_user_id is not None:
         return PairingStatusResponse(status="paired")
 
     return PairingStatusResponse(status="pending")
