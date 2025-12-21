@@ -88,6 +88,7 @@ import {
   Maximize2,
   Minimize2,
   Archive,
+  Package,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -235,6 +236,8 @@ export const Icons = {
   // Misc
   folderTree: FolderTree,
   cursorClick: Target,
+  package: Package,
+  '📦': Package,  // Emoji alias
 } as const;
 
 export type IconName = keyof typeof Icons;

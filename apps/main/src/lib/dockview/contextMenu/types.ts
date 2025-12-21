@@ -6,6 +6,7 @@
 
 import type { DockviewApi } from 'dockview-core';
 import type { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+import type { ContextHubState } from '@features/contextHub';
 
 export interface PanelRegistryLike {
   getAll: () => Array<{
@@ -62,6 +63,8 @@ export interface MenuActionContext {
 
   /** ContextHub capability snapshots (optional) */
   capabilities?: Record<string, unknown>;
+  /** ContextHub state for scoped capability resolution (optional) */
+  contextHubState?: ContextHubState | null;
 
   // Multi-dockview support
   /** ID of the dockview where context menu was triggered (if applicable) */
@@ -69,6 +72,8 @@ export interface MenuActionContext {
 
   /** Get any registered dockview's API by ID */
   getDockviewApi?: (id: string) => DockviewApi | undefined;
+  /** Get all registered dockview IDs */
+  getDockviewIds?: () => string[];
 
   // Dockview-specific fields (optional)
   /** Dockview API instance for the current dockview (convenience shortcut) */
