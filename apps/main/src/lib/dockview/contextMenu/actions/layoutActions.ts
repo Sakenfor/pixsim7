@@ -180,4 +180,51 @@ export const layoutActions: MenuAction[] = [
   moveToNewGroupAction,
   joinLeftGroupAction,
   joinRightGroupAction,
+  {
+    id: 'layout:move-to-dockview',
+    label: 'Move To Dockview',
+    icon: 'move-right',
+    category: 'layout',
+    availableIn: ['tab', 'panel-content'],
+    visible: (ctx) => !!ctx.panelId && !!ctx.api && !!ctx.getDockviewIds && !!ctx.getDockviewApi,
+    children: (ctx) => {
+      const ids = ctx.getDockviewIds?.() ?? [];
+      const currentId = ctx.currentDockviewId;
+      const entries = ids.filter(id => id !== currentId);
+
+      if (entries.length === 0) {
+        return [{
+          id: 'layout:move-to-dockview:empty',
+          label: 'No other dockviews',
+          availableIn: ['tab', 'panel-content'],
+          disabled: () => true,
+          execute: () => {},
+        }];
+      }
+
+      return entries.map(id => ({
+        id: `layout:move-to-dockview:${id}`,
+        label: id,
+        availableIn: ['tab', 'panel-content'] as const,
+        execute: () => {
+          if (!ctx.api || !ctx.panelId || !ctx.getDockviewApi) return;
+          const panel = ctx.api.getPanel(ctx.panelId);
+          if (!panel) return;
+          const targetApi = ctx.getDockviewApi(id);
+          if (!targetApi) return;
+
+          const newId = `${panel.id}-${Date.now()}`;
+          targetApi.addPanel({
+            id: newId,
+            component: panel.component,
+            title: panel.title,
+            params: panel.params,
+          });
+
+          ctx.api.removePanel(panel);
+        },
+      }));
+    },
+    execute: () => {},
+  },
 ];

@@ -34,6 +34,8 @@ export interface LocalPanelDefinition<TParams = any> {
   id: string;
   /** Display title (shown in tabs when visible) */
   title: string;
+  /** Hide from add-panel menus (still available in layouts) */
+  isInternal?: boolean;
   /** React component to render */
   component: ComponentType<TParams>;
   /** Icon name for tab/header */

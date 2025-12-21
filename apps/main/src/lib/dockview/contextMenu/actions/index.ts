@@ -11,6 +11,7 @@ import { layoutActions } from './layoutActions';
 import { presetActions } from './presetActions';
 import { addPanelActions } from './addPanelActions';
 import { assetActions } from './assetActions';
+import { contextHubActions } from './contextHubActions';
 
 // Export individual action modules
 export * from './panelActions';
@@ -18,6 +19,7 @@ export * from './layoutActions';
 export * from './presetActions';
 export * from './addPanelActions';
 export * from './assetActions';
+export * from './contextHubActions';
 
 /**
  * All actions combined
@@ -28,6 +30,7 @@ export const allActions = [
   ...layoutActions,
   ...presetActions,
   ...addPanelActions,
+  ...contextHubActions,
 ];
 
 let actionsRegistered = false;

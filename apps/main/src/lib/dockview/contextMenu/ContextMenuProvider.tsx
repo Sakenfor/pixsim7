@@ -161,6 +161,7 @@ export function ContextMenuProvider({
       capabilities: capabilitiesSnapshot.map,
       currentDockviewId,
       getDockviewApi,
+      getDockviewIds,
       // Inject global services from props
       workspaceStore: servicesRef.current.workspaceStore,
       panelRegistry: servicesRef.current.panelRegistry,
@@ -171,16 +172,6 @@ export function ContextMenuProvider({
 
     if (!fullContext.api && currentApi) {
       fullContext.api = currentApi;
-    }
-
-    if (process.env.NODE_ENV === 'development') {
-      const registryCount = fullContext.panelRegistry?.getAll?.().length ?? 0;
-      console.log('[ContextMenu] open', {
-        contextType: fullContext.contextType,
-        dockviewId: fullContext.currentDockviewId,
-        hasApi: !!fullContext.api,
-        registryCount,
-      });
     }
 
     setState({ isOpen: true, context: fullContext });

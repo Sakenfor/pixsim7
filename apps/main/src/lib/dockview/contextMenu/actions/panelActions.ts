@@ -8,7 +8,8 @@
  * - Duplicate Panel
  */
 
-import type { MenuAction } from '../types';
+import type { MenuAction, MenuActionContext } from '../types';
+import { usePanelPropertiesPopupStore } from '../PanelPropertiesPopup';
 
 /**
  * Close the current panel
@@ -87,6 +88,35 @@ export const floatPanelAction: MenuAction = {
   },
 };
 
+function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
+  const dataPanelId = ctx.data?.panelId;
+  if (typeof dataPanelId === 'string') return dataPanelId;
+  if (typeof ctx.panelId === 'string') return ctx.panelId;
+  return undefined;
+}
+
+/**
+ * Open panel properties in Settings (Panels tab)
+ */
+export const panelPropertiesAction: MenuAction = {
+  id: 'panel:properties',
+  label: 'Properties',
+  icon: 'settings',
+  category: 'zzz',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) => !!resolvePanelDefinitionId(ctx),
+  execute: (ctx) => {
+    const panelDefinitionId = resolvePanelDefinitionId(ctx);
+    if (!panelDefinitionId) return;
+    if (!ctx.position) return;
+    usePanelPropertiesPopupStore.getState().open({
+      position: ctx.position,
+      panelId: panelDefinitionId,
+      instanceId: ctx.panelId,
+    });
+  },
+};
+
 /**
  * Close all other panels in the same group
  */
@@ -147,6 +177,7 @@ export const closeAllInGroupAction: MenuAction = {
  * All panel actions
  */
 export const panelActions: MenuAction[] = [
+  panelPropertiesAction,
   closePanelAction,
   maximizePanelAction,
   floatPanelAction,

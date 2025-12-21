@@ -8,6 +8,7 @@ import { DockviewDefaultTab } from 'dockview';
 import type { IDockviewPanelProps } from 'dockview-core';
 import { useContextMenuOptional } from './ContextMenuProvider';
 import { useDockviewContext } from './DockviewIdContext';
+import { useContextHubState } from '@features/contextHub';
 
 /**
  * Custom tab component that adds context menu support
@@ -18,6 +19,7 @@ import { useDockviewContext } from './DockviewIdContext';
 export function CustomTabComponent(props: IDockviewPanelProps) {
   const contextMenu = useContextMenuOptional();
   const { dockviewId: currentDockviewId, panelRegistry, dockviewApi } = useDockviewContext();
+  const contextHubState = useContextHubState();
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (!contextMenu) return;
@@ -36,6 +38,7 @@ export function CustomTabComponent(props: IDockviewPanelProps) {
       currentDockviewId,
       panelRegistry,
       api: dockviewApi,
+      contextHubState,
     });
   };
 

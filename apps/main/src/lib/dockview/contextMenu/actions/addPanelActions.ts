@@ -19,11 +19,10 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: st
     ? ctx.panelRegistry.getPublicPanels()
     : ctx.panelRegistry.getAll();
 
-  const groupByCategory = ctx.currentDockviewId === 'workspace';
-  const defaultCategory = groupByCategory ? 'Other' : 'Panels';
+  const defaultCategory = 'Other';
 
   for (const panel of allPanels) {
-    const category = groupByCategory ? (panel.category || defaultCategory) : defaultCategory;
+    const category = panel.category || defaultCategory;
     if (!categories.has(category)) {
       categories.set(category, []);
     }
@@ -37,6 +36,15 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: st
   return categories;
 }
 
+function formatCategoryLabel(category: string): string {
+  if (category === 'dev') return 'Dev';
+  if (category === 'ui') return 'UI';
+  if (category === 'api') return 'API';
+  return category
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 /**
  * Check if a panel is already open in the current dockview
  */
@@ -45,12 +53,15 @@ function isWorkspaceDockview(ctx: MenuActionContext): boolean {
 }
 
 function isPanelOpen(ctx: MenuActionContext, panelId: string): boolean {
-  const panels = Array.isArray(ctx.api?.panels) ? ctx.api.panels : [];
-  if (panels.length === 0) return false;
+  if (!ctx.api) return false;
+  const panels = Array.isArray(ctx.api.panels) ? ctx.api.panels : [];
+  if (panels.length === 0 && !isWorkspaceDockview(ctx)) {
+    return !!ctx.api.getPanel(panelId);
+  }
   if (isWorkspaceDockview(ctx)) {
     return panels.some(p => p.params?.panelId === panelId);
   }
-  return panels.some(p => p.id === panelId);
+  return !!ctx.api.getPanel(panelId) || panels.some(p => p.id === panelId);
 }
 
 /**
@@ -138,22 +149,10 @@ export const addPanelAction: MenuAction = {
     });
 
     for (const [category, panels] of sortedCategories) {
-      // If only one category, flatten the menu
-      if (categories.size === 1) {
-        return panels.map(panel => ({
-          id: `panel:add:${panel.id}`,
-          label: panel.title,
-          icon: panel.icon,
-          availableIn: ['background', 'tab', 'panel-content'] as const,
-          disabled: () => isPanelOpen(ctx, panel.id) ? 'Already open' : false,
-          execute: () => addPanel(ctx, panel.id),
-        }));
-      }
-
       // Create category submenu
       categoryActions.push({
         id: `panel:add:category:${category}`,
-        label: category,
+        label: formatCategoryLabel(category),
         availableIn: ['background', 'tab', 'panel-content'],
         children: panels.map(panel => ({
           id: `panel:add:${panel.id}`,
