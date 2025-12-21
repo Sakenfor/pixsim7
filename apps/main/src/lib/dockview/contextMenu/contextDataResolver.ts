@@ -30,8 +30,27 @@ import { useEffect } from 'react';
 
 export type ContextDataResolver = (id: string) => Record<string, unknown> | null;
 
+/**
+ * Resolution precedence:
+ * 1. Type-specific resolver (if registered) - for store-backed lookups
+ * 2. Component cache fallback (if no resolver) - for component-registered data
+ *
+ * This means:
+ * - If a feature registers a resolver, it owns that type's data
+ * - If no resolver exists, component-level cache is used
+ * - Components should use useRegisterContextData for types without resolvers
+ */
 class ContextDataRegistry {
   private resolvers = new Map<string, ContextDataResolver>();
+  private cache: ContextDataCache | null = null;
+
+  /**
+   * Set the fallback cache for types without resolvers.
+   * Called internally during module initialization.
+   */
+  setFallbackCache(cache: ContextDataCache): void {
+    this.cache = cache;
+  }
 
   /**
    * Register a resolver for a context type.
@@ -57,21 +76,35 @@ class ContextDataRegistry {
 
   /**
    * Resolve data for a context type and ID.
-   * Returns null if no resolver is registered or resolver returns null.
+   *
+   * Precedence:
+   * 1. Type-specific resolver (if registered)
+   * 2. Component cache fallback (if no resolver for this type)
+   *
+   * Returns null if neither source has data.
    */
   resolve(type: string, id: string): Record<string, unknown> | null {
+    // 1. Try type-specific resolver first
     const resolver = this.resolvers.get(type);
-    if (!resolver) return null;
-    try {
-      return resolver(id);
-    } catch (error) {
-      console.error(`[ContextDataRegistry] Error resolving ${type}:${id}:`, error);
-      return null;
+    if (resolver) {
+      try {
+        return resolver(id);
+      } catch (error) {
+        console.error(`[ContextDataRegistry] Error resolving ${type}:${id}:`, error);
+        return null;
+      }
     }
+
+    // 2. Fall back to component cache if no resolver for this type
+    if (this.cache) {
+      return this.cache.get(type, id) ?? null;
+    }
+
+    return null;
   }
 
   /**
-   * Get all registered types.
+   * Get all registered resolver types.
    */
   getTypes(): string[] {
     return Array.from(this.resolvers.keys());
@@ -206,19 +239,8 @@ class ContextDataCache {
 /** Global context data cache for component-registered data */
 export const contextDataCache = new ContextDataCache();
 
-// Register cache-based resolver as fallback
-// This runs after feature-specific resolvers, checking the generic cache
-contextDataRegistry.register('__cache__', () => null); // Placeholder
-
-// Patch resolve to check cache first for any type
-const originalResolve = contextDataRegistry.resolve.bind(contextDataRegistry);
-contextDataRegistry.resolve = (type: string, id: string) => {
-  // First check the generic cache
-  const cached = contextDataCache.get(type, id);
-  if (cached) return cached;
-  // Fall back to type-specific resolver
-  return originalResolve(type, id);
-};
+// Wire up cache as fallback for types without resolvers
+contextDataRegistry.setFallbackCache(contextDataCache);
 
 /**
  * Hook to register context data while a component is mounted.
@@ -227,22 +249,36 @@ contextDataRegistry.resolve = (type: string, id: string) => {
  * @param type - Context type (e.g., 'asset', 'node')
  * @param id - Unique ID within the type
  * @param data - Data object to return when context menu resolves this item
- * @param deps - Dependency array for re-registration (default: [id])
+ * @param deps - Dependency array for re-registration (REQUIRED)
+ *
+ * IMPORTANT: deps should include any fields that affect the data object.
+ * Common patterns:
+ * - [id, updatedAt] - re-register when item updates
+ * - [id, name, thumbnailUrl] - re-register when display fields change
+ * - [id] - only re-register when ID changes (use with caution)
  *
  * @example
  * ```tsx
+ * // Good: includes fields that affect context menu display/actions
  * useRegisterContextData('asset', asset.id, {
  *   id: asset.id,
  *   name: asset.name,
  *   asset,
  * }, [asset.id, asset.updated_at]);
+ *
+ * // Good: explicit about which fields trigger re-registration
+ * useRegisterContextData('node', node.id, {
+ *   id: node.id,
+ *   label: node.data.label,
+ *   node,
+ * }, [node.id, node.data.label]);
  * ```
  */
 export function useRegisterContextData(
   type: string,
   id: string | number | null | undefined,
   data: Record<string, unknown>,
-  deps?: React.DependencyList,
+  deps: React.DependencyList,
 ): void {
   useEffect(() => {
     if (id === null || id === undefined) return;
@@ -251,5 +287,5 @@ export function useRegisterContextData(
       contextDataCache.delete(type, id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps ?? [id]);
+  }, deps);
 }

@@ -16,7 +16,7 @@
  * ```tsx
  * import { useRegisterContextData, contextMenuAttrs } from '@lib/dockview/contextMenu';
  *
- * useRegisterContextData('asset', asset.id, { ... }, [asset.id, asset.updated_at]);
+ * useRegisterContextData('asset', asset.id, { ... }, [asset.id, ...fields]);
  * ```
  */
 
@@ -27,8 +27,8 @@ import type { AssetResponse } from './api';
  * Hook to register an asset in the context cache.
  * Type-safe wrapper around useRegisterContextData for assets.
  *
- * Dependencies are limited to stable fields (id, updated_at) to avoid
- * re-registration thrash when the asset object reference changes.
+ * Dependencies include all fields used in the data object to ensure
+ * context menu always has fresh data.
  */
 export function useRegisterAssetContext(asset: AssetResponse | null | undefined): void {
   const isLocalOnly = asset
@@ -50,6 +50,16 @@ export function useRegisterAssetContext(asset: AssetResponse | null | undefined)
           isLocalOnly,
         }
       : {},
-    [asset?.id, asset?.updated_at],
+    // Include all fields that affect the data object
+    [
+      asset?.id,
+      asset?.description,
+      asset?.provider_asset_id,
+      asset?.media_type,
+      asset?.provider_id,
+      asset?.thumbnail_url,
+      asset?.provider_status,
+      asset?.remote_url,
+    ],
   );
 }

@@ -138,6 +138,7 @@ export function CompactAssetCard({
   const assetLabel = asset.description || asset.provider_asset_id || `Asset ${asset.id}`;
 
   // Register asset data for context menu resolution (generic component-level pattern)
+  // Deps include all fields used in the data object to ensure freshness
   useRegisterContextData('asset', asset.id, {
     id: asset.id,
     name: assetLabel,
@@ -147,7 +148,16 @@ export function CompactAssetCard({
     providerAssetId: asset.provider_asset_id,
     thumbnailUrl: asset.thumbnail_url,
     isLocalOnly,
-  }, [asset.id, asset.updated_at]);
+  }, [
+    asset.id,
+    asset.description,
+    asset.provider_asset_id,
+    asset.media_type,
+    asset.provider_id,
+    asset.thumbnail_url,
+    asset.provider_status,
+    asset.remote_url,
+  ]);
 
   return (
     <div
