@@ -66,6 +66,7 @@ from .models import (
     ProviderAccount,
     ProviderCredit,
     ProviderSubmission,
+    LlmProviderInstance,
 )
 
 # Schemas (re-export core schemas)
@@ -96,6 +97,7 @@ __all__ = [
     "ProviderAccount",
     "ProviderCredit",
     "ProviderSubmission",
+    "LlmProviderInstance",
     # Schemas
     "ProviderManifest",
     "ProviderKind",
