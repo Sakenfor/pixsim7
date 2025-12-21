@@ -24,9 +24,9 @@ from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetada
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
+from pixsim_logging import get_logger
 
-import logging
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 class AssetCoreService:
