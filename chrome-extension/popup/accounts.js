@@ -7,7 +7,9 @@
 
 // ===== UNIFIED CACHE HELPERS =====
 
-function getCachedField(accountId, fieldName) {
+function getCachedField(accountId, fieldName, options = {}) {
+  const { allowStale = true } = options;
+
   const accountData = accountExtendedInfoCache.get(accountId);
   if (!accountData || !accountData[fieldName]) return null;
 
@@ -16,9 +18,17 @@ function getCachedField(accountId, fieldName) {
   if (!ttl) return null;
 
   const age = Date.now() - field.updatedAt;
-  if (age > ttl) return null; // Expired
+  const isExpired = age > ttl;
 
-  return field.data;
+  // Return null only if expired AND stale data not allowed
+  if (isExpired && !allowStale) return null;
+
+  // Return data with freshness indicator
+  return {
+    data: field.data,
+    isStale: isExpired,
+    age: age
+  };
 }
 
 function setCachedField(accountId, fieldName, data) {
@@ -655,7 +665,7 @@ function createAccountCard(account) {
     const pillEl = card.querySelector('.account-ad-pill');
     const cachedAdTask = getCachedField(account.id, 'ad_watch_task');
     if (pillEl && cachedAdTask) {
-      renderPixverseAdPill(pillEl, cachedAdTask);
+      renderPixverseAdPill(pillEl, { ad_watch_task: cachedAdTask.data }, cachedAdTask.isStale);
     }
   }
 
@@ -667,9 +677,19 @@ function attachPixverseAdStatus(account, pillEl) {
 
   const cachedAdTask = getCachedField(account.id, 'ad_watch_task');
   if (cachedAdTask) {
-    renderPixverseAdPill(pillEl, cachedAdTask);
+    renderPixverseAdPill(pillEl, { ad_watch_task: cachedAdTask.data }, cachedAdTask.isStale);
+    // If stale, trigger background refresh
+    if (cachedAdTask.isStale) {
+      refreshPixverseAdStatus(account, pillEl);
+    }
     return;
   }
+
+  refreshPixverseAdStatus(account, pillEl);
+}
+
+function refreshPixverseAdStatus(account, pillEl) {
+  if (!pillEl) return;
 
   pillEl.textContent = 'Ads …';
   pillEl.title = 'Refreshing Pixverse status...';
@@ -698,7 +718,7 @@ function attachPixverseAdStatus(account, pillEl) {
   );
 }
 
-function renderPixverseAdPill(pillEl, payload) {
+function renderPixverseAdPill(pillEl, payload, isStale = false) {
   if (!pillEl) return;
 
   // Debug: log the entire payload structure
@@ -709,14 +729,26 @@ function renderPixverseAdPill(pillEl, payload) {
   console.log('[Ads] ad_watch_task:', task);
 
   if (task && typeof task === 'object') {
-    const progress = task.progress ?? 0;
+    // Use completed_counts if available (actual completed), otherwise use progress capped at total
+    const rawProgress = task.completed_counts ?? task.progress ?? 0;
     const total = task.total_counts ?? 0;
+    const progress = Math.min(rawProgress, total); // Cap at total to avoid showing 3/2
     const reward = task.reward ?? 0;
-    console.log('[Ads] Task values - progress:', progress, 'total:', total, 'reward:', reward);
-    pillEl.textContent = `Ads ${progress}/${total}`;
-    pillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}`;
+    console.log('[Ads] Task values - completed:', task.completed_counts, 'progress:', task.progress, 'total:', total, 'using:', progress);
+
+    // Add stale indicator if data is outdated
+    const staleIndicator = isStale ? ' ⚠️' : '';
+    pillEl.textContent = `Ads ${progress}/${total}${staleIndicator}`;
+
+    const staleMsg = isStale ? ' (refreshing...)' : '';
+    pillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}${staleMsg}`;
     pillEl.style.fontSize = '10px';
-    pillEl.style.color = '#6b7280';
+    pillEl.style.color = isStale ? '#9ca3af' : '#6b7280'; // Grayed out if stale
+    if (isStale) {
+      pillEl.style.opacity = '0.7';
+    } else {
+      pillEl.style.opacity = '1';
+    }
   } else {
     console.warn('[Ads] No valid ad_watch_task found in payload');
     // Show 0/0 when no task data instead of hiding
