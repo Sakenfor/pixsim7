@@ -103,3 +103,90 @@ def extract_ontology_ids_from_asset_tags(asset_tags: Dict[str, Any]) -> List[str
         List of ontology ID strings
     """
     return asset_tags.get("ontology_ids", [])
+
+
+# ===== FUSION TYPE INFERENCE =====
+
+# Tag namespace to fusion type mapping
+SUBJECT_NAMESPACES = {'character', 'object', 'prop', 'person', 'animal', 'vehicle'}
+BACKGROUND_NAMESPACES = {'location', 'environment', 'setting', 'background', 'scene', 'place'}
+
+
+def infer_fusion_type_from_namespace(namespace: str) -> Optional[str]:
+    """
+    Infer fusion type (subject/background) from tag namespace.
+
+    Args:
+        namespace: Tag namespace (e.g., 'character', 'location')
+
+    Returns:
+        'subject', 'background', or None if cannot infer
+
+    Examples:
+        >>> infer_fusion_type_from_namespace('character')
+        'subject'
+        >>> infer_fusion_type_from_namespace('location')
+        'background'
+        >>> infer_fusion_type_from_namespace('style')
+        None
+    """
+    namespace_lower = namespace.lower()
+
+    if namespace_lower in SUBJECT_NAMESPACES:
+        return 'subject'
+    elif namespace_lower in BACKGROUND_NAMESPACES:
+        return 'background'
+
+    return None
+
+
+async def infer_fusion_type_from_tags(
+    asset: Asset,
+    session: Session
+) -> Optional[str]:
+    """
+    Infer fusion type (subject/background) from asset's tags.
+
+    Strategy:
+    1. Load all tags for the asset
+    2. Check each tag's namespace against known mappings
+    3. Return first matched type (subject takes priority over background)
+
+    Args:
+        asset: Asset to check
+        session: Database session
+
+    Returns:
+        'subject', 'background', or None if cannot infer from tags
+
+    Examples:
+        Asset tagged with 'character:alice' → 'subject'
+        Asset tagged with 'location:tokyo' → 'background'
+        Asset with no tags or ambiguous tags → None
+    """
+    from sqlmodel import select
+    from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
+
+    # Load tags for this asset
+    query = (
+        select(Tag)
+        .join(AssetTag, AssetTag.tag_id == Tag.id)
+        .where(AssetTag.asset_id == asset.id)
+    )
+
+    result = await session.execute(query)
+    tags = result.scalars().all()
+
+    # First pass: look for subject tags (higher priority)
+    for tag in tags:
+        fusion_type = infer_fusion_type_from_namespace(tag.namespace)
+        if fusion_type == 'subject':
+            return 'subject'
+
+    # Second pass: look for background tags
+    for tag in tags:
+        fusion_type = infer_fusion_type_from_namespace(tag.namespace)
+        if fusion_type == 'background':
+            return 'background'
+
+    return None

@@ -492,11 +492,147 @@ class PixverseOperationsMixin:
         client: Any,
         params: Dict[str, Any]
     ):
-        """Generate fusion (character consistency)"""
-        # Call pixverse-py fusion method (now async)
+        """
+        Generate fusion (character consistency).
+
+        Converts fusion_assets to Pixverse image_references format with:
+        - Numeric ref names (@1, @2, @3) by default
+        - Type inference from tags (subject/background) with fallback rules
+        - Prompt rewriting to ensure @ref tokens match
+        """
+        from pixsim7.backend.main.services.asset.tags import infer_fusion_type_from_tags
+        from pixsim7.backend.main.domain.assets.models import Asset
+        from sqlmodel import select
+        import re
+
+        fusion_assets = params.get("fusion_assets", [])
+        if not fusion_assets:
+            raise ValueError("fusion_assets required for fusion generation")
+
+        # Enforce max 3 references (Pixverse limit)
+        if len(fusion_assets) > 3:
+            raise ValueError(f"Maximum 3 fusion assets allowed, got {len(fusion_assets)}")
+
+        # Get database session for loading assets
+        from pixsim7.backend.main.infrastructure.database.session import get_async_session
+
+        image_references = []
+        prompt = params.get("prompt", "")
+
+        async with get_async_session() as session:
+            for idx, fusion_asset in enumerate(fusion_assets, start=1):
+                # Parse fusion_asset format
+                # Expected formats:
+                # - {"asset_id": 123, "fusion_type": "subject", "ref_name": "character"}
+                # - {"asset_id": 123}  (infer type, use numeric ref)
+                # - "asset:123" (entity ref format)
+                # - 123 (raw asset ID)
+
+                asset_id = None
+                fusion_type = None
+                ref_name = None
+
+                if isinstance(fusion_asset, dict):
+                    asset_id = fusion_asset.get("asset_id") or fusion_asset.get("id")
+                    fusion_type = fusion_asset.get("fusion_type")
+                    ref_name = fusion_asset.get("ref_name")
+                elif isinstance(fusion_asset, str):
+                    # Parse "asset:123" format
+                    if ":" in fusion_asset:
+                        parts = fusion_asset.split(":", 1)
+                        asset_id = int(parts[1])
+                    else:
+                        asset_id = int(fusion_asset)
+                elif isinstance(fusion_asset, int):
+                    asset_id = fusion_asset
+                else:
+                    raise ValueError(f"Invalid fusion_asset format: {fusion_asset}")
+
+                if not asset_id:
+                    raise ValueError(f"Could not extract asset_id from fusion_asset: {fusion_asset}")
+
+                # Load asset from database
+                query = select(Asset).where(Asset.id == asset_id)
+                result = await session.execute(query)
+                asset = result.scalar_one_or_none()
+
+                if not asset:
+                    raise ValueError(f"Asset {asset_id} not found")
+
+                # Determine fusion type using priority rules
+                if not fusion_type:
+                    # Rule 1: Try to infer from tags
+                    fusion_type = await infer_fusion_type_from_tags(asset, session)
+
+                if not fusion_type:
+                    # Rule 2: Fallback assignment
+                    # First asset = background, remaining = subject
+                    fusion_type = "background" if idx == 1 else "subject"
+
+                # Determine ref_name (default to numeric)
+                if not ref_name:
+                    ref_name = str(idx)
+
+                # Get Pixverse image ID from asset
+                # Check provider_uploads first, then provider_asset_id
+                img_id = None
+
+                if asset.provider_uploads and "pixverse" in asset.provider_uploads:
+                    img_id = asset.provider_uploads["pixverse"]
+                elif asset.provider_id == "pixverse" and asset.provider_asset_id:
+                    img_id = asset.provider_asset_id
+
+                if not img_id:
+                    raise ValueError(
+                        f"Asset {asset_id} has no Pixverse image ID. "
+                        "Asset must be uploaded to Pixverse before using in fusion."
+                    )
+
+                # Convert to int if possible (Pixverse expects integer img_id)
+                try:
+                    img_id = int(img_id)
+                except (ValueError, TypeError):
+                    # If it's not numeric, it might be a valid ID format - keep as string
+                    pass
+
+                image_references.append({
+                    "type": fusion_type,
+                    "img_id": img_id,
+                    "ref_name": ref_name
+                })
+
+        # Rewrite prompt to ensure @ref tokens match ref_names
+        # If prompt doesn't contain any @refs, inject them
+        prompt_has_refs = bool(re.search(r'@\w+', prompt))
+
+        if not prompt_has_refs and prompt:
+            # Append numeric refs to the end of the prompt
+            ref_tokens = " ".join(f"@{ref['ref_name']}" for ref in image_references)
+            prompt = f"{prompt} {ref_tokens}"
+
+        # Validate that all ref_names appear in prompt (warn if missing)
+        for ref in image_references:
+            ref_token = f"@{ref['ref_name']}"
+            if ref_token not in prompt:
+                logger.warning(
+                    "fusion_ref_missing_from_prompt",
+                    ref_name=ref['ref_name'],
+                    prompt=prompt,
+                    msg=f"Reference {ref_token} not found in prompt, appending"
+                )
+                prompt = f"{prompt} {ref_token}"
+
+        logger.info(
+            "fusion_generation",
+            image_references=image_references,
+            prompt=prompt,
+            msg="Converted fusion_assets to image_references"
+        )
+
+        # Call pixverse-py fusion method with proper format
         video = await client.fusion(
-            prompt=params.get("prompt", ""),
-            fusion_assets=params["fusion_assets"],  # Required
+            prompt=prompt,
+            image_references=image_references,
             quality=params.get("quality", "360p"),
             duration=int(params.get("duration", 5)),
             seed=int(params.get("seed", 0)),
