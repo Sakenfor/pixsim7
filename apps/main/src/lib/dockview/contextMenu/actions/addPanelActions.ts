@@ -11,10 +11,20 @@ import type { MenuAction, MenuActionContext } from '../types';
 /**
  * Get panels grouped by category from the panel registry
  */
-function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: string; title: string; icon?: string }>> {
+function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
+  id: string;
+  title: string;
+  icon?: string;
+  supportsMultipleInstances?: boolean;
+}>> {
   if (!ctx.panelRegistry) return new Map();
 
-  const categories = new Map<string, Array<{ id: string; title: string; icon?: string }>>();
+  const categories = new Map<string, Array<{
+    id: string;
+    title: string;
+    icon?: string;
+    supportsMultipleInstances?: boolean;
+  }>>();
   const allPanels = ctx.panelRegistry.getPublicPanels
     ? ctx.panelRegistry.getPublicPanels()
     : ctx.panelRegistry.getAll();
@@ -30,6 +40,7 @@ function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{ id: st
       id: panel.id,
       title: panel.title,
       icon: panel.icon,
+      supportsMultipleInstances: panel.supportsMultipleInstances,
     });
   }
 
@@ -52,7 +63,8 @@ function isWorkspaceDockview(ctx: MenuActionContext): boolean {
   return ctx.currentDockviewId === 'workspace';
 }
 
-function isPanelOpen(ctx: MenuActionContext, panelId: string): boolean {
+function isPanelOpen(ctx: MenuActionContext, panelId: string, allowMultiple: boolean): boolean {
+  if (allowMultiple) return false;
   if (!ctx.api) return false;
   const panels = Array.isArray(ctx.api.panels) ? ctx.api.panels : [];
   if (panels.length === 0 && !isWorkspaceDockview(ctx)) {
@@ -64,17 +76,21 @@ function isPanelOpen(ctx: MenuActionContext, panelId: string): boolean {
   return !!ctx.api.getPanel(panelId) || panels.some(p => p.id === panelId);
 }
 
+function createPanelInstanceId(panelId: string) {
+  return `${panelId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 /**
  * Add panel to the current dockview
  */
-function addPanel(ctx: MenuActionContext, panelId: string) {
+function addPanel(ctx: MenuActionContext, panelId: string, allowMultiple: boolean) {
   if (!ctx.api) return;
 
   const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
   const panelTitle = registryEntry?.title ?? panelId;
 
   // Check if already open
-  if (isPanelOpen(ctx, panelId)) {
+  if (!allowMultiple && isPanelOpen(ctx, panelId, allowMultiple)) {
     // Focus existing panel instead
     const existingPanel = isWorkspaceDockview(ctx)
       ? (Array.isArray(ctx.api.panels) ? ctx.api.panels.find(p => p.params?.panelId === panelId) : undefined)
@@ -87,7 +103,7 @@ function addPanel(ctx: MenuActionContext, panelId: string) {
 
   if (isWorkspaceDockview(ctx)) {
     ctx.api.addPanel({
-      id: `${panelId}-panel-${Date.now()}`,
+      id: createPanelInstanceId(`${panelId}-panel`),
       component: 'panel',
       params: { panelId },
       title: panelTitle,
@@ -97,9 +113,10 @@ function addPanel(ctx: MenuActionContext, panelId: string) {
   }
 
   ctx.api.addPanel({
-    id: panelId,
+    id: allowMultiple ? createPanelInstanceId(panelId) : panelId,
     component: panelId,
     title: panelTitle,
+    params: { panelId },
   });
 }
 
@@ -159,8 +176,11 @@ export const addPanelAction: MenuAction = {
           label: panel.title,
           icon: panel.icon,
           availableIn: ['background', 'tab', 'panel-content'] as const,
-          disabled: () => isPanelOpen(ctx, panel.id) ? 'Already open' : false,
-          execute: () => addPanel(ctx, panel.id),
+          disabled: () =>
+            panel.supportsMultipleInstances
+              ? false
+              : isPanelOpen(ctx, panel.id, false) ? 'Already open' : false,
+          execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
         })),
         execute: () => {},
       });
@@ -181,8 +201,8 @@ export const quickAddActions: MenuAction[] = [
     icon: 'image',
     category: 'quick-add',
     availableIn: ['background'],
-    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx, 'gallery'),
-    execute: (ctx) => addPanel(ctx, 'gallery'),
+    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx, 'gallery', false),
+    execute: (ctx) => addPanel(ctx, 'gallery', false),
   },
   {
     id: 'panel:quick-add:inspector',
@@ -190,8 +210,8 @@ export const quickAddActions: MenuAction[] = [
     icon: 'info',
     category: 'quick-add',
     availableIn: ['background'],
-    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx, 'inspector'),
-    execute: (ctx) => addPanel(ctx, 'inspector'),
+    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx, 'inspector', false),
+    execute: (ctx) => addPanel(ctx, 'inspector', false),
   },
 ];
 

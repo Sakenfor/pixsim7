@@ -20,6 +20,10 @@ import { componentRegistry } from "@features/componentSettings";
 import type { SettingField, SettingGroup, SettingTab } from "@features/settings";
 import type { PanelId } from "@features/workspace";
 
+// Stable empty objects to avoid creating new references
+const EMPTY_SETTINGS: Record<string, unknown> = {};
+const EMPTY_ALL_SETTINGS: Record<string, Record<string, unknown>> = {};
+
 /**
  * Collect all field default values from schema tabs and groups
  */
@@ -76,7 +80,7 @@ export function useResolvePanelSettings<T extends Record<string, unknown> = Reco
   );
 
   const storedGlobalSettings = usePanelConfigStore(
-    (state) => state.panelConfigs?.[panelId]?.settings ?? {},
+    (state) => state.panelConfigs?.[panelId]?.settings ?? EMPTY_SETTINGS,
   );
 
   const instanceOverrides = usePanelInstanceSettingsStore(
@@ -133,7 +137,7 @@ export function useResolveComponentSettings<T extends Record<string, unknown> = 
   );
 
   const storedGlobalSettings = useComponentSettingsStore(
-    (state) => state.settings[componentId] ?? {},
+    (state) => state.settings[componentId] ?? EMPTY_SETTINGS,
   );
 
   const instanceOverrides = usePanelInstanceSettingsStore(
@@ -198,7 +202,9 @@ export function useResolveAllComponentSettings<T extends Record<string, unknown>
   componentIds: string[],
   instanceId?: string | null,
 ): Record<string, ResolvedSettings<T>> {
-  const allGlobalSettings = useComponentSettingsStore((state) => state.settings);
+  const allGlobalSettings = useComponentSettingsStore(
+    (state) => (Object.keys(state.settings).length > 0 ? state.settings : EMPTY_ALL_SETTINGS),
+  );
   const instanceData = usePanelInstanceSettingsStore(
     (state) => (instanceId ? state.instances[instanceId] : undefined),
   );

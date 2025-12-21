@@ -72,6 +72,7 @@ export default defineConfig({
       { find: '@features/workspace', replacement: path.resolve(__dirname, './src/features/workspace') },
       { find: '@features/panels', replacement: path.resolve(__dirname, './src/features/panels') },
       { find: '@features/contextHub', replacement: path.resolve(__dirname, './src/features/contextHub') },
+      { find: '@features/componentSettings', replacement: path.resolve(__dirname, './src/features/componentSettings') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

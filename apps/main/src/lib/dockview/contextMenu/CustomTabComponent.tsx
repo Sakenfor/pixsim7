@@ -29,16 +29,19 @@ export function CustomTabComponent(props: IDockviewPanelProps) {
 
     const panelId = props.api.id;
     const groupId = props.api.group.id;
+    const instanceId = currentDockviewId ? `${currentDockviewId}:${panelId}` : panelId;
 
     contextMenu.showContextMenu({
       contextType: 'tab',
       panelId,
+      instanceId,
       groupId,
       position: { x: e.clientX, y: e.clientY },
       currentDockviewId,
       panelRegistry,
       api: dockviewApi,
       contextHubState,
+      data: (props.api as any)?.params,
     });
   };
 

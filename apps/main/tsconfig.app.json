@@ -44,6 +44,8 @@
       "@features/panels": ["./src/features/panels/index.ts"],
       "@features/contextHub/*": ["./src/features/contextHub/*"],
       "@features/contextHub": ["./src/features/contextHub/index.ts"],
+      "@features/componentSettings": ["./src/features/componentSettings/index.ts"],
+      "@features/settings": ["./src/features/settings/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

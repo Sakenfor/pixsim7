@@ -36,6 +36,8 @@ export interface LocalPanelDefinition<TParams = any> {
   title: string;
   /** Hide from add-panel menus (still available in layouts) */
   isInternal?: boolean;
+  /** Allow multiple instances of this panel in the same dockview */
+  supportsMultipleInstances?: boolean;
   /** React component to render */
   component: ComponentType<TParams>;
   /** Icon name for tab/header */

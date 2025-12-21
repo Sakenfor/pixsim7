@@ -112,7 +112,7 @@ export const panelPropertiesAction: MenuAction = {
     usePanelPropertiesPopupStore.getState().open({
       position: ctx.position,
       panelId: panelDefinitionId,
-      instanceId: ctx.panelId,
+      instanceId: ctx.instanceId ?? ctx.panelId,
     });
   },
 };

@@ -12,6 +12,10 @@ import {
   SettingsPanel as QuickGenSettingsPanel,
   BlocksPanel as QuickGenBlocksPanel,
 } from '@features/controlCenter/components/QuickGeneratePanels';
+import {
+  QUICKGEN_PROMPT_COMPONENT_ID,
+  QUICKGEN_SETTINGS_COMPONENT_ID,
+} from '@features/controlCenter/lib/quickGenerateComponentSettings';
 import { MediaPanel } from '@/components/media/viewer/panels/MediaPanel';
 import type { PanelPlugin } from './panelPlugin';
 
@@ -82,6 +86,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'prompt', 'quickgen'],
       icon: 'edit',
       description: 'Prompt editor for quick generation workflows',
+      componentSettings: [QUICKGEN_PROMPT_COMPONENT_ID],
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -93,6 +98,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'settings', 'quickgen'],
       icon: 'settings',
       description: 'Generation settings and Go button for quick workflows',
+      componentSettings: [QUICKGEN_SETTINGS_COMPONENT_ID],
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

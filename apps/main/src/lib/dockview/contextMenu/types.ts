@@ -14,12 +14,14 @@ export interface PanelRegistryLike {
     title: string;
     icon?: string;
     category?: string;
+    supportsMultipleInstances?: boolean;
   }>;
   getPublicPanels?: () => Array<{
     id: string;
     title: string;
     icon?: string;
     category?: string;
+    supportsMultipleInstances?: boolean;
   }>;
 }
 
@@ -81,6 +83,8 @@ export interface MenuActionContext {
 
   /** Panel ID if context is tab/panel-content */
   panelId?: string;
+  /** Unique instance ID for this panel (scoped per dockview) */
+  instanceId?: string;
 
   /** Group ID if applicable */
   groupId?: string;

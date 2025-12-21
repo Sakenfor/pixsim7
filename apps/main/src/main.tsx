@@ -13,6 +13,7 @@ import { registerGizmoSurfaces } from './features/gizmos'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
 import { registerPromptCompanion } from './plugins/ui/prompt-companion'
 import { registerGenerationScopes } from '@features/generation'
+import { registerQuickGenerateComponentSettings } from '@features/controlCenter/lib/registerQuickGenerateComponentSettings'
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
 import './lib/utils/debugFlags' // Debug flags system for toggleable logging
 import { initializeConsole } from './lib/dev/console'
@@ -40,6 +41,9 @@ registerPromptCompanion()
 
 // Register generation scope definitions
 registerGenerationScopes()
+
+// Register Quick Generate component settings
+registerQuickGenerateComponentSettings()
 
 // Initialize console namespace (pixsim.*)
 initializeConsole()

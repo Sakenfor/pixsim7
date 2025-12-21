@@ -47,6 +47,7 @@ export {
   type PanelSettingsUpdateHelpers,
   type PanelSettingsSection,
   type PanelSettingsTab,
+  type PanelSettingsFormSchema,
 } from "./lib/panelRegistry";
 
 export {
@@ -98,6 +99,7 @@ export {
   type PanelInstanceSettingsState,
   type PanelInstanceSettingsActions,
 } from "./stores/panelInstanceSettingsStore";
+export { usePanelRegistryOverridesStore } from "./stores/panelRegistryOverridesStore";
 
 // Re-export lib index for convenience
 export * from "./lib";

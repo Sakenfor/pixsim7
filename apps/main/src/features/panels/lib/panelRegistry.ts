@@ -10,6 +10,7 @@ import type { ComponentType } from "react";
 import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 import type { EditorContext } from "../../context/editorContext";
 import type { PanelCategory } from "./panelConstants";
+import type { SettingGroup, SettingTab } from "@features/settings/lib/core/types";
 import type { z } from "zod";
 import type { PanelMetadata } from "./types";
 
@@ -105,6 +106,11 @@ export interface PanelSettingsTab<TSettings = any> {
   component: ComponentType<PanelSettingsProps<TSettings>>;
 }
 
+export interface PanelSettingsFormSchema {
+  tabs?: SettingTab[];
+  groups?: SettingGroup[];
+}
+
 export interface PanelDefinition<TSettings = any> {
   id: PanelId;
   title: string;
@@ -150,6 +156,16 @@ export interface PanelDefinition<TSettings = any> {
    * These are additive and rendered alongside default tabs.
    */
   settingsTabs?: PanelSettingsTab<TSettings>[];
+  /**
+   * Declarative settings schema for auto-rendered panel settings.
+   * Used when no custom settingsComponent/settingsSections are provided.
+   */
+  settingsForm?: PanelSettingsFormSchema;
+  /**
+   * Component settings to surface alongside panel settings.
+   * Refer to componentRegistry IDs.
+   */
+  componentSettings?: string[];
 
   /**
    * Settings version for migration support.
