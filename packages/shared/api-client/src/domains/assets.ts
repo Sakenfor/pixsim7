@@ -40,8 +40,13 @@ export function createAssetsApi(client: PixSimApiClient) {
       return client.get<AssetResponse>(`/assets/${assetId}`);
     },
 
-    async deleteAsset(assetId: number): Promise<void> {
-      await client.delete<void>(`/assets/${assetId}`);
+    async deleteAsset(
+      assetId: number,
+      options?: { delete_from_provider?: boolean }
+    ): Promise<void> {
+      await client.delete<void>(`/assets/${assetId}`, {
+        params: options || {},
+      });
     },
 
     async archiveAsset(

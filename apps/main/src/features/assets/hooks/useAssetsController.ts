@@ -12,6 +12,7 @@ import { useFilterPersistence } from '@/hooks/useFilterPersistence';
 import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
 import { createAssetActions } from '../lib/assetCardActions';
+import { useAssetSettingsStore } from '@/stores/assetSettingsStore';
 
 const SESSION_KEY = 'assets_filters';
 
@@ -107,7 +108,8 @@ export function useAssetsController() {
     const confirmed = window.confirm(`Delete ${asset.media_type} asset "${asset.id}"? This cannot be undone.`);
     if (!confirmed) return;
     try {
-      await deleteAsset(asset.id);
+      const deleteFromProvider = useAssetSettingsStore.getState().deleteFromProvider;
+      await deleteAsset(asset.id, { delete_from_provider: deleteFromProvider });
       // Remove from selection if selected
       if (isSelected(asset.id)) {
         toggleAssetSelection(String(asset.id));

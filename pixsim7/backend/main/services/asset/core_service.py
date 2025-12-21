@@ -481,12 +481,17 @@ class AssetCoreService:
 
         return assets
 
-    async def delete_asset(self, asset_id: int, user: User) -> None:
+    async def delete_asset(self, asset_id: int, user: User, delete_from_provider: bool = True) -> None:
         """
         Delete an asset owned by the user (or any asset if admin).
 
         Removes the database record and best-effort deletes the local file.
         Also deletes any generations that reference this asset.
+
+        Args:
+            asset_id: Asset ID to delete
+            user: User requesting deletion
+            delete_from_provider: If True, also attempt to delete from provider
         """
         from pixsim7.backend.main.domain.generation.models import Generation
         from sqlalchemy import delete as sql_delete
@@ -497,6 +502,10 @@ class AssetCoreService:
         await self.db.execute(
             sql_delete(Generation).where(Generation.asset_id == asset_id)
         )
+
+        # Attempt provider deletion if requested
+        if delete_from_provider and asset.provider_asset_id and asset.provider_id:
+            await self._delete_from_provider(asset)
 
         # Attempt to remove local file if present
         if asset.local_path:
@@ -509,6 +518,73 @@ class AssetCoreService:
 
         await self.db.delete(asset)
         await self.db.commit()
+
+    async def _delete_from_provider(self, asset: Asset) -> None:
+        """
+        Attempt to delete asset from provider (best effort).
+
+        Logs errors but does not raise - local deletion should always proceed.
+        """
+        from pixsim7.backend.main.domain.providers.models import ProviderAccount
+
+        try:
+            # Get provider from registry
+            from pixsim7.backend.main.services.provider.provider_service import registry
+            provider = registry.get(asset.provider_id)
+
+            # Check if provider supports deletion
+            if not hasattr(provider, 'delete_asset'):
+                logger.info(
+                    "provider_delete_not_supported",
+                    provider_id=asset.provider_id,
+                    asset_id=asset.id,
+                )
+                return
+
+            # Get provider account
+            if not asset.provider_account_id:
+                logger.warning(
+                    "provider_delete_no_account",
+                    provider_id=asset.provider_id,
+                    asset_id=asset.id,
+                )
+                return
+
+            account = await self.db.get(ProviderAccount, asset.provider_account_id)
+            if not account:
+                logger.warning(
+                    "provider_delete_account_not_found",
+                    asset_id=asset.id,
+                    provider_account_id=asset.provider_account_id,
+                )
+                return
+
+            # Call provider delete
+            await provider.delete_asset(
+                account=account,
+                provider_asset_id=asset.provider_asset_id,
+                media_type=asset.media_type,
+            )
+
+            logger.info(
+                "provider_delete_success",
+                provider_id=asset.provider_id,
+                asset_id=asset.id,
+                provider_asset_id=asset.provider_asset_id,
+            )
+
+        except Exception as e:
+            # Log error but don't fail - local deletion should proceed
+            logger.error(
+                "provider_delete_failed",
+                provider_id=asset.provider_id,
+                asset_id=asset.id,
+                provider_asset_id=asset.provider_asset_id,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                exc_info=True,
+            )
+            # Note: Could emit event here for UI notification if needed
 
     # ===== PROMPT EXTRACTION HELPER =====
 

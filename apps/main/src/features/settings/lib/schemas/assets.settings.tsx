@@ -16,21 +16,39 @@ const assetGroups: SettingGroup[] = [
       },
     ],
   },
+  {
+    id: 'deletion',
+    title: 'Deletion',
+    description: 'Configure asset deletion behavior.',
+    fields: [
+      {
+        id: 'deleteFromProvider',
+        type: 'toggle',
+        label: 'Delete from Provider',
+        description: 'Also delete assets from the provider (e.g., Pixverse) when deleting them locally.',
+        defaultValue: true,
+      },
+    ],
+  },
 ];
 
 function useAssetSettingsStoreAdapter(): SettingStoreAdapter {
   const downloadOnGenerate = useAssetSettingsStore((s) => s.downloadOnGenerate);
   const setDownloadOnGenerate = useAssetSettingsStore((s) => s.setDownloadOnGenerate);
+  const deleteFromProvider = useAssetSettingsStore((s) => s.deleteFromProvider);
+  const setDeleteFromProvider = useAssetSettingsStore((s) => s.setDeleteFromProvider);
 
   return {
     get: (fieldId: string) => {
       if (fieldId === 'downloadOnGenerate') return downloadOnGenerate;
+      if (fieldId === 'deleteFromProvider') return deleteFromProvider;
       return undefined;
     },
     set: (fieldId: string, value: any) => {
       if (fieldId === 'downloadOnGenerate') setDownloadOnGenerate(value);
+      if (fieldId === 'deleteFromProvider') setDeleteFromProvider(value);
     },
-    getAll: () => ({ downloadOnGenerate }),
+    getAll: () => ({ downloadOnGenerate, deleteFromProvider }),
   };
 }
 

@@ -376,6 +376,39 @@ class Provider(ABC):
             f"Cannot use cross-provider operations with this provider."
         )
 
+    async def delete_asset(
+        self,
+        account: ProviderAccount,
+        provider_asset_id: str,
+        media_type: 'MediaType',
+    ) -> None:
+        """
+        Delete asset from provider (optional - providers may not support this).
+
+        Args:
+            account: Provider account to use for deletion
+            provider_asset_id: Provider's asset ID
+            media_type: IMAGE or VIDEO
+
+        Raises:
+            ProviderError: If deletion fails
+            NotImplementedError: If provider doesn't support deletion
+
+        Default implementation: Not supported
+        Override in provider if deletion is supported.
+
+        Example:
+            >>> provider = registry.get("pixverse")
+            >>> await provider.delete_asset(
+            ...     account=account,
+            ...     provider_asset_id="123456",
+            ...     media_type=MediaType.VIDEO
+            ... )
+        """
+        raise NotImplementedError(
+            f"Provider {self.provider_id} does not support asset deletion"
+        )
+
     # ===== PARAMETER SPECIFICATION =====
 
     def get_operation_parameter_spec(self) -> dict:

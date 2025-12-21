@@ -397,18 +397,22 @@ async def sync_asset(asset_id: int, user: CurrentUser, asset_service: AssetSvc):
 async def delete_asset(
     asset_id: int,
     user: CurrentUser,
-    asset_service: AssetSvc
+    asset_service: AssetSvc,
+    delete_from_provider: bool = Query(
+        default=True,
+        description="Also delete asset from provider if it has a provider_asset_id"
+    ),
 ):
     """
     Delete an asset
 
     Deletes the asset record and local file (if downloaded).
-    Does not delete the video from the provider.
+    Optionally deletes the asset from the provider (enabled by default).
 
     Users can only delete their own assets.
     """
     try:
-        await asset_service.delete_asset(asset_id, user)
+        await asset_service.delete_asset(asset_id, user, delete_from_provider=delete_from_provider)
         return None
 
     except ResourceNotFoundError:
@@ -1579,7 +1583,11 @@ async def bulk_update_tags(
 async def bulk_delete_assets(
     request: BulkDeleteRequest,
     user: CurrentUser,
-    asset_service: AssetSvc
+    asset_service: AssetSvc,
+    delete_from_provider: bool = Query(
+        default=True,
+        description="Also delete assets from provider"
+    ),
 ):
     """
     Delete multiple assets at once
@@ -1597,7 +1605,7 @@ async def bulk_delete_assets(
 
         for asset_id in request.asset_ids:
             try:
-                await asset_service.delete_asset(asset_id, user)
+                await asset_service.delete_asset(asset_id, user, delete_from_provider=delete_from_provider)
                 deleted_count += 1
             except Exception as e:
                 errors.append({

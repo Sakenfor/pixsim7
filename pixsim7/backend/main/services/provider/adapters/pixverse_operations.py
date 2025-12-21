@@ -1014,3 +1014,54 @@ class PixverseOperationsMixin:
         """
         outcome = self.session_manager.classify_error(error, context="execute")
         return outcome.is_session_error
+
+    async def delete_asset(
+        self,
+        account: ProviderAccount,
+        provider_asset_id: str,
+        media_type: 'MediaType',
+    ) -> None:
+        """Delete video or image from Pixverse"""
+        from pixsim7.backend.main.domain.enums import MediaType
+
+        # Currently only support video deletion
+        if media_type == MediaType.IMAGE:
+            logger.warning(
+                "pixverse_image_deletion_not_supported",
+                provider_asset_id=provider_asset_id,
+            )
+            # Don't raise - just skip for now
+            return
+
+        async def _operation(session: PixverseSessionData) -> None:
+            client = self._create_client_from_session(session, account)
+
+            try:
+                # Call SDK delete method (requires pixverse-py with delete_video)
+                await client.video.delete_video(
+                    video_id=int(provider_asset_id),
+                    account=self._account_from_session(session, account)
+                )
+
+                logger.info(
+                    "pixverse_delete_success",
+                    provider_asset_id=provider_asset_id,
+                    account_id=account.id,
+                )
+            except Exception as e:
+                logger.error(
+                    "pixverse_delete_failed",
+                    provider_asset_id=provider_asset_id,
+                    account_id=account.id,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                )
+                # Re-raise as ProviderError for proper handling
+                raise ProviderError(f"Failed to delete from Pixverse: {e}")
+
+        await self.session_manager.run_with_session(
+            account=account,
+            op_name="delete_asset",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
