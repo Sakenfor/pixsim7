@@ -7,6 +7,10 @@ export interface PanelInstanceSettings {
   instanceId: string;
   panelId?: PanelId;
   scopes: Record<string, PanelSettingsScopeMode>;
+  /** Per-instance panel settings overrides (keyed by setting field id) */
+  panelSettings?: Record<string, unknown>;
+  /** Per-instance component settings overrides (keyed by componentId, then field id) */
+  componentSettings?: Record<string, Record<string, unknown>>;
 }
 
 export interface PanelInstanceSettingsState {
@@ -22,9 +26,59 @@ export interface PanelInstanceSettingsActions {
   ) => void;
   getScope: (instanceId: string, scopeId: string) => PanelSettingsScopeMode | undefined;
   clearInstance: (instanceId: string) => void;
+
+  // Panel settings overrides
+  setPanelSetting: (
+    instanceId: string,
+    panelId: PanelId | undefined,
+    key: string,
+    value: unknown,
+  ) => void;
+  setPanelSettings: (
+    instanceId: string,
+    panelId: PanelId | undefined,
+    settings: Record<string, unknown>,
+  ) => void;
+  clearPanelSettings: (instanceId: string) => void;
+  getPanelSettings: (instanceId: string) => Record<string, unknown> | undefined;
+
+  // Component settings overrides
+  setComponentSetting: (
+    instanceId: string,
+    panelId: PanelId | undefined,
+    componentId: string,
+    key: string,
+    value: unknown,
+  ) => void;
+  setComponentSettings: (
+    instanceId: string,
+    panelId: PanelId | undefined,
+    componentId: string,
+    settings: Record<string, unknown>,
+  ) => void;
+  clearComponentSettings: (instanceId: string, componentId?: string) => void;
+  getComponentSettings: (
+    instanceId: string,
+    componentId: string,
+  ) => Record<string, unknown> | undefined;
 }
 
 const STORAGE_KEY = "panel_instance_settings_v1";
+
+function ensureInstance(
+  state: PanelInstanceSettingsState,
+  instanceId: string,
+  panelId?: PanelId,
+): PanelInstanceSettings {
+  const existing = state.instances[instanceId];
+  return {
+    instanceId,
+    panelId: panelId ?? existing?.panelId,
+    scopes: existing?.scopes ?? {},
+    panelSettings: existing?.panelSettings,
+    componentSettings: existing?.componentSettings,
+  };
+}
 
 export const usePanelInstanceSettingsStore = create<
   PanelInstanceSettingsState & PanelInstanceSettingsActions
@@ -32,34 +86,172 @@ export const usePanelInstanceSettingsStore = create<
   persist(
     (set, get) => ({
       instances: {},
+
       setScope: (instanceId, panelId, scopeId, mode) => {
         set((state) => {
-          const existing = state.instances[instanceId];
-          const nextScopes = {
-            ...(existing?.scopes ?? {}),
-            [scopeId]: mode,
-          };
+          const instance = ensureInstance(state, instanceId, panelId);
           return {
             instances: {
               ...state.instances,
               [instanceId]: {
-                instanceId,
-                panelId: panelId ?? existing?.panelId,
-                scopes: nextScopes,
+                ...instance,
+                scopes: {
+                  ...instance.scopes,
+                  [scopeId]: mode,
+                },
               },
             },
           };
         });
       },
+
       getScope: (instanceId, scopeId) => {
         return get().instances[instanceId]?.scopes?.[scopeId];
       },
+
       clearInstance: (instanceId) => {
         set((state) => {
           const next = { ...state.instances };
           delete next[instanceId];
           return { instances: next };
         });
+      },
+
+      // Panel settings overrides
+      setPanelSetting: (instanceId, panelId, key, value) => {
+        set((state) => {
+          const instance = ensureInstance(state, instanceId, panelId);
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: {
+                ...instance,
+                panelSettings: {
+                  ...(instance.panelSettings ?? {}),
+                  [key]: value,
+                },
+              },
+            },
+          };
+        });
+      },
+
+      setPanelSettings: (instanceId, panelId, settings) => {
+        set((state) => {
+          const instance = ensureInstance(state, instanceId, panelId);
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: {
+                ...instance,
+                panelSettings: {
+                  ...(instance.panelSettings ?? {}),
+                  ...settings,
+                },
+              },
+            },
+          };
+        });
+      },
+
+      clearPanelSettings: (instanceId) => {
+        set((state) => {
+          const existing = state.instances[instanceId];
+          if (!existing) return state;
+          const { panelSettings: _, ...rest } = existing;
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: rest as PanelInstanceSettings,
+            },
+          };
+        });
+      },
+
+      getPanelSettings: (instanceId) => {
+        return get().instances[instanceId]?.panelSettings;
+      },
+
+      // Component settings overrides
+      setComponentSetting: (instanceId, panelId, componentId, key, value) => {
+        set((state) => {
+          const instance = ensureInstance(state, instanceId, panelId);
+          const existingComponentSettings = instance.componentSettings ?? {};
+          const existingForComponent = existingComponentSettings[componentId] ?? {};
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: {
+                ...instance,
+                componentSettings: {
+                  ...existingComponentSettings,
+                  [componentId]: {
+                    ...existingForComponent,
+                    [key]: value,
+                  },
+                },
+              },
+            },
+          };
+        });
+      },
+
+      setComponentSettings: (instanceId, panelId, componentId, settings) => {
+        set((state) => {
+          const instance = ensureInstance(state, instanceId, panelId);
+          const existingComponentSettings = instance.componentSettings ?? {};
+          const existingForComponent = existingComponentSettings[componentId] ?? {};
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: {
+                ...instance,
+                componentSettings: {
+                  ...existingComponentSettings,
+                  [componentId]: {
+                    ...existingForComponent,
+                    ...settings,
+                  },
+                },
+              },
+            },
+          };
+        });
+      },
+
+      clearComponentSettings: (instanceId, componentId) => {
+        set((state) => {
+          const existing = state.instances[instanceId];
+          if (!existing?.componentSettings) return state;
+
+          if (componentId) {
+            // Clear specific component's settings
+            const { [componentId]: _, ...rest } = existing.componentSettings;
+            const hasOtherComponents = Object.keys(rest).length > 0;
+            return {
+              instances: {
+                ...state.instances,
+                [instanceId]: {
+                  ...existing,
+                  componentSettings: hasOtherComponents ? rest : undefined,
+                },
+              },
+            };
+          }
+
+          // Clear all component settings
+          const { componentSettings: _, ...rest } = existing;
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: rest as PanelInstanceSettings,
+            },
+          };
+        });
+      },
+
+      getComponentSettings: (instanceId, componentId) => {
+        return get().instances[instanceId]?.componentSettings?.[componentId];
       },
     }),
     {

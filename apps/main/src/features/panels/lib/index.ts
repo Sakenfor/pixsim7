@@ -30,3 +30,12 @@ export { PanelHostLite } from "./PanelHostLite";
 
 // Panel actions
 export * from "./actions";
+
+// Instance settings resolver
+export {
+  useResolvePanelSettings,
+  useResolveComponentSettings,
+  useResolveAllComponentSettings,
+  getInstanceId,
+  type ResolvedSettings,
+} from "./instanceSettingsResolver";

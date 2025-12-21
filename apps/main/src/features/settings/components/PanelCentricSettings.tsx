@@ -15,13 +15,269 @@ import {
   panelSettingsScopeRegistry,
   type PanelSettingsScopeMode,
   usePanelInstanceSettingsStore,
+  usePanelRegistryOverridesStore,
+  useResolvePanelSettings,
+  useResolveComponentSettings,
 } from '@features/panels';
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
 import { usePanelSettingsUiStore } from '../stores/panelSettingsUiStore';
+import { SettingFieldRenderer } from './shared/SettingFieldRenderer';
+import type { SettingField, SettingGroup, SettingTab } from '../lib/core/types';
+import { componentRegistry, useComponentSettingsStore } from '@features/componentSettings';
+import type { PanelId } from '@features/workspace';
 
 // Stable empty object to avoid re-renders
 const EMPTY_SETTINGS = {};
+
+function collectSchemaFields(tabs?: SettingTab[], groups?: SettingGroup[]) {
+  const fields: SettingField[] = [];
+  (groups ?? []).forEach((group) => {
+    fields.push(...group.fields);
+  });
+  (tabs ?? []).forEach((tab) => {
+    tab.groups.forEach((group) => {
+      fields.push(...group.fields);
+    });
+  });
+  return fields;
+}
+
+function resolveSchemaValues(
+  settings: Record<string, any>,
+  tabs?: SettingTab[],
+  groups?: SettingGroup[],
+) {
+  const resolved = { ...settings };
+  collectSchemaFields(tabs, groups).forEach((field) => {
+    if (resolved[field.id] === undefined && "defaultValue" in field) {
+      const defaultValue = (field as { defaultValue?: unknown }).defaultValue;
+      if (defaultValue !== undefined) {
+        resolved[field.id] = defaultValue;
+      }
+    }
+  });
+  return resolved;
+}
+
+function PanelSchemaGroupRenderer({
+  group,
+  values,
+  setValue,
+}: {
+  group: SettingGroup;
+  values: Record<string, any>;
+  setValue: (fieldId: string, value: any) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {group.title && (
+        <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          {group.title}
+        </h4>
+      )}
+      {group.description && (
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          {group.description}
+        </p>
+      )}
+      <div className="space-y-3">
+        {group.fields.map((field) => (
+          <SettingFieldRenderer
+            key={field.id}
+            field={field}
+            value={values[field.id]}
+            onChange={(value) => setValue(field.id, value)}
+            allValues={values}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PanelSchemaRenderer({
+  schema,
+  values,
+  setValue,
+}: {
+  schema: { tabs?: SettingTab[]; groups?: SettingGroup[] };
+  values: Record<string, any>;
+  setValue: (fieldId: string, value: any) => void;
+}) {
+  const tabs = schema.tabs ?? [];
+  const groups = schema.groups ?? [];
+  const [activeTabId, setActiveTabId] = useState<string | null>(tabs[0]?.id ?? null);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+
+  if (tabs.length > 0 && activeTab) {
+    return (
+      <div className="space-y-4">
+        <div className="flex gap-2 flex-wrap">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTabId(tab.id)}
+              className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
+                activeTabId === tab.id
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-4">
+          {activeTab.groups.map((group) => (
+            <PanelSchemaGroupRenderer
+              key={group.id}
+              group={group}
+              values={values}
+              setValue={setValue}
+            />
+          ))}
+          {activeTab.footer && (
+            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {activeTab.footer}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="text-sm text-neutral-500">
+        No schema settings available.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <PanelSchemaGroupRenderer
+          key={group.id}
+          group={group}
+          values={values}
+          setValue={setValue}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ComponentSettingsCard({
+  componentId,
+}: {
+  componentId: string;
+}) {
+  const definition = componentRegistry.get(componentId);
+  const storedSettings = useComponentSettingsStore(
+    (state) => state.settings[componentId] ?? {},
+  );
+  const setComponentSetting = useComponentSettingsStore((state) => state.setComponentSetting);
+
+  if (!definition?.settingsForm) {
+    return null;
+  }
+
+  const values = resolveSchemaValues(
+    storedSettings,
+    definition.settingsForm.tabs,
+    definition.settingsForm.groups,
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40 p-4">
+      <div>
+        <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          {definition.title}
+        </div>
+        {definition.description && (
+          <div className="text-xs text-neutral-500 mt-1">{definition.description}</div>
+        )}
+      </div>
+      <PanelSchemaRenderer
+        schema={definition.settingsForm}
+        values={values}
+        setValue={(fieldId, value) => setComponentSetting(componentId, fieldId, value)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Instance-aware component settings card.
+ * Shows resolved settings (global + instance overrides) and allows editing instance overrides.
+ */
+function InstanceComponentSettingsCard({
+  componentId,
+  instanceId,
+  panelId,
+}: {
+  componentId: string;
+  instanceId: string;
+  panelId: PanelId;
+}) {
+  const definition = componentRegistry.get(componentId);
+  const resolved = useResolveComponentSettings(componentId, instanceId);
+  const setInstanceComponentSetting = usePanelInstanceSettingsStore(
+    (state) => state.setComponentSetting,
+  );
+  const clearInstanceComponentSettings = usePanelInstanceSettingsStore(
+    (state) => state.clearComponentSettings,
+  );
+
+  if (!definition?.settingsForm) {
+    return null;
+  }
+
+  const values = resolveSchemaValues(
+    resolved.settings as Record<string, any>,
+    definition.settingsForm.tabs,
+    definition.settingsForm.groups,
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            {definition.title}
+          </div>
+          {definition.description && (
+            <div className="text-xs text-neutral-500 mt-1">{definition.description}</div>
+          )}
+        </div>
+        {resolved.hasInstanceOverrides && (
+          <button
+            type="button"
+            onClick={() => clearInstanceComponentSettings(instanceId, componentId)}
+            className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 whitespace-nowrap"
+          >
+            Clear overrides
+          </button>
+        )}
+      </div>
+      {resolved.hasInstanceOverrides && (
+        <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
+          This instance has custom settings. Changes here override global settings.
+        </div>
+      )}
+      <PanelSchemaRenderer
+        schema={definition.settingsForm}
+        values={values}
+        setValue={(fieldId, value) =>
+          setInstanceComponentSetting(instanceId, panelId, componentId, fieldId, value)
+        }
+      />
+    </div>
+  );
+}
 
 interface PanelDetailViewProps {
   metadata: PanelMetadata;
@@ -36,6 +292,17 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     () => panelRegistry.getAll().find((p) => p.id === metadata.id),
     [metadata.id]
   );
+  const [componentRegistryVersion, setComponentRegistryVersion] = useState(0);
+  const panelRegistryOverride = usePanelRegistryOverridesStore(
+    (state) => state.overrides[metadata.id]
+  );
+  const setPanelRegistryOverride = usePanelRegistryOverridesStore((state) => state.setOverride);
+  const clearPanelRegistryOverride = usePanelRegistryOverridesStore((state) => state.clearOverride);
+
+  const supportsMultipleDefault = panelDefinition?.supportsMultipleInstances ?? false;
+  const supportsMultipleResolved =
+    panelRegistryOverride?.supportsMultipleInstances ?? supportsMultipleDefault;
+  const supportsMultipleOverrideValue = panelRegistryOverride?.supportsMultipleInstances;
 
   // Check if has interaction rules
   const hasInteractionRules = !!(
@@ -45,8 +312,15 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
 
   // Check if has panel-specific settings
   const hasPanelSettings = !!(
-    panelDefinition?.settingsComponent || panelDefinition?.settingsSections
+    panelDefinition?.settingsComponent ||
+    panelDefinition?.settingsSections ||
+    panelDefinition?.settingsForm
   );
+  const componentSettings = panelDefinition?.componentSettings ?? [];
+  const hasComponentSettings = componentSettings.some((componentId) => {
+    const definition = componentRegistry.get(componentId);
+    return !!definition?.settingsForm;
+  });
   const hasCustomTabs = !!panelDefinition?.settingsTabs?.length;
 
   // Get panel enabled state
@@ -63,6 +337,16 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     const settings = state.panelConfigs?.[metadata.id]?.settings;
     return settings ?? panelDefinition?.defaultSettings ?? EMPTY_SETTINGS;
   });
+  const schemaValues = useMemo(() => {
+    if (!panelDefinition?.settingsForm) {
+      return panelSettings as Record<string, any>;
+    }
+    return resolveSchemaValues(
+      panelSettings as Record<string, any>,
+      panelDefinition.settingsForm.tabs,
+      panelDefinition.settingsForm.groups,
+    );
+  }, [panelDefinition?.settingsForm, panelSettings]);
 
   // Create update callback
   const onUpdateSettings = useCallback(
@@ -85,13 +369,95 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     });
   }, []);
 
+  useEffect(() => {
+    return componentRegistry.subscribe(() => {
+      setComponentRegistryVersion((version) => version + 1);
+    });
+  }, []);
+
   const instanceScopes = usePanelInstanceSettingsStore((state) =>
     selectedInstanceId ? state.instances[selectedInstanceId]?.scopes ?? {} : {}
   );
   const setScope = usePanelInstanceSettingsStore((state) => state.setScope);
 
+  // Instance panel settings
+  const instancePanelSettings = usePanelInstanceSettingsStore((state) =>
+    selectedInstanceId ? state.instances[selectedInstanceId]?.panelSettings : undefined
+  );
+  const setInstancePanelSetting = usePanelInstanceSettingsStore(
+    (state) => state.setPanelSetting
+  );
+  const clearInstancePanelSettings = usePanelInstanceSettingsStore(
+    (state) => state.clearPanelSettings
+  );
+  const hasInstancePanelOverrides =
+    !!instancePanelSettings && Object.keys(instancePanelSettings).length > 0;
+
+  // Resolved instance panel settings (global + instance overrides)
+  const resolvedInstancePanelSettings = useResolvePanelSettings(metadata.id, selectedInstanceId);
+  const instanceSchemaValues = useMemo(() => {
+    if (!panelDefinition?.settingsForm) {
+      return resolvedInstancePanelSettings.settings as Record<string, any>;
+    }
+    return resolveSchemaValues(
+      resolvedInstancePanelSettings.settings as Record<string, any>,
+      panelDefinition.settingsForm.tabs,
+      panelDefinition.settingsForm.groups,
+    );
+  }, [panelDefinition?.settingsForm, resolvedInstancePanelSettings.settings]);
+
   const tabs = useMemo(() => {
     const baseTabs: Array<{ id: string; label: string; order: number; content: JSX.Element }> = [];
+
+    if (panelDefinition) {
+      baseTabs.push({
+        id: "panel-behavior",
+        label: "Panel",
+        order: 1,
+        content: (
+          <div className="space-y-3">
+            <div className="text-xs text-neutral-500">
+              Defaults are defined by the panel type. Overrides apply globally for this user.
+            </div>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700">
+              <div>
+                <div className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                  Allow multiple instances
+                </div>
+                <div className="text-xs text-neutral-500 mt-0.5">
+                  Default: {supportsMultipleDefault ? "Allowed" : "Single"} - Active:{" "}
+                  {supportsMultipleResolved ? "Allowed" : "Single"}
+                </div>
+              </div>
+              <select
+                value={
+                  supportsMultipleOverrideValue === undefined
+                    ? "default"
+                    : supportsMultipleOverrideValue
+                      ? "allow"
+                      : "single"
+                }
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "default") {
+                    clearPanelRegistryOverride(metadata.id);
+                  } else {
+                    setPanelRegistryOverride(metadata.id, {
+                      supportsMultipleInstances: value === "allow",
+                    });
+                  }
+                }}
+                className="text-xs border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 bg-white dark:bg-neutral-900"
+              >
+                <option value="default">Use Default</option>
+                <option value="allow">Allow</option>
+                <option value="single">Single</option>
+              </select>
+            </div>
+          </div>
+        ),
+      });
+    }
 
     if (selectedInstanceId) {
       baseTabs.push({
@@ -99,17 +465,17 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
         label: "Instance",
         order: 5,
         content: (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="text-xs text-neutral-500">
               Instance: <span className="font-mono">{selectedInstanceId}</span>
             </div>
 
-            {scopeDefinitions.length === 0 ? (
-              <div className="text-sm text-neutral-500">
-                No instance-scoped settings available.
-              </div>
-            ) : (
+            {/* Instance scope toggles */}
+            {scopeDefinitions.length > 0 && (
               <div className="space-y-3">
+                <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Scope Settings
+                </h4>
                 {scopeDefinitions.map((scope) => {
                   const mode =
                     (instanceScopes?.[scope.id] ?? scope.defaultMode ?? "global") as PanelSettingsScopeMode;
@@ -150,6 +516,65 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
               </div>
             )}
 
+            {/* Instance panel settings (if panel has settingsForm) */}
+            {panelDefinition?.settingsForm && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                    Panel Settings Overrides
+                  </h4>
+                  {hasInstancePanelOverrides && (
+                    <button
+                      type="button"
+                      onClick={() => clearInstancePanelSettings(selectedInstanceId)}
+                      className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                    >
+                      Clear all overrides
+                    </button>
+                  )}
+                </div>
+                {hasInstancePanelOverrides && (
+                  <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
+                    This instance has custom settings. Changes here override global panel settings.
+                  </div>
+                )}
+                <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40 p-4">
+                  <PanelSchemaRenderer
+                    schema={panelDefinition.settingsForm}
+                    values={instanceSchemaValues}
+                    setValue={(fieldId, value) =>
+                      setInstancePanelSetting(selectedInstanceId, metadata.id, fieldId, value)
+                    }
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Instance component settings */}
+            {hasComponentSettings && (
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Component Settings Overrides
+                </h4>
+                <div className="space-y-4">
+                  {componentSettings.map((componentId) => (
+                    <InstanceComponentSettingsCard
+                      key={componentId}
+                      componentId={componentId}
+                      instanceId={selectedInstanceId}
+                      panelId={metadata.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!panelDefinition?.settingsForm && !hasComponentSettings && scopeDefinitions.length === 0 && (
+              <div className="text-sm text-neutral-500">
+                No instance-level settings available for this panel.
+              </div>
+            )}
+
             {onClearInstance && (
               <button
                 type="button"
@@ -159,6 +584,21 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                 Clear instance selection
               </button>
             )}
+          </div>
+        ),
+      });
+    }
+
+    if (hasComponentSettings) {
+      baseTabs.push({
+        id: "component-settings",
+        label: "Components",
+        order: 8,
+        content: (
+          <div className="space-y-4">
+            {componentSettings.map((componentId) => (
+              <ComponentSettingsCard key={componentId} componentId={componentId} />
+            ))}
           </div>
         ),
       });
@@ -191,6 +631,12 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                   </div>
                 ))}
               </div>
+            ) : panelDefinition.settingsForm ? (
+              <PanelSchemaRenderer
+                schema={panelDefinition.settingsForm}
+                values={schemaValues}
+                setValue={(fieldId, value) => helpers.set(fieldId as any, value)}
+              />
             ) : null}
           </PanelSettingsErrorBoundary>
         ),
@@ -325,7 +771,21 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     metadata.retraction,
     panelDefinition,
     panelSettings,
+    schemaValues,
     onClearInstance,
+    componentSettings,
+    hasComponentSettings,
+    componentRegistryVersion,
+    supportsMultipleDefault,
+    supportsMultipleResolved,
+    supportsMultipleOverrideValue,
+    setPanelRegistryOverride,
+    clearPanelRegistryOverride,
+    // Instance settings
+    hasInstancePanelOverrides,
+    instanceSchemaValues,
+    setInstancePanelSetting,
+    clearInstancePanelSettings,
   ]);
 
   const [activeTabId, setActiveTabId] = useState<string | null>(
@@ -346,7 +806,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
             {metadata.type === 'dockview-container'
               ? 'Container panel with resizable sub-panels'
               : 'Simple panel'}
-            {metadata.defaultZone && ` · ${metadata.defaultZone} zone`}
+            {metadata.defaultZone && ` - ${metadata.defaultZone} zone`}
           </p>
         </div>
 

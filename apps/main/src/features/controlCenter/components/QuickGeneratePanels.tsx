@@ -15,6 +15,12 @@ import { useQuickGenerateController } from '@features/prompts';
 import { OPERATION_METADATA } from '@/types/operations';
 import type { OperationType } from '@/types/operations';
 import {
+  QUICKGEN_PROMPT_COMPONENT_ID,
+  QUICKGEN_SETTINGS_COMPONENT_ID,
+  QUICKGEN_PROMPT_DEFAULTS,
+  QUICKGEN_SETTINGS_DEFAULTS,
+} from '@features/controlCenter/lib/quickGenerateComponentSettings';
+import {
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
@@ -24,6 +30,8 @@ import {
   type AssetInputContext,
   type GenerateActionContext,
 } from '@features/contextHub';
+import { useResolveComponentSettings, getInstanceId } from '@features/panels';
+import { useDockviewId } from '@lib/dockview/contextMenu';
 
 // Panel IDs
 export type QuickGenPanelId =
@@ -268,7 +276,19 @@ export function AssetPanel(props: QuickGenPanelProps) {
 export function PromptPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const controller = useQuickGenerateController();
+  const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
+  const instanceId = getInstanceId(dockviewId, panelInstanceId);
+
+  // Use instance-resolved component settings (global + instance overrides)
+  const { settings: promptSettings } = useResolveComponentSettings<typeof QUICKGEN_PROMPT_DEFAULTS>(
+    QUICKGEN_PROMPT_COMPONENT_ID,
+    instanceId,
+  );
+  const resolvedPromptSettings = {
+    ...QUICKGEN_PROMPT_DEFAULTS,
+    ...promptSettings,
+  };
 
   const {
     prompt = controller.prompt,
@@ -318,9 +338,10 @@ export function PromptPanel(props: QuickGenPanelProps) {
           onChange={setPrompt}
           maxChars={maxChars}
           disabled={generating}
-          variant="compact"
-          resizable
-          minHeight={100}
+          variant={resolvedPromptSettings.variant}
+          showCounter={resolvedPromptSettings.showCounter}
+          resizable={resolvedPromptSettings.resizable}
+          minHeight={resolvedPromptSettings.minHeight}
           placeholder={
             operationType === 'image_to_video'
               ? (hasAsset ? 'Describe the motion...' : 'Describe the video...')
@@ -349,7 +370,19 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const controller = useQuickGenerateController();
   const { value: promptBox } = useCapability<PromptBoxContext>(CAP_PROMPT_BOX);
+  const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-settings';
+  const instanceId = getInstanceId(dockviewId, panelInstanceId);
+
+  // Use instance-resolved component settings (global + instance overrides)
+  const { settings: settingsState } = useResolveComponentSettings<typeof QUICKGEN_SETTINGS_DEFAULTS>(
+    QUICKGEN_SETTINGS_COMPONENT_ID,
+    instanceId,
+  );
+  const resolvedSettings = {
+    ...QUICKGEN_SETTINGS_DEFAULTS,
+    ...settingsState,
+  };
 
   const renderSettingsPanel = ctx?.renderSettingsPanel;
   const useDefaultPanel = !renderSettingsPanel || typeof renderSettingsPanel !== 'function';
@@ -381,6 +414,8 @@ export function SettingsPanel(props: QuickGenPanelProps) {
     return (
       <div className="h-full w-full p-2">
         <GenerationSettingsPanel
+          showOperationType={resolvedSettings.showOperationType}
+          showProvider={resolvedSettings.showProvider}
           generating={controller.generating}
           canGenerate={canGenerate}
           onGenerate={controller.generate}
