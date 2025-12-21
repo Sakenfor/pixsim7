@@ -4,26 +4,48 @@
  * Generic infrastructure for context menu data resolution.
  * DOM carries minimal pointers (type, id, label), full data is resolved at action time.
  *
- * Two patterns supported:
+ * Two patterns supported (use based on data source):
  *
- * 1. Component-level registration (preferred for rendered items):
- * ```tsx
- * function AssetCard({ asset }) {
- *   // Register data while component is mounted
- *   useRegisterContextData('asset', asset.id, {
- *     id: asset.id,
- *     name: asset.name,
- *     asset, // full object for actions
- *   }, [asset.id, asset.updated_at]);
+ * ============================================================================
+ * Pattern A: Store-backed resolver (for types with stable global stores)
+ * ============================================================================
+ * Best for: Core types with reliable store lookups (nodes, edges, etc.)
+ * Zero boilerplate in components - just add data attributes.
  *
- *   return <div {...contextMenuAttrs('asset', asset.id, asset.name)}>...</div>;
- * }
- * ```
- *
- * 2. Feature-level resolver (for store-backed lookups):
  * ```ts
- * contextDataRegistry.register('node', (id) => nodeStore.getById(id));
+ * // Register once at feature init:
+ * contextDataRegistry.register('node', (id) => {
+ *   const node = useNodeStore.getState().getById(id);
+ *   return node ? { id: node.id, label: node.data.label, node } : null;
+ * });
+ *
+ * // In component - just attrs, no hook needed:
+ * return <div {...contextMenuAttrs('node', node.id, node.data.label)}>...</div>;
  * ```
+ *
+ * ============================================================================
+ * Pattern B: Component-level hook (for ephemeral/computed data)
+ * ============================================================================
+ * Best for: Ephemeral objects, derived/computed data, expensive lookups,
+ * or data requiring component context.
+ *
+ * ```tsx
+ * // Combined hook: registers data AND returns attrs
+ * const ctxProps = useContextMenuItem('prompt', prompt.id, {
+ *   id: prompt.id,
+ *   name: prompt.title,
+ *   prompt,
+ * }, [prompt.id, prompt.title]);
+ *
+ * return <div {...ctxProps}>...</div>;
+ * ```
+ *
+ * ============================================================================
+ * When to use which:
+ * ============================================================================
+ * - Pattern A: Type has a stable store with getById, data rarely changes
+ * - Pattern B: Ephemeral data, computed fields, or no global store
+ * - Both can coexist: resolver takes precedence, cache is fallback
  */
 
 import { useEffect } from 'react';
@@ -288,4 +310,40 @@ export function useRegisterContextData(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
+}
+
+/**
+ * Combined hook: registers context data AND returns data attributes.
+ * Preferred for Pattern B (component-level registration).
+ *
+ * @param type - Context type (e.g., 'asset', 'prompt')
+ * @param id - Unique ID within the type
+ * @param data - Data object with at least { name?: string } for label
+ * @param deps - Dependency array for re-registration (REQUIRED)
+ * @returns Props to spread on the element
+ *
+ * @example
+ * ```tsx
+ * const ctxProps = useContextMenuItem('asset', asset.id, {
+ *   id: asset.id,
+ *   name: asset.description,
+ *   asset,
+ * }, [asset.id, asset.description, asset.updated_at]);
+ *
+ * return <div {...ctxProps}>...</div>;
+ * ```
+ */
+export function useContextMenuItem(
+  type: string,
+  id: string | number | null | undefined,
+  data: Record<string, unknown> & { name?: string },
+  deps: React.DependencyList,
+): ContextMenuAttrs | Record<string, never> {
+  useRegisterContextData(type, id, data, deps);
+
+  if (id === null || id === undefined) {
+    return {};
+  }
+
+  return contextMenuAttrs(type, id, data.name);
 }

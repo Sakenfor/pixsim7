@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ThemedIcon } from '@lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
+import { useContextMenuItem } from '@lib/dockview/contextMenu';
 import type { AssetResponse } from '@features/assets';
 
 export interface ThumbnailGridItem {
@@ -134,14 +134,10 @@ export function CompactAssetCard({
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
 
-  // Asset label for context menu display
-  const assetLabel = asset.description || asset.provider_asset_id || `Asset ${asset.id}`;
-
-  // Register asset data for context menu resolution (generic component-level pattern)
-  // Deps include all fields used in the data object to ensure freshness
-  useRegisterContextData('asset', asset.id, {
+  // Context menu: combined hook registers data + returns attrs (Pattern B)
+  const contextMenuProps = useContextMenuItem('asset', asset.id, {
     id: asset.id,
-    name: assetLabel,
+    name: asset.description || asset.provider_asset_id || `Asset ${asset.id}`,
     type: asset.media_type,
     asset, // full object for actions
     provider: asset.provider_id,
@@ -164,7 +160,7 @@ export function CompactAssetCard({
       className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      {...contextMenuAttrs('asset', asset.id, assetLabel)}
+      {...contextMenuProps}
     >
       {label && (
         <div className="absolute top-0 left-0 right-0 bg-black/70 text-white text-[10px] px-2 py-0.5 z-10 font-medium">
