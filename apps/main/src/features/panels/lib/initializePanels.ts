@@ -10,6 +10,7 @@ import { corePanelsPlugin } from "./corePanelsPlugin";
 import { helperPanelsPlugin } from "./helperPanelsPlugin";
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
 import { panelRegistry } from "./panelRegistry";
+import { autoRegisterPanels } from "./autoDiscovery";
 
 /**
  * Initialize all built-in panel plugins.
@@ -28,6 +29,15 @@ export async function initializePanels(): Promise<void> {
     // Load helper panels plugin (global context-aware panels)
     if (!pluginManager.isPluginLoaded(helperPanelsPlugin.id)) {
       await pluginManager.loadPlugin(helperPanelsPlugin);
+    }
+
+    // Auto-discover and register panels from definitions directory
+    // These are self-contained panels that use definePanel()
+    const result = autoRegisterPanels({ verbose: true });
+    if (result.failed.length > 0) {
+      console.warn(
+        `[initializePanels] ${result.failed.length} panels failed to auto-register`
+      );
     }
   } catch (error) {
     console.error("Failed to initialize panels:", error);

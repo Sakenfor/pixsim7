@@ -35,6 +35,25 @@ export { corePanelsPlugin } from "./corePanelsPlugin";
 export { initializePanels } from "./initializePanels";
 export { PanelHostLite } from "./PanelHostLite";
 
+// Auto-discovery system
+export {
+  definePanel,
+  getPanelContexts,
+  panelBelongsToContext,
+  type DefinePanelOptions,
+  type PanelModule,
+} from "./definePanel";
+
+export {
+  discoverPanels,
+  autoRegisterPanels,
+  getPanelsForContext,
+  getPanelIdsForContext,
+  type DiscoveredPanel,
+  type AutoDiscoveryOptions,
+  type DiscoveryResult,
+} from "./autoDiscovery";
+
 // Panel actions
 export * from "./actions";
 

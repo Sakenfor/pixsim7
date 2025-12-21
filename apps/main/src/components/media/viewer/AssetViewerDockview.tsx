@@ -190,11 +190,12 @@ export function AssetViewerDockview({
       minPanelsForTabs={2}
       className={className}
       panelManagerId={panelManagerId}
-      globalPanelIds={['quickGenerate', 'info']}
+      globalPanelIds={['quickGenerate', 'info', 'interactive-surface']}
       panelRegistryOverrides={{
         'media-preview': { title: 'Preview' },
         quickGenerate: { title: 'Generate' },
         info: { title: 'Metadata' },
+        'interactive-surface': { title: 'Mask' },
       }}
       onReady={handleReady}
       enableContextMenu

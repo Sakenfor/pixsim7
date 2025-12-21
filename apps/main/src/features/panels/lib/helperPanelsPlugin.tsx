@@ -6,6 +6,7 @@
  */
 
 import { QuickGeneratePanel, InfoPanel } from '../components/helpers';
+// Note: InteractiveSurfacePanel is now auto-discovered from definitions/
 import {
   AssetPanel as QuickGenAssetPanel,
   PromptPanel as QuickGenPromptPanel,
@@ -126,6 +127,8 @@ export const helperPanelsPlugin: PanelPlugin = {
       supportsCompactMode: false,
       supportsMultipleInstances: true,
     },
+
+    // Note: interactive-surface panel is now auto-discovered from definitions/
   ],
 
   initialize() {
