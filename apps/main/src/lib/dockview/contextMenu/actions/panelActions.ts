@@ -9,7 +9,7 @@
  */
 
 import type { MenuAction, MenuActionContext } from '../types';
-import { usePanelPropertiesPopupStore } from '../PanelPropertiesPopup';
+import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
 
 /**
  * Close the current panel
@@ -96,26 +96,53 @@ function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
 }
 
 /**
- * Open panel properties in Settings (Panels tab)
+ * Context-aware Properties action.
+ * Shows different properties based on what was clicked:
+ * - Panel: shows panel info, instance, scopes
+ * - Node/Asset/etc: shows item properties from ctx.data
  */
-export const panelPropertiesAction: MenuAction = {
-  id: 'panel:properties',
+export const propertiesAction: MenuAction = {
+  id: 'panel:properties', // Keep original ID for backwards compatibility
   label: 'Properties',
-  icon: 'settings',
-  category: 'zzz',
-  availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!resolvePanelDefinitionId(ctx),
+  icon: 'info',
+  category: 'zzz', // Sort to end of menu
+  availableIn: ['tab', 'panel-content', 'node', 'edge', 'asset', 'asset-card', 'canvas', 'item'],
+  visible: (ctx) => {
+    // For panel contexts, need a panel ID
+    if (ctx.contextType === 'tab' || ctx.contextType === 'panel-content') {
+      return !!resolvePanelDefinitionId(ctx);
+    }
+    // For other contexts, always show if we have position
+    return !!ctx.position;
+  },
   execute: (ctx) => {
-    const panelDefinitionId = resolvePanelDefinitionId(ctx);
-    if (!panelDefinitionId) return;
     if (!ctx.position) return;
-    usePanelPropertiesPopupStore.getState().open({
+
+    const panelDefinitionId = resolvePanelDefinitionId(ctx);
+
+    // Try to get panel title from local registry (for feature dockviews)
+    let panelTitle: string | undefined;
+    if (panelDefinitionId && ctx.panelRegistry) {
+      const panelDef = ctx.panelRegistry.getAll().find(p => p.id === panelDefinitionId);
+      panelTitle = panelDef?.title;
+    }
+
+    usePropertiesPopupStore.getState().open({
       position: ctx.position,
+      contextType: ctx.contextType,
       panelId: panelDefinitionId,
       instanceId: ctx.instanceId ?? ctx.panelId,
+      panelTitle,
+      data: ctx.data as Record<string, unknown> | undefined,
+      capabilities: ctx.capabilities,
     });
   },
 };
+
+/**
+ * @deprecated Use propertiesAction instead
+ */
+export const panelPropertiesAction = propertiesAction;
 
 /**
  * Close all other panels in the same group
@@ -177,7 +204,7 @@ export const closeAllInGroupAction: MenuAction = {
  * All panel actions
  */
 export const panelActions: MenuAction[] = [
-  panelPropertiesAction,
+  propertiesAction,
   closePanelAction,
   maximizePanelAction,
   floatPanelAction,
