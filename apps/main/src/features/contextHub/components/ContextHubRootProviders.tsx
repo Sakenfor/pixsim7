@@ -3,7 +3,9 @@ import { useEditorContext } from "@lib/context";
 import {
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
+  CAP_EDITOR_CONTEXT,
   useProvideCapability,
+  type EditorContextSnapshot,
   type SceneContextSummary,
   type WorldContextSummary,
 } from "@features/contextHub";
@@ -55,6 +57,21 @@ export function ContextHubRootProviders() {
     scope: "root",
   });
   useProvideCapability(CAP_WORLD_CONTEXT, worldProvider, [worldValue], {
+    scope: "root",
+  });
+
+  const editorProvider = useMemo(
+    () => ({
+      id: "editorContext",
+      label: "Editor Context",
+      priority: 10,
+      exposeToContextMenu: true,
+      getValue: (): EditorContextSnapshot => editorContext,
+    }),
+    [editorContext],
+  );
+
+  useProvideCapability(CAP_EDITOR_CONTEXT, editorProvider, [editorContext], {
     scope: "root",
   });
 
