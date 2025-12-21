@@ -478,17 +478,36 @@ Return your suggestions as a JSON object following the specified schema."""
 
     def get_available_providers(self) -> list[dict]:
         """
-        Get list of available LLM providers
+        Get list of available LLM providers with metadata
 
         Returns:
-            List of provider info dicts
+            List of provider info dicts with:
+            - provider_id: Unique identifier
+            - name: Display name
+            - description: Provider description
+            - requires_credentials: Whether API keys are needed
         """
         providers = []
         for provider_id in llm_registry.list_provider_ids():
-            providers.append({
-                "provider_id": provider_id,
-                "name": provider_id.replace("-llm", "").title(),
-            })
+            provider = llm_registry.get(provider_id)
+
+            # Try to get metadata from manifest
+            manifest = getattr(provider, '_manifest', None)
+            if manifest:
+                providers.append({
+                    "provider_id": provider_id,
+                    "name": manifest.name,
+                    "description": manifest.description,
+                    "requires_credentials": manifest.requires_credentials,
+                })
+            else:
+                # Fallback for providers without manifest
+                providers.append({
+                    "provider_id": provider_id,
+                    "name": provider_id.replace("-llm", "").title(),
+                    "description": "",
+                    "requires_credentials": True,
+                })
         return providers
 
     async def list_interactions(
