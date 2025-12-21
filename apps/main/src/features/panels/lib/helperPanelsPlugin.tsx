@@ -5,7 +5,7 @@
  * different parts of the application (asset viewer, control center, etc.)
  */
 
-import { QuickGeneratePanel, InfoPanel } from '../components/helpers';
+import { QuickGeneratePanel, InfoPanel, InteractiveSurfacePanel } from '../components/helpers';
 import {
   AssetPanel as QuickGenAssetPanel,
   PromptPanel as QuickGenPromptPanel,
@@ -125,6 +125,27 @@ export const helperPanelsPlugin: PanelPlugin = {
       description: 'Lightweight media preview panel for selected assets',
       supportsCompactMode: false,
       supportsMultipleInstances: true,
+    },
+
+    // Interactive Surface - mask/annotation overlay panel
+    {
+      id: 'interactive-surface',
+      title: 'Interactive Surface',
+      component: InteractiveSurfacePanel,
+      category: 'tools',
+      tags: ['interactive', 'surface', 'mask', 'annotation', 'inpaint', 'overlay'],
+      icon: 'layers',
+      description: 'Interactive overlay for mask creation, annotations, and image tagging',
+
+      // Show when there's an asset context
+      showWhen: (context) => {
+        return !!context.currentAsset;
+      },
+      requiresContext: true,
+
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+      defaultSettings: {},
     },
   ],
 
