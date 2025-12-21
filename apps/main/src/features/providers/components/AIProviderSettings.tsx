@@ -16,6 +16,16 @@ interface LlmProviderInfo {
   requires_credentials?: boolean;
 }
 
+interface LlmInstance {
+  id: number;
+  provider_id: string;
+  label: string;
+  description?: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  priority: number;
+}
+
 interface AIProviderSettingsProps {
   /** Whether to auto-load settings on mount (default: true) */
   autoLoad?: boolean;
@@ -42,21 +52,35 @@ export function AIProviderSettings({
 }: AIProviderSettingsProps) {
   const [settings, setSettings] = useState<AIProviderSettingsData | null>(null);
   const [providers, setProviders] = useState<LlmProviderInfo[]>([]);
+  const [instances, setInstances] = useState<LlmInstance[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(autoLoad);
+
+  // Instance form state for cmd-llm
+  const [showInstanceForm, setShowInstanceForm] = useState(false);
+  const [editingInstance, setEditingInstance] = useState<LlmInstance | null>(null);
+  const [instanceForm, setInstanceForm] = useState({
+    label: '',
+    description: '',
+    command: '',
+    args: '',
+    timeout: '60',
+  });
 
   // Load AI settings and available providers
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const [settingsResponse, providersResponse] = await Promise.all([
+      const [settingsResponse, providersResponse, instancesResponse] = await Promise.all([
         apiClient.get<AIProviderSettingsData>('/providers/ai-providers/settings'),
         apiClient.get<{ providers: LlmProviderInfo[] }>('/ai/providers'),
+        apiClient.get<{ instances: LlmInstance[] }>('/providers/llm-instances'),
       ]);
       setSettings(settingsResponse.data);
       const providerList = providersResponse.data.providers || [];
       setProviders(providerList);
+      setInstances(instancesResponse.data.instances || []);
       // Set initial active tab to current provider or first available
       const currentProvider = settingsResponse.data.llm_provider;
       if (providerList.find(p => p.provider_id === currentProvider)) {
@@ -98,6 +122,79 @@ export function AIProviderSettings({
   const setAsDefault = (providerId: string) => {
     if (settings) {
       setSettings({ ...settings, llm_provider: providerId });
+    }
+  };
+
+  // Instance management for cmd-llm
+  const resetInstanceForm = () => {
+    setInstanceForm({ label: '', description: '', command: '', args: '', timeout: '60' });
+    setEditingInstance(null);
+    setShowInstanceForm(false);
+  };
+
+  const startEditInstance = (instance: LlmInstance) => {
+    const config = instance.config as { command?: string; args?: string; timeout?: number };
+    setInstanceForm({
+      label: instance.label,
+      description: instance.description || '',
+      command: config.command || '',
+      args: config.args || '',
+      timeout: String(config.timeout || 60),
+    });
+    setEditingInstance(instance);
+    setShowInstanceForm(true);
+  };
+
+  const saveInstance = async () => {
+    const config = {
+      command: instanceForm.command,
+      args: instanceForm.args || undefined,
+      timeout: parseInt(instanceForm.timeout, 10) || 60,
+    };
+
+    try {
+      if (editingInstance) {
+        await apiClient.patch(`/providers/llm-instances/${editingInstance.id}`, {
+          label: instanceForm.label,
+          description: instanceForm.description || undefined,
+          config,
+        });
+      } else {
+        await apiClient.post('/providers/llm-instances', {
+          provider_id: 'cmd-llm',
+          label: instanceForm.label,
+          description: instanceForm.description || undefined,
+          config,
+        });
+      }
+      // Reload instances
+      const response = await apiClient.get<{ instances: LlmInstance[] }>('/providers/llm-instances');
+      setInstances(response.data.instances || []);
+      resetInstanceForm();
+    } catch (error) {
+      console.error('Failed to save instance:', error);
+    }
+  };
+
+  const deleteInstance = async (instanceId: number) => {
+    try {
+      await apiClient.delete(`/providers/llm-instances/${instanceId}`);
+      setInstances(instances.filter(i => i.id !== instanceId));
+    } catch (error) {
+      console.error('Failed to delete instance:', error);
+    }
+  };
+
+  const toggleInstanceEnabled = async (instance: LlmInstance) => {
+    try {
+      await apiClient.patch(`/providers/llm-instances/${instance.id}`, {
+        enabled: !instance.enabled,
+      });
+      setInstances(instances.map(i =>
+        i.id === instance.id ? { ...i, enabled: !i.enabled } : i
+      ));
+    } catch (error) {
+      console.error('Failed to toggle instance:', error);
     }
   };
 
@@ -210,22 +307,188 @@ export function AIProviderSettings({
           </div>
         );
 
-      case 'cmd-llm':
+      case 'cmd-llm': {
+        const cmdInstances = instances.filter(i => i.provider_id === 'cmd-llm');
         return (
-          <div className="space-y-3">
-            <div className={`p-3 rounded ${compact ? 'bg-amber-500/10' : 'bg-amber-500/10 border border-amber-500/20'}`}>
-              <p className={`${compact ? 'text-[10px]' : 'text-sm'} text-amber-600 dark:text-amber-400 font-medium mb-2`}>
-                Environment Variable Configuration
-              </p>
+          <div className="space-y-4">
+            {/* Instances list */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className={labelClass}>Command Instances</label>
+                {!showInstanceForm && (
+                  <button
+                    onClick={() => setShowInstanceForm(true)}
+                    className={`${compact ? 'text-[9px] px-2 py-0.5' : 'text-xs px-2 py-1'} rounded bg-blue-600 hover:bg-blue-500 text-white`}
+                  >
+                    + Add Instance
+                  </button>
+                )}
+              </div>
+
+              {cmdInstances.length === 0 && !showInstanceForm && (
+                <div className={`p-3 rounded border border-dashed border-neutral-300 dark:border-neutral-600 text-center`}>
+                  <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500`}>
+                    No command instances configured. Add one to use CLI-based LLMs like Claude CLI or Ollama.
+                  </p>
+                </div>
+              )}
+
+              {/* Instance cards */}
+              {cmdInstances.map((instance) => {
+                const config = instance.config as { command?: string; args?: string; timeout?: number };
+                return (
+                  <div
+                    key={instance.id}
+                    className={`p-3 rounded border ${instance.enabled ? 'border-neutral-200 dark:border-neutral-700' : 'border-neutral-300/50 dark:border-neutral-700/50 opacity-60'} mb-2`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`${compact ? 'text-[10px]' : 'text-sm'} font-medium`}>
+                            {instance.label}
+                          </span>
+                          {!instance.enabled && (
+                            <span className={`${compact ? 'text-[8px]' : 'text-[10px]'} px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-500`}>
+                              Disabled
+                            </span>
+                          )}
+                        </div>
+                        {instance.description && (
+                          <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500 mt-0.5`}>
+                            {instance.description}
+                          </p>
+                        )}
+                        <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-neutral-400 mt-1 font-mono`}>
+                          {config.command} {config.args || ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleInstanceEnabled(instance)}
+                          className={`${compact ? 'text-[9px] px-1.5 py-0.5' : 'text-xs px-2 py-1'} rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800`}
+                        >
+                          {instance.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          onClick={() => startEditInstance(instance)}
+                          className={`${compact ? 'text-[9px] px-1.5 py-0.5' : 'text-xs px-2 py-1'} rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800`}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => deleteInstance(instance.id)}
+                          className={`${compact ? 'text-[9px] px-1.5 py-0.5' : 'text-xs px-2 py-1'} rounded border border-red-300 dark:border-red-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Instance form */}
+              {showInstanceForm && (
+                <div className={`p-3 rounded border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-3`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`${compact ? 'text-[10px]' : 'text-sm'} font-medium`}>
+                      {editingInstance ? 'Edit Instance' : 'New Instance'}
+                    </span>
+                    <button
+                      onClick={resetInstanceForm}
+                      className={`${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500 hover:text-neutral-700`}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Label *</label>
+                    <input
+                      type="text"
+                      value={instanceForm.label}
+                      onChange={(e) => setInstanceForm({ ...instanceForm, label: e.target.value })}
+                      placeholder="Claude CLI, Ollama, etc."
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Description</label>
+                    <input
+                      type="text"
+                      value={instanceForm.description}
+                      onChange={(e) => setInstanceForm({ ...instanceForm, description: e.target.value })}
+                      placeholder="Optional description"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Command *</label>
+                    <input
+                      type="text"
+                      value={instanceForm.command}
+                      onChange={(e) => setInstanceForm({ ...instanceForm, command: e.target.value })}
+                      placeholder="/path/to/llm-cli or ollama"
+                      className={inputClass}
+                    />
+                    <p className={`mt-1 ${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500`}>
+                      The command to execute (receives JSON on stdin)
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Arguments</label>
+                    <input
+                      type="text"
+                      value={instanceForm.args}
+                      onChange={(e) => setInstanceForm({ ...instanceForm, args: e.target.value })}
+                      placeholder="--model claude-3-5-sonnet"
+                      className={inputClass}
+                    />
+                    <p className={`mt-1 ${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500`}>
+                      Additional command-line arguments (shell-style quoting supported)
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Timeout (seconds)</label>
+                    <input
+                      type="number"
+                      value={instanceForm.timeout}
+                      onChange={(e) => setInstanceForm({ ...instanceForm, timeout: e.target.value })}
+                      placeholder="60"
+                      className={inputClass}
+                      min="1"
+                      max="600"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      onClick={resetInstanceForm}
+                      className={`${compact ? 'text-[9px] px-2 py-1' : 'text-xs px-3 py-1.5'} rounded border border-neutral-300 dark:border-neutral-600`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveInstance}
+                      disabled={!instanceForm.label || !instanceForm.command}
+                      className={`${compact ? 'text-[9px] px-2 py-1' : 'text-xs px-3 py-1.5'} rounded bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white`}
+                    >
+                      {editingInstance ? 'Update' : 'Create'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Info box about env var fallback */}
+            <div className={`p-3 rounded ${compact ? 'bg-neutral-500/10' : 'bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700'}`}>
               <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-neutral-600 dark:text-neutral-400`}>
-                This provider runs a local command for LLM operations. Configure via environment variables:
+                <strong>Fallback:</strong> If no instances are configured, environment variables are used:
               </p>
-              <ul className={`mt-2 space-y-1 ${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500 font-mono`}>
-                <li><span className="text-blue-500">CMD_LLM_COMMAND</span> - Command to execute (required)</li>
-                <li><span className="text-blue-500">CMD_LLM_ARGS</span> - Additional arguments (optional)</li>
-                <li><span className="text-blue-500">CMD_LLM_TIMEOUT</span> - Timeout in seconds (default: 60)</li>
+              <ul className={`mt-1.5 space-y-0.5 ${compact ? 'text-[9px]' : 'text-xs'} text-neutral-500 font-mono`}>
+                <li><span className="text-blue-500">CMD_LLM_COMMAND</span>, <span className="text-blue-500">CMD_LLM_ARGS</span>, <span className="text-blue-500">CMD_LLM_TIMEOUT</span></li>
               </ul>
             </div>
+
+            {/* Model ID */}
             <div>
               <label className={labelClass}>Model ID</label>
               <input
@@ -242,6 +505,7 @@ export function AIProviderSettings({
             </div>
           </div>
         );
+      }
 
       default:
         // Generic provider config

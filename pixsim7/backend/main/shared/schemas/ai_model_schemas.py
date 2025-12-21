@@ -30,6 +30,10 @@ class AiModel(BaseModel):
     id: str = Field(..., description="Unique model ID (e.g., 'openai:gpt-4.1-mini', 'prompt-dsl:simple')")
     label: str = Field(..., description="Human-readable name (e.g., 'GPT-4.1 Mini', 'Prompt-DSL Simple')")
     provider_id: Optional[str] = Field(None, description="Provider ID for LLM models, or internal engine identifier")
+    provider_instance_id: Optional[int] = Field(
+        None,
+        description="Optional provider instance ID for using a specific configuration"
+    )
     kind: AiModelKind = Field(..., description="Type of model (llm, parser, or both)")
     capabilities: List[AiModelCapability] = Field(..., description="List of capabilities this model supports")
     default_for: List[AiModelCapability] = Field(default_factory=list, description="Capabilities this model is default for (hint)")

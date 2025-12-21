@@ -652,3 +652,250 @@ async def update_ai_provider_settings(
         llm_provider=user_settings.llm_provider,
         llm_default_model=user_settings.llm_default_model,
     )
+
+
+# ===== LLM Provider Instances =====
+
+class LlmInstanceConfig(BaseModel):
+    """Provider-specific configuration for an LLM instance"""
+    # For cmd-llm
+    command: Optional[str] = Field(None, description="Command to execute")
+    args: Optional[list[str]] = Field(None, description="Command arguments")
+    timeout: Optional[int] = Field(None, description="Timeout in seconds")
+    # For openai-llm / anthropic-llm
+    api_key: Optional[str] = Field(None, description="API key override")
+    base_url: Optional[str] = Field(None, description="Base URL override (OpenAI-compatible)")
+
+
+class LlmInstanceCreate(BaseModel):
+    """Create a new LLM provider instance"""
+    provider_id: str = Field(..., description="Provider ID (e.g., cmd-llm, openai-llm)")
+    label: str = Field(..., description="Display name", max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    config: dict = Field(default_factory=dict, description="Provider-specific config")
+    enabled: bool = Field(True)
+    priority: int = Field(0)
+
+
+class LlmInstanceUpdate(BaseModel):
+    """Update an LLM provider instance"""
+    label: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = None
+    config: Optional[dict] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+
+
+class LlmInstanceResponse(BaseModel):
+    """LLM provider instance response"""
+    id: int
+    provider_id: str
+    label: str
+    description: Optional[str]
+    config: dict
+    enabled: bool
+    priority: int
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class LlmInstanceListResponse(BaseModel):
+    """List of LLM provider instances"""
+    instances: list[LlmInstanceResponse]
+
+
+@router.get("/llm-instances", response_model=LlmInstanceListResponse)
+async def list_llm_instances(
+    user: CurrentUser,
+    provider_id: Optional[str] = None,
+    include_disabled: bool = False,
+):
+    """
+    List LLM provider instances
+
+    Returns all configured LLM provider instances, optionally filtered by provider.
+    """
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+
+    db = DatabaseSession()
+    service = LlmInstanceService(db)
+
+    instances = await service.list_instances(
+        provider_id=provider_id,
+        enabled_only=not include_disabled,
+    )
+
+    return LlmInstanceListResponse(
+        instances=[
+            LlmInstanceResponse(
+                id=inst.id,
+                provider_id=inst.provider_id,
+                label=inst.label,
+                description=inst.description,
+                config=_mask_instance_config(inst.config),
+                enabled=inst.enabled,
+                priority=inst.priority,
+                created_at=inst.created_at.isoformat(),
+                updated_at=inst.updated_at.isoformat(),
+            )
+            for inst in instances
+        ]
+    )
+
+
+@router.post("/llm-instances", response_model=LlmInstanceResponse, status_code=201)
+async def create_llm_instance(
+    data: LlmInstanceCreate,
+    user: CurrentUser,
+):
+    """
+    Create a new LLM provider instance
+
+    Admin only. Creates a new configuration instance for an LLM provider.
+    """
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+
+    # TODO: Add admin check when roles are implemented
+    # if not user.is_admin:
+    #     raise HTTPException(status_code=403, detail="Admin access required")
+
+    db = DatabaseSession()
+    service = LlmInstanceService(db)
+
+    instance = await service.create_instance(
+        provider_id=data.provider_id,
+        label=data.label,
+        config=data.config,
+        description=data.description,
+        enabled=data.enabled,
+        priority=data.priority,
+    )
+
+    await db.commit()
+
+    return LlmInstanceResponse(
+        id=instance.id,
+        provider_id=instance.provider_id,
+        label=instance.label,
+        description=instance.description,
+        config=_mask_instance_config(instance.config),
+        enabled=instance.enabled,
+        priority=instance.priority,
+        created_at=instance.created_at.isoformat(),
+        updated_at=instance.updated_at.isoformat(),
+    )
+
+
+@router.get("/llm-instances/{instance_id}", response_model=LlmInstanceResponse)
+async def get_llm_instance(
+    instance_id: int,
+    user: CurrentUser,
+):
+    """Get a specific LLM provider instance"""
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+
+    db = DatabaseSession()
+    service = LlmInstanceService(db)
+
+    instance = await service.get_instance(instance_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    return LlmInstanceResponse(
+        id=instance.id,
+        provider_id=instance.provider_id,
+        label=instance.label,
+        description=instance.description,
+        config=_mask_instance_config(instance.config),
+        enabled=instance.enabled,
+        priority=instance.priority,
+        created_at=instance.created_at.isoformat(),
+        updated_at=instance.updated_at.isoformat(),
+    )
+
+
+@router.patch("/llm-instances/{instance_id}", response_model=LlmInstanceResponse)
+async def update_llm_instance(
+    instance_id: int,
+    data: LlmInstanceUpdate,
+    user: CurrentUser,
+):
+    """
+    Update an LLM provider instance
+
+    Admin only. Updates configuration for an existing instance.
+    """
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+
+    # TODO: Add admin check when roles are implemented
+
+    db = DatabaseSession()
+    service = LlmInstanceService(db)
+
+    updates = data.model_dump(exclude_unset=True)
+    instance = await service.update_instance(instance_id, **updates)
+
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    await db.commit()
+
+    return LlmInstanceResponse(
+        id=instance.id,
+        provider_id=instance.provider_id,
+        label=instance.label,
+        description=instance.description,
+        config=_mask_instance_config(instance.config),
+        enabled=instance.enabled,
+        priority=instance.priority,
+        created_at=instance.created_at.isoformat(),
+        updated_at=instance.updated_at.isoformat(),
+    )
+
+
+@router.delete("/llm-instances/{instance_id}", status_code=204)
+async def delete_llm_instance(
+    instance_id: int,
+    user: CurrentUser,
+):
+    """
+    Delete an LLM provider instance
+
+    Admin only. Permanently removes an instance configuration.
+    """
+    from pixsim7.backend.main.api.dependencies import DatabaseSession
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+
+    # TODO: Add admin check when roles are implemented
+
+    db = DatabaseSession()
+    service = LlmInstanceService(db)
+
+    deleted = await service.delete_instance(instance_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    await db.commit()
+
+
+def _mask_instance_config(config: dict) -> dict:
+    """Mask sensitive values in instance config"""
+    if not config:
+        return config
+
+    masked = config.copy()
+
+    # Mask API keys
+    if "api_key" in masked and masked["api_key"]:
+        key = masked["api_key"]
+        if len(key) > 8:
+            masked["api_key"] = f"{'*' * (len(key) - 4)}{key[-4:]}"
+
+    return masked

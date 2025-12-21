@@ -88,7 +88,8 @@ class OpenAiLlmProvider:
         model_id: str,
         prompt_before: str,
         context: dict | None = None,
-        account: ProviderAccount | None = None
+        account: ProviderAccount | None = None,
+        instance_config: dict | None = None,
     ) -> str:
         """
         Edit prompt using OpenAI
@@ -98,15 +99,23 @@ class OpenAiLlmProvider:
             prompt_before: Original prompt
             context: Optional context
             account: Optional account (uses API key or env var)
+            instance_config: Optional instance config (api_key, base_url)
 
         Returns:
             Edited prompt
         """
-        # Get API key from account or environment
+        # Get API key: instance_config > account > environment
         api_key = None
-        if account and account.api_key:
+        base_url = None
+
+        if instance_config:
+            api_key = instance_config.get("api_key")
+            base_url = instance_config.get("base_url")
+
+        if not api_key and account and account.api_key:
             api_key = account.api_key
-        else:
+
+        if not api_key:
             api_key = os.getenv("OPENAI_API_KEY")
 
         if not api_key:
@@ -116,7 +125,7 @@ class OpenAiLlmProvider:
             )
 
         try:
-            client = openai.AsyncOpenAI(api_key=api_key)
+            client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
             # Use shared prompt template helpers for consistency
             system_prompt = build_edit_prompt_system()
@@ -162,7 +171,8 @@ class AnthropicLlmProvider:
         model_id: str,
         prompt_before: str,
         context: dict | None = None,
-        account: ProviderAccount | None = None
+        account: ProviderAccount | None = None,
+        instance_config: dict | None = None,
     ) -> str:
         """
         Edit prompt using Anthropic Claude
@@ -172,15 +182,21 @@ class AnthropicLlmProvider:
             prompt_before: Original prompt
             context: Optional context
             account: Optional account (uses API key or env var)
+            instance_config: Optional instance config (api_key)
 
         Returns:
             Edited prompt
         """
-        # Get API key from account or environment
+        # Get API key: instance_config > account > environment
         api_key = None
-        if account and account.api_key:
+
+        if instance_config:
+            api_key = instance_config.get("api_key")
+
+        if not api_key and account and account.api_key:
             api_key = account.api_key
-        else:
+
+        if not api_key:
             api_key = os.getenv("ANTHROPIC_API_KEY")
 
         if not api_key:
@@ -232,7 +248,8 @@ class LocalLlmProvider:
         model_id: str,
         prompt_before: str,
         context: dict | None = None,
-        account: ProviderAccount | None = None
+        account: ProviderAccount | None = None,
+        instance_config: dict | None = None,
     ) -> str:
         """
         Edit prompt using local LLM (not yet implemented)
@@ -242,6 +259,7 @@ class LocalLlmProvider:
             prompt_before: Original prompt
             context: Optional context
             account: Not used for local LLM
+            instance_config: Not used for local LLM
 
         Returns:
             Edited prompt
@@ -386,13 +404,63 @@ class CommandLlmProvider:
             )
             return 60
 
+    def _get_command_parts_from_config(
+        self,
+        instance_config: dict | None,
+    ) -> list[str]:
+        """
+        Get command parts from instance config, with fallback to defaults.
+
+        Args:
+            instance_config: Config from LlmProviderInstance (optional)
+
+        Returns:
+            List of command parts ready for subprocess
+        """
+        # Try instance config first
+        if instance_config:
+            cmd = instance_config.get("command")
+            if cmd:
+                cmd_parts = self._parse_shell_args(cmd)
+                args = instance_config.get("args", [])
+                if isinstance(args, list):
+                    cmd_parts.extend(args)
+                elif isinstance(args, str):
+                    cmd_parts.extend(self._parse_shell_args(args))
+                return cmd_parts
+
+        # Fall back to constructor/env defaults
+        return self._get_command_parts()
+
+    def _get_timeout_from_config(self, instance_config: dict | None) -> int:
+        """
+        Get timeout from instance config, with fallback to defaults.
+
+        Args:
+            instance_config: Config from LlmProviderInstance (optional)
+
+        Returns:
+            Timeout in seconds
+        """
+        if instance_config:
+            timeout = instance_config.get("timeout")
+            if timeout is not None:
+                try:
+                    return int(timeout)
+                except (ValueError, TypeError):
+                    pass
+
+        # Fall back to constructor/env defaults
+        return self._get_timeout()
+
     async def edit_prompt(
         self,
         *,
         model_id: str,
         prompt_before: str,
         context: dict | None = None,
-        account: ProviderAccount | None = None
+        account: ProviderAccount | None = None,
+        instance_config: dict | None = None,
     ) -> str:
         """
         Edit prompt by running a local CLI command.
@@ -404,6 +472,7 @@ class CommandLlmProvider:
             prompt_before: Original prompt to edit
             context: Optional context dict
             account: Optional account (not used by command provider)
+            instance_config: Optional config from LlmProviderInstance
 
         Returns:
             Edited prompt text from command output
@@ -412,8 +481,9 @@ class CommandLlmProvider:
             ProviderError: Command failed, timed out, or returned invalid output
         """
         # Build the command line (safe arg list, no shell=True)
-        cmd_list = self._get_command_parts()
-        timeout = self._get_timeout()
+        # Use instance config if provided, otherwise fall back to defaults
+        cmd_list = self._get_command_parts_from_config(instance_config)
+        timeout = self._get_timeout_from_config(instance_config)
 
         # For logging, show the executable name
         cmd_executable = cmd_list[0] if cmd_list else "(empty)"

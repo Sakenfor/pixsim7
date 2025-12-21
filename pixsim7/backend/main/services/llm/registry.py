@@ -29,7 +29,8 @@ class LlmProvider(Protocol):
         *,
         model_id: str,
         prompt_before: str,
-        context: dict | None = None
+        context: dict | None = None,
+        instance_config: dict | None = None,
     ) -> str:
         """
         Edit/refine a prompt using the LLM
@@ -38,6 +39,8 @@ class LlmProvider(Protocol):
             model_id: Model to use (e.g., "gpt-4", "claude-sonnet-4")
             prompt_before: Original prompt to edit
             context: Optional context (generation metadata, user preferences, etc.)
+            instance_config: Optional config from LlmProviderInstance for
+                provider-specific settings (command, API key override, etc.)
 
         Returns:
             Edited prompt text
