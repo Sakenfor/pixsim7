@@ -1701,7 +1701,7 @@ export interface paths {
          * @description Delete an asset
          *
          *     Deletes the asset record and local file (if downloaded).
-         *     Does not delete the video from the provider.
+         *     Optionally deletes the asset from the provider (enabled by default).
          *
          *     Users can only delete their own assets.
          */
@@ -16719,7 +16719,10 @@ export interface operations {
     };
     readonly delete_asset_api_v1_assets__asset_id__delete: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Also delete asset from provider if it has a provider_asset_id */
+                readonly delete_from_provider?: boolean;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -17004,7 +17007,10 @@ export interface operations {
     };
     readonly bulk_delete_assets_api_v1_assets_bulk_delete_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Also delete assets from provider */
+                readonly delete_from_provider?: boolean;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
