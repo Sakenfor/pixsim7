@@ -1,5 +1,5 @@
 /**
- * InteractiveSurfacePanel - Global Helper Panel
+ * InteractiveSurfacePanel Component
  *
  * Context-aware interactive surface panel that provides:
  * - Canvas overlay for drawing/annotating on images/videos
