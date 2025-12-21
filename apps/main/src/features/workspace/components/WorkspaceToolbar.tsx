@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
 import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
 import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";
 import { RestoreClosedPanelsMenu } from "./workspace-toolbar/RestoreClosedPanelsMenu";
@@ -14,7 +15,7 @@ export function WorkspaceToolbar() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
-  const presets = useWorkspaceStore((s) => s.getPresetsForScope("workspace"));
+  const presets = useWorkspacePresets("workspace");
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);

@@ -6,14 +6,14 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useWorkspaceStore } from '@features/workspace';
+import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 import { panelManager } from '@features/panels/lib/PanelManager';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'workspace-layout-v1';
 
 export function WorkspaceProfileManager() {
-  const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
+  const presets = useWorkspacePresets('workspace');
   const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const savePreset = useWorkspaceStore((s) => s.savePreset);

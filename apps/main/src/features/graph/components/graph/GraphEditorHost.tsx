@@ -10,7 +10,7 @@ import { useMemo } from 'react';
 import { graphEditorRegistry } from '../../lib/editor/editorRegistry';
 import type { GraphEditorId } from '../../lib/editor/types';
 import { usePanelConfigStore } from '@features/panels';
-import { useWorkspaceStore } from '@features/workspace';
+import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 
 export interface GraphEditorHostProps {
   /**
@@ -27,7 +27,7 @@ export function GraphEditorHost({ editorId }: GraphEditorHostProps) {
   // Allow panel config to override the default editor for the Graph panel
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.graph);
   const activePresetId = useWorkspaceStore((s) => s.getActivePresetId('workspace'));
-  const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
+  const presets = useWorkspacePresets('workspace');
 
   const presetGraphEditorId = activePresetId
     ? presets.find((p) => p.id === activePresetId)?.graphEditorId

@@ -32,6 +32,9 @@ export {
   type WorkspaceActions,
 } from "./stores/workspaceStore";
 
+// Hooks
+export { useWorkspacePresets } from "./hooks/useWorkspacePresets";
+
 // Module Registration
 export { workspaceModule } from "./lib/module";
 

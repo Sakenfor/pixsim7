@@ -9,7 +9,7 @@
  */
 
 import { useCallback } from 'react';
-import { useWorkspaceStore } from '@features/workspace';
+import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 import { usePanelConfigStore } from '@features/panels';
 import { panelManager } from '@features/panels/lib/PanelManager';
 import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
@@ -22,7 +22,7 @@ export function WorkspaceModule({ }: ControlCenterModuleProps) {
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
-  const presets = useWorkspaceStore((s) => s.getPresetsForScope('workspace'));
+  const presets = useWorkspacePresets('workspace');
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
