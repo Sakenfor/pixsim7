@@ -18,6 +18,7 @@ from pixsim7.backend.main.domain import (
 )
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
+    InvalidOperationError,
 )
 
 
@@ -351,7 +352,7 @@ class AssetSyncService:
         target_provider_id: str
     ) -> str:
         """
-        Upload asset to target provider
+        Upload asset to target provider using UploadService
 
         Args:
             asset: Asset to upload
@@ -363,13 +364,9 @@ class AssetSyncService:
         Raises:
             InvalidOperationError: If upload fails
         """
-        from pixsim7.backend.main.domain.providers.registry import registry
-        import httpx
-        import tempfile
+        from pixsim7.backend.main.services.upload.upload_service import UploadService
+        from pixsim7.backend.main.services.account.account_service import AccountService
         import os
-
-        # Get provider
-        provider = registry.get(target_provider_id)
 
         # 1. Download asset locally if not cached
         local_path = asset.local_path
@@ -379,9 +376,15 @@ class AssetSyncService:
             local_path = await self._download_asset_to_temp(asset)
 
         try:
-            # 2. Upload to target provider
-            # Note: Need to add upload_asset() method to Provider interface
-            uploaded_id = await provider.upload_asset(local_path)
+            # 2. Upload using UploadService (handles account selection, file prep)
+            account_service = AccountService(self.db)
+            upload_service = UploadService(self.db, account_service)
+            result = await upload_service.upload(
+                provider_id=target_provider_id,
+                media_type=asset.media_type,
+                tmp_path=local_path,
+            )
+            uploaded_id = result.provider_asset_id or result.external_url
 
             # Record successful upload (Task 104)
             await self.record_upload_attempt(

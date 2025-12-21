@@ -3,6 +3,7 @@ import { useAssets, type AssetFilters } from './useAssets';
 import type { AssetResponse } from '@lib/api/assets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
+import { useAssetDetailStore } from '../stores/assetDetailStore';
 import { useWorkspaceStore } from '@features/workspace';
 import { useMediaGenerationActions } from '@features/generation';
 import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
@@ -67,8 +68,9 @@ export function useAssetsController() {
     navigateViewer
   } = useViewer({ items });
 
-  // Detail panel state
-  const [detailAssetId, setDetailAssetId] = useState<number | null>(null);
+  // Detail panel state (shared via store)
+  const detailAssetId = useAssetDetailStore((s) => s.detailAssetId);
+  const setDetailAssetId = useAssetDetailStore((s) => s.setDetailAssetId);
   const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
   // Multi-select state

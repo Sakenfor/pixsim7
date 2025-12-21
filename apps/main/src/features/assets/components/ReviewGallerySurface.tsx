@@ -15,6 +15,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import type { GalleryAsset } from '@features/gallery/lib/core/types';
+import { AssetDetailModal } from './AssetDetailModal';
 
 export function ReviewGallerySurface() {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
@@ -307,6 +308,9 @@ export function ReviewGallerySurface() {
         )}
         {!controller.hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
       </div>
+
+      {/* Asset Detail Modal - uses shared store */}
+      <AssetDetailModal />
     </div>
   );
 }

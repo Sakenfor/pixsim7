@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 
 export interface ModalProps {
@@ -53,7 +54,7 @@ export function Modal({
     lg: 'max-w-2xl',
   };
 
-  return (
+  const modalContent = (
     <div
       className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
@@ -94,6 +95,9 @@ export function Modal({
       </div>
     </div>
   );
+
+  // Use portal to render at document body level, avoiding stacking context issues
+  return createPortal(modalContent, document.body);
 }
 
 export interface ConfirmModalProps {

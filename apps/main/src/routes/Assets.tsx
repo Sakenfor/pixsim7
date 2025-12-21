@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAssetsController, useAssetViewer } from '@features/assets';
+import { useAssetsController, useAssetViewer, AssetDetailModal } from '@features/assets';
 import { useGenerationWebSocket } from '@features/generation';
 import { useControlCenterLayout, useControlCenterStore } from '@features/controlCenter';
 import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
@@ -402,27 +402,8 @@ export function AssetsRoute() {
         </AssetViewerLayout>
       </div>
 
-      {/* Floating asset detail window */}
-      {controller.detailAssetId !== null && (
-        <Modal
-          isOpen={true}
-          onClose={() => controller.setDetailAssetId(null)}
-          title={`Asset #${controller.detailAssetId}`}
-          size="lg"
-        >
-          <div className="space-y-3 max-h-[70vh] overflow-auto text-xs">
-            {controller.detailLoading && <div>Loading...</div>}
-            {controller.detailError && (
-              <div className="text-red-600 text-sm">{controller.detailError}</div>
-            )}
-            {controller.detailAsset && (
-              <pre className="bg-neutral-100 dark:bg-neutral-900 p-3 rounded whitespace-pre-wrap break-all">
-                {JSON.stringify(controller.detailAsset, null, 2)}
-              </pre>
-            )}
-          </div>
-        </Modal>
-      )}
+      {/* Floating asset detail window - uses shared store */}
+      <AssetDetailModal />
     </div>
   );
 }

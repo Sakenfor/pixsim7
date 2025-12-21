@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useAssets, type AssetResponse, type AssetFilters } from '@features/assets';
+import { useAssets, useAsset, useAssetDetailStore, type AssetResponse, type AssetFilters } from '@features/assets';
 import { useMediaGenerationActions } from '@features/generation';
 import { useSelection } from '@/hooks/useSelection';
 import { createAssetActions } from '@features/assets';
@@ -55,6 +55,11 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
   // Filters state (can be updated by surface)
   const [filters, setFilters] = useState<AssetFilters>(initialFilters);
 
+  // Detail panel state (shared via store)
+  const detailAssetId = useAssetDetailStore((s) => s.detailAssetId);
+  const setDetailAssetId = useAssetDetailStore((s) => s.setDetailAssetId);
+  const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
+
   // Data loading
   const { items, loadMore, loading, error, hasMore, reset } = useAssets({
     filters,
@@ -88,6 +93,7 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
 
   // Asset action handlers
   const actionHandlers = useMemo(() => ({
+    onOpenDetails: setDetailAssetId,
     onImageToImage: queueImageToImage,
     onImageToVideo: queueImageToVideo,
     onVideoExtend: queueVideoExtend,
@@ -128,6 +134,13 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
     selectedAssets,
     toggleAssetSelection,
     clearSelection,
+
+    // Detail panel
+    detailAssetId,
+    setDetailAssetId,
+    detailAsset,
+    detailLoading,
+    detailError,
 
     // Per-asset actions
     getAssetActions,
