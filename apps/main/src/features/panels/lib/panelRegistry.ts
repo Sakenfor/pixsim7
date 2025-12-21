@@ -13,6 +13,7 @@ import type { PanelCategory } from "./panelConstants";
 import type { SettingGroup, SettingTab } from "@features/settings/lib/core/types";
 import type { z } from "zod";
 import type { PanelMetadata } from "./types";
+import type { BasePanelDefinition, PanelRegistryLike } from "./panelTypes";
 
 // Re-export PanelCategory for backwards compatibility
 export type { PanelCategory } from "./panelConstants";
@@ -111,19 +112,15 @@ export interface PanelSettingsFormSchema {
   groups?: SettingGroup[];
 }
 
-export interface PanelDefinition<TSettings = any> {
+/**
+ * Full panel definition for workspace panels.
+ * Extends BasePanelDefinition with rich metadata, settings, and orchestration.
+ */
+export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
   id: PanelId;
-  title: string;
-  component: ComponentType<any>;
   category: PanelCategory;
   tags: string[];
-  icon?: string;
   description?: string;
-  /**
-   * Internal panels are registered for orchestration but should not be shown
-   * in user-facing panel lists (launcher, add-panel menu).
-   */
-  isInternal?: boolean;
 
   // Settings System
   /**
@@ -220,9 +217,12 @@ export interface PanelDefinition<TSettings = any> {
 }
 
 /**
- * PanelRegistry - Centralized registry for all workspace panels
+ * PanelRegistry - Centralized registry for all workspace panels.
+ * Implements PanelRegistryLike for compatibility with SmartDockview.
  */
-export class PanelRegistry extends BaseRegistry<PanelDefinition> {
+export class PanelRegistry
+  extends BaseRegistry<PanelDefinition>
+  implements PanelRegistryLike<PanelDefinition> {
   /**
    * Unregister a panel
    * Calls onUnmount hook before removing the panel.

@@ -5,6 +5,8 @@
  * Each feature (AssetViewer, QuickGenerate, etc.) can have its own
  * registry instance with typed panel IDs.
  *
+ * Implements PanelRegistryLike interface for compatibility with SmartDockview.
+ *
  * Usage:
  * ```ts
  * type MyPanelIds = 'preview' | 'settings' | 'info';
@@ -18,9 +20,10 @@
  * ```
  */
 
-import type { LocalPanelDefinition } from './types';
+import type { LocalPanelDefinition, PanelRegistryLike } from './types';
 
-export class LocalPanelRegistry<TPanelId extends string = string> {
+export class LocalPanelRegistry<TPanelId extends string = string>
+  implements PanelRegistryLike<LocalPanelDefinition> {
   private panels = new Map<TPanelId, LocalPanelDefinition>();
   private registrationOrder: TPanelId[] = [];
 

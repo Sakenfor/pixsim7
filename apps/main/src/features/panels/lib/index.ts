@@ -3,6 +3,13 @@
  * Dynamic panel registration for workspace panels
  */
 
+// Unified panel types
+export {
+  type BasePanelDefinition,
+  type PanelRegistryLike,
+  type MutablePanelRegistryLike,
+} from "./panelTypes";
+
 export {
   PanelRegistry,
   panelRegistry,
@@ -33,6 +40,7 @@ export * from "./actions";
 
 // Instance settings resolver
 export {
+  resolveSettings,
   useResolvePanelSettings,
   useResolveComponentSettings,
   useResolveAllComponentSettings,

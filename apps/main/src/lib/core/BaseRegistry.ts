@@ -99,6 +99,22 @@ export class BaseRegistry<T extends Identifiable> {
   }
 
   /**
+   * Get all registered item IDs
+   *
+   * @returns Array of all registered IDs
+   */
+  getIds(): string[] {
+    return Array.from(this.items.keys());
+  }
+
+  /**
+   * Get the number of registered items
+   */
+  get size(): number {
+    return this.items.size;
+  }
+
+  /**
    * Check if an item with the given ID is registered
    *
    * @param id - The ID to check

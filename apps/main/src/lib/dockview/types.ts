@@ -6,7 +6,10 @@
  * registries for feature-internal panels (e.g., AssetViewer's panels).
  */
 
-import type { ComponentType } from 'react';
+import type { BasePanelDefinition } from "@features/panels/lib/panelTypes";
+
+// Re-export for convenience
+export type { BasePanelDefinition, PanelRegistryLike } from "@features/panels/lib/panelTypes";
 
 /**
  * Position hint for default panel layout
@@ -27,21 +30,10 @@ export interface PanelSizeConstraints {
 }
 
 /**
- * Definition for a local/feature-scoped panel
+ * Definition for a local/feature-scoped panel.
+ * Extends BasePanelDefinition with layout-specific fields.
  */
-export interface LocalPanelDefinition<TParams = any> {
-  /** Unique panel ID within this registry */
-  id: string;
-  /** Display title (shown in tabs when visible) */
-  title: string;
-  /** Hide from add-panel menus (still available in layouts) */
-  isInternal?: boolean;
-  /** Allow multiple instances of this panel in the same dockview */
-  supportsMultipleInstances?: boolean;
-  /** React component to render */
-  component: ComponentType<TParams>;
-  /** Icon name for tab/header */
-  icon?: string;
+export interface LocalPanelDefinition<TParams = any> extends BasePanelDefinition<TParams> {
   /** Default position when creating layout */
   defaultPosition?: PanelPosition;
   /** Size constraints */

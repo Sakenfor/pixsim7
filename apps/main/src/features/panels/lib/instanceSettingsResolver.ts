@@ -15,9 +15,10 @@ import { useMemo } from "react";
 import { usePanelConfigStore } from "../stores/panelConfigStore";
 import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
 import { useComponentSettingsStore } from "@features/componentSettings";
-import { panelRegistry, type PanelDefinition } from "./panelRegistry";
+import { panelRegistry } from "./panelRegistry";
 import { componentRegistry } from "@features/componentSettings";
 import { collectSchemaDefaults } from "@features/settings";
+import type { SettingTab, SettingGroup } from "@features/settings";
 import type { PanelId } from "@features/workspace";
 
 // Stable empty objects to avoid creating new references
@@ -36,6 +37,63 @@ export interface ResolvedSettings<T extends Record<string, unknown> = Record<str
 }
 
 /**
+ * Input for the generic settings resolver.
+ */
+interface ResolveSettingsInput {
+  /** Settings form schema (for extracting field defaults) */
+  settingsForm?: { tabs?: SettingTab[]; groups?: SettingGroup[] };
+  /** Default settings from definition */
+  definitionDefaults: Record<string, unknown>;
+  /** Stored global settings */
+  storedGlobalSettings: Record<string, unknown>;
+  /** Instance-specific overrides */
+  instanceOverrides: Record<string, unknown> | undefined;
+  /** Whether an instanceId was provided */
+  hasInstanceId: boolean;
+}
+
+/**
+ * Core resolver function - merges all settings layers.
+ * Pure function, no hooks - can be used in useMemo or standalone.
+ */
+export function resolveSettings<T extends Record<string, unknown> = Record<string, unknown>>(
+  input: ResolveSettingsInput,
+): ResolvedSettings<T> {
+  const {
+    settingsForm,
+    definitionDefaults,
+    storedGlobalSettings,
+    instanceOverrides,
+    hasInstanceId,
+  } = input;
+
+  // Step 1: Schema defaults
+  const schemaDefaults = settingsForm
+    ? collectSchemaDefaults(settingsForm.tabs, settingsForm.groups)
+    : {};
+
+  // Step 2 & 3: Merge schema defaults + definition defaults + stored global
+  const globalSettings = {
+    ...schemaDefaults,
+    ...definitionDefaults,
+    ...storedGlobalSettings,
+  } as T;
+
+  // Step 4: Apply instance overrides if present
+  const settings =
+    hasInstanceId && instanceOverrides
+      ? ({ ...globalSettings, ...instanceOverrides } as T)
+      : globalSettings;
+
+  return {
+    settings,
+    hasInstanceOverrides: !!instanceOverrides && Object.keys(instanceOverrides).length > 0,
+    instanceOverrides: instanceOverrides as Partial<T> | undefined,
+    globalSettings,
+  };
+}
+
+/**
  * Resolve panel settings for a specific panel, optionally with instance overrides.
  *
  * @param panelId - The panel type ID
@@ -46,10 +104,7 @@ export function useResolvePanelSettings<T extends Record<string, unknown> = Reco
   panelId: PanelId | string,
   instanceId?: string | null,
 ): ResolvedSettings<T> {
-  const panelDefinition = useMemo(
-    () => panelRegistry.get(panelId),
-    [panelId],
-  );
+  const panelDefinition = useMemo(() => panelRegistry.get(panelId), [panelId]);
 
   const storedGlobalSettings = usePanelConfigStore(
     (state) => state.panelConfigs?.[panelId]?.settings ?? EMPTY_SETTINGS,
@@ -59,37 +114,17 @@ export function useResolvePanelSettings<T extends Record<string, unknown> = Reco
     (state) => (instanceId ? state.instances[instanceId]?.panelSettings : undefined),
   );
 
-  return useMemo(() => {
-    // Step 1: Schema defaults
-    const schemaDefaults = panelDefinition?.settingsForm
-      ? collectSchemaDefaults(
-          panelDefinition.settingsForm.tabs,
-          panelDefinition.settingsForm.groups,
-        )
-      : {};
-
-    // Step 2: Panel default settings
-    const panelDefaults = panelDefinition?.defaultSettings ?? {};
-
-    // Step 3: Merge all layers
-    const globalSettings = {
-      ...schemaDefaults,
-      ...panelDefaults,
-      ...storedGlobalSettings,
-    } as T;
-
-    // Step 4: Apply instance overrides if present
-    const settings = instanceId && instanceOverrides
-      ? { ...globalSettings, ...instanceOverrides } as T
-      : globalSettings;
-
-    return {
-      settings,
-      hasInstanceOverrides: !!instanceOverrides && Object.keys(instanceOverrides).length > 0,
-      instanceOverrides: instanceOverrides as Partial<T> | undefined,
-      globalSettings,
-    };
-  }, [panelDefinition, storedGlobalSettings, instanceId, instanceOverrides]);
+  return useMemo(
+    () =>
+      resolveSettings<T>({
+        settingsForm: panelDefinition?.settingsForm,
+        definitionDefaults: panelDefinition?.defaultSettings ?? {},
+        storedGlobalSettings,
+        instanceOverrides,
+        hasInstanceId: !!instanceId,
+      }),
+    [panelDefinition, storedGlobalSettings, instanceId, instanceOverrides],
+  );
 }
 
 /**
@@ -119,37 +154,17 @@ export function useResolveComponentSettings<T extends Record<string, unknown> = 
         : undefined,
   );
 
-  return useMemo(() => {
-    // Step 1: Schema defaults
-    const schemaDefaults = componentDefinition?.settingsForm
-      ? collectSchemaDefaults(
-          componentDefinition.settingsForm.tabs,
-          componentDefinition.settingsForm.groups,
-        )
-      : {};
-
-    // Step 2: Component default settings (from definition)
-    const componentDefaults = componentDefinition?.defaultSettings ?? {};
-
-    // Step 3: Merge all layers
-    const globalSettings = {
-      ...schemaDefaults,
-      ...componentDefaults,
-      ...storedGlobalSettings,
-    } as T;
-
-    // Step 4: Apply instance overrides if present
-    const settings = instanceId && instanceOverrides
-      ? { ...globalSettings, ...instanceOverrides } as T
-      : globalSettings;
-
-    return {
-      settings,
-      hasInstanceOverrides: !!instanceOverrides && Object.keys(instanceOverrides).length > 0,
-      instanceOverrides: instanceOverrides as Partial<T> | undefined,
-      globalSettings,
-    };
-  }, [componentDefinition, storedGlobalSettings, instanceId, instanceOverrides]);
+  return useMemo(
+    () =>
+      resolveSettings<T>({
+        settingsForm: componentDefinition?.settingsForm,
+        definitionDefaults: componentDefinition?.defaultSettings ?? {},
+        storedGlobalSettings,
+        instanceOverrides,
+        hasInstanceId: !!instanceId,
+      }),
+    [componentDefinition, storedGlobalSettings, instanceId, instanceOverrides],
+  );
 }
 
 /**
@@ -186,38 +201,13 @@ export function useResolveAllComponentSettings<T extends Record<string, unknown>
 
     for (const componentId of componentIds) {
       const componentDefinition = componentRegistry.get(componentId);
-      const storedGlobalSettings = allGlobalSettings[componentId] ?? {};
-      const instanceOverrides = instanceData?.componentSettings?.[componentId];
-
-      // Step 1: Schema defaults
-      const schemaDefaults = componentDefinition?.settingsForm
-        ? collectSchemaDefaults(
-            componentDefinition.settingsForm.tabs,
-            componentDefinition.settingsForm.groups,
-          )
-        : {};
-
-      // Step 2: Component default settings
-      const componentDefaults = componentDefinition?.defaultSettings ?? {};
-
-      // Step 3: Merge all layers
-      const globalSettings = {
-        ...schemaDefaults,
-        ...componentDefaults,
-        ...storedGlobalSettings,
-      } as T;
-
-      // Step 4: Apply instance overrides if present
-      const settings = instanceId && instanceOverrides
-        ? { ...globalSettings, ...instanceOverrides } as T
-        : globalSettings;
-
-      result[componentId] = {
-        settings,
-        hasInstanceOverrides: !!instanceOverrides && Object.keys(instanceOverrides).length > 0,
-        instanceOverrides: instanceOverrides as Partial<T> | undefined,
-        globalSettings,
-      };
+      result[componentId] = resolveSettings<T>({
+        settingsForm: componentDefinition?.settingsForm,
+        definitionDefaults: componentDefinition?.defaultSettings ?? {},
+        storedGlobalSettings: allGlobalSettings[componentId] ?? {},
+        instanceOverrides: instanceData?.componentSettings?.[componentId],
+        hasInstanceId: !!instanceId,
+      });
     }
 
     return result;
