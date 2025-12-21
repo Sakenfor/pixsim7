@@ -148,11 +148,81 @@ class TestCommandLlmProvider:
         """Test error when no command is configured"""
         provider = CommandLlmProvider()  # No command provided
 
-        # Should fail when trying to get command
+        # Should fail when trying to get command parts
         with pytest.raises(ProviderError) as exc_info:
-            provider._get_command()
+            provider._get_command_parts()
 
         assert "no command configured" in str(exc_info.value).lower()
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestCommandParsing:
+    """Tests for command/argument parsing with shlex"""
+
+    def test_parse_shell_args_simple(self):
+        """Test parsing simple space-separated args"""
+        provider = CommandLlmProvider(command="echo")
+        result = provider._parse_shell_args("arg1 arg2 arg3")
+        assert result == ["arg1", "arg2", "arg3"]
+
+    def test_parse_shell_args_quoted(self):
+        """Test parsing args with quoted strings"""
+        provider = CommandLlmProvider(command="echo")
+        result = provider._parse_shell_args('arg1 "arg with spaces" arg3')
+        assert result == ["arg1", "arg with spaces", "arg3"]
+
+    def test_parse_shell_args_single_quoted(self):
+        """Test parsing args with single quotes"""
+        provider = CommandLlmProvider(command="echo")
+        result = provider._parse_shell_args("arg1 'arg with spaces' arg3")
+        assert result == ["arg1", "arg with spaces", "arg3"]
+
+    def test_parse_shell_args_empty(self):
+        """Test parsing empty string"""
+        provider = CommandLlmProvider(command="echo")
+        result = provider._parse_shell_args("")
+        assert result == []
+
+    def test_parse_shell_args_whitespace_only(self):
+        """Test parsing whitespace-only string"""
+        provider = CommandLlmProvider(command="echo")
+        result = provider._parse_shell_args("   ")
+        assert result == []
+
+    def test_get_command_parts_with_full_command_string(self):
+        """Test parsing a full command string with embedded args"""
+        provider = CommandLlmProvider(command='python -c "print(1)"')
+        parts = provider._get_command_parts()
+        assert parts == ["python", "-c", "print(1)"]
+
+    def test_get_command_parts_with_separate_args(self):
+        """Test command with separate args list"""
+        provider = CommandLlmProvider(command="python", args=["-c", "print(1)"])
+        parts = provider._get_command_parts()
+        assert parts == ["python", "-c", "print(1)"]
+
+    def test_get_command_parts_combines_command_and_args(self):
+        """Test that command string args and additional args are combined"""
+        provider = CommandLlmProvider(
+            command='python -m pytest',
+            args=["--verbose"]
+        )
+        parts = provider._get_command_parts()
+        assert parts == ["python", "-m", "pytest", "--verbose"]
+
+    @pytest.mark.asyncio
+    async def test_edit_prompt_with_full_command_string(self):
+        """Test edit_prompt with command string containing args"""
+        # Use a full command string instead of separate command and args
+        full_cmd = f'{sys.executable} -c "{ECHO_SCRIPT}"'
+        provider = CommandLlmProvider(command=full_cmd, timeout=10)
+
+        result = await provider.edit_prompt(
+            model_id="test-model",
+            prompt_before="Test prompt"
+        )
+
+        assert result == "Edited: Test prompt"
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")

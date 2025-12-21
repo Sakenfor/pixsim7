@@ -3,10 +3,13 @@ LLM Provider Adapters - concrete implementations for AI Hub
 
 These adapters implement the LlmProvider protocol for prompt editing operations.
 """
+import asyncio
 import os
 import json
 import logging
+import shlex
 import subprocess
+import sys
 import time
 from typing import Optional
 
@@ -115,26 +118,9 @@ class OpenAiLlmProvider:
         try:
             client = openai.AsyncOpenAI(api_key=api_key)
 
-            # Build system prompt for prompt editing
-            system_prompt = """You are a video generation prompt expert. Your task is to refine and improve prompts for AI video generation.
-
-Guidelines:
-- Keep the core intent and subject matter
-- Add specific visual details (lighting, camera angles, motion)
-- Use clear, descriptive language
-- Keep prompts concise (under 200 words)
-- Focus on what should be visible in the video
-- Avoid abstract concepts that can't be visualized"""
-
-            # Build user message
-            user_message = f"Original prompt:\n{prompt_before}\n\nPlease refine this prompt for better video generation results."
-
-            # Add context if provided
-            if context:
-                if "style" in context:
-                    user_message += f"\n\nDesired style: {context['style']}"
-                if "duration" in context:
-                    user_message += f"\nVideo duration: {context['duration']}s"
+            # Use shared prompt template helpers for consistency
+            system_prompt = build_edit_prompt_system()
+            user_message = build_edit_prompt_user(prompt_before, context)
 
             # Call OpenAI API
             response = await client.chat.completions.create(
@@ -206,26 +192,9 @@ class AnthropicLlmProvider:
         try:
             client = anthropic.Anthropic(api_key=api_key)
 
-            # Build system prompt for prompt editing
-            system_prompt = """You are a video generation prompt expert. Your task is to refine and improve prompts for AI video generation.
-
-Guidelines:
-- Keep the core intent and subject matter
-- Add specific visual details (lighting, camera angles, motion)
-- Use clear, descriptive language
-- Keep prompts concise (under 200 words)
-- Focus on what should be visible in the video
-- Avoid abstract concepts that can't be visualized"""
-
-            # Build user message
-            user_message = f"Original prompt:\n{prompt_before}\n\nPlease refine this prompt for better video generation results."
-
-            # Add context if provided
-            if context:
-                if "style" in context:
-                    user_message += f"\n\nDesired style: {context['style']}"
-                if "duration" in context:
-                    user_message += f"\nVideo duration: {context['duration']}s"
+            # Use shared prompt template helpers for consistency
+            system_prompt = build_edit_prompt_system()
+            user_message = build_edit_prompt_user(prompt_before, context)
 
             # Call Claude API
             response = client.messages.create(
@@ -298,13 +267,24 @@ class CommandLlmProvider:
         { "edited_prompt": "..." }
 
     Configuration via environment variables:
-    - CMD_LLM_COMMAND: The base command to execute (required)
-    - CMD_LLM_ARGS: Space-separated additional arguments (optional)
+    - CMD_LLM_COMMAND: Command to execute. Can be a bare executable or a full
+      command string with arguments (shell-style quoting supported).
+      Required unless 'command' argument is provided to the constructor.
+    - CMD_LLM_ARGS: Additional arguments to append (shell-style quoting supported).
+      Optional.
     - CMD_LLM_TIMEOUT: Timeout in seconds (default: 60)
 
     Example usage:
+        # Simple executable with separate args
         export CMD_LLM_COMMAND="python"
-        export CMD_LLM_ARGS="/path/to/my_llm_script.py"
+        export CMD_LLM_ARGS='"/path/to/my script.py" --verbose'
+
+        # Full command string with embedded args
+        export CMD_LLM_COMMAND='python "/path/to/my script.py" --verbose'
+
+        # Paths with spaces work correctly
+        export CMD_LLM_COMMAND="/usr/local/bin/my-llm"
+        export CMD_LLM_ARGS='"C:/Program Files/model/config.json"'
     """
 
     def __init__(
@@ -317,8 +297,11 @@ class CommandLlmProvider:
         Initialize the Command LLM provider.
 
         Args:
-            command: Base command to execute. Defaults to CMD_LLM_COMMAND env var.
-            args: Additional arguments. Defaults to CMD_LLM_ARGS env var (space-split).
+            command: Command to execute. Can be a bare executable or a full
+                command string with args (uses shlex parsing). Defaults to
+                CMD_LLM_COMMAND env var.
+            args: Additional arguments as a list. Defaults to CMD_LLM_ARGS
+                env var (parsed with shlex for proper quoting support).
             timeout: Timeout in seconds. Defaults to CMD_LLM_TIMEOUT env var or 60.
         """
         self._command = command
@@ -329,27 +312,66 @@ class CommandLlmProvider:
     def provider_id(self) -> str:
         return "cmd-llm"
 
-    def _get_command(self) -> str:
-        """Get the command to execute, from init or environment."""
+    def _parse_shell_args(self, args_str: str) -> list[str]:
+        """
+        Parse a shell-style argument string into a list.
+
+        Uses shlex.split() with posix=False on Windows to handle
+        Windows-style paths and quoting correctly.
+
+        Args:
+            args_str: Shell-style argument string (e.g., 'arg1 "arg 2" arg3')
+
+        Returns:
+            List of parsed arguments
+        """
+        if not args_str.strip():
+            return []
+        # On Windows, use posix=False to handle backslashes in paths correctly
+        posix = sys.platform != "win32"
+        try:
+            return shlex.split(args_str, posix=posix)
+        except ValueError as e:
+            logger.warning(
+                f"Failed to parse arguments with shlex: {e}. "
+                f"Falling back to simple split."
+            )
+            return args_str.strip().split()
+
+    def _get_command_parts(self) -> list[str]:
+        """
+        Get the full command as a list of parts (executable + args).
+
+        Parses CMD_LLM_COMMAND as a potentially full command string,
+        then appends any additional args from CMD_LLM_ARGS.
+
+        Returns:
+            List of command parts ready for subprocess
+        """
+        # Get the base command (may include args)
         if self._command:
-            return self._command
-        cmd = os.getenv("CMD_LLM_COMMAND")
-        if not cmd:
+            cmd_str = self._command
+        else:
+            cmd_str = os.getenv("CMD_LLM_COMMAND", "")
+
+        if not cmd_str.strip():
             raise ProviderError(
                 self.provider_id,
                 "No command configured. Set CMD_LLM_COMMAND environment variable "
                 "or provide 'command' argument to CommandLlmProvider."
             )
-        return cmd
 
-    def _get_args(self) -> list[str]:
-        """Get additional arguments, from init or environment."""
+        # Parse the command string (handles quoted paths/args)
+        cmd_parts = self._parse_shell_args(cmd_str)
+
+        # Add additional args
         if self._args is not None:
-            return self._args
-        args_str = os.getenv("CMD_LLM_ARGS", "")
-        if args_str.strip():
-            return args_str.strip().split()
-        return []
+            cmd_parts.extend(self._args)
+        else:
+            args_str = os.getenv("CMD_LLM_ARGS", "")
+            cmd_parts.extend(self._parse_shell_args(args_str))
+
+        return cmd_parts
 
     def _get_timeout(self) -> int:
         """Get timeout in seconds, from init or environment."""
@@ -390,10 +412,11 @@ class CommandLlmProvider:
             ProviderError: Command failed, timed out, or returned invalid output
         """
         # Build the command line (safe arg list, no shell=True)
-        command = self._get_command()
-        args = self._get_args()
+        cmd_list = self._get_command_parts()
         timeout = self._get_timeout()
-        cmd_list = [command] + args
+
+        # For logging, show the executable name
+        cmd_executable = cmd_list[0] if cmd_list else "(empty)"
 
         # Build the input JSON payload
         system_prompt = build_edit_prompt_system()
@@ -411,21 +434,16 @@ class CommandLlmProvider:
 
         logger.info(
             f"CommandLlmProvider: executing command, provider_id={self.provider_id}, "
-            f"model={model_id}, cmd={command}, timeout={timeout}s"
+            f"model={model_id}, cmd={cmd_executable}, timeout={timeout}s"
         )
 
         start_time = time.monotonic()
 
         try:
             # Run the command with stdin/stdout JSON
-            # Use subprocess.run in a blocking manner but wrap in asyncio
-            import asyncio
-
-            # Run subprocess in executor to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
+            # Use asyncio.to_thread() to avoid blocking event loop
+            def run_subprocess() -> subprocess.CompletedProcess:
+                return subprocess.run(
                     cmd_list,
                     input=input_json,
                     capture_output=True,
@@ -433,7 +451,8 @@ class CommandLlmProvider:
                     timeout=timeout,
                     shell=False,  # Explicit: no shell injection
                 )
-            )
+
+            result = await asyncio.to_thread(run_subprocess)
 
             duration = time.monotonic() - start_time
 
@@ -510,19 +529,20 @@ class CommandLlmProvider:
 
         except FileNotFoundError:
             logger.error(
-                f"CommandLlmProvider: command not found: {command}"
+                f"CommandLlmProvider: command not found: {cmd_executable}"
             )
             raise ProviderError(
                 self.provider_id,
-                f"Command not found: {command}. Ensure the command exists and is executable."
+                f"Command not found: {cmd_executable}. "
+                "Ensure the command exists and is executable."
             )
 
         except PermissionError:
             logger.error(
-                f"CommandLlmProvider: permission denied for command: {command}"
+                f"CommandLlmProvider: permission denied for command: {cmd_executable}"
             )
             raise ProviderError(
                 self.provider_id,
-                f"Permission denied executing: {command}. "
+                f"Permission denied executing: {cmd_executable}. "
                 "Ensure the command has execute permissions."
             )
