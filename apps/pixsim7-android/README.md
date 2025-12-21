@@ -9,6 +9,28 @@ Minimal Android app to connect your phone to PixSim automation platform.
 - 🔄 **Background Sync**: Keeps devices synced via heartbeat
 - 🪶 **Lightweight**: ~2-3 MB APK size
 
+## Installation
+
+### Option 1: Download Pre-built APK (Recommended)
+
+The easiest way to get started is to download the pre-built APK from GitHub:
+
+1. Go to the [GitHub Actions](../../actions/workflows/android-build.yml) page
+2. Click on the latest successful build (green checkmark)
+3. Scroll down to **Artifacts** section
+4. Download **pixsim7-android-debug**
+5. Extract the ZIP file to get `app-debug.apk`
+6. Transfer to your phone and install
+
+**Or download from Releases:**
+- Go to [Releases](../../releases)
+- Download the latest `app-debug.apk` or `app-release-unsigned.apk`
+- Install on your Android device
+
+### Option 2: Build from Source
+
+If you want to build the app yourself, follow the prerequisites and build instructions below.
+
 ## Prerequisites
 
 1. **Android Studio** (latest version recommended)
