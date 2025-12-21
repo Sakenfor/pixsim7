@@ -7,3 +7,4 @@
 export * from './types';
 export * from './registry';
 export * from './settingsSchemaRegistry';
+export * from './schemaUtils';

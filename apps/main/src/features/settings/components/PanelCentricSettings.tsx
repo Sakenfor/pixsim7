@@ -23,6 +23,7 @@ import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
 import { usePanelSettingsUiStore } from '../stores/panelSettingsUiStore';
 import { SettingFieldRenderer } from './shared/SettingFieldRenderer';
+import { resolveSchemaValues } from '../lib/core/schemaUtils';
 import type { SettingField, SettingGroup, SettingTab } from '../lib/core/types';
 import { componentRegistry, useComponentSettingsStore } from '@features/componentSettings';
 import type { PanelId } from '@features/workspace';
@@ -30,44 +31,67 @@ import type { PanelId } from '@features/workspace';
 // Stable empty object to avoid re-renders
 const EMPTY_SETTINGS = {};
 
-function collectSchemaFields(tabs?: SettingTab[], groups?: SettingGroup[]) {
-  const fields: SettingField[] = [];
-  (groups ?? []).forEach((group) => {
-    fields.push(...group.fields);
-  });
-  (tabs ?? []).forEach((tab) => {
-    tab.groups.forEach((group) => {
-      fields.push(...group.fields);
-    });
-  });
-  return fields;
-}
+/**
+ * Wraps a field with an optional reset button for instance overrides.
+ */
+function InstanceFieldWrapper({
+  field,
+  value,
+  onChange,
+  allValues,
+  hasOverride,
+  onReset,
+}: {
+  field: SettingField;
+  value: any;
+  onChange: (value: any) => void;
+  allValues: Record<string, any>;
+  hasOverride?: boolean;
+  onReset?: () => void;
+}) {
+  // Check showWhen condition
+  if (field.showWhen && !field.showWhen(allValues)) {
+    return null;
+  }
 
-function resolveSchemaValues(
-  settings: Record<string, any>,
-  tabs?: SettingTab[],
-  groups?: SettingGroup[],
-) {
-  const resolved = { ...settings };
-  collectSchemaFields(tabs, groups).forEach((field) => {
-    if (resolved[field.id] === undefined && "defaultValue" in field) {
-      const defaultValue = (field as { defaultValue?: unknown }).defaultValue;
-      if (defaultValue !== undefined) {
-        resolved[field.id] = defaultValue;
-      }
-    }
-  });
-  return resolved;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1">
+        <SettingFieldRenderer
+          field={field}
+          value={value}
+          onChange={onChange}
+          allValues={allValues}
+        />
+      </div>
+      {hasOverride && onReset && (
+        <button
+          type="button"
+          onClick={onReset}
+          title="Reset to global value"
+          className="shrink-0 p-1 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
 }
 
 function PanelSchemaGroupRenderer({
   group,
   values,
   setValue,
+  instanceOverrides,
+  onResetField,
 }: {
   group: SettingGroup;
   values: Record<string, any>;
   setValue: (fieldId: string, value: any) => void;
+  instanceOverrides?: Record<string, unknown>;
+  onResetField?: (fieldId: string) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -83,12 +107,14 @@ function PanelSchemaGroupRenderer({
       )}
       <div className="space-y-3">
         {group.fields.map((field) => (
-          <SettingFieldRenderer
+          <InstanceFieldWrapper
             key={field.id}
             field={field}
             value={values[field.id]}
             onChange={(value) => setValue(field.id, value)}
             allValues={values}
+            hasOverride={instanceOverrides ? field.id in instanceOverrides : false}
+            onReset={onResetField ? () => onResetField(field.id) : undefined}
           />
         ))}
       </div>
@@ -100,10 +126,14 @@ function PanelSchemaRenderer({
   schema,
   values,
   setValue,
+  instanceOverrides,
+  onResetField,
 }: {
   schema: { tabs?: SettingTab[]; groups?: SettingGroup[] };
   values: Record<string, any>;
   setValue: (fieldId: string, value: any) => void;
+  instanceOverrides?: Record<string, unknown>;
+  onResetField?: (fieldId: string) => void;
 }) {
   const tabs = schema.tabs ?? [];
   const groups = schema.groups ?? [];
@@ -136,6 +166,8 @@ function PanelSchemaRenderer({
               group={group}
               values={values}
               setValue={setValue}
+              instanceOverrides={instanceOverrides}
+              onResetField={onResetField}
             />
           ))}
           {activeTab.footer && (
@@ -164,6 +196,8 @@ function PanelSchemaRenderer({
           group={group}
           values={values}
           setValue={setValue}
+          instanceOverrides={instanceOverrides}
+          onResetField={onResetField}
         />
       ))}
     </div>
@@ -231,6 +265,9 @@ function InstanceComponentSettingsCard({
   const clearInstanceComponentSettings = usePanelInstanceSettingsStore(
     (state) => state.clearComponentSettings,
   );
+  const clearInstanceComponentSettingField = usePanelInstanceSettingsStore(
+    (state) => state.clearComponentSettingField,
+  );
 
   if (!definition?.settingsForm) {
     return null;
@@ -259,7 +296,7 @@ function InstanceComponentSettingsCard({
             onClick={() => clearInstanceComponentSettings(instanceId, componentId)}
             className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 whitespace-nowrap"
           >
-            Clear overrides
+            Clear all
           </button>
         )}
       </div>
@@ -274,6 +311,8 @@ function InstanceComponentSettingsCard({
         setValue={(fieldId, value) =>
           setInstanceComponentSetting(instanceId, panelId, componentId, fieldId, value)
         }
+        instanceOverrides={resolved.instanceOverrides as Record<string, unknown> | undefined}
+        onResetField={(fieldId) => clearInstanceComponentSettingField(instanceId, componentId, fieldId)}
       />
     </div>
   );
@@ -389,6 +428,9 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
   );
   const clearInstancePanelSettings = usePanelInstanceSettingsStore(
     (state) => state.clearPanelSettings
+  );
+  const clearInstancePanelSettingField = usePanelInstanceSettingsStore(
+    (state) => state.clearPanelSettingField
   );
   const hasInstancePanelOverrides =
     !!instancePanelSettings && Object.keys(instancePanelSettings).length > 0;
@@ -544,6 +586,10 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                     values={instanceSchemaValues}
                     setValue={(fieldId, value) =>
                       setInstancePanelSetting(selectedInstanceId, metadata.id, fieldId, value)
+                    }
+                    instanceOverrides={instancePanelSettings}
+                    onResetField={(fieldId) =>
+                      clearInstancePanelSettingField(selectedInstanceId, fieldId)
                     }
                   />
                 </div>
@@ -784,13 +830,22 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     // Instance settings
     hasInstancePanelOverrides,
     instanceSchemaValues,
+    instancePanelSettings,
     setInstancePanelSetting,
     clearInstancePanelSettings,
+    clearInstancePanelSettingField,
   ]);
 
   const [activeTabId, setActiveTabId] = useState<string | null>(
     tabs[0]?.id ?? null
   );
+
+  // Auto-select Instance tab when an instance is selected
+  useEffect(() => {
+    if (selectedInstanceId) {
+      setActiveTabId("instance-settings");
+    }
+  }, [selectedInstanceId]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 

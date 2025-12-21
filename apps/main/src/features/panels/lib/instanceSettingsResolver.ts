@@ -17,40 +17,12 @@ import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsSt
 import { useComponentSettingsStore } from "@features/componentSettings";
 import { panelRegistry, type PanelDefinition } from "./panelRegistry";
 import { componentRegistry } from "@features/componentSettings";
-import type { SettingField, SettingGroup, SettingTab } from "@features/settings";
+import { collectSchemaDefaults } from "@features/settings";
 import type { PanelId } from "@features/workspace";
 
 // Stable empty objects to avoid creating new references
 const EMPTY_SETTINGS: Record<string, unknown> = {};
 const EMPTY_ALL_SETTINGS: Record<string, Record<string, unknown>> = {};
-
-/**
- * Collect all field default values from schema tabs and groups
- */
-function collectSchemaDefaults(
-  tabs?: SettingTab[],
-  groups?: SettingGroup[],
-): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
-
-  const processField = (field: SettingField) => {
-    if ("defaultValue" in field && field.defaultValue !== undefined) {
-      defaults[field.id] = field.defaultValue;
-    }
-  };
-
-  groups?.forEach((group) => {
-    group.fields.forEach(processField);
-  });
-
-  tabs?.forEach((tab) => {
-    tab.groups.forEach((group) => {
-      group.fields.forEach(processField);
-    });
-  });
-
-  return defaults;
-}
 
 export interface ResolvedSettings<T extends Record<string, unknown> = Record<string, unknown>> {
   /** The final resolved settings (merged from all sources) */

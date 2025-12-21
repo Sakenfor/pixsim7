@@ -26,6 +26,10 @@ export interface PanelInstanceSettingsActions {
   ) => void;
   getScope: (instanceId: string, scopeId: string) => PanelSettingsScopeMode | undefined;
   clearInstance: (instanceId: string) => void;
+  /** Remove stale instances that are not in the provided set of valid IDs */
+  cleanupStaleInstances: (validInstanceIds: Set<string>) => void;
+  /** Get all stored instance IDs */
+  getInstanceIds: () => string[];
 
   // Panel settings overrides
   setPanelSetting: (
@@ -40,6 +44,8 @@ export interface PanelInstanceSettingsActions {
     settings: Record<string, unknown>,
   ) => void;
   clearPanelSettings: (instanceId: string) => void;
+  /** Clear a single panel setting field (reset to global) */
+  clearPanelSettingField: (instanceId: string, key: string) => void;
   getPanelSettings: (instanceId: string) => Record<string, unknown> | undefined;
 
   // Component settings overrides
@@ -57,6 +63,12 @@ export interface PanelInstanceSettingsActions {
     settings: Record<string, unknown>,
   ) => void;
   clearComponentSettings: (instanceId: string, componentId?: string) => void;
+  /** Clear a single component setting field (reset to global) */
+  clearComponentSettingField: (
+    instanceId: string,
+    componentId: string,
+    key: string,
+  ) => void;
   getComponentSettings: (
     instanceId: string,
     componentId: string,
@@ -117,6 +129,22 @@ export const usePanelInstanceSettingsStore = create<
         });
       },
 
+      cleanupStaleInstances: (validInstanceIds) => {
+        set((state) => {
+          const staleIds = Object.keys(state.instances).filter(
+            (id) => !validInstanceIds.has(id)
+          );
+          if (staleIds.length === 0) return state;
+          const next = { ...state.instances };
+          staleIds.forEach((id) => delete next[id]);
+          return { instances: next };
+        });
+      },
+
+      getInstanceIds: () => {
+        return Object.keys(get().instances);
+      },
+
       // Panel settings overrides
       setPanelSetting: (instanceId, panelId, key, value) => {
         set((state) => {
@@ -163,6 +191,24 @@ export const usePanelInstanceSettingsStore = create<
             instances: {
               ...state.instances,
               [instanceId]: rest as PanelInstanceSettings,
+            },
+          };
+        });
+      },
+
+      clearPanelSettingField: (instanceId, key) => {
+        set((state) => {
+          const existing = state.instances[instanceId];
+          if (!existing?.panelSettings || !(key in existing.panelSettings)) return state;
+          const { [key]: _, ...rest } = existing.panelSettings;
+          const hasOtherSettings = Object.keys(rest).length > 0;
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: {
+                ...existing,
+                panelSettings: hasOtherSettings ? rest : undefined,
+              },
             },
           };
         });
@@ -245,6 +291,45 @@ export const usePanelInstanceSettingsStore = create<
             instances: {
               ...state.instances,
               [instanceId]: rest as PanelInstanceSettings,
+            },
+          };
+        });
+      },
+
+      clearComponentSettingField: (instanceId, componentId, key) => {
+        set((state) => {
+          const existing = state.instances[instanceId];
+          const componentSettings = existing?.componentSettings?.[componentId];
+          if (!componentSettings || !(key in componentSettings)) return state;
+
+          const { [key]: _, ...restFields } = componentSettings;
+          const hasOtherFields = Object.keys(restFields).length > 0;
+
+          if (hasOtherFields) {
+            return {
+              instances: {
+                ...state.instances,
+                [instanceId]: {
+                  ...existing,
+                  componentSettings: {
+                    ...existing.componentSettings,
+                    [componentId]: restFields,
+                  },
+                },
+              },
+            };
+          }
+
+          // No more fields for this component, remove it
+          const { [componentId]: __, ...restComponents } = existing.componentSettings!;
+          const hasOtherComponents = Object.keys(restComponents).length > 0;
+          return {
+            instances: {
+              ...state.instances,
+              [instanceId]: {
+                ...existing,
+                componentSettings: hasOtherComponents ? restComponents : undefined,
+              },
             },
           };
         });

@@ -281,14 +281,11 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const instanceId = getInstanceId(dockviewId, panelInstanceId);
 
   // Use instance-resolved component settings (global + instance overrides)
-  const { settings: promptSettings } = useResolveComponentSettings<typeof QUICKGEN_PROMPT_DEFAULTS>(
+  // The resolver already merges schema defaults -> component defaults -> global -> instance
+  const { settings: resolvedPromptSettings } = useResolveComponentSettings<typeof QUICKGEN_PROMPT_DEFAULTS>(
     QUICKGEN_PROMPT_COMPONENT_ID,
     instanceId,
   );
-  const resolvedPromptSettings = {
-    ...QUICKGEN_PROMPT_DEFAULTS,
-    ...promptSettings,
-  };
 
   const {
     prompt = controller.prompt,
@@ -375,14 +372,11 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   const instanceId = getInstanceId(dockviewId, panelInstanceId);
 
   // Use instance-resolved component settings (global + instance overrides)
-  const { settings: settingsState } = useResolveComponentSettings<typeof QUICKGEN_SETTINGS_DEFAULTS>(
+  // The resolver already merges schema defaults -> component defaults -> global -> instance
+  const { settings: resolvedSettings } = useResolveComponentSettings<typeof QUICKGEN_SETTINGS_DEFAULTS>(
     QUICKGEN_SETTINGS_COMPONENT_ID,
     instanceId,
   );
-  const resolvedSettings = {
-    ...QUICKGEN_SETTINGS_DEFAULTS,
-    ...settingsState,
-  };
 
   const renderSettingsPanel = ctx?.renderSettingsPanel;
   const useDefaultPanel = !renderSettingsPanel || typeof renderSettingsPanel !== 'function';
