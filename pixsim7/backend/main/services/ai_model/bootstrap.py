@@ -91,3 +91,20 @@ def initialize_ai_models() -> None:
             description="OpenAI GPT-4 for prompt editing and tag suggestions",
         )
     )
+
+    # === Command LLM Models ===
+
+    # Command LLM (user-defined local command)
+    ai_model_registry.register(
+        AiModel(
+            id="cmd:default",
+            label="Command LLM (Default)",
+            provider_id="cmd-llm",
+            kind=AiModelKind.LLM,
+            capabilities=[AiModelCapability.PROMPT_EDIT],
+            description=(
+                "LLM via local CLI command. Configure via CMD_LLM_COMMAND and "
+                "CMD_LLM_ARGS environment variables."
+            ),
+        )
+    )
