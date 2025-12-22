@@ -1,8 +1,4 @@
-import {
-  panelSettingsScopeRegistry,
-  scopeProviderRegistry,
-  createScopeMatcher,
-} from "@features/panels";
+import { panelSettingsScopeRegistry, scopeProviderRegistry } from "@features/panels";
 import { GenerationScopeProvider } from "../hooks/useGenerationScope";
 
 let registered = false;
@@ -12,9 +8,9 @@ let registered = false;
  *
  * This sets up two things:
  * 1. panelSettingsScopeRegistry: UI toggle for Local/Global mode in panel properties
- * 2. scopeProviderRegistry: Automatic wrapping for panels that declare scopes: ["generation"]
+ * 2. scopeProviderRegistry: Automatic wrapping for panels with "generation" tag
  *
- * The automatic wrapping ensures that any panel declaring the "generation" scope
+ * The automatic wrapping ensures that any panel/module tagged with "generation"
  * gets wrapped with GenerationScopeProvider, giving it isolated generation stores.
  */
 export function registerGenerationScopes() {
@@ -34,13 +30,14 @@ export function registerGenerationScopes() {
     ),
   });
 
-  // Register automatic scope provider for panels declaring scopes: ["generation"]
+  // Register automatic scope provider for panels/modules with "generation" tag
+  // No need for explicit scopes field - uses existing tags metadata
   scopeProviderRegistry.register({
     id: "generation",
     label: "Generation Scope",
     description: "Automatic generation scope for panels using generation stores",
-    priority: 100, // High priority = outermost wrapper
-    shouldWrap: createScopeMatcher("generation"),
+    priority: 100,
+    shouldWrap: (ctx) => ctx.tags?.includes("generation") ?? false,
     wrap: (instanceId, children) => (
       <GenerationScopeProvider scopeId={instanceId} label="Auto Generation Scope">
         {children}
