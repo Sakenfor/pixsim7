@@ -193,8 +193,9 @@ class PixverseProvider(
         Returns:
             Pixverse-specific parameters
         """
-        VIDEO_MODELS = {"v3.5", "v4", "v5", "v5.5"}
-        IMAGE_MODELS = {"qwen-image", "gemini-3.0", "gemini-2.5-flash", "seedream-4.0"}
+        # Derive model sets from SDK when available
+        VIDEO_MODELS = set(getattr(VideoModel, "ALL", [])) if VideoModel else {"v3.5", "v4", "v5", "v5.5"}
+        IMAGE_MODELS = set(getattr(ImageModel, "ALL", [])) if ImageModel else {"qwen-image", "gemini-3.0", "gemini-2.5-flash", "seedream-4.0", "seedream-4.5"}
 
         is_video_op = operation_type in _VIDEO_OPERATIONS
         is_image_op = operation_type in _IMAGE_OPERATIONS
@@ -361,9 +362,17 @@ class PixverseProvider(
                     for q in qs:
                         if q not in image_quality_enum:
                             image_quality_enum.append(q)
-            image_aspect_enum = list(
-                getattr(ImageModel, "ASPECT_RATIOS", ["16:9", "9:16", "1:1"])
-            )
+            # Union of all aspect ratios across models (ASPECT_RATIOS is now a dict)
+            aspect_ratios = getattr(ImageModel, "ASPECT_RATIOS", None)
+            if isinstance(aspect_ratios, dict):
+                for ars in aspect_ratios.values():
+                    for ar in ars:
+                        if ar not in image_aspect_enum:
+                            image_aspect_enum.append(ar)
+            elif isinstance(aspect_ratios, list):
+                image_aspect_enum = list(aspect_ratios)
+            else:
+                image_aspect_enum = ["16:9", "9:16", "1:1"]
 
         # Video quality presets – derive from pricing tables when possible
         video_quality_enum: list[str] = []
@@ -427,6 +436,9 @@ class PixverseProvider(
             "enum": image_aspect_enum or ["16:9", "9:16", "1:1"],
             "description": "Frame aspect ratio",
             "group": "render",
+            "metadata": {
+                "per_model_options": image_aspect_per_model,
+            } if image_aspect_per_model else None,
         }
         negative_prompt = {
             "name": "negative_prompt", "type": "string", "required": False, "default": None,
@@ -503,13 +515,28 @@ class PixverseProvider(
             "description": "Image generation model",
             "group": "core",
         }
-        # Per-model quality options for image generation
-        image_quality_per_model = {
-            "qwen-image": ["720p", "1080p"],
-            "gemini-3.0": ["1080p", "2k", "4k"],  # nano-banana-pro
-            "gemini-2.5-flash": ["1080p"],  # nano-banana
-            "seedream-4.0": ["1080p", "2k", "4k"],
-        }
+        # Per-model quality options for image generation (from SDK)
+        image_quality_per_model = {}
+        if ImageModel is not None:
+            sdk_qualities = getattr(ImageModel, "QUALITIES", {})
+            # Normalize case: SDK uses "2K"/"4K", UI expects "2k"/"4k"
+            for model, qs in sdk_qualities.items():
+                image_quality_per_model[model] = [q.lower() for q in qs]
+        # Fallback if SDK not available
+        if not image_quality_per_model:
+            image_quality_per_model = {
+                "qwen-image": ["720p", "1080p"],
+                "gemini-3.0": ["1080p", "2k", "4k"],
+                "gemini-2.5-flash": ["1080p"],
+                "seedream-4.0": ["1080p", "2k", "4k"],
+                "seedream-4.5": ["2k", "4k"],
+            }
+        # Per-model aspect ratio options (from SDK)
+        image_aspect_per_model = {}
+        if ImageModel is not None:
+            sdk_aspects = getattr(ImageModel, "ASPECT_RATIOS", {})
+            if isinstance(sdk_aspects, dict):
+                image_aspect_per_model = sdk_aspects
         image_quality = {
             "name": "quality",
             "type": "enum",
