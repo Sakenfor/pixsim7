@@ -4,6 +4,7 @@ import { QuickGenerateModule } from '@features/controlCenter/components/QuickGen
 import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
 import { ProviderOverviewModule } from '@features/providers';
 import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
+import type { CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 
 /**
  * Control Center Module
@@ -22,55 +23,51 @@ export const controlCenterModule: Module = {
     registerCubeExpansions();
   },
 
-  // Auto-register Control Center modules
-  controlCenterModules: [
+  // Auto-register Control Center panels (rendered via SmartDockview)
+  controlCenterPanels: [
     {
-      id: 'quickGenerate',
-      label: 'Generate',
+      id: 'quickGenerate' as CCPanelId,
+      title: 'Generate',
       icon: '⚡',
       component: QuickGenerateModule,
       category: 'core',
       order: 10,
       enabledByDefault: true,
-      builtin: true,
       description: 'Quick asset generation',
       tags: ['generate', 'create', 'ai'],
       // Declare generation scope for automatic per-instance scoping
       scopes: ['generation'],
     },
     {
-      id: 'presets',
-      label: 'Presets',
+      id: 'presets' as CCPanelId,
+      title: 'Presets',
       icon: '🎨',
       component: PresetsModule,
       category: 'core',
       order: 20,
       enabledByDefault: true,
-      builtin: true,
       description: 'Generation presets and templates',
       tags: ['presets', 'templates'],
     },
     {
-      id: 'providers',
-      label: 'Providers',
+      id: 'providers' as CCPanelId,
+      title: 'Providers',
       icon: '🌐',
       component: ProviderOverviewModule,
       category: 'system',
       order: 30,
       enabledByDefault: true,
-      builtin: true,
       description: 'API provider overview and status',
       tags: ['providers', 'api', 'services'],
     },
     {
-      id: 'panels',
-      label: 'Panels',
+      id: 'panels' as CCPanelId,
+      title: 'Panels',
       icon: '🪟',
       component: PanelLauncherModule,
       category: 'system',
       order: 40,
       enabledByDefault: true,
-      builtin: true,
       description: 'Panel launcher and workspace',
       tags: ['panels', 'workspace'],
     },

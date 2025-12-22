@@ -1,18 +1,17 @@
-import { useRef, useMemo, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
-import { useControlCenterStore, type ControlModule } from '@features/controlCenter/stores/controlCenterStore';
-import { controlCenterModuleRegistry } from '@features/controlCenter/lib/controlCenterModuleRegistry';
+import type { DockviewApi } from 'dockview-core';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { ccPanelRegistry, getEnabledCCPanels, getCCPanelDefinitions, type CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 import { useNavigate } from 'react-router-dom';
 import { useDockBehavior } from './hooks/useDockBehavior';
 import { DockToolbar } from './DockToolbar';
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
-import { scopeProviderRegistry, type ScopeMatchContext } from '@features/panels';
-import { DockviewIdProvider } from '@lib/dockview/contextMenu';
-import { ContextHubHost } from '@features/contextHub';
+import { SmartDockview } from '@lib/dockview/SmartDockview';
 
-// Note: Control Center modules are now auto-registered when their parent modules
+// Note: Control Center panels are now auto-registered when their parent modules
 // register with the global module registry (see modules/index.ts)
 
 export function ControlCenterDock() {
@@ -42,18 +41,27 @@ export function ControlCenterDock() {
 
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
+  const dockviewApiRef = useRef<DockviewApi | null>(null);
   const [registryVersion, setRegistryVersion] = useState(0);
 
+  // Subscribe to registry changes
   useEffect(() => {
-    const unsubscribe = controlCenterModuleRegistry.subscribe(() => {
-      setRegistryVersion((version) => version + 1);
-    });
-    return unsubscribe;
+    // Force re-render when registry changes
+    const checkRegistry = () => {
+      const panels = getCCPanelDefinitions();
+      if (panels.length > 0) {
+        setRegistryVersion((v) => v + 1);
+      }
+    };
+    // Check periodically until panels are registered
+    const interval = setInterval(checkRegistry, 100);
+    checkRegistry();
+    return () => clearInterval(interval);
   }, []);
 
-  // Get enabled modules from registry
-  const modules = useMemo(() => {
-    return controlCenterModuleRegistry.getEnabled(enabledModules);
+  // Get enabled panels for toolbar
+  const panels = useMemo(() => {
+    return getEnabledCCPanels(enabledModules);
   }, [enabledModules, registryVersion]);
 
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
@@ -67,74 +75,65 @@ export function ControlCenterDock() {
     dockRef,
   });
 
-  /**
-   * ModuleScopeWrapper - Wraps a CC module with its declared scope providers.
-   * Uses scopeProviderRegistry to automatically inject providers based on module.scopes.
-   */
-  const ModuleScopeWrapper = useCallback(
-    ({
-      moduleId,
-      declaredScopes,
-      tags,
-      category,
-      children,
-    }: {
-      moduleId: string;
-      declaredScopes?: string[];
-      tags?: string[];
-      category?: string;
-      children: ReactNode;
-    }) => {
-      const context: ScopeMatchContext = useMemo(() => ({
-        panelId: moduleId,
-        instanceId: `cc:${moduleId}`,
-        declaredScopes,
-        tags,
-        category,
-      }), [moduleId, declaredScopes, tags, category]);
+  // Handle dockview ready - sync with active module
+  const handleDockviewReady = useCallback((api: DockviewApi) => {
+    dockviewApiRef.current = api;
 
-      const wrapped = useMemo(() => {
-        return scopeProviderRegistry.wrapWithProviders(context, children);
-      }, [context, children]);
+    // When dockview is ready, activate the current module's panel
+    if (activeModule) {
+      const panel = api.getPanel(activeModule);
+      if (panel) {
+        panel.api.setActive();
+      }
+    }
+  }, [activeModule]);
 
-      return <>{wrapped}</>;
-    },
-    [],
-  );
+  // Sync activeModule with dockview when it changes
+  useEffect(() => {
+    const api = dockviewApiRef.current;
+    if (!api || !activeModule) return;
 
-  function renderModule() {
-    const module = controlCenterModuleRegistry.get(activeModule);
-    if (!module) return null;
+    const panel = api.getPanel(activeModule);
+    if (panel && !panel.api.isActive) {
+      panel.api.setActive();
+    }
+  }, [activeModule]);
 
-    const Component = module.component;
-    // Consistent instanceId for the entire module (used by ContextHubHost and scope providers)
-    const moduleInstanceId = `cc:${module.id}`;
+  // Default layout - shows active panel in a single group
+  const createDefaultLayout = useCallback((api: DockviewApi) => {
+    const allPanels = getCCPanelDefinitions();
+    if (allPanels.length === 0) return;
 
-    // Wrap with ContextHubHost for consumption tracking, DockviewIdProvider for nested panels
-    const wrappedComponent = (
-      <ContextHubHost hostId={moduleInstanceId}>
-        <DockviewIdProvider dockviewId="cc">
-          <Component isActive={true} onSwitchModule={setActiveModule} />
-        </DockviewIdProvider>
-      </ContextHubHost>
-    );
+    // Add the first panel (will add others to same group for tabs)
+    const firstPanel = allPanels[0];
+    api.addPanel({
+      id: firstPanel.id,
+      component: firstPanel.id,
+      title: firstPanel.title,
+    });
 
-    // Wrap module with scope providers if it declares scopes
-    if (module.scopes && module.scopes.length > 0) {
-      return (
-        <ModuleScopeWrapper
-          moduleId={module.id}
-          declaredScopes={module.scopes}
-          tags={module.tags}
-          category={module.category}
-        >
-          {wrappedComponent}
-        </ModuleScopeWrapper>
-      );
+    // Add remaining panels to the same group (creates tabs)
+    for (let i = 1; i < allPanels.length; i++) {
+      const panel = allPanels[i];
+      api.addPanel({
+        id: panel.id,
+        component: panel.id,
+        title: panel.title,
+        position: {
+          referencePanel: firstPanel.id,
+        },
+      });
     }
 
-    return wrappedComponent;
-  }
+    // Activate the active module's panel
+    if (activeModule) {
+      const targetPanel = api.getPanel(activeModule);
+      if (targetPanel) {
+        targetPanel.api.setActive();
+      }
+    }
+  }, [activeModule]);
+
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
 
@@ -200,6 +199,18 @@ export function ControlCenterDock() {
     return baseStyle;
   }, [isVertical, height, dockPosition, layoutAdjustment]);
 
+  // Handle toolbar module select - activate the panel in dockview
+  const handleModuleSelect = useCallback((moduleId: string) => {
+    setActiveModule(moduleId as CCPanelId);
+    const api = dockviewApiRef.current;
+    if (api) {
+      const panel = api.getPanel(moduleId);
+      if (panel) {
+        panel.api.setActive();
+      }
+    }
+  }, [setActiveModule]);
+
   // Render content (shared between floating and docked)
   const renderContent = () => (
     <div className={clsx(
@@ -234,9 +245,18 @@ export function ControlCenterDock() {
 
         {/* Compact Toolbar - extracted component */}
         <DockToolbar
-          modules={modules}
+          modules={panels.map(p => ({
+            id: p.id,
+            label: p.title,
+            icon: p.icon ?? '📦',
+            component: p.component,
+            category: p.category,
+            order: p.order,
+            tags: p.tags,
+            description: p.description,
+          }))}
           activeModule={activeModule}
-          onModuleSelect={setActiveModule}
+          onModuleSelect={handleModuleSelect}
           dockPosition={dockPosition}
           onDockPositionChange={setDockPosition}
           pinned={pinned}
@@ -245,17 +265,32 @@ export function ControlCenterDock() {
           navigate={navigate}
         />
 
-      {/* Module content with smooth fade-in */}
+      {/* Panel content via SmartDockview */}
       <div
         className={clsx(
-          'flex-1 overflow-y-auto scroll-smooth animate-in fade-in duration-300',
-          isVertical || isFloating ? 'p-2 text-sm' : 'p-3'
+          'flex-1 overflow-hidden',
+          isVertical || isFloating ? 'text-sm' : ''
         )}
         role="tabpanel"
         id={`module-${activeModule}`}
         aria-labelledby={`tab-${activeModule}`}
       >
-        {renderModule()}
+        {ccPanelRegistry.size > 0 ? (
+          <SmartDockview
+            registry={ccPanelRegistry}
+            defaultLayout={createDefaultLayout}
+            storageKey="control-center-dockview-layout:v1"
+            panelManagerId="controlCenter"
+            minPanelsForTabs={99} // Hide tabs - we have our own toolbar
+            onReady={handleDockviewReady}
+            className="h-full"
+            enableContextMenu
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
+            Loading panels...
+          </div>
+        )}
       </div>
     </div>
   );

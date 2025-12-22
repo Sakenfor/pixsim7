@@ -2,6 +2,7 @@ import type { Module } from "@/modules/types";
 import { registerWorkspaceFeature } from "./capabilities";
 import { initializePanels } from "@features/panels";
 import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";
+import type { CCPanelId } from "@features/controlCenter/lib/ccPanelRegistry";
 
 /**
  * Workspace Module
@@ -24,17 +25,16 @@ export const workspaceModule: Module = {
     await initializePanels();
   },
 
-  // Auto-register Control Center module
-  controlCenterModules: [
+  // Auto-register Control Center panel
+  controlCenterPanels: [
     {
-      id: "workspace",
-      label: "Workspace",
+      id: "workspace" as CCPanelId,
+      title: "Workspace",
       icon: "🏗️",
       component: WorkspaceModuleComponent,
       category: "tools",
       order: 60,
       enabledByDefault: true,
-      builtin: true,
       description: "Workspace management and presets",
       tags: ["workspace", "layout", "presets"],
     },

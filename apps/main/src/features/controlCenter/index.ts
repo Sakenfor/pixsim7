@@ -72,7 +72,18 @@ export {
   type GenerateAssetResponse,
 } from './lib/api';
 
-// Control center module registry
+// Control center panel registry (new - uses SmartDockview)
+export {
+  ccPanelRegistry,
+  registerCCPanel,
+  getCCPanelDefinition,
+  getCCPanelDefinitions,
+  getEnabledCCPanels,
+  type CCPanelId,
+  type CCPanelDefinition,
+} from './lib/ccPanelRegistry';
+
+// Control center module registry (deprecated - use ccPanelRegistry instead)
 export {
   controlCenterModuleRegistry,
   type ControlCenterModule,

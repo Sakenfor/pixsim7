@@ -2,6 +2,7 @@ import type { Module } from '../types';
 import { registerPluginsFeature } from '../../lib/capabilities/registerCoreFeatures';
 import { pluginManager } from '../../lib/plugins';
 import { PluginsModule as PluginsModuleComponent } from '@features/controlCenter/components/modules/PluginsModule';
+import type { CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 
 /**
  * Plugins Module
@@ -20,17 +21,16 @@ export const pluginsModule: Module = {
     void pluginManager; // keep import used
   },
 
-  // Auto-register Control Center module
-  controlCenterModules: [
+  // Auto-register Control Center panel
+  controlCenterPanels: [
     {
-      id: 'plugins',
-      label: 'Plugins',
+      id: 'plugins' as CCPanelId,
+      title: 'Plugins',
       icon: '🔌',
       component: PluginsModuleComponent,
       category: 'system',
       order: 70,
       enabledByDefault: true,
-      builtin: true,
       description: 'Plugin management and browser',
       tags: ['plugins', 'extensions'],
     },
