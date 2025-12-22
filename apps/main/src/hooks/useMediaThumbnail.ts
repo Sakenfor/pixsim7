@@ -28,11 +28,13 @@ export interface UseMediaThumbnailOptions {
  *
  * @param thumbUrl - The thumbnail URL
  * @param previewUrl - Optional higher-quality preview URL
+ * @param remoteUrl - Optional provider's remote URL as final fallback
  * @param options - Optional settings for cache behavior and quality
  */
 export function useMediaThumbnail(
   thumbUrl?: string,
   previewUrl?: string,
+  remoteUrl?: string,
   options?: UseMediaThumbnailOptions
 ) {
   const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
@@ -122,7 +124,8 @@ export function useMediaThumbnail(
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
-          setThumbSrc(fullUrl);
+          // Fall back to remote URL if backend thumbnail is unavailable
+          setThumbSrc(remoteUrl || fullUrl);
           return;
         }
         const blob = await res.blob();
@@ -135,7 +138,8 @@ export function useMediaThumbnail(
         }
       } catch {
         if (!cancelled) {
-          setThumbSrc(fullUrl);
+          // Fall back to remote URL on error
+          setThumbSrc(remoteUrl || fullUrl);
         }
       }
     })();
@@ -148,7 +152,7 @@ export function useMediaThumbnail(
         objectUrlRef.current = null;
       }
     };
-  }, [selectedUrl, preventDiskCache]);
+  }, [selectedUrl, preventDiskCache, remoteUrl]);
 
   return thumbSrc;
 }

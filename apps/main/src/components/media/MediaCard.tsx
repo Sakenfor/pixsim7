@@ -160,7 +160,7 @@ export function MediaCard(props: MediaCardProps) {
   const enableMediaCardContextMenu = useContextHubSettingsStore(
     (state) => state.enableMediaCardContextMenu,
   );
-  const thumbSrc = useMediaThumbnail(thumbUrl, previewUrl);
+  const thumbSrc = useMediaThumbnail(thumbUrl, previewUrl, remoteUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);

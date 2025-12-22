@@ -109,7 +109,7 @@ export function CompactAssetCard({
   const thumbUrl = asset.thumbnail_url;
 
   // Shared hooks from MediaCard
-  const thumbSrc = useMediaThumbnail(thumbUrl);
+  const thumbSrc = useMediaThumbnail(thumbUrl, asset.preview_url, asset.remote_url);
   const hover = useHoverScrubVideo(videoRef);
 
   const isVideo = asset.media_type === 'video';
