@@ -208,9 +208,16 @@ export async function updateGameSession(
   }
 }
 
+interface PaginatedWorldsResponse {
+  worlds: GameWorldSummary[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export async function listGameWorlds(): Promise<GameWorldSummary[]> {
-  const res = await apiClient.get<GameWorldSummary[]>('/game/worlds');
-  return res.data;
+  const res = await apiClient.get<PaginatedWorldsResponse>('/game/worlds');
+  return res.data.worlds;
 }
 
 export async function createGameWorld(
