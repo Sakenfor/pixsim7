@@ -47,8 +47,10 @@ import type { LocalPanelDefinition } from './types';
 import {
   panelRegistry,
   panelSettingsScopeRegistry,
+  scopeProviderRegistry,
   usePanelInstanceSettingsStore,
   usePanelRegistryOverridesStore,
+  type ScopeMatchContext,
 } from '@features/panels';
 import { ContextHubHost, useContextHubState } from '@features/contextHub';
 import {
@@ -251,6 +253,50 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   );
   const emptyInstanceScopes = useMemo(() => ({} as Record<string, string>), []);
 
+  /**
+   * AutoScopeWrapper - Automatically wraps panels with scope providers
+   * based on declared scopes in panel definitions.
+   *
+   * This is different from ScopeWrapper (below) which handles Local/Global toggles.
+   * AutoScopeWrapper is for automatic, metadata-driven scope injection.
+   */
+  const AutoScopeWrapper = useCallback(
+    ({
+      panelId,
+      instanceId,
+      declaredScopes,
+      tags,
+      category,
+      children,
+    }: {
+      panelId: string;
+      instanceId: string;
+      declaredScopes?: string[];
+      tags?: string[];
+      category?: string;
+      children: ReactNode;
+    }) => {
+      const context: ScopeMatchContext = useMemo(() => ({
+        panelId,
+        instanceId,
+        declaredScopes,
+        tags,
+        category,
+      }), [panelId, instanceId, declaredScopes, tags, category]);
+
+      const wrapped = useMemo(() => {
+        return scopeProviderRegistry.wrapWithProviders(context, children);
+      }, [context, children]);
+
+      return <>{wrapped}</>;
+    },
+    [],
+  );
+
+  /**
+   * ScopeWrapper - Handles Local/Global scope toggles from panel settings UI.
+   * This is for user-controlled scope switching, not automatic injection.
+   */
   const ScopeWrapper = useCallback(
     ({
       instanceId,
@@ -541,9 +587,17 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               }
             >
               <ContextHubHost hostId={instanceId}>
-                <ScopeWrapper instanceId={instanceId}>
-                  <BaseComponent {...panelProps} />
-                </ScopeWrapper>
+                <AutoScopeWrapper
+                  panelId={def.id}
+                  instanceId={instanceId}
+                  declaredScopes={def.scopes}
+                  tags={undefined}
+                  category={undefined}
+                >
+                  <ScopeWrapper instanceId={instanceId}>
+                    <BaseComponent {...panelProps} />
+                  </ScopeWrapper>
+                </AutoScopeWrapper>
               </ContextHubHost>
             </div>
           );
@@ -615,9 +669,17 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             }
           >
             <ContextHubHost hostId={instanceId}>
-              <ScopeWrapper instanceId={instanceId}>
-                <Component {...panelProps} context={contextRef.current} panelId={globalDef.id} />
-              </ScopeWrapper>
+              <AutoScopeWrapper
+                panelId={globalDef.id}
+                instanceId={instanceId}
+                declaredScopes={globalDef.scopes}
+                tags={globalDef.tags}
+                category={globalDef.category}
+              >
+                <ScopeWrapper instanceId={instanceId}>
+                  <Component {...panelProps} context={contextRef.current} panelId={globalDef.id} />
+                </ScopeWrapper>
+              </AutoScopeWrapper>
             </ContextHubHost>
           </div>
         );
@@ -649,6 +711,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     globalRegistryVersion,
     resetDockviewLayout,
     ScopeWrapper,
+    AutoScopeWrapper,
   ]);
 
   // Handle dockview ready

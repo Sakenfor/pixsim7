@@ -66,3 +66,11 @@ export {
   getInstanceId,
   type ResolvedSettings,
 } from "./instanceSettingsResolver";
+
+// Scope provider registry (automatic scope injection)
+export {
+  scopeProviderRegistry,
+  createScopeMatcher,
+  type ScopeProviderDefinition,
+  type ScopeMatchContext,
+} from "./scopeProviderRegistry";
