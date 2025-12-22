@@ -5,6 +5,7 @@ import {
   useCapability,
   useProvideCapability,
 } from "@features/contextHub";
+import { useScopeInstanceId } from "@features/panels";
 import { useControlCenterStore } from "@features/controlCenter/stores/controlCenterStore";
 import { useGenerationSettingsStore } from "../stores/generationSettingsStore";
 import type { GenerationSessionStoreHook } from "../stores/generationSessionStore";
@@ -54,22 +55,27 @@ export function GenerationScopeProvider({
   label,
   children,
 }: GenerationScopeProviderProps) {
+  // Check if parent scope already set an instanceId - use that to preserve outer scope
+  // This prevents nested dockviews from overriding the outer scope
+  const parentScopeId = useScopeInstanceId();
+  const effectiveScopeId = parentScopeId ?? scopeId;
+
   const scopeStores = useMemo<GenerationScopeStores>(() => {
     if (process.env.NODE_ENV === "development") {
-      console.debug(`[GenerationScopeProvider] Creating scoped stores for: ${scopeId}`);
+      console.debug(`[GenerationScopeProvider] Creating scoped stores for: ${effectiveScopeId}${parentScopeId ? ` (preserved from parent, prop was: ${scopeId})` : ""}`);
     }
     return {
-      id: scopeId,
+      id: effectiveScopeId,
       label: label ?? "Local Generation",
-      useSessionStore: getGenerationSessionStore(scopeId),
-      useSettingsStore: getGenerationSettingsStore(scopeId),
+      useSessionStore: getGenerationSessionStore(effectiveScopeId),
+      useSettingsStore: getGenerationSettingsStore(effectiveScopeId),
     };
-  }, [scopeId, label]);
+  }, [effectiveScopeId, label]);
 
   useProvideCapability<GenerationScopeContext>(
     CAP_GENERATION_SCOPE,
     {
-      id: `generation-scope:${scopeId}`,
+      id: `generation-scope:${effectiveScopeId}`,
       label: label ?? "Generation Scope",
       priority: 70,
       getValue: () => scopeStores,
