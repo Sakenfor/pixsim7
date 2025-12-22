@@ -27,8 +27,20 @@ const GLOBAL_SCOPE: GenerationScopeStores = {
 };
 
 export function useGenerationScopeStores(): GenerationScopeStores {
-  const { value } = useCapability<GenerationScopeContext>(CAP_GENERATION_SCOPE);
-  return (value as GenerationScopeStores) ?? GLOBAL_SCOPE;
+  const { value, provider } = useCapability<GenerationScopeContext>(CAP_GENERATION_SCOPE);
+  const result = (value as GenerationScopeStores) ?? GLOBAL_SCOPE;
+
+  // Debug logging in development
+  if (process.env.NODE_ENV === "development") {
+    const isScoped = result.id !== "global";
+    if (isScoped) {
+      console.debug(
+        `[GenerationScope] Using scoped stores: ${result.id} (provider: ${provider?.id})`
+      );
+    }
+  }
+
+  return result;
 }
 
 interface GenerationScopeProviderProps {
@@ -43,6 +55,9 @@ export function GenerationScopeProvider({
   children,
 }: GenerationScopeProviderProps) {
   const scopeStores = useMemo<GenerationScopeStores>(() => {
+    if (process.env.NODE_ENV === "development") {
+      console.debug(`[GenerationScopeProvider] Creating scoped stores for: ${scopeId}`);
+    }
     return {
       id: scopeId,
       label: label ?? "Local Generation",
