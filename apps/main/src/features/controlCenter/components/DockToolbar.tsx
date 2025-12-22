@@ -6,13 +6,25 @@
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
+import type { ComponentType } from 'react';
 import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import type { ControlModule, DockPosition } from '@features/controlCenter/stores/controlCenterStore';
-import type { ControlCenterModule } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
 import { NotificationTicker } from './NotificationTicker';
+
+/** Module definition for the toolbar */
+export interface CCToolbarModule {
+  id: string;
+  label: string;
+  icon: string;
+  component: ComponentType<any>;
+  category?: string;
+  order?: number;
+  tags?: string[];
+  description?: string;
+}
 
 /** Quick navigation item configuration */
 export interface QuickNavItem {
@@ -32,7 +44,7 @@ export const DEFAULT_QUICK_NAV: QuickNavItem[] = [
 
 interface DockToolbarProps {
   /** Available modules to display as tabs */
-  modules: ControlCenterModule[];
+  modules: CCToolbarModule[];
   /** Currently active module */
   activeModule: ControlModule;
   /** Callback when module is selected */

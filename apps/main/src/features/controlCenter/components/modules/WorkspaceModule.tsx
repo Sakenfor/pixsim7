@@ -12,12 +12,11 @@ import { useCallback } from 'react';
 import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 import { usePanelConfigStore } from '@features/panels';
 import { panelManager } from '@features/panels/lib/PanelManager';
-import type { ControlCenterModuleProps } from '@features/controlCenter/lib/controlCenterModuleRegistry';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'workspace-layout-v1';
 
-export function WorkspaceModule({ }: ControlCenterModuleProps) {
+export function WorkspaceModule() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);

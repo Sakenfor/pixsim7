@@ -72,20 +72,6 @@ export {
   type GenerateAssetResponse,
 } from './lib/api';
 
-// Control center panel registry (new - uses SmartDockview)
-export {
-  ccPanelRegistry,
-  registerCCPanel,
-  getCCPanelDefinition,
-  getCCPanelDefinitions,
-  getEnabledCCPanels,
-  type CCPanelId,
-  type CCPanelDefinition,
-} from './lib/ccPanelRegistry';
-
-// Control center module registry (deprecated - use ccPanelRegistry instead)
-export {
-  controlCenterModuleRegistry,
-  type ControlCenterModule,
-  type ModuleCategory,
-} from './lib/controlCenterModuleRegistry';
+// Note: Control Center panels are now registered to the global panelRegistry
+// with the 'control-center' tag. Use getPanelsByTag('control-center') to get CC panels.
+// See @features/panels for panel registration.
