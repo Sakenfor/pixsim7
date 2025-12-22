@@ -95,16 +95,28 @@ export function resolveSettings<T extends Record<string, unknown> = Record<strin
 
 /**
  * Resolve panel settings for a specific panel, optionally with instance overrides.
+ * Respects scope mode: "local" ignores global settings, "global" (default) merges them.
  *
  * @param panelId - The panel type ID
  * @param instanceId - Optional instance ID (format: dockviewId:panelId)
+ * @param scopeId - Optional scope ID to check for local/global mode (default: uses panelId)
  * @returns Resolved settings with metadata
  */
 export function useResolvePanelSettings<T extends Record<string, unknown> = Record<string, unknown>>(
   panelId: PanelId | string,
   instanceId?: string | null,
+  scopeId?: string,
 ): ResolvedSettings<T> {
   const panelDefinition = useMemo(() => panelRegistry.get(panelId), [panelId]);
+
+  // Check scope mode - if "local", we ignore global settings
+  const effectiveScopeId = scopeId ?? panelId;
+  const scopeMode = usePanelInstanceSettingsStore(
+    (state) =>
+      instanceId
+        ? state.instances[instanceId]?.scopes?.[effectiveScopeId]
+        : undefined,
+  );
 
   const storedGlobalSettings = usePanelConfigStore(
     (state) => state.panelConfigs?.[panelId]?.settings ?? EMPTY_SETTINGS,
@@ -119,28 +131,41 @@ export function useResolvePanelSettings<T extends Record<string, unknown> = Reco
       resolveSettings<T>({
         settingsForm: panelDefinition?.settingsForm,
         definitionDefaults: panelDefinition?.defaultSettings ?? {},
-        storedGlobalSettings,
+        // If scope is "local", don't use global settings - only definition defaults + instance overrides
+        storedGlobalSettings: scopeMode === 'local' ? {} : storedGlobalSettings,
         instanceOverrides,
         hasInstanceId: !!instanceId,
       }),
-    [panelDefinition, storedGlobalSettings, instanceId, instanceOverrides],
+    [panelDefinition, scopeMode, storedGlobalSettings, instanceId, instanceOverrides],
   );
 }
 
 /**
  * Resolve component settings for a specific component, optionally with instance overrides.
+ * Respects scope mode: "local" ignores global settings, "global" (default) merges them.
  *
  * @param componentId - The component ID
  * @param instanceId - Optional instance ID (format: dockviewId:panelId)
+ * @param scopeId - Optional scope ID to check for local/global mode (default: uses componentId)
  * @returns Resolved settings with metadata
  */
 export function useResolveComponentSettings<T extends Record<string, unknown> = Record<string, unknown>>(
   componentId: string,
   instanceId?: string | null,
+  scopeId?: string,
 ): ResolvedSettings<T> {
   const componentDefinition = useMemo(
     () => componentRegistry.get(componentId),
     [componentId],
+  );
+
+  // Check scope mode - if "local", we ignore global settings
+  const effectiveScopeId = scopeId ?? componentId;
+  const scopeMode = usePanelInstanceSettingsStore(
+    (state) =>
+      instanceId
+        ? state.instances[instanceId]?.scopes?.[effectiveScopeId]
+        : undefined,
   );
 
   const storedGlobalSettings = useComponentSettingsStore(
@@ -159,11 +184,12 @@ export function useResolveComponentSettings<T extends Record<string, unknown> = 
       resolveSettings<T>({
         settingsForm: componentDefinition?.settingsForm,
         definitionDefaults: componentDefinition?.defaultSettings ?? {},
-        storedGlobalSettings,
+        // If scope is "local", don't use global settings - only definition defaults + instance overrides
+        storedGlobalSettings: scopeMode === 'local' ? {} : storedGlobalSettings,
         instanceOverrides,
         hasInstanceId: !!instanceId,
       }),
-    [componentDefinition, storedGlobalSettings, instanceId, instanceOverrides],
+    [componentDefinition, scopeMode, storedGlobalSettings, instanceId, instanceOverrides],
   );
 }
 
@@ -180,14 +206,17 @@ export function getInstanceId(
 
 /**
  * Hook to get all component settings for a panel's components, resolved with instance overrides.
+ * Respects scope mode per component: "local" ignores global settings.
  *
  * @param componentIds - Array of component IDs associated with the panel
  * @param instanceId - Optional instance ID
+ * @param scopeId - Optional shared scope ID (if not provided, uses each componentId as its scope)
  * @returns Map of componentId to resolved settings
  */
 export function useResolveAllComponentSettings<T extends Record<string, unknown> = Record<string, unknown>>(
   componentIds: string[],
   instanceId?: string | null,
+  scopeId?: string,
 ): Record<string, ResolvedSettings<T>> {
   const allGlobalSettings = useComponentSettingsStore(
     (state) => (Object.keys(state.settings).length > 0 ? state.settings : EMPTY_ALL_SETTINGS),
@@ -201,15 +230,20 @@ export function useResolveAllComponentSettings<T extends Record<string, unknown>
 
     for (const componentId of componentIds) {
       const componentDefinition = componentRegistry.get(componentId);
+      // Check scope mode for this component (use shared scopeId or componentId)
+      const effectiveScopeId = scopeId ?? componentId;
+      const scopeMode = instanceData?.scopes?.[effectiveScopeId];
+
       result[componentId] = resolveSettings<T>({
         settingsForm: componentDefinition?.settingsForm,
         definitionDefaults: componentDefinition?.defaultSettings ?? {},
-        storedGlobalSettings: allGlobalSettings[componentId] ?? {},
+        // If scope is "local", don't use global settings
+        storedGlobalSettings: scopeMode === 'local' ? {} : (allGlobalSettings[componentId] ?? {}),
         instanceOverrides: instanceData?.componentSettings?.[componentId],
         hasInstanceId: !!instanceId,
       });
     }
 
     return result;
-  }, [componentIds, allGlobalSettings, instanceId, instanceData]);
+  }, [componentIds, allGlobalSettings, instanceId, instanceData, scopeId]);
 }
