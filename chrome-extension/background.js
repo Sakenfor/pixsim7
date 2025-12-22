@@ -711,6 +711,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         endpoint += params.join('&');
 
         const data = await backendRequest(endpoint);
+
+        // Fix relative URLs by prepending backend URL
+        const settings = await getSettings();
+        const backendUrl = settings.backendUrl || DEFAULT_BACKEND_URL;
+        const fixRelativeUrl = (url) => {
+          if (!url) return url;
+          if (url.startsWith('/')) return backendUrl + url;
+          return url;
+        };
+
+        // Fix URLs in assets array
+        let items = data;
+        if (data && !Array.isArray(data)) {
+          items = data.items || data.assets || data.data || data.results || [];
+        }
+        if (Array.isArray(items)) {
+          items.forEach(asset => {
+            if (asset.thumbnail_url) asset.thumbnail_url = fixRelativeUrl(asset.thumbnail_url);
+            if (asset.file_url) asset.file_url = fixRelativeUrl(asset.file_url);
+            if (asset.preview_url) asset.preview_url = fixRelativeUrl(asset.preview_url);
+          });
+        }
+
         sendResponse({ success: true, data });
       } catch (error) {
         sendResponse({ success: false, error: error.message });

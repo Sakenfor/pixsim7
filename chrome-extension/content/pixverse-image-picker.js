@@ -32,6 +32,7 @@ window.PXS7 = window.PXS7 || {};
   const ASSETS_SORT_KEY = 'pxs7_assets_sort';
   const MAX_RECENTLY_USED = 50;
   let assetsSortBy = 'recent'; // 'recent', 'name', 'default'
+  let assetsSearchQuery = ''; // Search filter for assets
 
   function loadRecentlyUsed() {
     try {
@@ -1085,6 +1086,12 @@ window.PXS7 = window.PXS7 || {};
       createdAt: a.created_at || a.createdAt || ''
     })).filter(u => u.thumb);
 
+    // Apply search filter
+    if (assetsSearchQuery.trim()) {
+      const query = assetsSearchQuery.toLowerCase().trim();
+      urls = urls.filter(u => (u.name || '').toLowerCase().includes(query));
+    }
+
     // Sort assets based on current sort preference
     if (assetsSortBy === 'recent') {
       // Sort by recently used (used first, then others by original order)
@@ -1105,6 +1112,35 @@ window.PXS7 = window.PXS7 || {};
     }
     // 'default' keeps original order
 
+    // Search bar
+    const searchRow = document.createElement('div');
+    searchRow.style.cssText = 'margin-bottom: 8px;';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search assets...';
+    searchInput.value = assetsSearchQuery;
+    searchInput.style.cssText = `
+      width: 100%; padding: 6px 10px; font-size: 11px;
+      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
+      border-radius: 4px; color: ${COLORS.text}; outline: none;
+      box-sizing: border-box;
+    `;
+    searchInput.addEventListener('input', (e) => {
+      assetsSearchQuery = e.target.value;
+      renderTabContent('assets', container, panel, loadAssets);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        assetsSearchQuery = '';
+        renderTabContent('assets', container, panel, loadAssets);
+      }
+    });
+    searchRow.appendChild(searchInput);
+    container.appendChild(searchRow);
+
+    // Focus search input after render
+    setTimeout(() => searchInput.focus(), 0);
+
     const headerRow = document.createElement('div');
     headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px;';
 
@@ -1112,7 +1148,8 @@ window.PXS7 = window.PXS7 || {};
     countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
     const moreAvailable = assetsTotalCount > assetsLoadedCount;
     const totalText = moreAvailable ? '+' : '';
-    countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText}` : '';
+    const filterText = assetsSearchQuery.trim() ? ` (filtered)` : '';
+    countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText}${filterText}` : '';
 
     // Sort buttons
     const sortGroup = document.createElement('div');
