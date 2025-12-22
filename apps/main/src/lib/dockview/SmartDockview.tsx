@@ -288,6 +288,9 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     () => panelSettingsScopeRegistry.getAll(),
     [scopeRegistryVersion],
   );
+  const scopeDefinitionsRef = useRef(scopeDefinitions);
+  scopeDefinitionsRef.current = scopeDefinitions;
+
   const emptyInstanceScopes = useMemo(() => ({} as Record<string, string>), []);
 
   /**
@@ -333,6 +336,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   /**
    * ScopeWrapper - Handles Local/Global scope toggles from panel settings UI.
    * This is for user-controlled scope switching, not automatic injection.
+   * Uses ref to access scopeDefinitions to avoid being recreated when they change.
    */
   const ScopeWrapper = useCallback(
     ({
@@ -345,10 +349,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       const instanceScopes = usePanelInstanceSettingsStore(
         (state) => state.instances[instanceId]?.scopes ?? emptyInstanceScopes,
       );
+      // Access via ref to avoid component recreation on scopeDefinitions change
+      const currentScopeDefinitions = scopeDefinitionsRef.current;
 
       const wrapped = useMemo(() => {
-        if (!scopeDefinitions.length) return children;
-        return scopeDefinitions.reduceRight((content, scope) => {
+        if (!currentScopeDefinitions.length) return children;
+        return currentScopeDefinitions.reduceRight((content, scope) => {
           const mode = instanceScopes?.[scope.id] ?? scope.defaultMode ?? "global";
           if (mode !== "local" || !scope.renderProvider) {
             return content;
@@ -361,12 +367,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           }
           return scope.renderProvider(instanceId, content);
         }, children as ReactNode);
-      }, [children, instanceId, instanceScopes, scopeDefinitions]);
+      }, [children, instanceId, instanceScopes, currentScopeDefinitions]);
 
       return <>{wrapped}</>;
     },
-    [scopeDefinitions],
+    [], // Now stable - no dependencies on changing values
   );
+
+  // Use ref for defaultLayout to avoid resetDockviewLayout changing when parent recreates it
+  const defaultLayoutRef = useRef(defaultLayout);
+  defaultLayoutRef.current = defaultLayout;
 
   const resetDockviewLayout = useCallback(() => {
     if (storageKey) {
@@ -380,10 +390,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     });
 
     // Rebuild default layout when available
-    if (registryMode && registry && defaultLayout) {
-      defaultLayout(apiRef.current, registry);
+    if (registryMode && registry && defaultLayoutRef.current) {
+      defaultLayoutRef.current(apiRef.current, registry);
     }
-  }, [storageKey, registryMode, registry, defaultLayout]);
+  }, [storageKey, registryMode, registry]);
 
   // Build components map from local registry + global registry (registry mode)
   // Or use direct components (components mode)
@@ -492,6 +502,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     panelRegistryOverridesMap,
   ]);
 
+  // Use ref for dockviewPanelRegistry to avoid components recreation
+  const dockviewPanelRegistryRef = useRef(dockviewPanelRegistry);
+  dockviewPanelRegistryRef.current = dockviewPanelRegistry;
+
   const components = useMemo(() => {
     if (directComponents) {
       const wrapped: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
@@ -535,7 +549,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               instanceId,
               groupId: panelProps.api?.group?.id,
               currentDockviewId: dockviewId,
-              panelRegistry: dockviewPanelRegistry,
+              panelRegistry: dockviewPanelRegistryRef.current,
               api: apiRef.current ?? undefined,
               resetDockviewLayout,
               data: panelProps.params,
@@ -608,7 +622,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               instanceId,
               groupId: panelProps.api?.group?.id,
               currentDockviewId: dockviewId,
-              panelRegistry: dockviewPanelRegistry,
+              panelRegistry: dockviewPanelRegistryRef.current,
               api: apiRef.current ?? undefined,
               resetDockviewLayout,
               data: panelProps.params,
@@ -690,7 +704,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             instanceId,
             groupId: panelProps.api?.group?.id,
             currentDockviewId: dockviewId,
-            panelRegistry: dockviewPanelRegistry,
+            panelRegistry: dockviewPanelRegistryRef.current,
             api: apiRef.current ?? undefined,
             resetDockviewLayout,
             data: panelProps.params,
@@ -737,18 +751,19 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
 
     return map;
+    // Note: Many dependencies are intentionally excluded to stabilize the components map.
+    // - ScopeWrapper/AutoScopeWrapper are stable (empty deps) and use refs internally
+    // - dockviewPanelRegistry uses a ref to get the latest value at callback time
+    // - globalPanelIds/globalRegistryVersion: handled by includeGlobalPanels or initial value
+    // The components map is created once and should not change during the component lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     registry,
-    globalPanelIds,
     includeGlobalPanels,
     directComponents,
     contextMenuActive,
     enablePanelContentContextMenu,
-    dockviewPanelRegistry,
-    globalRegistryVersion,
     resetDockviewLayout,
-    ScopeWrapper,
-    AutoScopeWrapper,
   ]);
 
   // Handle dockview ready
@@ -828,10 +843,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       contextType: 'background',
       position: { x: e.clientX, y: e.clientY },
       currentDockviewId: contextMenuDockviewId,
-      panelRegistry: dockviewPanelRegistry,
+      panelRegistry: dockviewPanelRegistryRef.current,
       resetDockviewLayout,
     });
-  }, [contextMenuActive, contextMenu, contextMenuDockviewId, resetDockviewLayout, dockviewPanelRegistry]);
+  }, [contextMenuActive, contextMenu, contextMenuDockviewId, resetDockviewLayout]);
 
   return (
     <DockviewIdProvider
