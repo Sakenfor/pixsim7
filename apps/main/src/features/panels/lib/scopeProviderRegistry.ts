@@ -13,8 +13,41 @@
  * This enables automatic scoping without manual wiring in each panel.
  */
 
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { BaseRegistry } from "@lib/core/BaseRegistry";
+
+/**
+ * Generic context for scope instance ID.
+ * Any scope provider can use this to expose its instanceId to children.
+ */
+const ScopeInstanceContext = createContext<string | undefined>(undefined);
+
+/**
+ * Provider component to set the scope instanceId for children.
+ * Used by scope providers to expose their instanceId.
+ */
+export function ScopeInstanceProvider({
+  instanceId,
+  children,
+}: {
+  instanceId: string;
+  children: ReactNode;
+}) {
+  return (
+    <ScopeInstanceContext.Provider value={instanceId}>
+      {children}
+    </ScopeInstanceContext.Provider>
+  );
+}
+
+/**
+ * Hook to get the current scope's instanceId.
+ * Returns undefined if not within a scope provider.
+ * Use this for settings resolution so all components in the same scope share one instanceId.
+ */
+export function useScopeInstanceId(): string | undefined {
+  return useContext(ScopeInstanceContext);
+}
 
 export interface ScopeProviderDefinition {
   /** Unique identifier for this scope provider */

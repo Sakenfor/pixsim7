@@ -2,6 +2,7 @@ import {
   panelSettingsScopeRegistry,
   scopeProviderRegistry,
   createScopeMatcher,
+  ScopeInstanceProvider,
 } from "@features/panels";
 import { GenerationScopeProvider } from "../hooks/useGenerationScope";
 
@@ -16,6 +17,7 @@ let registered = false;
  *
  * The automatic wrapping ensures that any panel declaring the "generation" scope
  * gets wrapped with GenerationScopeProvider, giving it isolated generation stores.
+ * ScopeInstanceProvider exposes the instanceId to children for settings resolution.
  */
 export function registerGenerationScopes() {
   if (registered) return;
@@ -28,9 +30,11 @@ export function registerGenerationScopes() {
     description: "Provider, prompt, model, and parameter defaults for this panel instance.",
     defaultMode: "global",
     renderProvider: (scopeId, children) => (
-      <GenerationScopeProvider scopeId={scopeId} label="Generation Settings">
-        {children}
-      </GenerationScopeProvider>
+      <ScopeInstanceProvider instanceId={scopeId}>
+        <GenerationScopeProvider scopeId={scopeId} label="Generation Settings">
+          {children}
+        </GenerationScopeProvider>
+      </ScopeInstanceProvider>
     ),
   });
 
@@ -42,9 +46,12 @@ export function registerGenerationScopes() {
     priority: 100, // High priority = outermost wrapper
     shouldWrap: createScopeMatcher("generation"),
     wrap: (instanceId, children) => (
-      <GenerationScopeProvider scopeId={instanceId} label="Auto Generation Scope">
-        {children}
-      </GenerationScopeProvider>
+      // ScopeInstanceProvider exposes instanceId to children via useScopeInstanceId()
+      <ScopeInstanceProvider instanceId={instanceId}>
+        <GenerationScopeProvider scopeId={instanceId} label="Auto Generation Scope">
+          {children}
+        </GenerationScopeProvider>
+      </ScopeInstanceProvider>
     ),
   });
 
