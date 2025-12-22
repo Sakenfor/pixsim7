@@ -197,6 +197,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const contextRef = useRef<TContext | undefined>(context);
   const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
   const [scopeRegistryVersion, setScopeRegistryVersion] = useState(0);
+  const lastGlobalPanelIdsRef = useRef<string>('');
+  const lastScopeIdsRef = useRef<string>('');
   const panelRegistryOverridesMap = usePanelRegistryOverridesStore((state) => state.overrides);
   const dockviewHostId = useMemo(
     () =>
@@ -228,16 +230,51 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
   }, [context, isReady]);
 
+  // Subscribe to global panel registry - only update when panels we care about change
   useEffect(() => {
-    return panelRegistry.subscribe(() => {
-      setGlobalRegistryVersion((version) => version + 1);
-    });
-  }, []);
+    const checkAndUpdate = () => {
+      // Build list of panel IDs we care about
+      let relevantIds: string[] = [];
 
+      if (globalPanelIds.length > 0) {
+        relevantIds = [...globalPanelIds];
+      }
+
+      if (includeGlobalPanels) {
+        const allPanels = panelRegistry.getPublicPanels
+          ? panelRegistry.getPublicPanels()
+          : panelRegistry.getAll();
+        relevantIds = [...new Set([...relevantIds, ...allPanels.map(p => p.id)])];
+      }
+
+      const currentIds = relevantIds.sort().join(',');
+      if (currentIds !== lastGlobalPanelIdsRef.current) {
+        lastGlobalPanelIdsRef.current = currentIds;
+        setGlobalRegistryVersion((version) => version + 1);
+      }
+    };
+
+    // Initial check
+    checkAndUpdate();
+
+    return panelRegistry.subscribe(checkAndUpdate);
+  }, [globalPanelIds, includeGlobalPanels]);
+
+  // Subscribe to scope registry - only update when scope definitions actually change
   useEffect(() => {
-    return panelSettingsScopeRegistry.subscribe(() => {
-      setScopeRegistryVersion((version) => version + 1);
-    });
+    const checkAndUpdate = () => {
+      const scopes = panelSettingsScopeRegistry.getAll();
+      const scopeIds = scopes.map(s => s.id).sort().join(',');
+      if (scopeIds !== lastScopeIdsRef.current) {
+        lastScopeIdsRef.current = scopeIds;
+        setScopeRegistryVersion((version) => version + 1);
+      }
+    };
+
+    // Initial check
+    checkAndUpdate();
+
+    return panelSettingsScopeRegistry.subscribe(checkAndUpdate);
   }, []);
 
   const { onReady: onSmartReady, loadLayout } = useSmartDockview({
