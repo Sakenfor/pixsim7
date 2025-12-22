@@ -6,19 +6,14 @@ import { useControlCenterStore, type ControlCenterState } from '@features/contro
 import { resolvePromptLimit } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
-import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
-import { ThemedIcon } from '@lib/icons';
 import { estimatePixverseCost } from '@features/providers';
 import { type QuickGenPanelContext } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
 import { OPERATION_METADATA } from '@/types/operations';
 import { PromptInput } from '@pixsim7/shared.ui';
 import {
-  CAP_ASSET_SELECTION,
   CAP_GENERATION_CONTEXT,
-  useCapability,
   useProvideCapability,
-  type AssetSelection,
   type GenerationContextSummary,
 } from '@features/contextHub';
 
@@ -90,10 +85,6 @@ export function QuickGenerateModule() {
   const dockviewApiRef = useRef<DockviewApi | null>(null);
   const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
-
-  const { value: assetSelection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
-  const currentAsset = assetSelection?.asset ?? null;
-  const hasViewedAssetAvailable = currentAsset !== null;
 
   const generationContextValue = useMemo<GenerationContextSummary>(
     () => ({
@@ -220,50 +211,6 @@ export function QuickGenerateModule() {
   const requiresPrompt = promptRequiredOps.has(operationType);
   const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
 
-  // Handler for secondary "Generate with Asset" button
-  const generateWithAsset = useCallback(() => {
-    if (!currentAsset) return;
-
-    const assetUrl = currentAsset.fullUrl || currentAsset.url;
-
-    const overrideParams: Record<string, any> = {};
-
-    // Auto-populate appropriate parameter based on operation and asset type
-    if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-      if (currentAsset.type === 'image') {
-        overrideParams.image_url = assetUrl;
-      }
-    } else if (operationType === 'video_extend') {
-      if (currentAsset.type === 'video') {
-        overrideParams.video_url = assetUrl;
-      }
-    }
-
-    if (Object.keys(overrideParams).length === 0) return;
-
-    generate({ overrideDynamicParams: overrideParams });
-  }, [currentAsset, operationType, generate]);
-
-  // Secondary button configuration (only for flexible operations with available asset)
-  const secondaryButton = useMemo(() => {
-    // Only for operations that support viewer assets
-    if (!(isSingleAssetOp || isFlexibleOp)) return undefined;
-
-    // Only when asset is available
-    if (!hasViewedAssetAvailable) return undefined;
-
-    // Validate asset type matches operation requirements
-    if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-      if (currentAsset?.type !== 'image') return undefined;
-    } else if (operationType === 'video_extend') {
-      if (currentAsset?.type !== 'video') return undefined;
-    }
-
-    return {
-      onGenerate: generateWithAsset,
-      label: 'Go ⚡',
-    };
-  }, [isSingleAssetOp, isFlexibleOp, hasViewedAssetAvailable, currentAsset, operationType, generateWithAsset]);
 
   // Get the asset to display based on operation type and input mode
   const getDisplayAssets = () => {
@@ -445,10 +392,9 @@ export function QuickGenerateModule() {
       generating={generating}
       canGenerate={canGenerate}
       onGenerate={generate}
-      secondaryButton={secondaryButton}
       error={error}
     />
-  ), [generating, canGenerate, generate, secondaryButton, error]);
+  ), [generating, canGenerate, generate, error]);
 
   // Wrapper to set main queue index directly
   const setMainQueueIndex = useCallback((index: number) => {
