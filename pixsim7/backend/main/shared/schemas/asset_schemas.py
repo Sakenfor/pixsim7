@@ -103,6 +103,11 @@ class AssetResponse(BaseModel):
         preview_key = getattr(self, "preview_key", None)
         local_path = getattr(self, "local_path", None)
         remote_url = getattr(self, "remote_url", None)
+        original_source_url = getattr(self, "original_source_url", None)
+
+        # Helper to check valid HTTP(S) URL
+        def is_valid_url(url):
+            return url and (url.startswith("http://") or url.startswith("https://"))
 
         # Compute file_url
         if stored_key:
@@ -111,30 +116,41 @@ class AssetResponse(BaseModel):
         elif local_path:
             # Legacy: local file endpoint
             object.__setattr__(self, "file_url", f"/api/v1/assets/{asset_id}/file")
-        elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
+        elif is_valid_url(remote_url):
             # Use remote URL if it's valid
             object.__setattr__(self, "file_url", remote_url)
+        elif is_valid_url(original_source_url):
+            # Fall back to original source URL
+            object.__setattr__(self, "file_url", original_source_url)
         else:
             # No valid URL available
             object.__setattr__(self, "file_url", None)
 
         # Compute thumbnail_url from key
+        # Priority: thumbnail_key > file_url > remote_url > original_source_url
         if thumbnail_key:
             object.__setattr__(self, "thumbnail_url", storage_key_to_url(thumbnail_key))
         elif getattr(self, "thumbnail_url", None) is None:
-            # Fallback to file_url if no thumbnail
             file_url = getattr(self, "file_url", None)
             if file_url:
                 object.__setattr__(self, "thumbnail_url", file_url)
+            elif is_valid_url(remote_url):
+                # Direct fallback to remote_url for thumbnail
+                object.__setattr__(self, "thumbnail_url", remote_url)
+            elif is_valid_url(original_source_url):
+                object.__setattr__(self, "thumbnail_url", original_source_url)
 
         # Compute preview_url from key
         if preview_key:
             object.__setattr__(self, "preview_url", storage_key_to_url(preview_key))
         elif getattr(self, "preview_url", None) is None:
-            # Fallback to file_url if no preview
             file_url = getattr(self, "file_url", None)
             if file_url:
                 object.__setattr__(self, "preview_url", file_url)
+            elif is_valid_url(remote_url):
+                object.__setattr__(self, "preview_url", remote_url)
+            elif is_valid_url(original_source_url):
+                object.__setattr__(self, "preview_url", original_source_url)
 
         return self
 
