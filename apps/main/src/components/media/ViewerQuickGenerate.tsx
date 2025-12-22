@@ -235,6 +235,12 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     canGenerate,
   };
 
+  // Memoize onReady to prevent SmartDockview re-renders
+  const handleDockviewReady = useCallback((api: import('dockview-core').DockviewApi) => {
+    setDockviewApi(api);
+    ensureViewerPanels(api);
+  }, [ensureViewerPanels]);
+
   useEffect(() => {
     if (!dockviewApi) return;
     // Ensure all default panels exist even if a stale layout is loaded.
@@ -287,11 +293,8 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
           context={quickGenContext}
           defaultLayout={createViewerQuickGenLayout}
           minPanelsForTabs={1}
-          deprecatedPanels={['info']}
-          onReady={(api) => {
-            setDockviewApi(api);
-            ensureViewerPanels(api);
-          }}
+          deprecatedPanels={DEPRECATED_PANELS}
+          onReady={handleDockviewReady}
         />
       </div>
     </div>
@@ -301,6 +304,9 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
 type ViewerQuickGenPanelId = 'prompt' | 'settings';
 
 const viewerQuickGenRegistry = createLocalPanelRegistry<ViewerQuickGenPanelId>();
+
+// Static config - stable reference to prevent unnecessary re-renders
+const DEPRECATED_PANELS = ['info'] as const;
 
 viewerQuickGenRegistry.registerAll([
   {
