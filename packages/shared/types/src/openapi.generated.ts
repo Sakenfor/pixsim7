@@ -420,6 +420,31 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/accounts/{account_id}/invited-accounts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Invited Accounts
+         * @description Get full list of invited/referred accounts (on-demand, not cached).
+         *
+         *     Returns detailed information about users who registered using this account's referral code.
+         *
+         *     Security:
+         *     - Only the owner or an admin can query this endpoint.
+         */
+        readonly get: operations["get_invited_accounts_api_v1_accounts__account_id__invited_accounts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/accounts/{account_id}/pixverse-status": {
         readonly parameters: {
             readonly query?: never;
@@ -430,6 +455,9 @@ export interface paths {
         /**
          * Get Pixverse Status
          * @description Get combined Pixverse credits + ad task status for an account.
+         *
+         *     Uses cached ad task data if synced within 5 minutes, unless force=True.
+         *     Credits are always fetched fresh (they have their own caching logic).
          *
          *     Security:
          *     - Only the owner or an admin can query this endpoint.
@@ -482,6 +510,32 @@ export interface paths {
          *     Extracts a fresh JWT from the `_ai_token` cookie and updates the account.
          */
         readonly post: operations["refresh_jwt_from_cookies_api_v1_accounts__account_id__refresh_jwt_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/accounts/{account_id}/stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Account Stats
+         * @description Get cached account statistics (invited count, user info).
+         *
+         *     Uses cached stats if synced within 1 hour, unless force=True.
+         *     Lightweight alternative to full account info fetch.
+         *
+         *     Security:
+         *     - Only the owner or an admin can query this endpoint.
+         */
+        readonly get: operations["get_account_stats_api_v1_accounts__account_id__stats_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1811,28 +1865,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/assets/{asset_id}/reupload": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Reupload Asset To Provider
-         * @description Re-upload an existing asset to a provider, caching the provider-specific ID.
-         *
-         *     Uses the sync service helper to upload and cache the provider-specific asset ID.
-         */
-        readonly post: operations["reupload_asset_to_provider_api_v1_assets__asset_id__reupload_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/assets/{asset_id}/sync": {
         readonly parameters: {
             readonly query?: never;
@@ -1866,20 +1898,58 @@ export interface paths {
          * Assign Tags To Asset
          * @description Assign/remove tags to/from an asset using structured hierarchical tags.
          *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "add": ["character:alice", "location:tokyo", "style:anime"],
-         *       "remove": ["old_tag:value"]
-         *     }
-         *     ```
-         *
          *     Tags are automatically:
          *     - Normalized (lowercase, trimmed)
          *     - Resolved to canonical tags (aliases are followed)
          *     - Created if they don't exist
          */
         readonly post: operations["assign_tags_to_asset_api_v1_assets__asset_id__tags_assign_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/backfill-sha": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Backfill Sha Hashes
+         * @description Backfill SHA256 hashes for assets that have local files but no hash.
+         *
+         *     This enables duplicate detection for older assets that were created
+         *     before SHA hashing was implemented.
+         */
+        readonly post: operations["backfill_sha_hashes_api_v1_assets_backfill_sha_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/bulk-sync-storage": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Bulk Sync Storage
+         * @description Bulk re-sync assets from old storage to new content-addressed storage.
+         *
+         *     Finds assets with provider URLs that are on old storage and re-downloads them
+         *     to the new content-addressed storage system.
+         */
+        readonly post: operations["bulk_sync_storage_api_v1_assets_bulk_sync_storage_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1898,13 +1968,6 @@ export interface paths {
         /**
          * Bulk Delete Assets
          * @description Delete multiple assets at once
-         *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "asset_ids": [1, 2, 3]
-         *     }
-         *     ```
          */
         readonly post: operations["bulk_delete_assets_api_v1_assets_bulk_delete_post"];
         readonly delete?: never;
@@ -1925,13 +1988,6 @@ export interface paths {
         /**
          * Bulk Export Assets
          * @description Export multiple assets as a ZIP file
-         *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "asset_ids": [1, 2, 3]
-         *     }
-         *     ```
          *
          *     Returns a download URL for the generated ZIP file
          */
@@ -1959,15 +2015,6 @@ export interface paths {
          *     - "add": Add tags to existing tags
          *     - "remove": Remove specified tags
          *     - "replace": Replace all tags with new ones
-         *
-         *     Example request:
-         *     ```json
-         *     {
-         *       "asset_ids": [1, 2, 3],
-         *       "tags": ["batch_processed", "2024"],
-         *       "mode": "add"
-         *     }
-         *     ```
          */
         readonly post: operations["bulk_update_tags_api_v1_assets_bulk_tags_post"];
         readonly delete?: never;
@@ -2011,8 +2058,6 @@ export interface paths {
         /**
          * Download Export
          * @description Download an exported ZIP file
-         *
-         *     Files are automatically cleaned up after 24 hours
          */
         readonly get: operations["download_export_api_v1_assets_downloads__filename__get"];
         readonly put?: never;
@@ -2089,6 +2134,51 @@ export interface paths {
          *     - autocomplete: Async search (use /tags endpoint for values)
          */
         readonly get: operations["get_filter_metadata_api_v1_assets_filter_metadata_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/sha-stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Sha Stats
+         * @description Get statistics about SHA256 hash coverage for user's assets.
+         *
+         *     Returns counts of assets with/without SHA hashes, and which ones
+         *     can be backfilled (have local files).
+         */
+        readonly get: operations["get_sha_stats_api_v1_assets_sha_stats_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/storage-sync-stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Storage Sync Stats
+         * @description Get statistics about storage system migration status.
+         *
+         *     Returns counts of assets on old vs new storage systems.
+         */
+        readonly get: operations["get_storage_sync_stats_api_v1_assets_storage_sync_stats_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -2574,6 +2664,10 @@ export interface paths {
          * @description Execute a single preset for a specific account.
          *
          *     Creates an automation execution and queues it for processing.
+         *
+         *     Device selection:
+         *     - If device_id is specified, uses that device (if available)
+         *     - If device_id is None/omitted, automatically selects best available device using LRU algorithm
          */
         readonly post: operations["execute_preset_for_account_api_v1_automation_execute_preset_post"];
         readonly delete?: never;
@@ -6062,6 +6156,66 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/llm-instances": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Llm Instances
+         * @description List LLM provider instances
+         *
+         *     Returns all configured LLM provider instances, optionally filtered by provider.
+         */
+        readonly get: operations["list_llm_instances_api_v1_llm_instances_get"];
+        readonly put?: never;
+        /**
+         * Create Llm Instance
+         * @description Create a new LLM provider instance
+         *
+         *     Admin only. Creates a new configuration instance for an LLM provider.
+         */
+        readonly post: operations["create_llm_instance_api_v1_llm_instances_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/llm-instances/{instance_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Llm Instance
+         * @description Get a specific LLM provider instance
+         */
+        readonly get: operations["get_llm_instance_api_v1_llm_instances__instance_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete Llm Instance
+         * @description Delete an LLM provider instance
+         *
+         *     Admin only. Permanently removes an instance configuration.
+         */
+        readonly delete: operations["delete_llm_instance_api_v1_llm_instances__instance_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Llm Instance
+         * @description Update an LLM provider instance
+         *
+         *     Admin only. Updates configuration for an existing instance.
+         */
+        readonly patch: operations["update_llm_instance_api_v1_llm_instances__instance_id__patch"];
+        readonly trace?: never;
+    };
     readonly "/api/v1/logs/console-fields": {
         readonly parameters: {
             readonly query?: never;
@@ -8095,6 +8249,16 @@ export interface components {
             readonly videos_today: number;
         };
         /**
+         * AccountStatsResponse
+         * @description Account statistics (invited count, user info)
+         */
+        readonly AccountStatsResponse: {
+            /** Invited Count */
+            readonly invited_count: number;
+            /** User Info */
+            readonly user_info: Record<string, unknown>;
+        };
+        /**
          * AccountStatus
          * @description Provider account status
          * @enum {string}
@@ -8473,6 +8637,11 @@ export interface components {
              * @description Provider ID for LLM models, or internal engine identifier
              */
             readonly provider_id?: string | null;
+            /**
+             * Provider Instance Id
+             * @description Optional provider instance ID for using a specific configuration
+             */
+            readonly provider_instance_id?: number | null;
         };
         /**
          * AiModelCapability
@@ -9046,6 +9215,22 @@ export interface components {
             readonly providers: readonly Record<string, unknown>[];
         };
         /**
+         * BackfillSHAResponse
+         * @description Response from SHA backfill operation
+         */
+        readonly BackfillSHAResponse: {
+            /** Errors */
+            readonly errors: number;
+            /** Processed */
+            readonly processed: number;
+            /** Skipped */
+            readonly skipped: number;
+            /** Success */
+            readonly success: boolean;
+            /** Updated */
+            readonly updated: number;
+        };
+        /**
          * BatchSyncCreditsRequest
          * @description Request for batch credit sync
          */
@@ -9375,6 +9560,22 @@ export interface components {
              * @description List of asset IDs to export
              */
             readonly asset_ids: readonly number[];
+        };
+        /**
+         * BulkSyncResponse
+         * @description Response from bulk storage sync operation
+         */
+        readonly BulkSyncResponse: {
+            /** Errors */
+            readonly errors: number;
+            /** Processed */
+            readonly processed: number;
+            /** Skipped */
+            readonly skipped: number;
+            /** Success */
+            readonly success: boolean;
+            /** Synced */
+            readonly synced: number;
         };
         /**
          * BulkTagRequest
@@ -10100,7 +10301,7 @@ export interface components {
          * DeviceType
          * @enum {string}
          */
-        readonly DeviceType: "bluestacks" | "adb";
+        readonly DeviceType: "bluestacks" | "mumu" | "nox" | "ld" | "genymotion" | "adb";
         /** DevPromptFamilySummary */
         readonly DevPromptFamilySummary: {
             /** Category */
@@ -10349,6 +10550,8 @@ export interface components {
         readonly ExecutePresetRequest: {
             /** Account Id */
             readonly account_id: number;
+            /** Device Id */
+            readonly device_id?: number | null;
             /** Preset Id */
             readonly preset_id: number;
             /**
@@ -11192,6 +11395,18 @@ export interface components {
             readonly unique_items: number;
         };
         /**
+         * InvitedAccountsResponse
+         * @description List of invited/referred accounts
+         */
+        readonly InvitedAccountsResponse: {
+            /** Items */
+            readonly items: readonly Record<string, unknown>[];
+            /** Next Offset */
+            readonly next_offset: number;
+            /** Total */
+            readonly total: number;
+        };
+        /**
          * ListInteractionsRequest
          * @description Request to list available interactions
          */
@@ -11225,6 +11440,87 @@ export interface components {
             readonly timestamp: number;
             /** Worldid */
             readonly worldId: number;
+        };
+        /**
+         * LlmInstanceCreate
+         * @description Create a new LLM provider instance
+         */
+        readonly LlmInstanceCreate: {
+            /**
+             * Config
+             * @description Provider-specific config
+             */
+            readonly config?: Record<string, unknown>;
+            /** Description */
+            readonly description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            readonly enabled: boolean;
+            /**
+             * Label
+             * @description Display name
+             */
+            readonly label: string;
+            /**
+             * Priority
+             * @default 0
+             */
+            readonly priority: number;
+            /**
+             * Provider Id
+             * @description Provider ID (e.g., cmd-llm, openai-llm)
+             */
+            readonly provider_id: string;
+        };
+        /**
+         * LlmInstanceListResponse
+         * @description List of LLM provider instances
+         */
+        readonly LlmInstanceListResponse: {
+            /** Instances */
+            readonly instances: readonly components["schemas"]["LlmInstanceResponse"][];
+        };
+        /**
+         * LlmInstanceResponse
+         * @description LLM provider instance response
+         */
+        readonly LlmInstanceResponse: {
+            /** Config */
+            readonly config: Record<string, unknown>;
+            /** Created At */
+            readonly created_at: string;
+            /** Description */
+            readonly description: string | null;
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Id */
+            readonly id: number;
+            /** Label */
+            readonly label: string;
+            /** Priority */
+            readonly priority: number;
+            /** Provider Id */
+            readonly provider_id: string;
+            /** Updated At */
+            readonly updated_at: string;
+        };
+        /**
+         * LlmInstanceUpdate
+         * @description Update an LLM provider instance
+         */
+        readonly LlmInstanceUpdate: {
+            /** Config */
+            readonly config?: Record<string, unknown> | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Enabled */
+            readonly enabled?: boolean | null;
+            /** Label */
+            readonly label?: string | null;
+            /** Priority */
+            readonly priority?: number | null;
         };
         /**
          * LogBatchIngestRequest
@@ -12822,17 +13118,6 @@ export interface components {
             /** Variables */
             readonly variables: Record<string, unknown>;
         };
-        /**
-         * ReuploadAssetRequest
-         * @description Request to re-upload an existing asset to a provider.
-         */
-        readonly ReuploadAssetRequest: {
-            /**
-             * Provider Id
-             * @description Target provider ID, e.g., pixverse
-             */
-            readonly provider_id: string;
-        };
         /** SceneEdge */
         readonly SceneEdge: {
             /** Conditions */
@@ -13448,6 +13733,24 @@ export interface components {
             };
         };
         /**
+         * SHAStatsResponse
+         * @description SHA hash coverage statistics
+         */
+        readonly SHAStatsResponse: {
+            /** Percentage */
+            readonly percentage: number;
+            /** Total Assets */
+            readonly total_assets: number;
+            /** With Sha */
+            readonly with_sha: number;
+            /** Without Sha */
+            readonly without_sha: number;
+            /** Without Sha No Local */
+            readonly without_sha_no_local: number;
+            /** Without Sha With Local */
+            readonly without_sha_with_local: number;
+        };
+        /**
          * SimpleImageToVideoRequest
          * @description Minimal request for quick image-to-video generations.
          *
@@ -13502,6 +13805,22 @@ export interface components {
              * @description Human-readable size
              */
             readonly total_size_human: string;
+        };
+        /**
+         * StorageSyncStatsResponse
+         * @description Storage sync statistics for user's assets
+         */
+        readonly StorageSyncStatsResponse: {
+            /** New Storage */
+            readonly new_storage: number;
+            /** No Local */
+            readonly no_local: number;
+            /** Old Storage */
+            readonly old_storage: number;
+            /** Percentage */
+            readonly percentage: number;
+            /** Total Assets */
+            readonly total_assets: number;
         };
         /**
          * StyleRulesSchema
@@ -14892,9 +15211,47 @@ export interface operations {
             };
         };
     };
+    readonly get_invited_accounts_api_v1_accounts__account_id__invited_accounts_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly offset?: number;
+                readonly page_size?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly account_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitedAccountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_pixverse_status_api_v1_accounts__account_id__pixverse_status_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly force?: boolean;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -14982,6 +15339,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["RefreshJWTResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_account_stats_api_v1_accounts__account_id__stats_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly force?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly account_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AccountStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16898,43 +17290,6 @@ export interface operations {
             };
         };
     };
-    readonly reupload_asset_to_provider_api_v1_assets__asset_id__reupload_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ReuploadAssetRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["UploadAssetResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     readonly sync_asset_api_v1_assets__asset_id__sync_post: {
         readonly parameters: {
             readonly query?: never;
@@ -16992,6 +17347,74 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly backfill_sha_hashes_api_v1_assets_backfill_sha_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Max assets to process */
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BackfillSHAResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly bulk_sync_storage_api_v1_assets_bulk_sync_storage_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Max assets to sync */
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BulkSyncResponse"];
                 };
             };
             /** @description Validation Error */
@@ -17237,6 +17660,68 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["FilterMetadataResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_sha_stats_api_v1_assets_sha_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SHAStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_storage_sync_stats_api_v1_assets_storage_sync_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StorageSyncStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22932,6 +23417,176 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+        };
+    };
+    readonly list_llm_instances_api_v1_llm_instances_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly include_disabled?: boolean;
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_llm_instance_api_v1_llm_instances_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["LlmInstanceCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_llm_instance_api_v1_llm_instances__instance_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_llm_instance_api_v1_llm_instances__instance_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_llm_instance_api_v1_llm_instances__instance_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["LlmInstanceUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
