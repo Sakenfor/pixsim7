@@ -282,9 +282,11 @@ export function PromptPanel(props: QuickGenPanelProps) {
 
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance
+  // Pass "generation" as scopeId to match the scope toggle key
   const { settings: resolvedPromptSettings } = useResolveComponentSettings<typeof QUICKGEN_PROMPT_DEFAULTS>(
     QUICKGEN_PROMPT_COMPONENT_ID,
     instanceId,
+    "generation",
   );
 
   const {
@@ -373,9 +375,11 @@ export function SettingsPanel(props: QuickGenPanelProps) {
 
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance
+  // Pass "generation" as scopeId to match the scope toggle key
   const { settings: resolvedSettings } = useResolveComponentSettings<typeof QUICKGEN_SETTINGS_DEFAULTS>(
     QUICKGEN_SETTINGS_COMPONENT_ID,
     instanceId,
+    "generation",
   );
 
   const renderSettingsPanel = ctx?.renderSettingsPanel;
