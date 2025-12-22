@@ -10,6 +10,7 @@ import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { scopeProviderRegistry, type ScopeMatchContext } from '@features/panels';
 import { DockviewIdProvider } from '@lib/dockview/contextMenu';
+import { ContextHubHost } from '@features/contextHub';
 
 // Note: Control Center modules are now auto-registered when their parent modules
 // register with the global module registry (see modules/index.ts)
@@ -106,13 +107,16 @@ export function ControlCenterDock() {
     if (!module) return null;
 
     const Component = module.component;
+    // Consistent instanceId for the entire module (used by ContextHubHost and scope providers)
+    const moduleInstanceId = `cc:${module.id}`;
 
-    // Wrap with DockviewIdProvider so child components get 'cc' as their dockviewId
-    // This ensures instanceId = 'cc:panelId' for settings resolution
+    // Wrap with ContextHubHost for consumption tracking, DockviewIdProvider for nested panels
     const wrappedComponent = (
-      <DockviewIdProvider dockviewId="cc">
-        <Component isActive={true} onSwitchModule={setActiveModule} />
-      </DockviewIdProvider>
+      <ContextHubHost hostId={moduleInstanceId}>
+        <DockviewIdProvider dockviewId="cc">
+          <Component isActive={true} onSwitchModule={setActiveModule} />
+        </DockviewIdProvider>
+      </ContextHubHost>
     );
 
     // Wrap module with scope providers if it declares scopes
