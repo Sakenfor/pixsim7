@@ -30,7 +30,7 @@ import {
   type AssetInputContext,
   type GenerateActionContext,
 } from '@features/contextHub';
-import { useResolveComponentSettings, getInstanceId } from '@features/panels';
+import { useResolveComponentSettings, getInstanceId, useScopeInstanceId } from '@features/panels';
 import { useDockviewId } from '@lib/dockview/contextMenu';
 
 // Panel IDs
@@ -276,9 +276,11 @@ export function AssetPanel(props: QuickGenPanelProps) {
 export function PromptPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const controller = useQuickGenerateController();
+  // Use scope instanceId if available, else fall back to dockview-computed instanceId
+  const scopeInstanceId = useScopeInstanceId();
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
-  const instanceId = getInstanceId(dockviewId, panelInstanceId);
+  const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
 
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance
@@ -369,9 +371,11 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const controller = useQuickGenerateController();
   const { value: promptBox } = useCapability<PromptBoxContext>(CAP_PROMPT_BOX);
+  // Use scope instanceId if available, else fall back to dockview-computed instanceId
+  const scopeInstanceId = useScopeInstanceId();
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-settings';
-  const instanceId = getInstanceId(dockviewId, panelInstanceId);
+  const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
 
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance

@@ -71,6 +71,8 @@ export {
 export {
   scopeProviderRegistry,
   createScopeMatcher,
+  ScopeInstanceProvider,
+  useScopeInstanceId,
   type ScopeProviderDefinition,
   type ScopeMatchContext,
 } from "./scopeProviderRegistry";
