@@ -20,32 +20,41 @@ except Exception:  # pragma: no cover
     pixverse_calculate_image_cost = None  # type: ignore
     _SDK_IMAGE_CREDITS = None  # type: ignore
 
+# Quality normalization: UI may use "2k"/"4k" but we store as "1440p"/"2160p"
+_QUALITY_ALIASES = {
+    "2k": "1440p",
+    "4k": "2160p",
+}
+
 # Fallback credit table (only used if SDK not available)
+# Uses normalized resolution format (1440p, 2160p) for consistency
 _FALLBACK_IMAGE_CREDITS: dict[str, dict[str, int]] = {
     "qwen-image": {"720p": 5, "1080p": 10},
-    "gemini-3.0": {"1080p": 50, "2k": 50, "4k": 90},
+    "gemini-3.0": {"1080p": 50, "1440p": 50, "2160p": 90},
     "gemini-2.5-flash": {"1080p": 15},
-    "seedream-4.0": {"1080p": 10, "2k": 10, "4k": 10},
-    "seedream-4.5": {"2k": 10, "4k": 10},
+    "seedream-4.0": {"1080p": 10, "1440p": 10, "2160p": 10},
+    "seedream-4.5": {"1440p": 10, "2160p": 10},
 }
 
 
 def get_image_credit_change(model: str, quality: str) -> Optional[int]:
     """Return static credit delta for Pixverse image generation."""
+    # Normalize quality (e.g., "2k" -> "1440p")
+    quality_normalized = _QUALITY_ALIASES.get(quality.lower(), quality).lower()
+
     # Try SDK first
     if pixverse_calculate_image_cost is not None:
-        result = pixverse_calculate_image_cost(model, quality)
+        result = pixverse_calculate_image_cost(model, quality_normalized)
         if result is not None:
             return result
 
     # Fallback to local table
     credits_table = _SDK_IMAGE_CREDITS if _SDK_IMAGE_CREDITS else _FALLBACK_IMAGE_CREDITS
     model_lower = model.lower()
-    quality_lower = quality.lower()
     for m, qualities in credits_table.items():
         if m.lower() == model_lower:
             for q, credits in qualities.items():
-                if q.lower() == quality_lower:
+                if q.lower() == quality_normalized:
                     return credits
     return None
 

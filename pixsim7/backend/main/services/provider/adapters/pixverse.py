@@ -112,6 +112,23 @@ def _decode_pixverse_url(value: Any) -> Any:
         return unquote(value)
     return value
 
+
+# Quality normalization: Pixverse API expects resolution format (e.g., "1440p")
+# but the SDK/UI may use marketing format (e.g., "2k", "4k")
+_QUALITY_NORMALIZATION = {
+    "2k": "1440p",
+    "4k": "2160p",
+}
+
+
+def _normalize_quality(quality: str) -> str:
+    """Normalize quality value to Pixverse API format.
+
+    Converts marketing formats like "2k"/"4k" to resolution formats "1440p"/"2160p".
+    Passes through already-correct formats unchanged.
+    """
+    return _QUALITY_NORMALIZATION.get(quality.lower(), quality)
+
 class PixverseProvider(
     PixverseSessionMixin,
     PixverseAuthMixin,
@@ -223,8 +240,9 @@ class PixverseProvider(
             mapped["model"] = "v5" if is_video_op else "qwen-image"
 
         # === Quality (both, but different defaults) ===
+        # Normalize quality values (e.g., "2k" -> "1440p", "4k" -> "2160p")
         if "quality" in params and params["quality"] is not None:
-            mapped["quality"] = params["quality"]
+            mapped["quality"] = _normalize_quality(params["quality"])
         else:
             mapped["quality"] = "360p" if is_video_op else "720p"
 
@@ -537,6 +555,7 @@ class PixverseProvider(
             for model, qs in sdk_qualities.items():
                 image_quality_per_model[model] = [q.lower() for q in qs]
         # Fallback if SDK not available
+        # Note: We show "2k"/"4k" in UI but normalize to "1440p"/"2160p" in map_parameters
         if not image_quality_per_model:
             image_quality_per_model = {
                 "qwen-image": ["720p", "1080p"],
