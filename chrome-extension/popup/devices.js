@@ -47,8 +47,8 @@ async function populateGlobalDeviceSelect() {
   const selectElement = document.getElementById('deviceSelect');
   if (!selectElement) return;
 
-  // Clear and add no device option
-  selectElement.innerHTML = '<option value="">No Device</option>';
+  // Clear and add auto-select option
+  selectElement.innerHTML = '<option value="">🎯 Auto-select Device (Recommended)</option>';
 
   // Add available devices
   availableDevices.forEach(device => {

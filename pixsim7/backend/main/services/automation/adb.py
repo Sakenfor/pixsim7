@@ -182,3 +182,67 @@ class ADB:
             results.append({"error": str(e)})
 
         return results
+
+    async def get_prop(self, serial: str, property_name: str) -> str:
+        """Get a device property via getprop."""
+        code, out, _ = await self.shell(serial, "getprop", property_name)
+        return out.strip()
+
+    async def get_device_info(self, serial: str) -> dict:
+        """
+        Get device information by querying multiple properties.
+        Returns dict with manufacturer, model, brand, product, and detected device name.
+        """
+        props = {}
+        try:
+            # Query multiple properties to identify the device
+            prop_names = [
+                "ro.product.manufacturer",
+                "ro.product.model",
+                "ro.product.brand",
+                "ro.product.name",
+                "ro.build.product",
+                "ro.product.device",
+            ]
+
+            for prop_name in prop_names:
+                value = await self.get_prop(serial, prop_name)
+                props[prop_name] = value
+
+            # Detect emulator type from properties
+            manufacturer = props.get("ro.product.manufacturer", "").lower()
+            model = props.get("ro.product.model", "").lower()
+            brand = props.get("ro.product.brand", "").lower()
+            product = props.get("ro.product.name", "").lower()
+
+            # Determine friendly device name
+            device_name = None
+            device_type = "adb"
+
+            if "mumu" in manufacturer or "mumu" in model or "mumu" in product:
+                device_name = "MumuPlayer"
+                device_type = "mumu"
+            elif "bluestacks" in manufacturer or "bluestacks" in model or "bluestacks" in product:
+                device_name = "BlueStacks"
+                device_type = "bluestacks"
+            elif "nox" in manufacturer or "nox" in model or "nox" in product:
+                device_name = "NoxPlayer"
+                device_type = "nox"
+            elif "ldplayer" in manufacturer or "ldplayer" in model or "ldplayer" in product:
+                device_name = "LDPlayer"
+                device_type = "ld"
+            elif "genymotion" in manufacturer or "genymotion" in model:
+                device_name = "Genymotion"
+                device_type = "genymotion"
+            elif model:
+                device_name = model.upper()
+            elif product:
+                device_name = product
+
+            props["detected_name"] = device_name
+            props["detected_type"] = device_type
+
+        except Exception as e:
+            props["error"] = str(e)
+
+        return props

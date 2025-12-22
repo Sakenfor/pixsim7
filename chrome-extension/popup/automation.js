@@ -107,7 +107,8 @@ async function executePresetForAccount(account) {
       deviceId: deviceId || undefined,
     });
     if (res.success) {
-      showLastImport(`Queued preset '${res.data.preset_name}' for ${account.email}${deviceId ? ' on device' : ''}`);
+      const deviceMsg = deviceId ? ' (specific device)' : ' (auto-select device)';
+      showLastImport(`Queued preset '${res.data.preset_name}' for ${account.email}${deviceMsg}`);
       showToast('success', `Preset queued for ${account.email}`);
     } else {
       showError(res.error || 'Failed to queue preset');
@@ -136,7 +137,8 @@ async function executeLoopForAccount(account) {
       deviceId: deviceId || undefined,
     });
     if (res.success) {
-      showLastImport(`Queued loop preset '${res.data.preset_name}' for ${account.email}${deviceId ? ' on device' : ''}`);
+      const deviceMsg = deviceId ? ' (specific device)' : ' (auto-select device)';
+      showLastImport(`Queued loop preset '${res.data.preset_name}' for ${account.email}${deviceMsg}`);
       showToast('success', `Loop queued for ${account.email}`);
     } else {
       showError(res.error || 'Failed to queue loop execution');

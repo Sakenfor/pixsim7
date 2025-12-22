@@ -10,6 +10,10 @@ from sqlalchemy import String, Text
 
 class DeviceType(str, Enum):
     BLUESTACKS = "bluestacks"
+    MUMU = "mumu"
+    NOX = "nox"
+    LDPLAYER = "ld"
+    GENYMOTION = "genymotion"
     ADB = "adb"
 
 

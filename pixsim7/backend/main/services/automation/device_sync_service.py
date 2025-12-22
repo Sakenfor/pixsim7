@@ -84,28 +84,61 @@ class DeviceSyncService:
                 status = DeviceStatus.ERROR
                 error_msg = f"ADB state: {state}"
 
-            # Heuristic: detect emulator-like ids and set fields
-            dev_type = DeviceType.ADB
-            instance_name = None
+            # Extract port from serial if present
             instance_port = None
             if serial.startswith("emulator-"):
-                dev_type = DeviceType.BLUESTACKS
                 try:
                     instance_port = int(serial.split("-")[-1])
                 except Exception:
-                    instance_port = None
+                    pass
             elif ":" in serial:
                 # 127.0.0.1:5555 etc.
-                dev_type = DeviceType.BLUESTACKS
                 try:
                     instance_port = int(serial.split(":")[-1])
                 except Exception:
-                    instance_port = None
+                    pass
+
+            # Query device properties to detect emulator type and name
+            dev_type = DeviceType.ADB
+            instance_name = None
+            device_name = serial  # Default to serial
+
+            if status == DeviceStatus.ONLINE:
+                try:
+                    device_info = await self.adb.get_device_info(serial)
+                    detected_type = device_info.get("detected_type", "adb")
+                    detected_name = device_info.get("detected_name")
+
+                    # Map detected type to DeviceType enum
+                    type_mapping = {
+                        "bluestacks": DeviceType.BLUESTACKS,
+                        "mumu": DeviceType.MUMU,
+                        "nox": DeviceType.NOX,
+                        "ld": DeviceType.LDPLAYER,
+                        "genymotion": DeviceType.GENYMOTION,
+                        "adb": DeviceType.ADB,
+                    }
+                    dev_type = type_mapping.get(detected_type, DeviceType.ADB)
+
+                    # Use detected name if available
+                    if detected_name:
+                        device_name = detected_name
+                        instance_name = detected_name
+
+                    # If we have a port, append it to make name unique
+                    if instance_port and detected_name:
+                        device_name = f"{detected_name}:{instance_port}"
+
+                except Exception as e:
+                    # If device info query fails, fall back to heuristics
+                    if serial.startswith("emulator-") or ":" in serial:
+                        dev_type = DeviceType.BLUESTACKS
+                        device_name = f"Emulator:{instance_port}" if instance_port else serial
 
             if not existing:
                 # Create new
                 dev = AndroidDevice(
-                    name=serial,
+                    name=device_name,
                     device_type=dev_type,
                     connection_method=ConnectionMethod.ADB,
                     adb_id=serial,
@@ -126,6 +159,11 @@ class DeviceSyncService:
                 existing.error_message = error_msg
                 if instance_port is not None:
                     existing.instance_port = instance_port
+                if instance_name is not None:
+                    existing.instance_name = instance_name
+                # Update name if it was previously just the serial
+                if existing.name == existing.adb_id and device_name != serial:
+                    existing.name = device_name
                 existing.last_seen = now
                 existing.updated_at = now
                 updated += 1

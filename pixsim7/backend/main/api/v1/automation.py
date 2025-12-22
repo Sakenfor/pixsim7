@@ -476,6 +476,7 @@ class ExecutePresetRequest(BaseModel):
     """Request to execute a single preset for a specific account"""
     preset_id: int
     account_id: int
+    device_id: Optional[int] = None
     priority: int = 1
 
 
@@ -488,6 +489,10 @@ async def execute_preset_for_account(
     Execute a single preset for a specific account.
 
     Creates an automation execution and queues it for processing.
+
+    Device selection:
+    - If device_id is specified, uses that device (if available)
+    - If device_id is None/omitted, automatically selects best available device using LRU algorithm
     """
     # Validate preset exists
     preset = await db.get(AppActionPreset, request.preset_id)
@@ -499,12 +504,19 @@ async def execute_preset_for_account(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    # Validate device if specified
+    if request.device_id:
+        device = await db.get(AndroidDevice, request.device_id)
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+
     # Create execution
     total_actions = len(preset.actions) if preset.actions else 0
     execution = AutomationExecution(
         user_id=account.user_id,
         preset_id=request.preset_id,
         account_id=request.account_id,
+        device_id=request.device_id,  # None = auto-select in worker
         status=AutomationStatus.PENDING,
         priority=request.priority,
         total_actions=total_actions,
