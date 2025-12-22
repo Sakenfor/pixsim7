@@ -176,18 +176,6 @@ export function ControlCenterDock() {
 
         {/* Compact Toolbar - just for settings, not module selection */}
         <DockToolbar
-          modules={panels.map(p => ({
-            id: p.id,
-            label: p.title,
-            icon: p.icon ?? '📦',
-            component: p.component,
-            category: p.category,
-            order: p.order,
-            tags: p.tags,
-            description: p.description,
-          }))}
-          activeModule={null}
-          onModuleSelect={() => {}}
           dockPosition={dockPosition}
           onDockPositionChange={setDockPosition}
           pinned={pinned}
@@ -262,3 +250,4 @@ export function ControlCenterDock() {
     </div>
   );
 }
+

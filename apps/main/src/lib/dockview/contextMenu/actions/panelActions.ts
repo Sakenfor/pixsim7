@@ -88,6 +88,65 @@ export const floatPanelAction: MenuAction = {
   },
 };
 
+function getOpenPanels(ctx: MenuActionContext) {
+  if (!ctx.api) return [];
+  const rawPanels = Array.isArray(ctx.api.panels)
+    ? ctx.api.panels
+    : typeof (ctx.api as any).panels?.values === 'function'
+      ? Array.from((ctx.api as any).panels.values())
+      : [];
+
+  return rawPanels.map((panel: any) => {
+    const title =
+      panel?.api?.title ??
+      panel?.title ??
+      panel?.params?.title ??
+      panel?.id;
+    return {
+      id: panel?.id,
+      title: title ?? panel?.id,
+      panel,
+    };
+  }).filter((entry) => typeof entry.id === 'string');
+}
+
+/**
+ * Focus an existing panel in this dockview
+ */
+export const focusPanelAction: MenuAction = {
+  id: 'panel:focus',
+  label: 'Focus Panel',
+  icon: 'target',
+  category: 'panel',
+  availableIn: ['background', 'tab', 'panel-content'],
+  visible: (ctx) => !!ctx.api,
+  children: (ctx) => {
+    const openPanels = getOpenPanels(ctx).sort((a, b) => {
+      return String(a.title).localeCompare(String(b.title));
+    });
+
+    if (openPanels.length === 0) {
+      return [{
+        id: 'panel:focus:empty',
+        label: 'No panels open',
+        availableIn: ['background', 'tab', 'panel-content'],
+        disabled: () => true,
+        execute: () => {},
+      }];
+    }
+
+    return openPanels.map(({ id, title, panel }) => ({
+      id: `panel:focus:${id}`,
+      label: String(title),
+      availableIn: ['background', 'tab', 'panel-content'] as const,
+      execute: () => {
+        panel?.api?.setActive?.();
+      },
+    }));
+  },
+  execute: () => {},
+};
+
 function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
   const dataPanelId = ctx.data?.panelId;
   if (typeof dataPanelId === 'string') return dataPanelId;
@@ -216,6 +275,7 @@ export const panelActions: MenuAction[] = [
   closePanelAction,
   maximizePanelAction,
   floatPanelAction,
+  focusPanelAction,
   closeOtherPanelsAction,
   closeAllInGroupAction,
 ];

@@ -6,25 +6,12 @@
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
-import type { ComponentType } from 'react';
 import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import type { ControlModule, DockPosition } from '@features/controlCenter/stores/controlCenterStore';
+import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
 import { NotificationTicker } from './NotificationTicker';
-
-/** Module definition for the toolbar */
-export interface CCToolbarModule {
-  id: string;
-  label: string;
-  icon: string;
-  component: ComponentType<any>;
-  category?: string;
-  order?: number;
-  tags?: string[];
-  description?: string;
-}
 
 /** Quick navigation item configuration */
 export interface QuickNavItem {
@@ -43,12 +30,6 @@ export const DEFAULT_QUICK_NAV: QuickNavItem[] = [
 ];
 
 interface DockToolbarProps {
-  /** Available modules to display as tabs */
-  modules: CCToolbarModule[];
-  /** Currently active module */
-  activeModule: ControlModule;
-  /** Callback when module is selected */
-  onModuleSelect: (moduleId: ControlModule) => void;
   /** Current dock position */
   dockPosition: DockPosition;
   /** Callback when dock position changes */
@@ -68,9 +49,6 @@ interface DockToolbarProps {
 }
 
 export function DockToolbar({
-  modules,
-  activeModule,
-  onModuleSelect,
   dockPosition,
   onDockPositionChange,
   pinned,
@@ -217,62 +195,6 @@ export function DockToolbar({
           ))}
         </div>
       )}
-
-      {/* Module tabs */}
-      <div
-        className="flex gap-1 flex-wrap"
-        role="tablist"
-        aria-label="Control center modules"
-        onKeyDown={(e) => {
-          // Keyboard navigation between tabs
-          const tabs = modules.map((m) => m.id);
-          const currentIndex = tabs.indexOf(activeModule);
-
-          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-            e.preventDefault();
-            const nextIndex = (currentIndex + 1) % tabs.length;
-            onModuleSelect(tabs[nextIndex] as ControlModule);
-          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-            e.preventDefault();
-            const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-            onModuleSelect(tabs[prevIndex] as ControlModule);
-          } else if (e.key === 'Home') {
-            e.preventDefault();
-            onModuleSelect(tabs[0] as ControlModule);
-          } else if (e.key === 'End') {
-            e.preventDefault();
-            onModuleSelect(tabs[tabs.length - 1] as ControlModule);
-          }
-        }}
-      >
-        {modules.map((mod, index) => {
-          const isActive = activeModule === mod.id;
-          return (
-            <button
-              key={mod.id}
-              role="tab"
-              aria-selected={isActive}
-              aria-controls={`module-${mod.id}`}
-              tabIndex={isActive ? 0 : -1}
-              onClick={() => onModuleSelect(mod.id as ControlModule)}
-              className={clsx(
-                'text-xs px-2 py-1 rounded-lg transition-all duration-200 whitespace-nowrap',
-                'focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1',
-                'transform hover:scale-105 active:scale-95',
-                isActive
-                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-purple-500/30'
-                  : 'bg-neutral-200/50 dark:bg-neutral-700/50 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 hover:shadow-md'
-              )}
-              title={mod.description}
-            >
-              <span className="mr-1">{mod.icon}</span>
-              {mod.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="w-px h-4 bg-gradient-to-b from-transparent via-neutral-300 to-transparent dark:via-neutral-600" />
 
       {/* Dock Position Selector */}
       <ExpandableButtonGroup
