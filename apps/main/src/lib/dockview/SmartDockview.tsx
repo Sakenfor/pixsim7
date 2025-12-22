@@ -199,6 +199,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const [scopeRegistryVersion, setScopeRegistryVersion] = useState(0);
   const lastGlobalPanelIdsRef = useRef<string>('');
   const lastScopeIdsRef = useRef<string>('');
+  // Use refs for props used in subscription effects to avoid effect re-runs
+  const globalPanelIdsRef = useRef(globalPanelIds);
+  globalPanelIdsRef.current = globalPanelIds;
+  const includeGlobalPanelsRef = useRef(includeGlobalPanels);
+  includeGlobalPanelsRef.current = includeGlobalPanels;
   const panelRegistryOverridesMap = usePanelRegistryOverridesStore((state) => state.overrides);
   const dockviewHostId = useMemo(
     () =>
@@ -231,16 +236,17 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   }, [context, isReady]);
 
   // Subscribe to global panel registry - only update when panels we care about change
+  // Uses refs to avoid effect re-running when props change
   useEffect(() => {
     const checkAndUpdate = () => {
-      // Build list of panel IDs we care about
+      // Build list of panel IDs we care about (read from refs for latest values)
       let relevantIds: string[] = [];
 
-      if (globalPanelIds.length > 0) {
-        relevantIds = [...globalPanelIds];
+      if (globalPanelIdsRef.current.length > 0) {
+        relevantIds = [...globalPanelIdsRef.current];
       }
 
-      if (includeGlobalPanels) {
+      if (includeGlobalPanelsRef.current) {
         const allPanels = panelRegistry.getPublicPanels
           ? panelRegistry.getPublicPanels()
           : panelRegistry.getAll();
@@ -258,7 +264,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     checkAndUpdate();
 
     return panelRegistry.subscribe(checkAndUpdate);
-  }, [globalPanelIds, includeGlobalPanels]);
+  }, []); // Empty deps - subscription is stable, uses refs for latest prop values
 
   // Subscribe to scope registry - only update when scope definitions actually change
   useEffect(() => {
