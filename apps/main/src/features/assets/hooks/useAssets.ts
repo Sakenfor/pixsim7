@@ -123,6 +123,11 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     });
   }, []);
 
+  // Remove a single asset by ID (used when asset is deleted)
+  const removeAsset = useCallback((assetId: number) => {
+    setItems((prev) => prev.filter((a) => a.id !== assetId));
+  }, []);
+
   // Subscribe to new asset events (from generation completions)
   useEffect(() => {
     const unsubscribe = assetEvents.subscribe((asset) => {
@@ -159,5 +164,5 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     }
   }, [items.length, loading, loadMore]);
 
-  return { items, loadMore, loading, error, hasMore, reset };
+  return { items, loadMore, loading, error, hasMore, reset, removeAsset };
 }

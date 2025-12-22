@@ -57,7 +57,7 @@ export function useAssetsController() {
   });
 
   // Data loading
-  const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
+  const { items, loadMore, loading, error, hasMore, reset, removeAsset } = useAssets({ filters });
 
   // Viewer state
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
@@ -120,24 +120,25 @@ export function useAssetsController() {
       if (viewerAsset?.id === asset.id) {
         await closeViewer();
       }
-      reset();
+      // Remove asset from list without resetting scroll position
+      removeAsset(asset.id);
     } catch (err) {
       console.error('Failed to delete asset:', err);
       alert(extractErrorMessage(err, 'Failed to delete asset'));
     }
-  }, [viewerAsset, reset, isSelected, toggleAssetSelection, closeViewer]);
+  }, [viewerAsset, removeAsset, isSelected, toggleAssetSelection, closeViewer]);
 
   // Handle asset archiving
   const handleArchiveAsset = useCallback(async (asset: AssetResponse) => {
     try {
       await archiveAsset(asset.id, true);
-      // Refresh the list to remove archived asset from view
-      reset();
+      // Remove archived asset from view without resetting scroll position
+      removeAsset(asset.id);
     } catch (err) {
       console.error('Failed to archive asset:', err);
       alert(extractErrorMessage(err, 'Failed to archive asset'));
     }
-  }, [reset]);
+  }, [removeAsset]);
 
   // Handle re-upload for local or multi-provider assets (provider chosen by caller)
   const reuploadAsset = useCallback(
