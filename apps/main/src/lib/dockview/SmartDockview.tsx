@@ -337,6 +337,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const contextRef = useRef<TContext | undefined>(context);
   const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
   const [scopeRegistryVersion, setScopeRegistryVersion] = useState(0);
+  const lastScopeIdsRef = useRef<string>('');
   const dockviewHostId = useMemo(
     () =>
       panelManagerId
