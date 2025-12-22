@@ -5,7 +5,7 @@
  * Used by CustomTabComponent to know which dockview triggered the context menu.
  */
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { DockviewApi } from 'dockview-core';
 import type { PanelRegistryLike } from './types';
 
@@ -30,8 +30,14 @@ export function DockviewIdProvider({
   panelRegistry,
   dockviewApi,
 }: DockviewIdProviderProps) {
+  // Memoize context value to prevent unnecessary re-renders of consumers
+  const value = useMemo(
+    () => ({ dockviewId, panelRegistry, dockviewApi: dockviewApi ?? undefined }),
+    [dockviewId, panelRegistry, dockviewApi]
+  );
+
   return (
-    <DockviewIdContext.Provider value={{ dockviewId, panelRegistry, dockviewApi: dockviewApi ?? undefined }}>
+    <DockviewIdContext.Provider value={value}>
       {children}
     </DockviewIdContext.Provider>
   );

@@ -11,7 +11,7 @@
 
 import { useMemo, useCallback, forwardRef, useImperativeHandle, useState } from 'react';
 import type { DockviewApi } from 'dockview-core';
-import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
+import { SmartDockview } from '@lib/dockview';
 import type { QuickGenPanelContext } from './QuickGeneratePanels';
 
 export interface QuickGenerateDockviewProps {
@@ -34,7 +34,9 @@ export interface QuickGenerateDockviewRef {
   getApi: () => DockviewApi | null;
 }
 
-const emptyQuickGenRegistry = createLocalPanelRegistry<string>();
+// QuickGen panels to use (all have availableIn: ['control-center'])
+const QUICKGEN_PANELS_WITH_ASSET = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
+const QUICKGEN_PANELS_NO_ASSET = ['quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 
 /**
  * Create the default 4-panel layout (with asset panel)
@@ -120,8 +122,8 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
     // Use different storage keys for different layouts to avoid conflicts
     const storageKey = useMemo(
       () => (showAssetPanel
-        ? 'quickGenerate-dockview-layout:v2:with-asset'
-        : 'quickGenerate-dockview-layout:v2:no-asset'),
+        ? 'dockview:quickgen:v3:with-asset'
+        : 'dockview:quickgen:v3:no-asset'),
       [showAssetPanel]
     );
 
@@ -163,10 +165,16 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
       getApi: () => null, // API will be available through onReady callback
     }));
 
+    // Select panels based on showAssetPanel
+    const panelIds = useMemo(
+      () => [...(showAssetPanel ? QUICKGEN_PANELS_WITH_ASSET : QUICKGEN_PANELS_NO_ASSET)],
+      [showAssetPanel]
+    );
+
     return (
       <SmartDockview
         key={resetKey}
-        registry={emptyQuickGenRegistry}
+        panels={panelIds}
         storageKey={storageKey}
         context={context}
         defaultLayout={defaultLayout}
@@ -175,13 +183,6 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
         onReady={handleReady}
         panelManagerId={panelManagerId}
         enableContextMenu
-        includeGlobalPanels
-        panelRegistryOverrides={{
-          'quickgen-asset': { title: 'Asset' },
-          'quickgen-prompt': { title: 'Prompt' },
-          'quickgen-settings': { title: 'Settings' },
-          'quickgen-blocks': { title: 'Blocks' },
-        }}
       />
     );
   }

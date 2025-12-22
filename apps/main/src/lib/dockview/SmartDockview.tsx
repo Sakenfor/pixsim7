@@ -8,26 +8,42 @@
  * - Context menu support (requires global ContextMenuProvider)
  * - Minimal chrome styling
  *
- * Supports two usage patterns:
+ * Simplified API (recommended):
  *
- * 1. Registry Mode (for feature-specific dockviews):
+ * 1. Scope-based (panels filtered by `availableIn` field):
  * ```tsx
  * <SmartDockview
- *   registry={myRegistry}
- *   defaultLayout={(api) => { ... }}
- *   storageKey="my-feature-layout"
- *   panelManagerId="feature-dockview"
+ *   scope="control-center"
+ *   storageKey="dockview:control-center:v1"
+ *   panelManagerId="controlCenter"
  * />
  * ```
  *
- * 2. Components Mode (for main workspace):
+ * 2. Explicit panel list:
  * ```tsx
  * <SmartDockview
- *   components={{ panel: MyPanel }}
- *   onReady={handleReady}
- *   panelManagerId="workspace"
+ *   panels={['quickGenerate', 'info', 'media-preview']}
+ *   storageKey="dockview:asset-viewer:v1"
+ *   panelManagerId="assetViewer"
  * />
  * ```
+ *
+ * 3. With custom layout:
+ * ```tsx
+ * <SmartDockview
+ *   scope="workspace"
+ *   defaultLayout={(api, panelDefs) => {
+ *     // Custom layout logic
+ *   }}
+ *   storageKey="dockview:workspace:v1"
+ * />
+ * ```
+ *
+ * Legacy API (for backward compatibility):
+ * - registry: LocalPanelRegistry (deprecated - use scope/panels instead)
+ * - globalPanelIds: string[] (deprecated - use panels instead)
+ * - includeGlobalPanels: boolean (deprecated - use scope instead)
+ * - panelRegistryOverrides: (deprecated - set at panel registration time)
  *
  * Context Menu:
  * - Requires ContextMenuProvider at app root
@@ -50,7 +66,9 @@ import {
   scopeProviderRegistry,
   usePanelInstanceSettingsStore,
   usePanelRegistryOverridesStore,
+  getPanelsForScope,
   type ScopeMatchContext,
+  type PanelDefinition,
 } from '@features/panels';
 import { ContextHubHost, useContextHubState } from '@features/contextHub';
 import {
@@ -62,7 +80,7 @@ import {
   contextDataRegistry,
 } from './contextMenu';
 
-/** Base props shared by both modes */
+/** Base props shared by all modes */
 interface SmartDockviewBaseProps<TContext = any> {
   /** Storage key for layout persistence (omit or set undefined to disable localStorage) */
   storageKey?: string;
@@ -78,16 +96,10 @@ interface SmartDockviewBaseProps<TContext = any> {
   onReady?: (api: DockviewReadyEvent['api']) => void;
   /** ID for this dockview - used for panel manager and context menu cross-dockview communication */
   panelManagerId?: string;
-  /** Optional: IDs of global panels to include from global registry */
-  globalPanelIds?: string[];
-  /** Optional: Include all global panels in add-panel menu and components */
-  includeGlobalPanels?: boolean;
   /** Optional: Enable context menu support (requires ContextMenuProvider at app root) */
   enableContextMenu?: boolean;
   /** Optional: Enable panel-content context menus (default: show when context menu is enabled) */
   enablePanelContentContextMenu?: boolean;
-  /** Optional: Override panel titles/icons/categories for context menu */
-  panelRegistryOverrides?: Record<string, { title?: string; icon?: string; category?: string }>;
   /** Optional: Custom watermark component */
   watermarkComponent?: React.ComponentType;
   /** Optional: Custom tab components */
@@ -105,6 +117,40 @@ interface SmartDockviewBaseProps<TContext = any> {
    * @example deprecatedPanels={['info', 'oldPanel']}
    */
   deprecatedPanels?: string[];
+
+  // ============ NEW SIMPLIFIED API ============
+
+  /**
+   * Dockview scope ID - filters panels by their `availableIn` field.
+   * Panels with this scope in their `availableIn` array will be available.
+   *
+   * @example scope="workspace" - Shows all panels with availableIn: ["workspace"]
+   * @example scope="control-center" - Shows all panels with availableIn: ["control-center"]
+   */
+  scope?: string;
+
+  /**
+   * Explicit list of panel IDs to include. Takes precedence over `scope`.
+   * Use when you need fine-grained control over which panels appear.
+   *
+   * @example panels={['quickGenerate', 'info', 'media-preview']}
+   */
+  panels?: string[];
+
+  /**
+   * Panel IDs to exclude (used with `scope`).
+   * @example scope="workspace" excludePanels={['debug-panel']}
+   */
+  excludePanels?: string[];
+
+  // ============ LEGACY API (for backward compatibility) ============
+
+  /** @deprecated Use `panels` prop instead */
+  globalPanelIds?: string[];
+  /** @deprecated Use `scope` prop instead */
+  includeGlobalPanels?: boolean;
+  /** @deprecated Panel overrides should be set at registration time */
+  panelRegistryOverrides?: Record<string, { title?: string; icon?: string; category?: string }>;
 }
 
 /** Registry mode props - uses LocalPanelRegistry */
@@ -165,6 +211,30 @@ function resolvePanelInstanceId(dockviewId: string | undefined, panelId: string)
  * Unified dockview wrapper with smart features.
  * When enableContextMenu is true, requires ContextMenuProvider at app root.
  */
+/**
+ * Default fallback layout - stacks all panels as tabs in a single group
+ */
+function createFallbackLayout(api: DockviewApi, panelDefs: PanelDefinition[]) {
+  if (panelDefs.length === 0) return;
+
+  // Add first panel
+  api.addPanel({
+    id: panelDefs[0].id,
+    component: panelDefs[0].id,
+    title: panelDefs[0].title,
+  });
+
+  // Add remaining panels as tabs in the same group
+  for (let i = 1; i < panelDefs.length; i++) {
+    api.addPanel({
+      id: panelDefs[i].id,
+      component: panelDefs[i].id,
+      title: panelDefs[i].title,
+      position: { referencePanel: panelDefs[0].id },
+    });
+  }
+}
+
 export function SmartDockview<TContext = any, TPanelId extends string = string>(
   props: SmartDockviewProps<TContext, TPanelId>
 ) {
@@ -176,20 +246,68 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     onLayoutChange,
     onReady: onReadyProp,
     panelManagerId,
-    globalPanelIds = [],
-    includeGlobalPanels = false,
     enableContextMenu = true,
     enablePanelContentContextMenu = true,
-    panelRegistryOverrides = {},
     watermarkComponent,
     tabComponents: customTabComponents,
     theme = 'dockview-theme-abyss',
     capabilities,
     deprecatedPanels = [],
+    // New simplified API
+    scope,
+    panels: panelsProp,
+    excludePanels = [],
+    // Legacy API (for backward compatibility)
+    globalPanelIds = [],
+    includeGlobalPanels = false,
+    panelRegistryOverrides = {},
   } = props;
 
   // Context menu (optional - returns null if no provider)
   const contextMenu = useContextMenuOptional();
+
+  // Resolve panel IDs from new simplified API or legacy props
+  // Priority: panels > scope > globalPanelIds/includeGlobalPanels
+  const resolvedPanelDefs = useMemo((): PanelDefinition[] => {
+    // New API: explicit panels list
+    if (panelsProp && panelsProp.length > 0) {
+      return panelsProp
+        .map(id => panelRegistry.get(id))
+        .filter((def): def is PanelDefinition => def !== undefined);
+    }
+
+    // New API: scope-based filtering
+    if (scope) {
+      let panels = getPanelsForScope(scope);
+      if (excludePanels.length > 0) {
+        panels = panels.filter(p => !excludePanels.includes(p.id));
+      }
+      return panels;
+    }
+
+    // Legacy API: globalPanelIds
+    if (globalPanelIds.length > 0) {
+      return globalPanelIds
+        .map(id => panelRegistry.get(id))
+        .filter((def): def is PanelDefinition => def !== undefined);
+    }
+
+    // Legacy API: includeGlobalPanels
+    if (includeGlobalPanels) {
+      return panelRegistry.getPublicPanels
+        ? panelRegistry.getPublicPanels()
+        : panelRegistry.getAll();
+    }
+
+    // No panels specified - will use registry mode if provided
+    return [];
+  }, [panelsProp, scope, excludePanels, globalPanelIds, includeGlobalPanels]);
+
+  // Store resolved panel IDs for stable reference
+  const resolvedPanelIds = useMemo(
+    () => resolvedPanelDefs.map(p => p.id),
+    [resolvedPanelDefs]
+  );
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
@@ -384,9 +502,19 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const defaultLayoutRef = useRef(defaultLayout);
   defaultLayoutRef.current = defaultLayout;
 
+  // Use ref for resolvedPanelDefs to access in callbacks without dependency
+  const resolvedPanelDefsRef = useRef(resolvedPanelDefs);
+  resolvedPanelDefsRef.current = resolvedPanelDefs;
+
   // Use ref for onReady prop to stabilize handleReady callback
   const onReadyPropRef = useRef(onReadyProp);
   onReadyPropRef.current = onReadyProp;
+
+  // Use refs for volatile props to stabilize handleReady callback
+  const contextMenuRef = useRef(contextMenu);
+  contextMenuRef.current = contextMenu;
+  const capabilitiesRef = useRef(capabilities);
+  capabilitiesRef.current = capabilities;
 
   const resetDockviewLayout = useCallback(() => {
     if (storageKey) {
@@ -399,9 +527,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       apiRef.current?.removePanel(panel);
     });
 
-    // Rebuild default layout when available
-    if (registryMode && registry && defaultLayoutRef.current) {
-      defaultLayoutRef.current(apiRef.current, registry);
+    // Rebuild layout
+    // Priority: custom defaultLayout > fallback layout for new API
+    if (defaultLayoutRef.current) {
+      if (registryMode && registry) {
+        defaultLayoutRef.current(apiRef.current, registry);
+      } else {
+        defaultLayoutRef.current(apiRef.current, resolvedPanelDefsRef.current as any);
+      }
+    } else if (resolvedPanelDefsRef.current.length > 0) {
+      createFallbackLayout(apiRef.current, resolvedPanelDefsRef.current);
     }
   }, [storageKey, registryMode, registry]);
 
@@ -420,6 +555,26 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }> = [];
     const seen = new Set<string>();
 
+    // New simplified API: use resolvedPanelDefs if available
+    if (resolvedPanelDefs.length > 0) {
+      resolvedPanelDefs.forEach((def) => {
+        if (def.isInternal) return;
+        if (seen.has(def.id)) return;
+        seen.add(def.id);
+        const override = panelRegistryOverrides[def.id] ?? {};
+        const registryOverride = panelRegistryOverridesMap[def.id] ?? {};
+        entries.push({
+          id: def.id,
+          title: override.title ?? def.title,
+          icon: override.icon ?? def.icon,
+          category: override.category ?? def.category,
+          supportsMultipleInstances:
+            registryOverride.supportsMultipleInstances ?? def.supportsMultipleInstances,
+        });
+      });
+    }
+
+    // Legacy: local registry
     if (registry) {
       registry.getAll().forEach((def) => {
         if (def.isInternal) return;
@@ -438,46 +593,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       });
     }
 
-    if (globalPanelIds.length > 0) {
-      globalPanelIds.forEach((panelId) => {
-        if (seen.has(panelId)) return;
-        const globalDef = panelRegistry.get(panelId);
-        if (!globalDef) return;
-        seen.add(panelId);
-        const override = panelRegistryOverrides[globalDef.id] ?? {};
-        const registryOverride = panelRegistryOverridesMap[globalDef.id] ?? {};
-        entries.push({
-          id: globalDef.id,
-          title: override.title ?? globalDef.title,
-          icon: override.icon ?? globalDef.icon,
-          category: override.category ?? globalDef.category,
-          supportsMultipleInstances:
-            registryOverride.supportsMultipleInstances ?? globalDef.supportsMultipleInstances,
-        });
-      });
-    }
-
-    if (includeGlobalPanels) {
-      const panels = panelRegistry.getPublicPanels
-        ? panelRegistry.getPublicPanels()
-        : panelRegistry.getAll();
-      panels.forEach((panel) => {
-        if (seen.has(panel.id)) return;
-        seen.add(panel.id);
-        const override = panelRegistryOverrides[panel.id] ?? {};
-        const registryOverride = panelRegistryOverridesMap[panel.id] ?? {};
-        entries.push({
-          id: panel.id,
-          title: override.title ?? panel.title,
-          icon: override.icon ?? panel.icon,
-          category: override.category ?? panel.category,
-          supportsMultipleInstances:
-            registryOverride.supportsMultipleInstances ?? panel.supportsMultipleInstances,
-        });
-      });
-    }
-
-    if (!registry && panelManagerId === 'workspace') {
+    // Legacy: workspace fallback (when no scope/panels/registry specified)
+    if (entries.length === 0 && !registry && panelManagerId === 'workspace') {
       const panels = panelRegistry.getPublicPanels
         ? panelRegistry.getPublicPanels()
         : panelRegistry.getAll();
@@ -503,9 +620,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       getAll: () => entries,
     };
   }, [
+    resolvedPanelDefs,
     registry,
-    globalPanelIds,
-    includeGlobalPanels,
     panelManagerId,
     panelRegistryOverrides,
     globalRegistryVersion,
@@ -749,27 +865,21 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       map[panelId] = Wrapped;
     };
 
-    if (globalPanelIds.length > 0) {
-      globalPanelIds.forEach(registerGlobalPanel);
-    }
-
-    if (includeGlobalPanels) {
-      const panels = panelRegistry.getPublicPanels
-        ? panelRegistry.getPublicPanels()
-        : panelRegistry.getAll();
-      panels.forEach((panel) => registerGlobalPanel(panel.id));
+    // New simplified API: register from resolvedPanelIds
+    if (resolvedPanelIds.length > 0) {
+      resolvedPanelIds.forEach(registerGlobalPanel);
     }
 
     return map;
     // Note: Many dependencies are intentionally excluded to stabilize the components map.
     // - ScopeWrapper/AutoScopeWrapper are stable (empty deps) and use refs internally
     // - dockviewPanelRegistry uses a ref to get the latest value at callback time
-    // - globalPanelIds/globalRegistryVersion: handled by includeGlobalPanels or initial value
+    // - resolvedPanelIds: initial resolved value used for component registration
     // The components map is created once and should not change during the component lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     registry,
-    includeGlobalPanels,
+    resolvedPanelIds,
     directComponents,
     contextMenuActive,
     enablePanelContentContextMenu,
@@ -779,6 +889,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Handle dockview ready - uses refs for props to stabilize callback
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
+      // Guard against multiple calls (can happen during rapid re-renders)
+      if (apiRef.current === event.api) {
+        return;
+      }
       apiRef.current = event.api;
       setDockviewApi(event.api);
 
@@ -796,16 +910,27 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           // Panel manager not available
         });
       }
-      if (enableContextMenu && contextMenu) {
-        contextMenu.registerDockview(contextMenuDockviewId, event.api, capabilities);
+      if (enableContextMenu && contextMenuRef.current) {
+        contextMenuRef.current.registerDockview(contextMenuDockviewId, event.api, capabilitiesRef.current);
       }
 
-      // Registry mode: try to load saved layout or create default
-      if (registryMode && registry && defaultLayoutRef.current) {
-        const loaded = loadLayout();
+      // Try to load saved layout
+      const loaded = loadLayout();
 
-        if (!loaded && event.api.panels.length === 0) {
-          defaultLayoutRef.current(event.api, registry);
+      // Create default layout if no saved layout and no panels exist
+      if (!loaded && event.api.panels.length === 0) {
+        // Priority: custom defaultLayout > fallback layout for new API > registry mode layout
+        if (defaultLayoutRef.current) {
+          // Custom defaultLayout provided
+          if (registryMode && registry) {
+            defaultLayoutRef.current(event.api, registry);
+          } else {
+            // Call with panelDefs for new API signature
+            defaultLayoutRef.current(event.api, resolvedPanelDefsRef.current as any);
+          }
+        } else if (resolvedPanelDefsRef.current.length > 0) {
+          // New simplified API: use fallback layout (stack as tabs)
+          createFallbackLayout(event.api, resolvedPanelDefsRef.current);
         }
       }
 
@@ -818,8 +943,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       registry,
       panelManagerId,
       registryMode,
-      contextMenu,
-      capabilities,
       enableContextMenu,
       contextMenuDockviewId,
     ]
@@ -828,11 +951,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Unregister on unmount
   useEffect(() => {
     return () => {
-      if (enableContextMenu && contextMenu) {
-        contextMenu.unregisterDockview(contextMenuDockviewId);
+      if (enableContextMenu && contextMenuRef.current) {
+        contextMenuRef.current.unregisterDockview(contextMenuDockviewId);
       }
     };
-  }, [panelManagerId, contextMenu, enableContextMenu, contextMenuDockviewId]);
+  }, [enableContextMenu, contextMenuDockviewId]);
 
   // Tab components - add context menu tab if enabled
   const tabComponents = useMemo(() => {
@@ -847,16 +970,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
   // Handle background context menu (right-click on empty dockview area)
   const handleBackgroundContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!contextMenuActive || !contextMenu) return;
+    if (!contextMenuActive || !contextMenuRef.current) return;
     e.preventDefault();
-    contextMenu.showContextMenu({
+    contextMenuRef.current.showContextMenu({
       contextType: 'background',
       position: { x: e.clientX, y: e.clientY },
       currentDockviewId: contextMenuDockviewId,
       panelRegistry: dockviewPanelRegistryRef.current,
       resetDockviewLayout,
     });
-  }, [contextMenuActive, contextMenu, contextMenuDockviewId, resetDockviewLayout]);
+  }, [contextMenuActive, contextMenuDockviewId, resetDockviewLayout]);
 
   return (
     <DockviewIdProvider

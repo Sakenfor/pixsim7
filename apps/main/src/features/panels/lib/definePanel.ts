@@ -124,7 +124,10 @@ export function definePanel<TSettings = any>(
     orchestration,
     isInternal: internal,
 
-    // Store contexts in metadata for filtering
+    // Map contexts to availableIn for SmartDockview scope filtering
+    availableIn: contexts.length > 0 ? contexts : undefined,
+
+    // Store contexts in metadata for legacy filtering
     metadata: {
       contexts,
     },

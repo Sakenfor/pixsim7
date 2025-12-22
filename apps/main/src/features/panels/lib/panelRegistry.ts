@@ -377,3 +377,27 @@ export function getPanelsByTag(tag: string): PanelDefinition[] {
 export function getPanelIdsByTag(tag: string): string[] {
   return getPanelsByTag(tag).map(p => p.id);
 }
+
+/**
+ * Get panels available in a specific dockview scope.
+ * Filters by `availableIn` field on panel definitions.
+ *
+ * @param scope - Dockview scope ID (e.g., "workspace", "control-center", "asset-viewer")
+ * @returns Panels that declare this scope in their `availableIn` array, sorted by order
+ */
+export function getPanelsForScope(scope: string): PanelDefinition[] {
+  return panelRegistry
+    .getAll()
+    .filter(p => p.availableIn?.includes(scope))
+    .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+}
+
+/**
+ * Get panel IDs available in a specific dockview scope.
+ *
+ * @param scope - Dockview scope ID
+ * @returns Panel IDs that declare this scope in their `availableIn` array
+ */
+export function getPanelIdsForScope(scope: string): string[] {
+  return getPanelsForScope(scope).map(p => p.id);
+}

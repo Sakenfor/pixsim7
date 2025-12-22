@@ -39,6 +39,10 @@ export function NotificationTicker() {
     const prev = prevGenerationsRef.current;
     const now = Date.now();
 
+    // Collect all new events first, then batch update
+    const newEvents: TickerEvent[] = [];
+    const eventsToRemove: Array<{ generationId: number; type: TickerEvent['type'] }> = [];
+
     generations.forEach((gen, id) => {
       const prevStatus = prev.get(id);
       const currentStatus = gen.status;
@@ -87,16 +91,24 @@ export function NotificationTicker() {
         }
 
         if (event) {
-          setEvents((prev) => {
-            // Remove old events for same generation with same type
-            const filtered = prev.filter(
-              (e) => !(e.generationId === id && e.type === event!.type)
-            );
-            return [...filtered, event!];
-          });
+          eventsToRemove.push({ generationId: id, type: event.type });
+          newEvents.push(event);
         }
       }
     });
+
+    // Batch update events if there are any changes
+    if (newEvents.length > 0) {
+      setEvents((prevEvents) => {
+        // Remove old events for generations with new events
+        const filtered = prevEvents.filter(
+          (e) => !eventsToRemove.some(
+            (r) => r.generationId === e.generationId && r.type === e.type
+          )
+        );
+        return [...filtered, ...newEvents];
+      });
+    }
 
     // Update previous state
     const newPrev = new Map<number, string>();

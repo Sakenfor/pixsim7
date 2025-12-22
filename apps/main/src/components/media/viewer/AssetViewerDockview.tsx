@@ -15,11 +15,12 @@
  * └──────────────┴──────────────┘
  */
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import type { DockviewApi } from 'dockview-core';
-import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
+import { SmartDockview } from '@lib/dockview';
 import type { ViewerSettings } from './types';
 import type { ViewerAsset } from '@features/assets';
+import type { PanelDefinition } from '@features/panels';
 
 export interface AssetViewerDockviewProps {
   /** Current asset being viewed */
@@ -48,23 +49,22 @@ export interface AssetViewerDockviewProps {
   panelManagerId?: string;
 }
 
-const emptyViewerRegistry = createLocalPanelRegistry<string>();
+// Panels available in asset viewer (must have availableIn: ['asset-viewer'])
+const VIEWER_PANEL_IDS = ['media-preview', 'quickGenerate', 'info', 'interactive-surface'] as const;
 
 /**
- * Create the default panel layout
+ * Create the default panel layout for asset viewer.
+ * Media preview takes top 75%, generate/metadata tabs below.
  */
-function createDefaultLayout(api: DockviewApi, _registry?: any) {
-  console.log('[AssetViewerDockview] Creating default layout');
-
+function createDefaultLayout(api: DockviewApi, panelDefs: PanelDefinition[]) {
   // Media panel takes the top area
   api.addPanel({
     id: 'media-preview',
     component: 'media-preview',
     title: 'Preview',
   });
-  console.log('[AssetViewerDockview] Added media panel');
 
-  // Quick generate panel (global) below media
+  // Quick generate panel below media
   api.addPanel({
     id: 'quickGenerate',
     component: 'quickGenerate',
@@ -74,55 +74,28 @@ function createDefaultLayout(api: DockviewApi, _registry?: any) {
       referencePanel: 'media-preview',
     },
   });
-  console.log('[AssetViewerDockview] Added quickGenerate panel (global)');
 
-  // Info panel (global) in same group as quickgen (creates tabs)
-  // This puts both panels in tabs so user can switch between them
-  // Saves vertical space and makes metadata accessible via tab
-  const quickGenPanel = api.getPanel('quickGenerate');
-  if (quickGenPanel) {
-    api.addPanel({
-      id: 'info',
-      component: 'info',
-      title: 'Metadata',
-      position: {
-        referencePanel: 'quickGenerate',
-        // No direction = add to same group (creates tabs)
-      },
-    });
-    console.log('[AssetViewerDockview] Added info panel (global) as tab');
-  } else {
-    // Fallback if quickgen panel not found
-    api.addPanel({
-      id: 'info',
-      component: 'info',
-      title: 'Metadata',
-      position: {
-        direction: 'below',
-        referencePanel: 'media-preview',
-      },
-    });
-    console.log('[AssetViewerDockview] Added info panel (global) as separate panel');
-  }
+  // Info panel as tab with quickGenerate
+  api.addPanel({
+    id: 'info',
+    component: 'info',
+    title: 'Metadata',
+    position: {
+      referencePanel: 'quickGenerate',
+    },
+  });
 
-  // Set initial sizes - media gets more space (75% of height)
+  // Set initial sizes - media gets 75% of height
   try {
     const groups = api.groups;
     if (groups.length >= 2) {
-      // Calculate 75% of available height for media panel
       const viewportHeight = window.innerHeight;
       const mediaHeight = Math.floor(viewportHeight * 0.75);
-
-      // First group is media (top), second group is bottom panels
       api.getGroup(groups[0].id)?.api.setSize({ height: mediaHeight });
-
-      console.log('[AssetViewerDockview] Set media panel height to', mediaHeight, 'px (75% of viewport)');
     }
   } catch (e) {
     console.warn('[AssetViewerDockview] Failed to set initial sizes:', e);
   }
-
-  console.log('[AssetViewerDockview] Layout creation complete, total panels:', api.panels.length);
 }
 
 export function AssetViewerDockview({
@@ -139,9 +112,14 @@ export function AssetViewerDockview({
   className,
   panelManagerId,
 }: AssetViewerDockviewProps) {
-  const [dockviewApi, setDockviewApi] = useState<DockviewApi | undefined>(undefined);
+  // Use ref for dockviewApi to avoid context recreation when API is set
+  // Components can access it via context.dockviewApiRef.current
+  const dockviewApiRef = useRef<DockviewApi | undefined>(undefined);
+  // Keep state for triggering re-renders when needed (but not in context deps)
+  const [, setDockviewApiVersion] = useState(0);
 
   // Build context for panels (includes both ViewerPanelContext and WorkspaceContext fields)
+  // Note: dockviewApi is provided via ref to avoid context changes on initial setup
   const context = useMemo(
     () => ({
       // ViewerPanelContext fields (for local media panel)
@@ -155,7 +133,8 @@ export function AssetViewerDockview({
       navigateNext,
       closeViewer,
       toggleFullscreen,
-      dockviewApi,
+      dockviewApi: dockviewApiRef.current,
+      dockviewApiRef,
       // WorkspaceContext fields (for global panels)
       currentAsset: asset,
       currentSceneId: null,
@@ -171,35 +150,27 @@ export function AssetViewerDockview({
       navigateNext,
       closeViewer,
       toggleFullscreen,
-      dockviewApi,
+      // Note: dockviewApiRef is intentionally NOT a dependency - it's a stable ref
     ]
   );
 
   // Capture dockview API when ready
   const handleReady = useCallback((api: DockviewApi) => {
-    console.log('[AssetViewerDockview] Dockview ready, capturing API');
-    setDockviewApi(api);
+    dockviewApiRef.current = api;
+    setDockviewApiVersion((v) => v + 1);
   }, []);
 
   return (
     <SmartDockview
-      registry={emptyViewerRegistry}
-      storageKey="asset-viewer-dockview-layout:v3" // Changed key to force new layout
+      panels={[...VIEWER_PANEL_IDS]}
+      storageKey="dockview:asset-viewer:v4"
       context={context}
       defaultLayout={createDefaultLayout}
       minPanelsForTabs={2}
       className={className}
       panelManagerId={panelManagerId}
-      globalPanelIds={['quickGenerate', 'info', 'interactive-surface']}
-      panelRegistryOverrides={{
-        'media-preview': { title: 'Preview' },
-        quickGenerate: { title: 'Generate' },
-        info: { title: 'Metadata' },
-        'interactive-surface': { title: 'Mask' },
-      }}
       onReady={handleReady}
       enableContextMenu
-      includeGlobalPanels
     />
   );
 }

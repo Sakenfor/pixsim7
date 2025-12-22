@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useRef, useMemo, useCallback } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import type { DockviewApi } from 'dockview-core';
@@ -9,20 +9,14 @@ import { DockToolbar } from './DockToolbar';
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { SmartDockview } from '@lib/dockview/SmartDockview';
-import { createLocalPanelRegistry } from '@lib/dockview/LocalPanelRegistry';
-import { panelRegistry, getPanelsByTag, type PanelDefinition } from '@features/panels';
+import { getPanelsForScope, type PanelDefinition } from '@features/panels';
 
-// Empty registry - we use global panels via globalPanelIds
-const emptyRegistry = createLocalPanelRegistry();
-
-// Helper to get CC panels from global registry
-function getCCPanels(): PanelDefinition[] {
-  return getPanelsByTag('control-center').sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
-}
-
-// Helper to get enabled CC panels based on user preferences
+/**
+ * Get enabled control center panels based on user preferences.
+ * Filters panels that have availableIn: ['control-center'].
+ */
 function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): PanelDefinition[] {
-  const all = getCCPanels();
+  const all = getPanelsForScope('control-center');
 
   if (!enabledPrefs || Object.keys(enabledPrefs).length === 0) {
     return all.filter((p) => p.enabledByDefault !== false);
@@ -37,11 +31,10 @@ function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): PanelDefini
 }
 
 export function ControlCenterDock() {
-  // Use separate selectors to avoid creating new objects on every render
+  // Store selectors
   const open = useControlCenterStore(s => s.open);
   const pinned = useControlCenterStore(s => s.pinned);
   const height = useControlCenterStore(s => s.height);
-  const activeModule = useControlCenterStore(s => s.activeModule);
   const enabledModules = useControlCenterStore(s => s.enabledModules);
   const dockPosition = useControlCenterStore(s => s.dockPosition);
   const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
@@ -50,7 +43,6 @@ export function ControlCenterDock() {
   const setOpen = useControlCenterStore(s => s.setOpen);
   const setPinned = useControlCenterStore(s => s.setPinned);
   const setHeight = useControlCenterStore(s => s.setHeight);
-  const setActiveModule = useControlCenterStore(s => s.setActiveModule);
   const setDockPosition = useControlCenterStore(s => s.setDockPosition);
   const setFloatingPosition = useControlCenterStore(s => s.setFloatingPosition);
   const setFloatingSize = useControlCenterStore(s => s.setFloatingSize);
@@ -64,40 +56,14 @@ export function ControlCenterDock() {
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
-  const [registryVersion, setRegistryVersion] = useState(0);
-  const lastPanelIdsRef = useRef<string>('');
 
-  // Subscribe to global registry changes - only update when CC panels actually change
-  useEffect(() => {
-    const checkAndUpdate = () => {
-      const panels = getCCPanels();
-      const panelIds = panels.map(p => p.id).join(',');
-      if (panelIds !== lastPanelIdsRef.current) {
-        lastPanelIdsRef.current = panelIds;
-        setRegistryVersion((v) => v + 1);
-      }
-    };
-
-    // Initial check
-    checkAndUpdate();
-
-    // Subscribe to panelRegistry changes
-    const unsubscribe = panelRegistry.subscribe(checkAndUpdate);
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Get enabled panels for toolbar
+  // Get enabled panels based on user preferences
   const panels = useMemo(() => {
     return getEnabledCCPanels(enabledModules);
-  }, [enabledModules, registryVersion]);
+  }, [enabledModules]);
 
   // Get panel IDs for SmartDockview
-  const globalPanelIds = useMemo(() => {
-    return panels.map(p => p.id);
-  }, [panels]);
+  const panelIds = useMemo(() => panels.map(p => p.id), [panels]);
 
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
   const { dragging, startResize } = useDockBehavior({
@@ -110,66 +76,10 @@ export function ControlCenterDock() {
     dockRef,
   });
 
-  // Handle dockview ready - sync with active module
-  const handleDockviewReady = useCallback((api: DockviewApi) => {
+  // Simple ready handler - just store the API ref
+  const handleReady = useCallback((api: DockviewApi) => {
     dockviewApiRef.current = api;
-
-    // When dockview is ready, activate the current module's panel
-    if (activeModule) {
-      // Try both old and new ID formats
-      const panel = api.getPanel(activeModule) || api.getPanel(`cc-${activeModule}`);
-      if (panel) {
-        panel.api.setActive();
-      }
-    }
-  }, [activeModule]);
-
-  // Sync activeModule with dockview when it changes
-  useEffect(() => {
-    const api = dockviewApiRef.current;
-    if (!api || !activeModule) return;
-
-    // Try both old and new ID formats
-    const panel = api.getPanel(activeModule) || api.getPanel(`cc-${activeModule}`);
-    if (panel && !panel.api.isActive) {
-      panel.api.setActive();
-    }
-  }, [activeModule]);
-
-  // Default layout - shows all panels in a single group
-  const createDefaultLayout = useCallback((api: DockviewApi) => {
-    const allPanels = panels;
-    if (allPanels.length === 0) return;
-
-    // Add the first panel
-    const firstPanel = allPanels[0];
-    api.addPanel({
-      id: firstPanel.id,
-      component: firstPanel.id,
-      title: firstPanel.title,
-    });
-
-    // Add remaining panels to the same group (creates tabs)
-    for (let i = 1; i < allPanels.length; i++) {
-      const panel = allPanels[i];
-      api.addPanel({
-        id: panel.id,
-        component: panel.id,
-        title: panel.title,
-        position: {
-          referencePanel: firstPanel.id,
-        },
-      });
-    }
-
-    // Activate the active module's panel
-    if (activeModule) {
-      const targetPanel = api.getPanel(activeModule) || api.getPanel(`cc-${activeModule}`);
-      if (targetPanel) {
-        targetPanel.api.setActive();
-      }
-    }
-  }, [activeModule, panels]);
+  }, []);
 
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
@@ -232,18 +142,6 @@ export function ControlCenterDock() {
     return baseStyle;
   }, [isVertical, height, dockPosition, layoutAdjustment]);
 
-  // Handle toolbar module select - activate the panel in dockview
-  const handleModuleSelect = useCallback((moduleId: string) => {
-    setActiveModule(moduleId);
-    const api = dockviewApiRef.current;
-    if (api) {
-      const panel = api.getPanel(moduleId);
-      if (panel) {
-        panel.api.setActive();
-      }
-    }
-  }, [setActiveModule]);
-
   // Render content (shared between floating and docked)
   const renderContent = () => (
     <div className={clsx(
@@ -276,7 +174,7 @@ export function ControlCenterDock() {
           />
         )}
 
-        {/* Compact Toolbar - extracted component */}
+        {/* Compact Toolbar - just for settings, not module selection */}
         <DockToolbar
           modules={panels.map(p => ({
             id: p.id,
@@ -288,8 +186,8 @@ export function ControlCenterDock() {
             tags: p.tags,
             description: p.description,
           }))}
-          activeModule={activeModule}
-          onModuleSelect={handleModuleSelect}
+          activeModule={null}
+          onModuleSelect={() => {}}
           dockPosition={dockPosition}
           onDockPositionChange={setDockPosition}
           pinned={pinned}
@@ -298,32 +196,26 @@ export function ControlCenterDock() {
           navigate={navigate}
         />
 
-      {/* Panel content via SmartDockview - uses global panels */}
+      {/* Panel content via SmartDockview - uses native tabs */}
       <div
         className={clsx(
           'flex-1 overflow-hidden',
           isVertical || isFloating ? 'text-sm' : ''
         )}
-        role="tabpanel"
-        id={`module-${activeModule}`}
-        aria-labelledby={`tab-${activeModule}`}
       >
-        {globalPanelIds.length > 0 ? (
+        {panelIds.length > 0 ? (
           <SmartDockview
-            registry={emptyRegistry}
-            defaultLayout={createDefaultLayout}
-            storageKey="control-center-dockview-layout:v2"
+            panels={panelIds}
+            storageKey="dockview:control-center:v4"
             panelManagerId="controlCenter"
-            minPanelsForTabs={99} // Hide tabs - we have our own toolbar
-            onReady={handleDockviewReady}
+            minPanelsForTabs={2}
+            onReady={handleReady}
             className="h-full"
             enableContextMenu
-            includeGlobalPanels
-            globalPanelIds={globalPanelIds}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
-            Loading panels...
+            No panels enabled
           </div>
         )}
       </div>

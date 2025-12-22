@@ -12,6 +12,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
   useRef,
   useSyncExternalStore,
@@ -108,6 +109,10 @@ export function ContextMenuProvider({
   const servicesRef = useRef(services);
   servicesRef.current = services;
 
+  // Store capabilitiesSnapshot in ref to avoid showContextMenu changing on every capability update
+  const capabilitiesSnapshotRef = useRef(capabilitiesSnapshot);
+  capabilitiesSnapshotRef.current = capabilitiesSnapshot;
+
   // Track multiple dockview APIs by ID
   const dockviewApisRef = useRef<Map<string, DockviewApi>>(new Map());
 
@@ -158,7 +163,7 @@ export function ContextMenuProvider({
       contextType: partial.contextType!,
       position: partial.position!,
       data: partial.data,
-      capabilities: capabilitiesSnapshot.map,
+      capabilities: capabilitiesSnapshotRef.current.map,
       currentDockviewId,
       getDockviewApi,
       getDockviewIds,
@@ -175,22 +180,35 @@ export function ContextMenuProvider({
     }
 
     setState({ isOpen: true, context: fullContext });
-  }, [capabilitiesSnapshot, getDockviewApi]);
+  }, [getDockviewApi, getDockviewIds]);
 
   const hideContextMenu = useCallback(() => {
     setState({ isOpen: false, context: null });
   }, []);
 
-  const value: ContextMenuContextValue = {
-    showContextMenu,
-    hideContextMenu,
-    registry,
-    state,
-    registerDockview,
-    unregisterDockview,
-    getDockviewApi,
-    getDockviewIds,
-  };
+  // Memoize context value to prevent unnecessary consumer re-renders
+  const value = useMemo<ContextMenuContextValue>(
+    () => ({
+      showContextMenu,
+      hideContextMenu,
+      registry,
+      state,
+      registerDockview,
+      unregisterDockview,
+      getDockviewApi,
+      getDockviewIds,
+    }),
+    [
+      showContextMenu,
+      hideContextMenu,
+      registry,
+      state,
+      registerDockview,
+      unregisterDockview,
+      getDockviewApi,
+      getDockviewIds,
+    ]
+  );
 
   return (
     <ContextMenuContext.Provider value={value}>

@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import type { DockviewReadyEvent } from "dockview-core";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { initializePanels } from "@features/panels";
@@ -19,7 +19,7 @@ function WorkspaceWatermark() {
 }
 
 /** Storage key for workspace layout persistence */
-const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
+const WORKSPACE_STORAGE_KEY = "dockview:workspace:v2";
 
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
@@ -59,6 +59,20 @@ export function DockviewWorkspace() {
     });
   }, [isLocked]);
 
+  // Memoize capabilities to prevent handleReady from being recreated on every render
+  const capabilities = useMemo(
+    () => ({
+      floatPanelHandler: (dockviewPanelId: string, panel: any, options?: any) => {
+        // Extract workspace PanelId from panel params
+        const workspacePanelId = panel?.params?.panelId;
+        if (workspacePanelId) {
+          useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
+        }
+      },
+    }),
+    []
+  );
+
   return (
     <div className="h-full w-full">
       <SmartDockview
@@ -71,15 +85,7 @@ export function DockviewWorkspace() {
         theme="dockview-theme-dark"
         watermarkComponent={WorkspaceWatermark}
         panelManagerId="workspace"
-        capabilities={{
-          floatPanelHandler: (dockviewPanelId, panel, options) => {
-            // Extract workspace PanelId from panel params
-            const workspacePanelId = panel?.params?.panelId;
-            if (workspacePanelId) {
-              useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
-            }
-          },
-        }}
+        capabilities={capabilities}
       />
     </div>
   );

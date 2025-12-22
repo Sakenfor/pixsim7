@@ -45,6 +45,12 @@ export function useSmartDockview(
   const apiRef = useRef<DockviewApi | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
 
+  // Use refs to avoid callbacks changing when parent recreates props
+  const deprecatedPanelsRef = useRef(deprecatedPanels);
+  deprecatedPanelsRef.current = deprecatedPanels;
+  const onLayoutChangeRef = useRef(onLayoutChange);
+  onLayoutChangeRef.current = onLayoutChange;
+
   /**
    * Update tab visibility for all groups
    * Hides tabs when group has fewer than minPanelsForTabs panels
@@ -127,15 +133,16 @@ export function useSmartDockview(
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        // Check for deprecated panels before loading
-        if (deprecatedPanels.length > 0) {
-          const hasDeprecatedPanel = deprecatedPanels.some(panelId =>
+        // Check for deprecated panels before loading (use ref to avoid dependency)
+        const currentDeprecatedPanels = deprecatedPanelsRef.current;
+        if (currentDeprecatedPanels.length > 0) {
+          const hasDeprecatedPanel = currentDeprecatedPanels.some(panelId =>
             saved.includes(`"${panelId}"`)
           );
 
           if (hasDeprecatedPanel) {
             console.log(
-              `[SmartDockview] Layout contains deprecated panels [${deprecatedPanels.join(', ')}]. Clearing layout.`
+              `[SmartDockview] Layout contains deprecated panels [${currentDeprecatedPanels.join(', ')}]. Clearing layout.`
             );
             localStorage.removeItem(storageKey);
             return false;
@@ -150,7 +157,7 @@ export function useSmartDockview(
       console.error('[SmartDockview] Failed to load layout:', error);
     }
     return false;
-  }, [storageKey, deprecatedPanels]);
+  }, [storageKey]);
 
   /**
    * Reset layout by clearing saved state
@@ -176,7 +183,7 @@ export function useSmartDockview(
       const layoutDisposable = api.onDidLayoutChange(() => {
         updateTabVisibility();
         saveLayout();
-        onLayoutChange?.();
+        onLayoutChangeRef.current?.();
       });
       disposablesRef.current.push(layoutDisposable);
 
@@ -200,7 +207,7 @@ export function useSmartDockview(
       // Initial tab visibility update
       requestAnimationFrame(updateTabVisibility);
     },
-    [updateTabVisibility, saveLayout, onLayoutChange]
+    [updateTabVisibility, saveLayout]
   );
 
   /**

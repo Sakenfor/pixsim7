@@ -16,6 +16,8 @@ export {
   registerSimplePanel,
   getPanelsByTag,
   getPanelIdsByTag,
+  getPanelsForScope,
+  getPanelIdsForScope,
   type PanelDefinition,
   type WorkspaceContext,
   type CoreEditorRole,

@@ -43,6 +43,21 @@ export interface BasePanelDefinition<TParams = any> {
    * @example scopes: ["generation"] - Panel uses generation stores
    */
   scopes?: string[];
+
+  /**
+   * Dockview scope IDs where this panel can appear.
+   * Used by SmartDockview's `scope` prop to filter available panels.
+   *
+   * Common scopes:
+   * - "workspace": Main workspace dockview
+   * - "control-center": Bottom control center dock
+   * - "asset-viewer": Asset viewer side panel
+   *
+   * If not specified, panel is only available when explicitly listed via `panels` prop.
+   *
+   * @example availableIn: ["workspace", "control-center"] - Panel shows in workspace and control center
+   */
+  availableIn?: string[];
 }
 
 /**
