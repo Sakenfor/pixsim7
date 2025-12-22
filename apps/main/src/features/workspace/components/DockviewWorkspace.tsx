@@ -1,13 +1,9 @@
 import { useRef, useEffect, useMemo } from "react";
 import type { DockviewReadyEvent } from "dockview-core";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { initializePanels } from "@features/panels";
+import { initializePanels, panelRegistry, type PanelDefinition } from "@features/panels";
 import { initializeWidgets } from "@lib/ui/composer";
 import { SmartDockview } from "@lib/dockview";
-import {
-  workspacePanelRegistry,
-  createDefaultLayout,
-} from "../lib/workspacePanelRegistry";
 
 // Watermark component for empty workspace
 function WorkspaceWatermark() {
@@ -18,8 +14,43 @@ function WorkspaceWatermark() {
   );
 }
 
-/** Storage key for workspace layout persistence */
-const WORKSPACE_STORAGE_KEY = "dockview:workspace:v2";
+const defaultWorkspacePanels: string[] = ["gallery", "health", "graph", "inspector", "game"];
+
+function resolveTitle(panelId: string, panelDefs?: PanelDefinition[]) {
+  const fromResolved = panelDefs?.find((p) => p.id === panelId)?.title;
+  if (fromResolved) return fromResolved;
+  return panelRegistry.get(panelId)?.title ?? panelId;
+}
+
+export function createDefaultLayout(api: DockviewReadyEvent["api"], panelDefs: PanelDefinition[] = []) {
+  const addPanel = (
+    id: string,
+    position?: { direction: "left" | "right" | "below" | "above"; referencePanel?: string }
+  ) => {
+    if (!panelRegistry.get(id)) return;
+    api.addPanel({
+      id,
+      component: id,
+      title: resolveTitle(id, panelDefs),
+      position,
+    });
+  };
+
+  // Gallery stack on the left
+  addPanel("gallery", { direction: "left" });
+  addPanel("health", { direction: "below", referencePanel: "gallery" });
+
+  // Graph + inspector on the right
+  addPanel("graph", { direction: "right" });
+  addPanel("inspector", { direction: "right", referencePanel: "graph" });
+  addPanel("game", { direction: "below", referencePanel: "inspector" });
+
+  // If any of the default panels are missing, add remaining known defaults as tabs
+  defaultWorkspacePanels.forEach((panelId) => {
+    if (api.panels.find((p) => p.id === panelId)) return;
+    addPanel(panelId, { direction: "right", referencePanel: "graph" });
+  });
+}
 
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
@@ -63,7 +94,6 @@ export function DockviewWorkspace() {
   const capabilities = useMemo(
     () => ({
       floatPanelHandler: (dockviewPanelId: string, panel: any, options?: any) => {
-        // Extract workspace PanelId from panel params
         const workspacePanelId = panel?.params?.panelId;
         if (workspacePanelId) {
           useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
@@ -76,12 +106,11 @@ export function DockviewWorkspace() {
   return (
     <div className="h-full w-full">
       <SmartDockview
-        registry={workspacePanelRegistry}
-        storageKey={WORKSPACE_STORAGE_KEY}
+        scope="workspace"
+        storageKey="dockview:workspace:v3"
         defaultLayout={createDefaultLayout}
         onReady={handleReady}
         enableContextMenu
-        includeGlobalPanels
         theme="dockview-theme-dark"
         watermarkComponent={WorkspaceWatermark}
         panelManagerId="workspace"

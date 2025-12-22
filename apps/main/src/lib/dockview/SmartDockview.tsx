@@ -41,9 +41,7 @@
  *
  * Legacy API (for backward compatibility):
  * - registry: LocalPanelRegistry (deprecated - use scope/panels instead)
- * - globalPanelIds: string[] (deprecated - use panels instead)
- * - includeGlobalPanels: boolean (deprecated - use scope instead)
- * - panelRegistryOverrides: (deprecated - set at panel registration time)
+ * - Default layout signature in registry mode: (api, registry)
  *
  * Context Menu:
  * - Requires ContextMenuProvider at app root
@@ -65,7 +63,6 @@ import {
   panelSettingsScopeRegistry,
   scopeProviderRegistry,
   usePanelInstanceSettingsStore,
-  usePanelRegistryOverridesStore,
   getPanelsForScope,
   type ScopeMatchContext,
   type PanelDefinition,
@@ -111,6 +108,14 @@ interface SmartDockviewBaseProps<TContext = any> {
     floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
   };
   /**
+   * Optional: Custom default layout for scope/panels mode.
+   * Receives the resolved panel definitions for convenience.
+   */
+  defaultLayout?: (
+    api: DockviewReadyEvent['api'],
+    panelDefs: PanelDefinition[] | LocalPanelRegistry<any>
+  ) => void;
+  /**
    * Optional: List of deprecated panel IDs.
    * If saved layout contains these panels, it will be automatically cleared.
    * Useful when removing panels from registry to prevent deserialization errors.
@@ -143,14 +148,17 @@ interface SmartDockviewBaseProps<TContext = any> {
    */
   excludePanels?: string[];
 
-  // ============ LEGACY API (for backward compatibility) ============
+  /**
+   * Optional allowlist of panels that can be added via context menu.
+   * If omitted, all public panels are available.
+   */
+  allowedPanels?: string[];
 
-  /** @deprecated Use `panels` prop instead */
-  globalPanelIds?: string[];
-  /** @deprecated Use `scope` prop instead */
-  includeGlobalPanels?: boolean;
-  /** @deprecated Panel overrides should be set at registration time */
-  panelRegistryOverrides?: Record<string, { title?: string; icon?: string; category?: string }>;
+  /**
+   * Optional allowlist of panel categories that can be added via context menu.
+   * If omitted, all categories are available.
+   */
+  allowedCategories?: string[];
 }
 
 /** Registry mode props - uses LocalPanelRegistry */
@@ -257,23 +265,29 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     scope,
     panels: panelsProp,
     excludePanels = [],
-    // Legacy API (for backward compatibility)
-    globalPanelIds = [],
-    includeGlobalPanels = false,
-    panelRegistryOverrides = {},
+    allowedPanels,
+    allowedCategories,
   } = props;
 
   // Context menu (optional - returns null if no provider)
   const contextMenu = useContextMenuOptional();
 
   // Resolve panel IDs from new simplified API or legacy props
-  // Priority: panels > scope > globalPanelIds/includeGlobalPanels
+  // Priority: panels > scope
   const resolvedPanelDefs = useMemo((): PanelDefinition[] => {
-    // New API: explicit panels list
     if (panelsProp && panelsProp.length > 0) {
-      return panelsProp
+      let panels = panelsProp
         .map(id => panelRegistry.get(id))
         .filter((def): def is PanelDefinition => def !== undefined);
+      if (allowedPanels && allowedPanels.length > 0) {
+        const allowedSet = new Set(allowedPanels);
+        panels = panels.filter((p) => allowedSet.has(p.id));
+      }
+      if (allowedCategories && allowedCategories.length > 0) {
+        const allowedCat = new Set(allowedCategories);
+        panels = panels.filter((p) => p.category && allowedCat.has(p.category));
+      }
+      return panels;
     }
 
     // New API: scope-based filtering
@@ -282,32 +296,40 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       if (excludePanels.length > 0) {
         panels = panels.filter(p => !excludePanels.includes(p.id));
       }
+      if (allowedPanels && allowedPanels.length > 0) {
+        const allowedSet = new Set(allowedPanels);
+        panels = panels.filter((p) => allowedSet.has(p.id));
+      }
+      if (allowedCategories && allowedCategories.length > 0) {
+        const allowedCat = new Set(allowedCategories);
+        panels = panels.filter((p) => p.category && allowedCat.has(p.category));
+      }
       return panels;
-    }
-
-    // Legacy API: globalPanelIds
-    if (globalPanelIds.length > 0) {
-      return globalPanelIds
-        .map(id => panelRegistry.get(id))
-        .filter((def): def is PanelDefinition => def !== undefined);
-    }
-
-    // Legacy API: includeGlobalPanels
-    if (includeGlobalPanels) {
-      return panelRegistry.getPublicPanels
-        ? panelRegistry.getPublicPanels()
-        : panelRegistry.getAll();
     }
 
     // No panels specified - will use registry mode if provided
     return [];
-  }, [panelsProp, scope, excludePanels, globalPanelIds, includeGlobalPanels]);
+  }, [panelsProp, scope, excludePanels, allowedPanels, allowedCategories]);
 
-  // Store resolved panel IDs for stable reference
-  const resolvedPanelIds = useMemo(
-    () => resolvedPanelDefs.map(p => p.id),
-    [resolvedPanelDefs]
-  );
+  // Determine which panels are allowed to be added (context menu)
+  const availablePanelDefs = useMemo((): PanelDefinition[] => {
+    // Start with all public panels
+    let panels = panelRegistry.getPublicPanels
+      ? panelRegistry.getPublicPanels()
+      : panelRegistry.getAll();
+
+    if (allowedPanels && allowedPanels.length > 0) {
+      const allowedSet = new Set(allowedPanels);
+      panels = panels.filter((p) => allowedSet.has(p.id));
+    }
+
+    if (allowedCategories && allowedCategories.length > 0) {
+      const allowedCat = new Set(allowedCategories);
+      panels = panels.filter((p) => p.category && allowedCat.has(p.category));
+    }
+
+    return panels;
+  }, [allowedPanels, allowedCategories]);
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
@@ -315,14 +337,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const contextRef = useRef<TContext | undefined>(context);
   const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
   const [scopeRegistryVersion, setScopeRegistryVersion] = useState(0);
-  const lastGlobalPanelIdsRef = useRef<string>('');
-  const lastScopeIdsRef = useRef<string>('');
-  // Use refs for props used in subscription effects to avoid effect re-runs
-  const globalPanelIdsRef = useRef(globalPanelIds);
-  globalPanelIdsRef.current = globalPanelIds;
-  const includeGlobalPanelsRef = useRef(includeGlobalPanels);
-  includeGlobalPanelsRef.current = includeGlobalPanels;
-  const panelRegistryOverridesMap = usePanelRegistryOverridesStore((state) => state.overrides);
   const dockviewHostId = useMemo(
     () =>
       panelManagerId
@@ -335,8 +349,20 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Determine mode
   const registryMode = isRegistryMode(props);
   const registry = registryMode ? props.registry : undefined;
-  const defaultLayout = registryMode ? props.defaultLayout : undefined;
+  const defaultLayout = props.defaultLayout;
   const directComponents = !registryMode ? props.components : undefined;
+
+  // If no panels resolved and no registry/direct components, fail fast
+  const hasNoPanels =
+    resolvedPanelDefs.length === 0 &&
+    !registryMode &&
+    !directComponents;
+
+  useEffect(() => {
+    if (hasNoPanels) {
+      console.error("[SmartDockview] No panels resolved for this dockview. Check scope/panels configuration.");
+    }
+  }, [hasNoPanels]);
 
   // Keep context ref updated and force panels to re-render
   useEffect(() => {
@@ -353,36 +379,13 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
   }, [context, isReady]);
 
-  // Subscribe to global panel registry - only update when panels we care about change
-  // Uses refs to avoid effect re-running when props change
+  // Subscribe to global panel registry - bump version on any change
   useEffect(() => {
-    const checkAndUpdate = () => {
-      // Build list of panel IDs we care about (read from refs for latest values)
-      let relevantIds: string[] = [];
-
-      if (globalPanelIdsRef.current.length > 0) {
-        relevantIds = [...globalPanelIdsRef.current];
-      }
-
-      if (includeGlobalPanelsRef.current) {
-        const allPanels = panelRegistry.getPublicPanels
-          ? panelRegistry.getPublicPanels()
-          : panelRegistry.getAll();
-        relevantIds = [...new Set([...relevantIds, ...allPanels.map(p => p.id)])];
-      }
-
-      const currentIds = relevantIds.sort().join(',');
-      if (currentIds !== lastGlobalPanelIdsRef.current) {
-        lastGlobalPanelIdsRef.current = currentIds;
-        setGlobalRegistryVersion((version) => version + 1);
-      }
-    };
-
-    // Initial check
-    checkAndUpdate();
-
-    return panelRegistry.subscribe(checkAndUpdate);
-  }, []); // Empty deps - subscription is stable, uses refs for latest prop values
+    const unsubscribe = panelRegistry.subscribe(() => {
+      setGlobalRegistryVersion((version) => version + 1);
+    });
+    return unsubscribe;
+  }, []);
 
   // Subscribe to scope registry - only update when scope definitions actually change
   useEffect(() => {
@@ -555,64 +558,19 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }> = [];
     const seen = new Set<string>();
 
-    // New simplified API: use resolvedPanelDefs if available
-    if (resolvedPanelDefs.length > 0) {
-      resolvedPanelDefs.forEach((def) => {
-        if (def.isInternal) return;
-        if (seen.has(def.id)) return;
-        seen.add(def.id);
-        const override = panelRegistryOverrides[def.id] ?? {};
-        const registryOverride = panelRegistryOverridesMap[def.id] ?? {};
-        entries.push({
-          id: def.id,
-          title: override.title ?? def.title,
-          icon: override.icon ?? def.icon,
-          category: override.category ?? def.category,
-          supportsMultipleInstances:
-            registryOverride.supportsMultipleInstances ?? def.supportsMultipleInstances,
-        });
+    // Register all available panels (for add-panel menu)
+    availablePanelDefs.forEach((def) => {
+      if (def.isInternal) return;
+      if (seen.has(def.id)) return;
+      seen.add(def.id);
+      entries.push({
+        id: def.id,
+        title: def.title,
+        icon: def.icon,
+        category: def.category,
+        supportsMultipleInstances: def.supportsMultipleInstances,
       });
-    }
-
-    // Legacy: local registry
-    if (registry) {
-      registry.getAll().forEach((def) => {
-        if (def.isInternal) return;
-        if (seen.has(def.id)) return;
-        seen.add(def.id);
-        const override = panelRegistryOverrides[def.id] ?? {};
-        const registryOverride = panelRegistryOverridesMap[def.id] ?? {};
-        entries.push({
-          id: def.id,
-          title: override.title ?? def.title,
-          icon: override.icon ?? def.icon,
-          category: override.category,
-          supportsMultipleInstances:
-            registryOverride.supportsMultipleInstances ?? def.supportsMultipleInstances,
-        });
-      });
-    }
-
-    // Legacy: workspace fallback (when no scope/panels/registry specified)
-    if (entries.length === 0 && !registry && panelManagerId === 'workspace') {
-      const panels = panelRegistry.getPublicPanels
-        ? panelRegistry.getPublicPanels()
-        : panelRegistry.getAll();
-      panels.forEach((panel) => {
-        if (seen.has(panel.id)) return;
-        seen.add(panel.id);
-        const override = panelRegistryOverrides[panel.id] ?? {};
-        const registryOverride = panelRegistryOverridesMap[panel.id] ?? {};
-        entries.push({
-          id: panel.id,
-          title: override.title ?? panel.title,
-          icon: override.icon ?? panel.icon,
-          category: override.category ?? panel.category,
-          supportsMultipleInstances:
-            registryOverride.supportsMultipleInstances ?? panel.supportsMultipleInstances,
-        });
-      });
-    }
+    });
 
     if (entries.length === 0) return undefined;
 
@@ -620,12 +578,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       getAll: () => entries,
     };
   }, [
-    resolvedPanelDefs,
-    registry,
-    panelManagerId,
-    panelRegistryOverrides,
+    availablePanelDefs,
     globalRegistryVersion,
-    panelRegistryOverridesMap,
   ]);
 
   // Use ref for dockviewPanelRegistry to avoid components recreation
@@ -706,9 +660,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
 
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
+    const seenPanelIds = new Set<string>();
 
     if (registry) {
       registry.getAll().forEach((def) => {
+        if (seenPanelIds.has(def.id)) return;
+        seenPanelIds.add(def.id);
         const BaseComponent = createPanelWrapper(def, contextRef);
         const Wrapped = (panelProps: IDockviewPanelProps) => {
           const menu = useContextMenuOptional();
@@ -782,104 +739,101 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         Wrapped.displayName = `SmartPanelContentMenu(${def.id})`;
         map[def.id] = Wrapped;
       });
-    }
+    } else {
+      const registerPanelDefinition = (def: PanelDefinition) => {
+        if (def.isInternal) return;
+        if (seenPanelIds.has(def.id)) return;
+        seenPanelIds.add(def.id);
 
-    const registerGlobalPanel = (panelId: string) => {
-      const globalDef = panelRegistry.get(panelId);
-      if (!globalDef) {
-        console.warn(`[SmartDockview] Global panel "${panelId}" not found in registry`);
-        return;
-      }
+        const Wrapped = (panelProps: IDockviewPanelProps) => {
+          const menu = useContextMenuOptional();
+          const dockviewId = useDockviewId();
+          const contextHubState = useContextHubState();
+          const instanceId = resolvePanelInstanceId(
+            dockviewId,
+            panelProps.api?.id ?? def.id,
+          );
+          const Component = def.component;
 
-      const Wrapped = (panelProps: IDockviewPanelProps) => {
-        const menu = useContextMenuOptional();
-        const dockviewId = useDockviewId();
-        const contextHubState = useContextHubState();
-        const instanceId = resolvePanelInstanceId(dockviewId, panelProps.api?.id ?? panelId);
-        const Component = globalDef.component;
+          const handleContextMenu = (event: React.MouseEvent) => {
+            if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
+            event.preventDefault();
+            event.stopPropagation();
 
-        const handleContextMenu = (event: React.MouseEvent) => {
-          if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
-          event.preventDefault();
-          event.stopPropagation();
-
-          // Check for component-level context (data-context-type attribute)
-          const componentContext = extractContextFromElement(event.target);
-          if (componentContext) {
-            const resolvedData = contextDataRegistry.resolve(
-              componentContext.type,
-              componentContext.id,
-            );
-            menu.showContextMenu({
-              contextType: componentContext.type,
-              position: { x: event.clientX, y: event.clientY },
-              data: resolvedData ?? {
-                id: componentContext.id,
-                name: componentContext.label,
-              },
-              currentDockviewId: dockviewId,
-            });
-            return;
-          }
-
-          // Fall back to panel-content context
-          menu.showContextMenu({
-            contextType: 'panel-content',
-            position: { x: event.clientX, y: event.clientY },
-            panelId: panelProps.api?.id,
-            instanceId,
-            groupId: panelProps.api?.group?.id,
-            currentDockviewId: dockviewId,
-            panelRegistry: dockviewPanelRegistryRef.current,
-            api: apiRef.current ?? undefined,
-            resetDockviewLayout,
-            data: panelProps.params,
-            contextHubState,
-          });
-        };
-
-        return (
-          <div
-            className="h-full w-full"
-            onContextMenuCapture={
-              contextMenuActive && enablePanelContentContextMenu ? handleContextMenu : undefined
+            // Check for component-level context (data-context-type attribute)
+            const componentContext = extractContextFromElement(event.target);
+            if (componentContext) {
+              const resolvedData = contextDataRegistry.resolve(
+                componentContext.type,
+                componentContext.id,
+              );
+              menu.showContextMenu({
+                contextType: componentContext.type,
+                position: { x: event.clientX, y: event.clientY },
+                data: resolvedData ?? {
+                  id: componentContext.id,
+                  name: componentContext.label,
+                },
+                currentDockviewId: dockviewId,
+              });
+              return;
             }
-          >
-            <ContextHubHost hostId={instanceId}>
-              <AutoScopeWrapper
-                panelId={globalDef.id}
-                instanceId={instanceId}
-                declaredScopes={globalDef.scopes}
-                tags={globalDef.tags}
-                category={globalDef.category}
-              >
-                <ScopeWrapper instanceId={instanceId}>
-                  <Component {...panelProps} context={contextRef.current} panelId={globalDef.id} />
-                </ScopeWrapper>
-              </AutoScopeWrapper>
-            </ContextHubHost>
-          </div>
-        );
-      };
-      Wrapped.displayName = `SmartPanelContentMenu(${panelId})`;
-      map[panelId] = Wrapped;
-    };
 
-    // New simplified API: register from resolvedPanelIds
-    if (resolvedPanelIds.length > 0) {
-      resolvedPanelIds.forEach(registerGlobalPanel);
+            // Fall back to panel-content context
+            menu.showContextMenu({
+              contextType: 'panel-content',
+              position: { x: event.clientX, y: event.clientY },
+              panelId: panelProps.api?.id,
+              instanceId,
+              groupId: panelProps.api?.group?.id,
+              currentDockviewId: dockviewId,
+              panelRegistry: dockviewPanelRegistryRef.current,
+              api: apiRef.current ?? undefined,
+              resetDockviewLayout,
+              data: panelProps.params,
+              contextHubState,
+            });
+          };
+
+          return (
+            <div
+              className="h-full w-full"
+              onContextMenuCapture={
+                contextMenuActive && enablePanelContentContextMenu ? handleContextMenu : undefined
+              }
+            >
+              <ContextHubHost hostId={instanceId}>
+                <AutoScopeWrapper
+                  panelId={def.id}
+                  instanceId={instanceId}
+                  declaredScopes={def.scopes}
+                  tags={def.tags}
+                  category={def.category}
+                >
+                  <ScopeWrapper instanceId={instanceId}>
+                    <Component {...panelProps} context={contextRef.current} panelId={def.id} />
+                  </ScopeWrapper>
+                </AutoScopeWrapper>
+              </ContextHubHost>
+            </div>
+          );
+        };
+        Wrapped.displayName = `SmartPanelContentMenu(${def.id})`;
+        map[def.id] = Wrapped;
+      };
+
+      availablePanelDefs.forEach(registerPanelDefinition);
     }
 
     return map;
     // Note: Many dependencies are intentionally excluded to stabilize the components map.
     // - ScopeWrapper/AutoScopeWrapper are stable (empty deps) and use refs internally
     // - dockviewPanelRegistry uses a ref to get the latest value at callback time
-    // - resolvedPanelIds: initial resolved value used for component registration
     // The components map is created once and should not change during the component lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     registry,
-    resolvedPanelIds,
+    availablePanelDefs,
     directComponents,
     contextMenuActive,
     enablePanelContentContextMenu,
@@ -980,6 +934,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       resetDockviewLayout,
     });
   }, [contextMenuActive, contextMenuDockviewId, resetDockviewLayout]);
+
+  if (hasNoPanels) {
+    return (
+      <div className={clsx(styles.smartDockview, className)}>
+        <div className="h-full w-full flex items-center justify-center text-neutral-500 text-sm">
+          No panels available for this dockview.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DockviewIdProvider
