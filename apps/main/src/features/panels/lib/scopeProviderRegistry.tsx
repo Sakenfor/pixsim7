@@ -25,6 +25,10 @@ const ScopeInstanceContext = createContext<string | undefined>(undefined);
 /**
  * Provider component to set the scope instanceId for children.
  * Used by scope providers to expose their instanceId.
+ *
+ * IMPORTANT: If already inside a scope (parent has set instanceId),
+ * this provider preserves the parent's instanceId rather than overriding.
+ * This prevents nested dockviews from fragmenting the scope.
  */
 export function ScopeInstanceProvider({
   instanceId,
@@ -33,8 +37,14 @@ export function ScopeInstanceProvider({
   instanceId: string;
   children: ReactNode;
 }) {
+  const parentInstanceId = useContext(ScopeInstanceContext);
+
+  // If parent already set a scope instanceId, preserve it (don't override)
+  // This ensures nested dockviews don't fragment the scope
+  const effectiveInstanceId = parentInstanceId ?? instanceId;
+
   return (
-    <ScopeInstanceContext.Provider value={instanceId}>
+    <ScopeInstanceContext.Provider value={effectiveInstanceId}>
       {children}
     </ScopeInstanceContext.Provider>
   );
