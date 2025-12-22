@@ -4,6 +4,7 @@
  * Shared types for the asset viewer panels.
  */
 
+import type { MutableRefObject } from 'react';
 import type { ViewerAsset } from '@features/assets';
 import type { DockviewApi } from 'dockview-core';
 
@@ -39,6 +40,8 @@ export interface ViewerPanelContext {
   closeViewer: () => void;
   /** Toggle fullscreen mode */
   toggleFullscreen: () => void;
-  /** Dockview API for controlling layout */
+  /** Dockview API for controlling layout (may be undefined initially) */
   dockviewApi?: DockviewApi;
+  /** Ref to dockview API for stable access without context changes */
+  dockviewApiRef?: MutableRefObject<DockviewApi | undefined>;
 }

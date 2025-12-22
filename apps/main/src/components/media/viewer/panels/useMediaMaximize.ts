@@ -5,30 +5,36 @@
  * Intelligently detects current state by checking actual panel height.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type MutableRefObject } from 'react';
 import type { DockviewApi } from 'dockview-core';
 
 interface UseMediaMaximizeOptions {
   dockviewApi?: DockviewApi;
+  /** Ref to dockview API - preferred over dockviewApi for stable access */
+  dockviewApiRef?: MutableRefObject<DockviewApi | undefined>;
   maximizedHeight?: number; // Percentage (default: 0.95)
   normalHeight?: number; // Percentage (default: 0.75)
 }
 
 export function useMediaMaximize({
   dockviewApi,
+  dockviewApiRef,
   maximizedHeight = 0.95,
   normalHeight = 0.75,
 }: UseMediaMaximizeOptions = {}) {
+  // Prefer ref if available, fall back to direct prop
+  const getApi = useCallback(() => dockviewApiRef?.current ?? dockviewApi, [dockviewApi, dockviewApiRef]);
 
   /**
    * Check if the media panel is currently in maximized state
    * by comparing its actual height to the maximized/normal thresholds
    */
   const isMaximized = useMemo(() => {
-    if (!dockviewApi || dockviewApi.groups.length < 2) return false;
+    const api = getApi();
+    if (!api || api.groups.length < 2) return false;
 
     try {
-      const mediaGroup = dockviewApi.groups[0];
+      const mediaGroup = api.groups[0];
       const currentHeight = mediaGroup.api.height;
       const viewportHeight = window.innerHeight;
 
@@ -45,21 +51,22 @@ export function useMediaMaximize({
     } catch (e) {
       return false;
     }
-  }, [dockviewApi, dockviewApi?.groups, maximizedHeight, normalHeight]);
+  }, [getApi, maximizedHeight, normalHeight]);
 
   const toggleMaximize = useCallback(() => {
-    if (!dockviewApi) {
+    const api = getApi();
+    if (!api) {
       console.warn('[useMediaMaximize] Dockview API not available');
       return;
     }
 
     try {
-      const groups = dockviewApi.groups;
+      const groups = api.groups;
 
       if (groups.length >= 2) {
         const viewportHeight = window.innerHeight;
         const mediaGroupId = groups[0].id;
-        const mediaGroup = dockviewApi.getGroup(mediaGroupId);
+        const mediaGroup = api.getGroup(mediaGroupId);
 
         if (!mediaGroup) {
           console.warn('[useMediaMaximize] Media group not found');
@@ -91,7 +98,7 @@ export function useMediaMaximize({
     } catch (e) {
       console.warn('[useMediaMaximize] Failed to toggle maximize:', e);
     }
-  }, [dockviewApi, maximizedHeight, normalHeight]);
+  }, [getApi, maximizedHeight, normalHeight]);
 
   return {
     isMaximized,
