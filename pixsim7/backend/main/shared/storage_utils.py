@@ -1,7 +1,32 @@
 """
-Storage utility functions for URL generation and key handling.
+Storage utility functions for URL generation, key handling, and file hashing.
 """
+import hashlib
 from typing import Optional
+
+
+def compute_sha256(file_path: str, chunk_size: int = 65536) -> str:
+    """
+    Compute SHA256 hash of a file.
+
+    Uses streaming reads to handle large files efficiently.
+
+    Args:
+        file_path: Path to file to hash
+        chunk_size: Bytes to read at a time (default 64KB)
+
+    Returns:
+        Lowercase hex SHA256 hash string (64 characters)
+
+    Example:
+        >>> compute_sha256("/path/to/video.mp4")
+        'a1b2c3d4...'
+    """
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def storage_key_to_url(key: Optional[str]) -> Optional[str]:

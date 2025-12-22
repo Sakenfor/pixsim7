@@ -1,7 +1,11 @@
 """
 Asset management API endpoints
 
-Handles asset upload, download, sync, and management operations.
+Core CRUD operations. Additional endpoints split into:
+- assets_maintenance.py: SHA stats, storage sync, backfill
+- assets_bulk.py: Bulk operations (tags, delete, export)
+- assets_tags.py: Tag management
+- assets_upload_helper.py: Shared upload preparation logic
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi import status as http_status
@@ -19,53 +23,26 @@ from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from datetime import datetime
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim7.backend.main.services.asset.asset_hasher import compute_image_phash
 from pixsim_logging import get_logger
 
+# Shared helper (used by this module and sub-modules)
+from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with_tags
+
+# Sub-routers for modular organization
+from pixsim7.backend.main.api.v1 import assets_maintenance
+from pixsim7.backend.main.api.v1 import assets_bulk
+from pixsim7.backend.main.api.v1 import assets_tags
+
 router = APIRouter()
 logger = get_logger()
 
-
-# ===== HELPER FUNCTIONS =====
-
-async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetResponse:
-    """
-    Build AssetResponse with tags loaded from database.
-
-    Args:
-        asset: Asset model instance
-        db: Database session
-
-    Returns:
-        AssetResponse with tags populated
-    """
-    # Get tags for this asset
-    tag_service = TagService(db)
-    tags = await tag_service.get_asset_tags(asset.id)
-
-    # Compute provider_status
-    provider_asset_id = getattr(asset, "provider_asset_id", None)
-    provider_flagged = getattr(asset, "provider_flagged", False)
-    remote_url = getattr(asset, "remote_url", None)
-
-    if provider_flagged:
-        status = "flagged"
-    elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
-        status = "ok"
-    elif provider_asset_id and not provider_asset_id.startswith("local_"):
-        status = "ok"
-    elif provider_asset_id and provider_asset_id.startswith("local_"):
-        status = "local_only"
-    else:
-        status = "unknown"
-
-    # Build response
-    ar = AssetResponse.model_validate(asset)
-    ar.provider_status = status
-    ar.tags = [TagSummary.model_validate(tag) for tag in tags]
-
-    return ar
+# Include sub-routers
+router.include_router(assets_maintenance.router)
+router.include_router(assets_bulk.router)
+router.include_router(assets_tags.router)
 
 
 # ===== LIST ASSETS =====
@@ -609,6 +586,24 @@ async def upload_asset_to_provider(
             detail="Continuing upload without sha256 deduplication",
         )
 
+    # Compute phash for images (near-duplicate detection)
+    image_hash: Optional[str] = None
+    phash64: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    if media_type == MediaType.IMAGE:
+        try:
+            from PIL import Image
+            with Image.open(tmp_path) as img:
+                width, height = img.size
+            image_hash, phash64 = compute_image_phash(tmp_path)
+        except Exception as e:
+            logger.warning(
+                "asset_phash_compute_failed",
+                error=str(e),
+                detail="Continuing without image_hash/phash64",
+            )
+
     # If we have a hash, try to deduplicate before uploading to provider
     if sha256:
         try:
@@ -664,6 +659,76 @@ async def upload_asset_to_provider(
                         detail="Uploading duplicate asset to additional provider",
                     )
                     # Continue with upload, will update provider_uploads map below
+
+    # Phash-based near-duplicate detection for images (if no sha256 match found)
+    if phash64 is not None and not existing:
+        try:
+            similar = await asset_service.find_similar_asset_by_phash(phash64, user.id, max_distance=5)
+        except Exception as e:
+            similar = None
+            logger.warning(
+                "asset_phash_lookup_failed",
+                error=str(e),
+                detail="Failed to check for similar asset by phash; continuing with new asset",
+            )
+        else:
+            if similar:
+                # Check if already on this provider
+                already_on_provider = (
+                    similar.provider_id == provider_id or
+                    provider_id in (similar.provider_uploads or {})
+                )
+                if already_on_provider:
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+                    existing_external = similar.remote_url
+                    if not existing_external or not (
+                        existing_external.startswith("http://") or existing_external.startswith("https://")
+                    ):
+                        existing_external = f"/api/v1/assets/{similar.id}/file"
+                    provider_specific_id = similar.provider_uploads.get(provider_id) if similar.provider_uploads else None
+                    if not provider_specific_id:
+                        provider_specific_id = similar.provider_asset_id
+                    return UploadAssetResponse(
+                        provider_id=provider_id,
+                        media_type=similar.media_type,
+                        external_url=existing_external,
+                        provider_asset_id=provider_specific_id,
+                        note=f"Reused existing asset (phash match, already on {provider_id})",
+                    )
+                else:
+                    # Similar exists but not on this provider - use it as base
+                    existing = similar
+
+    # Store file in CAS before uploading to provider (ensures local copy exists)
+    stored_key: Optional[str] = None
+    local_path: Optional[str] = None
+    if sha256:
+        try:
+            from pixsim7.backend.main.services.storage.storage_service import get_storage_service
+            storage_service = get_storage_service()
+            ext = os.path.splitext(file.filename or "upload.bin")[1] or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
+            stored_key = await storage_service.store_from_path_with_hash(
+                user_id=user.id,
+                sha256=sha256,
+                source_path=tmp_path,
+                extension=ext
+            )
+            local_path = storage_service.get_path(stored_key)
+            logger.info(
+                "file_stored_content_addressed",
+                user_id=user.id,
+                sha256=sha256[:16],
+                stored_key=stored_key,
+            )
+        except Exception as e:
+            logger.warning(
+                "cas_storage_failed",
+                error=str(e),
+                detail="Continuing with provider upload only",
+            )
 
     # Use UploadService
     from pixsim7.backend.main.services.upload.upload_service import UploadService
@@ -726,23 +791,57 @@ async def upload_asset_to_provider(
                     note=f"Reused existing asset (deduplicated by sha256, uploaded to {provider_id})",
                 )
             else:
-                # Create new asset
-                await add_asset(
+                # Create new asset with CAS storage
+                new_asset = await add_asset(
                     db,
                     user_id=user.id,
                     media_type=media_type,
                     provider_id=provider_id,
                     provider_asset_id=provider_asset_id,
                     remote_url=remote_url,
-                    width=result.width,
-                    height=result.height,
+                    width=width or result.width,
+                    height=height or result.height,
                     duration_sec=None,
                     mime_type=result.mime_type or content_type,
                     file_size_bytes=result.file_size_bytes,
                     sha256=sha256,
+                    stored_key=stored_key,
+                    local_path=local_path,
+                    sync_status=SyncStatus.DOWNLOADED if stored_key else SyncStatus.REMOTE,
+                    image_hash=image_hash,
+                    phash64=phash64,
                     media_metadata=media_metadata or None,
                 )
-                # TODO: Add "user_upload" tag using TagService after asset creation
+
+                # Queue thumbnail generation if we have a local copy
+                if stored_key and new_asset:
+                    try:
+                        from pixsim7.backend.main.services.asset.ingestion_service import AssetIngestionService
+                        ingestion_service = AssetIngestionService(db)
+                        await ingestion_service.queue_ingestion(new_asset.id)
+                    except Exception as e:
+                        logger.warning(
+                            "thumbnail_queue_failed",
+                            asset_id=new_asset.id,
+                            error=str(e),
+                        )
+
+                # Record upload history
+                if new_asset:
+                    try:
+                        await asset_service.record_upload_attempt(
+                            new_asset,
+                            provider_id=provider_id,
+                            status='success',
+                            method='upload_to_provider',
+                            context={'source': source_folder_id or 'direct_upload'},
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "upload_history_record_failed",
+                            asset_id=new_asset.id,
+                            error=str(e),
+                        )
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
             logger.error(
@@ -1294,458 +1393,3 @@ async def extract_frame(
             detail=f"Failed to extract frame: {str(e)}"
         )
 
-
-# ===== TAG MANAGEMENT =====
-
-@router.post("/assets/{asset_id}/tags/assign", response_model=AssetResponse)
-async def assign_tags_to_asset(
-    asset_id: int,
-    request: AssignTagsRequest,
-    user: CurrentUser,
-    asset_service: AssetSvc,
-    db: DatabaseSession,
-):
-    """
-    Assign/remove tags to/from an asset using structured hierarchical tags.
-
-    Example request:
-    ```json
-    {
-      "add": ["character:alice", "location:tokyo", "style:anime"],
-      "remove": ["old_tag:value"]
-    }
-    ```
-
-    Tags are automatically:
-    - Normalized (lowercase, trimmed)
-    - Resolved to canonical tags (aliases are followed)
-    - Created if they don't exist
-    """
-    try:
-        # Verify asset ownership
-        asset = await asset_service.get_asset_for_user(asset_id, user)
-
-        # Create tag service
-        tag_service = TagService(db)
-
-        # Add tags
-        if request.add:
-            await tag_service.assign_tags_to_asset(
-                asset_id=asset_id,
-                tag_slugs=request.add,
-                auto_create=True,
-            )
-
-        # Remove tags
-        if request.remove:
-            await tag_service.remove_tags_from_asset(
-                asset_id=asset_id,
-                tag_slugs=request.remove,
-            )
-
-        # Return updated asset
-        return await build_asset_response_with_tags(asset, db)
-
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except InvalidOperationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to assign tags: {str(e)}"
-        )
-
-
-# Note: Old tag endpoints below are kept for backward compatibility but deprecated
-# Please use /assets/{asset_id}/tags/assign for new code
-
-
-@router.post("/assets/{asset_id}/analyze")
-async def analyze_asset_for_tags(
-    asset_id: int,
-    user: CurrentUser,
-    asset_service: AssetSvc
-):
-    """
-    Analyze an asset and suggest tags using AI
-
-    Returns suggested tags based on:
-    - Media type (image/video)
-    - Visual content analysis (when available)
-    - Existing metadata
-
-    Example response:
-    ```json
-    {
-      "suggested_tags": ["portrait", "outdoor", "daytime", "landscape"]
-    }
-    ```
-    """
-    try:
-        # Get asset
-        asset = await asset_service.get_asset_for_user(asset_id, user)
-
-        # Generate suggestions based on available data
-        suggestions = []
-
-        # Add media type tag
-        if asset.media_type:
-            suggestions.append(asset.media_type.value)
-
-        # Add provider tag
-        if asset.provider_id:
-            suggestions.append(f"from_{asset.provider_id}")
-
-        # Analyze dimensions for orientation
-        if asset.width and asset.height:
-            if asset.width > asset.height:
-                suggestions.append("landscape")
-            elif asset.height > asset.width:
-                suggestions.append("portrait")
-            else:
-                suggestions.append("square")
-
-            # Add resolution tags
-            if asset.width >= 1920 or asset.height >= 1080:
-                suggestions.append("high_res")
-            elif asset.width <= 640 or asset.height <= 480:
-                suggestions.append("low_res")
-
-        # Add duration-based tags for videos
-        if asset.media_type == MediaType.VIDEO and asset.duration_sec:
-            if asset.duration_sec <= 5:
-                suggestions.append("short")
-            elif asset.duration_sec >= 20:
-                suggestions.append("long")
-
-            suggestions.append("cinematic")
-
-        # Add existing tags to help user understand what's already there
-        existing_tags = asset.tags or []
-
-        # TODO: In the future, integrate with actual AI vision models like:
-        # - CLIP for semantic understanding
-        # - Object detection models
-        # - Scene classification
-        # For now, provide basic heuristic-based suggestions
-
-        return {
-            "suggested_tags": suggestions,
-            "existing_tags": existing_tags,
-            "asset_id": asset.id,
-            "media_type": asset.media_type.value
-        }
-
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to analyze asset: {str(e)}"
-        )
-
-
-# NOTE: Old tag endpoints removed - use /assets/{asset_id}/tags/assign instead
-# The new endpoint supports both add and remove operations in a single call
-
-
-class ReuploadAssetRequest(BaseModel):
-    """Request to re-upload an existing asset to a provider."""
-    provider_id: str = Field(description="Target provider ID, e.g., pixverse")
-
-
-@router.post(
-    "/assets/{asset_id}/reupload",
-    response_model=UploadAssetResponse,
-    status_code=http_status.HTTP_200_OK,
-)
-async def reupload_asset_to_provider(
-    asset_id: int,
-    request: ReuploadAssetRequest,
-    user: CurrentUser,
-    asset_service: AssetSvc,
-) -> UploadAssetResponse:
-    """
-    Re-upload an existing asset to a provider, caching the provider-specific ID.
-
-    Uses the sync service helper to upload and cache the provider-specific asset ID.
-    """
-    try:
-        provider_id = request.provider_id
-        # Ensure asset exists and belongs to the user
-        asset = await asset_service.get_asset_for_user(asset_id, user)
-
-        # Upload to provider using the sync service helper and cache the result
-        provider_asset_id = await asset_service._upload_to_provider(asset, provider_id)
-        await asset_service.cache_provider_upload(asset_id, provider_id, provider_asset_id)
-
-        return UploadAssetResponse(
-            provider_id=provider_id,
-            media_type=asset.media_type,
-            external_url=asset.remote_url,
-            provider_asset_id=provider_asset_id,
-            note=None,
-        )
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except InvalidOperationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(
-            "reupload_asset_failed",
-            asset_id=asset_id,
-            provider_id=request.provider_id,
-            error=str(e),
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to re-upload asset: {str(e)}",
-        )
-
-
-# ===== BULK OPERATIONS =====
-
-class BulkTagRequest(BaseModel):
-    """Request for bulk tag operations"""
-    asset_ids: List[int] = Field(description="List of asset IDs")
-    tags: List[str] = Field(description="Tags to apply")
-    mode: str = Field(default="add", description="Operation mode: add, remove, or replace")
-
-
-class BulkDeleteRequest(BaseModel):
-    """Request for bulk delete"""
-    asset_ids: List[int] = Field(description="List of asset IDs to delete")
-
-
-class BulkExportRequest(BaseModel):
-    """Request for bulk export"""
-    asset_ids: List[int] = Field(description="List of asset IDs to export")
-
-
-@router.post("/assets/bulk/tags")
-async def bulk_update_tags(
-    request: BulkTagRequest,
-    user: CurrentUser,
-    asset_service: AssetSvc
-):
-    """
-    Update tags for multiple assets at once
-
-    Modes:
-    - "add": Add tags to existing tags
-    - "remove": Remove specified tags
-    - "replace": Replace all tags with new ones
-
-    Example request:
-    ```json
-    {
-      "asset_ids": [1, 2, 3],
-      "tags": ["batch_processed", "2024"],
-      "mode": "add"
-    }
-    ```
-    """
-    try:
-        assets = await asset_service.bulk_update_tags(
-            asset_ids=request.asset_ids,
-            tags=request.tags,
-            user=user,
-            mode=request.mode
-        )
-        return {
-            "success": True,
-            "updated_count": len(assets),
-            "asset_ids": [a.id for a in assets]
-        }
-
-    except ResourceNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except InvalidOperationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to bulk update tags: {str(e)}"
-        )
-
-
-@router.post("/assets/bulk/delete")
-async def bulk_delete_assets(
-    request: BulkDeleteRequest,
-    user: CurrentUser,
-    asset_service: AssetSvc,
-    delete_from_provider: bool = Query(
-        default=True,
-        description="Also delete assets from provider"
-    ),
-):
-    """
-    Delete multiple assets at once
-
-    Example request:
-    ```json
-    {
-      "asset_ids": [1, 2, 3]
-    }
-    ```
-    """
-    try:
-        deleted_count = 0
-        errors = []
-
-        for asset_id in request.asset_ids:
-            try:
-                await asset_service.delete_asset(asset_id, user, delete_from_provider=delete_from_provider)
-                deleted_count += 1
-            except Exception as e:
-                errors.append({
-                    "asset_id": asset_id,
-                    "error": str(e)
-                })
-
-        return {
-            "success": True,
-            "deleted_count": deleted_count,
-            "total_requested": len(request.asset_ids),
-            "errors": errors if errors else None
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to bulk delete: {str(e)}"
-        )
-
-
-@router.post("/assets/bulk/export")
-async def bulk_export_assets(
-    request: BulkExportRequest,
-    user: CurrentUser,
-    asset_service: AssetSvc
-):
-    """
-    Export multiple assets as a ZIP file
-
-    Example request:
-    ```json
-    {
-      "asset_ids": [1, 2, 3]
-    }
-    ```
-
-    Returns a download URL for the generated ZIP file
-    """
-    import zipfile
-    import tempfile
-    import shutil
-    from pathlib import Path
-
-    try:
-        # Create temporary directory for ZIP
-        temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, f"export_{user.id}_{datetime.utcnow().timestamp()}.zip")
-
-        # Create ZIP file
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for asset_id in request.asset_ids:
-                try:
-                    # Get asset
-                    asset = await asset_service.get_asset_for_user(asset_id, user)
-
-                    # Determine file path
-                    if asset.local_path and os.path.exists(asset.local_path):
-                        file_path = asset.local_path
-                    else:
-                        # Skip assets without local files
-                        logger.warning(f"Asset {asset_id} has no local file, skipping")
-                        continue
-
-                    # Determine filename for ZIP
-                    ext = os.path.splitext(file_path)[1] or ".bin"
-                    zip_filename = f"asset_{asset.id}_{asset.provider_id}{ext}"
-
-                    # Add to ZIP
-                    zipf.write(file_path, zip_filename)
-
-                except Exception as e:
-                    logger.error(f"Failed to add asset {asset_id} to ZIP: {e}")
-                    continue
-
-        # Move ZIP to permanent storage (in exports directory)
-        export_dir = Path("data/exports")
-        export_dir.mkdir(parents=True, exist_ok=True)
-
-        zip_filename = f"export_{user.id}_{int(datetime.utcnow().timestamp())}.zip"
-        final_path = export_dir / zip_filename
-        shutil.move(zip_path, final_path)
-
-        # Clean up temp directory
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-        # Return download URL
-        download_url = f"/api/v1/assets/downloads/{zip_filename}"
-
-        return {
-            "success": True,
-            "download_url": download_url,
-            "filename": zip_filename,
-            "asset_count": len(request.asset_ids)
-        }
-
-    except Exception as e:
-        # Clean up on error
-        if 'temp_dir' in locals():
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-        logger.error(
-            "bulk_export_failed",
-            asset_ids=request.asset_ids,
-            error=str(e),
-            exc_info=True
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to export assets: {str(e)}"
-        )
-
-
-@router.get("/assets/downloads/{filename}")
-async def download_export(
-    filename: str,
-    user: CurrentUser
-):
-    """
-    Download an exported ZIP file
-
-    Files are automatically cleaned up after 24 hours
-    """
-    from pathlib import Path
-
-    # Security: validate filename (no path traversal)
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    # Verify filename matches user ID
-    if not filename.startswith(f"export_{user.id}_"):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    export_path = Path("data/exports") / filename
-
-    if not export_path.exists():
-        raise HTTPException(status_code=404, detail="Export file not found")
-
-    return FileResponse(
-        path=str(export_path),
-        media_type="application/zip",
-        filename=filename
-    )

@@ -34,6 +34,7 @@ from sqlalchemy.orm import attributes
 from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -387,16 +388,17 @@ class AssetIngestionService:
 
     async def _download_file(self, asset: Asset) -> str:
         """
-        Download file from remote URL.
+        Download file from remote URL to content-addressed storage.
 
-        Uses same storage path as AssetSyncService.sync_asset() for consistency.
-        Updates asset.local_path, file_size_bytes, sync_status.
+        Uses StorageService with SHA256-based naming for automatic deduplication.
+        Updates asset.local_path, stored_key, sha256, file_size_bytes, sync_status.
 
         Returns:
             Path to downloaded file
         """
         url = asset.remote_url
         max_size = self.settings.max_download_size_mb * 1024 * 1024
+        storage = get_storage_service()
 
         logger.info(
             "download_starting",
@@ -404,13 +406,7 @@ class AssetIngestionService:
             url=url[:100],  # Truncate URL for logging
         )
 
-        # Use same storage path as AssetSyncService
-        storage_dir = Path(os.getenv("PIXSIM_STORAGE_PATH", "data/storage"))
-        asset_dir = storage_dir / "user" / str(asset.user_id) / "assets"
-        asset_dir.mkdir(parents=True, exist_ok=True)
-
         ext = self._guess_extension(asset)
-        local_path = asset_dir / f"{asset.id}{ext}"
 
         # Download with retries
         max_retries = 3
@@ -418,6 +414,11 @@ class AssetIngestionService:
 
         for attempt in range(max_retries):
             try:
+                # Download to memory while computing hash
+                content_chunks = []
+                total_size = 0
+                sha256_hash = hashlib.sha256()
+
                 async with httpx.AsyncClient(
                     timeout=120,
                     follow_redirects=True,
@@ -439,30 +440,48 @@ class AssetIngestionService:
                     async with client.stream("GET", url) as resp:
                         resp.raise_for_status()
 
-                        total = 0
-                        with open(local_path, 'wb') as f:
-                            async for chunk in resp.aiter_bytes(chunk_size=1024*1024):
-                                total += len(chunk)
-                                if total > max_size:
-                                    raise ValueError(
-                                        f"Download exceeded max size: {self.settings.max_download_size_mb}MB"
-                                    )
-                                f.write(chunk)
+                        async for chunk in resp.aiter_bytes(chunk_size=1024*1024):
+                            if total_size + len(chunk) > max_size:
+                                raise ValueError(
+                                    f"Download exceeded max size: {self.settings.max_download_size_mb}MB"
+                                )
+                            content_chunks.append(chunk)
+                            sha256_hash.update(chunk)
+                            total_size += len(chunk)
 
-                # Update asset
-                asset.local_path = str(local_path)
-                asset.file_size_bytes = local_path.stat().st_size
+                # Combine chunks and get hash
+                sha256 = sha256_hash.hexdigest()
+                content = b''.join(content_chunks)
+
+                # Store using content-addressed key (automatic deduplication)
+                stored_key = await storage.store_with_hash(
+                    user_id=asset.user_id,
+                    sha256=sha256,
+                    content=content,
+                    extension=ext,
+                )
+
+                # Get local path from storage
+                local_path = storage.get_path(stored_key)
+
+                # Update asset with new storage location
+                asset.local_path = local_path
+                asset.stored_key = stored_key
+                asset.sha256 = sha256
+                asset.file_size_bytes = total_size
                 asset.sync_status = SyncStatus.DOWNLOADED
                 asset.downloaded_at = datetime.utcnow()
 
                 logger.info(
                     "download_completed",
                     asset_id=asset.id,
+                    sha256=sha256[:16],
                     size_bytes=asset.file_size_bytes,
-                    local_path=str(local_path),
+                    stored_key=stored_key,
+                    local_path=local_path,
                 )
 
-                return str(local_path)
+                return local_path
 
             except (httpx.TimeoutException, httpx.NetworkError) as e:
                 if attempt < max_retries - 1:
@@ -618,10 +637,17 @@ class AssetIngestionService:
             # Create thumbnail (maintains aspect ratio)
             img.thumbnail(thumb_size, Image.Resampling.LANCZOS)
 
-            # Save to storage
-            thumb_key = f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
-            thumb_path = self.storage.get_path(thumb_key)
+            # Save to storage using content-addressed key (based on asset SHA)
+            # Use asset SHA for thumbnail key so duplicate assets share thumbnails
+            if asset.sha256:
+                # Hash-based naming (deduplication-friendly)
+                hash_prefix = asset.sha256[:2]
+                thumb_key = f"u/{asset.user_id}/thumbnails/{hash_prefix}/{asset.sha256}.jpg"
+            else:
+                # Fallback to asset ID if SHA not available (shouldn't happen with new system)
+                thumb_key = f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
 
+            thumb_path = self.storage.get_path(thumb_key)
             Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
 
             img.save(thumb_path, "JPEG", quality=thumb_quality, optimize=True)
@@ -631,6 +657,7 @@ class AssetIngestionService:
         logger.debug(
             "thumbnail_generated",
             asset_id=asset.id,
+            sha256=asset.sha256[:16] if asset.sha256 else None,
             key=thumb_key,
         )
 
@@ -641,9 +668,16 @@ class AssetIngestionService:
         # Extract frame at 1 second (or middle if shorter)
         timestamp = min(1.0, (asset.duration_sec or 0) / 2)
 
-        thumb_key = f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
-        thumb_path = self.storage.get_path(thumb_key)
+        # Use content-addressed key (based on asset SHA) for deduplication
+        if asset.sha256:
+            # Hash-based naming (deduplication-friendly)
+            hash_prefix = asset.sha256[:2]
+            thumb_key = f"u/{asset.user_id}/thumbnails/{hash_prefix}/{asset.sha256}.jpg"
+        else:
+            # Fallback to asset ID if SHA not available
+            thumb_key = f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
 
+        thumb_path = self.storage.get_path(thumb_key)
         Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
 
         thumb_size = self.settings.thumbnail_size
@@ -696,6 +730,7 @@ class AssetIngestionService:
             logger.debug(
                 "video_thumbnail_generated",
                 asset_id=asset.id,
+                sha256=asset.sha256[:16] if asset.sha256 else None,
                 key=thumb_key,
             )
 
@@ -893,11 +928,7 @@ class AssetIngestionService:
 
     def _compute_sha256(self, file_path: str) -> str:
         """Compute SHA256 hash of file."""
-        sha256_hash = hashlib.sha256()
-        with open(file_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(1024 * 1024), b''):
-                sha256_hash.update(chunk)
-        return sha256_hash.hexdigest()
+        return shared_compute_sha256(file_path)
 
     async def queue_ingestion(self, asset_id: int) -> None:
         """

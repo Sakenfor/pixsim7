@@ -25,7 +25,7 @@ from pixsim7.backend.main.shared.errors import (
 class AssetSyncService:
     """
     Asset synchronization and transfer operations
-    
+
     Handles:
     - Download state management
     - Asset sync to local storage
@@ -35,6 +35,16 @@ class AssetSyncService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def get_asset(self, asset_id: int) -> Asset:
+        """Get asset by ID, raises if not found."""
+        result = await self.db.execute(
+            select(Asset).where(Asset.id == asset_id)
+        )
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise ResourceNotFoundError(f"Asset {asset_id} not found")
+        return asset
 
     # ===== UPLOAD HISTORY TRACKING (Task 104) =====
 
@@ -186,10 +196,8 @@ class AssetSyncService:
         await self.db.commit()
         await self.db.refresh(asset)
 
-        # Update user storage
-        storage_gb = file_size_bytes / (1024 ** 3)
-        user = await self.users.get_user(asset.user_id)
-        await self.users.increment_storage(user, storage_gb)
+        # Note: User storage tracking is handled by quota_service when needed
+        # Not tracked here to avoid circular dependency
 
         return asset
 
@@ -228,8 +236,15 @@ class AssetSyncService:
         """
         from pixsim7.backend.main.services.asset.ingestion_service import AssetIngestionService
 
-        # Authorization check
-        asset = await self.get_asset_for_user(asset_id, user)
+        # Get asset with authorization check
+        result = await self.db.execute(
+            select(Asset).where(Asset.id == asset_id)
+        )
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise ResourceNotFoundError(f"Asset {asset_id} not found")
+        if asset.user_id != user.id:
+            raise PermissionError(f"User {user.id} does not own asset {asset_id}")
 
         # Already ingested? Return early (ingestion is idempotent anyway)
         if asset.ingest_status == "completed" and asset.stored_key:

@@ -7,11 +7,11 @@ via SHA256 hashing and asset lineage tracking.
 import os
 import subprocess
 import tempfile
-import hashlib
 from typing import Optional, Tuple
 from pathlib import Path
 
 from pixsim7.backend.main.shared.errors import InvalidOperationError
+from pixsim7.backend.main.shared.storage_utils import compute_sha256
 
 
 def _check_ffmpeg_available() -> bool:
@@ -152,15 +152,6 @@ def extract_frame_with_metadata(
         if os.path.exists(frame_path):
             os.remove(frame_path)
         raise InvalidOperationError(f"Failed to extract frame metadata: {e}")
-
-
-def compute_sha256(file_path: str) -> str:
-    """Compute SHA256 hash for a file."""
-    h = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def get_image_dimensions(image_path: str) -> Tuple[int, int]:

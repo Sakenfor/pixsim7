@@ -6,17 +6,17 @@ Manages user asset quotas, storage tracking, and hash-based deduplication.
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-import hashlib
+from datetime import datetime
 
 from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.services.asset.asset_hasher import hamming_distance_64
-from datetime import datetime
+from pixsim7.backend.main.shared.storage_utils import compute_sha256
 
 
 class AssetQuotaService:
     """
     Asset quota and storage management
-    
+
     Handles:
     - User asset count tracking
     - User storage usage tracking
@@ -28,11 +28,7 @@ class AssetQuotaService:
 
     def _compute_sha256(self, file_path: str) -> str:
         """Compute SHA256 hash for a file"""
-        h = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-        return h.hexdigest()
+        return compute_sha256(file_path)
 
     async def get_user_asset_count(self, user_id: int) -> int:
         """Get total asset count for user"""
