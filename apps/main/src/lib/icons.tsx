@@ -89,6 +89,7 @@ import {
   Minimize2,
   Archive,
   Package,
+  Layers,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -177,6 +178,7 @@ export const Icons = {
   'maximize-2': Maximize2,  // Kebab-case alias
   minimize2: Minimize2,
   'minimize-2': Minimize2,  // Kebab-case alias
+  layers: Layers,
 
   // Panels & Features
   heart: Heart,
