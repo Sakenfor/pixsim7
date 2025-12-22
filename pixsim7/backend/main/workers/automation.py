@@ -111,11 +111,9 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 await db.commit()
                 raise RuntimeError(f"Device {device.adb_id} not reachable via ADB. Available: {list(adb_serials)}")
 
-            # Mark device BUSY to avoid concurrent use
-            prev_status = device.status
+            # Device should already be BUSY from assignment (no need to set again)
+            # Just verify and continue with execution
             try:
-                device.status = DeviceStatus.BUSY
-                await db.commit()
 
                 # Build execution context with auto-injected account credentials
                 screenshots_dir = Path(settings.storage_base_path) / settings.automation_screenshots_dir / f"exec-{execution.id}"
@@ -176,11 +174,14 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
 
                 return {"status": "completed"}
             finally:
-                # Restore device status
+                # Restore device to ONLINE (it was marked BUSY during assignment)
                 try:
                     device = await db.get(AndroidDevice, device.id)
                     if device:
-                        device.status = prev_status if prev_status != DeviceStatus.ERROR else DeviceStatus.ONLINE
+                        # Only restore to ONLINE if device was BUSY (expected state)
+                        # If device is OFFLINE/ERROR from connectivity check, preserve that
+                        if device.status == DeviceStatus.BUSY:
+                            device.status = DeviceStatus.ONLINE
                         await db.commit()
                 except Exception as e:
                     logger.error("automation_restore_status_failed", error=str(e), exc_info=True)

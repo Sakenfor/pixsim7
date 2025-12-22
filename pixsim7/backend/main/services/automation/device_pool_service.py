@@ -182,7 +182,8 @@ class DevicePoolService:
         Updates:
         1. execution.device_id = device.id
         2. device.last_used_at = now (for LRU tracking)
-        3. Commits transaction atomically
+        3. device.status = BUSY (prevent concurrent assignment)
+        4. Commits transaction atomically
 
         Args:
             execution: AutomationExecution to assign to
@@ -192,5 +193,6 @@ class DevicePoolService:
 
         execution.device_id = device.id
         device.last_used_at = now
+        device.status = DeviceStatus.BUSY  # Mark BUSY atomically with assignment
 
         await self.db.commit()
