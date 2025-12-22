@@ -24,6 +24,7 @@
 import type { ComponentType } from 'react';
 import type { PanelDefinition, PanelCategory, WorkspaceContext } from './panelRegistry';
 import type { PanelOrchestrationMetadata } from './panelRegistry';
+import type { PanelAvailabilityPolicy, PanelInstancePolicy } from './panelTypes';
 
 /**
  * Simplified panel definition options.
@@ -41,8 +42,10 @@ export interface DefinePanelOptions<TSettings = any> {
   icon?: string;
   description?: string;
 
-  // Context binding - which dockviews/contexts this panel can appear in
-  // e.g., ['asset-viewer', 'workspace', 'control-center']
+  // Availability - which dockviews this panel can appear in
+  // Prefer availability.docks over contexts
+  availability?: PanelAvailabilityPolicy;
+  // Legacy: dockview contexts (deprecated - use availability.docks)
   contexts?: string[];
 
   // Visibility
@@ -52,6 +55,8 @@ export interface DefinePanelOptions<TSettings = any> {
   // Capabilities
   supportsCompactMode?: boolean;
   supportsMultipleInstances?: boolean;
+  instances?: PanelInstancePolicy;
+  maxInstances?: number;
 
   // Settings
   defaultSettings?: TSettings;
@@ -90,21 +95,35 @@ export function definePanel<TSettings = any>(
     tags = [],
     icon,
     description,
+    availability,
     contexts = [],
     showWhen,
     requiresContext = false,
     supportsCompactMode = false,
     supportsMultipleInstances = false,
+    instances,
+    maxInstances,
     defaultSettings,
     settingsVersion,
     orchestration,
     internal = false,
   } = options;
 
+  const resolvedContexts = availability?.docks ?? contexts;
+
+  const resolvedInstances =
+    instances === "single"
+      ? { supportsMultipleInstances: false, maxInstances: 1 }
+      : instances === "multiple"
+        ? { supportsMultipleInstances: true, maxInstances }
+        : typeof instances === "object" && typeof instances.max === "number"
+          ? { supportsMultipleInstances: instances.max > 1, maxInstances: instances.max }
+          : { supportsMultipleInstances, maxInstances };
+
   // Auto-generate tags from contexts if not provided
   const derivedTags = [...tags];
-  if (contexts.length > 0 && !tags.some((t) => contexts.includes(t))) {
-    derivedTags.push(...contexts);
+  if (resolvedContexts.length > 0 && !tags.some((t) => resolvedContexts.includes(t))) {
+    derivedTags.push(...resolvedContexts);
   }
 
   return {
@@ -118,18 +137,21 @@ export function definePanel<TSettings = any>(
     showWhen,
     requiresContext,
     supportsCompactMode,
-    supportsMultipleInstances,
+    supportsMultipleInstances: resolvedInstances.supportsMultipleInstances,
+    maxInstances: resolvedInstances.maxInstances,
+    instances,
     defaultSettings,
     settingsVersion,
     orchestration,
     isInternal: internal,
 
     // Map contexts to availableIn for SmartDockview scope filtering
-    availableIn: contexts.length > 0 ? contexts : undefined,
+    availableIn: resolvedContexts.length > 0 ? resolvedContexts : undefined,
+    availability,
 
     // Store contexts in metadata for legacy filtering
     metadata: {
-      contexts,
+      contexts: resolvedContexts,
     },
   } as PanelDefinition<TSettings>;
 }

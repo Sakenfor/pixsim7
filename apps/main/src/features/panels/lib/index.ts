@@ -8,6 +8,8 @@ export {
   type BasePanelDefinition,
   type PanelRegistryLike,
   type MutablePanelRegistryLike,
+  type PanelAvailabilityPolicy,
+  type PanelInstancePolicy,
 } from "./panelTypes";
 
 export {

@@ -37,8 +37,9 @@
 - Add a short recipe for defining `availableIn` on new panels and how to opt into multiple scopes.
 
 ### Panel Authoring Checklist (use for new panels)
-- Set `availableIn: [...]` to declare where it should appear (workspace, control-center, asset-viewer, etc.).
-- Set `category` for menu grouping; set `supportsMultipleInstances` only if the panel is designed to be added multiple times.
+- Prefer `availability: { docks: [...] }` to declare where it should appear (workspace, control-center, asset-viewer, etc.).
+- Prefer `instances: "single" | "multiple" | { max }` over `supportsMultipleInstances`.
+- Set `category` for menu grouping.
 - Prefer scope-based inclusion; use explicit `panels` only for custom stacks.
 - Avoid registry mode for new docks (keep it internal/legacy).
 - If a dock should restrict additions, use `allowedPanels`/`allowedCategories` instead of hard-coding.

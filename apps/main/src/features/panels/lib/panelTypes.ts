@@ -7,6 +7,13 @@
 
 import type { ComponentType } from "react";
 
+export type PanelInstancePolicy = "single" | "multiple" | { max: number };
+
+export interface PanelAvailabilityPolicy {
+  /** Dockview scopes where this panel is available (e.g., "workspace", "control-center") */
+  docks?: string[];
+}
+
 /**
  * Base panel definition - common fields between local and global panels.
  */
@@ -33,6 +40,10 @@ export interface BasePanelDefinition<TParams = any> {
   isInternal?: boolean;
   /** Allow multiple instances of this panel in the same dockview */
   supportsMultipleInstances?: boolean;
+  /** Optional instance policy (preferred over supportsMultipleInstances) */
+  instances?: PanelInstancePolicy;
+  /** Optional instance cap (for future enforcement) */
+  maxInstances?: number;
   /**
    * Scope IDs this panel participates in.
    * Panels declaring a scope will be automatically wrapped with the corresponding
@@ -58,6 +69,8 @@ export interface BasePanelDefinition<TParams = any> {
    * @example availableIn: ["workspace", "control-center"] - Panel shows in workspace and control center
    */
   availableIn?: string[];
+  /** Optional availability policy (preferred over availableIn) */
+  availability?: PanelAvailabilityPolicy;
 }
 
 /**

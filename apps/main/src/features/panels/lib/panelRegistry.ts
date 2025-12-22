@@ -13,7 +13,7 @@ import type { PanelCategory } from "./panelConstants";
 import type { SettingGroup, SettingTab } from "@features/settings/lib/core/types";
 import type { z } from "zod";
 import type { PanelMetadata } from "./types";
-import type { BasePanelDefinition, PanelRegistryLike } from "./panelTypes";
+import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "./panelTypes";
 
 // Re-export PanelCategory for backwards compatibility
 export type { PanelCategory } from "./panelConstants";
@@ -216,6 +216,57 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
   requiresContext?: boolean;
 }
 
+function resolveInstancePolicy(
+  policy: PanelInstancePolicy | undefined,
+  fallbackSupportsMultiple?: boolean,
+  fallbackMax?: number,
+): { supportsMultipleInstances?: boolean; maxInstances?: number } {
+  if (!policy) {
+    return {
+      supportsMultipleInstances: fallbackSupportsMultiple,
+      maxInstances: fallbackMax,
+    };
+  }
+
+  if (policy === "single") {
+    return { supportsMultipleInstances: false, maxInstances: 1 };
+  }
+
+  if (policy === "multiple") {
+    return { supportsMultipleInstances: true, maxInstances: fallbackMax };
+  }
+
+  if (typeof policy === "object" && typeof policy.max === "number") {
+    return {
+      supportsMultipleInstances: policy.max > 1,
+      maxInstances: policy.max,
+    };
+  }
+
+  return {
+    supportsMultipleInstances: fallbackSupportsMultiple,
+    maxInstances: fallbackMax,
+  };
+}
+
+function normalizePanelDefinition<TSettings = any>(
+  definition: PanelDefinition<TSettings>,
+): PanelDefinition<TSettings> {
+  const availableIn = definition.availability?.docks ?? definition.availableIn;
+  const { supportsMultipleInstances, maxInstances } = resolveInstancePolicy(
+    definition.instances,
+    definition.supportsMultipleInstances,
+    definition.maxInstances,
+  );
+
+  return {
+    ...definition,
+    availableIn,
+    supportsMultipleInstances,
+    maxInstances,
+  };
+}
+
 /**
  * PanelRegistry - Centralized registry for all workspace panels.
  * Implements PanelRegistryLike for compatibility with SmartDockview.
@@ -223,6 +274,14 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
 export class PanelRegistry
   extends BaseRegistry<PanelDefinition>
   implements PanelRegistryLike<PanelDefinition> {
+  register(definition: PanelDefinition): boolean {
+    return super.register(normalizePanelDefinition(definition));
+  }
+
+  forceRegister(definition: PanelDefinition): void {
+    super.forceRegister(normalizePanelDefinition(definition));
+  }
+
   /**
    * Unregister a panel
    * Calls onUnmount hook before removing the panel.
@@ -372,7 +431,7 @@ export function getPanelsByTag(tag: string): PanelDefinition[] {
 }
 
 /**
- * Get panel IDs by tag (useful for globalPanelIds)
+ * Get panel IDs by tag (useful for custom panel lists)
  */
 export function getPanelIdsByTag(tag: string): string[] {
   return getPanelsByTag(tag).map(p => p.id);
