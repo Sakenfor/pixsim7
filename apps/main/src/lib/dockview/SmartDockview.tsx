@@ -384,6 +384,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const defaultLayoutRef = useRef(defaultLayout);
   defaultLayoutRef.current = defaultLayout;
 
+  // Use ref for onReady prop to stabilize handleReady callback
+  const onReadyPropRef = useRef(onReadyProp);
+  onReadyPropRef.current = onReadyProp;
+
   const resetDockviewLayout = useCallback(() => {
     if (storageKey) {
       localStorage.removeItem(storageKey);
@@ -772,7 +776,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     resetDockviewLayout,
   ]);
 
-  // Handle dockview ready
+  // Handle dockview ready - uses refs for props to stabilize callback
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
       apiRef.current = event.api;
@@ -797,27 +801,27 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       }
 
       // Registry mode: try to load saved layout or create default
-      if (registryMode && registry && defaultLayout) {
+      if (registryMode && registry && defaultLayoutRef.current) {
         const loaded = loadLayout();
 
         if (!loaded && event.api.panels.length === 0) {
-          defaultLayout(event.api, registry);
+          defaultLayoutRef.current(event.api, registry);
         }
       }
 
       setIsReady(true);
-      onReadyProp?.(event.api);
+      onReadyPropRef.current?.(event.api);
     },
     [
       onSmartReady,
       loadLayout,
-      defaultLayout,
       registry,
-      onReadyProp,
       panelManagerId,
       registryMode,
       contextMenu,
       capabilities,
+      enableContextMenu,
+      contextMenuDockviewId,
     ]
   );
 
