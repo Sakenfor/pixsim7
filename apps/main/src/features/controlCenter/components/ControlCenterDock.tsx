@@ -65,25 +65,26 @@ export function ControlCenterDock() {
   const dockRef = useRef<HTMLDivElement>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
   const [registryVersion, setRegistryVersion] = useState(0);
+  const lastPanelIdsRef = useRef<string>('');
 
-  // Subscribe to global registry changes
+  // Subscribe to global registry changes - only update when CC panels actually change
   useEffect(() => {
-    const checkRegistry = () => {
+    const checkAndUpdate = () => {
       const panels = getCCPanels();
-      if (panels.length > 0) {
+      const panelIds = panels.map(p => p.id).join(',');
+      if (panelIds !== lastPanelIdsRef.current) {
+        lastPanelIdsRef.current = panelIds;
         setRegistryVersion((v) => v + 1);
       }
     };
-    const interval = setInterval(checkRegistry, 100);
-    checkRegistry();
 
-    // Also subscribe to panelRegistry changes
-    const unsubscribe = panelRegistry.subscribe(() => {
-      setRegistryVersion((v) => v + 1);
-    });
+    // Initial check
+    checkAndUpdate();
+
+    // Subscribe to panelRegistry changes
+    const unsubscribe = panelRegistry.subscribe(checkAndUpdate);
 
     return () => {
-      clearInterval(interval);
       unsubscribe();
     };
   }, []);
