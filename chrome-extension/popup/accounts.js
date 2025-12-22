@@ -4,6 +4,7 @@
  * Handles account loading, rendering, filtering, and actions.
  */
 
+import { renderAdPill } from '../shared/ad-pill-renderer.js';
 
 // ===== UNIFIED CACHE HELPERS =====
 
@@ -721,7 +722,7 @@ function refreshPixverseAdStatus(account, pillEl) {
 function renderPixverseAdPill(pillEl, payload, isStale = false) {
   if (!pillEl) return;
 
-  // Debug: log the entire payload structure
+  // Debug logging
   console.log('[Ads] Full payload:', JSON.stringify(payload, null, 2));
   console.log('[Ads] Payload keys:', Object.keys(payload || {}));
 
@@ -729,34 +730,14 @@ function renderPixverseAdPill(pillEl, payload, isStale = false) {
   console.log('[Ads] ad_watch_task:', task);
 
   if (task && typeof task === 'object') {
-    // Use completed_counts if available (actual completed), otherwise use progress capped at total
-    const rawProgress = task.completed_counts ?? task.progress ?? 0;
-    const total = task.total_counts ?? 0;
-    const progress = Math.min(rawProgress, total); // Cap at total to avoid showing 3/2
-    const reward = task.reward ?? 0;
-    console.log('[Ads] Task values - completed:', task.completed_counts, 'progress:', task.progress, 'total:', total, 'using:', progress);
-
-    // Add stale indicator if data is outdated
-    const staleIndicator = isStale ? ' ⚠️' : '';
-    pillEl.textContent = `Ads ${progress}/${total}${staleIndicator}`;
-
-    const staleMsg = isStale ? ' (refreshing...)' : '';
-    pillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}${staleMsg}`;
-    pillEl.style.fontSize = '10px';
-    pillEl.style.color = isStale ? '#9ca3af' : '#6b7280'; // Grayed out if stale
-    if (isStale) {
-      pillEl.style.opacity = '0.7';
-    } else {
-      pillEl.style.opacity = '1';
-    }
-  } else {
-    console.warn('[Ads] No valid ad_watch_task found in payload');
-    // Show 0/0 when no task data instead of hiding
-    pillEl.textContent = 'Ads 0/0';
-    pillEl.title = 'No ad watch task available';
-    pillEl.style.fontSize = '10px';
-    pillEl.style.color = '#9ca3af';
+    console.log('[Ads] Task values - completed:', task.completed_counts, 'progress:', task.progress, 'total:', task.total_counts);
   }
+
+  // Use shared renderer
+  renderAdPill(pillEl, task, {
+    isStale,
+    includeReward: true, // Popup shows reward in tooltip
+  });
 }
 
 // ===== AUTOMATION (Presets/Loops) =====

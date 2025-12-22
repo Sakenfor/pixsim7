@@ -24,14 +24,24 @@ PIXVERSE_CREDITS_TIMEOUT_SEC = 8.0
 class PixverseCreditsMixin:
     """Mixin for Pixverse credits operations"""
 
-    async def get_credits_with_ad_task(self, account: ProviderAccount, *, retry_on_session_error: bool = True) -> dict:
-        """Fetch current Pixverse credits (web + OpenAPI) + ad watch task status.
+    async def get_credits(
+        self,
+        account: ProviderAccount,
+        *,
+        include_ad_task: bool = False,
+        retry_on_session_error: bool = False
+    ) -> dict:
+        """Fetch Pixverse credits (web + OpenAPI) with optional ad task status.
 
-        Includes ad_watch_task in response dict for displaying daily watch progress.
-        Use get_credits() for bulk operations where ad task data isn't needed.
+        Args:
+            account: Provider account
+            include_ad_task: If True, includes ad_watch_task in response (slower)
+            retry_on_session_error: If True, enable auto-reauth on session errors.
+                Set to True for user-triggered syncs, False for bulk operations.
 
-        The `retry_on_session_error` flag controls whether session-invalid errors
-        (10003/10005) should trigger PixverseSessionManager's auto-reauth logic.
+        Returns:
+            Dictionary with 'web' and 'openapi' credit counts, and optionally
+            'ad_watch_task' if include_ad_task=True.
         """
         try:
             from pixverse import Account  # type: ignore
@@ -130,123 +140,13 @@ class PixverseCreditsMixin:
                 "openapi": max(0, openapi_total),
             }
 
-            ad_task = await self._get_ad_task_status_best_effort(account, session)
-            if ad_task is not None:
-                result["ad_watch_task"] = ad_task
+            # Optionally include ad task status
+            if include_ad_task:
+                ad_task = await self._get_ad_task_status_best_effort(account, session)
+                if ad_task is not None:
+                    result["ad_watch_task"] = ad_task
+
             return result
-
-        return await self.session_manager.run_with_session(
-            account=account,
-            op_name="get_credits_with_ad_task",
-            operation=_operation,
-            retry_on_session_error=retry_on_session_error,
-        )
-
-
-    async def get_credits(self, account: ProviderAccount, *, retry_on_session_error: bool = False) -> dict:
-        """Fetch Pixverse credits (web + OpenAPI) without ad-task lookup.
-
-        This is the default/fast method for credit syncing. For ad task status,
-        use get_credits_with_ad_task() instead.
-
-        Args:
-            account: Provider account
-            retry_on_session_error: If True, enable auto-reauth on session errors.
-                Set to True for user-triggered syncs, False for bulk operations.
-        """
-        try:
-            from pixverse import Account  # type: ignore
-        except ImportError:  # pragma: no cover
-            Account = None  # type: ignore
-        try:
-            from pixverse.api.client import PixverseAPI  # type: ignore
-        except ImportError:  # pragma: no cover
-            PixverseAPI = None  # type: ignore
-
-        if not Account or not PixverseAPI:
-            raise Exception("pixverse-py not installed; cannot fetch credits")
-
-        async def _operation(session: PixverseSessionData) -> dict:
-            temp_account = Account(
-                email=account.email,
-                session={
-                    "jwt_token": session.get("jwt_token"),
-                    "cookies": session.get("cookies", {}),
-                    **({"openapi_key": session["openapi_key"]} if "openapi_key" in session else {}),
-                },
-            )
-            api = self._get_cached_api(account)
-
-            web_total = 0
-            try:
-                web_data = await asyncio.wait_for(
-                    api.get_credits(temp_account),
-                    timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
-                )
-                if isinstance(web_data, dict):
-                    raw_web = (
-                        web_data.get("remainingCredits")
-                        or web_data.get("remaining_credits")
-                        or web_data.get("total_credits")
-                        or web_data.get("credits")
-                    )
-                    try:
-                        web_total = int(raw_web or 0)
-                    except (TypeError, ValueError):
-                        web_total = 0
-            except asyncio.TimeoutError as exc:
-                # For bulk/basic sync operations, treat Pixverse timeouts as
-                # "no fresh credits data" rather than a hard failure. This lets
-                # callers fall back to cookie-based extraction or simply report
-                # that no new credits could be fetched, instead of surfacing a
-                # 500 error to the user.
-                log_provider_timeout(
-                    provider_id="pixverse",
-                    operation="get_credits_web_basic",
-                    account_id=account.id,
-                    email=account.email,
-                    error=str(exc),
-                    error_type=exc.__class__.__name__,
-                )
-                return {}
-            except Exception as exc:
-                log_provider_error(
-                    provider_id="pixverse",
-                    operation="get_credits_web_basic",
-                    account_id=account.id,
-                    email=account.email,
-                    error=str(exc),
-                    error_type=exc.__class__.__name__,
-                )
-                raise
-
-            openapi_total = 0
-            if "openapi_key" in session:
-                try:
-                    openapi_data = await asyncio.wait_for(
-                        api.get_openapi_credits(temp_account),
-                        timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
-                    )
-                    if isinstance(openapi_data, dict):
-                        raw_openapi = (
-                            openapi_data.get("credits")
-                            or openapi_data.get("total_credits")
-                        )
-                        try:
-                            openapi_total = int(raw_openapi or 0)
-                        except (TypeError, ValueError):
-                            openapi_total = 0
-                except Exception as exc:
-                    # OpenAPI credits are optional for bulk sync; treat failures
-                    # as non-fatal so that web credits can still be updated even
-                    # if the OpenAPI key/session is stale.
-                    logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
-                    openapi_total = 0
-
-            return {
-                "web": max(0, web_total),
-                "openapi": max(0, openapi_total),
-            }
 
         return await self.session_manager.run_with_session(
             account=account,
@@ -255,6 +155,24 @@ class PixverseCreditsMixin:
             retry_on_session_error=retry_on_session_error,
         )
 
+    async def get_credits_with_ad_task(
+        self,
+        account: ProviderAccount,
+        *,
+        retry_on_session_error: bool = True
+    ) -> dict:
+        """Backward compatibility wrapper for get_credits with ad task.
+
+        DEPRECATED: Use get_credits(account, include_ad_task=True) instead.
+
+        This method exists for backward compatibility with existing code.
+        It calls get_credits with include_ad_task=True.
+        """
+        return await self.get_credits(
+            account,
+            include_ad_task=True,
+            retry_on_session_error=retry_on_session_error,
+        )
 
     async def _get_ad_task_status_best_effort(
         self,

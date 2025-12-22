@@ -275,11 +275,11 @@ async def sync_all_account_credits(
                             logger.warning(f"Failed to update {clean_type} for {account_email}: {e}")
 
                 if updated_credits:
+                    # Refresh account to get updated status from set_credit calls
+                    await db.refresh(account)
                     # Update sync timestamp
                     update_sync_timestamp(account)
-                    db.add(account)
                     await db.commit()
-                    await db.refresh(account)
 
                     synced += 1
                     details.append({
@@ -490,11 +490,11 @@ async def sync_account_credits(
                     except Exception as e:
                         logger.warning(f"Failed to update credits {clean_type} for {account.email}: {e}")
 
+            # Refresh account to get updated status from set_credit calls
+            await db.refresh(account)
             # Update sync timestamp
             update_sync_timestamp(account)
-            db.add(account)
             await db.commit()
-            await db.refresh(account)
             return SyncCreditsResponse(
                 success=True,
                 credits=updated_credits,
@@ -585,16 +585,11 @@ async def get_pixverse_status(
                 if getattr(provider, "provider_id", None) == "pixverse":
                     # If using cached ad task, fetch credits only to save API call
                     # Otherwise fetch credits with fresh ad task data
-                    if use_cached_ad_task:
-                        credits_data = await provider.get_credits(  # type: ignore[arg-type]
-                            account,
-                            retry_on_session_error=False,
-                        ) or {}
-                    else:
-                        credits_data = await provider.get_credits_with_ad_task(  # type: ignore[arg-type]
-                            account,
-                            retry_on_session_error=False,
-                        ) or {}
+                    credits_data = await provider.get_credits(  # type: ignore[arg-type]
+                        account,
+                        include_ad_task=not use_cached_ad_task,
+                        retry_on_session_error=False,
+                    ) or {}
                 else:
                     credits_data = await provider.get_credits(account) or {}
         except Exception as e:  # pragma: no cover - defensive

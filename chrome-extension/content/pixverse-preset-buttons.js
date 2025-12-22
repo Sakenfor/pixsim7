@@ -508,18 +508,34 @@
   }
 
   function renderAdsPill(pillEl, payload) {
+    if (!pillEl) return;
+
     const task = payload?.ad_watch_task;
-    if (task && typeof task === 'object') {
-      const total = task.total_counts ?? 0;
-      // Cap progress at total to avoid showing 3/2
-      const progress = Math.min(task.progress ?? 0, total);
-      pillEl.textContent = `Ads ${progress}/${total}`;
-      pillEl.title = `Watch-ad task: ${progress}/${total}`;
-      if (progress >= total && total > 0) {
-        pillEl.style.color = COLORS.success;
-      }
-    } else {
+
+    if (!task || typeof task !== 'object') {
+      // Show 0/0 when no task data
       pillEl.textContent = 'Ads 0/0';
+      pillEl.title = 'No ad watch task available';
+      pillEl.style.fontSize = '10px';
+      pillEl.style.color = '#9ca3af';
+      return;
+    }
+
+    // Prefer completed_counts (most accurate), fallback to progress
+    const rawProgress = task.completed_counts ?? task.progress ?? 0;
+    const total = task.total_counts ?? 0;
+    const progress = Math.min(rawProgress, total); // Cap at total
+
+    // Build display
+    pillEl.textContent = `Ads ${progress}/${total}`;
+    pillEl.title = `Watch-ad task: ${progress}/${total}`;
+    pillEl.style.fontSize = '10px';
+
+    // Color: green if complete, normal gray otherwise
+    if (progress >= total && total > 0) {
+      pillEl.style.color = COLORS.success;
+    } else {
+      pillEl.style.color = '#6b7280';
     }
   }
 
@@ -586,7 +602,9 @@
       const cached = adStatusCache.get(account.id);
       const adTask = cached?.data?.ad_watch_task;
       const adTotal = adTask?.total_counts || 0;
-      const adProgress = Math.min(adTask?.progress || 0, adTotal);
+      // Prefer completed_counts, fallback to progress
+      const rawProgress = adTask?.completed_counts ?? adTask?.progress ?? 0;
+      const adProgress = Math.min(rawProgress, adTotal);
       const adsText = adTask ? `${adProgress}/${adTotal}` : '';
 
       btn.innerHTML = `
