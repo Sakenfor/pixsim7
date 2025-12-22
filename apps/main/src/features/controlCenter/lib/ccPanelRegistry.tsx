@@ -77,16 +77,22 @@ export function getCCPanelDefinitions(): CCPanelDefinition[] {
 
 /**
  * Get enabled CC panel definitions based on user preferences
+ * @param enabledPrefs - Record of module preferences (id -> boolean), or undefined for defaults
  */
-export function getEnabledCCPanels(enabledIds?: string[]): CCPanelDefinition[] {
+export function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): CCPanelDefinition[] {
   const all = getCCPanelDefinitions();
 
-  if (!enabledIds) {
+  if (!enabledPrefs || Object.keys(enabledPrefs).length === 0) {
     // Return all enabled by default
     return all.filter((p) => p.enabledByDefault !== false);
   }
 
   // Filter by user preferences
-  const enabledSet = new Set(enabledIds);
-  return all.filter((p) => enabledSet.has(p.id));
+  return all.filter((p) => {
+    // If preference exists, use it; otherwise fall back to enabledByDefault
+    if (p.id in enabledPrefs) {
+      return enabledPrefs[p.id];
+    }
+    return p.enabledByDefault !== false;
+  });
 }
