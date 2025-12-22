@@ -1086,12 +1086,6 @@ window.PXS7 = window.PXS7 || {};
       createdAt: a.created_at || a.createdAt || ''
     })).filter(u => u.thumb);
 
-    // Apply search filter
-    if (assetsSearchQuery.trim()) {
-      const query = assetsSearchQuery.toLowerCase().trim();
-      urls = urls.filter(u => (u.name || '').toLowerCase().includes(query));
-    }
-
     // Sort assets based on current sort preference
     if (assetsSortBy === 'recent') {
       // Sort by recently used (used first, then others by original order)
@@ -1125,24 +1119,55 @@ window.PXS7 = window.PXS7 || {};
       border-radius: 4px; color: ${COLORS.text}; outline: none;
       box-sizing: border-box;
     `;
+
+    // Grid container for live updates
+    const gridContainer = document.createElement('div');
+    gridContainer.id = 'pxs7-assets-grid-container';
+
+    const updateGrid = () => {
+      let filteredUrls = urls;
+      if (assetsSearchQuery && assetsSearchQuery.trim().length > 0) {
+        const query = assetsSearchQuery.toLowerCase().trim();
+        filteredUrls = urls.filter(u => {
+          const name = (u.name || '').toLowerCase();
+          const url = (u.full || u.thumb || '').toLowerCase();
+          const urlFilename = url.split('/').pop()?.split('?')[0] || '';
+          return name.includes(query) || urlFilename.includes(query);
+        });
+      }
+
+      gridContainer.innerHTML = '';
+      if (filteredUrls.length === 0) {
+        gridContainer.innerHTML = `
+          <div style="text-align: center; padding: 20px 10px; color: ${COLORS.textMuted};">
+            <div style="font-size: 11px;">No matches for "${assetsSearchQuery}"</div>
+          </div>
+        `;
+      } else {
+        const grid = createImageGrid(filteredUrls, (item) => item.thumb, (item) => item.full, (item) => item.name);
+        gridContainer.appendChild(grid);
+      }
+
+      // Update count
+      const countEl = container.querySelector('.pxs7-assets-count');
+      if (countEl) {
+        const filterText = assetsSearchQuery.trim() ? ` (filtered)` : '';
+        countEl.textContent = `${filteredUrls.length}${moreAvailable ? '+' : ''}${filterText}`;
+      }
+    };
+
     let searchDebounce = null;
     searchInput.addEventListener('input', (e) => {
       assetsSearchQuery = e.target.value;
       clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(() => {
-        renderTabContent('assets', container, panel, loadAssets);
-        // Restore focus and cursor position after re-render
-        const newInput = container.querySelector('input[type="text"]');
-        if (newInput) {
-          newInput.focus();
-          newInput.setSelectionRange(newInput.value.length, newInput.value.length);
-        }
-      }, 150);
+      searchDebounce = setTimeout(updateGrid, 100);
     });
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         assetsSearchQuery = '';
-        renderTabContent('assets', container, panel, loadAssets);
+        searchInput.value = '';
+        updateGrid();
       }
     });
     searchRow.appendChild(searchInput);
@@ -1152,11 +1177,10 @@ window.PXS7 = window.PXS7 || {};
     headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px;';
 
     const countLabel = document.createElement('span');
+    countLabel.className = 'pxs7-assets-count';
     countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
     const moreAvailable = assetsTotalCount > assetsLoadedCount;
-    const totalText = moreAvailable ? '+' : '';
-    const filterText = assetsSearchQuery.trim() ? ` (filtered)` : '';
-    countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText}${filterText}` : '';
+    countLabel.textContent = urls.length > 0 ? `${urls.length}${moreAvailable ? '+' : ''}` : '';
 
     // Sort buttons
     const sortGroup = document.createElement('div');
@@ -1204,8 +1228,11 @@ window.PXS7 = window.PXS7 || {};
     headerRow.appendChild(refreshBtn);
     container.appendChild(headerRow);
 
+    // Add grid container and render initial grid
+    container.appendChild(gridContainer);
+
     if (urls.length === 0) {
-      container.innerHTML += `
+      gridContainer.innerHTML = `
         <div style="text-align: center; padding: 30px 10px; color: ${COLORS.textMuted};">
           <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">📁</div>
           <div style="font-size: 11px;">No assets found</div>
@@ -1214,17 +1241,13 @@ window.PXS7 = window.PXS7 || {};
           </div>
         </div>
       `;
-      return;
+    } else {
+      // Initial grid render (unfiltered)
+      updateGrid();
     }
 
-    const grid = createImageGrid(urls, (item) => item.thumb, (item) => item.full, (item) => item.name);
-    container.appendChild(grid);
-
     // Show Load More button if there are more assets to load
-    // For cursor-based pagination: assetsTotalCount > assetsLoadedCount means there's a next_cursor
-    const hasMore = assetsTotalCount > assetsLoadedCount;
-
-    if (hasMore && loadAssets) {
+    if (moreAvailable && loadAssets) {
       const loadMoreBtn = document.createElement('button');
       loadMoreBtn.textContent = `Load More (${assetsLoadedCount} loaded)`;
       loadMoreBtn.style.cssText = `
