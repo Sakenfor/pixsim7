@@ -19,6 +19,10 @@ export interface BasePanelDefinition<TParams = any> {
   component: ComponentType<TParams>;
   /** Icon name for tab/header */
   icon?: string;
+  /** Category for grouping in menus (e.g., 'core', 'tools', 'system') */
+  category?: string;
+  /** Tags for search/filtering */
+  tags?: string[];
   /** Hide from add-panel menus (still available in layouts) */
   isInternal?: boolean;
   /** Allow multiple instances of this panel in the same dockview */
