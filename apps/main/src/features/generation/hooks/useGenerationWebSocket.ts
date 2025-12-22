@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
 import type { GenerationResponse } from '@lib/api/generations';
 import { parseWebSocketMessage } from '@/types/websocket';
-import { assetEvents, downloadAsset } from '@features/assets';
+import { assetEvents } from '@features/assets';
 import { apiClient, BACKEND_BASE } from '@lib/api/client';
 import { useAssetSettingsStore } from '@/stores/assetSettingsStore';
 import { debugFlags } from '@lib/utils/debugFlags';
@@ -246,9 +246,20 @@ class WebSocketManager {
             debugFlags.log('websocket', 'Job completed! Updating generation status...');
             // Fetch generation data to update status
             // Note: asset:created event will handle adding the asset to gallery
-            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
+            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(async ({ data }) => {
               debugFlags.log('websocket', 'Generation data:', data);
               addOrUpdateGeneration(data);
+
+              // Sync asset to local storage if setting is enabled
+              if (downloadOnGenerate && data.asset_id) {
+                debugFlags.log('websocket', 'Auto-syncing asset to local storage:', data.asset_id);
+                try {
+                  await apiClient.post(`/assets/${data.asset_id}/sync`);
+                  debugFlags.log('websocket', 'Asset synced to local storage successfully');
+                } catch (err) {
+                  console.error('[WebSocket] Failed to auto-sync asset:', data.asset_id, err);
+                }
+              }
 
               // Trigger account cleanup to fix job counters
               // This ensures accounts don't get stuck showing jobs as running
