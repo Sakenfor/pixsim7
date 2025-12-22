@@ -1125,9 +1125,19 @@ window.PXS7 = window.PXS7 || {};
       border-radius: 4px; color: ${COLORS.text}; outline: none;
       box-sizing: border-box;
     `;
+    let searchDebounce = null;
     searchInput.addEventListener('input', (e) => {
       assetsSearchQuery = e.target.value;
-      renderTabContent('assets', container, panel, loadAssets);
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        renderTabContent('assets', container, panel, loadAssets);
+        // Restore focus and cursor position after re-render
+        const newInput = container.querySelector('input[type="text"]');
+        if (newInput) {
+          newInput.focus();
+          newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+        }
+      }, 150);
     });
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -1137,9 +1147,6 @@ window.PXS7 = window.PXS7 || {};
     });
     searchRow.appendChild(searchInput);
     container.appendChild(searchRow);
-
-    // Focus search input after render
-    setTimeout(() => searchInput.focus(), 0);
 
     const headerRow = document.createElement('div');
     headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px;';
