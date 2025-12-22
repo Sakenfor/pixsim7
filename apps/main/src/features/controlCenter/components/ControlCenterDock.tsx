@@ -9,6 +9,7 @@ import { DockToolbar } from './DockToolbar';
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { scopeProviderRegistry, type ScopeMatchContext } from '@features/panels';
+import { DockviewIdProvider } from '@lib/dockview/contextMenu';
 
 // Note: Control Center modules are now auto-registered when their parent modules
 // register with the global module registry (see modules/index.ts)
@@ -106,6 +107,14 @@ export function ControlCenterDock() {
 
     const Component = module.component;
 
+    // Wrap with DockviewIdProvider so child components get 'cc' as their dockviewId
+    // This ensures instanceId = 'cc:panelId' for settings resolution
+    const wrappedComponent = (
+      <DockviewIdProvider dockviewId="cc">
+        <Component isActive={true} onSwitchModule={setActiveModule} />
+      </DockviewIdProvider>
+    );
+
     // Wrap module with scope providers if it declares scopes
     if (module.scopes && module.scopes.length > 0) {
       return (
@@ -115,12 +124,12 @@ export function ControlCenterDock() {
           tags={module.tags}
           category={module.category}
         >
-          <Component isActive={true} onSwitchModule={setActiveModule} />
+          {wrappedComponent}
         </ModuleScopeWrapper>
       );
     }
 
-    return <Component isActive={true} onSwitchModule={setActiveModule} />;
+    return wrappedComponent;
   }
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
