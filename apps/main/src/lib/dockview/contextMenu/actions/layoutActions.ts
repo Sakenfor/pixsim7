@@ -32,7 +32,7 @@ export const splitRightAction: MenuAction = {
   label: 'Split Right',
   icon: 'columns',
   category: 'layout',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => !!ctx.panelId && !!ctx.api,
   execute: (ctx) => {
     if (!ctx.api || !ctx.panelId) return;
@@ -59,7 +59,7 @@ export const splitDownAction: MenuAction = {
   label: 'Split Down',
   icon: 'rows',
   category: 'layout',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => !!ctx.panelId && !!ctx.api,
   execute: (ctx) => {
     if (!ctx.api || !ctx.panelId) return;
@@ -85,7 +85,7 @@ export const moveToNewGroupAction: MenuAction = {
   label: 'Move to New Group',
   icon: 'move',
   category: 'layout',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
     if (!ctx.api || !ctx.panelId || !ctx.groupId) return false;
     // Only show if there are multiple panels in the group
@@ -123,7 +123,7 @@ export const joinLeftGroupAction: MenuAction = {
   label: 'Join Left Group',
   icon: 'arrow-left',
   category: 'layout',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => !!ctx.api && !!ctx.panelId && !!ctx.groupId,
   disabled: (ctx) => {
     if (!ctx.api || !ctx.panelId || !ctx.groupId) return true;
@@ -151,7 +151,7 @@ export const joinRightGroupAction: MenuAction = {
   label: 'Join Right Group',
   icon: 'arrow-right',
   category: 'layout',
-  availableIn: ['tab'],
+  availableIn: ['tab', 'panel-content'],
   visible: (ctx) => !!ctx.api && !!ctx.panelId && !!ctx.groupId,
   disabled: (ctx) => {
     if (!ctx.api || !ctx.panelId || !ctx.groupId) return true;
