@@ -28,7 +28,6 @@ export const helperPanelsPlugin: PanelPlugin = {
 
   panels: [
     // Quick Generate Panel - Context-aware generation panel
-    // Note: "generation" tag triggers automatic scope wrapping
     {
       id: 'quickGenerate',
       title: 'Quick Generate',
@@ -37,6 +36,8 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'helper', 'context-aware'],
       icon: 'sparkles',
       description: 'Quick generation panel that adapts to current context (asset or scene)',
+      // Declare generation scope for automatic per-instance scoping
+      scopes: ['generation'],
 
       // Show when there's an asset or scene context
       showWhen: (context) => {
@@ -69,7 +70,7 @@ export const helperPanelsPlugin: PanelPlugin = {
     },
 
     // Quick Generate Modules - building blocks for custom workflows
-    // Note: "generation" tag triggers automatic scope wrapping for all these panels
+    // All quickgen-* panels declare generation scope for automatic per-instance scoping
     {
       id: 'quickgen-asset',
       title: 'QuickGen Asset',
@@ -78,6 +79,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'queue', 'asset', 'quickgen'],
       icon: 'image',
       description: 'Asset input panel for quick generation workflows',
+      scopes: ['generation'],
       supportsCompactMode: true,
       supportsMultipleInstances: false,
     },
@@ -89,6 +91,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'prompt', 'quickgen'],
       icon: 'edit',
       description: 'Prompt editor for quick generation workflows',
+      scopes: ['generation'],
       componentSettings: [QUICKGEN_PROMPT_COMPONENT_ID],
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -101,6 +104,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'settings', 'quickgen'],
       icon: 'settings',
       description: 'Generation settings and Go button for quick workflows',
+      scopes: ['generation'],
       componentSettings: [QUICKGEN_SETTINGS_COMPONENT_ID],
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -113,6 +117,7 @@ export const helperPanelsPlugin: PanelPlugin = {
       tags: ['generation', 'prompt', 'blocks', 'quickgen'],
       icon: 'grid',
       description: 'Prompt companion blocks for quick generation',
+      scopes: ['generation'],
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

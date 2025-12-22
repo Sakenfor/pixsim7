@@ -34,8 +34,9 @@ export const controlCenterModule: Module = {
       enabledByDefault: true,
       builtin: true,
       description: 'Quick asset generation',
-      // "generation" tag triggers automatic scope wrapping
-      tags: ['generation', 'generate', 'create', 'ai'],
+      tags: ['generate', 'create', 'ai'],
+      // Declare generation scope for automatic per-instance scoping
+      scopes: ['generation'],
     },
     {
       id: 'presets',

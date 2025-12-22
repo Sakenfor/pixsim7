@@ -67,16 +67,18 @@ export function ControlCenterDock() {
 
   /**
    * ModuleScopeWrapper - Wraps a CC module with its declared scope providers.
-   * Uses scopeProviderRegistry to automatically inject providers based on module tags.
+   * Uses scopeProviderRegistry to automatically inject providers based on module.scopes.
    */
   const ModuleScopeWrapper = useCallback(
     ({
       moduleId,
+      declaredScopes,
       tags,
       category,
       children,
     }: {
       moduleId: string;
+      declaredScopes?: string[];
       tags?: string[];
       category?: string;
       children: ReactNode;
@@ -84,9 +86,10 @@ export function ControlCenterDock() {
       const context: ScopeMatchContext = useMemo(() => ({
         panelId: moduleId,
         instanceId: `cc:${moduleId}`,
+        declaredScopes,
         tags,
         category,
-      }), [moduleId, tags, category]);
+      }), [moduleId, declaredScopes, tags, category]);
 
       const wrapped = useMemo(() => {
         return scopeProviderRegistry.wrapWithProviders(context, children);
@@ -103,17 +106,21 @@ export function ControlCenterDock() {
 
     const Component = module.component;
 
-    // Always wrap with ModuleScopeWrapper - it will only apply providers
-    // if the module has matching tags (e.g., "generation" tag)
-    return (
-      <ModuleScopeWrapper
-        moduleId={module.id}
-        tags={module.tags}
-        category={module.category}
-      >
-        <Component isActive={true} onSwitchModule={setActiveModule} />
-      </ModuleScopeWrapper>
-    );
+    // Wrap module with scope providers if it declares scopes
+    if (module.scopes && module.scopes.length > 0) {
+      return (
+        <ModuleScopeWrapper
+          moduleId={module.id}
+          declaredScopes={module.scopes}
+          tags={module.tags}
+          category={module.category}
+        >
+          <Component isActive={true} onSwitchModule={setActiveModule} />
+        </ModuleScopeWrapper>
+      );
+    }
+
+    return <Component isActive={true} onSwitchModule={setActiveModule} />;
   }
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
