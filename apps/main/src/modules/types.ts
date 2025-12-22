@@ -1,5 +1,5 @@
 import { logEvent } from '@lib/utils';
-import type { CCPanelDefinition } from '@features/controlCenter/lib/ccPanelRegistry';
+import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
 
 /**
  * Page Categories
@@ -93,10 +93,11 @@ export interface Module {
 
   /**
    * Control Center panels (optional)
-   * Modules can provide CC panels that will be automatically registered.
+   * Modules can provide CC panels that will be automatically registered
+   * to the global panelRegistry with 'control-center' tag.
    * These are rendered via SmartDockview in the Control Center.
    */
-  controlCenterPanels?: CCPanelDefinition[];
+  controlCenterPanels?: BasePanelDefinition[];
 
   /**
    * Page/Route Configuration (optional)
@@ -178,16 +179,18 @@ class ModuleRegistry {
     // Notify listeners of the registry change
     this.notifyListeners();
 
-    // Auto-register any Control Center panels
+    // Auto-register any Control Center panels to global panelRegistry
     if (module.controlCenterPanels && module.controlCenterPanels.length > 0) {
       // Dynamic import to avoid circular dependency
-      import('@features/controlCenter/lib/ccPanelRegistry').then(({ registerCCPanel }) => {
-        module.controlCenterPanels!.forEach(ccPanel => {
-          registerCCPanel(ccPanel);
+      import('@features/panels/lib/panelRegistry').then(({ registerSimplePanel }) => {
+        module.controlCenterPanels!.forEach(panel => {
+          // Add 'control-center' tag for filtering
+          const tags = [...(panel.tags ?? []), 'control-center'];
+          registerSimplePanel({ ...panel, tags });
           logEvent('INFO', 'cc_panel_registered_from_module', {
             moduleId: module.id,
-            ccPanelId: ccPanel.id,
-            ccPanelTitle: ccPanel.title
+            panelId: panel.id,
+            panelTitle: panel.title
           });
         });
       });

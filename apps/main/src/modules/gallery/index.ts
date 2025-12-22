@@ -2,7 +2,6 @@ import type { Module } from '../types';
 import type { Asset } from '../../types';
 import { logEvent } from '@lib/utils';
 import { GalleryModule as GalleryModuleComponent } from '@features/controlCenter/components/modules/GalleryModule';
-import type { CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 
 /**
  * Gallery Module
@@ -33,7 +32,7 @@ export const galleryModule: GalleryModule = {
   // Auto-register Control Center panel
   controlCenterPanels: [
     {
-      id: 'gallery' as CCPanelId,
+      id: 'cc-gallery',
       title: 'Gallery',
       icon: '🖼️',
       component: GalleryModuleComponent,

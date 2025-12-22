@@ -23,6 +23,12 @@ export interface BasePanelDefinition<TParams = any> {
   category?: string;
   /** Tags for search/filtering */
   tags?: string[];
+  /** Short description */
+  description?: string;
+  /** Display order (lower = earlier) */
+  order?: number;
+  /** Whether panel is enabled by default */
+  enabledByDefault?: boolean;
   /** Hide from add-panel menus (still available in layouts) */
   isInternal?: boolean;
   /** Allow multiple instances of this panel in the same dockview */

@@ -344,3 +344,36 @@ export class PanelRegistry
 
 // Global panel registry singleton
 export const panelRegistry = new PanelRegistry();
+
+/**
+ * Register a simple panel to the global registry.
+ * Use this for panels that don't need the full PanelDefinition features
+ * (settings system, orchestration, lifecycle hooks, etc.)
+ *
+ * @param panel - Base panel definition with minimal required fields
+ */
+export function registerSimplePanel(panel: BasePanelDefinition): void {
+  // Convert to full PanelDefinition with defaults
+  const fullDefinition: PanelDefinition = {
+    ...panel,
+    id: panel.id as PanelId,
+    category: (panel.category ?? 'custom') as PanelCategory,
+    tags: panel.tags ?? [],
+  };
+
+  panelRegistry.register(fullDefinition);
+}
+
+/**
+ * Get panels by a specific tag
+ */
+export function getPanelsByTag(tag: string): PanelDefinition[] {
+  return panelRegistry.getAll().filter(p => p.tags?.includes(tag));
+}
+
+/**
+ * Get panel IDs by tag (useful for globalPanelIds)
+ */
+export function getPanelIdsByTag(tag: string): string[] {
+  return getPanelsByTag(tag).map(p => p.id);
+}

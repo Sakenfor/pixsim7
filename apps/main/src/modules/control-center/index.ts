@@ -4,7 +4,6 @@ import { QuickGenerateModule } from '@features/controlCenter/components/QuickGen
 import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
 import { ProviderOverviewModule } from '@features/providers';
 import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
-import type { CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 
 /**
  * Control Center Module
@@ -23,10 +22,10 @@ export const controlCenterModule: Module = {
     registerCubeExpansions();
   },
 
-  // Auto-register Control Center panels (rendered via SmartDockview)
+  // Auto-register Control Center panels to global panelRegistry
   controlCenterPanels: [
     {
-      id: 'quickGenerate' as CCPanelId,
+      id: 'cc-generate',
       title: 'Generate',
       icon: '⚡',
       component: QuickGenerateModule,
@@ -35,11 +34,10 @@ export const controlCenterModule: Module = {
       enabledByDefault: true,
       description: 'Quick asset generation',
       tags: ['generate', 'create', 'ai'],
-      // Declare generation scope for automatic per-instance scoping
       scopes: ['generation'],
     },
     {
-      id: 'presets' as CCPanelId,
+      id: 'cc-presets',
       title: 'Presets',
       icon: '🎨',
       component: PresetsModule,
@@ -50,7 +48,7 @@ export const controlCenterModule: Module = {
       tags: ['presets', 'templates'],
     },
     {
-      id: 'providers' as CCPanelId,
+      id: 'cc-providers',
       title: 'Providers',
       icon: '🌐',
       component: ProviderOverviewModule,
@@ -61,7 +59,7 @@ export const controlCenterModule: Module = {
       tags: ['providers', 'api', 'services'],
     },
     {
-      id: 'panels' as CCPanelId,
+      id: 'cc-panels',
       title: 'Panels',
       icon: '🪟',
       component: PanelLauncherModule,

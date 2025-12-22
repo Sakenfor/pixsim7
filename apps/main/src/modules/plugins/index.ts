@@ -2,7 +2,6 @@ import type { Module } from '../types';
 import { registerPluginsFeature } from '../../lib/capabilities/registerCoreFeatures';
 import { pluginManager } from '../../lib/plugins';
 import { PluginsModule as PluginsModuleComponent } from '@features/controlCenter/components/modules/PluginsModule';
-import type { CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 
 /**
  * Plugins Module
@@ -24,7 +23,7 @@ export const pluginsModule: Module = {
   // Auto-register Control Center panel
   controlCenterPanels: [
     {
-      id: 'plugins' as CCPanelId,
+      id: 'cc-plugins',
       title: 'Plugins',
       icon: '🔌',
       component: PluginsModuleComponent,
