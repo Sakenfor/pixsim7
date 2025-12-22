@@ -23,6 +23,16 @@ export interface BasePanelDefinition<TParams = any> {
   isInternal?: boolean;
   /** Allow multiple instances of this panel in the same dockview */
   supportsMultipleInstances?: boolean;
+  /**
+   * Scope IDs this panel participates in.
+   * Panels declaring a scope will be automatically wrapped with the corresponding
+   * scope provider (e.g., "generation" scope wraps with GenerationScopeProvider).
+   *
+   * This enables automatic per-instance scoping without manual wiring.
+   *
+   * @example scopes: ["generation"] - Panel uses generation stores
+   */
+  scopes?: string[];
 }
 
 /**

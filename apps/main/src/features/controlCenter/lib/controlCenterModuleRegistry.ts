@@ -47,6 +47,17 @@ export interface ControlCenterModule {
 
   /** Whether module is built-in (core) */
   builtin?: boolean;
+
+  /**
+   * Scope IDs this module participates in.
+   * Modules declaring a scope will be automatically wrapped with the corresponding
+   * scope provider (e.g., "generation" scope wraps with GenerationScopeProvider).
+   *
+   * This enables automatic per-instance scoping without manual wiring.
+   *
+   * @example scopes: ["generation"] - Module uses generation stores
+   */
+  scopes?: string[];
 }
 
 /**

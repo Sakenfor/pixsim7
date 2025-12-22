@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, useState } from 'react';
+import { useRef, useMemo, useEffect, useState, useCallback, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import { useControlCenterStore, type ControlModule } from '@features/controlCenter/stores/controlCenterStore';
@@ -8,6 +8,7 @@ import { useDockBehavior } from './hooks/useDockBehavior';
 import { DockToolbar } from './DockToolbar';
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
+import { scopeProviderRegistry, type ScopeMatchContext } from '@features/panels';
 
 // Note: Control Center modules are now auto-registered when their parent modules
 // register with the global module registry (see modules/index.ts)
@@ -64,11 +65,61 @@ export function ControlCenterDock() {
     dockRef,
   });
 
+  /**
+   * ModuleScopeWrapper - Wraps a CC module with its declared scope providers.
+   * Uses scopeProviderRegistry to automatically inject providers based on module.scopes.
+   */
+  const ModuleScopeWrapper = useCallback(
+    ({
+      moduleId,
+      declaredScopes,
+      tags,
+      category,
+      children,
+    }: {
+      moduleId: string;
+      declaredScopes?: string[];
+      tags?: string[];
+      category?: string;
+      children: ReactNode;
+    }) => {
+      const context: ScopeMatchContext = useMemo(() => ({
+        panelId: moduleId,
+        instanceId: `cc:${moduleId}`,
+        declaredScopes,
+        tags,
+        category,
+      }), [moduleId, declaredScopes, tags, category]);
+
+      const wrapped = useMemo(() => {
+        return scopeProviderRegistry.wrapWithProviders(context, children);
+      }, [context, children]);
+
+      return <>{wrapped}</>;
+    },
+    [],
+  );
+
   function renderModule() {
     const module = controlCenterModuleRegistry.get(activeModule);
     if (!module) return null;
 
     const Component = module.component;
+
+    // Wrap module with scope providers if it declares scopes
+    if (module.scopes && module.scopes.length > 0) {
+      return (
+        <ModuleScopeWrapper
+          moduleId={module.id}
+          declaredScopes={module.scopes}
+          tags={module.tags}
+          category={module.category}
+        >
+          <Component isActive={true} onSwitchModule={setActiveModule} />
+        </ModuleScopeWrapper>
+      );
+    }
+
     return <Component isActive={true} onSwitchModule={setActiveModule} />;
   }
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
