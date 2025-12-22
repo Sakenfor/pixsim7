@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import type { DockviewApi } from 'dockview-core';
 import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
-import { resolvePromptLimit } from '@/utils/prompt/limits';
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { estimatePixverseCost } from '@features/providers';
@@ -200,7 +200,11 @@ export function QuickGenerateModule() {
     workbench.dynamicParams.audio,
   ]);
 
-  const maxChars = resolvePromptLimit(providerId);
+  const maxChars = resolvePromptLimitForModel(
+    providerId,
+    workbench.dynamicParams?.model as string | undefined,
+    workbench.paramSpecs
+  );
   const promptRequiredOps = new Set<ControlCenterState['operationType']>([
     'text_to_video',
     'text_to_image',
@@ -415,6 +419,8 @@ export function QuickGenerateModule() {
     prompt,
     setPrompt,
     providerId,
+    model: workbench.dynamicParams?.model as string | undefined,
+    paramSpecs: workbench.paramSpecs,
     generating,
     error,
     renderSettingsPanel,
@@ -431,6 +437,8 @@ export function QuickGenerateModule() {
     prompt,
     setPrompt,
     providerId,
+    workbench.dynamicParams?.model,
+    workbench.paramSpecs,
     generating,
     error,
     renderSettingsPanel,

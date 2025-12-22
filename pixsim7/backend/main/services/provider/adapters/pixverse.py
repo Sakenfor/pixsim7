@@ -392,10 +392,17 @@ class PixverseProvider(
             video_quality_enum = ["360p", "540p", "720p", "1080p"]
 
         # ==== Common field specs ====
+        # Per-model prompt limits (some models support longer prompts)
+        prompt_per_model_max_length = {
+            "seedream-4.5": 4096,
+        }
         base_prompt = {
             "name": "prompt", "type": "string", "required": True, "default": None,
             "enum": None, "description": "Primary text prompt", "group": "core",
-            "max_length": 2048
+            "max_length": 2048,
+            "metadata": {
+                "per_model_max_length": prompt_per_model_max_length,
+            },
         }
         quality = {
             "name": "quality", "type": "enum", "required": False, "default": "720p",

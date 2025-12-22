@@ -8,7 +8,7 @@ import { useRef, useEffect, useMemo } from 'react';
 import type { IDockviewPanelProps } from 'dockview-core';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { CompactAssetCard } from './CompactAssetCard';
-import { resolvePromptLimit } from '@/utils/prompt/limits';
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
 import { GenerationSettingsPanel, useGenerationQueueStore } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
@@ -57,6 +57,8 @@ export interface QuickGenPanelContext {
   prompt: string;
   setPrompt: (value: string) => void;
   providerId?: string;
+  model?: string;
+  paramSpecs?: Array<{ name: string; max_length?: number; metadata?: Record<string, unknown> }>;
   generating: boolean;
   error?: string | null;
 
@@ -295,6 +297,8 @@ export function PromptPanel(props: QuickGenPanelProps) {
     prompt = controller.prompt,
     setPrompt = controller.setPrompt,
     providerId = controller.providerId,
+    model,
+    paramSpecs,
     generating = controller.generating,
     operationType = controller.operationType,
     displayAssets = resolveDisplayAssets(
@@ -308,7 +312,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
     error = controller.error,
   } = ctx || {};
 
-  const maxChars = resolvePromptLimit(providerId);
+  const maxChars = resolvePromptLimitForModel(providerId, model, paramSpecs as any);
   const hasAsset = displayAssets.length > 0;
 
   useProvideCapability<PromptBoxContext>(

@@ -15,7 +15,8 @@ import { useControlCenterStore } from '@features/controlCenter/stores/controlCen
 import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
-import { resolvePromptLimit } from '@/utils/prompt/limits';
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
+import { useGenerationWorkbench } from '@features/generation';
 import { getGeneration, type GenerationResponse } from '@lib/api/generations';
 import type { ViewerAsset } from '@features/assets';
 import type { OperationType } from '@/types/operations';
@@ -67,6 +68,9 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     setPresetParams: ccSetPresetParams,
   } = useQuickGenerateController();
 
+  // Get paramSpecs for per-model prompt limits
+  const workbench = useGenerationWorkbench({ operationType: ccOperationType });
+
   const hasSourceGeneration = !!asset.sourceGenerationId;
 
   // Fetch generation data when switching to asset mode or when asset changes
@@ -113,7 +117,11 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   const activeProviderId = settingsMode === 'asset' ? assetGeneration?.provider_id : ccProviderId;
   const activeError = settingsMode === 'asset' ? assetError : ccError;
 
-  const maxChars = resolvePromptLimit(activeProviderId || ccProviderId);
+  const maxChars = resolvePromptLimitForModel(
+    activeProviderId || ccProviderId,
+    workbench.dynamicParams?.model as string | undefined,
+    workbench.paramSpecs
+  );
 
   // Auto-set operation type based on asset type (only for control center mode)
   useEffect(() => {
