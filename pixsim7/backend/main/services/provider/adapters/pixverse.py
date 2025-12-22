@@ -374,6 +374,13 @@ class PixverseProvider(
             else:
                 image_aspect_enum = ["16:9", "9:16", "1:1"]
 
+        # Per-model aspect ratio options (from SDK) - must be defined before aspect_ratio spec
+        image_aspect_per_model = {}
+        if ImageModel is not None:
+            sdk_aspects = getattr(ImageModel, "ASPECT_RATIOS", {})
+            if isinstance(sdk_aspects, dict):
+                image_aspect_per_model = sdk_aspects
+
         # Video quality presets – derive from pricing tables when possible
         video_quality_enum: list[str] = []
         try:  # pragma: no cover - convenience only
@@ -531,12 +538,6 @@ class PixverseProvider(
                 "seedream-4.0": ["1080p", "2k", "4k"],
                 "seedream-4.5": ["2k", "4k"],
             }
-        # Per-model aspect ratio options (from SDK)
-        image_aspect_per_model = {}
-        if ImageModel is not None:
-            sdk_aspects = getattr(ImageModel, "ASPECT_RATIOS", {})
-            if isinstance(sdk_aspects, dict):
-                image_aspect_per_model = sdk_aspects
         image_quality = {
             "name": "quality",
             "type": "enum",
