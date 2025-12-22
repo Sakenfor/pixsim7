@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { createCapabilityRegistry } from "./registry";
 import type { CapabilityRegistry } from "./types";
 
@@ -37,11 +37,14 @@ export function ContextHubHost({ children, hostId }: ContextHubHostProps) {
     };
   }, [hostId, parent]);
 
-  const state: ContextHubState = {
-    registry: registryRef.current,
-    parent,
-    hostId,
-  };
+  const state = useMemo<ContextHubState>(
+    () => ({
+      registry: registryRef.current!,
+      parent,
+      hostId,
+    }),
+    [parent, hostId],
+  );
 
   return (
     <ContextHubContext.Provider value={state}>
