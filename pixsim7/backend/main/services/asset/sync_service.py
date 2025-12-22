@@ -250,7 +250,9 @@ class AssetSyncService:
         if asset.ingest_status == "completed" and asset.stored_key:
             # Still do embedded extraction if requested
             if include_embedded:
-                await self._extract_and_register_embedded(asset, user)
+                from pixsim7.backend.main.services.asset.enrichment_service import AssetEnrichmentService
+                enrichment_service = AssetEnrichmentService(self.db)
+                await enrichment_service._extract_and_register_embedded(asset, user)
             return asset
 
         # Delegate to ingestion service
@@ -267,7 +269,9 @@ class AssetSyncService:
 
             # Embedded asset extraction (provider-specific, kept in sync_service)
             if include_embedded:
-                await self._extract_and_register_embedded(asset, user)
+                from pixsim7.backend.main.services.asset.enrichment_service import AssetEnrichmentService
+                enrichment_service = AssetEnrichmentService(self.db)
+                await enrichment_service._extract_and_register_embedded(asset, user)
 
             return asset
 
