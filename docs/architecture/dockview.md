@@ -35,3 +35,10 @@
 - Continue pruning legacy mentions of `globalPanelIds/includeGlobalPanels`.
 - Consider merging panel settings stores per the “settings store simplification” proposal once the UI stabilizes.
 - Add a short recipe for defining `availableIn` on new panels and how to opt into multiple scopes.
+
+### Panel Authoring Checklist (use for new panels)
+- Set `availableIn: [...]` to declare where it should appear (workspace, control-center, asset-viewer, etc.).
+- Set `category` for menu grouping; set `supportsMultipleInstances` only if the panel is designed to be added multiple times.
+- Prefer scope-based inclusion; use explicit `panels` only for custom stacks.
+- Avoid registry mode for new docks (keep it internal/legacy).
+- If a dock should restrict additions, use `allowedPanels`/`allowedCategories` instead of hard-coding.

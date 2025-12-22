@@ -40,8 +40,8 @@
  * ```
  *
  * Legacy API (for backward compatibility):
- * - registry: LocalPanelRegistry (deprecated - use scope/panels instead)
- * - Default layout signature in registry mode: (api, registry)
+ * - registry: LocalPanelRegistry (deprecated - internal only; prefer scope/panels)
+ * - Default layout signature in registry mode: (api, registry) — avoid for new docks
  *
  * Context Menu:
  * - Requires ContextMenuProvider at app root
