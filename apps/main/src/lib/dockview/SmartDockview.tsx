@@ -270,6 +270,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           if (mode !== "local" || !scope.renderProvider) {
             return content;
           }
+          // Debug logging when wrapping with scope provider
+          if (process.env.NODE_ENV === "development") {
+            console.debug(
+              `[ScopeWrapper] Wrapping panel ${instanceId} with scope provider: ${scope.id}`
+            );
+          }
           return scope.renderProvider(instanceId, content);
         }, children as ReactNode);
       }, [children, instanceId, instanceScopes, scopeDefinitions]);
