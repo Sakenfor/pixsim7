@@ -78,8 +78,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
 
-  // Load persisted folders on mount
+  // Load persisted folders on mount (only after auth is ready)
   useEffect(() => {
+    // Don't load until we have a userId - prevents loading from wrong namespace
+    // and then overwriting with empty state
+    if (!userId) return;
     loadPersisted();
   }, [loadPersisted, userId]);
 
