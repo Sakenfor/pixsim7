@@ -2,6 +2,7 @@ import type { Module } from '../types';
 import type { Asset } from '../../types';
 import { logEvent } from '@lib/utils';
 import { GalleryModule as GalleryModuleComponent } from '@features/controlCenter/components/modules/GalleryModule';
+import type { CCPanelId } from '@features/controlCenter/lib/ccPanelRegistry';
 
 /**
  * Gallery Module
@@ -29,17 +30,16 @@ export const galleryModule: GalleryModule = {
 
   isReady: () => true,
 
-  // Auto-register Control Center module
-  controlCenterModules: [
+  // Auto-register Control Center panel
+  controlCenterPanels: [
     {
-      id: 'gallery',
-      label: 'Gallery',
+      id: 'gallery' as CCPanelId,
+      title: 'Gallery',
       icon: '🖼️',
       component: GalleryModuleComponent,
       category: 'tools',
       order: 50,
       enabledByDefault: true,
-      builtin: true,
       description: 'Gallery controls and asset management',
       tags: ['gallery', 'assets', 'media'],
     },
