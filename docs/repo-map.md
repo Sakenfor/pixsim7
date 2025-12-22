@@ -208,6 +208,7 @@ The workspace uses **SmartDockview** as the single layout engine for all dockvie
 | `features/workspace/stores/workspaceStore.ts` | Presets, floating panels, lock state |
 | `lib/dockview/SmartDockview.tsx` | Unified dockview wrapper with localStorage persistence |
 | `lib/dockview/useSmartDockview.ts` | Hook for layout persistence and tab visibility |
+| `docs/architecture/dockview.md` | Snapshot of current SmartDockview/panel usage & props |
 | `features/panels/lib/PanelManager.ts` | Panel metadata and visibility tracking |
 
 ### How It Works
