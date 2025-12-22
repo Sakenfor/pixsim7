@@ -247,8 +247,8 @@ export type IconName = keyof typeof Icons;
 /**
  * Get an icon component by name
  */
-export function getIcon(name: IconName): LucideIcon {
-  return Icons[name];
+export function getIcon(name: IconName | string): LucideIcon | undefined {
+  return Icons[name as IconName];
 }
 
 /**
@@ -260,11 +260,26 @@ export function Icon({
   className = '',
   strokeWidth = 2,
   ...props
-}: IconProps & { name: IconName }) {
+}: IconProps & { name: IconName | string }) {
+  if (typeof name === 'string' && name.trim().length === 0) {
+    return null;
+  }
+
   const IconComponent = getIcon(name);
 
   if (!IconComponent) {
-    console.error(`Icon "${name}" not found in Icons. Available icons:`, Object.keys(Icons));
+    if (typeof name === 'string') {
+      const fontSize = typeof size === 'number' ? `${size}px` : size;
+      return (
+        <span
+          className={className}
+          style={{ fontSize, lineHeight: 1 }}
+          aria-hidden="true"
+        >
+          {name}
+        </span>
+      );
+    }
     return null;
   }
 
