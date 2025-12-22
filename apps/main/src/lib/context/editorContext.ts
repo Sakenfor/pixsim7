@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useWorldContextStore } from '@/stores/worldContextStore';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
@@ -62,12 +62,17 @@ export function useEditorContext(): EditorContext {
 
   // Get active panels from panelManager's dockview API
   const [activePanels, setActivePanels] = useState<string[]>([]);
+  const lastActivePanelsRef = useRef<string>('');
 
   useEffect(() => {
     const updateActivePanels = () => {
       const api = panelManager.getPanelState('workspace')?.dockview?.api;
       if (!api) {
-        setActivePanels([]);
+        // Only update if not already empty
+        if (lastActivePanelsRef.current !== '') {
+          lastActivePanelsRef.current = '';
+          setActivePanels([]);
+        }
         return;
       }
 
@@ -78,7 +83,13 @@ export function useEditorContext(): EditorContext {
           panels.push(panelId);
         }
       }
-      setActivePanels(panels);
+
+      // Only update if panels actually changed
+      const panelsKey = panels.sort().join(',');
+      if (panelsKey !== lastActivePanelsRef.current) {
+        lastActivePanelsRef.current = panelsKey;
+        setActivePanels(panels);
+      }
     };
 
     // Initial update
