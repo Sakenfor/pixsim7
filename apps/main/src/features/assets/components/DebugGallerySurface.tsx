@@ -167,21 +167,21 @@ export function DebugGallerySurface() {
             </div>
             <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
               <div className="text-2xl font-bold text-green-500">
-                {items.filter(a => a.media_type === 'image').length}
+                {items.filter(a => a.mediaType === 'image').length}
               </div>
               <div className="text-sm text-neutral-600 dark:text-neutral-400">Images</div>
             </div>
             <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
               <div className="text-2xl font-bold text-purple-500">
-                {items.filter(a => a.media_type === 'video').length}
+                {items.filter(a => a.mediaType === 'video').length}
               </div>
               <div className="text-sm text-neutral-600 dark:text-neutral-400">Videos</div>
             </div>
             <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
               <div className="text-2xl font-bold text-orange-500">
-                {items.filter(a => a.sync_status === 'synced').length}
+                {items.filter(a => a.syncStatus === 'downloaded').length}
               </div>
-              <div className="text-sm text-neutral-600 dark:text-neutral-400">Synced</div>
+              <div className="text-sm text-neutral-600 dark:text-neutral-400">Downloaded</div>
             </div>
           </div>
 
@@ -219,13 +219,13 @@ export function DebugGallerySurface() {
                     {items.map(asset => (
                       <tr key={asset.id} className="border-t border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-750">
                         <td className="p-2 truncate max-w-xs">{asset.id}</td>
-                        <td className="p-2">{asset.media_type}</td>
-                        <td className="p-2">{asset.provider_id}</td>
-                        <td className="p-2">{asset.sync_status}</td>
+                        <td className="p-2">{asset.mediaType}</td>
+                        <td className="p-2">{asset.providerId}</td>
+                        <td className="p-2">{asset.syncStatus}</td>
                         <td className="p-2">
                           {asset.width && asset.height ? `${asset.width}×${asset.height}` : '-'}
                         </td>
-                        <td className="p-2 truncate max-w-xs">{asset.tags?.join(', ') || '-'}</td>
+                        <td className="p-2 truncate max-w-xs">{asset.tags?.map(t => t.name).join(', ') || '-'}</td>
                       </tr>
                     ))}
                   </tbody>

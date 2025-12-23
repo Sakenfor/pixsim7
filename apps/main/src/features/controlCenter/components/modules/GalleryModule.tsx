@@ -45,12 +45,12 @@ export function GalleryModule() {
     if (loading || !items) return null;
     return {
       total: items.length,
-      images: items.filter(a => a.media_type === 'image').length,
-      videos: items.filter(a => a.media_type === 'video').length,
-      audio: items.filter(a => a.media_type === 'audio').length,
-      models: items.filter(a => a.media_type === '3d_model').length,
-      ok: items.filter(a => a.provider_status === 'ok').length,
-      flagged: items.filter(a => a.provider_status === 'flagged').length,
+      images: items.filter(a => a.mediaType === 'image').length,
+      videos: items.filter(a => a.mediaType === 'video').length,
+      audio: items.filter(a => a.mediaType === 'audio').length,
+      models: items.filter(a => a.mediaType === '3d_model').length,
+      ok: items.filter(a => a.providerStatus === 'ok').length,
+      flagged: items.filter(a => a.providerStatus === 'flagged').length,
     };
   }, [items, loading]);
 

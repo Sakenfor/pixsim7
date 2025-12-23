@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useAssets, type AssetResponse } from '@features/assets';
+import { useAssets, type AssetModel } from '@features/assets';
 import { useControlCubeStore } from '@features/controlCenter/stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
 import { BACKEND_BASE } from '@lib/api/client';
@@ -23,7 +22,7 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
   const pinnedAssets = cube?.pinnedAssets || {};
 
   // Helper to render asset thumbnail
-  const renderAssetThumbnail = (asset: AssetResponse | undefined, face: CubeFace) => {
+  const renderAssetThumbnail = (asset: AssetModel | undefined, face: CubeFace) => {
     if (!asset) {
       // Map cube faces to icons
       const faceIcons: Record<CubeFace, keyof typeof Icons> = {
@@ -44,7 +43,7 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
     }
 
     const thumbSrc = (() => {
-      const url = asset.thumbnail_url;
+      const url = asset.thumbnailUrl;
       if (!url) return undefined;
       if (url.startsWith('http://') || url.startsWith('https://')) return url;
       if (url.startsWith('/')) return `${BACKEND_BASE}${url}`;
@@ -85,7 +84,7 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
         {/* Asset info */}
         <div className="absolute bottom-0 left-0 right-0 p-1.5 flex items-center gap-1">
           <Icon
-            name={asset.media_type === 'video' ? 'video' : 'camera'}
+            name={asset.mediaType === 'video' ? 'video' : 'camera'}
             size={10}
             className="text-white/90"
           />

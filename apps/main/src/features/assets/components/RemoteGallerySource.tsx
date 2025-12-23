@@ -8,8 +8,9 @@ import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { GalleryToolsPanel } from '@features/gallery';
 import { Button } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@lib/icons';
-import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
+import type { GalleryToolContext } from '@features/gallery/lib/core/types';
 import { getMediaCardPreset } from '@lib/ui/overlay';
+import { mediaCardPropsFromAsset } from './shared';
 
 
 interface RemoteGallerySourceProps {
@@ -125,21 +126,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
         <div key={a.id} className="relative group rounded-md">
           <div className="opacity-75 group-hover:opacity-100 transition-opacity">
             <MediaCard
-              id={a.id}
-              mediaType={a.media_type}
-              providerId={a.provider_id}
-              providerAssetId={a.provider_asset_id}
-              thumbUrl={a.thumbnail_url}
-              previewUrl={a.preview_url}
-              remoteUrl={a.remote_url}
-              width={a.width}
-              height={a.height}
-              durationSec={a.duration_sec}
-              tags={a.tags}
-              description={a.description}
-              createdAt={a.created_at}
-              status={a.sync_status}
-              providerStatus={a.provider_status}
+              {...mediaCardPropsFromAsset(a)}
               onOpen={undefined}
               actions={controller.getAssetActions(a)}
               contextMenuAsset={a}
@@ -208,21 +195,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
           return (
             <MediaCard
-              id={a.id}
-              mediaType={a.media_type}
-              providerId={a.provider_id}
-              providerAssetId={a.provider_asset_id}
-              thumbUrl={a.thumbnail_url}
-              previewUrl={a.preview_url}
-              remoteUrl={a.remote_url}
-              width={a.width}
-              height={a.height}
-              durationSec={a.duration_sec}
-              tags={a.tags}
-              description={a.description}
-              createdAt={a.created_at}
-              status={a.sync_status}
-              providerStatus={a.provider_status}
+              {...mediaCardPropsFromAsset(a)}
               onOpen={() => openGalleryAsset(a, controller.assets)}
               actions={actions}
               contextMenuAsset={a}

@@ -14,8 +14,8 @@ import { MediaCard } from '@/components/media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import type { GalleryAsset } from '@features/gallery/lib/core/types';
 import { AssetDetailModal } from './AssetDetailModal';
+import { mediaCardPropsFromAsset } from './shared';
 
 export function ReviewGallerySurface() {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
@@ -246,24 +246,10 @@ export function ReviewGallerySurface() {
               onClick={() => setFocusedAssetIndex(index)}
             >
               <MediaCard
-                id={asset.id}
-                mediaType={asset.media_type}
-                providerId={asset.provider_id}
-                providerAssetId={asset.provider_asset_id}
-                thumbUrl={asset.thumbnail_url}
-                previewUrl={asset.preview_url}
-                remoteUrl={asset.remote_url}
-                width={asset.width}
-                height={asset.height}
-                durationSec={asset.duration_sec}
-                tags={asset.tags}
-                description={asset.description}
-                createdAt={asset.created_at}
-                status={asset.sync_status}
-                providerStatus={asset.provider_status}
+                {...mediaCardPropsFromAsset(asset)}
                 actions={controller.getAssetActions(asset)}
                 contextMenuAsset={asset}
-                contextMenuSelection={controller.selectedAssets as any}
+                contextMenuSelection={controller.selectedAssets}
               />
 
               {/* Review Actions */}

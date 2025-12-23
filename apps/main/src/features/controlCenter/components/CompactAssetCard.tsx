@@ -4,7 +4,7 @@ import { ThemedIcon } from '@lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import { useContextMenuItem } from '@lib/dockview/contextMenu';
-import type { AssetResponse } from '@features/assets';
+import type { AssetModel } from '@features/assets';
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -18,7 +18,7 @@ interface PopupPosition {
 }
 
 export interface CompactAssetCardProps {
-  asset: AssetResponse;
+  asset: AssetModel;
   onRemove?: () => void;
   showRemoveButton?: boolean;
   className?: string;
@@ -105,14 +105,14 @@ export function CompactAssetCard({
     }
   }, [showQueueGrid, queueItems]);
 
-  // Use thumbnail_url from AssetResponse
-  const thumbUrl = asset.thumbnail_url;
+  // Use thumbnailUrl from AssetModel
+  const thumbUrl = asset.thumbnailUrl;
 
   // Shared hooks from MediaCard
-  const thumbSrc = useMediaThumbnail(thumbUrl, asset.preview_url, asset.remote_url);
+  const thumbSrc = useMediaThumbnail(thumbUrl, asset.previewUrl, asset.remoteUrl);
   const hover = useHoverScrubVideo(videoRef);
 
-  const isVideo = asset.media_type === 'video';
+  const isVideo = asset.mediaType === 'video';
   const hasLockedFrame = lockedTimestamp !== undefined;
 
   // Handle frame lock/unlock
@@ -129,7 +129,7 @@ export function CompactAssetCard({
     }
   };
 
-  const isLocalOnly = asset.provider_status === 'local_only' || !asset.remote_url;
+  const isLocalOnly = asset.providerStatus === 'local_only' || !asset.remoteUrl;
   const statusColor = isLocalOnly
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
@@ -137,22 +137,22 @@ export function CompactAssetCard({
   // Context menu: combined hook registers data + returns attrs (Pattern B)
   const contextMenuProps = useContextMenuItem('asset', asset.id, {
     id: asset.id,
-    name: asset.description || asset.provider_asset_id || `Asset ${asset.id}`,
-    type: asset.media_type,
+    name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
+    type: asset.mediaType,
     asset, // full object for actions
-    provider: asset.provider_id,
-    providerAssetId: asset.provider_asset_id,
-    thumbnailUrl: asset.thumbnail_url,
+    provider: asset.providerId,
+    providerAssetId: asset.providerAssetId,
+    thumbnailUrl: asset.thumbnailUrl,
     isLocalOnly,
   }, [
     asset.id,
     asset.description,
-    asset.provider_asset_id,
-    asset.media_type,
-    asset.provider_id,
-    asset.thumbnail_url,
-    asset.provider_status,
-    asset.remote_url,
+    asset.providerAssetId,
+    asset.mediaType,
+    asset.providerId,
+    asset.thumbnailUrl,
+    asset.providerStatus,
+    asset.remoteUrl,
   ]);
 
   return (
@@ -171,14 +171,14 @@ export function CompactAssetCard({
       <div
         ref={hover.containerRef}
         className={`relative bg-neutral-100 dark:bg-neutral-800 ${
-          fillHeight ? 'h-full' : (asset.media_type === 'video' ? 'aspect-video' : 'aspect-square')
+          fillHeight ? 'h-full' : (asset.mediaType === 'video' ? 'aspect-video' : 'aspect-square')
         }`}
-        onMouseEnter={asset.media_type === 'video' ? hover.onMouseEnter : undefined}
-        onMouseLeave={asset.media_type === 'video' ? hover.onMouseLeave : undefined}
-        onMouseMove={asset.media_type === 'video' ? hover.onMouseMove : undefined}
+        onMouseEnter={asset.mediaType === 'video' ? hover.onMouseEnter : undefined}
+        onMouseLeave={asset.mediaType === 'video' ? hover.onMouseLeave : undefined}
+        onMouseMove={asset.mediaType === 'video' ? hover.onMouseMove : undefined}
       >
         {thumbSrc && (
-          asset.media_type === 'video' ? (
+          asset.mediaType === 'video' ? (
             <video
               ref={videoRef}
               src={thumbSrc}
@@ -207,7 +207,7 @@ export function CompactAssetCard({
         )}
 
         {/* Video hover scrub progress bar */}
-        {asset.media_type === 'video' && hover.hasStartedPlaying && !hasLockedFrame && (
+        {asset.mediaType === 'video' && hover.hasStartedPlaying && !hasLockedFrame && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
             <div className="h-full bg-white/80 transition-all" style={{ width: `${Math.round(hover.progress * 100)}%` }} />
           </div>
