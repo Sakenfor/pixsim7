@@ -1,0 +1,9 @@
+export const CAP_ASSET_SELECTION = "assetSelection" as const;
+export const CAP_SCENE_CONTEXT = "sceneContext" as const;
+export const CAP_WORLD_CONTEXT = "worldContext" as const;
+export const CAP_GENERATION_CONTEXT = "generationContext" as const;
+export const CAP_GENERATION_SCOPE = "generationScope" as const;
+export const CAP_PROMPT_BOX = "promptBox" as const;
+export const CAP_ASSET_INPUT = "assetInput" as const;
+export const CAP_GENERATE_ACTION = "generateAction" as const;
+export const CAP_EDITOR_CONTEXT = "editorContext" as const;

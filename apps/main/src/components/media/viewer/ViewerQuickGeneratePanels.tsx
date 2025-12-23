@@ -15,6 +15,8 @@ import {
   type AssetInputContext,
   type GenerateActionContext,
 } from "@features/contextHub";
+import { Ref, type AssetRef } from "@pixsim7/shared.types";
+import { resolveAssetMediaType } from "@features/assets/lib/assetMediaType";
 
 export type ViewerQuickGenSettingsMode = "asset" | "controlCenter";
 
@@ -73,10 +75,37 @@ export function ViewerQuickGenPromptPanel({ context }: PanelProps) {
       label: "Asset Input",
       priority: 40,
       isAvailable: () => isReady,
-      getValue: () => ({
-        assets: asset ? [asset] : [],
-        supportsMulti: false,
-      }),
+      getValue: () => {
+        const id = asset ? Number(asset.id) : NaN;
+        const ref = Number.isFinite(id) ? Ref.asset(id) : null;
+        const refs = ref ? ([ref] as AssetRef[]) : [];
+        const resolvedType = resolveAssetMediaType(asset);
+        const types =
+          resolvedType === "image" || resolvedType === "video"
+            ? [resolvedType]
+            : [];
+
+        return {
+          assets: asset ? [asset] : [],
+          supportsMulti: false,
+          ref,
+          refs,
+          selection: {
+            count: refs.length,
+            min: 0,
+            max: 1,
+            mode: "single",
+          },
+          constraints: {
+            types: types.length > 0 ? types : undefined,
+            canMixTypes: false,
+          },
+          status:
+            refs.length > 0
+              ? { ready: true }
+              : { ready: false, reason: "Select an asset to generate from." },
+        };
+      },
     },
     [asset, isReady],
   );

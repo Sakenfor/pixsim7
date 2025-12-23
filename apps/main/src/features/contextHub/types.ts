@@ -1,4 +1,10 @@
+import type { EntityRef } from "@pixsim7/shared.types";
+
 export type CapabilityKey = string;
+
+export type EntityScopedCapability<T, TRef extends EntityRef = EntityRef> = T & {
+  ref?: TRef | null;
+};
 
 export interface CapabilityProvider<T = unknown> {
   id?: string;

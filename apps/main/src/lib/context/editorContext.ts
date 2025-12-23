@@ -5,6 +5,7 @@ import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { useWorkspaceStore } from '@features/workspace';
 import { panelManager } from '@features/panels/lib/PanelManager';
+import { resolvePanelDefinitionId } from '@lib/dockview/panelAdd';
 import {
   derivePrimaryView,
   deriveEditorMode,
@@ -78,7 +79,7 @@ export function useEditorContext(): EditorContext {
 
       const panels: string[] = [];
       for (const panel of api.panels) {
-        const panelId = panel.params?.panelId;
+        const panelId = resolvePanelDefinitionId(panel);
         if (typeof panelId === 'string') {
           panels.push(panelId);
         }

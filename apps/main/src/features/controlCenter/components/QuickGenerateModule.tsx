@@ -16,6 +16,7 @@ import {
   useProvideCapability,
   type GenerationContextSummary,
 } from '@features/contextHub';
+import { Ref } from '@pixsim7/shared.types';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -87,13 +88,19 @@ export function QuickGenerateModule() {
   const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
 
   const generationContextValue = useMemo<GenerationContextSummary>(
-    () => ({
-      id: 'controlCenter',
-      label: 'Control Center',
-      mode: operationType,
-      supportsMultiAsset: isInMultiMode,
-    }),
-    [operationType, isInMultiMode],
+    () => {
+      const id = Number(generationId);
+      const ref = Number.isFinite(id) ? Ref.generation(id) : null;
+
+      return {
+        id: 'controlCenter',
+        label: 'Control Center',
+        mode: operationType,
+        supportsMultiAsset: isInMultiMode,
+        ref,
+      };
+    },
+    [operationType, isInMultiMode, generationId],
   );
 
   const generationContextProvider = useMemo(

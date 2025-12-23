@@ -9,15 +9,26 @@ import {
   type SceneContextSummary,
   type WorldContextSummary,
 } from "@features/contextHub";
+import { ContextHubCapabilityBridge } from "./ContextHubCapabilityBridge";
+import { Ref } from "@pixsim7/shared.types";
 
 export function ContextHubRootProviders() {
   const editorContext = useEditorContext();
 
   const sceneValue = useMemo<SceneContextSummary>(
-    () => ({
-      sceneId: editorContext.scene.id,
-      title: editorContext.scene.title ?? null,
-    }),
+    () => {
+      const sceneId = editorContext.scene.id;
+      const numericSceneId = sceneId != null ? Number(sceneId) : NaN;
+      const ref = Number.isFinite(numericSceneId)
+        ? Ref.scene(numericSceneId)
+        : null;
+
+      return {
+        sceneId,
+        title: editorContext.scene.title ?? null,
+        ref,
+      };
+    },
     [editorContext.scene.id, editorContext.scene.title],
   );
 
@@ -60,20 +71,44 @@ export function ContextHubRootProviders() {
     scope: "root",
   });
 
+  const editorSnapshot = useMemo<EditorContextSnapshot>(() => {
+    const locationRef =
+      editorContext.world.locationId != null
+        ? Ref.location(editorContext.world.locationId)
+        : null;
+    const sceneId = editorContext.scene.id;
+    const numericSceneId = sceneId != null ? Number(sceneId) : NaN;
+    const sceneRef = Number.isFinite(numericSceneId)
+      ? Ref.scene(numericSceneId)
+      : null;
+
+    return {
+      ...editorContext,
+      world: {
+        ...editorContext.world,
+        locationRef,
+      },
+      scene: {
+        ...editorContext.scene,
+        ref: sceneRef,
+      },
+    };
+  }, [editorContext]);
+
   const editorProvider = useMemo(
     () => ({
       id: "editorContext",
       label: "Editor Context",
       priority: 10,
       exposeToContextMenu: true,
-      getValue: (): EditorContextSnapshot => editorContext,
+      getValue: (): EditorContextSnapshot => editorSnapshot,
     }),
-    [editorContext],
+    [editorSnapshot],
   );
 
-  useProvideCapability(CAP_EDITOR_CONTEXT, editorProvider, [editorContext], {
+  useProvideCapability(CAP_EDITOR_CONTEXT, editorProvider, [editorSnapshot], {
     scope: "root",
   });
 
-  return null;
+  return <ContextHubCapabilityBridge />;
 }

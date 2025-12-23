@@ -12,6 +12,7 @@ import {
   useContextHubOverridesStore,
 } from "@features/contextHub";
 import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
+import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 
 const CONNECT_KEYS: CapabilityKey[] = [
   CAP_PROMPT_BOX,
@@ -27,6 +28,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
 
 function formatCapabilityLabel(key: string): string {
   return key
+    .replace(/[:/]/g, " ")
     .replace(/[-_]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\b\w/g, (match) => match.toUpperCase());
@@ -229,7 +231,10 @@ function buildCapabilityListActions(ctx: MenuActionContext): MenuAction[] {
 
     return {
       id: `capabilities:${key}`,
-      label: CAPABILITY_LABELS[key] ?? formatCapabilityLabel(key),
+      label:
+        getCapabilityDescriptor(key)?.label ??
+        CAPABILITY_LABELS[key] ??
+        formatCapabilityLabel(key),
       availableIn: ["panel-content", "tab"],
       children,
       execute: () => {},

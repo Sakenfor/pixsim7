@@ -7,6 +7,7 @@ import {
   type CapabilityProvider,
 } from "@features/contextHub";
 import { useCapability } from "@features/contextHub";
+import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 
 type RegistrySnapshot = {
   label: string;
@@ -37,15 +38,23 @@ function CapabilityRow({
   onPreferredChange,
 }: CapabilityRowProps) {
   const { provider: activeProvider } = useCapability(capabilityKey);
+  const descriptor = getCapabilityDescriptor(capabilityKey);
 
   return (
     <div className="rounded border border-neutral-200 dark:border-neutral-800 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-medium">{capabilityKey}</div>
+          <div className="text-sm font-medium">
+            {descriptor?.label ?? capabilityKey}
+          </div>
           <div className="text-[11px] text-neutral-500">
             Active: {activeProvider ? summarizeProvider(activeProvider) : "none"}
           </div>
+          {descriptor?.description && (
+            <div className="text-[10px] text-neutral-400">
+              {descriptor.description}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-neutral-500">Preferred</label>

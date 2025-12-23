@@ -30,8 +30,10 @@ import {
   type AssetInputContext,
   type GenerateActionContext,
 } from '@features/contextHub';
+import { Ref, type AssetRef } from '@pixsim7/shared.types';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId } from '@features/panels';
 import { useDockviewId } from '@lib/dockview/contextMenu';
+import { resolveAssetMediaTypes } from '@features/assets/lib/assetMediaType';
 
 // Panel IDs
 export type QuickGenPanelId =
@@ -173,10 +175,43 @@ export function AssetPanel(props: QuickGenPanelProps) {
       id: `quickgen-asset:${panelInstanceId}`,
       label: 'Asset Input',
       priority: 50,
-      getValue: () => ({
-        assets: displayAssets ?? [],
-        supportsMulti: isFlexibleOperation,
-      }),
+      getValue: () => {
+        const refs = (displayAssets ?? [])
+          .map((asset) => {
+            const id = Number(asset?.id);
+            return Number.isFinite(id) ? Ref.asset(id) : null;
+          })
+          .filter((ref): ref is AssetRef => !!ref);
+        const minCount = isFlexibleOperation ? 0 : 1;
+        const isMultiAsset =
+          operationType === "video_transition" ||
+          (isFlexibleOperation && (displayAssets?.length ?? 0) > 1);
+        const maxCount = isMultiAsset ? Math.max(refs.length, 1) : 1;
+        const types = resolveAssetMediaTypes(displayAssets ?? []).filter(
+          (type): type is "image" | "video" => type === "image" || type === "video",
+        );
+
+        return {
+          assets: displayAssets ?? [],
+          supportsMulti: isFlexibleOperation,
+          ref: refs[0] ?? null,
+          refs,
+          selection: {
+            count: refs.length,
+            min: minCount,
+            max: maxCount,
+            mode: isMultiAsset ? "multi" : "single",
+          },
+          constraints: {
+            types: types.length > 0 ? types : undefined,
+            canMixTypes: types.length > 1,
+          },
+          status:
+            refs.length >= minCount
+              ? { ready: true }
+              : { ready: false, reason: "Select an asset to continue." },
+        };
+      },
     },
     [displayAssets, isFlexibleOperation, panelInstanceId],
   );
@@ -279,7 +314,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const controller = useQuickGenerateController();
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
-  const scopeInstanceId = useScopeInstanceId();
+  const scopeInstanceId = useScopeInstanceId("generation");
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
@@ -376,7 +411,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   const controller = useQuickGenerateController();
   const { value: promptBox } = useCapability<PromptBoxContext>(CAP_PROMPT_BOX);
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
-  const scopeInstanceId = useScopeInstanceId();
+  const scopeInstanceId = useScopeInstanceId("generation");
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-settings';
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);

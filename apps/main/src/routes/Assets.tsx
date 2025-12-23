@@ -25,6 +25,7 @@ import {
   useProvideCapability,
   type AssetSelection,
 } from '@features/contextHub';
+import { Ref, type AssetRef } from '@pixsim7/shared.types';
 
 export function AssetsRoute() {
   const navigate = useNavigate();
@@ -92,14 +93,25 @@ export function AssetsRoute() {
   }, [controller.assets, controller.selectedAssetIds]);
 
   const assetSelectionValue = useMemo<AssetSelection>(
-    () => ({
-      asset:
-        selectedGalleryAssets.length > 0
-          ? galleryAssetToViewer(selectedGalleryAssets[0])
+    () => {
+      const refs = selectedGalleryAssets
+        .map((asset) => {
+          const id = Number(asset.id);
+          return Number.isFinite(id) ? Ref.asset(id) : null;
+        })
+        .filter((ref): ref is AssetRef => !!ref);
+
+      return {
+        asset:
+          selectedGalleryAssets.length > 0
+            ? galleryAssetToViewer(selectedGalleryAssets[0])
           : null,
-      assets: selectedGalleryAssets.map(galleryAssetToViewer),
-      source: 'gallery',
-    }),
+        assets: selectedGalleryAssets.map(galleryAssetToViewer),
+        source: 'gallery',
+        ref: refs[0] ?? null,
+        refs,
+      };
+    },
     [selectedGalleryAssets, galleryAssetToViewer],
   );
 

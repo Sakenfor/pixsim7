@@ -20,6 +20,7 @@ import {
   useProvideCapability,
   type AssetSelection,
 } from '@features/contextHub';
+import { Ref, type AssetRef } from '@pixsim7/shared.types';
 
 export function AssetViewerPanel() {
   // Panel orchestration hook
@@ -44,11 +45,27 @@ export function AssetViewerPanel() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const assetSelectionValue = useMemo<AssetSelection>(
-    () => ({
-      asset: currentAsset,
-      assets: assetList,
-      source: 'assetViewer',
-    }),
+    () => {
+      const refs = assetList
+        .map((asset) => {
+          const id = Number(asset?.id);
+          return Number.isFinite(id) ? Ref.asset(id) : null;
+        })
+        .filter((ref): ref is AssetRef => !!ref);
+      const currentId = currentAsset?.id;
+      const currentRef =
+        currentId != null && Number.isFinite(Number(currentId))
+          ? Ref.asset(Number(currentId))
+          : null;
+
+      return {
+        asset: currentAsset,
+        assets: assetList,
+        source: 'assetViewer',
+        ref: currentRef ?? refs[0] ?? null,
+        refs,
+      };
+    },
     [currentAsset, assetList],
   );
 

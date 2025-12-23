@@ -25,6 +25,7 @@ import {
   useProvideCapability,
   type GenerationContextSummary,
 } from '@features/contextHub';
+import { Ref } from '@pixsim7/shared.types';
 import {
   ViewerQuickGenPromptPanel,
   ViewerQuickGenSettingsPanel,
@@ -143,13 +144,25 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   }, [asset.fullUrl, asset.url, asset.type, setDynamicParams]);
 
   const generationContextValue = useMemo<GenerationContextSummary>(
-    () => ({
-      id: 'assetViewer',
-      label: 'Asset Viewer',
-      mode: settingsMode === 'asset' ? 'asset' : 'controlCenter',
-      supportsMultiAsset: false,
-    }),
-    [settingsMode],
+    () => {
+      const generationId =
+        settingsMode === 'asset'
+          ? (asset.sourceGenerationId ?? assetGeneration?.id)
+          : null;
+      const ref =
+        generationId != null && Number.isFinite(Number(generationId))
+          ? Ref.generation(Number(generationId))
+          : null;
+
+      return {
+        id: 'assetViewer',
+        label: 'Asset Viewer',
+        mode: settingsMode === 'asset' ? 'asset' : 'controlCenter',
+        supportsMultiAsset: false,
+        ref,
+      };
+    },
+    [settingsMode, asset.sourceGenerationId, assetGeneration?.id],
   );
 
   const generationContextProvider = useMemo(

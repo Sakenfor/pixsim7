@@ -13,6 +13,7 @@ import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { panelManager } from '@features/panels/lib/PanelManager';
+import { resolvePanelDefinitionId } from '@lib/dockview/panelAdd';
 
 /**
  * Get a snapshot of the current editor context (non-hook version)
@@ -33,7 +34,7 @@ export function getEditorContextSnapshot(): EditorContext {
   const api = panelManager.getPanelState('workspace')?.dockview?.api;
   if (api) {
     for (const panel of api.panels) {
-      const panelId = panel.params?.panelId;
+      const panelId = resolvePanelDefinitionId(panel);
       if (typeof panelId === 'string') {
         activePanels.push(panelId);
       }
