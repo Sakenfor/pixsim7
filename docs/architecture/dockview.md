@@ -6,9 +6,9 @@
 - Context menus, scopes, and capabilities remain shared and optional.
 
 ### Current Usage
-- **Workspace**: `scope="workspace"`, storage key `dockview:workspace:v3`, default layout defined inline in `features/workspace/components/DockviewWorkspace.tsx`.
-- **Control Center**: passes an explicit `panels` array based on user-enabled modules, storage key `dockview:control-center:v4`.
-- **Asset Viewer**: passes an explicit `panels` list, storage key `dockview:asset-viewer:v4`.
+- **Workspace**: `scope="workspace"`, storage key `dockview:workspace:v4`, default layout defined inline in `features/workspace/components/DockviewWorkspace.tsx`.
+- **Control Center**: passes an explicit `panels` array based on user-enabled modules, storage key `dockview:control-center:v5`.
+- **Asset Viewer**: passes an explicit `panels` list, storage key `dockview:asset-viewer:v5`.
 
 ### SmartDockview Props (simplified)
 - `scope?: string` — filter by panel `availableIn` (recommended for simple docks).
@@ -25,11 +25,12 @@
 - Context menu add-panel uses all allowed panels (respecting `allowed*`).
 - Scope-based auto-wrapping and user-controlled Local/Global scopes still apply; scope provider registry untouched.
 - Legacy registry mode remains for internal use but is discouraged.
+- Dockview hosts are registered centrally and expose a shared `addPanel/isPanelOpen/focusPanel` API.
 
 ### Defaults & Storage Keys
-- Workspace: `dockview:workspace:v3`
-- Control Center: `dockview:control-center:v4`
-- Asset Viewer: `dockview:asset-viewer:v4`
+- Workspace: `dockview:workspace:v4`
+- Control Center: `dockview:control-center:v5`
+- Asset Viewer: `dockview:asset-viewer:v5`
 
 ### Follow-ups (nice to have)
 - Continue pruning legacy mentions of `globalPanelIds/includeGlobalPanels`.

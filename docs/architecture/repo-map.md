@@ -1,6 +1,6 @@
-# PixSim7 Backend Repository Map
+# PixSim7 Repository Map
 
-This document describes the organization principles for the PixSim7 backend codebase.
+This document describes the organization principles for the PixSim7 backend and frontend codebases.
 
 ## Directory Structure
 
@@ -132,3 +132,21 @@ from pixsim7.backend.main.shared.config import get_settings
 - Asset modules moved to `domain/assets/`
 - Generation modules moved to `domain/generation/`
 - Old locations contain re-export shims for backward compatibility
+
+## Frontend (apps/main) Overview
+
+Key areas for UI, panels, and capability plumbing:
+
+- `apps/main/src/lib/dockview/` - SmartDockview wrapper, dockview hosts, add-panel API, context menu integration.
+- `apps/main/src/features/panels/` - Panel registry, scopes, settings resolver, panel manager, panel metadata.
+- `apps/main/src/features/contextHub/` - Runtime capabilities (providers/consumers), scope hosts, capability descriptors, unified facade.
+- `apps/main/src/lib/capabilities/` - App capability catalog (features/routes/actions/states) for discovery and permissions.
+- `apps/main/src/features/workspace/` - Workspace dockview and panel layout orchestration.
+- `apps/main/src/features/controlCenter/` - Control center dockview and quick generation UI.
+- `apps/main/src/features/assets/` - Asset viewer panels, sources, and asset-related state.
+- `apps/main/src/features/settings/` - Panel settings UI, panel-centric settings, schema rendering.
+
+Notes:
+- SmartDockview wraps each panel instance with a `ContextHubHost` and applies scope providers based on panel metadata.
+- Capabilities are exposed through ContextHub for runtime panel communication, with a facade that merges app registry metadata.
+- Related docs: `docs/architecture/dockview.md`, `docs/architecture/clean-coupling-strategy.md`.
