@@ -1079,8 +1079,18 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function renderAssetsTab(container, panel, loadAssets) {
+    // For thumbnails: prefer remote_url (CDN, no CORS issues) over local backend URLs
+    // Local backend URLs (thumbnail_url, file_url) are blocked by CORS when loaded from HTTPS pages
+    const getThumbUrl = (a) => {
+      // Prefer remote URLs (HTTPS CDN) to avoid CORS issues
+      const remoteUrl = a.remote_url || a.external_url;
+      if (remoteUrl && remoteUrl.startsWith('https://')) return remoteUrl;
+      // Fall back to any available URL
+      return a.thumbnail_url || a.remote_url || a.file_url || a.external_url || a.url || a.src;
+    };
+
     let urls = assetsCache.map(a => ({
-      thumb: a.thumbnail_url || a.remote_url || a.file_url || a.external_url || a.url || a.src,
+      thumb: getThumbUrl(a),
       full: a.remote_url || a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
       name: a.name || a.original_filename || a.filename || a.title || '',
       createdAt: a.created_at || a.createdAt || ''
