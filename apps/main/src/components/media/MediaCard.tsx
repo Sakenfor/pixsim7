@@ -35,7 +35,7 @@ import { ThemedIcon } from '@lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 import { useContextMenuOptional } from '@lib/dockview/contextMenu';
-import type { AssetResponse } from '@features/assets';
+import type { AssetModel } from '@features/assets';
 import { useContextHubSettingsStore } from '@features/contextHub';
 
 export interface MediaCardActions {
@@ -95,8 +95,8 @@ export interface MediaCardProps {
   uploadNote?: string;
   actions?: MediaCardActions;
   badgeConfig?: MediaCardBadgeConfig;
-  contextMenuAsset?: AssetResponse;
-  contextMenuSelection?: AssetResponse[];
+  contextMenuAsset?: AssetModel;
+  contextMenuSelection?: AssetModel[];
 
   // Generation status (separate from provider status)
   generationStatus?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
