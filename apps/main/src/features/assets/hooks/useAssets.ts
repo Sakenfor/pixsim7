@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse } from '@lib/api/assets';
 import { assetEvents } from '../lib/assetEvents';
+import { type AssetModel, fromAssetResponse, fromAssetResponses } from '../models/asset';
 
-// Re-export AssetResponse for convenience (previously aliased as AssetSummary)
+// Re-export AssetModel for consumers
+export type { AssetModel } from '../models/asset';
+// Re-export AssetResponse for edge-case boundary access
 export type { AssetResponse } from '@lib/api/assets';
 
 export type AssetFilters = {
@@ -20,7 +23,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   const limit = options?.limit ?? 20;
   const filters = options?.filters ?? {};
 
-  const [items, setItems] = useState<AssetResponse[]>([]);
+  const [items, setItems] = useState<AssetModel[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,13 +85,13 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
         };
       }
 
-      // Merge new assets while avoiding duplicates by ID.
+      // Convert to AssetModel and merge while avoiding duplicates by ID.
+      const newModels = fromAssetResponses(data.assets);
       setItems(prev => {
-        const nextAssets = Array.isArray(data.assets) ? [...data.assets] : [];
-        if (prev.length === 0) return nextAssets;
+        if (prev.length === 0) return newModels;
         const existingIds = new Set(prev.map(a => a.id));
         const merged = [...prev];
-        for (const asset of nextAssets) {
+        for (const asset of newModels) {
           if (!existingIds.has(asset.id)) {
             merged.push(asset);
           }
@@ -113,7 +116,9 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   }, []);
 
   // Prepend a new asset (used when generation completes)
-  const prependAsset = useCallback((asset: AssetResponse) => {
+  // Takes AssetResponse from event bus and converts to AssetModel
+  const prependAsset = useCallback((response: AssetResponse) => {
+    const asset = fromAssetResponse(response);
     setItems((prev) => {
       // Avoid duplicates
       if (prev.some((a) => a.id === asset.id)) {

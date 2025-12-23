@@ -161,20 +161,20 @@ export function CuratorGallerySurface() {
                   <div className="w-16 h-16 flex-shrink-0">
                     <MediaCard
                       id={asset.id}
-                      mediaType={asset.media_type}
-                      providerId={asset.provider_id}
-                      providerAssetId={asset.provider_asset_id}
-                      thumbUrl={asset.thumbnail_url}
-                      previewUrl={asset.preview_url}
-                      remoteUrl={asset.remote_url}
+                      mediaType={asset.mediaType}
+                      providerId={asset.providerId}
+                      providerAssetId={asset.providerAssetId}
+                      thumbUrl={asset.thumbnailUrl}
+                      previewUrl={asset.previewUrl}
+                      remoteUrl={asset.remoteUrl}
                       width={asset.width}
                       height={asset.height}
-                      durationSec={asset.duration_sec}
+                      durationSec={asset.durationSec}
                       tags={asset.tags}
                       description={asset.description}
-                      createdAt={asset.created_at}
-                      status={asset.sync_status}
-                      providerStatus={asset.provider_status}
+                      createdAt={asset.createdAt}
+                      status={asset.syncStatus}
+                      providerStatus={asset.providerStatus}
                       contextMenuAsset={asset}
                       contextMenuSelection={selectedAssets as any}
                     />
@@ -182,7 +182,7 @@ export function CuratorGallerySurface() {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{asset.id}</div>
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                      {asset.media_type} ƒ?› {asset.provider_id}
+                      {asset.mediaType} › {asset.providerId}
                     </div>
                     {asset.tags && asset.tags.length > 0 && (
                       <div className="flex gap-1 mt-1">
@@ -204,20 +204,20 @@ export function CuratorGallerySurface() {
                 <>
                   <MediaCard
                     id={asset.id}
-                    mediaType={asset.media_type}
-                    providerId={asset.provider_id}
-                    providerAssetId={asset.provider_asset_id}
-                    thumbUrl={asset.thumbnail_url}
-                    previewUrl={asset.preview_url}
-                    remoteUrl={asset.remote_url}
+                    mediaType={asset.mediaType}
+                    providerId={asset.providerId}
+                    providerAssetId={asset.providerAssetId}
+                    thumbUrl={asset.thumbnailUrl}
+                    previewUrl={asset.previewUrl}
+                    remoteUrl={asset.remoteUrl}
                     width={asset.width}
                     height={asset.height}
-                    durationSec={asset.duration_sec}
+                    durationSec={asset.durationSec}
                     tags={asset.tags}
                     description={asset.description}
-                    createdAt={asset.created_at}
-                    status={asset.sync_status}
-                    providerStatus={asset.provider_status}
+                    createdAt={asset.createdAt}
+                    status={asset.syncStatus}
+                    providerStatus={asset.providerStatus}
                     contextMenuAsset={asset}
                     contextMenuSelection={selectedAssets as any}
                   />

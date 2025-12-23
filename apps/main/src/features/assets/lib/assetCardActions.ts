@@ -7,7 +7,7 @@
  * Used by: useAssetsController, useGallerySurfaceController
  */
 
-import type { AssetResponse } from '@lib/api/assets';
+import type { AssetModel } from '../models/asset';
 
 /**
  * Handler functions for asset actions
@@ -17,21 +17,21 @@ export interface AssetActionHandlers {
   /** Open asset detail panel */
   onOpenDetails?: (id: number) => void;
   /** Archive asset (soft-hide from gallery) */
-  onArchive?: (asset: AssetResponse) => void | Promise<void>;
+  onArchive?: (asset: AssetModel) => void | Promise<void>;
   /** Queue asset for image-to-image generation */
-  onImageToImage?: (asset: AssetResponse) => void;
+  onImageToImage?: (asset: AssetModel) => void;
   /** Queue asset for image-to-video generation */
-  onImageToVideo?: (asset: AssetResponse) => void;
+  onImageToVideo?: (asset: AssetModel) => void;
   /** Queue asset for video extend generation */
-  onVideoExtend?: (asset: AssetResponse) => void;
+  onVideoExtend?: (asset: AssetModel) => void;
   /** Add asset to transition queue */
-  onAddToTransition?: (asset: AssetResponse) => void;
+  onAddToTransition?: (asset: AssetModel) => void;
   /** Add asset to auto-generate queue */
-  onAddToGenerate?: (asset: AssetResponse) => void;
+  onAddToGenerate?: (asset: AssetModel) => void;
   /** Delete asset */
-  onDelete?: (asset: AssetResponse) => void | Promise<void>;
+  onDelete?: (asset: AssetModel) => void | Promise<void>;
   /** Upload/re-upload asset to provider */
-  onReupload?: (asset: AssetResponse, providerId: string) => void | Promise<void>;
+  onReupload?: (asset: AssetModel, providerId: string) => void | Promise<void>;
   /** Custom actions (extensible) */
   [key: string]: any;
 }
@@ -70,7 +70,7 @@ export interface AssetActions {
  *   onDelete: handleDelete,
  * };
  *
- * const getAssetActions = useCallback((asset: AssetResponse) => {
+ * const getAssetActions = useCallback((asset: AssetModel) => {
  *   return createAssetActions(asset, handlers);
  * }, [handlers]);
  *
@@ -95,7 +95,7 @@ const STANDARD_HANDLERS = [
 ] as const;
 
 export function createAssetActions(
-  asset: AssetResponse,
+  asset: AssetModel,
   handlers: AssetActionHandlers
 ): AssetActions {
   const actions: AssetActions = {};
@@ -106,7 +106,7 @@ export function createAssetActions(
     if (handler) {
       actions[key] = ID_BASED_HANDLERS.has(key)
         ? () => (handler as (id: number) => void)(asset.id)
-        : () => (handler as (asset: AssetResponse) => void)(asset);
+        : () => (handler as (asset: AssetModel) => void)(asset);
     }
   }
 

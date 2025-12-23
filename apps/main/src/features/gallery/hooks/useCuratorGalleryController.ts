@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { useAssets, type AssetFilters, type AssetResponse } from '@features/assets';
+import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
 import { useSelection } from '@/hooks/useSelection';
 
 export interface CuratorFilters extends AssetFilters {}
@@ -7,7 +7,7 @@ export interface CuratorFilters extends AssetFilters {}
 export type CuratorViewMode = 'grid' | 'list' | 'compact';
 
 export interface CuratorGalleryController {
-  assets: AssetResponse[];
+  assets: AssetModel[];
   loading: boolean;
   error: string | null;
   hasMore: boolean;
@@ -20,7 +20,7 @@ export interface CuratorGalleryController {
   setViewMode: (mode: CuratorViewMode) => void;
 
   selectedAssetIds: Set<string>;
-  selectedAssets: AssetResponse[];
+  selectedAssets: AssetModel[];
   toggleAssetSelection: (assetId: string | number) => void;
   selectAll: () => void;
   clearSelection: () => void;

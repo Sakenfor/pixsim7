@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAssets, type AssetFilters } from './useAssets';
-import type { AssetResponse } from '@lib/api/assets';
+import { useAssets, type AssetFilters, type AssetModel } from './useAssets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
@@ -77,14 +76,14 @@ export function useAssetsController() {
   const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, isSelected } = useSelection();
 
   // Handle asset selection for picker mode
-  const handleSelectAsset = useCallback((asset: AssetResponse) => {
+  const handleSelectAsset = useCallback((asset: AssetModel) => {
     selectAsset({
       id: String(asset.id),
-      mediaType: asset.media_type,
-      providerId: asset.provider_id,
-      providerAssetId: asset.provider_asset_id,
-      remoteUrl: asset.remote_url,
-      thumbnailUrl: asset.thumbnail_url,
+      mediaType: asset.mediaType,
+      providerId: asset.providerId,
+      providerAssetId: asset.providerAssetId,
+      remoteUrl: asset.remoteUrl,
+      thumbnailUrl: asset.thumbnailUrl,
     });
     // Close floating gallery panel
     closeFloatingPanel('gallery');
@@ -106,8 +105,8 @@ export function useAssetsController() {
   }, [closeViewerInternal, viewerSrc]);
 
   // Handle asset deletion
-  const handleDeleteAsset = useCallback(async (asset: AssetResponse) => {
-    const confirmed = window.confirm(`Delete ${asset.media_type} asset "${asset.id}"? This cannot be undone.`);
+  const handleDeleteAsset = useCallback(async (asset: AssetModel) => {
+    const confirmed = window.confirm(`Delete ${asset.mediaType} asset "${asset.id}"? This cannot be undone.`);
     if (!confirmed) return;
     try {
       const deleteFromProvider = useAssetSettingsStore.getState().deleteFromProvider;
@@ -129,7 +128,7 @@ export function useAssetsController() {
   }, [viewerAsset, removeAsset, isSelected, toggleAssetSelection, closeViewer]);
 
   // Handle asset archiving
-  const handleArchiveAsset = useCallback(async (asset: AssetResponse) => {
+  const handleArchiveAsset = useCallback(async (asset: AssetModel) => {
     try {
       await archiveAsset(asset.id, true);
       // Remove archived asset from view without resetting scroll position
@@ -142,7 +141,7 @@ export function useAssetsController() {
 
   // Handle re-upload for local or multi-provider assets (provider chosen by caller)
   const reuploadAsset = useCallback(
-    async (asset: AssetResponse, providerId: string) => {
+    async (asset: AssetModel, providerId: string) => {
       if (!providerId) {
         alert('No provider selected for re-upload.');
         return;
@@ -171,7 +170,7 @@ export function useAssetsController() {
         return;
       }
 
-      const candidate = viewerAsset.remote_url || viewerAsset.thumbnail_url;
+      const candidate = viewerAsset.remoteUrl || viewerAsset.thumbnailUrl;
       if (!candidate) {
         setViewerSrc(null);
         return;
@@ -250,7 +249,7 @@ export function useAssetsController() {
   ]);
 
   // Get per-asset actions
-  const getAssetActions = useCallback((asset: AssetResponse) => {
+  const getAssetActions = useCallback((asset: AssetModel) => {
     return createAssetActions(asset, actionHandlers);
   }, [actionHandlers]);
 

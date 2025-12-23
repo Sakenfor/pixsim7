@@ -7,8 +7,8 @@
 
 import { useCallback } from 'react';
 import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
-import type { AssetResponse } from '@lib/api/assets';
 import type { LocalAsset } from '../stores/localFoldersStore';
+import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
 
 interface UseAssetViewerOptions {
   source: 'gallery' | 'local';
@@ -21,25 +21,11 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
   const updateAssetList = useAssetViewerStore((s) => s.updateAssetList);
 
   /**
-   * Convert gallery asset (AssetResponse) to ViewerAsset
+   * Convert gallery asset (AssetModel) to ViewerAsset
+   * Uses the centralized toViewerAsset mapper from models/asset.ts
    */
   const galleryAssetToViewer = useCallback(
-    (asset: AssetResponse): ViewerAsset => ({
-      id: asset.id,
-      name: asset.description || `Asset ${asset.id}`,
-      type: asset.media_type as 'image' | 'video',
-      url: asset.thumbnail_url || asset.remote_url || asset.file_url || '',
-      fullUrl: asset.remote_url || undefined,
-      source: 'gallery',
-      sourceGenerationId: asset.source_generation_id ?? undefined,
-      metadata: {
-        description: asset.description || undefined,
-        tags: asset.tags,
-        createdAt: asset.created_at,
-        providerId: asset.provider_id,
-        duration: asset.duration_sec || undefined,
-      },
-    }),
+    (asset: AssetModel): ViewerAsset => toViewerAsset(asset),
     []
   );
 
@@ -68,12 +54,12 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
    * Open a gallery asset in the viewer
    */
   const openGalleryAsset = useCallback(
-    (asset: AssetResponse, allAssets?: AssetResponse[]) => {
-      const viewerAsset = galleryAssetToViewer(asset);
-      const viewerList = allAssets?.map(galleryAssetToViewer);
+    (asset: AssetModel, allAssets?: AssetModel[]) => {
+      const viewerAsset = toViewerAsset(asset);
+      const viewerList = allAssets ? toViewerAssets(allAssets) : undefined;
       openViewer(viewerAsset, viewerList);
     },
-    [openViewer, galleryAssetToViewer]
+    [openViewer]
   );
 
   /**
@@ -99,10 +85,10 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
    * Update the asset list (e.g., when filters change)
    */
   const updateGalleryList = useCallback(
-    (assets: AssetResponse[]) => {
-      updateAssetList(assets.map(galleryAssetToViewer));
+    (assets: AssetModel[]) => {
+      updateAssetList(toViewerAssets(assets));
     },
-    [updateAssetList, galleryAssetToViewer]
+    [updateAssetList]
   );
 
   const updateLocalList = useCallback(

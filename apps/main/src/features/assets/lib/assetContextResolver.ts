@@ -23,7 +23,7 @@
  */
 
 import { useContextMenuItem, type ContextMenuAttrs } from '@lib/dockview/contextMenu';
-import type { AssetResponse } from './api';
+import type { AssetModel } from '../models/asset';
 
 /**
  * Hook for asset context menu: registers data + returns attrs.
@@ -35,10 +35,10 @@ import type { AssetResponse } from './api';
  * @returns Props to spread on the element
  */
 export function useAssetContextMenu(
-  asset: AssetResponse | null | undefined,
+  asset: AssetModel | null | undefined,
 ): ContextMenuAttrs | Record<string, never> {
   const isLocalOnly = asset
-    ? asset.provider_status === 'local_only' || !asset.remote_url
+    ? asset.providerStatus === 'local_only' || !asset.remoteUrl
     : false;
 
   return useContextMenuItem(
@@ -47,12 +47,12 @@ export function useAssetContextMenu(
     asset
       ? {
           id: asset.id,
-          name: asset.description || asset.provider_asset_id || `Asset ${asset.id}`,
-          type: asset.media_type,
+          name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
+          type: asset.mediaType,
           asset, // full object for actions
-          provider: asset.provider_id,
-          providerAssetId: asset.provider_asset_id,
-          thumbnailUrl: asset.thumbnail_url,
+          provider: asset.providerId,
+          providerAssetId: asset.providerAssetId,
+          thumbnailUrl: asset.thumbnailUrl,
           isLocalOnly,
         }
       : { name: undefined },
@@ -60,12 +60,12 @@ export function useAssetContextMenu(
     [
       asset?.id,
       asset?.description,
-      asset?.provider_asset_id,
-      asset?.media_type,
-      asset?.provider_id,
-      asset?.thumbnail_url,
-      asset?.provider_status,
-      asset?.remote_url,
+      asset?.providerAssetId,
+      asset?.mediaType,
+      asset?.providerId,
+      asset?.thumbnailUrl,
+      asset?.providerStatus,
+      asset?.remoteUrl,
     ],
   );
 }

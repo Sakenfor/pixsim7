@@ -43,8 +43,8 @@ export { DynamicFilters } from './components/DynamicFilters';
 export { useAsset } from './hooks/useAsset';
 
 export { useAssets } from './hooks/useAssets';
-export type { AssetFilters } from './hooks/useAssets';
-// AssetResponse is exported from ./lib/api below
+export type { AssetFilters, AssetModel } from './hooks/useAssets';
+// AssetResponse is exported from ./lib/api for API boundary access
 
 export { useAssetsController } from './hooks/useAssetsController';
 
@@ -87,6 +87,22 @@ export {
 
 export { createAssetActions } from './lib/assetCardActions';
 export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
+
+// ============================================================================
+// Models - Internal Asset Types
+// ============================================================================
+
+export {
+  fromAssetResponse,
+  fromAssetResponses,
+  toViewerAsset,
+  toViewerAssets,
+  type AssetMediaType,
+  type AssetSyncStatus,
+  type AssetProviderStatus,
+  type TagSummary,
+} from './models/asset';
+// Note: AssetModel is re-exported via useAssets hook above
 
 // ============================================================================
 // Lib - Asset Events
