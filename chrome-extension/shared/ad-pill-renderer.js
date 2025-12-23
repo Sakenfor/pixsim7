@@ -19,7 +19,9 @@
  * @param {boolean} options.includeReward - Include reward in tooltip
  * @param {string} options.fontSize - Font size (default: '10px')
  */
-export function renderAdPill(pillEl, adTask, options = {}) {
+// Make available globally for non-module scripts (popup)
+// eslint-disable-next-line no-unused-vars
+function renderAdPill(pillEl, adTask, options = {}) {
   const {
     isStale = false,
     includeReward = false,
@@ -77,7 +79,8 @@ export function renderAdPill(pillEl, adTask, options = {}) {
  * @param {Object} payload - Response payload (could be nested)
  * @returns {Object|null} - Ad task object or null
  */
-export function extractAdTask(payload) {
+// eslint-disable-next-line no-unused-vars
+function extractAdTask(payload) {
   if (!payload) return null;
   return payload.ad_watch_task ?? null;
 }

@@ -4,7 +4,7 @@
  * Handles account loading, rendering, filtering, and actions.
  */
 
-import { renderAdPill } from '../shared/ad-pill-renderer.js';
+// Note: renderAdPill is loaded from shared/ad-pill-renderer.js via popup.html
 
 // ===== UNIFIED CACHE HELPERS =====
 
