@@ -5,13 +5,17 @@ Uses QThread for non-blocking HTTP requests.
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QComboBox, QLineEdit, QLabel, QCheckBox, QFrame, QMenu
+    QPushButton, QComboBox, QLineEdit, QLabel, QCheckBox, QFrame, QMenu, QDialog,
+    QPlainTextEdit
 )
 from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt
-from PySide6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor, QAction, QClipboard, QShortcut, QKeySequence
+from PySide6.QtGui import (
+    QFont, QTextCharFormat, QColor, QTextCursor, QAction, QClipboard, QShortcut, QKeySequence
+)
 import requests
 from datetime import datetime, timedelta
 import hashlib
+from urllib.parse import quote
 
 # Import formatting and metadata modules
 try:
@@ -80,6 +84,31 @@ class FieldDiscoveryWorker(QThread):
             self.discovery_failed.emit(self.service_name)
 
 
+class RequestTraceFetchWorker(QThread):
+    """Worker thread for fetching request trace JSON without blocking UI."""
+
+    trace_fetched = Signal(str)  # JSON payload as pretty-printed text
+    error_occurred = Signal(str)
+
+    def __init__(self, trace_url: str):
+        super().__init__()
+        self.trace_url = trace_url
+
+    def run(self):
+        try:
+            response = requests.get(self.trace_url, timeout=5)
+            response.raise_for_status()
+            payload = response.json()
+            import json
+            self.trace_fetched.emit(json.dumps(payload, indent=2, ensure_ascii=False))
+        except requests.exceptions.ConnectionError:
+            self.error_occurred.emit('Cannot connect to API (is it running?)')
+        except requests.exceptions.Timeout:
+            self.error_occurred.emit('API request timed out')
+        except Exception as e:
+            self.error_occurred.emit(f'{type(e).__name__}: {str(e)}')
+
+
 class DatabaseLogViewer(QWidget):
     """Widget to view structured logs from database."""
 
@@ -95,6 +124,7 @@ class DatabaseLogViewer(QWidget):
         self._initial_load_done = False  # Track if we've loaded logs once
         self._worker_generation = 0  # Track worker generation to ignore stale results
         self._pending_service_change = None  # Track pending service change
+        self._request_trace_dialogs = {}  # request_id -> dialog
         self.init_ui()
 
     def init_ui(self):
@@ -786,41 +816,50 @@ class DatabaseLogViewer(QWidget):
 
     def _on_log_link_clicked(self, url: QUrl):
         """Handle clicks on log links to filter, expand rows, or show action menu."""
-        scheme = url.scheme()  # e.g., "service", "filter", "expand", "click"
+        try:
+            scheme = url.scheme()  # e.g., "service", "filter", "expand", "click"
 
-        if scheme == "expand":
-            # Handle row expansion toggle
-            row_idx = url.host()
-            if not row_idx:
-                row_idx = url.path().lstrip("/")
-            if row_idx:
-                self._toggle_row_expansion(row_idx)
+            if scheme == "expand":
+                # Handle row expansion toggle
+                row_idx = url.host()
+                if not row_idx:
+                    row_idx = url.path().lstrip("/")
+                if row_idx:
+                    self._toggle_row_expansion(row_idx)
 
-        elif scheme == "service":
-            filter_value = url.host()
-            idx = self.service_combo.findText(filter_value)
-            if idx >= 0:
-                self.service_combo.setCurrentIndex(idx)
-                self.refresh_logs()
+            elif scheme == "service":
+                filter_value = url.host()
+                idx = self.service_combo.findText(filter_value)
+                if idx >= 0:
+                    self.service_combo.setCurrentIndex(idx)
+                    self.refresh_logs()
 
-        elif scheme == "level":
-            filter_value = url.path()[1:]
-            idx = self.level_combo.findText(filter_value.upper())
-            if idx >= 0:
-                self.level_combo.setCurrentIndex(idx)
-                self.refresh_logs()
+            elif scheme == "level":
+                filter_value = url.path()[1:]
+                idx = self.level_combo.findText(filter_value.upper())
+                if idx >= 0:
+                    self.level_combo.setCurrentIndex(idx)
+                    self.refresh_logs()
 
-        elif scheme == "click":
-            # Handle click://field_name/value - show action popup
-            field_name = url.host()
-            field_value = url.path()[1:]  # Remove leading /
-            self._show_field_action_popup(field_name, field_value)
+            elif scheme == "click":
+                # Handle click://field_name/value - show action popup
+                field_name = url.host()
+                raw_value = url.path()[1:]  # Remove leading /
+                field_value = QUrl.fromPercentEncoding(raw_value.encode("utf-8"))
+                self._show_field_action_popup(field_name, field_value)
 
-        elif scheme == "filter":
-            # Handle filter://field_name/value (legacy, direct filter)
-            field_name = url.host()
-            filter_value = url.path()[1:]  # Remove leading /
-            self._apply_field_filter(field_name, filter_value)
+            elif scheme == "filter":
+                # Handle filter://field_name/value (legacy, direct filter)
+                field_name = url.host()
+                raw_value = url.path()[1:]  # Remove leading /
+                filter_value = QUrl.fromPercentEncoding(raw_value.encode("utf-8"))
+                self._apply_field_filter(field_name, filter_value)
+        except Exception as e:
+            # Never let link handling crash the launcher.
+            try:
+                self.status_label.setText(f"Link error: {type(e).__name__}: {e}")
+            except Exception:
+                pass
 
     def _toggle_row_expansion(self, row_idx):
         """Toggle expansion state of a log row and re-render."""
@@ -840,9 +879,14 @@ class DatabaseLogViewer(QWidget):
 
     def _show_field_action_popup(self, field_name: str, field_value: str):
         """Show popup menu with actions for a clickable field."""
+        if not field_name or not field_value:
+            return
         field_def = get_field(field_name)
 
         menu = QMenu(self)
+        # Keep a reference so the menu isn't GC'd while visible.
+        self._active_field_menu = menu
+        menu.aboutToHide.connect(lambda: setattr(self, "_active_field_menu", None))
         menu.setStyleSheet("""
             QMenu {
                 background-color: #2d2d2d;
@@ -908,6 +952,15 @@ class DatabaseLogViewer(QWidget):
                         )
 
                 menu.addAction(action)
+
+            # Convenience: open request trace JSON for request_id values
+            if field_name == "request_id":
+                menu.addSeparator()
+                show_trace_action = QAction("Show request trace", self)
+                show_trace_action.triggered.connect(
+                    lambda checked=False, rid=str(field_value): self.show_request_trace_popup(rid)
+                )
+                menu.addAction(show_trace_action)
         else:
             # Fallback for unregistered fields
             filter_action = QAction(f"🔍 Filter by {field_name}", self)
@@ -922,9 +975,86 @@ class DatabaseLogViewer(QWidget):
             )
             menu.addAction(copy_action)
 
-        # Show menu at cursor position
+        # Show menu at cursor position without a nested event loop (avoids re-entrancy issues
+        # with auto-refresh updates while a blocking exec_() menu is open).
         from PySide6.QtGui import QCursor
-        menu.exec_(QCursor.pos())
+        try:
+            menu.popup(QCursor.pos())
+        except Exception:
+            # Fallback to copy to clipboard rather than crashing.
+            try:
+                self._copy_to_clipboard(field_value)
+            except Exception:
+                pass
+
+    def show_request_trace_popup(self, request_id: str):
+        """Show a popup dialog with the full request trace JSON for a request_id."""
+        request_id = (request_id or "").strip()
+        if not request_id:
+            return
+
+        existing = self._request_trace_dialogs.get(request_id)
+        if existing:
+            existing.raise_()
+            existing.activateWindow()
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Request Trace: {request_id}")
+        dialog.setMinimumSize(820, 520)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dialog.finished.connect(lambda _: self._request_trace_dialogs.pop(request_id, None))
+
+        layout = QVBoxLayout(dialog)
+
+        header = QLabel(f"Request ID: {request_id}")
+        header.setStyleSheet("color: #e0e0e0; font-weight: bold;")
+        layout.addWidget(header)
+
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        text.setStyleSheet(
+            "QPlainTextEdit { background-color: #1e1e1e; color: #e0e0e0; font-family: Consolas, 'Courier New', monospace; }"
+        )
+        text.setPlainText("Loading trace…")
+        layout.addWidget(text, 1)
+
+        btn_row = QHBoxLayout()
+        btn_copy = QPushButton("Copy JSON")
+        btn_copy.clicked.connect(lambda: self._copy_to_clipboard(text.toPlainText()))
+        btn_refresh = QPushButton("Refresh")
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(dialog.close)
+        btn_row.addWidget(btn_copy)
+        btn_row.addWidget(btn_refresh)
+        btn_row.addStretch(1)
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+
+        trace_url = f"{self.api_url}/api/v1/logs/trace/request/{quote(request_id, safe='')}"
+        worker = RequestTraceFetchWorker(trace_url)
+
+        def start_fetch():
+            btn_refresh.setEnabled(False)
+            text.setPlainText("Loading trace…")
+            worker.start()
+
+        def on_fetched(payload: str):
+            btn_refresh.setEnabled(True)
+            text.setPlainText(payload)
+
+        def on_error(msg: str):
+            btn_refresh.setEnabled(True)
+            text.setPlainText(f"Error loading trace:\n{msg}\n\nURL:\n{trace_url}")
+
+        worker.trace_fetched.connect(on_fetched)
+        worker.error_occurred.connect(on_error)
+        btn_refresh.clicked.connect(start_fetch)
+        dialog.destroyed.connect(lambda _: worker.quit())
+
+        self._request_trace_dialogs[request_id] = dialog
+        dialog.show()
+        start_fetch()
 
     def _apply_field_filter(self, field_name: str, field_value: str):
         """Apply a filter for a specific field value."""

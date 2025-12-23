@@ -7,6 +7,7 @@ import re
 from html import escape
 from typing import Dict, Optional
 from datetime import datetime
+from urllib.parse import quote
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
@@ -479,50 +480,63 @@ class LauncherWindow(QWidget):
 
     def _on_console_link_clicked(self, url: QUrl):
         """Handle clickable links in the console view (e.g., ID filters, show dropdown menu)."""
-        scheme = url.scheme()
+        try:
+            scheme = url.scheme()
 
-        # Show dropdown menu with field actions (same as DB logs)
-        if scheme == "click":
-            field_name = url.host()
-            field_value = url.path().lstrip("/")
-            if field_name and field_value:
-                self._show_console_field_action_popup(field_name, field_value)
-            return
-
-        # Legacy: Pivot into DB logs with a pre-applied field filter
-        if scheme == "dbfilter":
-            field_name = url.host()
-            value = url.path().lstrip("/")
-            if not field_name or not value:
+            # Show dropdown menu with field actions (same as DB logs)
+            if scheme == "click":
+                field_name = url.host()
+                raw_value = url.path().lstrip("/")
+                field_value = QUrl.fromPercentEncoding(raw_value.encode("utf-8"))
+                if field_name and field_value:
+                    self._show_console_field_action_popup(field_name, field_value)
                 return
 
-            # Switch to DB logs tab (keeps current service selection in sync)
-            self._open_db_logs_for_current_service()
+            # Legacy: Pivot into DB logs with a pre-applied field filter
+            if scheme == "dbfilter":
+                field_name = url.host()
+                value = url.path().lstrip("/")
+                if not field_name or not value:
+                    return
 
-            # Delay filter application to avoid threading race conditions during tab switch
-            if hasattr(self, "db_log_viewer") and self.db_log_viewer:
-                def apply_filter():
-                    try:
-                        filter_url = QUrl(f"filter://{field_name}/{value}")
-                        self.db_log_viewer._on_log_link_clicked(filter_url)
-                    except Exception:
-                        # Best-effort; ignore if viewer isn't ready yet
-                        pass
-                QTimer.singleShot(100, apply_filter)
-            return
+                # Switch to DB logs tab (keeps current service selection in sync)
+                self._open_db_logs_for_current_service()
 
-        # Fallback: open regular web links in browser
-        if scheme in {"http", "https"}:
+                # Delay filter application to avoid threading race conditions during tab switch
+                if hasattr(self, "db_log_viewer") and self.db_log_viewer:
+                    def apply_filter():
+                        try:
+                            filter_url = QUrl(f"filter://{field_name}/{value}")
+                            self.db_log_viewer._on_log_link_clicked(filter_url)
+                        except Exception:
+                            # Best-effort; ignore if viewer isn't ready yet
+                            pass
+                    QTimer.singleShot(100, apply_filter)
+                return
+
+            # Fallback: open regular web links in browser
+            if scheme in {"http", "https"}:
+                try:
+                    webbrowser.open(url.toString())
+                except Exception:
+                    pass
+        except Exception as e:
             try:
-                webbrowser.open(url.toString())
+                if _launcher_logger:
+                    _launcher_logger.warning("console_link_click_failed", error=str(e), url=url.toString())
             except Exception:
                 pass
 
     def _show_console_field_action_popup(self, field_name: str, field_value: str):
         """Show popup menu with actions for a clickable field in console logs."""
+        if not field_name or not field_value:
+            return
         field_def = get_field(field_name)
 
         menu = QMenu(self)
+        # Keep a reference so the menu isn't GC'd while visible.
+        self._active_field_menu = menu
+        menu.aboutToHide.connect(lambda: setattr(self, "_active_field_menu", None))
         menu.setStyleSheet("""
             QMenu {
                 background-color: #2d2d2d;
@@ -582,6 +596,22 @@ class LauncherWindow(QWidget):
                     )
 
                 menu.addAction(action)
+
+            # Convenience: open request trace JSON for request_id values
+            if field_name == "request_id":
+                menu.addSeparator()
+                open_trace_action = QAction("Show request trace", self)
+                api_url = getattr(getattr(self, "db_log_viewer", None), "api_url", "http://localhost:8001")
+                open_trace_action.triggered.connect(
+                    lambda checked=False, rid=str(field_value): (
+                        self.db_log_viewer.show_request_trace_popup(rid)
+                        if getattr(self, "db_log_viewer", None)
+                        else webbrowser.open(
+                            f"{api_url}/api/v1/logs/trace/request/{quote(str(field_value), safe='')}"
+                        )
+                    )
+                )
+                menu.addAction(open_trace_action)
         else:
             # Fallback for unregistered fields
             filter_action = QAction(f"🔍 Filter by {field_name}", self)
@@ -596,8 +626,22 @@ class LauncherWindow(QWidget):
             )
             menu.addAction(copy_action)
 
-        # Show menu at cursor position
-        menu.exec_(QCursor.pos())
+        # Pause log refresh while menu is visible to avoid re-render races.
+        timer = getattr(self, "console_refresh_timer", None)
+        try:
+            if timer:
+                timer.stop()
+            menu.popup(QCursor.pos())
+        except Exception:
+            # Fallback to copy to clipboard rather than crashing.
+            try:
+                self._copy_to_clipboard(field_value)
+            except Exception:
+                pass
+        finally:
+            if timer:
+                # Resume after a short delay so the menu can process the click event cleanly.
+                QTimer.singleShot(250, timer.start)
 
     def _apply_console_field_filter(self, field_name: str, field_value: str):
         """Apply field filter by switching to DB logs tab."""

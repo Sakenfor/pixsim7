@@ -2,6 +2,7 @@
 import re
 from html import escape
 from typing import Optional, List, Dict, Any
+from urllib.parse import quote
 
 # Reuse shared header formatting where helpful to keep styles consistent
 try:
@@ -248,7 +249,7 @@ def _apply_inline_highlighting(escaped_text: str) -> str:
 
         # Make clickable fields into links via click:// scheme (shows dropdown menu)
         if key in clickable_fields:
-            href = f'click://{key}/{raw_value}'
+            href = f'click://{key}/{quote(raw_value, safe="")}'
             value_html = (
                 f'<a href="{href}" '
                 f'style="color: {color}; font-weight: bold; text-decoration: underline;">{value}</a>'

@@ -4,6 +4,7 @@ Handles HTML generation, tooltips, clickable elements, and copy functionality.
 """
 from datetime import datetime
 import re
+from urllib.parse import quote
 
 try:
     from .log_styles import (
@@ -201,8 +202,11 @@ def format_clickable_id(field_name, value, label=None):
         display_text = label or f"{field_name.replace('_id', '')}:{value}"
         tooltip = f' title="Click to filter by {field_name}"'
 
-    # Use click:// scheme to trigger action popup
-    return f' | <a href="click://{field_name}/{value}" class="clickable-id" style="color: {color};"{tooltip}>{escape_html(display_text)}</a>'
+    # Use click:// scheme to trigger action popup.
+    # URL-encode values so request IDs like `dialogue:npc:...` or other tokens with
+    # punctuation don't break QUrl parsing.
+    encoded_value = quote(str(value), safe="")
+    return f' | <a href="click://{field_name}/{encoded_value}" class="clickable-id" style="color: {color};"{tooltip}>{escape_html(display_text)}</a>'
 
 
 def format_error(error_msg):

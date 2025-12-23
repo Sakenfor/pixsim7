@@ -128,11 +128,12 @@ class PixverseCreditsMixin:
                         except (TypeError, ValueError):
                             openapi_total = 0
                 except Exception as exc:
-                    # OpenAPI credits are optional for /pixverse-status and other
-                    # snapshot-style calls. Treat failures here as non-fatal so
-                    # that web credits and ad-task metadata can still be returned
-                    # even if the OpenAPI key/session is stale.
-                    logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
+                    # OpenAPI credits are optional - failures are non-fatal.
+                    # SDK already logs at appropriate level (WARNING for session
+                    # errors, ERROR for others), so we just log at DEBUG here.
+                    logger.debug(
+                        "OpenAPI credits unavailable (using web credits): %s", exc
+                    )
                     openapi_total = 0
 
             result: Dict[str, Any] = {
