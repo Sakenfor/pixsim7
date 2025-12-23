@@ -295,8 +295,31 @@ class AssetIngestionService:
                     sha256=file_hash[:16],
                 )
             else:
-                # Update hash
-                asset.sha256 = file_hash
+                # Check if another asset already has this SHA256
+                if asset.sha256 != file_hash:
+                    from sqlalchemy import select
+                    existing_result = await self.db.execute(
+                        select(Asset).where(
+                            Asset.user_id == asset.user_id,
+                            Asset.sha256 == file_hash,
+                            Asset.id != asset.id
+                        )
+                    )
+                    existing_asset = existing_result.scalar_one_or_none()
+
+                    if existing_asset:
+                        logger.warning(
+                            "ingest_duplicate_sha256_detected",
+                            asset_id=asset.id,
+                            existing_asset_id=existing_asset.id,
+                            sha256=file_hash[:16],
+                            detail=f"Asset {asset.id} has same content as asset {existing_asset.id}, skipping SHA update"
+                        )
+                        # Skip updating SHA256 to avoid constraint violation
+                        # Still proceed with storing/thumbnails for this asset
+                    else:
+                        # Update hash - no conflict
+                        asset.sha256 = file_hash
 
                 # Step 3: Store in storage service (if enabled)
                 if store_for_serving:
