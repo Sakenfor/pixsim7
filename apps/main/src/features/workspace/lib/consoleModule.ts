@@ -8,14 +8,14 @@ import type { ConsoleModule } from "@lib/dev/console/moduleRegistry";
 import { opsRegistry } from "@lib/dev/console/opsRegistry";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSelectionStore } from "@/stores/selectionStore";
-import { panelManager } from "@features/panels/lib/PanelManager";
+import { getWorkspaceDockviewApi } from "./getWorkspaceDockviewApi";
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
+const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
 
 /** Get the workspace dockview API */
 function getWorkspaceApi() {
-  return panelManager.getPanelState("workspace")?.dockview?.api;
+  return getWorkspaceDockviewApi();
 }
 
 function registerWorkspaceOps(): void {

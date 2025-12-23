@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
 import { panelRegistry } from '@features/panels';
-import { panelManager } from '@features/panels/lib/PanelManager';
+import { resolvePanelDefinitionId } from '@lib/dockview/panelAdd';
+import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
 
 export function PanelLauncherModule() {
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
@@ -15,13 +16,13 @@ export function PanelLauncherModule() {
   const [openPanels, setOpenPanels] = useState<Set<PanelId>>(new Set());
 
   useEffect(() => {
-    const api = panelManager.getPanelState('workspace')?.dockview?.api;
+    const api = getWorkspaceDockviewApi();
     if (!api) return;
 
     const updateOpenPanels = () => {
       const panels = new Set<PanelId>();
       for (const panel of api.panels) {
-        const panelId = panel.params?.panelId;
+        const panelId = resolvePanelDefinitionId(panel);
         if (typeof panelId === 'string') {
           panels.add(panelId as PanelId);
         }

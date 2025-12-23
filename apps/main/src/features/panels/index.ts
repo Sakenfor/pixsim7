@@ -9,8 +9,6 @@
 export type * from './lib/types';
 export { PanelManager, panelManager } from './lib/PanelManager';
 export {
-  CONTROL_CENTER_METADATA,
-  ASSET_VIEWER_METADATA,
   getAllPanelMetadata,
   getPanelMetadataById,
   registerAllPanels,
@@ -65,6 +63,11 @@ export {
   panelSettingsScopeRegistry,
   type PanelSettingsScopeDefinition,
   type PanelSettingsScopeMode,
+  type ScopeMatchContext,
+  createScopeMatcher,
+  getScopeMode,
+  type ScopeResolveContext,
+  resolveScopeInstanceId,
 } from "./lib/panelSettingsScopes";
 
 export {
@@ -83,6 +86,7 @@ export * from "./lib/actions";
 export { PanelHeader } from "./components/shared/PanelHeader";
 export { FloatingPanelsManager } from "./components/shared/FloatingPanelsManager";
 export { SimplePanelBuilder } from "./components/shared/SimplePanelBuilder";
+export { ScopeModeSelect } from "./components/shared/ScopeModeSelect";
 
 // Panel Store
 export {

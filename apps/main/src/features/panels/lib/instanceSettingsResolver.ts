@@ -18,6 +18,7 @@ import { useComponentSettingsStore } from "@features/componentSettings";
 import { panelRegistry } from "./panelRegistry";
 import { componentRegistry } from "@features/componentSettings";
 import { collectSchemaDefaults } from "@features/settings";
+import { getScopeMode } from "./panelSettingsScopes";
 import type { SettingTab, SettingGroup } from "@features/settings";
 import type { PanelId } from "@features/workspace";
 
@@ -111,11 +112,12 @@ export function useResolvePanelSettings<T extends Record<string, unknown> = Reco
 
   // Check scope mode - if "local", we ignore global settings
   const effectiveScopeId = scopeId ?? panelId;
-  const scopeMode = usePanelInstanceSettingsStore(
-    (state) =>
-      instanceId
-        ? state.instances[instanceId]?.scopes?.[effectiveScopeId]
-        : undefined,
+  const instanceScopes = usePanelInstanceSettingsStore((state) =>
+    instanceId ? state.instances[instanceId]?.scopes : undefined,
+  );
+  const scopeMode = useMemo(
+    () => getScopeMode(instanceScopes, { id: effectiveScopeId }),
+    [instanceScopes, effectiveScopeId],
   );
 
   const storedGlobalSettings = usePanelConfigStore(
@@ -161,11 +163,12 @@ export function useResolveComponentSettings<T extends Record<string, unknown> = 
 
   // Check scope mode - if "local", we ignore global settings
   const effectiveScopeId = scopeId ?? componentId;
-  const scopeMode = usePanelInstanceSettingsStore(
-    (state) =>
-      instanceId
-        ? state.instances[instanceId]?.scopes?.[effectiveScopeId]
-        : undefined,
+  const instanceScopes = usePanelInstanceSettingsStore((state) =>
+    instanceId ? state.instances[instanceId]?.scopes : undefined,
+  );
+  const scopeMode = useMemo(
+    () => getScopeMode(instanceScopes, { id: effectiveScopeId }),
+    [instanceScopes, effectiveScopeId],
   );
 
   const storedGlobalSettings = useComponentSettingsStore(
@@ -232,7 +235,7 @@ export function useResolveAllComponentSettings<T extends Record<string, unknown>
       const componentDefinition = componentRegistry.get(componentId);
       // Check scope mode for this component (use shared scopeId or componentId)
       const effectiveScopeId = scopeId ?? componentId;
-      const scopeMode = instanceData?.scopes?.[effectiveScopeId];
+      const scopeMode = getScopeMode(instanceData?.scopes, { id: effectiveScopeId });
 
       result[componentId] = resolveSettings<T>({
         settingsForm: componentDefinition?.settingsForm,

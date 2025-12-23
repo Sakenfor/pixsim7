@@ -14,7 +14,7 @@
  * ```tsx
  * <SmartDockview
  *   scope="control-center"
- *   storageKey="dockview:control-center:v1"
+ *   storageKey="dockview:control-center:v5"
  *   panelManagerId="controlCenter"
  * />
  * ```
@@ -23,7 +23,7 @@
  * ```tsx
  * <SmartDockview
  *   panels={['quickGenerate', 'info', 'media-preview']}
- *   storageKey="dockview:asset-viewer:v1"
+ *   storageKey="dockview:asset-viewer:v5"
  *   panelManagerId="assetViewer"
  * />
  * ```
@@ -35,7 +35,7 @@
  *   defaultLayout={(api, panelDefs) => {
  *     // Custom layout logic
  *   }}
- *   storageKey="dockview:workspace:v1"
+ *   storageKey="dockview:workspace:v4"
  * />
  * ```
  *
@@ -61,11 +61,13 @@ import type { LocalPanelDefinition } from './types';
 import {
   panelRegistry,
   panelSettingsScopeRegistry,
-  scopeProviderRegistry,
   usePanelInstanceSettingsStore,
   getPanelsForScope,
+  getScopeMode,
   type ScopeMatchContext,
   type PanelDefinition,
+  type PanelSettingsScopeMode,
+  resolveScopeInstanceId,
 } from '@features/panels';
 import { ContextHubHost, useContextHubState } from '@features/contextHub';
 import {
@@ -77,6 +79,7 @@ import {
   contextDataRegistry,
 } from './contextMenu';
 import { createDockviewHost } from './host';
+import { registerDockviewHost, unregisterDockviewHost } from './hostRegistry';
 
 /** Base props shared by all modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -420,19 +423,17 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const scopeDefinitionsRef = useRef(scopeDefinitions);
   scopeDefinitionsRef.current = scopeDefinitions;
 
-  const emptyInstanceScopes = useMemo(() => ({} as Record<string, string>), []);
+  const emptyInstanceScopes = useMemo(() => ({} as Record<string, PanelSettingsScopeMode>), []);
 
   /**
-   * AutoScopeWrapper - Automatically wraps panels with scope providers
-   * based on declared scopes in panel definitions.
-   *
-   * This is different from ScopeWrapper (below) which handles Local/Global toggles.
-   * AutoScopeWrapper is for automatic, metadata-driven scope injection.
+   * ScopeHost - Unified auto + user-controlled scope wrapping.
+   * Applies scope providers only when the scope matches the panel metadata.
    */
-  const AutoScopeWrapper = useCallback(
+  const ScopeHost = useCallback(
     ({
       panelId,
       instanceId,
+      dockviewId,
       declaredScopes,
       tags,
       category,
@@ -440,67 +441,57 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }: {
       panelId: string;
       instanceId: string;
+      dockviewId?: string;
       declaredScopes?: string[];
       tags?: string[];
       category?: string;
       children: ReactNode;
     }) => {
+      const instanceScopes = usePanelInstanceSettingsStore(
+        (state) => state.instances[instanceId]?.scopes ?? emptyInstanceScopes,
+      );
+      const currentScopeDefinitions = scopeDefinitionsRef.current;
+
       const context: ScopeMatchContext = useMemo(() => ({
         panelId,
         instanceId,
+        dockviewId,
         declaredScopes,
         tags,
         category,
-      }), [panelId, instanceId, declaredScopes, tags, category]);
+      }), [panelId, instanceId, dockviewId, declaredScopes, tags, category]);
 
       const wrapped = useMemo(() => {
-        return scopeProviderRegistry.wrapWithProviders(context, children);
-      }, [context, children]);
+        if (!currentScopeDefinitions.length) return children;
+
+        const matching = currentScopeDefinitions
+          .filter((scope) => scope.shouldApply?.(context))
+          .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+        if (matching.length === 0) return children;
+
+        return matching.reduceRight((content, scope) => {
+          if (!scope.renderProvider) {
+            return content;
+          }
+          const mode = getScopeMode(instanceScopes, scope);
+            const scopeInstanceId = resolveScopeInstanceId(
+              scope,
+              mode,
+              { instanceId, panelId, dockviewId },
+            );
+          if (process.env.NODE_ENV === "development") {
+            console.debug(
+              `[ScopeHost] Wrapping panel ${instanceId} (${mode}) with scope: ${scope.id}`
+            );
+          }
+          return scope.renderProvider(scopeInstanceId, content);
+        }, children as ReactNode);
+      }, [children, currentScopeDefinitions, context, instanceId, instanceScopes, panelId, dockviewId]);
 
       return <>{wrapped}</>;
     },
     [],
-  );
-
-  /**
-   * ScopeWrapper - Handles Local/Global scope toggles from panel settings UI.
-   * This is for user-controlled scope switching, not automatic injection.
-   * Uses ref to access scopeDefinitions to avoid being recreated when they change.
-   */
-  const ScopeWrapper = useCallback(
-    ({
-      instanceId,
-      children,
-    }: {
-      instanceId: string;
-      children: ReactNode;
-    }) => {
-      const instanceScopes = usePanelInstanceSettingsStore(
-        (state) => state.instances[instanceId]?.scopes ?? emptyInstanceScopes,
-      );
-      // Access via ref to avoid component recreation on scopeDefinitions change
-      const currentScopeDefinitions = scopeDefinitionsRef.current;
-
-      const wrapped = useMemo(() => {
-        if (!currentScopeDefinitions.length) return children;
-        return currentScopeDefinitions.reduceRight((content, scope) => {
-          const mode = instanceScopes?.[scope.id] ?? scope.defaultMode ?? "global";
-          if (mode !== "local" || !scope.renderProvider) {
-            return content;
-          }
-          // Debug logging when wrapping with scope provider
-          if (process.env.NODE_ENV === "development") {
-            console.debug(
-              `[ScopeWrapper] Wrapping panel ${instanceId} with scope provider: ${scope.id}`
-            );
-          }
-          return scope.renderProvider(instanceId, content);
-        }, children as ReactNode);
-      }, [children, instanceId, instanceScopes, currentScopeDefinitions]);
-
-      return <>{wrapped}</>;
-    },
-    [], // Now stable - no dependencies on changing values
   );
 
   // Use ref for defaultLayout to avoid resetDockviewLayout changing when parent recreates it
@@ -647,9 +638,13 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               }
             >
               <ContextHubHost hostId={instanceId}>
-                <ScopeWrapper instanceId={instanceId}>
+                <ScopeHost
+                  panelId={key}
+                  instanceId={instanceId}
+                  dockviewId={dockviewId}
+                >
                   <Component {...panelProps} />
-                </ScopeWrapper>
+                </ScopeHost>
               </ContextHubHost>
             </div>
           );
@@ -723,17 +718,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               }
             >
               <ContextHubHost hostId={instanceId}>
-                <AutoScopeWrapper
+                <ScopeHost
                   panelId={def.id}
                   instanceId={instanceId}
+                  dockviewId={dockviewId}
                   declaredScopes={def.scopes}
-                  tags={undefined}
-                  category={undefined}
+                  tags={def.tags}
+                  category={def.category}
                 >
-                  <ScopeWrapper instanceId={instanceId}>
-                    <BaseComponent {...panelProps} />
-                  </ScopeWrapper>
-                </AutoScopeWrapper>
+                  <BaseComponent {...panelProps} />
+                </ScopeHost>
               </ContextHubHost>
             </div>
           );
@@ -805,17 +799,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
               }
             >
               <ContextHubHost hostId={instanceId}>
-                <AutoScopeWrapper
+                <ScopeHost
                   panelId={def.id}
                   instanceId={instanceId}
+                  dockviewId={dockviewId}
                   declaredScopes={def.scopes}
                   tags={def.tags}
                   category={def.category}
                 >
-                  <ScopeWrapper instanceId={instanceId}>
-                    <Component {...panelProps} context={contextRef.current} panelId={def.id} />
-                  </ScopeWrapper>
-                </AutoScopeWrapper>
+                  <Component {...panelProps} context={contextRef.current} panelId={def.id} />
+                </ScopeHost>
               </ContextHubHost>
             </div>
           );
@@ -830,7 +823,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
     return map;
     // Note: Many dependencies are intentionally excluded to stabilize the components map.
-    // - ScopeWrapper/AutoScopeWrapper are stable (empty deps) and use refs internally
+    // - ScopeHost is stable and uses refs internally
     // - dockviewPanelRegistry uses a ref to get the latest value at callback time
     // The components map is created once and should not change during the component lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -861,7 +854,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         import('@features/panels/lib/PanelManager').then(({ panelManager }) => {
           const meta = panelManager.getPanelMetadata(panelManagerId);
           if (meta?.dockview?.hasDockview) {
-            panelManager.registerDockview(panelManagerId, event.api);
+            panelManager.registerDockview(
+              panelManagerId,
+              createDockviewHost(panelManagerId, event.api),
+            );
           }
         }).catch(() => {
           // Panel manager not available
@@ -876,6 +872,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           );
         }
       }
+      registerDockviewHost(createDockviewHost(contextMenuDockviewId, event.api));
 
       // Try to load saved layout
       const loaded = loadLayout();
@@ -920,6 +917,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           contextMenuRef.current.unregisterDockviewHost(contextMenuDockviewId);
         }
       }
+      unregisterDockviewHost(contextMenuDockviewId);
     };
   }, [enableContextMenu, contextMenuDockviewId]);
 

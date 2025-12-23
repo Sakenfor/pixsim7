@@ -3,7 +3,8 @@ import { type PanelId } from "../../stores/workspaceStore";
 import { Icon } from "@lib/icons";
 import { panelRegistry } from "@features/panels";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
-import { panelManager } from "@features/panels/lib/PanelManager";
+import { resolvePanelDefinitionId } from "@lib/dockview/panelAdd";
+import { getWorkspaceDockviewApi } from "../../lib/getWorkspaceDockviewApi";
 
 interface AddPanelDropdownProps {
   onRestorePanel: (panelId: PanelId) => void;
@@ -18,12 +19,12 @@ export function AddPanelDropdown({
 
   // Get existing panels from the dockview API
   useEffect(() => {
-    const api = panelManager.getPanelState("workspace")?.dockview?.api;
+    const api = getWorkspaceDockviewApi();
     if (!api) return;
 
     const ids = new Set<PanelId>();
     for (const panel of api.panels) {
-      const panelId = panel.params?.panelId;
+      const panelId = resolvePanelDefinitionId(panel);
       if (typeof panelId === "string") {
         ids.add(panelId as PanelId);
       }

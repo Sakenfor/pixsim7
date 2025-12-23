@@ -5,10 +5,10 @@ import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
 import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";
 import { RestoreClosedPanelsMenu } from "./workspace-toolbar/RestoreClosedPanelsMenu";
 import { SavePresetDialog } from "./workspace-toolbar/SavePresetDialog";
-import { panelManager } from "@features/panels/lib/PanelManager";
+import { getWorkspaceDockviewApi } from "../lib/getWorkspaceDockviewApi";
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
+const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
 
 export function WorkspaceToolbar() {
   const [showPresets, setShowPresets] = useState(false);
@@ -27,9 +27,8 @@ export function WorkspaceToolbar() {
   const toggleLock = useWorkspaceStore((s) => s.toggleLock);
   const reset = useWorkspaceStore((s) => s.reset);
 
-  /** Get workspace dockview API from panelManager */
   const getWorkspaceApi = useCallback(() => {
-    return panelManager.getPanelState("workspace")?.dockview?.api;
+    return getWorkspaceDockviewApi();
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {

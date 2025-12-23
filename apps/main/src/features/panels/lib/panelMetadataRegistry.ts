@@ -10,75 +10,6 @@ import type { PanelMetadata } from './types';
 import { panelRegistry } from './panelRegistry';
 import { arePanelsInitialized, initializePanels } from './initializePanels';
 
-/**
- * Control Center Panel
- * - Contains QuickGenerate dockview
- * - Retracts when Asset Viewer opens
- * - Lives in left sidebar
- */
-export const CONTROL_CENTER_METADATA: PanelMetadata = {
-  id: 'controlCenter',
-  title: 'Control Center',
-  type: 'dockview-container',
-  defaultZone: 'left',
-  canChangeZone: false,
-
-  retraction: {
-    canRetract: true,
-    retractedWidth: 48,  // Icon bar width
-    animationDuration: 200,
-  },
-
- dockview: {
-    hasDockview: true,
-    subPanelsCanBreakout: false,  // QuickGen sub-panels stay internal
-    persistLayout: true,
-    storageKey: 'quickGenerate-dockview-layout:v2',
-  },
-
-  priority: 40,
-
-  interactionRules: {
-    whenOpens: {
-      assetViewer: 'retract',  // Retract when viewer opens
-      gallery: 'nothing',      // Don't react to gallery
-    },
-    whenCloses: {
-      assetViewer: 'expand',   // Expand when viewer closes
-    },
-  },
-};
-
-/**
- * Asset Viewer Panel
- * - Contains media preview, metadata, and quick generate
- * - High priority, takes center stage
- * - Can float/pop out
- */
-export const ASSET_VIEWER_METADATA: PanelMetadata = {
-  id: 'assetViewer',
-  title: 'Asset Viewer',
-  type: 'dockview-container',
-  defaultZone: 'center',
-  canChangeZone: true,  // Can pop out to floating window
-
-  dockview: {
-    hasDockview: true,
-    subPanelsCanBreakout: true,  // Sub-panels can pop out
-    persistLayout: true,
-    storageKey: 'asset-viewer-dockview-layout:v3',
-  },
-
-  priority: 80,  // High priority - gets space preference
-
-  // Asset viewer can trigger control center retraction
-  // (handled by control center's whenOpens rule)
-};
-
-const EXTERNAL_PANEL_METADATA: PanelMetadata[] = [
-  CONTROL_CENTER_METADATA,
-  ASSET_VIEWER_METADATA,
-];
 
 function getRegistryPanelMetadata(): PanelMetadata[] {
   return panelRegistry
@@ -95,16 +26,7 @@ function getRegistryPanelMetadata(): PanelMetadata[] {
  * All panel metadata
  */
 export function getAllPanelMetadata(): PanelMetadata[] {
-  const merged = new Map<string, PanelMetadata>();
-  for (const panel of getRegistryPanelMetadata()) {
-    merged.set(panel.id, panel);
-  }
-  for (const panel of EXTERNAL_PANEL_METADATA) {
-    if (!merged.has(panel.id)) {
-      merged.set(panel.id, panel);
-    }
-  }
-  return Array.from(merged.values());
+  return getRegistryPanelMetadata();
 }
 
 /**

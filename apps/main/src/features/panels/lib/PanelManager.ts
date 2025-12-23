@@ -5,7 +5,7 @@
  * Handles panel interactions, retraction, zone management, and dockview integration.
  */
 
-import type { DockviewApi } from 'dockview-core';
+import type { DockviewHost } from '@lib/dockview';
 import type {
   PanelMetadata,
   PanelState,
@@ -86,10 +86,10 @@ export class PanelManager {
   }
 
   /**
-   * Register a dockview instance for a panel
+   * Register a dockview host for a panel
    * Called by SmartDockview onReady callback
    */
-  registerDockview(panelId: string, api: DockviewApi): void {
+  registerDockview(panelId: string, host: DockviewHost): void {
     const panel = this.panels.get(panelId);
     if (!panel?.dockview) {
       console.warn(`[PanelManager] Cannot register dockview for "${panelId}" - not a dockview panel`);
@@ -97,10 +97,11 @@ export class PanelManager {
     }
 
     panel.dockview.isReady = true;
-    panel.dockview.api = api;
+    panel.dockview.host = host;
+    panel.dockview.api = host.api;
 
     // Track sub-panel states
-    api.onDidAddPanel(e => {
+    host.api.onDidAddPanel(e => {
       panel.dockview?.subPanelStates?.set(e.id, {
         isActive: e.api.isActive,
         isVisible: e.api.isVisible,
@@ -108,12 +109,12 @@ export class PanelManager {
       this.notifyStateListeners();
     });
 
-    api.onDidRemovePanel(e => {
+    host.api.onDidRemovePanel(e => {
       panel.dockview?.subPanelStates?.delete(e.id);
       this.notifyStateListeners();
     });
 
-    api.onDidActivePanelChange(() => {
+    host.api.onDidActivePanelChange(() => {
       this.notifyStateListeners();
     });
 
@@ -359,12 +360,12 @@ export class PanelManager {
     const parentPanel = this.panels.get(parentPanelId);
     const parentMeta = this.metadata.get(parentPanelId);
 
-    if (!parentPanel?.dockview?.api || !parentMeta?.dockview?.subPanelsCanBreakout) {
+    const dockviewApi = parentPanel?.dockview?.host?.api ?? parentPanel?.dockview?.api;
+    if (!dockviewApi || !parentMeta?.dockview?.subPanelsCanBreakout) {
       console.warn(`[PanelManager] Cannot breakout ${subPanelId} from ${parentPanelId}`);
       return;
     }
 
-    const dockviewApi = parentPanel.dockview.api;
     const panel = dockviewApi.panels.find(p => p.id === subPanelId);
     if (!panel) return;
 

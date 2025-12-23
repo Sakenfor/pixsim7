@@ -57,13 +57,20 @@ export function GenerationScopeProvider({
 }: GenerationScopeProviderProps) {
   // Check if parent scope already set an instanceId - use that to preserve outer scope
   // This prevents nested dockviews from overriding the outer scope
-  const parentScopeId = useScopeInstanceId();
+  const parentScopeId = useScopeInstanceId("generation");
   const effectiveScopeId = parentScopeId ?? scopeId;
 
   const scopeStores = useMemo<GenerationScopeStores>(() => {
     if (process.env.NODE_ENV === "development") {
       console.debug(`[GenerationScopeProvider] Creating scoped stores for: ${effectiveScopeId}${parentScopeId ? ` (preserved from parent, prop was: ${scopeId})` : ""}`);
     }
+    if (effectiveScopeId === "global") {
+      return {
+        ...GLOBAL_SCOPE,
+        label: label ?? GLOBAL_SCOPE.label,
+      };
+    }
+
     return {
       id: effectiveScopeId,
       label: label ?? "Local Generation",

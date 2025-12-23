@@ -8,10 +8,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePanelConfigStore } from "@features/panels";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { panelManager } from "@features/panels/lib/PanelManager";
+import { getWorkspaceDockviewApi } from "../lib/getWorkspaceDockviewApi";
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = "workspace-layout-v1";
+const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
 
 export function QuickPanelSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
@@ -59,7 +59,7 @@ export function QuickPanelSwitcher() {
   };
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const api = panelManager.getPanelState("workspace")?.dockview?.api;
+    const api = getWorkspaceDockviewApi();
     if (!api) return;
 
     const layout = getPresetLayout(presetId);

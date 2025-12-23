@@ -13,11 +13,12 @@ import {
   panelRegistry,
   usePanelConfigStore,
   panelSettingsScopeRegistry,
-  type PanelSettingsScopeMode,
   usePanelInstanceSettingsStore,
   usePanelRegistryOverridesStore,
   useResolvePanelSettings,
   useResolveComponentSettings,
+  getScopeMode,
+  ScopeModeSelect,
 } from '@features/panels';
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
@@ -519,8 +520,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                   Scope Settings
                 </h4>
                 {scopeDefinitions.map((scope) => {
-                  const mode =
-                    (instanceScopes?.[scope.id] ?? scope.defaultMode ?? "global") as PanelSettingsScopeMode;
+                  const mode = getScopeMode(instanceScopes, scope);
 
                   return (
                     <div
@@ -537,21 +537,12 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                           </div>
                         )}
                       </div>
-                      <select
+                      <ScopeModeSelect
                         value={mode}
-                        onChange={(event) =>
-                          setScope(
-                            selectedInstanceId,
-                            metadata.id,
-                            scope.id,
-                            event.target.value as PanelSettingsScopeMode
-                          )
+                        onChange={(next) =>
+                          setScope(selectedInstanceId, metadata.id, scope.id, next)
                         }
-                        className="text-xs border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 bg-white dark:bg-neutral-900"
-                      >
-                        <option value="global">Global</option>
-                        <option value="local">Local</option>
-                      </select>
+                      />
                     </div>
                   );
                 })}

@@ -25,6 +25,12 @@ export {
 } from './panelAdd';
 export { createDockviewHost } from './host';
 export type { DockviewHost } from './host';
+export {
+  getDockviewHost,
+  getDockviewHostIds,
+  registerDockviewHost,
+  unregisterDockviewHost,
+} from './hostRegistry';
 
 export type {
   LocalPanelDefinition,

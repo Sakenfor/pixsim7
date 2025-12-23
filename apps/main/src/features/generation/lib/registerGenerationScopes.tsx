@@ -1,6 +1,5 @@
 import {
   panelSettingsScopeRegistry,
-  scopeProviderRegistry,
   createScopeMatcher,
   ScopeInstanceProvider,
 } from "@features/panels";
@@ -13,7 +12,7 @@ let registered = false;
  *
  * This sets up two things:
  * 1. panelSettingsScopeRegistry: UI toggle for Local/Global mode in panel properties
- * 2. scopeProviderRegistry: Automatic wrapping for panels that declare scopes: ["generation"]
+ * 2. panelSettingsScopeRegistry: Automatic wrapping for panels that declare scopes: ["generation"]
  *
  * The automatic wrapping ensures that any panel declaring the "generation" scope
  * gets wrapped with GenerationScopeProvider, giving it isolated generation stores.
@@ -28,31 +27,23 @@ export function registerGenerationScopes() {
     id: "generation",
     label: "Generation Settings",
     description: "Provider, prompt, model, and parameter defaults for this panel instance.",
-    defaultMode: "global",
-    renderProvider: (scopeId, children) => (
-      <ScopeInstanceProvider instanceId={scopeId}>
-        <GenerationScopeProvider scopeId={scopeId} label="Generation Settings">
+    defaultMode: "dock",
+    resolveScopeId: ({ mode, instanceId, dockviewId, scopeId }) => {
+      if (mode === "global") return "global";
+      if (mode === "dock") {
+        return dockviewId ? `dock:${dockviewId}:${scopeId}` : instanceId;
+      }
+      return instanceId;
+    },
+    renderProvider: (resolvedScopeId, children) => (
+      <ScopeInstanceProvider scopeId="generation" instanceId={resolvedScopeId}>
+        <GenerationScopeProvider scopeId={resolvedScopeId} label="Generation Settings">
           {children}
         </GenerationScopeProvider>
       </ScopeInstanceProvider>
     ),
-  });
-
-  // Register automatic scope provider for panels declaring scopes: ["generation"]
-  scopeProviderRegistry.register({
-    id: "generation",
-    label: "Generation Scope",
-    description: "Automatic generation scope for panels using generation stores",
-    priority: 100, // High priority = outermost wrapper
-    shouldWrap: createScopeMatcher("generation"),
-    wrap: (instanceId, children) => (
-      // ScopeInstanceProvider exposes instanceId to children via useScopeInstanceId()
-      <ScopeInstanceProvider instanceId={instanceId}>
-        <GenerationScopeProvider scopeId={instanceId} label="Auto Generation Scope">
-          {children}
-        </GenerationScopeProvider>
-      </ScopeInstanceProvider>
-    ),
+    shouldApply: createScopeMatcher("generation"),
+    priority: 100,
   });
 
   if (process.env.NODE_ENV === "development") {

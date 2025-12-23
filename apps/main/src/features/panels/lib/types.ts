@@ -6,6 +6,7 @@
  */
 
 import type { DockviewApi } from 'dockview-core';
+import type { DockviewHost } from '@lib/dockview';
 
 /**
  * Actions that can be taken on a panel in response to other panel events
@@ -136,6 +137,8 @@ export interface PanelState {
     isReady: boolean;
     /** Dockview API instance */
     api?: DockviewApi;
+    /** Dockview host (preferred over api) */
+    host?: DockviewHost;
     /** Sub-panel states */
     subPanelStates?: Map<string, {
       isActive: boolean;

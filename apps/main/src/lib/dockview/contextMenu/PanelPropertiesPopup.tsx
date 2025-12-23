@@ -7,6 +7,8 @@ import {
   panelSettingsScopeRegistry,
   usePanelInstanceSettingsStore,
   type PanelSettingsScopeMode,
+  getScopeMode,
+  ScopeModeSelect,
 } from "@features/panels";
 import { useContextHubState, type CapabilityConsumption } from "@features/contextHub";
 import type { ContextMenuContext } from "./types";
@@ -133,7 +135,7 @@ function PanelProperties({
             Scope Settings
           </div>
           {scopeDefinitions.map((scope) => {
-            const mode = instanceScopes?.[scope.id] ?? scope.defaultMode ?? "global";
+            const mode = getScopeMode(instanceScopes, scope);
             return (
               <div
                 key={scope.id}
@@ -149,16 +151,10 @@ function PanelProperties({
                     </div>
                   )}
                 </div>
-                <select
+                <ScopeModeSelect
                   value={mode}
-                  onChange={(event) =>
-                    setScope(instanceId, panelId, scope.id, event.target.value as PanelSettingsScopeMode)
-                  }
-                  className="text-xs border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 bg-white dark:bg-neutral-900"
-                >
-                  <option value="global">Global</option>
-                  <option value="local">Local</option>
-                </select>
+                  onChange={(next) => setScope(instanceId, panelId, scope.id, next)}
+                />
               </div>
             );
           })}

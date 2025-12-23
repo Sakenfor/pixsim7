@@ -74,12 +74,8 @@ export {
   type ResolvedSettings,
 } from "./instanceSettingsResolver";
 
-// Scope provider registry (automatic scope injection)
+// Scope instance helpers
 export {
-  scopeProviderRegistry,
-  createScopeMatcher,
   ScopeInstanceProvider,
   useScopeInstanceId,
-  type ScopeProviderDefinition,
-  type ScopeMatchContext,
-} from "./scopeProviderRegistry";
+} from "./scopeContext";

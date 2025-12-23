@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
 import type { DockviewApi } from "dockview-core";
-import { addDockviewPanel } from "@lib/dockview/panelAdd";
+import { addDockviewPanel, focusPanel } from "@lib/dockview/panelAdd";
 
 export type PanelId =
   | "assetViewer"
@@ -246,12 +246,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           }
 
           // Check if panel already exists
-          const existingPanel = api.panels.find(
-            (p) => p.params?.panelId === panelId
-          );
-          if (existingPanel) {
-            // Panel already in dockview, just activate it
-            existingPanel.api.setActive();
+          if (focusPanel(api, panelId)) {
             return;
           }
 

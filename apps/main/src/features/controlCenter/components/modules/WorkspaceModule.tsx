@@ -11,10 +11,10 @@
 import { useCallback } from 'react';
 import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 import { usePanelConfigStore } from '@features/panels';
-import { panelManager } from '@features/panels/lib/PanelManager';
+import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = 'workspace-layout-v1';
+const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
 
 export function WorkspaceModule() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
@@ -28,9 +28,8 @@ export function WorkspaceModule() {
 
   const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
 
-  /** Get workspace dockview API from panelManager */
   const getWorkspaceApi = useCallback(() => {
-    return panelManager.getPanelState('workspace')?.dockview?.api;
+    return getWorkspaceDockviewApi();
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {

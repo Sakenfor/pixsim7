@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { initializePanels, panelRegistry, type PanelDefinition } from "@features/panels";
 import { initializeWidgets } from "@lib/ui/composer";
 import { SmartDockview } from "@lib/dockview";
+import { resolvePanelDefinitionId } from "@lib/dockview/panelAdd";
 
 // Watermark component for empty workspace
 function WorkspaceWatermark() {
@@ -94,7 +95,7 @@ export function DockviewWorkspace() {
   const capabilities = useMemo(
     () => ({
       floatPanelHandler: (dockviewPanelId: string, panel: any, options?: any) => {
-        const workspacePanelId = panel?.params?.panelId;
+        const workspacePanelId = resolvePanelDefinitionId(panel);
         if (workspacePanelId) {
           useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
         }
