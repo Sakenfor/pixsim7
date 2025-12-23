@@ -7,6 +7,7 @@
  */
 
 import type { MenuAction, MenuActionContext } from '../types';
+import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
 
 /**
  * Get panels grouped by category from the panel registry
@@ -57,30 +58,6 @@ function formatCategoryLabel(category: string): string {
 }
 
 /**
- * Check if a panel is already open in the current dockview
- */
-function isWorkspaceDockview(ctx: MenuActionContext): boolean {
-  return ctx.currentDockviewId === 'workspace';
-}
-
-function isPanelOpen(ctx: MenuActionContext, panelId: string, allowMultiple: boolean): boolean {
-  if (allowMultiple) return false;
-  if (!ctx.api) return false;
-  const panels = Array.isArray(ctx.api.panels) ? ctx.api.panels : [];
-  if (panels.length === 0 && !isWorkspaceDockview(ctx)) {
-    return !!ctx.api.getPanel(panelId);
-  }
-  if (isWorkspaceDockview(ctx)) {
-    return panels.some(p => p.params?.panelId === panelId);
-  }
-  return !!ctx.api.getPanel(panelId) || panels.some(p => p.id === panelId);
-}
-
-function createPanelInstanceId(panelId: string) {
-  return `${panelId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-/**
  * Add panel to the current dockview
  */
 function addPanel(ctx: MenuActionContext, panelId: string, allowMultiple: boolean) {
@@ -89,34 +66,13 @@ function addPanel(ctx: MenuActionContext, panelId: string, allowMultiple: boolea
   const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
   const panelTitle = registryEntry?.title ?? panelId;
 
-  // Check if already open
-  if (!allowMultiple && isPanelOpen(ctx, panelId, allowMultiple)) {
-    // Focus existing panel instead
-    const existingPanel = isWorkspaceDockview(ctx)
-      ? (Array.isArray(ctx.api.panels) ? ctx.api.panels.find(p => p.params?.panelId === panelId) : undefined)
-      : ctx.api.getPanel(panelId);
-    if (existingPanel) {
-      existingPanel.api.setActive();
-    }
+  if (!allowMultiple && isPanelOpen(ctx.api, panelId, allowMultiple)) {
     return;
   }
 
-  if (isWorkspaceDockview(ctx)) {
-    ctx.api.addPanel({
-      id: createPanelInstanceId(`${panelId}-panel`),
-      component: 'panel',
-      params: { panelId },
-      title: panelTitle,
-      position: { direction: 'right' },
-    });
-    return;
-  }
-
-  ctx.api.addPanel({
-    id: allowMultiple ? createPanelInstanceId(panelId) : panelId,
-    component: panelId,
+  addDockviewPanel(ctx.api, panelId, {
+    allowMultiple,
     title: panelTitle,
-    params: { panelId },
   });
 }
 
@@ -179,7 +135,7 @@ export const addPanelAction: MenuAction = {
           disabled: () =>
             panel.supportsMultipleInstances
               ? false
-              : isPanelOpen(ctx, panel.id, false) ? 'Already open' : false,
+              : ctx.api && isPanelOpen(ctx.api, panel.id, false) ? 'Already open' : false,
           execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
         })),
         execute: () => {},
@@ -201,7 +157,7 @@ export const quickAddActions: MenuAction[] = [
     icon: 'image',
     category: 'quick-add',
     availableIn: ['background'],
-    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx, 'gallery', false),
+    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx.api, 'gallery', false),
     execute: (ctx) => addPanel(ctx, 'gallery', false),
   },
   {
@@ -210,7 +166,7 @@ export const quickAddActions: MenuAction[] = [
     icon: 'info',
     category: 'quick-add',
     availableIn: ['background'],
-    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx, 'inspector', false),
+    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx.api, 'inspector', false),
     execute: (ctx) => addPanel(ctx, 'inspector', false),
   },
 ];

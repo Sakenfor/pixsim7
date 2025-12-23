@@ -76,6 +76,7 @@ import {
   extractContextFromElement,
   contextDataRegistry,
 } from './contextMenu';
+import { createDockviewHost } from './host';
 
 /** Base props shared by all modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -824,6 +825,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       };
 
       availablePanelDefs.forEach(registerPanelDefinition);
+
     }
 
     return map;
@@ -867,6 +869,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       }
       if (enableContextMenu && contextMenuRef.current) {
         contextMenuRef.current.registerDockview(contextMenuDockviewId, event.api, capabilitiesRef.current);
+        if (contextMenuRef.current.registerDockviewHost) {
+          contextMenuRef.current.registerDockviewHost(
+            contextMenuDockviewId,
+            createDockviewHost(contextMenuDockviewId, event.api),
+          );
+        }
       }
 
       // Try to load saved layout
@@ -908,6 +916,9 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     return () => {
       if (enableContextMenu && contextMenuRef.current) {
         contextMenuRef.current.unregisterDockview(contextMenuDockviewId);
+        if (contextMenuRef.current.unregisterDockviewHost) {
+          contextMenuRef.current.unregisterDockviewHost(contextMenuDockviewId);
+        }
       }
     };
   }, [enableContextMenu, contextMenuDockviewId]);

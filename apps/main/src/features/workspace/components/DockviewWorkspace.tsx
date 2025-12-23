@@ -107,7 +107,7 @@ export function DockviewWorkspace() {
     <div className="h-full w-full">
       <SmartDockview
         scope="workspace"
-        storageKey="dockview:workspace:v3"
+        storageKey="dockview:workspace:v4"
         defaultLayout={createDefaultLayout}
         onReady={handleReady}
         enableContextMenu

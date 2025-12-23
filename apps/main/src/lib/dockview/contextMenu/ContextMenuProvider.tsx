@@ -20,6 +20,7 @@ import {
 import type { DockviewApi } from 'dockview-core';
 import { contextMenuRegistry, type ContextMenuRegistry } from './ContextMenuRegistry';
 import type { MenuActionContext, PanelRegistryLike } from './types';
+import type { DockviewHost } from '../host';
 import { useContextHubOverridesStore, useContextHubState } from '@features/contextHub';
 import type { CapabilityKey, ContextHubState, CapabilityProvider } from '@features/contextHub';
 
@@ -56,12 +57,20 @@ interface ContextMenuContextValue {
       floatPanelHandler?: MenuActionContext['floatPanelHandler'];
     }
   ) => void;
+  /** Register a dockview host with unified add/focus helpers */
+  registerDockviewHost: (id: string, host: DockviewHost) => void;
   /** Unregister a dockview instance */
   unregisterDockview: (id: string) => void;
+  /** Unregister a dockview host */
+  unregisterDockviewHost: (id: string) => void;
   /** Get a dockview API by ID */
   getDockviewApi: (id: string) => DockviewApi | undefined;
   /** Get all registered dockview IDs */
   getDockviewIds: () => string[];
+  /** Get a dockview host by ID */
+  getDockviewHost: (id: string) => DockviewHost | undefined;
+  /** Get all registered dockview host IDs */
+  getDockviewHostIds: () => string[];
 }
 
 const ContextMenuContext = createContext<ContextMenuContextValue | null>(null);
@@ -115,6 +124,8 @@ export function ContextMenuProvider({
 
   // Track multiple dockview APIs by ID
   const dockviewApisRef = useRef<Map<string, DockviewApi>>(new Map());
+  // Track dockview hosts by ID
+  const dockviewHostsRef = useRef<Map<string, DockviewHost>>(new Map());
 
   // Track per-dockview capabilities (like float handlers)
   const dockviewCapabilitiesRef = useRef<
@@ -142,12 +153,28 @@ export function ContextMenuProvider({
     dockviewCapabilitiesRef.current.delete(id);
   }, []);
 
+  const registerDockviewHost = useCallback((id: string, host: DockviewHost) => {
+    dockviewHostsRef.current.set(id, host);
+  }, []);
+
+  const unregisterDockviewHost = useCallback((id: string) => {
+    dockviewHostsRef.current.delete(id);
+  }, []);
+
   const getDockviewApi = useCallback((id: string): DockviewApi | undefined => {
     return dockviewApisRef.current.get(id);
   }, []);
 
   const getDockviewIds = useCallback((): string[] => {
     return Array.from(dockviewApisRef.current.keys());
+  }, []);
+
+  const getDockviewHost = useCallback((id: string): DockviewHost | undefined => {
+    return dockviewHostsRef.current.get(id);
+  }, []);
+
+  const getDockviewHostIds = useCallback((): string[] => {
+    return Array.from(dockviewHostsRef.current.keys());
   }, []);
 
   const showContextMenu = useCallback((partial: Partial<MenuActionContext>) => {
@@ -167,6 +194,8 @@ export function ContextMenuProvider({
       currentDockviewId,
       getDockviewApi,
       getDockviewIds,
+      getDockviewHost,
+      getDockviewHostIds,
       // Inject global services from props
       workspaceStore: servicesRef.current.workspaceStore,
       panelRegistry: servicesRef.current.panelRegistry,
@@ -194,9 +223,13 @@ export function ContextMenuProvider({
       registry,
       state,
       registerDockview,
+      registerDockviewHost,
       unregisterDockview,
+      unregisterDockviewHost,
       getDockviewApi,
       getDockviewIds,
+      getDockviewHost,
+      getDockviewHostIds,
     }),
     [
       showContextMenu,
@@ -204,9 +237,13 @@ export function ContextMenuProvider({
       registry,
       state,
       registerDockview,
+      registerDockviewHost,
       unregisterDockview,
+      unregisterDockviewHost,
       getDockviewApi,
       getDockviewIds,
+      getDockviewHost,
+      getDockviewHostIds,
     ]
   );
 

@@ -16,6 +16,16 @@ export { LocalPanelRegistry, createLocalPanelRegistry } from './LocalPanelRegist
 export { useSmartDockview } from './useSmartDockview';
 export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from './useSmartDockview';
 
+export {
+  addDockviewPanel,
+  findDockviewPanel,
+  focusPanel,
+  isPanelOpen,
+  resolvePanelDefinitionId,
+} from './panelAdd';
+export { createDockviewHost } from './host';
+export type { DockviewHost } from './host';
+
 export type {
   LocalPanelDefinition,
   PanelPosition,

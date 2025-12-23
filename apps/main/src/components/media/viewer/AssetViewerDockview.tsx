@@ -163,7 +163,7 @@ export function AssetViewerDockview({
   return (
     <SmartDockview
       panels={[...VIEWER_PANEL_IDS]}
-      storageKey="dockview:asset-viewer:v4"
+      storageKey="dockview:asset-viewer:v5"
       context={context}
       defaultLayout={createDefaultLayout}
       minPanelsForTabs={2}

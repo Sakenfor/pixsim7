@@ -9,6 +9,7 @@
  */
 
 import type { MenuAction } from '../types';
+import { addDockviewPanel, resolvePanelDefinitionId } from '../../panelAdd';
 
 type JoinDirection = 'left' | 'right';
 
@@ -186,9 +187,13 @@ export const layoutActions: MenuAction[] = [
     icon: 'move-right',
     category: 'layout',
     availableIn: ['tab', 'panel-content'],
-    visible: (ctx) => !!ctx.panelId && !!ctx.api && !!ctx.getDockviewIds && !!ctx.getDockviewApi,
+    visible: (ctx) =>
+      !!ctx.panelId &&
+      !!ctx.api &&
+      (!!ctx.getDockviewHostIds || !!ctx.getDockviewIds) &&
+      (!!ctx.getDockviewHost || !!ctx.getDockviewApi),
     children: (ctx) => {
-      const ids = ctx.getDockviewIds?.() ?? [];
+      const ids = ctx.getDockviewHostIds?.() ?? ctx.getDockviewIds?.() ?? [];
       const currentId = ctx.currentDockviewId;
       const entries = ids.filter(id => id !== currentId);
 
@@ -207,19 +212,39 @@ export const layoutActions: MenuAction[] = [
         label: id,
         availableIn: ['tab', 'panel-content'] as const,
         execute: () => {
-          if (!ctx.api || !ctx.panelId || !ctx.getDockviewApi) return;
+          if (!ctx.api || !ctx.panelId) return;
           const panel = ctx.api.getPanel(ctx.panelId);
           if (!panel) return;
-          const targetApi = ctx.getDockviewApi(id);
+
+          const targetHost = ctx.getDockviewHost?.(id);
+          const targetApi = targetHost?.api ?? ctx.getDockviewApi?.(id);
           if (!targetApi) return;
 
-          const newId = `${panel.id}-${Date.now()}`;
-          targetApi.addPanel({
-            id: newId,
-            component: panel.component,
-            title: panel.title,
-            params: panel.params,
-          });
+          const panelId = resolvePanelDefinitionId(panel) ?? panel.id ?? panel.component;
+          if (typeof panelId !== 'string') return;
+
+          const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
+          const allowMultiple = !!registryEntry?.supportsMultipleInstances;
+
+          if (!allowMultiple && targetHost?.isPanelOpen(panelId, false)) {
+            targetHost.focusPanel(panelId);
+            ctx.api.removePanel(panel);
+            return;
+          }
+
+          if (targetHost) {
+            targetHost.addPanel(panelId, {
+              allowMultiple,
+              title: panel.title ?? registryEntry?.title,
+              params: panel.params ?? panel.api?.params,
+            });
+          } else {
+            addDockviewPanel(targetApi, panelId, {
+              allowMultiple,
+              title: panel.title ?? registryEntry?.title,
+              params: panel.params ?? panel.api?.params,
+            });
+          }
 
           ctx.api.removePanel(panel);
         },

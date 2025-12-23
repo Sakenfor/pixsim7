@@ -7,6 +7,7 @@
 import type { DockviewApi } from 'dockview-core';
 import type { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 import type { ContextHubState } from '@features/contextHub';
+import type { DockviewHost } from '../host';
 
 export interface PanelRegistryLike {
   getAll: () => Array<{
@@ -76,6 +77,10 @@ export interface MenuActionContext {
   getDockviewApi?: (id: string) => DockviewApi | undefined;
   /** Get all registered dockview IDs */
   getDockviewIds?: () => string[];
+  /** Get any registered dockview host by ID */
+  getDockviewHost?: (id: string) => DockviewHost | undefined;
+  /** Get all registered dockview host IDs */
+  getDockviewHostIds?: () => string[];
 
   // Dockview-specific fields (optional)
   /** Dockview API instance for the current dockview (convenience shortcut) */

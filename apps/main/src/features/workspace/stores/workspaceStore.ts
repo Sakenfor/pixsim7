@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
 import type { DockviewApi } from "dockview-core";
+import { addDockviewPanel } from "@lib/dockview/panelAdd";
 
 export type PanelId =
   | "assetViewer"
@@ -254,27 +255,13 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
             return;
           }
 
-          // Add the panel to the workspace dockview
-          import("@features/panels").then(({ panelRegistry }) => {
-            const panelMeta = panelRegistry.get(panelId);
-            if (!panelMeta) {
-              console.warn(`[restorePanel] Panel "${panelId}" not found in registry`);
-              return;
-            }
-
-            api.addPanel({
-              id: `${panelId}-panel`,
-              component: "panel",
-              params: { panelId },
-              title: panelMeta.title,
-              position: { direction: "right" },
-            });
-          }).catch((error) => {
-            console.error("[restorePanel] Failed to import panel registry:", error);
-          });
-        }).catch((error) => {
-          console.error("[restorePanel] Failed to import panel manager:", error);
+        addDockviewPanel(api, panelId, {
+          allowMultiple: false,
+          position: { direction: "right" },
         });
+      }).catch((error) => {
+        console.error("[restorePanel] Failed to import panel manager:", error);
+      });
       },
 
       clearClosedPanels: () => set({ closedPanels: [] }),

@@ -194,7 +194,7 @@ export function ControlCenterDock() {
         {panelIds.length > 0 ? (
           <SmartDockview
             panels={panelIds}
-            storageKey="dockview:control-center:v4"
+            storageKey="dockview:control-center:v5"
             panelManagerId="controlCenter"
             minPanelsForTabs={2}
             onReady={handleReady}

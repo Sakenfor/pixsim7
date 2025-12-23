@@ -127,6 +127,34 @@ export function useSmartDockview(
    * Load saved layout from localStorage
    * @returns true if layout was loaded successfully
    */
+  const migrateLegacyPanelComponents = useCallback((layout: any): boolean => {
+    let changed = false;
+
+    const visit = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+
+      if (Array.isArray(node)) {
+        node.forEach(visit);
+        return;
+      }
+
+      if (node.component === 'panel') {
+        const panelId =
+          node.params?.panelId ??
+          node.api?.params?.panelId;
+        if (typeof panelId === 'string') {
+          node.component = panelId;
+          changed = true;
+        }
+      }
+
+      Object.values(node).forEach(visit);
+    };
+
+    visit(layout);
+    return changed;
+  }, []);
+
   const loadLayout = useCallback((): boolean => {
     if (!storageKey || !apiRef.current) return false;
 
@@ -150,6 +178,13 @@ export function useSmartDockview(
         }
 
         const layout = JSON.parse(saved);
+        if (migrateLegacyPanelComponents(layout)) {
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(layout));
+          } catch {
+            // Ignore persistence failures; layout can still be loaded in-memory.
+          }
+        }
         apiRef.current.fromJSON(layout);
         return true;
       }
@@ -157,7 +192,7 @@ export function useSmartDockview(
       console.error('[SmartDockview] Failed to load layout:', error);
     }
     return false;
-  }, [storageKey]);
+  }, [storageKey, migrateLegacyPanelComponents]);
 
   /**
    * Reset layout by clearing saved state
