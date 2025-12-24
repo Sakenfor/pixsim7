@@ -3,7 +3,7 @@ import { apiClient } from '@lib/api/client';
 export interface PixverseCostEstimateRequest {
   kind?: 'video' | 'image';
   quality: string;
-  duration: number;
+  duration?: number;
   model: string;
   motion_mode?: string | null;
   multi_shot?: boolean;
@@ -25,18 +25,23 @@ export interface PixverseCostEstimateResponse {
 export async function estimatePixverseCost(
   body: PixverseCostEstimateRequest
 ): Promise<PixverseCostEstimateResponse> {
+  const duration =
+    typeof body.duration === 'number' && Number.isFinite(body.duration)
+      ? Math.max(1, Math.round(body.duration))
+      : undefined;
+  const payload = {
+    kind: body.kind,
+    api_method: body.api_method ?? 'web-api',
+    quality: body.quality,
+    model: body.model,
+    motion_mode: body.motion_mode ?? null,
+    multi_shot: !!body.multi_shot,
+    audio: !!body.audio,
+    ...(duration !== undefined ? { duration } : {}),
+  };
   const res = await apiClient.post<PixverseCostEstimateResponse>(
     '/providers/pixverse/estimate-cost',
-    {
-      kind: body.kind ?? 'video',
-      api_method: body.api_method ?? 'web-api',
-      quality: body.quality,
-      duration: Math.max(1, Math.round(body.duration)),
-      model: body.model,
-      motion_mode: body.motion_mode ?? null,
-      multi_shot: !!body.multi_shot,
-      audio: !!body.audio,
-    }
+    payload
   );
   return res.data;
 }

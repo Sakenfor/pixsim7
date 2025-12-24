@@ -7,11 +7,11 @@
  * Used by both Control Center and Media Viewer for consistent UI.
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useMemo, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
 import { useGenerationWorkbench, useGenerationQueueStore, useGenerationScopeStores } from '@features/generation';
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
-import { estimatePixverseCost } from '@features/providers';
+import { useCostEstimate, useProviderIdForModel } from '@features/providers';
 import { OPERATION_METADATA } from '@/types/operations';
 import { Icon } from '@lib/icons';
 import {
@@ -170,94 +170,18 @@ export function GenerationSettingsPanel({
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
 
+  const modelProviderId = useProviderIdForModel(
+    workbench.dynamicParams?.model as string | undefined
+  );
+  const inferredProviderId = providerId ?? modelProviderId;
+
   // Credit estimation for Go button
-  const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
-  const [creditLoading, setCreditLoading] = useState(false);
-
-  // Infer pixverse provider from model
-  const inferredProviderId = useMemo(() => {
-    if (providerId) return providerId;
-    const model = workbench.dynamicParams?.model;
-    if (typeof model === 'string') {
-      const normalized = model.toLowerCase();
-      const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
-      const PIXVERSE_IMAGE_MODELS = ['qwen-image', 'gemini-3.0', 'gemini-2.5-flash', 'seedream-4.0'];
-      if (
-        PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix)) ||
-        PIXVERSE_IMAGE_MODELS.includes(normalized)
-      ) {
-        return 'pixverse';
-      }
-    }
-    return undefined;
-  }, [providerId, workbench.dynamicParams?.model]);
-
-  // Fetch credit estimate when params change
-  useEffect(() => {
-    if (inferredProviderId !== 'pixverse') {
-      setCreditEstimate(null);
-      return;
-    }
-
-    const quality = (workbench.dynamicParams.quality as string) || '';
-    const model = (workbench.dynamicParams.model as string) || '';
-    const durationRaw = workbench.dynamicParams.duration;
-    const duration = durationRaw !== undefined ? Number(durationRaw) : 0;
-
-    const isVideo =
-      operationType === 'text_to_video' ||
-      operationType === 'image_to_video' ||
-      operationType === 'video_extend' ||
-      operationType === 'video_transition' ||
-      operationType === 'fusion';
-
-    const isImage =
-      operationType === 'text_to_image' || operationType === 'image_to_image';
-
-    // Basic validation - backend returns null gracefully if pricing unavailable
-    if (isVideo && !model) {
-      setCreditEstimate(null);
-      return;
-    }
-    if (isImage && !model) {
-      setCreditEstimate(null);
-      return;
-    }
-
-    const motion_mode = (workbench.dynamicParams.motion_mode as string | undefined) || undefined;
-    const multi_shot = !!workbench.dynamicParams.multi_shot;
-    const audio = !!workbench.dynamicParams.audio;
-
-    let cancelled = false;
-    setCreditLoading(true);
-    estimatePixverseCost(
-      isImage
-        ? { kind: 'image', quality, duration: 1, model }
-        : { kind: 'video', quality, duration, model, motion_mode, multi_shot, audio }
-    )
-      .then((res) => {
-        if (!cancelled) setCreditEstimate(res.estimated_credits ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setCreditEstimate(null);
-      })
-      .finally(() => {
-        if (!cancelled) setCreditLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    inferredProviderId,
+  const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
+    providerId: inferredProviderId,
     operationType,
-    workbench.dynamicParams.duration,
-    workbench.dynamicParams.quality,
-    workbench.dynamicParams.model,
-    workbench.dynamicParams.motion_mode,
-    workbench.dynamicParams.multi_shot,
-    workbench.dynamicParams.audio,
-  ]);
+    params: workbench.dynamicParams,
+  });
+  const creditEstimate = costEstimate?.estimated_credits ?? null;
 
   // Filter params based on operation type
   const filteredParamSpecs = useMemo(() => {

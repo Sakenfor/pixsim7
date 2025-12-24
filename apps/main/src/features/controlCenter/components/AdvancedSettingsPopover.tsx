@@ -55,10 +55,13 @@ export function AdvancedSettingsPopover({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen]);
 
-  if (params.length === 0) return null;
+  const safeParams = params.filter(
+    (param) => param && typeof param.name === 'string' && param.name.trim() !== ''
+  );
+  if (safeParams.length === 0) return null;
 
   // Count how many advanced params have non-default values
-  const activeCount = params.filter(p => {
+  const activeCount = safeParams.filter(p => {
     const val = values[p.name];
     if (val === undefined || val === null || val === '') return false;
     if (p.type === 'boolean' && !val) return false;
@@ -107,7 +110,7 @@ export function AdvancedSettingsPopover({
             </h3>
           </div>
           <div className="p-3 space-y-3 max-h-[300px] overflow-y-auto">
-            {params.map(param => (
+            {safeParams.map(param => (
               <div key={param.name} className="space-y-1">
                 <label className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
                   {param.name.replace(/_/g, ' ')}

@@ -36,6 +36,21 @@ manifest = ProviderManifest(
     domains=["pixverse.ai", "app.pixverse.ai"],
     # Credit types supported by this provider (web=free, openapi=paid, standard=subscription)
     credit_types=["web", "openapi", "standard"],
+    cost_estimator={
+        "endpoint": "/providers/pixverse/estimate-cost",
+        "method": "POST",
+        "payload_keys": [
+            "model",
+            "quality",
+            "duration",
+            "motion_mode",
+            "multi_shot",
+            "audio",
+            "api_method",
+        ],
+        "required_keys": ["model", "quality"],
+        "include_operation_type": False,
+    },
     # Notes on status code mapping for developers
     status_mapping_notes=(
         "1=success/completed, 2=processing, "

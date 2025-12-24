@@ -40,6 +40,14 @@ export interface CostHints {
   estimation_note?: string;
 }
 
+export interface CostEstimatorConfig {
+  endpoint: string;
+  method?: string;
+  payload_keys?: string[];
+  required_keys?: string[];
+  include_operation_type?: boolean;
+}
+
 export interface ProviderCapability {
   provider_id: string;
   name?: string;
@@ -51,6 +59,7 @@ export interface ProviderCapability {
   parameter_hints?: Record<string, string[]>;
   limits?: ProviderLimits;
   cost_hints?: CostHints;
+  cost_estimator?: CostEstimatorConfig;
   // Backend-provided fields (optional)
   dimension_defaults?: { width: number; height: number };
   default_model?: string;

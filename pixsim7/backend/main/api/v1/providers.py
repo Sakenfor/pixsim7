@@ -27,6 +27,10 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     estimate_video_credit_change,
     pixverse_calculate_cost,
 )
+try:  # pragma: no cover - optional SDK dependency
+    from pixverse.models import VideoModel, ImageModel  # type: ignore
+except Exception:  # pragma: no cover
+    VideoModel = ImageModel = None  # type: ignore
 
 router = APIRouter()
 
@@ -82,8 +86,8 @@ class ProviderSettingsUpdate(BaseModel):
 
 class PixverseCostEstimateRequest(BaseModel):
     """Request body for Pixverse cost estimation (credits + optional USD)."""
-    kind: Literal["video", "image"] = Field(
-        "video",
+    kind: Optional[Literal["video", "image"]] = Field(
+        None,
         description="What is being generated: 'video' or 'image'."
     )
     quality: str = Field("360p", description="Quality preset (e.g. 360p, 720p, 1080p, 2k, 4k)")
@@ -349,6 +353,10 @@ def extract_provider_capabilities(provider) -> dict:
     elif hasattr(provider, 'get_credit_types'):
         base["credit_types"] = provider.get_credit_types()
 
+    # Add cost estimator config from manifest
+    if manifest and getattr(manifest, "cost_estimator", None):
+        base["cost_estimator"] = manifest.cost_estimator
+
     # Add status mapping notes if available
     if manifest and manifest.status_mapping_notes:
         base["status_mapping_notes"] = manifest.status_mapping_notes
@@ -405,6 +413,25 @@ def extract_provider_capabilities(provider) -> dict:
     return base
 
 
+def _infer_pixverse_kind(model: str | None) -> Optional[str]:
+    """Infer Pixverse model kind when the frontend doesn't specify it."""
+    if not model:
+        return None
+    if VideoModel is not None and hasattr(VideoModel, "is_video_model"):
+        try:
+            if VideoModel.is_video_model(model):  # type: ignore[attr-defined]
+                return "video"
+        except Exception:
+            pass
+    if ImageModel is not None and hasattr(ImageModel, "is_image_model"):
+        try:
+            if ImageModel.is_image_model(model):  # type: ignore[attr-defined]
+                return "image"
+        except Exception:
+            pass
+    return None
+
+
 @router.post(
     "/providers/pixverse/estimate-cost",
     response_model=PixverseCostEstimateResponse,
@@ -421,8 +448,10 @@ async def estimate_pixverse_cost(
     the UI can show accurate credit estimates based on quality, duration,
     model, multi_shot, and audio options.
     """
+    kind = body.kind or _infer_pixverse_kind(body.model)
+
     # Image pricing: use static credit table based on model + quality.
-    if body.kind == "image":
+    if kind == "image":
         credits = get_image_credit_change(body.model, body.quality)
         # Return null if no pricing configured (graceful degradation)
         return PixverseCostEstimateResponse(

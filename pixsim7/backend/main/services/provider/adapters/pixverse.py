@@ -185,6 +185,21 @@ class PixverseProvider(
             requires_credentials=True,
             domains=["pixverse.ai", "app.pixverse.ai"],
             credit_types=["web", "openapi", "standard"],
+            cost_estimator={
+                "endpoint": "/providers/pixverse/estimate-cost",
+                "method": "POST",
+                "payload_keys": [
+                    "model",
+                    "quality",
+                    "duration",
+                    "motion_mode",
+                    "multi_shot",
+                    "audio",
+                    "api_method",
+                ],
+                "required_keys": ["model", "quality"],
+                "include_operation_type": False,
+            },
             status_mapping_notes=(
                 "1=success/completed, 2=processing, "
                 "4/7=failed (transient, may retry), 5=filtered (may retry), "
@@ -552,8 +567,8 @@ class PixverseProvider(
         if ImageModel is not None:
             sdk_qualities = getattr(ImageModel, "QUALITIES", {})
             # Normalize case: SDK uses "2K"/"4K", UI expects "2k"/"4k"
-            for model, qs in sdk_qualities.items():
-                image_quality_per_model[model] = [q.lower() for q in qs]
+            for model_name, qs in sdk_qualities.items():
+                image_quality_per_model[model_name] = [q.lower() for q in qs]
         # Fallback if SDK not available
         # Note: We show "2k"/"4k" in UI but normalize to "1440p"/"2160p" in map_parameters
         if not image_quality_per_model:
@@ -748,8 +763,8 @@ class PixverseProvider(
                 )
             },
             # video_transition: aspect ratio is determined by source images
-            "video_transition": {"parameters": [image_urls, prompts, quality, transition_duration]},
-            "fusion": {"parameters": [base_prompt, fusion_assets, quality, duration, aspect_ratio, seed]},
+            "video_transition": {"parameters": [image_urls, prompts, model, quality, transition_duration]},
+            "fusion": {"parameters": [base_prompt, fusion_assets, model, quality, duration, aspect_ratio, seed]},
         }
         return spec
 

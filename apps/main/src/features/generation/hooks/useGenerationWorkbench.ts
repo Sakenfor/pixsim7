@@ -2,6 +2,7 @@ import { useMemo, useEffect, useCallback } from 'react';
 import { useGenerationScopeStores } from './useGenerationScope';
 import { useProviders } from '@features/providers';
 import { useProviderSpecs } from '@features/providers';
+import { useProviderIdForModel } from '@features/providers';
 import type { ParamSpec } from '../components/control/DynamicParamForm';
 import type { OperationType } from '@/types/operations';
 
@@ -130,18 +131,18 @@ export function useGenerationWorkbench(
     }
   }, [hasHydrated, operationType, activeOperationType, setActiveOperationType]);
 
+  const inferredProviderId = useProviderIdForModel(dynamicParams?.model as string | undefined);
   const resolvedProviderId = useMemo(() => {
     if (providerId) {
       return providerId;
     }
-    const modelValue = dynamicParams?.model;
-    if (typeof modelValue === 'string' && isPixverseModel(modelValue)) {
-      return 'pixverse';
+    if (inferredProviderId) {
+      return inferredProviderId;
     }
     // Default to pixverse when no provider is explicitly selected
     // This ensures specs are always available for the UI
     return 'pixverse';
-  }, [providerId, dynamicParams?.model]);
+  }, [providerId, inferredProviderId]);
 
   // Provider and specs
   const { providers } = useProviders();
@@ -275,14 +276,4 @@ export function useGenerationWorkbench(
     generating,
     effectiveOperationType,
   };
-}
-
-function isPixverseModel(value: string): boolean {
-  const normalized = value.toLowerCase();
-  const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
-  const PIXVERSE_IMAGE_MODELS = ['qwen-image', 'gemini-3.0', 'gemini-2.5-flash', 'seedream-4.0'];
-  return (
-    PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix)) ||
-    PIXVERSE_IMAGE_MODELS.includes(normalized)
-  );
 }

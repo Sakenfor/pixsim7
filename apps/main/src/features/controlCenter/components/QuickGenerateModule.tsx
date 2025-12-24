@@ -6,7 +6,6 @@ import { useControlCenterStore, type ControlCenterState } from '@features/contro
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
-import { estimatePixverseCost } from '@features/providers';
 import { type QuickGenPanelContext, buildFallbackAsset } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
 import { OPERATION_METADATA } from '@/types/operations';
@@ -77,9 +76,6 @@ export function QuickGenerateModule() {
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
-  // Credit estimation for Go button
-  const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
-  const [creditLoading, setCreditLoading] = useState(false);
 
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenerateDockviewRef>(null);
@@ -121,91 +117,6 @@ export function QuickGenerateModule() {
 
   // Always show asset panel for these operations (to show queue or allow drag-drop)
   const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
-
-  // Infer pixverse provider from model
-  const inferredProviderId = useMemo(() => {
-    if (providerId) return providerId;
-    const model = workbench.dynamicParams?.model;
-    if (typeof model === 'string') {
-      const normalized = model.toLowerCase();
-      const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
-      const PIXVERSE_IMAGE_MODELS = ['qwen-image', 'gemini-3.0', 'gemini-2.5-flash', 'seedream-4.0'];
-      if (
-        PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix)) ||
-        PIXVERSE_IMAGE_MODELS.includes(normalized)
-      ) {
-        return 'pixverse';
-      }
-    }
-    return undefined;
-  }, [providerId, workbench.dynamicParams?.model]);
-
-  // Fetch credit estimate when params change
-  useEffect(() => {
-    if (inferredProviderId !== 'pixverse') {
-      setCreditEstimate(null);
-      return;
-    }
-
-    const quality = (workbench.dynamicParams.quality as string) || '';
-    const model = (workbench.dynamicParams.model as string) || '';
-    const durationRaw = workbench.dynamicParams.duration;
-    const duration = durationRaw !== undefined ? Number(durationRaw) : 0;
-
-    const isVideo =
-      operationType === 'text_to_video' ||
-      operationType === 'image_to_video' ||
-      operationType === 'video_extend' ||
-      operationType === 'video_transition' ||
-      operationType === 'fusion';
-
-    const isImage =
-      operationType === 'text_to_image' || operationType === 'image_to_image';
-
-    // Basic validation - backend returns null gracefully if pricing unavailable
-    if (isVideo && !model) {
-      setCreditEstimate(null);
-      return;
-    }
-    if (isImage && !model) {
-      setCreditEstimate(null);
-      return;
-    }
-
-    const motion_mode = (workbench.dynamicParams.motion_mode as string | undefined) || undefined;
-    const multi_shot = !!workbench.dynamicParams.multi_shot;
-    const audio = !!workbench.dynamicParams.audio;
-
-    let cancelled = false;
-    setCreditLoading(true);
-    estimatePixverseCost(
-      isImage
-        ? { kind: 'image', quality, duration: 1, model }
-        : { kind: 'video', quality, duration, model, motion_mode, multi_shot, audio }
-    )
-      .then((res) => {
-        if (!cancelled) setCreditEstimate(res.estimated_credits ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setCreditEstimate(null);
-      })
-      .finally(() => {
-        if (!cancelled) setCreditLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    inferredProviderId,
-    operationType,
-    workbench.dynamicParams.duration,
-    workbench.dynamicParams.quality,
-    workbench.dynamicParams.model,
-    workbench.dynamicParams.motion_mode,
-    workbench.dynamicParams.multi_shot,
-    workbench.dynamicParams.audio,
-  ]);
 
   const maxChars = resolvePromptLimitForModel(
     providerId,

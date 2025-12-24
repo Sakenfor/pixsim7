@@ -1,8 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import type { ParamSpec } from '../types';
-import { useCostHints } from '@features/providers';
-import { estimatePixverseCost } from '@features/providers';
+import { useCostHints, useCostEstimate, useProviderIdForModel } from '@features/providers';
 
 /**
  * Provider option for the provider selector dropdown.
@@ -79,14 +78,6 @@ type DurationOptionConfig = {
   options: number[];
   note?: string;
 };
-
-const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
-
-function isPixverseModel(model: unknown): boolean {
-  if (typeof model !== 'string') return false;
-  const normalized = model.toLowerCase();
-  return PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix));
-}
 
 function coerceNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -207,11 +198,15 @@ export function GenerationSettingsBar({
   operationType,
   }: GenerationSettingsBarProps) {
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
-  const inferredProviderId =
-    providerId || (isPixverseModel(dynamicParams.model) ? 'pixverse' : undefined);
+  const modelProviderId = useProviderIdForModel(dynamicParams.model as string | undefined);
+  const inferredProviderId = providerId ?? modelProviderId;
   const costHints = useCostHints(inferredProviderId);
-  const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
-  const [creditEstimateLoading, setCreditEstimateLoading] = useState(false);
+  const { estimate: costEstimate, loading: creditEstimateLoading } = useCostEstimate({
+    providerId: inferredProviderId,
+    operationType,
+    params: dynamicParams,
+  });
+  const creditEstimate = costEstimate?.estimated_credits ?? null;
   const durationOptions = useMemo(
     () => getDurationOptionsFromSpecs(paramSpecs, dynamicParams.model),
     [paramSpecs, dynamicParams.model]
@@ -235,94 +230,6 @@ export function GenerationSettingsBar({
     const primaryNames = new Set(primaryParams.map((p) => p.name));
     return paramSpecs.filter((p) => !primaryNames.has(p.name));
   }, [paramSpecs, primaryParams]);
-
-  // Pixverse-specific credit estimate using pixverse-py pricing helper via backend.
-  useEffectHook(() => {
-    if (inferredProviderId !== 'pixverse') {
-      setCreditEstimate(null);
-      return;
-    }
-
-    const quality = (dynamicParams.quality as string) || '';
-    const model = (dynamicParams.model as string) || '';
-
-    // For videos we need a duration; for images we don't.
-    const durationRaw = dynamicParams.duration;
-    const duration = durationRaw !== undefined ? Number(durationRaw) : 0;
-
-    const isVideo =
-      operationType === 'text_to_video' ||
-      operationType === 'image_to_video' ||
-      operationType === 'video_extend' ||
-      operationType === 'video_transition' ||
-      operationType === 'fusion';
-
-    const isImage =
-      operationType === 'text_to_image' || operationType === 'image_to_image';
-
-    // For images we require model + quality; for video we require duration + model.
-    if (isVideo && (!duration || duration <= 0 || !model)) {
-      setCreditEstimate(null);
-      return;
-    }
-    if (isImage && (!quality || !model)) {
-      setCreditEstimate(null);
-      return;
-    }
-
-    const motion_mode = (dynamicParams.motion_mode as string | undefined) || undefined;
-    const multi_shot = !!dynamicParams.multi_shot;
-    const audio = !!dynamicParams.audio;
-
-    let cancelled = false;
-    setCreditEstimateLoading(true);
-    estimatePixverseCost(
-      isImage
-        ? {
-            kind: 'image',
-            quality,
-            duration: 1, // ignored for images
-            model,
-          }
-        : {
-            kind: 'video',
-            quality,
-            duration,
-            model,
-            motion_mode,
-            multi_shot,
-            audio,
-          }
-    )
-      .then((res) => {
-        if (!cancelled) {
-          setCreditEstimate(res.estimated_credits ?? null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCreditEstimate(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setCreditEstimateLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    inferredProviderId,
-    operationType,
-    dynamicParams.duration,
-    dynamicParams.quality,
-    dynamicParams.model,
-    dynamicParams.motion_mode,
-    dynamicParams.multi_shot,
-    dynamicParams.audio,
-  ]);
 
   useEffectHook(() => {
     if (!durationOptions || durationOptions.options.length === 0) {

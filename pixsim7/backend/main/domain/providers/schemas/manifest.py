@@ -81,6 +81,15 @@ class ProviderManifest(BaseModel):
         )
     )
 
+    # Optional: Cost estimation configuration (for frontend UI)
+    cost_estimator: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Optional cost estimation config for frontend UI. "
+            "Expected shape: {endpoint, method, payload_keys, required_keys, include_operation_type}."
+        ),
+    )
+
     # Optional: Status mapping documentation for developers
     status_mapping_notes: Optional[str] = Field(
         default=None,

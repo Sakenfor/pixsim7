@@ -33,6 +33,8 @@ export type {
 } from './hooks/useProviderAccounts';
 
 export { useProviderSpecs } from './hooks/useProviderSpecs';
+export { useProviderIdForModel } from './hooks/useProviderIdForModel';
+export { useCostEstimate } from './hooks/useCostEstimate';
 
 export { useAiProviders } from './hooks/useAiProviders';
 export type { AiProviderInfo, UseAiProvidersState } from './hooks/useAiProviders';
