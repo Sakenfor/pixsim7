@@ -32,6 +32,7 @@ import {
   type ViewerQuickGenContext,
   type ViewerQuickGenSettingsMode,
 } from './viewer/ViewerQuickGeneratePanels';
+import type { DockviewApi } from 'dockview-core';
 
 type SettingsMode = 'asset' | 'controlCenter';
 
@@ -51,7 +52,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   const [assetPrompt, setAssetPrompt] = useState('');
   const [assetLoading, setAssetLoading] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
-  const [dockviewApi, setDockviewApi] = useState<import('dockview-core').DockviewApi | null>(null);
+  const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
 
   // Control Center controller
   const {
@@ -222,7 +223,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     setSettingsMode(mode);
   };
 
-  const ensureViewerPanels = useCallback((api: import('dockview-core').DockviewApi) => {
+  const ensureViewerPanels = useCallback((api: DockviewApi) => {
     const hasPrompt = !!api.getPanel('prompt');
     if (!hasPrompt) {
       api.addPanel({ id: 'prompt', component: 'prompt', title: 'Prompt' });
@@ -258,7 +259,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   };
 
   // Memoize onReady to prevent SmartDockview re-renders
-  const handleDockviewReady = useCallback((api: import('dockview-core').DockviewApi) => {
+  const handleDockviewReady = useCallback((api: DockviewApi) => {
     setDockviewApi(api);
     ensureViewerPanels(api);
   }, [ensureViewerPanels]);
@@ -323,12 +324,12 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   );
 }
 
+// Local registry for viewer quick generate panels
+// Uses local registry since this is a small embedded dockview that mounts
+// independently of the main workspace (before initializePanels runs)
 type ViewerQuickGenPanelId = 'prompt' | 'settings';
 
 const viewerQuickGenRegistry = createLocalPanelRegistry<ViewerQuickGenPanelId>();
-
-// Static config - stable reference to prevent unnecessary re-renders
-const DEPRECATED_PANELS = ['info'] as const;
 
 viewerQuickGenRegistry.registerAll([
   {
@@ -345,7 +346,13 @@ viewerQuickGenRegistry.registerAll([
   },
 ]);
 
-function createViewerQuickGenLayout(api: import('dockview-core').DockviewApi) {
+// Static config - stable reference to prevent unnecessary re-renders
+const DEPRECATED_PANELS = ['info'] as const;
+
+/**
+ * Create the default layout for the viewer quick generate dockview.
+ */
+function createViewerQuickGenLayout(api: DockviewApi) {
   api.addPanel({ id: 'prompt', component: 'prompt', title: 'Prompt' });
   api.addPanel({
     id: 'settings',

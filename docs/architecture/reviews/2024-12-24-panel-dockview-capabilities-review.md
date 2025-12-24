@@ -338,8 +338,8 @@ This positions the codebase for cleaner addition of new panels (workspaces, asse
 | `DockviewWorkspace` | ✅ New (scope) | `scope="workspace"` | Already aligned |
 | `ControlCenterDock` | ✅ New (panels) | `panels={panelIds}` | Already aligned |
 | `QuickGenerateDockview` | ✅ New (panels) | `panels={panelIds}` | Already aligned |
-| `AssetViewerDockview` | ✅ New (panels) | `panels={...}`, `context={...}` | Phase 2 target (auto-provide context) |
-| `ViewerQuickGenerate` | ❌ Legacy | `registry={...}`, `context={...}` | Phase 3 target (migrate to global) |
+| `AssetViewerDockview` | ✅ New (panels) | `panels={...}`, `context={...}` | Phase 2 complete (auto-provide context) |
+| `ViewerQuickGenerate` | ✅ Local registry | `registry={...}`, `context={...}` | Kept local (valid use case) |
 
 ### Workspace Alignment
 
@@ -349,9 +349,9 @@ The main workspace (`DockviewWorkspace`) is **already aligned** with all recomme
 - All workspace panels register globally via `panelRegistry`
 - ScopeHost, instance ID, and terminology changes are non-breaking
 
-**Primary migration targets:**
-1. `ViewerQuickGenerate` - Only remaining legacy `registry` user
-2. `AssetViewerDockview` - Uses `context` prop (but new panel-based API)
+**Primary migration targets:** ✅ ALL EVALUATED
+1. `ViewerQuickGenerate` - Kept with local registry (valid use case - mounts before workspace init)
+2. ~~`AssetViewerDockview`~~ - Already uses new API with auto-provided context
 
 ---
 
@@ -390,6 +390,29 @@ const context = props.context;
 
 ---
 
+### Phase 3: Selective Local Registry Migration ✅ COMPLETE
+
+| Task | Status | Files Changed |
+|------|--------|---------------|
+| Evaluate ViewerQuickGenerate for migration | ✅ | Kept with local registry (see rationale below) |
+| Document local registry valid use cases | ✅ | This review doc |
+
+**Decision: Keep ViewerQuickGenerate with Local Registry**
+
+After attempting migration, we reverted ViewerQuickGenerate to use local registry because:
+
+1. **Initialization timing**: ViewerQuickGenerate can mount before `initializePanels()` runs (e.g., in asset viewer modal opened before workspace loads)
+2. **Small embedded dockview**: Only 2 panels, self-contained, doesn't benefit from global registry features
+3. **No settings integration needed**: Uses Control Center's generation settings, not its own panel settings
+
+**Valid use cases for local registries:**
+- Small embedded dockviews (2-4 panels)
+- Components that mount independently of the main workspace
+- Panels that don't need PanelCentricSettings integration
+- Self-contained features with specific context requirements
+
+---
+
 ## Revision History
 
 | Date | Reviewer | Changes |
@@ -398,3 +421,4 @@ const context = props.context;
 | 2024-12-24 | GPT-4 | Corrections: ScopeHost severity downgraded; instance ID duplication clarified; context prop preserved; local registry deprecation softened |
 | 2024-12-24 | Claude (Opus 4.5) | Added appendix with SmartDockview usage audit; confirmed workspace alignment |
 | 2024-12-24 | Claude (Opus 4.5) | Implemented Phase 1 & Phase 2; added implementation status section |
+| 2024-12-24 | Claude (Opus 4.5) | Phase 3: Evaluated ViewerQuickGenerate migration; kept with local registry (valid use case for embedded dockviews) |
