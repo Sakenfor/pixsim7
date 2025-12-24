@@ -79,3 +79,6 @@ export {
   ScopeInstanceProvider,
   useScopeInstanceId,
 } from "./scopeContext";
+
+// ScopeHost for automatic scope provider wrapping
+export { ScopeHost, type ScopeHostProps } from "./ScopeHost";

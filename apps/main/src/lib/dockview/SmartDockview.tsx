@@ -10,10 +10,10 @@
  *
  * Simplified API (recommended):
  *
- * 1. Scope-based (panels filtered by `availableIn` field):
+ * 1. DockId-based (panels filtered by `availableIn` field):
  * ```tsx
  * <SmartDockview
- *   scope="control-center"
+ *   dockId="control-center"
  *   storageKey="dockview:control-center:v5"
  *   panelManagerId="controlCenter"
  * />
@@ -31,7 +31,7 @@
  * 3. With custom layout:
  * ```tsx
  * <SmartDockview
- *   scope="workspace"
+ *   dockId="workspace"
  *   defaultLayout={(api, panelDefs) => {
  *     // Custom layout logic
  *   }}
@@ -40,7 +40,8 @@
  * ```
  *
  * Legacy API (for backward compatibility):
- * - registry: LocalPanelRegistry (deprecated - internal only; prefer scope/panels)
+ * - registry: LocalPanelRegistry (deprecated - internal only; prefer dockId/panels)
+ * - scope: Deprecated alias for dockId
  * - Default layout signature in registry mode: (api, registry) — avoid for new docks
  *
  * Context Menu:
@@ -60,16 +61,12 @@ import type { LocalPanelRegistry } from './LocalPanelRegistry';
 import type { LocalPanelDefinition } from './types';
 import {
   panelRegistry,
-  panelSettingsScopeRegistry,
-  usePanelInstanceSettingsStore,
   getPanelsForScope,
-  getScopeMode,
-  type ScopeMatchContext,
+  getInstanceId,
+  ScopeHost,
   type PanelDefinition,
-  type PanelSettingsScopeMode,
-  resolveScopeInstanceId,
 } from '@features/panels';
-import { ContextHubHost, useContextHubState } from '@features/contextHub';
+import { ContextHubHost, useContextHubState, useProvideCapability, CAP_PANEL_CONTEXT } from '@features/contextHub';
 import {
   CustomTabComponent,
   useContextMenuOptional,
@@ -112,6 +109,11 @@ interface SmartDockviewBaseProps<TContext = any> {
     floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
   };
   /**
+   * Optional: Default scopes to apply to all panels in this dockview.
+   * Used for local registries that don't declare scopes per panel.
+   */
+  defaultPanelScopes?: string[];
+  /**
    * Optional: Custom default layout for scope/panels mode.
    * Receives the resolved panel definitions for convenience.
    */
@@ -130,16 +132,22 @@ interface SmartDockviewBaseProps<TContext = any> {
   // ============ NEW SIMPLIFIED API ============
 
   /**
-   * Dockview scope ID - filters panels by their `availableIn` field.
-   * Panels with this scope in their `availableIn` array will be available.
+   * Dockview ID - filters panels by their `availableIn` field.
+   * Panels with this dockId in their `availableIn` array will be available.
    *
-   * @example scope="workspace" - Shows all panels with availableIn: ["workspace"]
-   * @example scope="control-center" - Shows all panels with availableIn: ["control-center"]
+   * @example dockId="workspace" - Shows all panels with availableIn: ["workspace"]
+   * @example dockId="control-center" - Shows all panels with availableIn: ["control-center"]
+   */
+  dockId?: string;
+
+  /**
+   * @deprecated Use `dockId` instead. Will be removed in a future version.
+   * Alias for `dockId` - filters panels by their `availableIn` field.
    */
   scope?: string;
 
   /**
-   * Explicit list of panel IDs to include. Takes precedence over `scope`.
+   * Explicit list of panel IDs to include. Takes precedence over `dockId`.
    * Use when you need fine-grained control over which panels appear.
    *
    * @example panels={['quickGenerate', 'info', 'media-preview']}
@@ -147,8 +155,8 @@ interface SmartDockviewBaseProps<TContext = any> {
   panels?: string[];
 
   /**
-   * Panel IDs to exclude (used with `scope`).
-   * @example scope="workspace" excludePanels={['debug-panel']}
+   * Panel IDs to exclude (used with `dockId`).
+   * @example dockId="workspace" excludePanels={['debug-panel']}
    */
   excludePanels?: string[];
 
@@ -198,6 +206,32 @@ function isRegistryMode<TContext, TPanelId extends string>(
 }
 
 /**
+ * Provides the panel context as a capability when context is defined.
+ * This allows panels to consume context via `useCapability(CAP_PANEL_CONTEXT)`
+ * instead of relying on prop drilling.
+ */
+function PanelContextProvider<TContext>({
+  context,
+  instanceId,
+  children,
+}: {
+  context: TContext | undefined;
+  instanceId: string;
+  children: React.ReactNode;
+}) {
+  useProvideCapability(
+    CAP_PANEL_CONTEXT,
+    {
+      id: `panel-context:${instanceId}`,
+      label: 'Panel Context',
+      getValue: () => context,
+    },
+    [context],
+  );
+  return <>{children}</>;
+}
+
+/**
  * Creates a panel component wrapper that injects context
  */
 function createPanelWrapper<TContext>(
@@ -207,15 +241,17 @@ function createPanelWrapper<TContext>(
   const PanelWrapper = (props: IDockviewPanelProps) => {
     const Component = definition.component;
     const context = contextRef.current;
-    return <Component {...props} context={context} panelId={definition.id} />;
+    const instanceId = props.api?.id ?? definition.id;
+    return (
+      <PanelContextProvider context={context} instanceId={instanceId}>
+        <Component {...props} context={context} panelId={definition.id} />
+      </PanelContextProvider>
+    );
   };
   PanelWrapper.displayName = `SmartPanel(${definition.id})`;
   return PanelWrapper;
 }
 
-function resolvePanelInstanceId(dockviewId: string | undefined, panelId: string) {
-  return dockviewId ? `${dockviewId}:${panelId}` : panelId;
-}
 
 /**
  * SmartDockview
@@ -265,13 +301,18 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     theme = 'dockview-theme-abyss',
     capabilities,
     deprecatedPanels = [],
+    defaultPanelScopes,
     // New simplified API
-    scope,
+    dockId,
+    scope: scopeDeprecated,
     panels: panelsProp,
     excludePanels = [],
     allowedPanels,
     allowedCategories,
   } = props;
+
+  // Resolve dockId (new) vs scope (deprecated)
+  const scope = dockId ?? scopeDeprecated;
 
   // Context menu (optional - returns null if no provider)
   const contextMenu = useContextMenuOptional();
@@ -340,8 +381,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent['api'] | null>(null);
   const contextRef = useRef<TContext | undefined>(context);
   const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
-  const [scopeRegistryVersion, setScopeRegistryVersion] = useState(0);
-  const lastScopeIdsRef = useRef<string>('');
   const dockviewHostId = useMemo(
     () =>
       panelManagerId
@@ -350,6 +389,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     [panelManagerId],
   );
   const contextMenuDockviewId = panelManagerId ?? dockviewHostId;
+  const defaultPanelScopesRef = useRef<string[] | undefined>(defaultPanelScopes);
+  defaultPanelScopesRef.current = defaultPanelScopes;
 
   // Determine mode
   const registryMode = isRegistryMode(props);
@@ -392,107 +433,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     return unsubscribe;
   }, []);
 
-  // Subscribe to scope registry - only update when scope definitions actually change
-  useEffect(() => {
-    const checkAndUpdate = () => {
-      const scopes = panelSettingsScopeRegistry.getAll();
-      const scopeIds = scopes.map(s => s.id).sort().join(',');
-      if (scopeIds !== lastScopeIdsRef.current) {
-        lastScopeIdsRef.current = scopeIds;
-        setScopeRegistryVersion((version) => version + 1);
-      }
-    };
-
-    // Initial check
-    checkAndUpdate();
-
-    return panelSettingsScopeRegistry.subscribe(checkAndUpdate);
-  }, []);
-
   const { onReady: onSmartReady, loadLayout } = useSmartDockview({
     storageKey,
     minPanelsForTabs,
     onLayoutChange,
     deprecatedPanels,
   });
-
-  const scopeDefinitions = useMemo(
-    () => panelSettingsScopeRegistry.getAll(),
-    [scopeRegistryVersion],
-  );
-  const scopeDefinitionsRef = useRef(scopeDefinitions);
-  scopeDefinitionsRef.current = scopeDefinitions;
-
-  const emptyInstanceScopes = useMemo(() => ({} as Record<string, PanelSettingsScopeMode>), []);
-
-  /**
-   * ScopeHost - Unified auto + user-controlled scope wrapping.
-   * Applies scope providers only when the scope matches the panel metadata.
-   */
-  const ScopeHost = useCallback(
-    ({
-      panelId,
-      instanceId,
-      dockviewId,
-      declaredScopes,
-      tags,
-      category,
-      children,
-    }: {
-      panelId: string;
-      instanceId: string;
-      dockviewId?: string;
-      declaredScopes?: string[];
-      tags?: string[];
-      category?: string;
-      children: ReactNode;
-    }) => {
-      const instanceScopes = usePanelInstanceSettingsStore(
-        (state) => state.instances[instanceId]?.scopes ?? emptyInstanceScopes,
-      );
-      const currentScopeDefinitions = scopeDefinitionsRef.current;
-
-      const context: ScopeMatchContext = useMemo(() => ({
-        panelId,
-        instanceId,
-        dockviewId,
-        declaredScopes,
-        tags,
-        category,
-      }), [panelId, instanceId, dockviewId, declaredScopes, tags, category]);
-
-      const wrapped = useMemo(() => {
-        if (!currentScopeDefinitions.length) return children;
-
-        const matching = currentScopeDefinitions
-          .filter((scope) => scope.shouldApply?.(context))
-          .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-
-        if (matching.length === 0) return children;
-
-        return matching.reduceRight((content, scope) => {
-          if (!scope.renderProvider) {
-            return content;
-          }
-          const mode = getScopeMode(instanceScopes, scope);
-            const scopeInstanceId = resolveScopeInstanceId(
-              scope,
-              mode,
-              { instanceId, panelId, dockviewId },
-            );
-          if (process.env.NODE_ENV === "development") {
-            console.debug(
-              `[ScopeHost] Wrapping panel ${instanceId} (${mode}) with scope: ${scope.id}`
-            );
-          }
-          return scope.renderProvider(scopeInstanceId, content);
-        }, children as ReactNode);
-      }, [children, currentScopeDefinitions, context, instanceId, instanceScopes, panelId, dockviewId]);
-
-      return <>{wrapped}</>;
-    },
-    [],
-  );
 
   // Use ref for defaultLayout to avoid resetDockviewLayout changing when parent recreates it
   const defaultLayoutRef = useRef(defaultLayout);
@@ -587,7 +533,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           const menu = useContextMenuOptional();
           const dockviewId = useDockviewId();
           const contextHubState = useContextHubState();
-          const instanceId = resolvePanelInstanceId(dockviewId, panelProps.api.id);
+          const instanceId = getInstanceId(dockviewId, panelProps.api.id);
 
           const handleContextMenu = (event: React.MouseEvent) => {
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
@@ -642,8 +588,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
                   panelId={key}
                   instanceId={instanceId}
                   dockviewId={dockviewId}
+                  fallbackScopes={defaultPanelScopesRef.current}
                 >
-                  <Component {...panelProps} />
+                  <PanelContextProvider context={contextRef.current} instanceId={instanceId}>
+                    <Component {...panelProps} />
+                  </PanelContextProvider>
                 </ScopeHost>
               </ContextHubHost>
             </div>
@@ -668,7 +617,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           const menu = useContextMenuOptional();
           const dockviewId = useDockviewId();
           const contextHubState = useContextHubState();
-          const instanceId = resolvePanelInstanceId(dockviewId, panelProps.api.id);
+          const instanceId = getInstanceId(dockviewId, panelProps.api.id);
 
           const handleContextMenu = (event: React.MouseEvent) => {
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
@@ -722,7 +671,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
                   panelId={def.id}
                   instanceId={instanceId}
                   dockviewId={dockviewId}
-                  declaredScopes={def.scopes}
+                  declaredScopes={def.settingScopes ?? def.scopes}
+                  fallbackScopes={defaultPanelScopesRef.current}
                   tags={def.tags}
                   category={def.category}
                 >
@@ -745,7 +695,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           const menu = useContextMenuOptional();
           const dockviewId = useDockviewId();
           const contextHubState = useContextHubState();
-          const instanceId = resolvePanelInstanceId(
+          const instanceId = getInstanceId(
             dockviewId,
             panelProps.api?.id ?? def.id,
           );
@@ -803,11 +753,14 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
                   panelId={def.id}
                   instanceId={instanceId}
                   dockviewId={dockviewId}
-                  declaredScopes={def.scopes}
+                  declaredScopes={def.settingScopes ?? def.scopes}
+                  fallbackScopes={defaultPanelScopesRef.current}
                   tags={def.tags}
                   category={def.category}
                 >
-                  <Component {...panelProps} context={contextRef.current} panelId={def.id} />
+                  <PanelContextProvider context={contextRef.current} instanceId={instanceId}>
+                    <Component {...panelProps} context={contextRef.current} panelId={def.id} />
+                  </PanelContextProvider>
                 </ScopeHost>
               </ContextHubHost>
             </div>

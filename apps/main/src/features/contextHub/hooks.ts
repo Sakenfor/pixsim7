@@ -9,6 +9,7 @@ import type {
 import { useContextHubState, useContextHubHostId } from "./ContextHubHost";
 import type { ContextHubState } from "./ContextHubHost";
 import { useContextHubOverridesStore } from "./store/contextHubOverridesStore";
+import { CAP_PANEL_CONTEXT } from "./capabilityKeys";
 
 function shallowEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -173,4 +174,25 @@ export function useProvideCapability<T>(
     stableProvider.priority = provider.priority;
     stableProvider.exposeToContextMenu = provider.exposeToContextMenu;
   }, [provider, stableProvider, ...deps]);
+}
+
+/**
+ * Convenience hook to consume panel context provided by SmartDockview.
+ *
+ * SmartDockview automatically provides any `context` prop as a capability,
+ * allowing panels to access it via this hook instead of prop drilling.
+ *
+ * @template T - The expected shape of the context object
+ * @returns The panel context value, or null if not provided
+ *
+ * @example
+ * // In a panel component
+ * const context = usePanelContext<QuickGenPanelContext>();
+ * if (context) {
+ *   const { prompt, controller } = context;
+ * }
+ */
+export function usePanelContext<T = unknown>(): T | null {
+  const { value } = useCapability<T>(CAP_PANEL_CONTEXT);
+  return value;
 }

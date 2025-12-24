@@ -14,6 +14,7 @@ import {
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
+  CAP_PANEL_CONTEXT,
 } from "./capabilityKeys";
 
 export {
@@ -26,6 +27,7 @@ export {
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
+  CAP_PANEL_CONTEXT,
 };
 
 registerCapabilityDescriptor({
@@ -88,6 +90,13 @@ registerCapabilityDescriptor({
   key: CAP_EDITOR_CONTEXT,
   label: "Editor Context",
   description: "Snapshot of editor state for the active workspace.",
+  kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_PANEL_CONTEXT,
+  label: "Panel Context",
+  description: "Dockview panel context passed via SmartDockview context prop.",
   kind: "context",
   source: "contextHub",
 });
@@ -193,3 +202,12 @@ export interface EditorContextSnapshot {
     mode: string;
   };
 }
+
+/**
+ * Panel context capability - generic type for dockview panel context.
+ * This capability is automatically provided by SmartDockview when a `context` prop is passed.
+ * Panels can consume this via `useCapability(CAP_PANEL_CONTEXT)` instead of prop drilling.
+ *
+ * @template T - The shape of the context object (defaults to unknown for flexibility)
+ */
+export type PanelContextCapability<T = unknown> = T;

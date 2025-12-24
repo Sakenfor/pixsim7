@@ -45,13 +45,19 @@ export interface BasePanelDefinition<TParams = any> {
   /** Optional instance cap (for future enforcement) */
   maxInstances?: number;
   /**
-   * Scope IDs this panel participates in.
-   * Panels declaring a scope will be automatically wrapped with the corresponding
+   * Setting scope IDs this panel participates in.
+   * Panels declaring a setting scope will be automatically wrapped with the corresponding
    * scope provider (e.g., "generation" scope wraps with GenerationScopeProvider).
    *
    * This enables automatic per-instance scoping without manual wiring.
    *
-   * @example scopes: ["generation"] - Panel uses generation stores
+   * @example settingScopes: ["generation"] - Panel uses generation stores
+   */
+  settingScopes?: string[];
+
+  /**
+   * @deprecated Use `settingScopes` instead. Will be removed in a future version.
+   * Alias for `settingScopes` - scope IDs this panel participates in.
    */
   scopes?: string[];
 

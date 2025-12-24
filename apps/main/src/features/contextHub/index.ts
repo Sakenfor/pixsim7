@@ -1,6 +1,6 @@
 export { ContextHubHost, useContextHubState, useContextHubHostId } from "./ContextHubHost";
 export type { ContextHubState } from "./ContextHubHost";
-export { useCapability, useProvideCapability } from "./hooks";
+export { useCapability, useProvideCapability, usePanelContext } from "./hooks";
 export {
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
@@ -11,6 +11,7 @@ export {
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
+  CAP_PANEL_CONTEXT,
 } from "./capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -28,6 +29,7 @@ export type {
   AssetInputContext,
   GenerateActionContext,
   EditorContextSnapshot,
+  PanelContextCapability,
 } from "./capabilities";
 export type { CapabilityDescriptor, CapabilityDescriptorKind } from "./descriptorRegistry";
 export {
