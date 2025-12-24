@@ -37,3 +37,8 @@ export {
   type AssetCardWrapperProps,
   type SelectionIndicatorProps,
 } from './AssetGrid';
+
+export {
+  GallerySurfaceShell,
+  type GallerySurfaceShellProps,
+} from './GallerySurfaceShell';

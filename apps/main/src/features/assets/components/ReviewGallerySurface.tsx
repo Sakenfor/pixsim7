@@ -15,7 +15,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { AssetDetailModal } from './AssetDetailModal';
-import { mediaCardPropsFromAsset } from './shared';
+import { GallerySurfaceShell, mediaCardPropsFromAsset } from './shared';
 
 export function ReviewGallerySurface() {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
@@ -149,9 +149,102 @@ export function ReviewGallerySurface() {
     }
   }, [controller.assets.length, focusedAssetIndex]);
 
+  // Header actions: help button + progress stats
+  const headerActions = (
+    <div className="flex items-center gap-4 text-sm">
+      <button
+        onClick={() => setShowHelp(true)}
+        className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+        title="Keyboard shortcuts"
+      >
+        ?
+      </button>
+      <span className="text-neutral-600 dark:text-neutral-400">
+        Progress: {stats.reviewed}/{stats.total}
+      </span>
+      <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+        ✓ {stats.accepted} Accepted
+      </span>
+      <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded">
+        ✗ {stats.rejected} Rejected
+      </span>
+      {stats.reviewed > 0 && (
+        <Button variant="secondary" onClick={clearSession} className="text-xs">
+          🗑️ Clear Session
+        </Button>
+      )}
+    </div>
+  );
+
+  // Large card grid for review
+  const reviewGrid = (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {controller.assets.map((asset, index) => {
+        const isAccepted = acceptedAssets.has(asset.id);
+        const isRejected = rejectedAssets.has(asset.id);
+        const isReviewed = reviewedAssets.has(asset.id);
+        const isFocused = index === focusedAssetIndex;
+
+        return (
+          <div
+            key={asset.id}
+            className={`border-2 rounded-lg overflow-hidden transition-all ${
+              isFocused
+                ? 'ring-4 ring-blue-500 ring-offset-2'
+                : ''
+            } ${
+              isAccepted
+                ? 'border-green-500 bg-green-50 dark:bg-green-900/10'
+                : isRejected
+                ? 'border-red-500 bg-red-50 dark:bg-red-900/10'
+                : 'border-neutral-200 dark:border-neutral-700'
+            }`}
+            onClick={() => setFocusedAssetIndex(index)}
+          >
+            <MediaCard
+              {...mediaCardPropsFromAsset(asset)}
+              actions={controller.getAssetActions(asset)}
+              contextMenuAsset={asset}
+              contextMenuSelection={controller.selectedAssets}
+            />
+
+            {/* Review Actions */}
+            <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
+              <div className="flex gap-2">
+                <Button
+                  variant={isAccepted ? 'primary' : 'secondary'}
+                  onClick={() => handleAccept(asset.id)}
+                  className="flex-1 text-sm"
+                >
+                  ✓ Accept
+                </Button>
+                <Button
+                  variant={isRejected ? 'primary' : 'secondary'}
+                  onClick={() => handleReject(asset.id)}
+                  className="flex-1 text-sm"
+                >
+                  ✗ Reject
+                </Button>
+                {isReviewed && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleSkip(asset.id)}
+                    className="text-sm"
+                  >
+                    ↺
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="p-6 space-y-4 content-with-dock min-h-screen">
-      {/* Keyboard Shortcuts Help */}
+    <>
+      {/* Keyboard Shortcuts Help Modal */}
       {showHelp && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowHelp(false)}>
           <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md" onClick={e => e.stopPropagation()}>
@@ -170,133 +263,27 @@ export function ReviewGallerySurface() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold">Asset Review</h1>
-          <button
-            onClick={() => setShowHelp(true)}
-            className="px-2 py-0.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-            title="Keyboard shortcuts"
-          >
-            ?
-          </button>
-        </div>
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-neutral-600 dark:text-neutral-400">
-            Progress: {stats.reviewed}/{stats.total}
-          </span>
-          <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
-            ✓ {stats.accepted} Accepted
-          </span>
-          <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded">
-            ✗ {stats.rejected} Rejected
-          </span>
-          {stats.reviewed > 0 && (
-            <Button variant="secondary" onClick={clearSession} className="text-xs">
-              🗑️ Clear Session
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Simplified Filters */}
-      <div className="bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
-        <div className="flex gap-2 items-center">
-          <input
-            placeholder="Search..."
-            className="px-2 py-1 text-sm border rounded flex-1"
-            value={controller.filters.q || ''}
-            onChange={(e) => controller.updateFilters({ q: e.target.value })}
-          />
-          <select
-            className="px-2 py-1 text-sm border rounded"
-            value={controller.filters.sort}
-            onChange={(e) => controller.updateFilters({ sort: e.target.value as any })}
-          >
-            <option value="new">Newest First</option>
-            <option value="old">Oldest First</option>
-          </select>
-        </div>
-      </div>
-
-      {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
-
-      {/* Large Card Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {controller.assets.map((asset, index) => {
-          const isAccepted = acceptedAssets.has(asset.id);
-          const isRejected = rejectedAssets.has(asset.id);
-          const isReviewed = reviewedAssets.has(asset.id);
-          const isFocused = index === focusedAssetIndex;
-
-          return (
-            <div
-              key={asset.id}
-              className={`border-2 rounded-lg overflow-hidden transition-all ${
-                isFocused
-                  ? 'ring-4 ring-blue-500 ring-offset-2'
-                  : ''
-              } ${
-                isAccepted
-                  ? 'border-green-500 bg-green-50 dark:bg-green-900/10'
-                  : isRejected
-                  ? 'border-red-500 bg-red-50 dark:bg-red-900/10'
-                  : 'border-neutral-200 dark:border-neutral-700'
-              }`}
-              onClick={() => setFocusedAssetIndex(index)}
-            >
-              <MediaCard
-                {...mediaCardPropsFromAsset(asset)}
-                actions={controller.getAssetActions(asset)}
-                contextMenuAsset={asset}
-                contextMenuSelection={controller.selectedAssets}
-              />
-
-              {/* Review Actions */}
-              <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
-                <div className="flex gap-2">
-                  <Button
-                    variant={isAccepted ? 'primary' : 'secondary'}
-                    onClick={() => handleAccept(asset.id)}
-                    className="flex-1 text-sm"
-                  >
-                    ✓ Accept
-                  </Button>
-                  <Button
-                    variant={isRejected ? 'primary' : 'secondary'}
-                    onClick={() => handleReject(asset.id)}
-                    className="flex-1 text-sm"
-                  >
-                    ✗ Reject
-                  </Button>
-                  {isReviewed && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleSkip(asset.id)}
-                      className="text-sm"
-                    >
-                      ↺
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Load More */}
-      <div className="pt-4">
-        {controller.hasMore && (
-          <button disabled={controller.loading} onClick={controller.loadMore} className="border px-4 py-2 rounded">
-            {controller.loading ? 'Loading...' : 'Load More'}
-          </button>
-        )}
-        {!controller.hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
-      </div>
+      <GallerySurfaceShell
+        title="Asset Review"
+        headerActions={headerActions}
+        filters={controller.filters}
+        onFiltersChange={controller.updateFilters}
+        showSearch
+        showMediaType={false}
+        showSort
+        filtersLayout="horizontal"
+        error={controller.error}
+        loading={controller.loading}
+        hasMore={controller.hasMore}
+        onLoadMore={controller.loadMore}
+        itemCount={controller.assets.length}
+        loadMoreMode="button"
+      >
+        {reviewGrid}
+      </GallerySurfaceShell>
 
       {/* Asset Detail Modal - uses shared store */}
       <AssetDetailModal />
-    </div>
+    </>
   );
 }
