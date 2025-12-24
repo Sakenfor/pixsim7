@@ -264,8 +264,9 @@ class AssetIngestionService:
         if generate_previews is None:
             generate_previews = self.settings.generate_previews
 
-        # Idempotent check: skip if already ingested (unless forced)
-        if not force and asset.ingest_status == INGEST_COMPLETED and asset.stored_key:
+        # Idempotent check: skip if already ingested with content-addressed storage (unless forced)
+        is_content_addressed = asset.stored_key and '/content/' in asset.stored_key
+        if not force and asset.ingest_status == INGEST_COMPLETED and is_content_addressed:
             logger.debug(
                 "ingest_skipped_already_complete",
                 asset_id=asset_id,
@@ -287,8 +288,9 @@ class AssetIngestionService:
 
             # Step 2: Check hash for deduplication
             file_hash = self._compute_sha256(local_path)
-            if asset.sha256 and asset.sha256 == file_hash and asset.stored_key and not force:
-                # Same file already stored, skip re-storing
+            is_content_addressed = asset.stored_key and '/content/' in asset.stored_key
+            if asset.sha256 and asset.sha256 == file_hash and is_content_addressed and not force:
+                # Same file already stored in content-addressed format, skip re-storing
                 logger.debug(
                     "ingest_skipped_same_hash",
                     asset_id=asset_id,
@@ -322,8 +324,9 @@ class AssetIngestionService:
                         asset.sha256 = file_hash
 
                 # Step 3: Store in storage service (if enabled)
-                if store_for_serving:
-                    stored_key = await self._store_file(asset, local_path)
+                # Skip if already stored content-addressed (from _download_file)
+                if store_for_serving and not is_content_addressed:
+                    stored_key = await self._store_file(asset, local_path, file_hash)
                     asset.stored_key = stored_key
 
             # Step 4: Extract metadata (if not already done or forced)
@@ -488,9 +491,11 @@ class AssetIngestionService:
                 local_path = storage.get_path(stored_key)
 
                 # Update asset with new storage location
+                # Note: sha256 is NOT set here to allow the duplicate check in
+                # ingest_asset to run. The check at "if asset.sha256 != file_hash"
+                # needs the old sha256 value to detect conflicts.
                 asset.local_path = local_path
                 asset.stored_key = stored_key
-                asset.sha256 = sha256
                 asset.file_size_bytes = total_size
                 asset.sync_status = SyncStatus.DOWNLOADED
                 asset.downloaded_at = datetime.utcnow()
@@ -518,19 +523,45 @@ class AssetIngestionService:
                     retry_delay *= 2
                 else:
                     raise
+            except httpx.HTTPStatusError as e:
+                # Retry on 404 - CDN propagation delay after generation
+                if e.response.status_code == 404 and attempt < max_retries - 1:
+                    # Use longer delay for 404 - likely CDN propagation
+                    propagation_delay = 5.0 * (attempt + 1)
+                    logger.warning(
+                        "download_retry_404",
+                        asset_id=asset.id,
+                        attempt=attempt + 1,
+                        delay=propagation_delay,
+                        detail="CDN propagation delay - retrying",
+                    )
+                    await asyncio.sleep(propagation_delay)
+                else:
+                    raise
 
-    async def _store_file(self, asset: Asset, local_path: str) -> str:
+    async def _store_file(self, asset: Asset, local_path: str, sha256: str) -> str:
         """
-        Store file in storage service.
+        Store file in storage service using content-addressed key.
 
-        The stored_key is a stable identifier for serving, independent of
-        local_path which is an implementation detail.
+        Uses SHA256 hash for deduplication - same content = same storage path.
 
         Returns:
-            Storage key
+            Storage key (content-addressed)
         """
         ext = Path(local_path).suffix
-        key = f"u/{asset.user_id}/assets/{asset.id}{ext}"
+        hash_prefix = sha256[:2]
+        key = f"u/{asset.user_id}/content/{hash_prefix}/{sha256}{ext}"
+
+        # Check if file already exists at destination (deduplication)
+        dest_path = self.storage.get_path(key)
+        if Path(dest_path).exists():
+            logger.debug(
+                "file_already_stored",
+                asset_id=asset.id,
+                sha256=sha256[:16],
+                key=key,
+            )
+            return key
 
         # Copy from local_path to storage
         await self.storage.store_from_path(key, local_path)
@@ -538,6 +569,7 @@ class AssetIngestionService:
         logger.debug(
             "file_stored",
             asset_id=asset.id,
+            sha256=sha256[:16],
             key=key,
         )
 
