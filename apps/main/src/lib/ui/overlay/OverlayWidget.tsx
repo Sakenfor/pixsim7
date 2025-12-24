@@ -116,12 +116,20 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   const spacingValue = SPACING_VALUES[spacing];
 
   // Combine all styles
+  // Note: widget.style properties override positionStyles if specified
   const combinedStyles: React.CSSProperties = {
     ...positionStyles,
     ...transitionStyles,
     zIndex,
     opacity: widget.style?.opacity,
     padding: widget.style?.padding,
+    // Position overrides (for widgets that need inset-0 style positioning)
+    ...(widget.style?.top !== undefined && { top: widget.style.top }),
+    ...(widget.style?.left !== undefined && { left: widget.style.left }),
+    ...(widget.style?.right !== undefined && { right: widget.style.right }),
+    ...(widget.style?.bottom !== undefined && { bottom: widget.style.bottom }),
+    width: widget.style?.width,
+    height: widget.style?.height,
     maxWidth: widget.style?.maxWidth,
     maxHeight: widget.style?.maxHeight,
     pointerEvents: widget.style?.pointerEvents ?? (isVisible ? 'auto' : 'none'),

@@ -152,6 +152,20 @@ export interface WidgetStyle {
 
   /** Pointer events behavior */
   pointerEvents?: 'auto' | 'none';
+
+  // Position overrides (for widgets that need inset-0 style positioning)
+  /** Top position override */
+  top?: number | string;
+  /** Left position override */
+  left?: number | string;
+  /** Right position override */
+  right?: number | string;
+  /** Bottom position override */
+  bottom?: number | string;
+  /** Width override */
+  width?: number | string;
+  /** Height override */
+  height?: number | string;
 }
 
 // ============================================================================

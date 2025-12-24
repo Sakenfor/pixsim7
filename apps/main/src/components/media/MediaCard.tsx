@@ -30,7 +30,7 @@ import {
   mergeConfigurations,
 } from '@lib/ui/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
-import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
+import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
 import { ThemedIcon } from '@lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
@@ -160,14 +160,21 @@ export function MediaCard(props: MediaCardProps) {
   const enableMediaCardContextMenu = useContextHubSettingsStore(
     (state) => state.enableMediaCardContextMenu,
   );
-  const thumbSrc = useMediaThumbnail(thumbUrl, previewUrl, remoteUrl);
+  const {
+    src: thumbSrc,
+    failed: thumbFailed,
+    loading: thumbLoading,
+    retry: retryThumb,
+  } = useMediaThumbnailFull(thumbUrl, previewUrl, mediaType === 'video' ? undefined : remoteUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
 
-  // For videos, fall back to remoteUrl if thumbnail is not available
-  // This allows aspect ratio detection via onLoadedMetadata even before thumbnails are generated
-  const videoSrc = mediaType === 'video' && !thumbSrc ? remoteUrl : thumbSrc;
+  // For videos, prefer the actual video URL for metadata/ratio accuracy.
+  // Use thumbnail as poster when available.
+  const videoSrc = mediaType === 'video'
+    ? (remoteUrl || thumbSrc)
+    : thumbSrc;
 
   useEffect(() => {
     if (mediaType !== 'video' || !thumbSrc) {
@@ -201,7 +208,7 @@ export function MediaCard(props: MediaCardProps) {
       return width / height;
     }
 
-    return intrinsicThumbAspectRatio ?? intrinsicVideoAspectRatio ?? 16 / 9;
+    return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
   }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio]);
 
   // Resolve badge configuration
@@ -396,7 +403,10 @@ export function MediaCard(props: MediaCardProps) {
     uploadState: props.uploadState || 'idle',
     uploadProgress: props.uploadProgress || 0,
     // Video state (for VideoScrubWidget, ProgressWidget)
-    remoteUrl: props.remoteUrl,
+    remoteUrl: props.remoteUrl || '',
+    // For video scrub, use original CDN URL from asset (no auth needed)
+    // contextMenuAsset.remoteUrl is the original CDN URL before resolution to local path
+    videoSrc: contextMenuAsset?.remoteUrl?.startsWith('http') ? contextMenuAsset.remoteUrl : undefined,
     durationSec: props.durationSec,
     // Actions (for MenuWidget callbacks)
     actions: props.actions,
@@ -434,6 +444,7 @@ export function MediaCard(props: MediaCardProps) {
               <video
                 ref={videoRef}
                 src={videoSrc}
+                poster={thumbSrc}
                 className="h-full w-full object-cover"
                 preload="metadata"
                 muted
@@ -456,6 +467,19 @@ export function MediaCard(props: MediaCardProps) {
                 loading="lazy"
               />
             )
+          ) : thumbFailed ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-800">
+              <ThemedIcon name="alert-circle" className="w-6 h-6 text-neutral-400" />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  retryThumb();
+                }}
+                className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded transition-colors"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />

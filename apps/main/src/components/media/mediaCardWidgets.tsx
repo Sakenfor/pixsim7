@@ -16,6 +16,7 @@ import {
   createTooltipWidget,
   type MenuItem,
 } from '@lib/ui/overlay';
+import { createBindingFromValue } from '@lib/editing-core';
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
@@ -40,6 +41,8 @@ export interface MediaCardOverlayData {
   uploadState: MediaCardProps['uploadState'] | 'idle';
   uploadProgress: number;
   remoteUrl: string;
+  /** Processed video source URL (same as main video element, handles auth) */
+  videoSrc?: string;
   durationSec?: number;
   actions?: MediaCardProps['actions'];
   // Generation status
@@ -239,10 +242,10 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget<Media
 
 /**
  * Create video scrub widget (covers entire card on hover)
- * Uses REACTIVE function-based values for dynamic video URL
+ * Uses DataBinding for reactive video URL resolution
  */
 export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { mediaType } = props;
+  const { mediaType, onOpen, id } = props;
 
   if (mediaType !== 'video') {
     return null;
@@ -252,15 +255,17 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaC
     id: 'video-scrubber',
     position: { anchor: 'top-left', offset: { x: 0, y: 0 } },
     visibility: { trigger: 'hover-container' },
-    // ✨ REACTIVE: Function gets fresh video URL from data
-    videoUrl: (data) => data.remoteUrl,
-    duration: (data) => data.durationSec,
+    // Use videoSrc (processed URL that works with auth) instead of remoteUrl
+    videoUrlBinding: createBindingFromValue('videoUrl', (data: MediaCardOverlayData) => data.videoSrc || data.remoteUrl),
+    durationBinding: createBindingFromValue('duration', (data: MediaCardOverlayData) => data.durationSec),
     showTimeline: true,
     showTimestamp: true,
     timelinePosition: 'bottom',
     throttle: 50,
     muted: true,
-    priority: 1, // Low priority so it's behind other widgets
+    priority: 10, // Within recommended z-index range (10-20), below badges/buttons
+    // Pass click through to open viewer
+    onClick: onOpen ? () => onOpen(id) : undefined,
   });
 }
 
