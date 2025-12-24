@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface PanelSettingsUiState {
   selectedPanelId?: string;
@@ -7,10 +8,17 @@ interface PanelSettingsUiState {
   clearInstanceSelection: () => void;
 }
 
-export const usePanelSettingsUiStore = create<PanelSettingsUiState>((set) => ({
-  selectedPanelId: undefined,
-  selectedInstanceId: null,
-  setSelection: (panelId, instanceId = null) =>
-    set({ selectedPanelId: panelId, selectedInstanceId: instanceId }),
-  clearInstanceSelection: () => set({ selectedInstanceId: null }),
-}));
+export const usePanelSettingsUiStore = create<PanelSettingsUiState>()(
+  persist(
+    (set) => ({
+      selectedPanelId: undefined,
+      selectedInstanceId: null,
+      setSelection: (panelId, instanceId = null) =>
+        set({ selectedPanelId: panelId, selectedInstanceId: instanceId }),
+      clearInstanceSelection: () => set({ selectedInstanceId: null }),
+    }),
+    {
+      name: "panel-settings-ui",
+    }
+  )
+);

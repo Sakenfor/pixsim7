@@ -69,6 +69,7 @@
       "@lib/assets": ["./src/lib/assets/index.ts"],
       "@lib/context": ["./src/lib/context/index.ts"],
       "@lib/dockview": ["./src/lib/dockview/index.ts"],
+      "@lib/assetUrlResolver": ["./src/lib/assetUrlResolver.ts"],
 
       // Packages
       "@pixsim7/types": ["../packages/types/dist"]

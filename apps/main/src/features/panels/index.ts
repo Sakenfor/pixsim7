@@ -32,6 +32,13 @@ export {
   usePanelSystemInitialization,
   useInitializePanelSystem,
 } from './hooks/usePanelSystemInitialization';
+export {
+  usePanelIdentity,
+  usePanelPersistedState,
+  usePanelStateObject,
+  type PanelStateScope,
+  type PanelStateOptions,
+} from './hooks/usePanelState';
 
 // Panel Registry System
 export {

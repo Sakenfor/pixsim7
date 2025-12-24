@@ -4,6 +4,7 @@ import {
   type StateCapability,
   useCapabilityStore,
 } from "@lib/capabilities";
+import { useShallow } from "zustand/react/shallow";
 import { useContextHubState } from "../ContextHubHost";
 import type { CapabilityProvider } from "../types";
 import {
@@ -27,8 +28,14 @@ function getRootHub(state: ReturnType<typeof useContextHubState>) {
 
 export function ContextHubCapabilityBridge() {
   const hub = useContextHubState();
-  const actions = useCapabilityStore((s) => s.getAllActions());
-  const states = useCapabilityStore((s) => s.getAllStates());
+  const actionsMap = useCapabilityStore(useShallow((s) => s.actions));
+  const statesMap = useCapabilityStore(useShallow((s) => s.states));
+
+  const actions = useMemo(
+    () => Array.from(actionsMap.values()).filter((a) => !a.enabled || a.enabled()),
+    [actionsMap]
+  );
+  const states = useMemo(() => Array.from(statesMap.values()), [statesMap]);
 
   const actionRef = useRef<Map<string, ActionCapability>>(new Map());
   const stateRef = useRef<Map<string, StateCapability>>(new Map());

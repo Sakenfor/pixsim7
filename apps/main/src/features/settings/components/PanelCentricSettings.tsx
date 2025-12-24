@@ -212,7 +212,7 @@ function ComponentSettingsCard({
 }) {
   const definition = componentRegistry.get(componentId);
   const storedSettings = useComponentSettingsStore(
-    (state) => state.settings[componentId] ?? {},
+    (state) => state.settings[componentId] ?? EMPTY_SETTINGS,
   );
   const setComponentSetting = useComponentSettingsStore((state) => state.setComponentSetting);
 
@@ -416,7 +416,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
   }, []);
 
   const instanceScopes = usePanelInstanceSettingsStore((state) =>
-    selectedInstanceId ? state.instances[selectedInstanceId]?.scopes ?? {} : {}
+    selectedInstanceId ? state.instances[selectedInstanceId]?.scopes ?? EMPTY_SETTINGS : EMPTY_SETTINGS
   );
   const setScope = usePanelInstanceSettingsStore((state) => state.setScope);
 

@@ -7,6 +7,7 @@
 
 import type { AssetModel } from '../../models/asset';
 import type { MediaCardProps, MediaCardActions, MediaCardBadgeConfig } from '@/components/media/MediaCard';
+import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
 
 /**
  * Core MediaCard props derived from an asset.
@@ -44,14 +45,18 @@ export type AssetMediaCardProps = Pick<
  * ```
  */
 export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps {
+  const resolvedThumb = resolveThumbnailUrl(asset);
+  const resolvedPreview = resolvePreviewUrl(asset);
+  const resolvedMain = resolveAssetUrl(asset);
+
   return {
     id: asset.id,
     mediaType: asset.mediaType,
     providerId: asset.providerId,
     providerAssetId: asset.providerAssetId,
-    thumbUrl: asset.thumbnailUrl ?? '',
-    previewUrl: asset.previewUrl ?? undefined,
-    remoteUrl: asset.remoteUrl ?? '',
+    thumbUrl: resolvedThumb ?? asset.thumbnailUrl ?? '',
+    previewUrl: resolvedPreview ?? asset.previewUrl ?? undefined,
+    remoteUrl: resolvedMain ?? asset.remoteUrl ?? '',
     width: asset.width ?? undefined,
     height: asset.height ?? undefined,
     durationSec: asset.durationSec ?? undefined,

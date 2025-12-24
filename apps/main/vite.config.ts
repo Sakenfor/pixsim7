@@ -49,6 +49,7 @@ export default defineConfig({
       { find: '@lib/icons', replacement: path.resolve(__dirname, './src/lib/icons.tsx') },
       { find: '@lib/backendStorage', replacement: path.resolve(__dirname, './src/lib/backendStorage.ts') },
       { find: '@lib/nodeEditorRegistry', replacement: path.resolve(__dirname, './src/lib/nodeEditorRegistry.ts') },
+      { find: '@lib/assetUrlResolver', replacement: path.resolve(__dirname, './src/lib/assetUrlResolver.ts') },
       // Feature modules
       { find: '@features/gizmos', replacement: path.resolve(__dirname, './src/features/gizmos') },
       { find: '@features/intimacy', replacement: path.resolve(__dirname, './src/features/intimacy') },

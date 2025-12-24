@@ -144,6 +144,11 @@ export interface WorkspaceActions {
     height: number,
   ) => void;
   bringFloatingPanelToFront: (panelId: PanelId | `dev-tool:${string}`) => void;
+  updateFloatingPanelContext: (
+    panelId: PanelId | `dev-tool:${string}`,
+    context: Record<string, any>,
+  ) => void;
+  getFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => FloatingPanelState | undefined;
 }
 
 /**
@@ -434,6 +439,18 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
             p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p,
           ),
         });
+      },
+
+      updateFloatingPanelContext: (panelId, context) => {
+        set({
+          floatingPanels: get().floatingPanels.map((p) =>
+            p.id === panelId ? { ...p, context: { ...p.context, ...context } } : p,
+          ),
+        });
+      },
+
+      getFloatingPanel: (panelId) => {
+        return get().floatingPanels.find((p) => p.id === panelId);
       },
     }),
     {
