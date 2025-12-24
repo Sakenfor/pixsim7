@@ -256,23 +256,22 @@ export function MediaCard(props: MediaCardProps) {
       event.preventDefault();
       event.stopPropagation();
 
-      const assetPayload: Partial<AssetResponse> =
+      const assetPayload: Partial<AssetModel> =
         contextMenuAsset ?? {
           id,
-          media_type: mediaType,
-          provider_id: providerId,
-          provider_asset_id: providerAssetId,
-          thumbnail_url: thumbUrl,
-          preview_url: previewUrl,
-          remote_url: remoteUrl,
+          mediaType,
+          providerId,
+          providerAssetId,
+          thumbnailUrl: thumbUrl,
+          previewUrl,
+          remoteUrl,
           width,
           height,
-          duration_sec: durationSec,
-          tags: props.tags,
+          durationSec,
           description,
-          created_at: createdAt,
-          provider_status: providerStatus,
-          sync_status: props.status,
+          createdAt,
+          providerStatus,
+          syncStatus: props.status as AssetModel['syncStatus'],
         };
 
       contextMenu.showContextMenu({
@@ -300,7 +299,6 @@ export function MediaCard(props: MediaCardProps) {
       width,
       height,
       durationSec,
-      props.tags,
       description,
       createdAt,
       providerStatus,

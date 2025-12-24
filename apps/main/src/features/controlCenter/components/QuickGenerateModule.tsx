@@ -7,7 +7,7 @@ import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { estimatePixverseCost } from '@features/providers';
-import { type QuickGenPanelContext } from './QuickGeneratePanels';
+import { type QuickGenPanelContext, buildFallbackAsset } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
 import { OPERATION_METADATA } from '@/types/operations';
 import { PromptInput } from '@pixsim7/shared.ui';
@@ -237,20 +237,13 @@ export function QuickGenerateModule() {
       return [mainQueue[index].asset];
     }
 
-    if (lastSelectedAsset &&
-        ((operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
-         (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
-         (operationType === 'video_extend' && lastSelectedAsset.type === 'video'))) {
-      // Convert SelectedAsset to AssetSummary-like shape
-      return [{
-        id: 0, // placeholder
-        provider_asset_id: lastSelectedAsset.name,
-        media_type: lastSelectedAsset.type as 'image' | 'video',
-        thumbnail_url: lastSelectedAsset.url,
-        remote_url: lastSelectedAsset.url,
-        provider_status: 'unknown' as const,
-        description: lastSelectedAsset.name,
-      } as any];
+    if (
+      lastSelectedAsset &&
+      ((operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
+        (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
+        (operationType === 'video_extend' && lastSelectedAsset.type === 'video'))
+    ) {
+      return [buildFallbackAsset(lastSelectedAsset)];
     }
 
     return [];

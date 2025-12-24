@@ -10,27 +10,12 @@
  */
 
 import type { ReactNode } from 'react';
+import type { AssetModel } from '@features/assets';
 
 /**
  * Asset data passed to gallery tools
  */
-export interface GalleryAsset {
-  id: string;
-  media_type: string;
-  provider_id: string;
-  provider_asset_id: string;
-  remote_url?: string;
-  thumbnail_url?: string;
-  width?: number;
-  height?: number;
-  duration_sec?: number;
-  tags?: string[];
-  description?: string;
-  created_at: string;
-  sync_status?: string;
-  /** Link to the generation that created this asset (if any) */
-  source_generation_id?: number;
-}
+export type GalleryAsset = AssetModel;
 
 /**
  * Gallery context available to tools

@@ -18,7 +18,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AssetResponse } from '@features/assets';
+import type { AssetModel } from '@features/assets';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,14 +28,14 @@ import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 export type InputMode = 'single' | 'multi';
 
 export interface QueuedAsset {
-  asset: AssetResponse;
+  asset: AssetModel;
   operation?: OperationType;
   queuedAt: string;
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
 }
 
 export interface EnqueueOptions {
-  asset: AssetResponse;
+  asset: AssetModel;
   operationType: OperationType;
   slotIndex?: number;        // If provided, replace at this index
   forceMulti?: boolean;      // Force multi-asset queue for optional operations
@@ -90,13 +90,13 @@ export interface GenerationQueueState {
   // ─────────────────────────────────────────────────────────────────────────
 
   /** @deprecated Use enqueueAsset() instead */
-  addToQueue: (asset: AssetResponse, operation?: OperationType) => void;
+  addToQueue: (asset: AssetModel, operation?: OperationType) => void;
   /** @deprecated Use enqueueAsset() instead */
-  addToMultiAssetQueue: (asset: AssetResponse) => void;
+  addToMultiAssetQueue: (asset: AssetModel) => void;
   /** @deprecated Use enqueueAsset() instead */
-  addToQueueAtIndex: (asset: AssetResponse, index: number, operation?: OperationType) => void;
+  addToQueueAtIndex: (asset: AssetModel, index: number, operation?: OperationType) => void;
   /** @deprecated Use enqueueAsset() instead */
-  addToMultiAssetQueueAtIndex: (asset: AssetResponse, index: number) => void;
+  addToMultiAssetQueueAtIndex: (asset: AssetModel, index: number) => void;
 
   removeFromQueue: (assetId: number, queueType?: 'main' | 'multi') => void;
   clearQueue: (queueType?: 'main' | 'multi' | 'all') => void;
@@ -212,7 +212,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
       // For multiAssetQueue: allows duplicates (same asset in multiple slots)
       const addToQueueHelper = (
         queueType: 'main' | 'multi',
-        asset: AssetResponse,
+        asset: AssetModel,
         operation?: QueuedAsset['operation']
       ) => {
         set((state) => {
@@ -245,7 +245,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
       // Shared helper: add/replace asset at specific index
       const addToQueueAtIndexHelper = (
         queueType: 'main' | 'multi',
-        asset: AssetResponse,
+        asset: AssetModel,
         index: number,
         operation?: QueuedAsset['operation']
       ) => {

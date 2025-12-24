@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button, Panel, Badge, Input, Select } from '@pixsim7/shared.ui';
-import { getAsset, type AssetResponse } from '@features/assets';
+import { getAsset, fromAssetResponse, type AssetModel } from '@features/assets';
 import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '@lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '@lib/api/game';
 import { interactionRegistry } from '@lib/registries';
@@ -24,7 +24,7 @@ interface NpcSlotEditorProps {
 export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEditorProps) {
   const [slots, setSlots] = useState<NpcSlot2d[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
-  const [backgroundAsset, setBackgroundAsset] = useState<AssetResponse | null>(null);
+  const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -57,8 +57,9 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
     setError(null);
     (async () => {
       try {
-        const asset = await getAsset(location.asset_id!);
-        if (asset.media_type === 'image' || asset.media_type === 'video') {
+        const response = await getAsset(location.asset_id!);
+        const asset = fromAssetResponse(response);
+        if (asset.mediaType === 'image' || asset.mediaType === 'video') {
           setBackgroundAsset(asset);
         } else {
           setBackgroundAsset(null);
@@ -156,21 +157,21 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
             <div className="flex items-center justify-center h-96 bg-neutral-100 dark:bg-neutral-800 rounded">
               <span className="text-sm text-neutral-500">Loading background...</span>
             </div>
-          ) : backgroundAsset && backgroundAsset.file_url ? (
+          ) : backgroundAsset && backgroundAsset.fileUrl ? (
             <div
               ref={containerRef}
               className="relative w-full aspect-video bg-black/80 rounded overflow-hidden cursor-crosshair"
               onClick={handleBackgroundClick}
             >
-              {backgroundAsset.media_type === 'image' ? (
+              {backgroundAsset.mediaType === 'image' ? (
                 <img
-                  src={backgroundAsset.file_url}
+                  src={backgroundAsset.fileUrl}
                   alt="location background"
                   className="w-full h-full object-cover"
                 />
               ) : (
                 <video
-                  src={backgroundAsset.file_url}
+                  src={backgroundAsset.fileUrl}
                   className="w-full h-full object-cover"
                   muted
                   loop

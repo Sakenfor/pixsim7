@@ -29,7 +29,7 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
     }
 
     try {
-      const assetIds = context.selectedAssets.map(a => parseInt(a.id));
+      const assetIds = context.selectedAssets.map(a => a.id);
       const tags = tagInput.split(',').map(t => t.trim()).filter(t => t);
 
       const response = await fetch('/api/v1/assets/bulk/tags', {
@@ -68,7 +68,7 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
     }
 
     try {
-      const assetIds = context.selectedAssets.map(a => parseInt(a.id));
+      const assetIds = context.selectedAssets.map(a => a.id);
 
       const response = await fetch('/api/v1/assets/bulk/delete', {
         method: 'POST',
@@ -101,7 +101,7 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
     try {
       setStatus(`Exporting ${selectedCount} assets...`);
 
-      const assetIds = context.selectedAssets.map(a => parseInt(a.id));
+      const assetIds = context.selectedAssets.map(a => a.id);
 
       const response = await fetch('/api/v1/assets/bulk/export', {
         method: 'POST',

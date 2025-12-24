@@ -77,6 +77,9 @@ export function useQuickGenerateBindings(
   const [prompts, setPrompts] = useState<string[]>([]);
   const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
 
+  const resolveAssetUrl = (asset: { remoteUrl?: string | null; thumbnailUrl?: string | null; fileUrl?: string | null }) =>
+    asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '';
+
   // Track previous queue state to detect adds vs cycles vs initial hydration
   const prevMainQueueLengthRef = useRef<number | null>(null);
   const prevTransitionQueueLengthRef = useRef<number | null>(null);
@@ -150,14 +153,14 @@ export function useQuickGenerateBindings(
       }
 
       // Auto-fill based on operation and asset type
-      if ((operation === 'image_to_video' || !operation) && asset.media_type === 'image') {
-        setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
+      if ((operation === 'image_to_video' || !operation) && asset.mediaType === 'image') {
+        setDynamicParams(prev => ({ ...prev, image_url: resolveAssetUrl(asset) }));
         // Only auto-select operation type if setting is enabled
         if (!operation && autoSelectOperationType) {
           setOperationType('image_to_video');
         }
-      } else if ((operation === 'video_extend' || !operation) && asset.media_type === 'video') {
-        setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+      } else if ((operation === 'video_extend' || !operation) && asset.mediaType === 'video') {
+        setDynamicParams(prev => ({ ...prev, video_url: resolveAssetUrl(asset) }));
         // Only auto-select operation type if setting is enabled
         if (!operation && autoSelectOperationType) {
           setOperationType('video_extend');
@@ -165,17 +168,17 @@ export function useQuickGenerateBindings(
       }
     } else if (indexChanged || itemChanged) {
       // Index changed (user cycled) - update params to reflect the current item
-      if (asset.media_type === 'image') {
-        setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
-      } else if (asset.media_type === 'video') {
-        setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+      if (asset.mediaType === 'image') {
+        setDynamicParams(prev => ({ ...prev, image_url: resolveAssetUrl(asset) }));
+      } else if (asset.mediaType === 'video') {
+        setDynamicParams(prev => ({ ...prev, video_url: resolveAssetUrl(asset) }));
       }
     } else {
       // On initial load, only fill params if empty (don't override user choices)
-      if (asset.media_type === 'image' && !dynamicParams.image_url) {
-        setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
-      } else if (asset.media_type === 'video' && !dynamicParams.video_url) {
-        setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+      if (asset.mediaType === 'image' && !dynamicParams.image_url) {
+        setDynamicParams(prev => ({ ...prev, image_url: resolveAssetUrl(asset) }));
+      } else if (asset.mediaType === 'video' && !dynamicParams.video_url) {
+        setDynamicParams(prev => ({ ...prev, video_url: resolveAssetUrl(asset) }));
       }
     }
     prevMainQueueItemIdRef.current = currentItemId;
@@ -201,7 +204,7 @@ export function useQuickGenerateBindings(
     // Operation type should be explicitly controlled by the user, not auto-switched when adding to queue.
 
     // Fill image URLs from transition queue
-    const urls = multiAssetQueue.map(item => item.asset.remote_url);
+    const urls = multiAssetQueue.map(item => resolveAssetUrl(item.asset));
     setImageUrls(urls);
 
     // Initialize prompts array with N-1 elements (one per transition between images)

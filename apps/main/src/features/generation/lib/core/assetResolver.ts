@@ -97,6 +97,14 @@ function scoreAssetRelevance(
   request: AssetResolutionRequest
 ): number {
   let score = 0;
+  const tagValues = Array.isArray(asset.tags)
+    ? asset.tags
+        .map((tag: any) => {
+          if (typeof tag === 'string') return tag;
+          return tag?.slug || tag?.name || '';
+        })
+        .filter((tag: string) => tag.length > 0)
+    : [];
 
   // Exact location match is highly valuable
   if (request.locationId && hasAssetLocation(asset, request.locationId)) {
@@ -125,9 +133,9 @@ function scoreAssetRelevance(
   }
 
   // Required tags
-  if (request.requiredTags && asset.tags) {
+  if (request.requiredTags && tagValues.length > 0) {
     for (const tag of request.requiredTags) {
-      if (asset.tags.includes(tag)) {
+      if (tagValues.includes(tag)) {
         score += 20;
       }
     }

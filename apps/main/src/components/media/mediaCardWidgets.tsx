@@ -21,7 +21,7 @@ import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
-import type { AssetResponse } from '@features/assets';
+import type { AssetModel } from '@features/assets';
 import { Icon } from '@lib/icons';
 import {
   OPERATION_METADATA,
@@ -416,8 +416,8 @@ function SlotPickerContent({
   onSelectSlot,
   maxSlots: maxSlotsProp,
 }: {
-  asset: AssetResponse;
-  onSelectSlot: (asset: AssetResponse, slotIndex: number) => void;
+  asset: AssetModel;
+  onSelectSlot: (asset: AssetModel, slotIndex: number) => void;
   maxSlots?: number;
 }) {
   const multiAssetQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
@@ -437,6 +437,12 @@ function SlotPickerContent({
       {slots.map((slotIndex) => {
         const queuedAsset = queue[slotIndex];
         const isFilled = !!queuedAsset;
+        const thumbSrc = isFilled
+          ? queuedAsset.asset.thumbnailUrl ||
+            queuedAsset.asset.remoteUrl ||
+            queuedAsset.asset.fileUrl ||
+            ''
+          : '';
 
         return (
           <button
@@ -453,7 +459,7 @@ function SlotPickerContent({
               ) : (
                 // CC is retracted: show thumbnail
                 <img
-                  src={queuedAsset.asset.thumbnail_url}
+                  src={thumbSrc}
                   alt={`Slot ${slotIndex + 1}`}
                   className="w-full h-full object-cover rounded"
                 />
@@ -619,20 +625,23 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
       const maxSlots = ccMode === 'video_transition' ? 7 : 10;
 
       // Reconstruct asset for slot picker
-      const asset = {
+      const queueAsset: AssetModel = {
         id: props.id,
-        media_type: props.mediaType,
-        provider_id: props.providerId,
-        provider_asset_id: props.providerAssetId,
-        remote_url: props.remoteUrl,
-        thumbnail_url: props.thumbUrl,
-        width: props.width,
-        height: props.height,
-        duration_sec: props.durationSec,
-        tags: props.tags || [],
-        description: props.description,
-        created_at: props.createdAt,
-        provider_status: props.providerStatus,
+        createdAt: props.createdAt,
+        description: props.description ?? null,
+        durationSec: props.durationSec ?? null,
+        height: props.height ?? null,
+        isArchived: false,
+        mediaType: props.mediaType,
+        previewUrl: props.previewUrl ?? null,
+        providerAssetId: props.providerAssetId,
+        providerId: props.providerId,
+        providerStatus: props.providerStatus ?? null,
+        remoteUrl: props.remoteUrl ?? null,
+        syncStatus: (props.status as AssetModel['syncStatus']) ?? 'remote',
+        thumbnailUrl: props.thumbUrl ?? null,
+        userId: 0,
+        width: props.width ?? null,
       };
 
       // Close menu when clicking outside
@@ -675,7 +684,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
 
         // Smart button appends to queue (no slotIndex = append)
         enqueueAsset({
-          asset: asset as AssetResponse,
+          asset: queueAsset,
           operationType: ccMode,
           forceMulti,
         });
@@ -688,7 +697,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         setIsMenuOpen(false);
       };
 
-      const handleSelectSlot = (selectedAsset: AssetResponse, slotIndex: number) => {
+      const handleSelectSlot = (selectedAsset: AssetModel, slotIndex: number) => {
         // Slot picker always targets multiAssetQueue (for arranging compositions)
         enqueueAsset({
           asset: selectedAsset,
@@ -747,7 +756,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
             hoverDelay={150}
             offset={6}
           >
-            <SlotPickerContent asset={asset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
+            <SlotPickerContent asset={queueAsset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
           </ExpandableButtonGroup>
 
           {/* Menu dropdown */}

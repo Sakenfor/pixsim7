@@ -36,13 +36,21 @@ export type AssetRole =
   | 'char:monster'    // Monster/enemy character
   | 'comic_frame';    // Composite frame usable as a comic panel
 
+function getAssetTagValues(asset: GalleryAsset): string[] {
+  if (!asset.tags) return [];
+  return asset.tags
+    .map((tag: any) => {
+      if (typeof tag === 'string') return tag;
+      return tag?.slug || tag?.name || '';
+    })
+    .filter((tag: string) => tag.length > 0);
+}
+
 /**
  * Extract asset roles from tags
  * Looks for tags starting with 'role:' and returns the role portion
  */
 export function getAssetRoles(asset: GalleryAsset): AssetRole[] {
-  if (!asset.tags) return [];
-
   const roles: AssetRole[] = [];
   const validRoles: AssetRole[] = [
     'bg',
@@ -53,7 +61,7 @@ export function getAssetRoles(asset: GalleryAsset): AssetRole[] {
     'comic_frame',
   ];
 
-  for (const tag of asset.tags) {
+  for (const tag of getAssetTagValues(asset)) {
     // Handle both 'role:bg' and 'bg' formats
     const roleTag = tag.startsWith('role:') ? tag.slice(5) : tag;
 
@@ -70,11 +78,9 @@ export function getAssetRoles(asset: GalleryAsset): AssetRole[] {
  * Looks for tags starting with 'npc:' or the special 'player' tag
  */
 export function getAssetCharacters(asset: GalleryAsset): AssetCharacterId[] {
-  if (!asset.tags) return [];
-
   const characters: AssetCharacterId[] = [];
 
-  for (const tag of asset.tags) {
+  for (const tag of getAssetTagValues(asset)) {
     if (tag.startsWith('npc:') || tag === 'player') {
       characters.push(tag);
     }
@@ -88,11 +94,9 @@ export function getAssetCharacters(asset: GalleryAsset): AssetCharacterId[] {
  * Looks for tags starting with 'loc:'
  */
 export function getAssetLocations(asset: GalleryAsset): AssetLocationId[] {
-  if (!asset.tags) return [];
-
   const locations: AssetLocationId[] = [];
 
-  for (const tag of asset.tags) {
+  for (const tag of getAssetTagValues(asset)) {
     if (tag.startsWith('loc:')) {
       locations.push(tag);
     }
@@ -127,9 +131,7 @@ export function hasAssetLocation(asset: GalleryAsset, locationId: AssetLocationI
  * These come from ontology.yaml (e.g., 'cam:pov', 'cam:from_behind')
  */
 export function getAssetCameraTags(asset: GalleryAsset): string[] {
-  if (!asset.tags) return [];
-
-  return asset.tags.filter(tag => tag.startsWith('cam:') || tag.startsWith('camera:'));
+  return getAssetTagValues(asset).filter(tag => tag.startsWith('cam:') || tag.startsWith('camera:'));
 }
 
 /**

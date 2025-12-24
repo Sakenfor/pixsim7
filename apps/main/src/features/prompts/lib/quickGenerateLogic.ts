@@ -73,8 +73,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     let imageUrl = dynamicParams.image_url;
 
     // Only fall back to queue if dynamicParams is empty
-    if (!imageUrl && mainQueueCurrent?.asset.media_type === 'image') {
-      imageUrl = mainQueueCurrent.asset.remote_url;
+    if (!imageUrl && mainQueueCurrent?.asset.mediaType === 'image') {
+      imageUrl = mainQueueCurrent.asset.remoteUrl || mainQueueCurrent.asset.thumbnailUrl || mainQueueCurrent.asset.fileUrl;
       if (imageUrl) {
         context.dynamicParams.image_url = imageUrl;
       }
@@ -101,8 +101,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     let imageUrl = dynamicParams.image_url;
 
     // Only fall back to queue if dynamicParams is empty
-    if (!imageUrl && mainQueueCurrent?.asset.media_type === 'image') {
-      imageUrl = mainQueueCurrent.asset.remote_url;
+    if (!imageUrl && mainQueueCurrent?.asset.mediaType === 'image') {
+      imageUrl = mainQueueCurrent.asset.remoteUrl || mainQueueCurrent.asset.thumbnailUrl || mainQueueCurrent.asset.fileUrl;
       if (imageUrl) {
         context.dynamicParams.image_url = imageUrl;
       }
@@ -124,8 +124,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     const hasOriginalId = Boolean(dynamicParams.original_video_id);
 
     // Only fall back to queue if dynamicParams is empty
-    if (!videoUrl && !hasOriginalId && mainQueueCurrent?.asset.media_type === 'video') {
-      videoUrl = mainQueueCurrent.asset.remote_url;
+    if (!videoUrl && !hasOriginalId && mainQueueCurrent?.asset.mediaType === 'video') {
+      videoUrl = mainQueueCurrent.asset.remoteUrl || mainQueueCurrent.asset.thumbnailUrl || mainQueueCurrent.asset.fileUrl;
       if (videoUrl) {
         context.dynamicParams.video_url = videoUrl;
       }

@@ -41,7 +41,7 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
     } catch (error) {
       console.error('Failed to analyze asset:', error);
       // Fallback to basic suggestions on error
-      const fallbackSuggestions = selectedAsset?.media_type === 'image'
+      const fallbackSuggestions = selectedAsset?.mediaType === 'image'
         ? ['portrait', 'outdoor', 'daytime']
         : ['video', 'cinematic', 'short'];
       setSuggestions(fallbackSuggestions);

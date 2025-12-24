@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import type { AssetResponse } from '@features/assets';
+import type { AssetModel } from '@features/assets';
 import { useGenerationQueueStore } from '../stores/generationQueueStore';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
@@ -36,20 +36,20 @@ export function useMediaGenerationActions() {
   }, [setActiveModule, setOpen]);
 
   // Helper to select asset in selection store
-  const selectAssetFromSummary = useCallback((asset: AssetResponse) => {
+  const selectAssetFromSummary = useCallback((asset: AssetModel) => {
     selectAsset({
       id: asset.id,
       key: `asset-${asset.id}`,
-      name: asset.original_filename || `Asset ${asset.id}`,
-      type: asset.media_type === 'video' ? 'video' : 'image',
-      url: asset.remote_url,
+      name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
+      type: asset.mediaType === 'video' ? 'video' : 'image',
+      url: asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '',
       source: 'gallery',
     });
   }, [selectAsset]);
 
   // Smart queue action - automatically routes to main or multi-asset queue via enqueueAsset
   const createQueueAction = useCallback(
-    (operationType: OperationType) => (asset: AssetResponse) => {
+    (operationType: OperationType) => (asset: AssetModel) => {
       // Use centralized enqueueAsset which handles queue routing automatically
       enqueueAsset({ asset, operationType });
 
@@ -72,7 +72,7 @@ export function useMediaGenerationActions() {
   const queueAddToTransition = useMemo(() => createQueueAction('video_transition'), [createQueueAction]);
 
   const queueAutoGenerate = useCallback(
-    (asset: AssetResponse) => {
+    (asset: AssetModel) => {
       // Auto-generate uses current operation type for routing
       enqueueAsset({ asset, operationType: currentOperationType });
       selectAssetFromSummary(asset);
@@ -83,7 +83,7 @@ export function useMediaGenerationActions() {
 
   // Silent add - just adds to queue without opening control center
   const queueSilentAdd = useCallback(
-    (asset: AssetResponse) => {
+    (asset: AssetModel) => {
       // Silent add uses current operation type for routing
       enqueueAsset({ asset, operationType: currentOperationType });
       selectAssetFromSummary(asset);

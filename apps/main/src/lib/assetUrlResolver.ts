@@ -15,6 +15,54 @@ export interface AssetWithUrls {
   thumbnail_key?: string;
   preview_key?: string;
   ingest_status?: string;
+  // CamelCase (AssetModel) fields
+  remoteUrl?: string | null;
+  thumbnailUrl?: string | null;
+  storedKey?: string | null;
+  thumbnailKey?: string | null;
+  previewKey?: string | null;
+  ingestStatus?: string | null;
+  sync_status?: string | null;
+  syncStatus?: string | null;
+}
+
+function resolveIngestStatus(asset: AssetWithUrls): string | undefined {
+  const ingestStatus = asset.ingestStatus ?? asset.ingest_status ?? undefined;
+  if (ingestStatus) return ingestStatus;
+
+  const syncStatus = asset.syncStatus ?? asset.sync_status ?? undefined;
+  if (!syncStatus) return undefined;
+
+  switch (syncStatus) {
+    case 'downloaded':
+      return 'completed';
+    case 'downloading':
+      return 'processing';
+    case 'error':
+      return 'failed';
+    default:
+      return undefined;
+  }
+}
+
+function resolveStoredKey(asset: AssetWithUrls): string | undefined {
+  return asset.storedKey ?? asset.stored_key ?? undefined;
+}
+
+function resolveThumbnailKey(asset: AssetWithUrls): string | undefined {
+  return asset.thumbnailKey ?? asset.thumbnail_key ?? undefined;
+}
+
+function resolvePreviewKey(asset: AssetWithUrls): string | undefined {
+  return asset.previewKey ?? asset.preview_key ?? undefined;
+}
+
+function resolveRemoteUrl(asset: AssetWithUrls): string | undefined {
+  return asset.remoteUrl ?? asset.remote_url ?? undefined;
+}
+
+function resolveThumbnailUrlRaw(asset: AssetWithUrls): string | undefined {
+  return asset.thumbnailUrl ?? asset.thumbnail_url ?? undefined;
 }
 
 /**
@@ -30,14 +78,16 @@ export interface AssetWithUrls {
 export function resolveAssetUrl(asset: AssetWithUrls): string | undefined {
   const settings = useMediaSettingsStore.getState().serverSettings;
   const preferLocal = settings?.prefer_local_over_provider ?? true;
+  const storedKey = resolveStoredKey(asset);
+  const ingestStatus = resolveIngestStatus(asset);
 
   // Prefer local if enabled and available
-  if (preferLocal && asset.stored_key && asset.ingest_status === 'completed') {
-    return `/api/v1/media/${asset.stored_key}`;
+  if (preferLocal && storedKey && ingestStatus === 'completed') {
+    return `/api/v1/media/${storedKey}`;
   }
 
   // Fall back to remote URL
-  return asset.remote_url;
+  return resolveRemoteUrl(asset);
 }
 
 /**
@@ -52,14 +102,15 @@ export function resolveAssetUrl(asset: AssetWithUrls): string | undefined {
 export function resolveThumbnailUrl(asset: AssetWithUrls): string | undefined {
   const settings = useMediaSettingsStore.getState().serverSettings;
   const preferLocal = settings?.prefer_local_over_provider ?? true;
+  const thumbnailKey = resolveThumbnailKey(asset);
 
   // Prefer local if enabled and available
-  if (preferLocal && asset.thumbnail_key) {
-    return `/api/v1/media/${asset.thumbnail_key}`;
+  if (preferLocal && thumbnailKey) {
+    return `/api/v1/media/${thumbnailKey}`;
   }
 
   // Fall back to provider thumbnail
-  return asset.thumbnail_url;
+  return resolveThumbnailUrlRaw(asset);
 }
 
 /**
@@ -70,10 +121,11 @@ export function resolveThumbnailUrl(asset: AssetWithUrls): string | undefined {
 export function resolvePreviewUrl(asset: AssetWithUrls): string | undefined {
   const settings = useMediaSettingsStore.getState().serverSettings;
   const preferLocal = settings?.prefer_local_over_provider ?? true;
+  const previewKey = resolvePreviewKey(asset);
 
   // Prefer local preview if available
-  if (preferLocal && asset.preview_key) {
-    return `/api/v1/media/${asset.preview_key}`;
+  if (preferLocal && previewKey) {
+    return `/api/v1/media/${previewKey}`;
   }
 
   // Fall back to thumbnail, then remote
@@ -104,22 +156,26 @@ export function useAssetUrls(asset: AssetWithUrls | null | undefined): {
     };
   }
 
-  const hasLocalMain = asset.stored_key && asset.ingest_status === 'completed';
-  const hasLocalThumb = !!asset.thumbnail_key;
+  const storedKey = resolveStoredKey(asset);
+  const thumbnailKey = resolveThumbnailKey(asset);
+  const previewKey = resolvePreviewKey(asset);
+  const ingestStatus = resolveIngestStatus(asset);
+  const hasLocalMain = storedKey && ingestStatus === 'completed';
+  const hasLocalThumb = !!thumbnailKey;
 
   const mainUrl =
     preferLocal && hasLocalMain
-      ? `/api/v1/media/${asset.stored_key}`
-      : asset.remote_url;
+      ? `/api/v1/media/${storedKey}`
+      : resolveRemoteUrl(asset);
 
   const thumbnailUrl =
     preferLocal && hasLocalThumb
-      ? `/api/v1/media/${asset.thumbnail_key}`
-      : asset.thumbnail_url;
+      ? `/api/v1/media/${thumbnailKey}`
+      : resolveThumbnailUrlRaw(asset);
 
   const previewUrl =
-    preferLocal && asset.preview_key
-      ? `/api/v1/media/${asset.preview_key}`
+    preferLocal && previewKey
+      ? `/api/v1/media/${previewKey}`
       : thumbnailUrl || mainUrl;
 
   return {
@@ -134,19 +190,22 @@ export function useAssetUrls(asset: AssetWithUrls | null | undefined): {
  * Check if an asset has been ingested and has local storage.
  */
 export function isAssetIngested(asset: AssetWithUrls): boolean {
-  return asset.ingest_status === 'completed' && !!asset.stored_key;
+  const ingestStatus = resolveIngestStatus(asset);
+  return ingestStatus === 'completed' && !!resolveStoredKey(asset);
 }
 
 /**
  * Check if an asset is currently being ingested.
  */
 export function isAssetIngesting(asset: AssetWithUrls): boolean {
-  return asset.ingest_status === 'processing' || asset.ingest_status === 'pending';
+  const ingestStatus = resolveIngestStatus(asset);
+  return ingestStatus === 'processing' || ingestStatus === 'pending';
 }
 
 /**
  * Check if ingestion failed for an asset.
  */
 export function isAssetIngestFailed(asset: AssetWithUrls): boolean {
-  return asset.ingest_status === 'failed';
+  const ingestStatus = resolveIngestStatus(asset);
+  return ingestStatus === 'failed';
 }

@@ -8,7 +8,7 @@ import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { GalleryToolsPanel } from '@features/gallery';
 import { Button } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@lib/icons';
-import type { GalleryToolContext } from '@features/gallery/lib/core/types';
+import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 import { mediaCardPropsFromAsset } from './shared';
 
@@ -180,7 +180,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 const options = providers
                   .map((p) => `${p.id} (${p.name})`)
                   .join('\n');
-                const defaultId = a.provider_id || providers[0].id;
+                const defaultId = a.providerId || providers[0].id;
                 const input = window.prompt(
                   `Upload to which provider?\n${options}`,
                   defaultId,

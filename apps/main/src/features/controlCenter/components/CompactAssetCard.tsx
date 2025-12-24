@@ -344,7 +344,7 @@ export function CompactAssetCard({
       {/* Footer with basic info */}
       {!hideFooter && (
         <div className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-700">
-          <div className="truncate font-medium">{asset.provider_asset_id || `ID: ${asset.id}`}</div>
+          <div className="truncate font-medium">{asset.providerAssetId || `ID: ${asset.id}`}</div>
           {isLocalOnly && (
             <div className="text-amber-600 dark:text-amber-400 text-[9px]">⚠ Not synced to provider</div>
           )}

@@ -13,10 +13,10 @@ import { Button } from '@pixsim7/shared.ui';
  * Lineage visualization tool component
  */
 function LineageVisualizationTool({ context }: { context: GalleryToolContext }) {
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
   const [showGraph, setShowGraph] = useState(false);
 
-  const handleShowLineage = (assetId: string) => {
+  const handleShowLineage = (assetId: number) => {
     setSelectedAssetId(assetId);
     setShowGraph(true);
   };

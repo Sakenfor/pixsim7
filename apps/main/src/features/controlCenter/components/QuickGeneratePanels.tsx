@@ -31,6 +31,8 @@ import {
   type GenerateActionContext,
 } from '@features/contextHub';
 import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import type { AssetModel } from '@features/assets';
+import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId } from '@features/panels';
 import { useDockviewId } from '@lib/dockview/contextMenu';
 import { resolveAssetMediaTypes } from '@features/assets/lib/assetMediaType';
@@ -45,7 +47,7 @@ export type QuickGenPanelId =
 // Shared context passed to all panels
 export interface QuickGenPanelContext {
   // Asset panel
-  displayAssets: any[];
+  displayAssets: AssetModel[];
   mainQueue: any[];
   mainQueueIndex: number;
   operationType: string;
@@ -76,14 +78,45 @@ export interface QuickGenPanelProps extends IDockviewPanelProps {
 
 const FLEXIBLE_OPERATIONS = new Set<OperationType>(['image_to_video', 'image_to_image']);
 
+export function buildFallbackAsset(asset: SelectedAsset): AssetModel {
+  return {
+    id: asset.id,
+    createdAt: new Date().toISOString(),
+    description: asset.name,
+    durationSec: null,
+    fileSizeBytes: null,
+    fileUrl: asset.url,
+    height: null,
+    isArchived: false,
+    lastUploadStatusByProvider: null,
+    localPath: null,
+    mediaType: asset.type === 'video' ? 'video' : 'image',
+    mimeType: null,
+    previewKey: null,
+    previewUrl: asset.url,
+    providerAssetId: asset.key || String(asset.id),
+    providerId: 'selection',
+    providerStatus: 'unknown',
+    remoteUrl: asset.url,
+    sourceGenerationId: null,
+    storedKey: null,
+    syncStatus: 'remote',
+    tags: undefined,
+    thumbnailKey: null,
+    thumbnailUrl: asset.url,
+    userId: 0,
+    width: null,
+  };
+}
+
 function resolveDisplayAssets(
   operationType: OperationType,
   mainQueue: any[],
   mainQueueIndex: number,
   multiAssetQueue: any[],
-  lastSelectedAsset?: { type: 'image' | 'video'; url: string; name: string },
+  lastSelectedAsset?: SelectedAsset,
   inputMode?: 'single' | 'multi',
-) {
+): AssetModel[] {
   const metadata = OPERATION_METADATA[operationType];
   const isOptionalMultiAsset = metadata?.multiAssetMode === 'optional';
   const isRequiredMultiAsset = metadata?.multiAssetMode === 'required';
@@ -106,15 +139,7 @@ function resolveDisplayAssets(
       (operationType === 'video_extend' && lastSelectedAsset.type === 'video');
 
     if (matchesOperation) {
-      return [{
-        id: 0,
-        provider_asset_id: lastSelectedAsset.name,
-        media_type: lastSelectedAsset.type,
-        thumbnail_url: lastSelectedAsset.url,
-        remote_url: lastSelectedAsset.url,
-        provider_status: 'unknown' as const,
-        description: lastSelectedAsset.name,
-      }];
+      return [buildFallbackAsset(lastSelectedAsset)];
     }
   }
 
@@ -273,7 +298,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
     if (!item?.asset) return [];
     return [{
       id: `${item.asset.id}-${idx}`,
-      thumbnailUrl: item.asset.thumbnail_url,
+      thumbnailUrl: item.asset.thumbnailUrl ?? '',
     }];
   });
 

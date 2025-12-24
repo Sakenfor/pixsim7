@@ -47,7 +47,7 @@ import {
   type GameWorldSummary,
   type NpcSlot2d,
 } from '../lib/api/game';
-import { getAsset, type AssetResponse } from '@features/assets';
+import { getAsset, fromAssetResponse, type AssetModel } from '@features/assets';
 import {
   assignNpcsToSlots,
   parseHotspotAction,
@@ -170,10 +170,10 @@ export function Game2D() {
   const [error, setError] = useState<string | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
-  const [backgroundAsset, setBackgroundAsset] = useState<AssetResponse | null>(null);
+  const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
   const [activeNpcId, setActiveNpcId] = useState<number | null>(null);
   const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
-  const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetResponse | null>(null);
+  const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
   const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
 
@@ -393,8 +393,9 @@ export function Game2D() {
         setBackgroundAsset(null);
         const bgId = (detail.meta && (detail.meta as any).background_asset_id) ?? detail.asset_id;
         if (bgId) {
-          const asset = await getAsset(bgId);
-          if (asset.media_type === 'image' || asset.media_type === 'video') {
+          const response = await getAsset(bgId);
+          const asset = fromAssetResponse(response);
+          if (asset.mediaType === 'image' || asset.mediaType === 'video') {
             setBackgroundAsset(asset);
           }
         }
@@ -690,8 +691,9 @@ export function Game2D() {
 
     (async () => {
       try {
-        const asset = await getAsset(match.asset_id);
-        if (asset.media_type === 'image' || asset.media_type === 'video') {
+        const response = await getAsset(match.asset_id);
+        const asset = fromAssetResponse(response);
+        if (asset.mediaType === 'image' || asset.mediaType === 'video') {
           setNpcPortraitAsset(asset);
           setNpcPortraitAssetId(match.asset_id);
         } else {
@@ -886,24 +888,24 @@ export function Game2D() {
                 )}
               </div>
               {/* Background + clickable overlays */}
-              {backgroundAsset && backgroundAsset.file_url && (
+              {backgroundAsset && backgroundAsset.fileUrl && (
                 <div className="relative w-full max-w-xl aspect-video bg-black/80 rounded overflow-hidden">
-                  {backgroundAsset.media_type === 'image' ? (
-                    <img
-                      src={backgroundAsset.file_url}
-                      alt="location background"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <video
-                      src={backgroundAsset.file_url}
-                      className="w-full h-full object-cover"
-                      muted
-                      loop
-                      autoPlay
-                      playsInline
-                    />
-                  )}
+              {backgroundAsset.mediaType === 'image' ? (
+                <img
+                  src={backgroundAsset.fileUrl ?? undefined}
+                  alt="location background"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <video
+                  src={backgroundAsset.fileUrl ?? undefined}
+                  className="w-full h-full object-cover"
+                  muted
+                  loop
+                  autoPlay
+                  playsInline
+                />
+              )}
                   {/* rect2d overlays from hotspot meta */}
                   {locationDetail.hotspots.map((h) => {
                     const rect = (h.meta && (h.meta as any).rect2d) || null;
@@ -1011,17 +1013,17 @@ export function Game2D() {
       {isSceneOpen && currentScene && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="absolute top-4 right-4 flex items-center gap-2">
-            {activeNpcId && npcPortraitAsset && npcPortraitAsset.file_url && (
+            {activeNpcId && npcPortraitAsset && npcPortraitAsset.fileUrl && (
               <Panel className="flex items-center gap-2 py-1 px-2 bg-black/80 border border-neutral-700">
-                {npcPortraitAsset.media_type === 'image' ? (
+                {npcPortraitAsset.mediaType === 'image' ? (
                   <img
-                    src={npcPortraitAsset.file_url}
+                    src={npcPortraitAsset.fileUrl}
                     alt="NPC portrait"
                     className="w-12 h-12 object-cover rounded"
                   />
                 ) : (
                   <video
-                    src={npcPortraitAsset.file_url}
+                    src={npcPortraitAsset.fileUrl}
                     className="w-12 h-12 object-cover rounded"
                     muted
                     loop

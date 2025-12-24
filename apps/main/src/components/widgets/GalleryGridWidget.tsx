@@ -7,6 +7,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { useGallerySurfaceController } from '@features/gallery';
+import { mediaCardPropsFromAsset } from '@features/assets/components/shared';
 import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import type { WidgetProps, WidgetDefinition } from '@lib/ui/composer/widgetRegistry';
@@ -61,20 +62,7 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
     return controller.assets.map((asset) => (
       <MediaCard
         key={asset.id}
-        id={asset.id}
-        mediaType={asset.media_type}
-        providerId={asset.provider_id}
-        providerAssetId={asset.provider_asset_id}
-        thumbUrl={asset.thumbnail_url}
-        previewUrl={asset.preview_url}
-        remoteUrl={asset.remote_url}
-        width={asset.width}
-        height={asset.height}
-        durationSec={asset.duration_sec}
-        tags={asset.tags}
-        description={asset.description}
-        createdAt={asset.created_at}
-        providerStatus={asset.provider_status}
+        {...mediaCardPropsFromAsset(asset)}
         onOpen={() => navigate(`/assets/${asset.id}`)}
         actions={{
           ...controller.getAssetActions(asset),
@@ -82,6 +70,8 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
           // onShowMetadata removed - was duplicate of onOpenDetails
         }}
         badgeConfig={badgeConfig}
+        contextMenuAsset={asset}
+        contextMenuSelection={controller.selectedAssets}
       />
     ));
   };

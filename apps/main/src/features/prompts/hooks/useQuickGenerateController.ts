@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useGenerationsStore, useGenerationQueueStore } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/controlCenter/lib/api';
-import { extractFrame } from '@features/assets';
+import { extractFrame, fromAssetResponse } from '@features/assets';
 import { logEvent } from '@lib/utils/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';
@@ -97,6 +97,8 @@ export function useQuickGenerateController() {
         ...overrideParams,
       };
       let modifiedImageUrls = [...bindings.imageUrls];
+      const resolveAssetUrl = (asset: { remoteUrl?: string | null; thumbnailUrl?: string | null; fileUrl?: string | null }) =>
+        asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '';
 
       // Get current queue state directly from store to avoid stale React hook values
       // This is critical when assets are enqueued right before generation
@@ -111,19 +113,19 @@ export function useQuickGenerateController() {
       if (!hasOverrideInput && currentQueueItem) {
         const asset = currentQueueItem.asset;
         if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-          if (asset.media_type === 'image') {
+          if (asset.mediaType === 'image') {
             modifiedDynamicParams = {
               ...modifiedDynamicParams,
-              image_url: asset.remote_url,
+              image_url: resolveAssetUrl(asset),
             };
             delete modifiedDynamicParams.video_url;
             delete modifiedDynamicParams.original_video_id;
           }
         } else if (operationType === 'video_extend') {
-          if (asset.media_type === 'video') {
+          if (asset.mediaType === 'video') {
             modifiedDynamicParams = {
               ...modifiedDynamicParams,
-              video_url: asset.remote_url,
+              video_url: resolveAssetUrl(asset),
             };
             delete modifiedDynamicParams.image_url;
           }
@@ -132,13 +134,13 @@ export function useQuickGenerateController() {
 
       // For image_to_video: extract frame if video has locked timestamp
       if (operationType === 'image_to_video' && currentQueueItem) {
-        if (currentQueueItem.lockedTimestamp !== undefined && currentQueueItem.asset.media_type === 'video') {
-          const extractedFrame = await extractFrame({
+        if (currentQueueItem.lockedTimestamp !== undefined && currentQueueItem.asset.mediaType === 'video') {
+          const extractedFrame = fromAssetResponse(await extractFrame({
             video_asset_id: currentQueueItem.asset.id,
             timestamp: currentQueueItem.lockedTimestamp,
-          });
+          }));
           // Use extracted frame URL instead of video URL
-          modifiedDynamicParams.image_url = extractedFrame.remote_url || extractedFrame.thumbnail_url;
+          modifiedDynamicParams.image_url = resolveAssetUrl(extractedFrame);
         }
       }
 
@@ -147,15 +149,15 @@ export function useQuickGenerateController() {
       if (operationType === 'video_transition' && currentMultiAssetQueue.length > 0) {
         const extractedUrls: string[] = [];
         for (const queueItem of currentMultiAssetQueue) {
-          if (queueItem.lockedTimestamp !== undefined && queueItem.asset.media_type === 'video') {
-            const extractedFrame = await extractFrame({
+          if (queueItem.lockedTimestamp !== undefined && queueItem.asset.mediaType === 'video') {
+            const extractedFrame = fromAssetResponse(await extractFrame({
               video_asset_id: queueItem.asset.id,
               timestamp: queueItem.lockedTimestamp,
-            });
-            extractedUrls.push(extractedFrame.remote_url || extractedFrame.thumbnail_url || '');
+            }));
+            extractedUrls.push(resolveAssetUrl(extractedFrame));
           } else {
             // Use original URL (for images or videos without locked timestamp)
-            extractedUrls.push(queueItem.asset.remote_url);
+            extractedUrls.push(resolveAssetUrl(queueItem.asset));
           }
         }
         modifiedImageUrls = extractedUrls;

@@ -303,23 +303,60 @@ export function NodeTypeTestHarness({ project }: { project: NodeTypePluginProjec
 export function GalleryToolTestHarness({ project }: { project: GalleryToolPluginProject }) {
   const [assets] = useState([
     {
-      id: '1',
-      media_type: 'image',
-      provider_id: 'test',
-      provider_asset_id: 'asset-1',
-      thumbnail_url: 'https://via.placeholder.com/150',
-      tags: ['test', 'sample'],
+      id: 1,
+      createdAt: new Date().toISOString(),
       description: 'Test asset 1',
-      created_at: new Date().toISOString(),
+      durationSec: null,
+      fileSizeBytes: null,
+      fileUrl: null,
+      height: null,
+      isArchived: false,
+      lastUploadStatusByProvider: null,
+      localPath: null,
+      mediaType: 'image' as const,
+      mimeType: null,
+      previewKey: null,
+      previewUrl: null,
+      providerAssetId: 'asset-1',
+      providerId: 'test',
+      providerStatus: 'ok' as const,
+      remoteUrl: null,
+      sourceGenerationId: null,
+      storedKey: null,
+      syncStatus: 'remote' as const,
+      tags: [],
+      thumbnailKey: null,
+      thumbnailUrl: 'https://via.placeholder.com/150',
+      userId: 0,
+      width: null,
     },
     {
-      id: '2',
-      media_type: 'video',
-      provider_id: 'test',
-      provider_asset_id: 'asset-2',
-      tags: ['test'],
+      id: 2,
+      createdAt: new Date().toISOString(),
       description: 'Test asset 2',
-      created_at: new Date().toISOString(),
+      durationSec: null,
+      fileSizeBytes: null,
+      fileUrl: null,
+      height: null,
+      isArchived: false,
+      lastUploadStatusByProvider: null,
+      localPath: null,
+      mediaType: 'video' as const,
+      mimeType: null,
+      previewKey: null,
+      previewUrl: null,
+      providerAssetId: 'asset-2',
+      providerId: 'test',
+      providerStatus: 'ok' as const,
+      remoteUrl: null,
+      sourceGenerationId: null,
+      storedKey: null,
+      syncStatus: 'remote' as const,
+      tags: [],
+      thumbnailKey: null,
+      thumbnailUrl: null,
+      userId: 0,
+      width: null,
     },
   ]);
 
@@ -375,7 +412,7 @@ export function GalleryToolTestHarness({ project }: { project: GalleryToolPlugin
         <div className="space-y-2">
           {assets.map((asset) => (
             <div key={asset.id} className="text-sm text-neutral-700 dark:text-neutral-300">
-              <span className="font-mono">{asset.id}</span> - {asset.media_type} ({asset.description})
+              <span className="font-mono">{asset.id}</span> - {asset.mediaType} ({asset.description})
             </div>
           ))}
         </div>
