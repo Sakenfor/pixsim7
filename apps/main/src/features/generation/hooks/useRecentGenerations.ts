@@ -3,10 +3,14 @@
  *
  * Fetches recent generations from the API and populates the store.
  * Shared between GenerationsPanel and GenerationHistoryButton.
+ *
+ * Maps API responses (GenerationResponse) to internal models (GenerationModel)
+ * at the boundary before storing.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { listGenerations } from '@lib/api/generations';
 import { useGenerationsStore } from '../stores/generationsStore';
+import { fromGenerationResponse } from '../models';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 export interface UseRecentGenerationsOptions {
@@ -49,10 +53,13 @@ export function useRecentGenerations(
       const response = await listGenerations({ limit, offset: 0 });
 
       if (mountedRef.current) {
-        // Batch update store with all generations
+        // Map API responses to internal models and batch update store
         useGenerationsStore.setState((state) => {
           const newMap = new Map(state.generations);
-          response.generations.forEach((gen) => newMap.set(gen.id, gen));
+          response.generations.forEach((gen) => {
+            const model = fromGenerationResponse(gen);
+            newMap.set(model.id, model);
+          });
           return { generations: newMap };
         });
 

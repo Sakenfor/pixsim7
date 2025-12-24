@@ -16,8 +16,8 @@ import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
-import { useGenerationWorkbench } from '@features/generation';
-import { getGeneration, type GenerationResponse } from '@lib/api/generations';
+import { useGenerationWorkbench, fromGenerationResponse, type GenerationModel } from '@features/generation';
+import { getGeneration } from '@lib/api/generations';
 import type { ViewerAsset } from '@features/assets';
 import type { OperationType } from '@/types/operations';
 import {
@@ -47,7 +47,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   const [settingsMode, setSettingsMode] = useState<SettingsMode>('controlCenter');
 
   // Asset settings state (local, ephemeral)
-  const [assetGeneration, setAssetGeneration] = useState<GenerationResponse | null>(null);
+  const [assetGeneration, setAssetGeneration] = useState<GenerationModel | null>(null);
   const [assetPrompt, setAssetPrompt] = useState('');
   const [assetLoading, setAssetLoading] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
@@ -82,9 +82,10 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     setAssetError(null);
 
     try {
-      const generation = await getGeneration(asset.sourceGenerationId);
+      const response = await getGeneration(asset.sourceGenerationId);
+      const generation = fromGenerationResponse(response);
       setAssetGeneration(generation);
-      setAssetPrompt(generation.final_prompt || '');
+      setAssetPrompt(generation.finalPrompt || '');
     } catch (err) {
       console.error('Failed to fetch generation:', err);
       setAssetError('Failed to load generation settings');
@@ -115,7 +116,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
   // Determine which prompt/provider to use based on mode
   const activePrompt = settingsMode === 'asset' ? assetPrompt : ccPrompt;
   const setActivePrompt = settingsMode === 'asset' ? setAssetPrompt : ccSetPrompt;
-  const activeProviderId = settingsMode === 'asset' ? assetGeneration?.provider_id : ccProviderId;
+  const activeProviderId = settingsMode === 'asset' ? assetGeneration?.providerId : ccProviderId;
   const activeError = settingsMode === 'asset' ? assetError : ccError;
 
   const maxChars = resolvePromptLimitForModel(
@@ -189,14 +190,14 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     if (settingsMode === 'asset' && assetGeneration) {
       // In asset mode: load settings to control center, then generate
       // This ensures the generation uses the tweaked settings
-      if (assetGeneration.operation_type) {
-        ccSetOperationType(assetGeneration.operation_type as OperationType);
+      if (assetGeneration.operationType) {
+        ccSetOperationType(assetGeneration.operationType as OperationType);
       }
-      if (assetGeneration.provider_id) {
-        ccSetProvider(assetGeneration.provider_id);
+      if (assetGeneration.providerId) {
+        ccSetProvider(assetGeneration.providerId);
       }
       ccSetPrompt(assetPrompt);
-      const params = assetGeneration.canonical_params || assetGeneration.raw_params;
+      const params = assetGeneration.canonicalParams || assetGeneration.rawParams;
       if (params) {
         ccSetPresetParams(params);
       }

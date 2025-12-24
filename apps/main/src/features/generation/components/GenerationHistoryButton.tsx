@@ -4,9 +4,9 @@ import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@lib/icons';
 import { useGenerationsStore } from '../stores/generationsStore';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
-import type { GenerationResponse } from '@lib/api/generations';
+import type { GenerationStatus } from '../models';
 
-const STATUS_BADGE: Record<GenerationResponse['status'] | 'default', string> = {
+const STATUS_BADGE: Record<GenerationStatus | 'default', string> = {
   pending:
     'bg-yellow-50/80 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800',
   queued:
@@ -37,8 +37,8 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
     const entries = Array.from(generations.values());
     return entries
       .sort((a, b) => {
-        const aTime = new Date(a.updated_at || a.created_at || '').getTime();
-        const bTime = new Date(b.updated_at || b.created_at || '').getTime();
+        const aTime = new Date(a.updatedAt || a.createdAt || '').getTime();
+        const bTime = new Date(b.updatedAt || b.createdAt || '').getTime();
         return bTime - aTime;
       })
       .slice(0, HISTORY_LIMIT);
@@ -78,16 +78,18 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
         ) : (
           <div className="flex flex-col gap-1.5">
             {generationArray.map((generation) => {
+              const rawParams = generation.rawParams as Record<string, any> | undefined;
+              const canonicalParams = generation.canonicalParams as Record<string, any> | undefined;
               const prompt =
-                generation.final_prompt ||
-                generation.raw_params?.prompt ||
-                generation.canonical_params?.prompt ||
+                generation.finalPrompt ||
+                rawParams?.prompt ||
+                canonicalParams?.prompt ||
                 '';
               const label =
                 prompt.trim().length > 0
                   ? prompt.trim()
-                  : `${generation.provider_id} - ${generation.operation_type}`;
-              const timestamp = generation.updated_at || generation.created_at;
+                  : `${generation.providerId} - ${generation.operationType}`;
+              const timestamp = generation.updatedAt || generation.createdAt;
               const timeLabel = timestamp
                 ? new Date(timestamp).toLocaleTimeString([], {
                     hour: '2-digit',
@@ -103,7 +105,7 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
                 >
                   <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400">
                     <span className="truncate">
-                      #{generation.id} · {generation.provider_id}
+                      #{generation.id} · {generation.providerId}
                     </span>
                     {timeLabel && <span>{timeLabel}</span>}
                   </div>
@@ -111,7 +113,7 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
                     {label}
                   </div>
                   <div className="flex items-center justify-between mt-1 text-[11px] text-neutral-400 dark:text-neutral-500">
-                    <span>{generation.operation_type}</span>
+                    <span>{generation.operationType}</span>
                     <span
                       className={clsx(
                         'text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full',

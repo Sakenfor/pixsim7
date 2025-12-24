@@ -1,10 +1,9 @@
 import { useCallback } from "react";
 import type { IDockviewPanelProps } from "dockview-core";
 import { PromptInput } from "@pixsim7/shared.ui";
-import { GenerationSettingsPanel } from "@features/generation";
+import { GenerationSettingsPanel, type GenerationModel } from "@features/generation";
 import { Icon } from "@lib/icons";
 import type { ViewerAsset } from "@features/assets";
-import type { GenerationResponse } from "@lib/api/generations";
 import {
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
@@ -31,7 +30,7 @@ export interface ViewerQuickGenContext {
   settingsMode: ViewerQuickGenSettingsMode;
   setSettingsMode: (mode: ViewerQuickGenSettingsMode) => void;
   hasSourceGeneration: boolean;
-  assetGeneration: GenerationResponse | null;
+  assetGeneration: GenerationModel | null;
   handleGenerate: () => void;
   handleKeyDown: (event: React.KeyboardEvent) => void;
   canGenerate: boolean;
@@ -228,7 +227,7 @@ export function ViewerQuickGenSettingsPanel({ context }: PanelProps) {
 
       {settingsMode === "asset" && assetGeneration && !assetLoading && (
         <div className="text-[10px] text-neutral-500 dark:text-neutral-400 px-1">
-          Original: {assetGeneration.provider_id} × {assetGeneration.operation_type}
+          Original: {assetGeneration.providerId} × {assetGeneration.operationType}
         </div>
       )}
 

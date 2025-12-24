@@ -3,9 +3,11 @@
  *
  * Maps generation IDs to asset IDs and provides helpers for
  * surfacing generation status in media galleries.
+ *
+ * Uses internal GenerationModel (camelCase) - API responses should be
+ * mapped before calling these functions.
  */
-import type { GenerationResponse } from '../api/generations';
-import { isGenerationActive, isGenerationTerminal, type GenerationStatus } from '@features/generation';
+import { isGenerationActive, isGenerationTerminal, type GenerationModel, type GenerationStatus } from '@features/generation';
 import { getStatusConfig, getStatusTextColor } from './generationStatusConfig';
 
 export interface GenerationStatusInfo {
@@ -24,24 +26,24 @@ export interface GenerationStatusInfo {
  */
 export function mapAssetToGeneration(
   assetId: number,
-  generations: GenerationResponse[]
+  generations: GenerationModel[]
 ): GenerationStatusInfo | undefined {
   // Find the most recent generation for this asset
   const gen = generations
-    .filter(g => g.asset_id === assetId)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    .filter(g => g.asset?.id === assetId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
   if (!gen) return undefined;
 
   return {
     generationId: gen.id,
     status: gen.status,
-    providerId: gen.provider_id,
-    operationType: gen.operation_type,
-    errorMessage: gen.error_message,
-    startedAt: gen.started_at,
-    completedAt: gen.completed_at,
-    retryCount: gen.retry_count,
+    providerId: gen.providerId,
+    operationType: gen.operationType,
+    errorMessage: gen.errorMessage,
+    startedAt: gen.startedAt,
+    completedAt: gen.completedAt,
+    retryCount: gen.retryCount,
   };
 }
 
@@ -49,13 +51,13 @@ export function mapAssetToGeneration(
  * Get all assets that have active (non-terminal) generations
  */
 export function getAssetsWithActiveGenerations(
-  generations: GenerationResponse[]
+  generations: GenerationModel[]
 ): Set<number> {
   const assetIds = new Set<number>();
 
   for (const gen of generations) {
-    if (gen.asset_id && isGenerationActive(gen.status)) {
-      assetIds.add(gen.asset_id);
+    if (gen.asset?.id && isGenerationActive(gen.status)) {
+      assetIds.add(gen.asset.id);
     }
   }
 
@@ -66,13 +68,13 @@ export function getAssetsWithActiveGenerations(
  * Get all assets that have failed generations
  */
 export function getAssetsWithFailedGenerations(
-  generations: GenerationResponse[]
+  generations: GenerationModel[]
 ): Set<number> {
   const assetIds = new Set<number>();
 
   for (const gen of generations) {
-    if (gen.asset_id && gen.status === 'failed') {
-      assetIds.add(gen.asset_id);
+    if (gen.asset?.id && gen.status === 'failed') {
+      assetIds.add(gen.asset.id);
     }
   }
 

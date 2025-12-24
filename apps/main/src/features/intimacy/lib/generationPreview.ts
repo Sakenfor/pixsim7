@@ -18,6 +18,7 @@ import type {
 import type { SimulatedRelationshipState } from './gateChecking';
 import { deriveSocialContext } from './socialContextDerivation';
 import { createGeneration, getGeneration, type GenerationResponse } from '../api/generations';
+import { fromGenerationResponse, type GenerationModel } from '@features/generation';
 import { normalizeProviderParams } from '@features/generation/normalizeProviderParams';
 
 /**
@@ -158,8 +159,9 @@ export async function generateIntimacyPreview(
     description: `Preview generation for intimacy scene with ${socialContext.intimacyBand} intimacy`,
   };
 
-  // Create generation
-  const generation = await createGeneration(genRequest);
+  // Create generation and map to internal model
+  const response = await createGeneration(genRequest);
+  const generation = fromGenerationResponse(response);
 
   // Build initial result
   let result: IntimacyPreviewResult = {
@@ -167,7 +169,7 @@ export async function generateIntimacyPreview(
     socialContext,
     status: generation.status,
     metadata: {
-      provider: generation.provider_id,
+      provider: generation.providerId,
     },
   };
 
@@ -192,8 +194,9 @@ export async function generateIntimacyPreview(
     // Wait for polling interval
     await new Promise((resolve) => setTimeout(resolve, interval));
 
-    // Fetch updated status
-    const updated = await getGeneration(generation.id);
+    // Fetch updated status and map to internal model
+    const updatedResponse = await getGeneration(generation.id);
+    const updated = fromGenerationResponse(updatedResponse);
     result = mapGenerationToResult(updated, socialContext);
 
     // Notify status update
@@ -265,8 +268,9 @@ export async function startIntimacyPreview(
     description: `Preview generation for intimacy scene`,
   };
 
-  // Create generation
-  const generation = await createGeneration(genRequest);
+  // Create generation and map to internal model
+  const response = await createGeneration(genRequest);
+  const generation = fromGenerationResponse(response);
 
   return {
     generationId: generation.id,
@@ -287,15 +291,16 @@ export async function getPreviewStatus(
   generationId: number,
   socialContext: GenerationSocialContext
 ): Promise<IntimacyPreviewResult> {
-  const generation = await getGeneration(generationId);
+  const response = await getGeneration(generationId);
+  const generation = fromGenerationResponse(response);
   return mapGenerationToResult(generation, socialContext);
 }
 
 /**
- * Map generation response to preview result
+ * Map generation model to preview result
  */
 function mapGenerationToResult(
-  generation: GenerationResponse,
+  generation: GenerationModel,
   socialContext: GenerationSocialContext
 ): IntimacyPreviewResult {
   const result: IntimacyPreviewResult = {
@@ -303,22 +308,22 @@ function mapGenerationToResult(
     socialContext,
     status: generation.status,
     metadata: {
-      startedAt: generation.started_at || undefined,
-      completedAt: generation.completed_at || undefined,
-      provider: generation.provider_id,
+      startedAt: generation.startedAt || undefined,
+      completedAt: generation.completedAt || undefined,
+      provider: generation.providerId,
     },
   };
 
   // Add duration if completed
-  if (generation.started_at && generation.completed_at) {
-    const start = new Date(generation.started_at).getTime();
-    const end = new Date(generation.completed_at).getTime();
+  if (generation.startedAt && generation.completedAt) {
+    const start = new Date(generation.startedAt).getTime();
+    const end = new Date(generation.completedAt).getTime();
     result.metadata!.duration = end - start;
   }
 
   // Add error if failed
   if (generation.status === 'failed') {
-    result.error = generation.error_message || 'Generation failed';
+    result.error = generation.errorMessage || 'Generation failed';
   }
 
   // Add content if completed (mocked for now)

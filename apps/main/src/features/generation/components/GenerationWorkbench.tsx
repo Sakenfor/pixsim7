@@ -28,8 +28,7 @@ import React from 'react';
 import clsx from 'clsx';
 import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';
 import { ThemedIcon } from '@lib/icons';
-import { useGenerationsStore } from '@features/generation';
-import type { GenerationResponse } from '@lib/api/generations';
+import { useGenerationsStore, type GenerationModel } from '@features/generation';
 
 /**
  * Context provided to render props for accessing workbench state.
@@ -42,7 +41,7 @@ export interface WorkbenchRenderContext {
   /** Current generation ID being tracked */
   generationId: number | null;
   /** Hook into stored generation entries */
-  generations: Map<number, GenerationResponse>;
+  generations: Map<number, GenerationModel>;
 }
 
 /**

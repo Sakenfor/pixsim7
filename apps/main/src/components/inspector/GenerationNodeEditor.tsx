@@ -5,7 +5,8 @@ import type { SceneRef } from '@lib/registries';
 import { useToast } from '@pixsim7/shared.ui';
 import { useGraphStore } from '@features/graph';
 import { getValidationSummary } from '@pixsim7/game.engine';
-import { createGeneration, type GenerationResponse } from '@lib/api/generations';
+import { createGeneration } from '@lib/api/generations';
+import { fromGenerationResponse, type GenerationModel } from '@features/generation';
 import { useGenerationNodeForm } from './useGenerationNodeForm';
 
 interface GenerationNodeEditorProps {
@@ -29,7 +30,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
 
   // Test generation state (UI-only, not part of form)
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<GenerationResponse | null>(null);
+  const [testResult, setTestResult] = useState<GenerationModel | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
   // Auto-expand validation panel if there are errors
@@ -83,8 +84,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           }
         : undefined;
 
-      // Use canonical generations API
-      const result = await createGeneration({
+      // Use canonical generations API and map to internal model
+      const response = await createGeneration({
         config,
         provider_id: 'pixverse',
         from_scene: fromScene,
@@ -93,6 +94,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         description: 'Test generation from editor',
         priority: 5, // Medium priority for test generations
       });
+      const result = fromGenerationResponse(response);
 
       setTestResult(result);
       toast.success(
@@ -546,27 +548,27 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
               </div>
 
               <div className="text-xs">
-                <strong>Provider:</strong> {testResult.provider_id}
+                <strong>Provider:</strong> {testResult.providerId}
               </div>
 
               <div className="text-xs">
-                <strong>Operation:</strong> {testResult.operation_type}
+                <strong>Operation:</strong> {testResult.operationType}
               </div>
 
-              {testResult.error_message && (
+              {testResult.errorMessage && (
                 <div className="text-xs text-red-600 dark:text-red-400">
-                  <strong>Error:</strong> {testResult.error_message}
+                  <strong>Error:</strong> {testResult.errorMessage}
                 </div>
               )}
 
-              {testResult.asset_id && (
+              {testResult.asset && (
                 <div className="text-xs text-green-600 dark:text-green-400">
-                  <strong>Asset ID:</strong> {testResult.asset_id}
+                  <strong>Asset ID:</strong> {testResult.asset.id}
                 </div>
               )}
 
               <div className="text-xs text-neutral-500">
-                <strong>Created:</strong> {new Date(testResult.created_at).toLocaleString()}
+                <strong>Created:</strong> {new Date(testResult.createdAt).toLocaleString()}
               </div>
             </div>
           </div>

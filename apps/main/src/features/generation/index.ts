@@ -5,6 +5,9 @@
  * and WebSocket-based generation status tracking.
  */
 
+// Models - Internal camelCase types
+export * from './models';
+
 // Components
 export { GenerationWorkbench } from './components/GenerationWorkbench';
 export type {

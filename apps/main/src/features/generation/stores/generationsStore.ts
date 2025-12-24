@@ -3,23 +3,28 @@
  *
  * Zustand store for managing generation state.
  * Replaces the legacy jobsStore.
+ *
+ * Uses internal GenerationModel (camelCase) - API responses are mapped
+ * at the boundary before being stored.
  */
 import { create } from 'zustand';
-import type { GenerationResponse } from '@lib/api/generations';
+import type { GenerationModel, GenerationStatus } from '../models';
 
 export interface GenerationsState {
   // Generations map (by ID)
-  generations: Map<number, GenerationResponse>;
+  generations: Map<number, GenerationModel>;
 
   // Currently watched generation (for polling)
   watchingGenerationId: number | null;
 
   // Actions
-  addOrUpdate: (generation: GenerationResponse) => void;
+  addOrUpdate: (generation: GenerationModel) => void;
   remove: (id: number) => void;
   setWatchingGeneration: (id: number | null) => void;
   clear: () => void;
 }
+
+export type { GenerationStatus };
 
 export const useGenerationsStore = create<GenerationsState>((set) => ({
   generations: new Map(),
@@ -70,11 +75,10 @@ export const generationsSelectors = {
 
 // ============================================================================
 // Generation Status Helpers
-// Centralized status checking - import these instead of inline checks
+// Re-exported from models for backwards compatibility
 // ============================================================================
 
-/** All possible generation statuses */
-export type GenerationStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+import { isTerminalStatus, isActiveStatus } from '../models';
 
 /** Statuses that indicate the generation is still in progress */
 export const ACTIVE_STATUSES: readonly GenerationStatus[] = ['pending', 'queued', 'processing'] as const;
@@ -83,11 +87,7 @@ export const ACTIVE_STATUSES: readonly GenerationStatus[] = ['pending', 'queued'
 export const TERMINAL_STATUSES: readonly GenerationStatus[] = ['completed', 'failed', 'cancelled'] as const;
 
 /** Check if generation status is terminal (won't change anymore) */
-export function isGenerationTerminal(status: string): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
-}
+export const isGenerationTerminal = isTerminalStatus;
 
 /** Check if generation status is active (still in progress) */
-export function isGenerationActive(status: string): boolean {
-  return status === 'pending' || status === 'queued' || status === 'processing';
-}
+export const isGenerationActive = isActiveStatus;

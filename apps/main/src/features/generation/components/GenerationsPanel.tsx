@@ -8,7 +8,8 @@ import { useMemo, useState, useCallback } from 'react';
 import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
-import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@lib/api/generations';
+import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
+import { fromGenerationResponse, type GenerationModel } from '../models';
 import { Icons, ThemedIcon } from '@lib/icons';
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
@@ -42,7 +43,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
   // Get unique providers
   const providers = useMemo(() => {
-    const providerSet = new Set(allGenerations.map(g => g.provider_id));
+    const providerSet = new Set(allGenerations.map(g => g.providerId));
     return Array.from(providerSet).sort();
   }, [allGenerations]);
 
@@ -61,22 +62,22 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
     // Provider filter
     if (providerFilter !== 'all') {
-      filtered = filtered.filter(g => g.provider_id === providerFilter);
+      filtered = filtered.filter(g => g.providerId === providerFilter);
     }
 
     // Search filter (search in prompt)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(g =>
-        g.final_prompt?.toLowerCase().includes(query) ||
+        g.finalPrompt?.toLowerCase().includes(query) ||
         g.name?.toLowerCase().includes(query) ||
         g.description?.toLowerCase().includes(query)
       );
     }
 
-    // Sort by created_at descending (most recent first)
+    // Sort by createdAt descending (most recent first)
     return filtered.sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }, [allGenerations, statusFilter, providerFilter, searchQuery]);
 
@@ -93,8 +94,8 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const handleRetry = useCallback(async (id: number) => {
     try {
       const newGeneration = await retryGeneration(id);
-      // Add the new generation to the store
-      useGenerationsStore.getState().addOrUpdate(newGeneration);
+      // Map at boundary and add to store
+      useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(newGeneration));
     } catch (error) {
       console.error('Failed to retry generation:', error);
       alert('Failed to retry generation');
@@ -104,8 +105,8 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const handleCancel = useCallback(async (id: number) => {
     try {
       const updated = await cancelGeneration(id);
-      // Update store with cancelled status
-      useGenerationsStore.getState().addOrUpdate(updated);
+      // Map at boundary and update store
+      useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(updated));
     } catch (error) {
       console.error('Failed to cancel generation:', error);
       alert('Failed to cancel generation');
@@ -133,26 +134,26 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   }, [onOpenAsset]);
 
   // Load a generation's settings into Quick Generate for editing and retry
-  const handleLoadToQuickGen = useCallback((generation: GenerationResponse) => {
+  const handleLoadToQuickGen = useCallback((generation: GenerationModel) => {
     const store = useControlCenterStore.getState();
 
     // Set operation type
-    if (generation.operation_type) {
-      store.setOperationType(generation.operation_type as any);
+    if (generation.operationType) {
+      store.setOperationType(generation.operationType as any);
     }
 
     // Set provider
-    if (generation.provider_id) {
-      store.setProvider(generation.provider_id);
+    if (generation.providerId) {
+      store.setProvider(generation.providerId);
     }
 
     // Set prompt
-    if (generation.final_prompt) {
-      store.setPrompt(generation.final_prompt);
+    if (generation.finalPrompt) {
+      store.setPrompt(generation.finalPrompt);
     }
 
-    // Set params from raw_params or canonical_params
-    const params = generation.canonical_params || generation.raw_params;
+    // Set params from rawParams or canonicalParams
+    const params = generation.canonicalParams || generation.rawParams;
     if (params) {
       store.setPresetParams(params);
     }
@@ -282,12 +283,12 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 }
 
 interface GenerationItemProps {
-  generation: GenerationResponse;
+  generation: GenerationModel;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
   onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
-  onLoadToQuickGen: (generation: GenerationResponse) => void;
+  onLoadToQuickGen: (generation: GenerationModel) => void;
 }
 
 function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
@@ -308,7 +309,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
     setIsRefreshing(true);
     try {
       const updated = await getGeneration(generation.id);
-      useGenerationsStore.getState().addOrUpdate(updated);
+      useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(updated));
     } catch (error) {
       console.error('Failed to refresh generation:', error);
     } finally {
@@ -347,16 +348,16 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
   }, [generation.id, onDelete]);
 
   // Truncate prompt
-  const promptPreview = generation.final_prompt
-    ? generation.final_prompt.length > 80
-      ? generation.final_prompt.substring(0, 80) + '...'
-      : generation.final_prompt
+  const promptPreview = generation.finalPrompt
+    ? generation.finalPrompt.length > 80
+      ? generation.finalPrompt.substring(0, 80) + '...'
+      : generation.finalPrompt
     : generation.name || 'Untitled generation';
 
   // Format time
   const timeAgo = useMemo(() => {
     const now = Date.now();
-    const created = new Date(generation.created_at).getTime();
+    const created = new Date(generation.createdAt).getTime();
     const diff = now - created;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
@@ -366,7 +367,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
     if (hours > 0) return `${hours}h ago`;
     if (minutes > 0) return `${minutes}m ago`;
     return 'just now';
-  }, [generation.created_at]);
+  }, [generation.createdAt]);
 
   return (
     <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors">
@@ -386,33 +387,33 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
 
           {/* Metadata row */}
           <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 flex-wrap">
-            <span className="font-medium">{generation.provider_id}</span>
+            <span className="font-medium">{generation.providerId}</span>
             <span className="text-neutral-400 dark:text-neutral-600">•</span>
-            <span>{generation.operation_type}</span>
-            {generation.account_email && (
+            <span>{generation.operationType}</span>
+            {generation.accountEmail && (
               <>
                 <span className="text-neutral-400 dark:text-neutral-600">•</span>
-                <span className="text-blue-600 dark:text-blue-400 font-medium" title={`Account: ${generation.account_email}`}>
-                  {generation.account_email.split('@')[0]}
+                <span className="text-blue-600 dark:text-blue-400 font-medium" title={`Account: ${generation.accountEmail}`}>
+                  {generation.accountEmail.split('@')[0]}
                 </span>
               </>
             )}
             <span className="text-neutral-400 dark:text-neutral-600">•</span>
             <span>{timeAgo}</span>
-            {generation.retry_count > 0 && (
+            {generation.retryCount > 0 && (
               <>
                 <span className="text-neutral-400 dark:text-neutral-600">•</span>
                 <span className="text-amber-600 dark:text-amber-400">
-                  {generation.retry_count} {generation.retry_count === 1 ? 'retry' : 'retries'}
+                  {generation.retryCount} {generation.retryCount === 1 ? 'retry' : 'retries'}
                 </span>
               </>
             )}
           </div>
 
           {/* Error message (when collapsed) - only show for failed status */}
-          {!isExpanded && generation.status === 'failed' && generation.error_message && (
+          {!isExpanded && generation.status === 'failed' && generation.errorMessage && (
             <p className="text-xs text-red-600 dark:text-red-400 mt-1 truncate">
-              {generation.error_message}
+              {generation.errorMessage}
             </p>
           )}
         </div>
@@ -446,9 +447,9 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             />
           </button>
 
-          {generation.asset_id && (
+          {generation.asset && (
             <button
-              onClick={() => onOpenAsset(generation.asset_id!)}
+              onClick={() => onOpenAsset(generation.asset!.id)}
               className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
               title="Open asset"
             >
@@ -517,38 +518,38 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
       {isExpanded && (
         <div className="border-t border-neutral-200 dark:border-neutral-800 p-3 bg-neutral-50 dark:bg-neutral-950/50 space-y-3">
           {/* Debug info for stuck generations */}
-          {isActive && generation.started_at && (
+          {isActive && generation.startedAt && (
             <div className="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
               <div className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">
                 ⏱️ Processing Duration
               </div>
               <div className="text-xs text-amber-600 dark:text-amber-400">
-                Started {new Date(generation.started_at).toLocaleString()}
-                {' '}({Math.floor((Date.now() - new Date(generation.started_at).getTime()) / 60000)} minutes ago)
+                Started {new Date(generation.startedAt).toLocaleString()}
+                {' '}({Math.floor((Date.now() - new Date(generation.startedAt).getTime()) / 60000)} minutes ago)
               </div>
             </div>
           )}
 
           {/* Full prompt */}
-          {generation.final_prompt && (
+          {generation.finalPrompt && (
             <div>
               <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                 Prompt
               </div>
               <div className="text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap">
-                {generation.final_prompt}
+                {generation.finalPrompt}
               </div>
             </div>
           )}
 
           {/* Error message (full) - only show for failed status */}
-          {generation.status === 'failed' && generation.error_message && (
+          {generation.status === 'failed' && generation.errorMessage && (
             <div>
               <div className="text-xs font-medium text-red-700 dark:text-red-300 mb-1">
                 Error
               </div>
               <div className="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap">
-                {generation.error_message}
+                {generation.errorMessage}
               </div>
             </div>
           )}
@@ -558,23 +559,23 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             <div>
               <span className="font-medium text-neutral-700 dark:text-neutral-300">Created:</span>
               <span className="ml-1 text-neutral-600 dark:text-neutral-400">
-                {new Date(generation.created_at).toLocaleString()}
+                {new Date(generation.createdAt).toLocaleString()}
               </span>
             </div>
             {/* Only show started time if not already shown in Processing Duration box */}
-            {generation.started_at && !isActive && (
+            {generation.startedAt && !isActive && (
               <div>
                 <span className="font-medium text-neutral-700 dark:text-neutral-300">Started:</span>
                 <span className="ml-1 text-neutral-600 dark:text-neutral-400">
-                  {new Date(generation.started_at).toLocaleString()}
+                  {new Date(generation.startedAt).toLocaleString()}
                 </span>
               </div>
             )}
-            {generation.completed_at && (
+            {generation.completedAt && (
               <div>
                 <span className="font-medium text-neutral-700 dark:text-neutral-300">Completed:</span>
                 <span className="ml-1 text-neutral-600 dark:text-neutral-400">
-                  {new Date(generation.completed_at).toLocaleString()}
+                  {new Date(generation.completedAt).toLocaleString()}
                 </span>
               </div>
             )}
@@ -594,11 +595,11 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 {generation.id}
               </span>
             </div>
-            {generation.asset_id && (
+            {generation.asset && (
               <div>
                 <span className="font-medium text-neutral-700 dark:text-neutral-300">Asset ID:</span>
                 <span className="ml-1 text-neutral-600 dark:text-neutral-400 font-mono">
-                  {generation.asset_id}
+                  {generation.asset.id}
                 </span>
               </div>
             )}
@@ -606,9 +607,10 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
 
           {/* Provider/Account Debug Info */}
           {(() => {
-            const accountId = generation.raw_params?.account_id || generation.raw_params?.accountId;
-            const accountEmail = generation.raw_params?.account_email || generation.raw_params?.accountEmail || generation.raw_params?.email;
-            const providerJobId = generation.raw_params?.provider_job_id || generation.raw_params?.providerJobId || generation.raw_params?.job_id;
+            const rawParams = generation.rawParams as Record<string, any> | undefined;
+            const accountId = rawParams?.account_id || rawParams?.accountId;
+            const accountEmail = rawParams?.account_email || rawParams?.accountEmail || rawParams?.email;
+            const providerJobId = rawParams?.provider_job_id || rawParams?.providerJobId || rawParams?.job_id;
             const hasAnyInfo = accountId || accountEmail || providerJobId;
 
             return hasAnyInfo ? (
@@ -641,25 +643,25 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
           })()}
 
           {/* Raw Parameters (for debugging) */}
-          {generation.raw_params && Object.keys(generation.raw_params).length > 0 && (
+          {generation.rawParams && Object.keys(generation.rawParams).length > 0 && (
             <div>
               <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                 Raw Parameters
               </div>
               <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-40">
-                {JSON.stringify(generation.raw_params, null, 2)}
+                {JSON.stringify(generation.rawParams, null, 2)}
               </pre>
             </div>
           )}
 
           {/* Canonical Parameters */}
-          {generation.canonical_params && Object.keys(generation.canonical_params).length > 0 && (
+          {generation.canonicalParams && Object.keys(generation.canonicalParams).length > 0 && (
             <div>
               <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                 Canonical Parameters
               </div>
               <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-40">
-                {JSON.stringify(generation.canonical_params, null, 2)}
+                {JSON.stringify(generation.canonicalParams, null, 2)}
               </pre>
             </div>
           )}

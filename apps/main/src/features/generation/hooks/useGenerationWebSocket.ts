@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
+import { fromGenerationResponse } from '../models';
 import type { GenerationResponse } from '@lib/api/generations';
 import { parseWebSocketMessage } from '@/types/websocket';
 import { assetEvents } from '@features/assets';
@@ -238,7 +239,7 @@ class WebSocketManager {
             // Just update the store, wait for job:completed event
             apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
               debugFlags.log('websocket', 'Generation data:', data);
-              addOrUpdateGeneration(data);
+              addOrUpdateGeneration(fromGenerationResponse(data));
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
@@ -248,16 +249,18 @@ class WebSocketManager {
             // Note: asset:created event will handle adding the asset to gallery
             apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(async ({ data }) => {
               debugFlags.log('websocket', 'Generation data:', data);
-              addOrUpdateGeneration(data);
+              addOrUpdateGeneration(fromGenerationResponse(data));
 
               // Sync asset to local storage if setting is enabled
-              if (downloadOnGenerate && data.asset_id) {
-                debugFlags.log('websocket', 'Auto-syncing asset to local storage:', data.asset_id);
+              // Note: asset_id is accessed from raw API response before mapping
+              const assetId = data.asset?.id;
+              if (downloadOnGenerate && assetId) {
+                debugFlags.log('websocket', 'Auto-syncing asset to local storage:', assetId);
                 try {
-                  await apiClient.post(`/assets/${data.asset_id}/sync`);
+                  await apiClient.post(`/assets/${assetId}/sync`);
                   debugFlags.log('websocket', 'Asset synced to local storage successfully');
                 } catch (err) {
-                  console.error('[WebSocket] Failed to auto-sync asset:', data.asset_id, err);
+                  console.error('[WebSocket] Failed to auto-sync asset:', assetId, err);
                 }
               }
 
@@ -273,7 +276,7 @@ class WebSocketManager {
             debugFlags.log('websocket', 'Job status update:', message.type);
             // Update generation status in store
             apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
-              addOrUpdateGeneration(data);
+              addOrUpdateGeneration(fromGenerationResponse(data));
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
@@ -281,7 +284,7 @@ class WebSocketManager {
             debugFlags.log('websocket', 'Job failed');
             // Update generation status in store
             apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
-              addOrUpdateGeneration(data);
+              addOrUpdateGeneration(fromGenerationResponse(data));
 
               // Trigger account cleanup to fix job counters
               apiClient.post('/accounts/cleanup').catch(err => {
@@ -350,9 +353,9 @@ class WebSocketManager {
           const addOrUpdateGeneration = useGenerationsStore.getState().addOrUpdate;
 
           if (Array.isArray(message.data)) {
-            message.data.forEach(update => addOrUpdateGeneration(update));
+            message.data.forEach(update => addOrUpdateGeneration(fromGenerationResponse(update)));
           } else {
-            addOrUpdateGeneration(message.data);
+            addOrUpdateGeneration(fromGenerationResponse(message.data));
           }
         } else if (message.type === 'connected') {
           debugFlags.log('websocket', 'Connection acknowledged:', message);
