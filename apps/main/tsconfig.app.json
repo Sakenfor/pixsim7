@@ -46,6 +46,8 @@
       "@features/contextHub": ["./src/features/contextHub/index.ts"],
       "@features/componentSettings": ["./src/features/componentSettings/index.ts"],
       "@features/settings": ["./src/features/settings/index.ts"],
+      "@features/assets/*": ["./src/features/assets/*"],
+      "@features/assets": ["./src/features/assets/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],
@@ -58,6 +60,9 @@
       "@lib/ui/composer": ["./src/lib/ui/composer/index.ts"],
       "@lib/ui/overlay": ["./src/lib/ui/overlay/index.ts"],
       "@lib/ui/display": ["./src/lib/ui/display/index.ts"],
+
+      // Lib - Editing
+      "@lib/editing-core": ["./src/lib/editing-core/index.ts"],
 
       // Lib - Infrastructure (Phase 1 & 3)
       "@lib/utils": ["./src/lib/utils/index.ts"],
