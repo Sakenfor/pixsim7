@@ -39,6 +39,7 @@ export type PluginFamily =
   | 'graph-editor'
   | 'dev-tool'
   | 'workspace-panel'
+  | 'dock-widget'
   | 'gizmo-surface';
 
 /**
@@ -129,6 +130,15 @@ export interface PluginMetadataExtensions {
     category?: 'core' | 'development' | 'game' | 'tools' | 'custom';
     supportsCompactMode?: boolean;
     supportsMultipleInstances?: boolean;
+  };
+  'dock-widget': {
+    widgetId: string;
+    dockviewId: string;
+    presetScope?: string;
+    panelScope?: string;
+    storageKey?: string;
+    allowedPanels?: string[];
+    defaultPanels?: string[];
   };
   'gizmo-surface': {
     gizmoSurfaceId?: string;

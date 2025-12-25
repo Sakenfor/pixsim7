@@ -211,6 +211,26 @@ const defaultPresets: LayoutPreset[] = [
     layout: null,
     graphEditorId: "scene-graph-v2",
   },
+
+  {
+    id: "control-center-default",
+    name: "Default Control Center",
+    scope: "control-center",
+    description: "Default control center layout",
+    icon: "layout",
+    isDefault: true,
+    layout: null,
+  },
+  {
+    id: "asset-viewer-default",
+    name: "Default Asset Viewer",
+    scope: "asset-viewer",
+    description: "Default asset viewer layout",
+    icon: "layout",
+    isDefault: true,
+    layout: null,
+  },
+
 ];
 
 const STORAGE_KEY = "workspace_v5"; // v5: removed layoutByScope (layouts now in localStorage via SmartDockview)
@@ -223,7 +243,11 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       presets: defaultPresets,
       fullscreenPanel: null,
       floatingPanels: [],
-      activePresetByScope: { workspace: "default" },
+      activePresetByScope: {
+        workspace: "default",
+        "control-center": "control-center-default",
+        "asset-viewer": "asset-viewer-default",
+      },
 
       closePanel: (panelId) => {
         const closedPanels = get().closedPanels;
@@ -353,7 +377,11 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
-          activePresetByScope: { workspace: "default" },
+          activePresetByScope: {
+        workspace: "default",
+        "control-center": "control-center-default",
+        "asset-viewer": "asset-viewer-default",
+      },
         }),
 
       openFloatingPanel: (panelId, options = {}) => {

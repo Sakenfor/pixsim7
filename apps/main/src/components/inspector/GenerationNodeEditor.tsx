@@ -561,11 +561,15 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
                 </div>
               )}
 
-              {testResult.asset && (
+              {(() => {
+                const assetId = testResult.asset?.id ?? testResult.assetId;
+                if (!assetId) return null;
+                return (
                 <div className="text-xs text-green-600 dark:text-green-400">
-                  <strong>Asset ID:</strong> {testResult.asset.id}
+                  <strong>Asset ID:</strong> {assetId}
                 </div>
-              )}
+                );
+              })()}
 
               <div className="text-xs text-neutral-500">
                 <strong>Created:</strong> {new Date(testResult.createdAt).toLocaleString()}

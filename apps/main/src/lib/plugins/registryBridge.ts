@@ -27,7 +27,7 @@ import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
-import { panelRegistry, type PanelDefinition } from '@features/panels';
+import { panelRegistry, dockWidgetRegistry, type PanelDefinition, type DockWidgetDefinition } from '@features/panels';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 
 // ============================================================================
@@ -583,6 +583,63 @@ export function registerBuiltinPanel(panel: PanelDefinition): void {
 }
 
 // ============================================================================
+// Dock Widget Registry Bridge
+// ============================================================================
+
+/**
+ * Build catalog metadata for a dock widget
+ */
+const buildDockWidgetMetadata: MetadataBuilder<DockWidgetDefinition, 'dock-widget'> = (widget, options) => {
+  return {
+    id: widget.id,
+    name: widget.label,
+    description: widget.description,
+    family: 'dock-widget',
+    origin: options.origin ?? 'builtin',
+    activationState: options.activationState ?? 'active',
+    canDisable: options.canDisable ?? true,
+    widgetId: widget.id,
+    dockviewId: widget.dockviewId,
+    presetScope: widget.presetScope,
+    panelScope: widget.panelScope,
+    storageKey: widget.storageKey,
+    allowedPanels: widget.allowedPanels,
+    defaultPanels: widget.defaultPanels,
+    ...options.metadata,
+  } as ExtendedPluginMetadata<'dock-widget'>;
+};
+
+/**
+ * Register a dock widget with metadata tracking
+ */
+export function registerDockWidgetWithPlugin(
+  widget: DockWidgetDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(widget, dockWidgetRegistry, buildDockWidgetMetadata, options, { origin: 'builtin' });
+}
+
+/**
+ * Unregister a dock widget and remove it from the catalog
+ */
+export function unregisterDockWidgetWithPlugin(id: string): boolean {
+  const existed = dockWidgetRegistry.has(id);
+  dockWidgetRegistry.unregister(id);
+  pluginCatalog.unregister(id);
+  return existed;
+}
+
+/**
+ * Register built-in dock widget with origin tracking
+ */
+export function registerBuiltinDockWidget(widget: DockWidgetDefinition): void {
+  if (pluginCatalog.get(widget.id)) {
+    return;
+  }
+  registerDockWidgetWithPlugin(widget, { origin: 'builtin', canDisable: false });
+}
+
+// ============================================================================
 // Gizmo Surface Registry Bridge
 // ============================================================================
 
@@ -693,6 +750,13 @@ export function syncCatalogFromRegistries(): void {
     }
   }
 
+  // Sync dock widgets
+  for (const widget of dockWidgetRegistry.getAll()) {
+    if (!pluginCatalog.get(widget.id)) {
+      registerDockWidgetWithPlugin(widget, { origin: 'builtin' });
+    }
+  }
+
   // Sync gizmo surfaces
   for (const surface of gizmoSurfaceRegistry.getAll()) {
     if (!pluginCatalog.get(surface.id)) {
@@ -713,5 +777,6 @@ export function printRegistryComparison(): void {
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
   console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
   console.log(`Workspace Panels: ${panelRegistry.getPublicPanels().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
+  console.log(`Dock Widgets: ${dockWidgetRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('dock-widget').length} in catalog`);
   console.log(`Gizmo Surfaces: ${gizmoSurfaceRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('gizmo-surface').length} in catalog`);
 }

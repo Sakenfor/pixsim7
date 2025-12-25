@@ -93,8 +93,8 @@ export function isValidGalleryToolPlugin(obj: unknown): obj is GalleryToolPlugin
   if (typeof tool.id !== 'string') return false;
   if (typeof tool.name !== 'string') return false;
 
-  // Must have execute function
-  if (typeof tool.execute !== 'function') return false;
+  // Must have render function
+  if (typeof tool.render !== 'function') return false;
 
   return true;
 }
