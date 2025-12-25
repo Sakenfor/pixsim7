@@ -13,12 +13,7 @@ import {
 } from "@features/contextHub";
 import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
 import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
-
-const CONNECT_KEYS: CapabilityKey[] = [
-  CAP_PROMPT_BOX,
-  CAP_ASSET_INPUT,
-  CAP_GENERATE_ACTION,
-];
+import { panelRegistry } from "@features/panels";
 
 const CAPABILITY_LABELS: Record<string, string> = {
   [CAP_PROMPT_BOX]: "Prompt Box",
@@ -40,17 +35,47 @@ function summarizeProvider(provider: CapabilityProvider) {
   return "anonymous";
 }
 
-function getProviders(ctx: MenuActionContext, key: CapabilityKey): CapabilityProvider[] {
-  const hub = ctx.contextHubState;
-  if (!hub) return [];
-  return hub.registry
-    .getAll(key)
-    .filter((provider) => (provider.isAvailable ? provider.isAvailable() : true));
+type ProviderEntry = {
+  scope: string;
+  provider: CapabilityProvider;
+  available: boolean;
+};
+
+type CapabilityUsage = {
+  key: CapabilityKey;
+  source: "consumed" | "declared";
+};
+
+function getRegistryChain(ctx: MenuActionContext) {
+  const chain: Array<{ label: string; registry: any }> = [];
+  let current = ctx.contextHubState;
+  let index = 0;
+  while (current) {
+    const label = current.hostId ? current.hostId : index === 0 ? "local" : `scope-${index}`;
+    chain.push({ label, registry: current.registry });
+    current = current.parent;
+    index += 1;
+  }
+  return chain;
 }
 
-function getPreferredProviderId(key: CapabilityKey): string | undefined {
-  const overrides = useContextHubOverridesStore.getState().overrides;
-  return overrides[key]?.preferredProviderId;
+function getProviderEntries(ctx: MenuActionContext, key: CapabilityKey): ProviderEntry[] {
+  const chain = getRegistryChain(ctx);
+  return chain.flatMap((scope) =>
+    scope.registry.getAll(key).map((provider: CapabilityProvider) => ({
+      scope: scope.label,
+      provider,
+      available: provider.isAvailable ? provider.isAvailable() : true,
+    })),
+  );
+}
+
+function getPreferredProviderId(
+  key: CapabilityKey,
+  hostId?: string,
+): string | undefined {
+  const store = useContextHubOverridesStore.getState();
+  return store.getPreferredProviderId(key, hostId);
 }
 
 function resolveProvider(
@@ -87,16 +112,62 @@ function resolveProvider(
   return null;
 }
 
-function hasConnectOptions(ctx: MenuActionContext): boolean {
-  return CONNECT_KEYS.some((key) => {
-    const providers = getProviders(ctx, key);
-    const preferredId = getPreferredProviderId(key);
-    return providers.length > 1 || !!preferredId;
-  });
+function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
+  const candidates = [
+    ctx.panelId,
+    typeof ctx.data?.panelId === "string" ? ctx.data.panelId : undefined,
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (panelRegistry.get(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
 }
 
-function buildProviderActions(ctx: MenuActionContext, key: CapabilityKey): MenuAction[] {
-  const providers = getProviders(ctx, key);
+function getDeclaredCapabilities(ctx: MenuActionContext): CapabilityKey[] {
+  const panelId = resolvePanelDefinitionId(ctx);
+  if (!panelId) return [];
+  const definition = panelRegistry.get(panelId);
+  return definition?.consumesCapabilities ?? [];
+}
+
+function getPanelCapabilityUsage(ctx: MenuActionContext): CapabilityUsage[] {
+  const hostId = ctx.instanceId;
+  const hub = ctx.contextHubState;
+  const consumedKeys = new Set<CapabilityKey>();
+
+  if (hostId && hub) {
+    let root = hub;
+    while (root.parent) {
+      root = root.parent;
+    }
+    root.registry.getConsumptionForHost(hostId).forEach((record) => {
+      consumedKeys.add(record.key);
+    });
+  }
+
+  const declaredKeys = new Set(getDeclaredCapabilities(ctx));
+
+  const ordered: CapabilityUsage[] = [];
+  consumedKeys.forEach((key) => ordered.push({ key, source: "consumed" }));
+  declaredKeys.forEach((key) => {
+    if (!consumedKeys.has(key)) {
+      ordered.push({ key, source: "declared" });
+    }
+  });
+
+  return ordered;
+}
+
+function buildProviderActions(
+  ctx: MenuActionContext,
+  key: CapabilityKey,
+  usageSource: CapabilityUsage["source"],
+): MenuAction[] {
+  const providers = getProviderEntries(ctx, key);
   if (providers.length === 0) {
     return [
       {
@@ -109,51 +180,57 @@ function buildProviderActions(ctx: MenuActionContext, key: CapabilityKey): MenuA
     ];
   }
 
-  const preferredId = getPreferredProviderId(key);
+  const preferredId = getPreferredProviderId(key, ctx.instanceId);
   const store = useContextHubOverridesStore.getState();
 
-  const actions: MenuAction[] = [
+  const actions: MenuAction[] = [];
+
+  if (usageSource === "declared") {
+    actions.push({
+      id: `connect:${key}:inactive`,
+      label: "Not active in this mode",
+      availableIn: ["panel-content", "tab"],
+      disabled: () => true,
+      execute: () => {},
+    });
+  }
+
+  actions.push(
     {
       id: `connect:${key}:auto`,
       label: preferredId ? "Auto (nearest)" : "Auto (current)",
       availableIn: ["panel-content", "tab"],
       disabled: () => (!preferredId ? "Already auto" : false),
-      execute: () => store.clearOverride(key),
+      execute: () => store.clearOverride(key, ctx.instanceId),
     },
-  ];
+  );
 
-  providers.forEach((provider, index) => {
-    const providerId = provider.id;
-    const baseLabel = provider.label || providerId || `Provider ${index + 1}`;
-    const label = providerId && providerId === preferredId ? `${baseLabel} (forced)` : baseLabel;
+  providers.forEach((entry, index) => {
+    const providerId = entry.provider.id;
+    const baseLabel = entry.provider.label || providerId || `Provider ${index + 1}`;
+    const label =
+      providerId && providerId === preferredId
+        ? `${entry.scope} - ${baseLabel} (forced)`
+        : `${entry.scope} - ${baseLabel}`;
 
     actions.push({
       id: `connect:${key}:${providerId ?? index}`,
       label,
       availableIn: ["panel-content", "tab"],
-      disabled: () => (!providerId ? "Missing provider id" : false),
+      disabled: () => {
+        if (!providerId) return "Missing provider id";
+        if (!entry.available) return "Unavailable";
+        return false;
+      },
       execute: () => {
         if (providerId) {
-          store.setPreferredProvider(key, providerId);
+          store.setPreferredProvider(key, providerId, ctx.instanceId);
         }
       },
     });
   });
 
   return actions;
-}
-
-function getRegistryChain(ctx: MenuActionContext) {
-  const chain: Array<{ label: string; registry: any }> = [];
-  let current = ctx.contextHubState;
-  let index = 0;
-  while (current) {
-    const label = current.hostId ? current.hostId : index === 0 ? "local" : `scope-${index}`;
-    chain.push({ label, registry: current.registry });
-    current = current.parent;
-    index += 1;
-  }
-  return chain;
 }
 
 function buildCapabilityListActions(ctx: MenuActionContext): MenuAction[] {
@@ -177,7 +254,7 @@ function buildCapabilityListActions(ctx: MenuActionContext): MenuAction[] {
   const keys = Array.from(keySet).sort();
 
   return keys.map((key) => {
-    const preferredId = getPreferredProviderId(key);
+    const preferredId = getPreferredProviderId(key, ctx.instanceId);
     const activeProvider = resolveProvider(ctx, key, preferredId);
     const activeLabel = activeProvider ? summarizeProvider(activeProvider) : "none";
     const providers = chain.flatMap((scope) =>
@@ -260,22 +337,20 @@ export const contextHubActions: MenuAction[] = [
     icon: "link",
     category: "connect",
     availableIn: ["panel-content", "tab"],
-    visible: (ctx) => !!ctx.contextHubState && hasConnectOptions(ctx),
+    visible: (ctx) => !!ctx.contextHubState,
     children: (ctx) => {
+      const usage = getPanelCapabilityUsage(ctx);
       const actions: MenuAction[] = [];
 
-      CONNECT_KEYS.forEach((key) => {
-        const providers = getProviders(ctx, key);
-        const preferredId = getPreferredProviderId(key);
-        if (providers.length <= 1 && !preferredId) {
-          return;
-        }
-
+      usage.forEach(({ key, source }) => {
         actions.push({
           id: `connect:${key}`,
-          label: CAPABILITY_LABELS[key] ?? key,
+          label:
+            getCapabilityDescriptor(key)?.label ??
+            CAPABILITY_LABELS[key] ??
+            formatCapabilityLabel(key),
           availableIn: ["panel-content", "tab"],
-          children: buildProviderActions(ctx, key),
+          children: buildProviderActions(ctx, key, source),
           execute: () => {},
         });
       });

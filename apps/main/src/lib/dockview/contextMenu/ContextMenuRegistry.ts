@@ -14,6 +14,41 @@ import type {
 } from './types';
 
 /**
+ * Category priority order for context menu actions.
+ * Lower numbers appear first. Categories not in this list get priority 50.
+ */
+const CATEGORY_PRIORITY: Record<string, number> = {
+  // Asset operations (when clicking on assets)
+  'asset': 5,
+  'generation': 10,
+
+  // Panel operations (most common)
+  'panel': 15,
+  'quick-add': 18,
+  'add': 20,
+
+  // Layout operations
+  'layout': 25,
+
+  // Preset/workspace operations
+  'preset': 30,
+
+  // Connection/capability operations (advanced)
+  'connect': 40,
+
+  // Always last - properties/info/debug
+  'zzz': 100,
+};
+
+/**
+ * Get priority for a category. Lower is higher priority.
+ */
+function getCategoryPriority(category: string | undefined): number {
+  if (!category) return 50;
+  return CATEGORY_PRIORITY[category] ?? 50;
+}
+
+/**
  * Registry for context menu actions
  *
  * Manages registration and retrieval of context menu actions.
@@ -27,7 +62,7 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
    * 1. Context type (tab, group, panel-content, background)
    * 2. Visibility condition (if defined)
    *
-   * Results are sorted by category and label.
+   * Results are sorted by category priority and then by label.
    */
   getActionsForContext(
     contextType: ContextMenuContext,
@@ -37,11 +72,11 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
       .filter(action => action.availableIn.includes(contextType))
       .filter(action => !action.visible || action.visible(ctx))
       .sort((a, b) => {
-        // Sort by category first
-        const catA = a.category || 'zzz';
-        const catB = b.category || 'zzz';
-        if (catA !== catB) return catA.localeCompare(catB);
-        // Then by label
+        // Sort by category priority first
+        const priorityA = getCategoryPriority(a.category);
+        const priorityB = getCategoryPriority(b.category);
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        // Then by label within category
         return a.label.localeCompare(b.label);
       });
   }
@@ -51,13 +86,39 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
    *
    * Recursively converts MenuAction tree to MenuItem tree.
    * Resolves dynamic children and evaluates disabled conditions.
+   * Automatically adds dividers between different categories.
    */
   toMenuItems(
     contextType: ContextMenuContext,
     ctx: MenuActionContext
   ): MenuItem[] {
     const actions = this.getActionsForContext(contextType, ctx);
-    return actions.map(action => this.actionToMenuItem(action, ctx));
+    const items: MenuItem[] = [];
+    let lastCategory: string | undefined;
+
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      const currentCategory = action.category;
+
+      // Add divider before this item if category changed (except for first item)
+      const shouldAddDivider = i > 0 && lastCategory !== currentCategory;
+
+      const menuItem = this.actionToMenuItem(action, ctx);
+
+      // If we need a divider and this item doesn't already have one from the action,
+      // add it to the previous item
+      if (shouldAddDivider && items.length > 0 && !items[items.length - 1].divider) {
+        items[items.length - 1] = {
+          ...items[items.length - 1],
+          divider: true,
+        };
+      }
+
+      items.push(menuItem);
+      lastCategory = currentCategory;
+    }
+
+    return items;
   }
 
   /**

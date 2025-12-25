@@ -141,6 +141,7 @@ interface MenuItemComponentProps {
 function MenuItemComponent({ item, onClose, depth = 0 }: MenuItemComponentProps) {
   const [showChildren, setShowChildren] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
   const [submenuPos, setSubmenuPos] = useState<{ x: number; y: number } | null>(null);
   const hideTimerRef = useRef<number | null>(null);
 
@@ -158,37 +159,62 @@ function MenuItemComponent({ item, onClose, depth = 0 }: MenuItemComponentProps)
     }
   };
 
-  // Variant styles
-  const variantClasses = {
-    default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700',
-    danger: 'hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400',
-    success: 'hover:bg-green-50 dark:hover:bg-green-900/20 text-green-600 dark:text-green-400',
-  };
-
   const variant = item.variant || 'default';
 
+  // Calculate submenu position when shown
   useEffect(() => {
     if (!showChildren || !itemRef.current) return;
-    const rect = itemRef.current.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
 
-    let x = rect.right + 6;
-    let y = rect.top;
+    const updatePosition = () => {
+      if (!itemRef.current) return;
 
-    // Prevent overflow to the right
-    const estimatedWidth = 220;
-    if (x + estimatedWidth > viewportWidth) {
-      x = rect.left - estimatedWidth - 6;
-    }
+      const itemRect = itemRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
 
-    // Prevent overflow to the bottom
-    const estimatedHeight = 240;
-    if (y + estimatedHeight > viewportHeight) {
-      y = Math.max(10, viewportHeight - estimatedHeight - 10);
-    }
+      // Get actual submenu dimensions if available, otherwise use estimates
+      const submenuRect = submenuRef.current?.getBoundingClientRect();
+      const submenuWidth = submenuRect?.width || 220;
+      const submenuHeight = submenuRect?.height || 200;
 
-    setSubmenuPos({ x, y });
+      // Default position: to the right of the item, aligned with item top
+      let x = itemRect.right + 4;
+      let y = itemRect.top;
+
+      // Check if submenu would overflow right edge
+      if (x + submenuWidth > viewportWidth - 10) {
+        // Position to the left of the parent menu item
+        x = itemRect.left - submenuWidth - 4;
+        // If still overflows left, just position at left edge
+        if (x < 10) {
+          x = 10;
+        }
+      }
+
+      // Check if submenu would overflow bottom edge
+      if (y + submenuHeight > viewportHeight - 10) {
+        // Shift up just enough to fit, but try to keep aligned with item
+        const overflow = (y + submenuHeight) - (viewportHeight - 10);
+        y = Math.max(10, y - overflow);
+
+        // Alternative: align bottom of submenu with bottom of viewport
+        // y = Math.max(10, viewportHeight - submenuHeight - 10);
+      }
+
+      // Ensure y doesn't go above viewport
+      if (y < 10) {
+        y = 10;
+      }
+
+      setSubmenuPos({ x, y });
+    };
+
+    // Initial position with estimates
+    updatePosition();
+
+    // Reposition after render when we have actual dimensions
+    const raf = requestAnimationFrame(updatePosition);
+    return () => cancelAnimationFrame(raf);
   }, [showChildren]);
 
   const cancelHide = () => {
@@ -250,6 +276,7 @@ function MenuItemComponent({ item, onClose, depth = 0 }: MenuItemComponentProps)
       {/* Nested children */}
       {hasChildren && showChildren && submenuPos && (
         <div
+          ref={submenuRef}
           className="fixed z-[10000]"
           style={{ left: submenuPos.x, top: submenuPos.y }}
           data-context-menu

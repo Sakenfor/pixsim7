@@ -11,6 +11,7 @@
 
 import type { MenuAction, MenuActionContext } from '../types';
 import type { LayoutPreset, PresetScope } from '@features/workspace/stores/workspaceStore';
+import { resolvePresetScope } from '@features/panels';
 
 // Re-export types for convenience
 export type { LayoutPreset, PresetScope };
@@ -22,7 +23,7 @@ function getPresetsForScope(ctx: MenuActionContext): LayoutPreset[] {
   if (!ctx.workspaceStore) return [];
 
   const state = ctx.workspaceStore.getState();
-  const currentScope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+  const currentScope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
 
   return state.getPresetsForScope(currentScope);
 }
@@ -45,7 +46,7 @@ export const savePresetAction: MenuAction = {
     if (!name) return;
 
     // Get scope from dockview ID
-    const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+    const scope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
 
     // Save to workspaceStore with scope
     if (ctx.workspaceStore) {
@@ -96,7 +97,7 @@ export const loadPresetAction: MenuAction = {
         }
 
         // Update active preset in store
-        const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+        const scope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
         state.setActivePreset(scope, preset.id);
       },
     }));
@@ -166,7 +167,7 @@ export const resetLayoutAction: MenuAction = {
 
         // Reset active preset to default for this scope
         if (ctx.workspaceStore) {
-          const scope = (ctx.currentDockviewId || 'workspace') as PresetScope;
+          const scope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
           const state = ctx.workspaceStore.getState();
           const defaultPreset = state.presets.find(
             (p) => p.isDefault && p.scope === scope

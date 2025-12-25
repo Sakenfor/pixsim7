@@ -40,15 +40,18 @@ export const splitRightAction: MenuAction = {
     const panel = ctx.api.getPanel(ctx.panelId);
     if (!panel) return;
 
-    // Create a new group to the right of the current panel's group
-    const group = panel.group;
-    if (!group) return;
+    const currentGroup = panel.group;
+    if (!currentGroup) return;
 
-    // Move panel to a new group on the right
-    ctx.api.addGroup({
+    // Create a new group to the right and move this panel to it
+    const newGroup = ctx.api.addGroup({
       direction: 'right',
-      referenceGroup: group,
+      referenceGroup: currentGroup,
     });
+
+    if (newGroup) {
+      panel.api.moveTo({ group: newGroup });
+    }
   },
 };
 
@@ -67,14 +70,18 @@ export const splitDownAction: MenuAction = {
     const panel = ctx.api.getPanel(ctx.panelId);
     if (!panel) return;
 
-    // Create a new group below the current panel's group
-    const group = panel.group;
-    if (!group) return;
+    const currentGroup = panel.group;
+    if (!currentGroup) return;
 
-    ctx.api.addGroup({
+    // Create a new group below and move this panel to it
+    const newGroup = ctx.api.addGroup({
       direction: 'below',
-      referenceGroup: group,
+      referenceGroup: currentGroup,
     });
+
+    if (newGroup) {
+      panel.api.moveTo({ group: newGroup });
+    }
   },
 };
 
@@ -108,10 +115,7 @@ export const moveToNewGroupAction: MenuAction = {
     });
 
     if (newGroup) {
-      ctx.api.moveGroupOrPanel({
-        from: { groupId: currentGroup.id, panelId: ctx.panelId },
-        to: { group: newGroup },
-      });
+      panel.api.moveTo({ group: newGroup });
     }
   },
 };
@@ -137,10 +141,7 @@ export const joinLeftGroupAction: MenuAction = {
     const targetGroup = findAdjacentGroup(ctx, 'left');
     if (!targetGroup) return;
 
-    ctx.api.moveGroupOrPanel({
-      from: { groupId: ctx.groupId, panelId: ctx.panelId },
-      to: { group: targetGroup },
-    });
+    panel.api.moveTo({ group: targetGroup });
   },
 };
 
@@ -165,91 +166,139 @@ export const joinRightGroupAction: MenuAction = {
     const targetGroup = findAdjacentGroup(ctx, 'right');
     if (!targetGroup) return;
 
-    ctx.api.moveGroupOrPanel({
-      from: { groupId: ctx.groupId, panelId: ctx.panelId },
-      to: { group: targetGroup },
-    });
+    panel.api.moveTo({ group: targetGroup });
   },
 };
 
 /**
- * All layout actions
+ * Move to Dockview action (dynamic submenu)
+ */
+const moveToDockviewAction: MenuAction = {
+  id: 'layout:move-to-dockview',
+  label: 'Move to Dockview',
+  icon: 'external-link',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) =>
+    !!ctx.panelId &&
+    !!ctx.api &&
+    (!!ctx.getDockviewHostIds || !!ctx.getDockviewIds) &&
+    (!!ctx.getDockviewHost || !!ctx.getDockviewApi),
+  children: (ctx) => {
+    const ids = ctx.getDockviewHostIds?.() ?? ctx.getDockviewIds?.() ?? [];
+    const currentId = ctx.currentDockviewId;
+    const entries = ids.filter(id => id !== currentId);
+
+    if (entries.length === 0) {
+      return [{
+        id: 'layout:move-to-dockview:empty',
+        label: 'No other dockviews',
+        availableIn: ['tab', 'panel-content'],
+        disabled: () => true,
+        execute: () => {},
+      }];
+    }
+
+    return entries.map(id => ({
+      id: `layout:move-to-dockview:${id}`,
+      label: id,
+      availableIn: ['tab', 'panel-content'] as const,
+      execute: () => {
+        if (!ctx.api || !ctx.panelId) return;
+        const panel = ctx.api.getPanel(ctx.panelId);
+        if (!panel) return;
+
+        const targetHost = ctx.getDockviewHost?.(id);
+        const targetApi = targetHost?.api ?? ctx.getDockviewApi?.(id);
+        if (!targetApi) return;
+
+        const panelId = resolvePanelDefinitionId(panel) ?? panel.id ?? panel.component;
+        if (typeof panelId !== 'string') return;
+
+        const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
+        const allowMultiple = !!registryEntry?.supportsMultipleInstances;
+
+        if (!allowMultiple && targetHost?.isPanelOpen(panelId, false)) {
+          targetHost.focusPanel(panelId);
+          ctx.api.removePanel(panel);
+          return;
+        }
+
+        if (targetHost) {
+          targetHost.addPanel(panelId, {
+            allowMultiple,
+            title: panel.title ?? registryEntry?.title,
+            params: panel.params ?? panel.api?.params,
+          });
+        } else {
+          addDockviewPanel(targetApi, panelId, {
+            allowMultiple,
+            title: panel.title ?? registryEntry?.title,
+            params: panel.params ?? panel.api?.params,
+          });
+        }
+
+        ctx.api.removePanel(panel);
+      },
+    }));
+  },
+  execute: () => {},
+};
+
+/**
+ * Split Panel submenu - groups split actions together
+ */
+export const splitPanelAction: MenuAction = {
+  id: 'layout:split',
+  label: 'Split Panel',
+  icon: 'columns',
+  category: 'layout',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  children: [
+    { ...splitRightAction, category: undefined },
+    { ...splitDownAction, category: undefined },
+  ],
+  execute: () => {},
+};
+
+/**
+ * Move Panel submenu - groups move/join actions together
+ */
+export const movePanelAction: MenuAction = {
+  id: 'layout:move',
+  label: 'Move Panel',
+  icon: 'move',
+  category: 'layout',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  children: (ctx) => {
+    const actions: MenuAction[] = [];
+
+    // Move to new group (only if multiple panels in group)
+    if (moveToNewGroupAction.visible?.(ctx) !== false) {
+      actions.push({ ...moveToNewGroupAction, category: undefined });
+    }
+
+    // Join adjacent groups
+    actions.push(
+      { ...joinLeftGroupAction, category: undefined },
+      { ...joinRightGroupAction, category: undefined },
+    );
+
+    // Move to other dockview (only if available)
+    if (moveToDockviewAction.visible?.(ctx) !== false) {
+      actions.push({ ...moveToDockviewAction, category: undefined, divider: true });
+    }
+
+    return actions;
+  },
+  execute: () => {},
+};
+
+/**
+ * All layout actions - exported as consolidated submenus
  */
 export const layoutActions: MenuAction[] = [
-  splitRightAction,
-  splitDownAction,
-  moveToNewGroupAction,
-  joinLeftGroupAction,
-  joinRightGroupAction,
-  {
-    id: 'layout:move-to-dockview',
-    label: 'Move To Dockview',
-    icon: 'move-right',
-    category: 'layout',
-    availableIn: ['tab', 'panel-content'],
-    visible: (ctx) =>
-      !!ctx.panelId &&
-      !!ctx.api &&
-      (!!ctx.getDockviewHostIds || !!ctx.getDockviewIds) &&
-      (!!ctx.getDockviewHost || !!ctx.getDockviewApi),
-    children: (ctx) => {
-      const ids = ctx.getDockviewHostIds?.() ?? ctx.getDockviewIds?.() ?? [];
-      const currentId = ctx.currentDockviewId;
-      const entries = ids.filter(id => id !== currentId);
-
-      if (entries.length === 0) {
-        return [{
-          id: 'layout:move-to-dockview:empty',
-          label: 'No other dockviews',
-          availableIn: ['tab', 'panel-content'],
-          disabled: () => true,
-          execute: () => {},
-        }];
-      }
-
-      return entries.map(id => ({
-        id: `layout:move-to-dockview:${id}`,
-        label: id,
-        availableIn: ['tab', 'panel-content'] as const,
-        execute: () => {
-          if (!ctx.api || !ctx.panelId) return;
-          const panel = ctx.api.getPanel(ctx.panelId);
-          if (!panel) return;
-
-          const targetHost = ctx.getDockviewHost?.(id);
-          const targetApi = targetHost?.api ?? ctx.getDockviewApi?.(id);
-          if (!targetApi) return;
-
-          const panelId = resolvePanelDefinitionId(panel) ?? panel.id ?? panel.component;
-          if (typeof panelId !== 'string') return;
-
-          const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
-          const allowMultiple = !!registryEntry?.supportsMultipleInstances;
-
-          if (!allowMultiple && targetHost?.isPanelOpen(panelId, false)) {
-            targetHost.focusPanel(panelId);
-            ctx.api.removePanel(panel);
-            return;
-          }
-
-          if (targetHost) {
-            targetHost.addPanel(panelId, {
-              allowMultiple,
-              title: panel.title ?? registryEntry?.title,
-              params: panel.params ?? panel.api?.params,
-            });
-          } else {
-            addDockviewPanel(targetApi, panelId, {
-              allowMultiple,
-              title: panel.title ?? registryEntry?.title,
-              params: panel.params ?? panel.api?.params,
-            });
-          }
-
-          ctx.api.removePanel(panel);
-        },
-      }));
-    },
-    execute: () => {},
-  },
+  splitPanelAction,
+  movePanelAction,
 ];

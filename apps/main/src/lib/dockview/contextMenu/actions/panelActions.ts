@@ -32,7 +32,16 @@ export const closePanelAction: MenuAction = {
 };
 
 /**
- * Maximize/restore the current panel
+ * Helper to check if panel is maximized
+ */
+function isPanelMaximized(ctx: MenuActionContext): boolean {
+  if (!ctx.api || !ctx.panelId) return false;
+  const panel = ctx.api.getPanel(ctx.panelId);
+  return panel?.api?.isMaximized?.() ?? false;
+}
+
+/**
+ * Maximize the current panel (only visible when not maximized)
  */
 export const maximizePanelAction: MenuAction = {
   id: 'panel:maximize',
@@ -40,17 +49,31 @@ export const maximizePanelAction: MenuAction = {
   icon: 'maximize-2',
   category: 'panel',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  visible: (ctx) => !!ctx.panelId && !!ctx.api && !isPanelMaximized(ctx),
   execute: (ctx) => {
     if (!ctx.api || !ctx.panelId) return;
     const panel = ctx.api.getPanel(ctx.panelId);
     if (panel) {
-      // Toggle maximize - if already maximized, exit; otherwise maximize
-      if (ctx.api.maximizedGroup) {
-        ctx.api.exitMaximizedGroup();
-      } else {
-        panel.api.maximize();
-      }
+      panel.api.maximize();
+    }
+  },
+};
+
+/**
+ * Restore a maximized panel
+ */
+export const restorePanelAction: MenuAction = {
+  id: 'panel:restore',
+  label: 'Restore Panel',
+  icon: 'minimize-2',
+  category: 'panel',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) => isPanelMaximized(ctx),
+  execute: (ctx) => {
+    if (!ctx.api || !ctx.panelId) return;
+    const panel = ctx.api.getPanel(ctx.panelId);
+    if (panel?.api?.isMaximized?.()) {
+      panel.api.exitMaximized();
     }
   },
 };
@@ -271,11 +294,12 @@ export const closeAllInGroupAction: MenuAction = {
  * All panel actions
  */
 export const panelActions: MenuAction[] = [
-  propertiesAction,
   closePanelAction,
-  maximizePanelAction,
-  floatPanelAction,
-  focusPanelAction,
   closeOtherPanelsAction,
   closeAllInGroupAction,
+  maximizePanelAction,
+  restorePanelAction,
+  floatPanelAction,
+  focusPanelAction,
+  propertiesAction,
 ];
