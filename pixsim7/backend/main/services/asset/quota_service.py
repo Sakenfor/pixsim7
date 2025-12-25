@@ -9,6 +9,7 @@ from sqlalchemy import select, func
 from datetime import datetime
 
 from pixsim7.backend.main.domain import Asset
+from pixsim7.backend.main.domain.enums import SyncStatus
 from pixsim7.backend.main.services.asset.asset_hasher import hamming_distance_64
 from pixsim7.backend.main.shared.storage_utils import compute_sha256
 
@@ -52,7 +53,7 @@ class AssetQuotaService:
         from sqlalchemy import func
 
         result = await self.db.execute(
-            select(func.sum(Asset.file_size_bytes)).where(
+            select(func.sum(func.coalesce(Asset.logical_size_bytes, Asset.file_size_bytes))).where(
                 Asset.user_id == user_id,
                 Asset.sync_status == SyncStatus.DOWNLOADED
             )

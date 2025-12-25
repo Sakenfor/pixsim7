@@ -349,6 +349,7 @@ class AssetCoreService:
         media_type: Optional[MediaType] = None,
         sync_status: Optional[SyncStatus] = None,
         provider_id: Optional[str] = None,
+        provider_status: Optional[str] = None,
         *,
         tag: Optional[str] = None,
         q: Optional[str] = None,
@@ -365,6 +366,7 @@ class AssetCoreService:
             media_type: Filter by media type
             sync_status: Filter by sync status
             provider_id: Filter by provider
+            provider_status: Filter by provider status (ok, local_only, flagged, unknown)
             include_archived: If False (default), exclude archived assets
             limit: Max results
             offset: Pagination offset
@@ -391,12 +393,21 @@ class AssetCoreService:
             query = query.where(Asset.sync_status == sync_status)
         if provider_id:
             query = query.where(Asset.provider_id == provider_id)
+        if provider_status:
+            query = query.where(Asset.provider_status == provider_status)
         if tag:
             # JSON array contains tag (postgres jsonb @>)
             query = query.where(Asset.tags.contains([tag]))
         if q:
+            # Search across multiple text fields
             like = f"%{q}%"
-            query = query.where(or_(Asset.description.ilike(like)))
+            query = query.where(
+                or_(
+                    Asset.description.ilike(like),
+                    Asset.local_path.ilike(like),
+                    Asset.original_source_url.ilike(like),
+                )
+            )
 
         # Order by creation time desc and id desc for stable pagination
         query = query.order_by(Asset.created_at.desc(), Asset.id.desc())

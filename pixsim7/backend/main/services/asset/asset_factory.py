@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7.backend.main.domain.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
@@ -62,6 +63,16 @@ async def add_asset(
     existing_by_provider = None
     existing_by_sha256 = None
     existing_by_url = None
+    content_id = None
+
+    if sha256:
+        content = await ensure_content_blob(
+            db,
+            sha256=sha256,
+            size_bytes=file_size_bytes,
+            mime_type=mime_type,
+        )
+        content_id = content.id
 
     # 1) Provider tuple
     result = await db.execute(
@@ -142,6 +153,8 @@ async def add_asset(
         _fill(existing, "stored_key", stored_key)
         _fill(existing, "sha256", sha256)
         _fill(existing, "file_size_bytes", file_size_bytes)
+        _fill(existing, "logical_size_bytes", file_size_bytes)
+        _fill(existing, "content_id", content_id)
         _fill(existing, "image_hash", image_hash)
         _fill(existing, "phash64", phash64)
 
@@ -170,9 +183,11 @@ async def add_asset(
         sync_status=sync_status,
         source_generation_id=source_generation_id,
         sha256=sha256,
+        content_id=content_id,
         local_path=local_path,
         stored_key=stored_key,
         file_size_bytes=file_size_bytes,
+        logical_size_bytes=file_size_bytes,
         mime_type=mime_type,
         description=description,
         # NOTE: tags removed - use TagService.assign_tags_to_asset() after creation

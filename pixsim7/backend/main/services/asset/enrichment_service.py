@@ -15,6 +15,7 @@ from pixsim7.backend.main.domain import (
     User,
     MediaType,
 )
+from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
 )
@@ -241,6 +242,12 @@ class AssetEnrichmentService:
 
             # Create new image asset
             file_size = os.path.getsize(frame_path)
+            content = await ensure_content_blob(
+                self.db,
+                sha256=sha256,
+                size_bytes=file_size,
+                mime_type="image/jpeg",
+            )
 
             # Determine storage path (use pathlib for cross-platform compatibility)
             from pathlib import Path
@@ -266,9 +273,11 @@ class AssetEnrichmentService:
                 remote_url=f"file://{permanent_path}",  # Local file URL
                 local_path=permanent_path,
                 sha256=sha256,
+                content_id=content.id,
                 width=width,
                 height=height,
                 file_size_bytes=file_size,
+                logical_size_bytes=file_size,
                 mime_type="image/jpeg",
                 sync_status=SyncStatus.DOWNLOADED,  # Already local
                 description=f"Frame from video at {timestamp:.2f}s",

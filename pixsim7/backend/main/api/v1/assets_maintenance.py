@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, AssetSvc, DatabaseSession
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-maintenance"])
@@ -53,11 +53,31 @@ class BulkSyncResponse(BaseModel):
     errors: int
 
 
+class ContentBlobStatsResponse(BaseModel):
+    """Content blob linkage statistics"""
+    total_assets: int
+    with_content_id: int
+    missing_content_id: int
+    missing_with_sha: int
+    missing_logical_size: int
+    percentage: float
+
+
+class BackfillContentBlobsResponse(BaseModel):
+    """Response from content blob backfill operation"""
+    success: bool
+    processed: int
+    linked: int
+    updated_sizes: int
+    skipped: int
+    errors: int
+
+
 # ===== SHA STATS =====
 
 @router.get("/assets/sha-stats", response_model=SHAStatsResponse)
 async def get_sha_stats(
-    user: CurrentUser,
+    admin: CurrentAdminUser,
     db: DatabaseSession,
 ) -> SHAStatsResponse:
     """
@@ -71,14 +91,14 @@ async def get_sha_stats(
 
     # Count total assets
     total_result = await db.execute(
-        select(func.count(Asset.id)).where(Asset.user_id == user.id)
+        select(func.count(Asset.id)).where(Asset.user_id == admin.id)
     )
     total = total_result.scalar() or 0
 
     # Count assets with SHA
     with_sha_result = await db.execute(
         select(func.count(Asset.id)).where(
-            Asset.user_id == user.id,
+            Asset.user_id == admin.id,
             Asset.sha256.isnot(None)
         )
     )
@@ -87,7 +107,7 @@ async def get_sha_stats(
     # Count assets without SHA but with local files (can be backfilled)
     without_sha_with_local_result = await db.execute(
         select(func.count(Asset.id)).where(
-            Asset.user_id == user.id,
+            Asset.user_id == admin.id,
             Asset.sha256.is_(None),
             Asset.local_path.isnot(None)
         )
@@ -113,7 +133,7 @@ async def get_sha_stats(
 
 @router.post("/assets/backfill-sha", response_model=BackfillSHAResponse)
 async def backfill_sha_hashes(
-    user: CurrentUser,
+    admin: CurrentAdminUser,
     asset_service: AssetSvc,
     db: DatabaseSession,
     limit: int = Query(default=100, ge=1, le=500, description="Max assets to process"),
@@ -132,7 +152,7 @@ async def backfill_sha_hashes(
         # Find assets without SHA but with local files
         result = await db.execute(
             select(Asset).where(
-                Asset.user_id == user.id,
+                Asset.user_id == admin.id,
                 Asset.sha256.is_(None),
                 Asset.local_path.isnot(None)
             ).limit(limit)
@@ -191,7 +211,7 @@ async def backfill_sha_hashes(
 
 @router.get("/assets/storage-sync-stats", response_model=StorageSyncStatsResponse)
 async def get_storage_sync_stats(
-    user: CurrentUser,
+    admin: CurrentAdminUser,
     db: DatabaseSession,
 ) -> StorageSyncStatsResponse:
     """
@@ -204,24 +224,24 @@ async def get_storage_sync_stats(
 
     # Count total assets
     total_result = await db.execute(
-        select(func.count(Asset.id)).where(Asset.user_id == user.id)
+        select(func.count(Asset.id)).where(Asset.user_id == admin.id)
     )
     total = total_result.scalar() or 0
 
-    # Count assets using new content-addressed storage (have stored_key)
+    # Count assets using new content-addressed storage
     new_storage_result = await db.execute(
         select(func.count(Asset.id)).where(
-            Asset.user_id == user.id,
+            Asset.user_id == admin.id,
             Asset.stored_key.isnot(None),
             Asset.stored_key.like('u/%/content/%')
         )
     )
     new_storage = new_storage_result.scalar() or 0
 
-    # Count assets with local_path but not on new storage (old system)
+    # Count assets with local_path but not on new storage (old system or asset-id based)
     old_storage_result = await db.execute(
         select(func.count(Asset.id)).where(
-            Asset.user_id == user.id,
+            Asset.user_id == admin.id,
             Asset.local_path.isnot(None),
             or_(
                 Asset.stored_key.is_(None),
@@ -234,7 +254,7 @@ async def get_storage_sync_stats(
     # Count assets without local files (remote-only)
     no_local_result = await db.execute(
         select(func.count(Asset.id)).where(
-            Asset.user_id == user.id,
+            Asset.user_id == admin.id,
             Asset.local_path.is_(None)
         )
     )
@@ -255,7 +275,7 @@ async def get_storage_sync_stats(
 
 @router.post("/assets/bulk-sync-storage", response_model=BulkSyncResponse)
 async def bulk_sync_storage(
-    user: CurrentUser,
+    admin: CurrentAdminUser,
     asset_service: AssetSvc,
     db: DatabaseSession,
     limit: int = Query(default=50, ge=1, le=200, description="Max assets to sync"),
@@ -270,18 +290,30 @@ async def bulk_sync_storage(
     from pixsim7.backend.main.domain.assets.models import Asset
 
     try:
-        # Find assets on old storage with remote URLs (can be re-synced)
+        # Find assets that need syncing:
+        # - Has remote_url (can be downloaded)
+        # - AND either: no stored_key, old storage format, or not fully ingested
+        # Note: we don't check sha256.is_(None) because duplicate-content assets
+        # intentionally skip sha256 but are still "completed"
         result = await db.execute(
             select(Asset).where(
-                Asset.user_id == user.id,
+                Asset.user_id == admin.id,
                 Asset.remote_url.isnot(None),
                 or_(
                     Asset.stored_key.is_(None),
-                    ~Asset.stored_key.like('u/%/content/%')
+                    ~Asset.stored_key.like('u/%/content/%'),  # Not content-addressed
+                    Asset.ingest_status.is_(None),  # Never ingested
+                    Asset.ingest_status != 'completed',  # Ingestion not finished
                 )
             ).limit(limit)
         )
         assets_to_sync = result.scalars().all()
+
+        logger.info(
+            "bulk_sync_starting",
+            assets_found=len(assets_to_sync),
+            limit=limit,
+        )
 
         processed = 0
         synced = 0
@@ -291,8 +323,18 @@ async def bulk_sync_storage(
         for asset in assets_to_sync:
             processed += 1
             try:
-                await asset_service.sync_asset(asset_id=asset.id, user=user)
+                logger.info(
+                    "bulk_sync_asset_starting",
+                    asset_id=asset.id,
+                    progress=f"{processed}/{len(assets_to_sync)}",
+                )
+                await asset_service.sync_asset(asset_id=asset.id, user=admin)
                 synced += 1
+                logger.info(
+                    "bulk_sync_asset_completed",
+                    asset_id=asset.id,
+                    progress=f"{synced}/{len(assets_to_sync)}",
+                )
             except Exception as e:
                 logger.warning(
                     "bulk_sync_asset_failed",
@@ -300,6 +342,8 @@ async def bulk_sync_storage(
                     error=str(e)
                 )
                 errors += 1
+                # Rollback to clear any pending transaction state before processing next asset
+                await db.rollback()
 
         return BulkSyncResponse(
             success=True,
@@ -318,4 +362,156 @@ async def bulk_sync_storage(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to bulk sync storage: {str(e)}"
+        )
+
+
+# ===== CONTENT BLOB STATS =====
+
+@router.get("/assets/content-blob-stats", response_model=ContentBlobStatsResponse)
+async def get_content_blob_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> ContentBlobStatsResponse:
+    """
+    Get statistics about content blob linkage for user's assets.
+
+    Content blobs enable future cross-user deduplication by linking
+    assets to a global SHA256 record.
+    """
+    from sqlalchemy import select, func, and_
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    total_result = await db.execute(
+        select(func.count(Asset.id)).where(Asset.user_id == admin.id)
+    )
+    total = total_result.scalar() or 0
+
+    with_content_result = await db.execute(
+        select(func.count(Asset.id)).where(
+            Asset.user_id == admin.id,
+            Asset.content_id.isnot(None)
+        )
+    )
+    with_content = with_content_result.scalar() or 0
+
+    missing_content = total - with_content
+
+    missing_with_sha_result = await db.execute(
+        select(func.count(Asset.id)).where(
+            Asset.user_id == admin.id,
+            Asset.content_id.is_(None),
+            Asset.sha256.isnot(None)
+        )
+    )
+    missing_with_sha = missing_with_sha_result.scalar() or 0
+
+    missing_logical_size_result = await db.execute(
+        select(func.count(Asset.id)).where(
+            Asset.user_id == admin.id,
+            Asset.logical_size_bytes.is_(None),
+            Asset.file_size_bytes.isnot(None)
+        )
+    )
+    missing_logical_size = missing_logical_size_result.scalar() or 0
+
+    percentage = (with_content / total * 100) if total > 0 else 0
+
+    return ContentBlobStatsResponse(
+        total_assets=total,
+        with_content_id=with_content,
+        missing_content_id=missing_content,
+        missing_with_sha=missing_with_sha,
+        missing_logical_size=missing_logical_size,
+        percentage=round(percentage, 2),
+    )
+
+
+# ===== CONTENT BLOB BACKFILL =====
+
+@router.post("/assets/backfill-content-blobs", response_model=BackfillContentBlobsResponse)
+async def backfill_content_blobs(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(default=100, ge=1, le=500, description="Max assets to process"),
+) -> BackfillContentBlobsResponse:
+    """
+    Backfill content blob links and logical size for assets.
+
+    Links assets that have SHA256 but no content_id, and fills
+    logical_size_bytes from file_size_bytes when missing.
+    """
+    from sqlalchemy import select, or_, and_
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
+
+    try:
+        result = await db.execute(
+            select(Asset).where(
+                Asset.user_id == admin.id,
+                or_(
+                    and_(Asset.sha256.isnot(None), Asset.content_id.is_(None)),
+                    and_(Asset.logical_size_bytes.is_(None), Asset.file_size_bytes.isnot(None)),
+                )
+            ).limit(limit)
+        )
+        assets = result.scalars().all()
+
+        processed = 0
+        linked = 0
+        updated_sizes = 0
+        skipped = 0
+        errors = 0
+
+        for asset in assets:
+            processed += 1
+            updated = False
+
+            try:
+                if asset.sha256 and asset.content_id is None:
+                    content = await ensure_content_blob(
+                        db,
+                        sha256=asset.sha256,
+                        size_bytes=asset.file_size_bytes,
+                        mime_type=asset.mime_type,
+                    )
+                    asset.content_id = content.id
+                    linked += 1
+                    updated = True
+
+                if asset.logical_size_bytes is None and asset.file_size_bytes is not None:
+                    asset.logical_size_bytes = asset.file_size_bytes
+                    updated_sizes += 1
+                    updated = True
+
+                if updated:
+                    db.add(asset)
+                else:
+                    skipped += 1
+            except Exception as exc:
+                logger.warning(
+                    "content_blob_backfill_failed",
+                    asset_id=asset.id,
+                    error=str(exc),
+                )
+                errors += 1
+
+        await db.commit()
+
+        return BackfillContentBlobsResponse(
+            success=True,
+            processed=processed,
+            linked=linked,
+            updated_sizes=updated_sizes,
+            skipped=skipped,
+            errors=errors,
+        )
+    except Exception as exc:
+        logger.error(
+            "content_blob_backfill_error",
+            error=str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to backfill content blobs: {str(exc)}"
         )

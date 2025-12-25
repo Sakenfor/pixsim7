@@ -35,6 +35,7 @@ from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
+from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -329,6 +330,15 @@ class AssetIngestionService:
                     stored_key = await self._store_file(asset, local_path, file_hash)
                     asset.stored_key = stored_key
 
+            # Ensure size tracking for quotas
+            if asset.file_size_bytes is None:
+                try:
+                    asset.file_size_bytes = Path(local_path).stat().st_size
+                except Exception:
+                    pass
+            if asset.logical_size_bytes is None and asset.file_size_bytes is not None:
+                asset.logical_size_bytes = asset.file_size_bytes
+
             # Step 4: Extract metadata (if not already done or forced)
             if extract_metadata and (force or not asset.metadata_extracted_at):
                 await self._extract_metadata(asset, local_path)
@@ -343,6 +353,16 @@ class AssetIngestionService:
             if generate_previews and (force or not asset.preview_generated_at):
                 await self._generate_preview(asset, local_path)
                 asset.preview_generated_at = datetime.utcnow()
+
+            # Link to global content blob (best-effort)
+            if asset.sha256 and asset.content_id is None:
+                content = await ensure_content_blob(
+                    self.db,
+                    sha256=asset.sha256,
+                    size_bytes=asset.file_size_bytes,
+                    mime_type=asset.mime_type,
+                )
+                asset.content_id = content.id
 
             # Mark as completed
             asset.ingest_status = INGEST_COMPLETED

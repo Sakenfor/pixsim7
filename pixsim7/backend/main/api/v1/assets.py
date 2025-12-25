@@ -55,6 +55,7 @@ async def list_assets(
     media_type: MediaType | None = Query(None, description="Filter by media type"),
     sync_status: SyncStatus | None = Query(None, description="Filter by sync status"),
     provider_id: str | None = Query(None, description="Filter by provider"),
+    provider_status: str | None = Query(None, description="Filter by provider status (ok, local_only, flagged, unknown)"),
     tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
     q: str | None = Query(None, description="Full-text search over description/tags"),
     include_archived: bool = Query(False, description="Include archived assets (default: false)"),
@@ -75,6 +76,9 @@ async def list_assets(
             media_type=media_type,
             sync_status=sync_status,
             provider_id=provider_id,
+            provider_status=provider_status,
+            tag=tag,
+            q=q,
             include_archived=include_archived,
             limit=limit,
             offset=offset if cursor is None else 0,
@@ -84,38 +88,18 @@ async def list_assets(
         # Simple total (future: separate COUNT query)
         total = len(assets)
 
-        # Placeholder cursor logic (future: encode last asset created_at|id)
+        # Generate cursor for next page
         next_cursor = None
         if len(assets) == limit:
             last = assets[-1]
-            # Opaque format created_at|id
+            # Opaque format: created_at|id
             next_cursor = f"{last.created_at.isoformat()}|{last.id}"
-
-        # TODO: Move tag/q filtering to SQL query in asset_service
-        # For now, filter assets in-memory after loading tags
 
         # Build responses with tags
         asset_responses: list[AssetResponse] = []
         for a in assets:
             ar = await build_asset_response_with_tags(a, db)
             asset_responses.append(ar)
-
-        # Filter by tag slug (post-query for now)
-        if tag:
-            tag_lower = tag.lower()
-            asset_responses = [
-                ar for ar in asset_responses
-                if any(t.slug == tag_lower or tag_lower in t.slug for t in ar.tags)
-            ]
-
-        # Filter by search query
-        if q:
-            q_lower = q.lower()
-            asset_responses = [
-                ar for ar in asset_responses
-                if (ar.description and q_lower in ar.description.lower()) or
-                   any(q_lower in t.slug or q_lower in t.name or (t.display_name and q_lower in t.display_name.lower()) for t in ar.tags)
-            ]
 
         return AssetListResponse(
             assets=asset_responses,
@@ -353,6 +337,90 @@ async def check_asset_by_hash(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to check asset by hash: {str(e)}"
+        )
+
+
+# ===== BATCH CHECK ASSETS BY HASH =====
+
+class BatchCheckByHashRequest(BaseModel):
+    """Request body for checking multiple assets by SHA256 hashes."""
+    hashes: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="List of SHA256 hashes to check (max 500)"
+    )
+
+
+class BatchHashResult(BaseModel):
+    """Result for a single hash in batch check."""
+    sha256: str
+    exists: bool
+    asset_id: Optional[int] = None
+
+
+class BatchCheckByHashResponse(BaseModel):
+    """Response for batch hash check."""
+    results: List[BatchHashResult] = Field(..., description="Results for each hash")
+    found_count: int = Field(..., description="Number of hashes that matched existing assets")
+
+
+@router.post("/assets/check-by-hash-batch", response_model=BatchCheckByHashResponse)
+async def check_assets_by_hash_batch(
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    request: BatchCheckByHashRequest,
+):
+    """
+    Check if assets with the given SHA256 hashes already exist for the current user.
+
+    Returns a list of results indicating which hashes have matching assets.
+    This is a read-only check that does NOT modify any data.
+
+    Use this to check multiple local files at once before uploading.
+    """
+    try:
+        from sqlmodel import select
+        from pixsim7.backend.main.domain.assets.models import Asset
+
+        # Validate hashes (64 hex chars)
+        valid_hashes = [h for h in request.hashes if len(h) == 64]
+        if not valid_hashes:
+            return BatchCheckByHashResponse(results=[], found_count=0)
+
+        # Query all matching assets in one query
+        stmt = select(Asset.sha256, Asset.id).where(
+            Asset.user_id == user.id,
+            Asset.sha256.in_(valid_hashes)
+        )
+        result = await asset_service.db.execute(stmt)
+        found_assets = {row.sha256: row.id for row in result.all()}
+
+        # Build results
+        results = []
+        for sha256 in valid_hashes:
+            asset_id = found_assets.get(sha256)
+            results.append(BatchHashResult(
+                sha256=sha256,
+                exists=asset_id is not None,
+                asset_id=asset_id
+            ))
+
+        return BatchCheckByHashResponse(
+            results=results,
+            found_count=len(found_assets)
+        )
+
+    except Exception as e:
+        logger.error(
+            "batch_check_by_hash_failed",
+            hash_count=len(request.hashes),
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check assets by hash: {str(e)}"
         )
 
 

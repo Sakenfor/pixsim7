@@ -16,6 +16,7 @@ from pixsim7.backend.main.domain import (
     SyncStatus,
     User,
 )
+from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
@@ -191,6 +192,16 @@ class AssetSyncService:
         asset.local_path = local_path
         asset.file_size_bytes = file_size_bytes
         asset.sha256 = sha256
+        if asset.logical_size_bytes is None and file_size_bytes is not None:
+            asset.logical_size_bytes = file_size_bytes
+        if sha256 and asset.content_id is None:
+            content = await ensure_content_blob(
+                self.db,
+                sha256=sha256,
+                size_bytes=file_size_bytes,
+                mime_type=asset.mime_type,
+            )
+            asset.content_id = content.id
         asset.downloaded_at = datetime.utcnow()
 
         await self.db.commit()
@@ -246,8 +257,9 @@ class AssetSyncService:
         if asset.user_id != user.id:
             raise PermissionError(f"User {user.id} does not own asset {asset_id}")
 
-        # Already ingested? Return early (ingestion is idempotent anyway)
-        if asset.ingest_status == "completed" and asset.stored_key:
+        # Already ingested with content-addressed storage? Return early
+        is_content_addressed = asset.stored_key and '/content/' in asset.stored_key
+        if asset.ingest_status == "completed" and is_content_addressed:
             # Still do embedded extraction if requested
             if include_embedded:
                 from pixsim7.backend.main.services.asset.enrichment_service import AssetEnrichmentService
@@ -533,4 +545,3 @@ class AssetSyncService:
         asset.provider_uploads[provider_id] = provider_asset_id
         await self.db.commit()
         await self.db.refresh(asset)
-
