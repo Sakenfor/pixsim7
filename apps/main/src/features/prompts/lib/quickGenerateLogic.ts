@@ -11,7 +11,7 @@ export interface QuickGenerateContext {
   prompt: string;
   presetParams: Record<string, any>;
   dynamicParams: Record<string, any>;
-  imageUrls: string[];
+  sourceAssetIds?: number[];
   prompts: string[];
   transitionDurations?: number[];
   activeAsset?: SelectedAsset;
@@ -52,13 +52,15 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     prompt,
     presetParams,
     dynamicParams,
-    imageUrls,
+    sourceAssetIds,
     prompts,
     activeAsset,
     mainQueueCurrent,
   } = context;
 
   const trimmedPrompt = prompt.trim();
+  let inferredSourceAssetId: number | undefined;
+  let inferredSourceAssetIds: number[] | undefined;
 
   // Operation-specific validation with context-aware messages
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
@@ -71,17 +73,18 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   if (operationType === 'image_to_image') {
     // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue > activeAsset
     let imageUrl = dynamicParams.image_url;
+    let sourceAssetId = dynamicParams.source_asset_id;
 
-    // Only fall back to queue if dynamicParams is empty
-    if (!imageUrl && mainQueueCurrent?.asset.mediaType === 'image') {
-      imageUrl = mainQueueCurrent.asset.remoteUrl || mainQueueCurrent.asset.thumbnailUrl || mainQueueCurrent.asset.fileUrl;
-      if (imageUrl) {
-        context.dynamicParams.image_url = imageUrl;
+    if (!imageUrl && !sourceAssetId) {
+      if (mainQueueCurrent?.asset.mediaType === 'image') {
+        sourceAssetId = mainQueueCurrent.asset.id;
+      } else if (activeAsset?.type === 'image') {
+        sourceAssetId = activeAsset.id;
       }
     }
 
     // Validate we have a URL
-    if (!imageUrl) {
+    if (!imageUrl && !sourceAssetId) {
       return {
         error: 'No image selected. Select an image from the gallery to transform.',
         finalPrompt: trimmedPrompt,
@@ -94,27 +97,36 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         finalPrompt: trimmedPrompt,
       };
     }
+
+    if (!dynamicParams.source_asset_id && sourceAssetId) {
+      inferredSourceAssetId = sourceAssetId;
+    }
   }
 
   if (operationType === 'image_to_video') {
     // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue
     let imageUrl = dynamicParams.image_url;
+    let sourceAssetId = dynamicParams.source_asset_id;
 
-    // Only fall back to queue if dynamicParams is empty
-    if (!imageUrl && mainQueueCurrent?.asset.mediaType === 'image') {
-      imageUrl = mainQueueCurrent.asset.remoteUrl || mainQueueCurrent.asset.thumbnailUrl || mainQueueCurrent.asset.fileUrl;
-      if (imageUrl) {
-        context.dynamicParams.image_url = imageUrl;
+    if (!imageUrl && !sourceAssetId) {
+      if (mainQueueCurrent?.asset.mediaType === 'image') {
+        sourceAssetId = mainQueueCurrent.asset.id;
+      } else if (activeAsset?.type === 'image') {
+        sourceAssetId = activeAsset.id;
       }
     }
 
     // Validate we have a URL (optional - can fall back to text_to_video)
     // If no image, the caller will handle switching to text_to_video
-    if (imageUrl && !trimmedPrompt) {
+    if ((imageUrl || sourceAssetId) && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing the motion/action for Image to Video.',
         finalPrompt: trimmedPrompt,
       };
+    }
+
+    if (!dynamicParams.source_asset_id && sourceAssetId) {
+      inferredSourceAssetId = sourceAssetId;
     }
   }
 
@@ -122,54 +134,67 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue
     let videoUrl = dynamicParams.video_url;
     const hasOriginalId = Boolean(dynamicParams.original_video_id);
+    let sourceAssetId = dynamicParams.source_asset_id;
 
-    // Only fall back to queue if dynamicParams is empty
-    if (!videoUrl && !hasOriginalId && mainQueueCurrent?.asset.mediaType === 'video') {
-      videoUrl = mainQueueCurrent.asset.remoteUrl || mainQueueCurrent.asset.thumbnailUrl || mainQueueCurrent.asset.fileUrl;
-      if (videoUrl) {
-        context.dynamicParams.video_url = videoUrl;
+    if (!videoUrl && !hasOriginalId && !sourceAssetId) {
+      if (mainQueueCurrent?.asset.mediaType === 'video') {
+        sourceAssetId = mainQueueCurrent.asset.id;
+      } else if (activeAsset?.type === 'video') {
+        sourceAssetId = activeAsset.id;
       }
     }
 
     // Validate we have a URL or ID
-    if (!videoUrl && !hasOriginalId) {
+    if (!videoUrl && !hasOriginalId && !sourceAssetId) {
       return {
         error: 'No video selected. Click "Video Extend" on a gallery video, or paste a video URL in Settings.',
         finalPrompt: trimmedPrompt,
       };
     }
+
+    if (!dynamicParams.source_asset_id && sourceAssetId) {
+      inferredSourceAssetId = sourceAssetId;
+    }
   }
 
   let transitionDurations: number[] | undefined;
   if (operationType === 'video_transition') {
-    const validImages = imageUrls.map(s => s.trim()).filter(Boolean);
+    const transitionSourceIds = Array.isArray(dynamicParams.source_asset_ids)
+      ? dynamicParams.source_asset_ids
+      : Array.isArray(sourceAssetIds)
+        ? sourceAssetIds
+        : [];
+    const fallbackImageUrls = Array.isArray(dynamicParams.image_urls)
+      ? dynamicParams.image_urls
+      : [];
+    const imageCount = transitionSourceIds.length || fallbackImageUrls.length;
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
 
-    if (!validImages.length) {
+    if (!imageCount) {
       return {
         error: 'No images in transition queue. Use "Add to Transition" from the gallery to add images.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    if (validImages.length < 2) {
+    if (imageCount < 2) {
       return {
         error: 'Need at least 2 images to create a transition.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    const expectedPrompts = validImages.length - 1;
+    const expectedPrompts = imageCount - 1;
     if (!validPrompts.length) {
       return {
-        error: `Transition prompts are required. Add ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} describing the transitions between your ${validImages.length} images.`,
+        error: `Transition prompts are required. Add ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} describing the transitions between your ${imageCount} images.`,
         finalPrompt: trimmedPrompt,
       };
     }
 
     if (validPrompts.length !== expectedPrompts) {
       return {
-        error: `You have ${validImages.length} images but ${validPrompts.length} prompts. You need exactly ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} (one for each transition between images).`,
+        error: `You have ${imageCount} images but ${validPrompts.length} prompts. You need exactly ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} (one for each transition between images).`,
         finalPrompt: trimmedPrompt,
       };
     }
@@ -180,6 +205,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         expectedPrompts
       );
     }
+
+    if (!dynamicParams.source_asset_ids && transitionSourceIds.length) {
+      inferredSourceAssetIds = transitionSourceIds;
+    }
   }
 
   // Build params - merge preset params, dynamic params, and operation-specific params
@@ -189,9 +218,24 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     ...dynamicParams,
   };
 
+  if (inferredSourceAssetId && !params.source_asset_id) {
+    params.source_asset_id = inferredSourceAssetId;
+  }
+
+  if (inferredSourceAssetIds && !params.source_asset_ids) {
+    params.source_asset_ids = inferredSourceAssetIds;
+  }
+
   // Add array fields for video_transition
   if (operationType === 'video_transition') {
-    params.image_urls = imageUrls.map((s) => s.trim()).filter(Boolean);
+    if (!params.source_asset_ids || params.source_asset_ids.length === 0) {
+      const fallbackImageUrls = Array.isArray(dynamicParams.image_urls)
+        ? dynamicParams.image_urls
+        : [];
+      if (fallbackImageUrls.length > 0) {
+        params.image_urls = fallbackImageUrls.map((s) => String(s).trim()).filter(Boolean);
+      }
+    }
     params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
     if (transitionDurations && transitionDurations.length) {
       params.durations = transitionDurations;

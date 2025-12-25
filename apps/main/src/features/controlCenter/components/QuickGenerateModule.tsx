@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import clsx from 'clsx';
-import type { DockviewApi } from 'dockview-core';
+import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
 import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
@@ -16,6 +16,16 @@ import {
   type GenerationContextSummary,
 } from '@features/contextHub';
 import { Ref } from '@pixsim7/shared.types';
+import {
+  ScopeModeSelect,
+  getInstanceId,
+  getScopeMode,
+  panelSettingsScopeRegistry,
+  usePanelInstanceSettingsStore,
+  type PanelSettingsScopeMode,
+} from '@features/panels';
+import type { PanelId } from '@features/workspace';
+import { useDockviewId } from '@lib/dockview/contextMenu';
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -29,9 +39,68 @@ const OPERATION_CONFIG = {
   flexible: new Set(['image_to_video', 'image_to_image']),
 } as const;
 
-export function QuickGenerateModule() {
+const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
+const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
+const GENERATION_SCOPE_ID = 'generation';
+const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'dock' } as const;
+
+type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
+
+export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   // Connect to WebSocket for real-time updates
   useGenerationWebSocket();
+  const dockviewId = useDockviewId();
+  const resolvedPanelId = (props.panelId ?? props.api?.id ?? 'cc-generate') as PanelId;
+  const panelInstanceId = useMemo(
+    () => getInstanceId(dockviewId, resolvedPanelId),
+    [dockviewId, resolvedPanelId],
+  );
+  const generationScopeDefinition =
+    panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID) ?? GENERATION_SCOPE_FALLBACK;
+  const instanceScopes = usePanelInstanceSettingsStore(
+    (state) => state.instances[panelInstanceId]?.scopes,
+  );
+  const scopeMode = useMemo(
+    () => getScopeMode(instanceScopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode),
+    [instanceScopes, generationScopeDefinition],
+  );
+  const setScope = usePanelInstanceSettingsStore((state) => state.setScope);
+  const quickgenInstances = useMemo(
+    () =>
+      QUICKGEN_PANEL_IDS.map((panelId) => ({
+        panelId: panelId as PanelId,
+        instanceId: getInstanceId(QUICKGEN_PANEL_MANAGER_ID, panelId),
+      })),
+    [],
+  );
+  const quickgenScopes = usePanelInstanceSettingsStore((state) =>
+    quickgenInstances.map(({ instanceId }) => state.instances[instanceId]?.scopes),
+  );
+  const quickgenScopeModes = useMemo(
+    () =>
+      quickgenScopes.map((scopes) =>
+        getScopeMode(scopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode),
+      ),
+    [quickgenScopes, generationScopeDefinition],
+  );
+  const needsScopeSync = quickgenScopeModes.some((mode) => mode !== scopeMode);
+
+  useEffect(() => {
+    if (!needsScopeSync) return;
+    quickgenInstances.forEach(({ instanceId, panelId }) => {
+      setScope(instanceId, panelId, GENERATION_SCOPE_ID, scopeMode);
+    });
+  }, [needsScopeSync, quickgenInstances, setScope, scopeMode]);
+
+  const handleScopeChange = useCallback(
+    (next: PanelSettingsScopeMode) => {
+      setScope(panelInstanceId, resolvedPanelId, GENERATION_SCOPE_ID, next);
+      quickgenInstances.forEach(({ instanceId, panelId }) => {
+        setScope(instanceId, panelId, GENERATION_SCOPE_ID, next);
+      });
+    },
+    [panelInstanceId, resolvedPanelId, quickgenInstances, setScope],
+  );
 
   const {
     operationType,
@@ -207,7 +276,7 @@ export function QuickGenerateModule() {
   // Advanced params: those not shown in the main settings panel
   const advancedParams = useMemo(() => {
     const PRIMARY_PARAMS = ['model', 'quality', 'duration', 'aspect_ratio', 'motion_mode', 'camera_movement'];
-    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id'];
+    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids'];
 
     return filteredParamSpecs.filter(p => {
       // Skip primary params shown inline
@@ -390,6 +459,19 @@ export function QuickGenerateModule() {
   }, [mainQueue.length]);
 
   // Render the main content area based on operation type and input mode
+  const scopeControl = (
+    <div className="flex items-center justify-between rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-900/40 px-2 py-1">
+      <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        {generationScopeDefinition.label ?? 'Generation Scope'}
+      </div>
+      <ScopeModeSelect
+        value={scopeMode}
+        onChange={handleScopeChange}
+        ariaLabel="Generation scope mode"
+      />
+    </div>
+  );
+
   const renderContent = () => {
     // Unified multi-asset layout for: video_transition, fusion, or optional ops in multi mode
     const isMultiAssetLayout = operationType === 'video_transition' || isInMultiMode;
@@ -398,8 +480,8 @@ export function QuickGenerateModule() {
     if (isMultiAssetLayout) {
       const isLastAsset = (idx: number) => idx === displayAssets.length - 1;
 
-      return (
-        <div className="flex gap-3 flex-1 min-h-0">
+      const multiAssetContent = (
+        <div className="flex gap-3 h-full min-h-0">
           {/* Left: Asset strip */}
           <div className="flex-shrink-0 flex items-stretch">
             {displayAssets.length > 0 ? (
@@ -533,19 +615,33 @@ export function QuickGenerateModule() {
           {renderSettingsPanel()}
         </div>
       );
+
+      return (
+        <div className="h-full flex flex-col gap-2">
+          {scopeControl}
+          <div className="flex-1 min-h-0">{multiAssetContent}</div>
+        </div>
+      );
     }
 
     // Use SmartDockview for asset+prompt or prompt+settings layout
     // Key includes mode to force remount when switching between single/multi modes
-    return (
-      <div key={`dockview-${inputMode}`} className="flex-1 min-h-0 h-full relative">
+    const dockviewContent = (
+      <div key={`dockview-${inputMode}`} className="h-full relative">
         <QuickGenerateDockview
           ref={dockviewRef}
           context={panelContext}
           showAssetPanel={showAssetPanelInLayout}
           onReady={handleDockviewReady}
-          panelManagerId="controlCenter"
+          panelManagerId={QUICKGEN_PANEL_MANAGER_ID}
         />
+      </div>
+    );
+
+    return (
+      <div className="h-full flex flex-col gap-2">
+        {scopeControl}
+        <div className="flex-1 min-h-0">{dockviewContent}</div>
       </div>
     );
   };

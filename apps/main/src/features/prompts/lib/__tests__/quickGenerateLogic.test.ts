@@ -7,7 +7,6 @@ function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGe
     prompt: '',
     presetParams: {},
     dynamicParams: {},
-    imageUrls: [],
     prompts: [],
     ...partial,
   };
@@ -59,6 +58,21 @@ describe('buildGenerationRequest', () => {
     });
   });
 
+  it('passes validation when image_to_image uses source_asset_id', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Add neon rim light',
+      dynamicParams: { source_asset_id: 42 },
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params).toMatchObject({
+      prompt: 'Add neon rim light',
+      source_asset_id: 42,
+    });
+  });
+
   it('normalizes toggle params to ints and drops disabled ones', () => {
     const context = createBaseContext({
       prompt: 'waves',
@@ -95,7 +109,7 @@ describe('buildGenerationRequest', () => {
     const context = createBaseContext({
       operationType: 'video_transition',
       prompt: 'make it seamless',
-      imageUrls: ['https://img/1', 'https://img/2', 'https://img/3'],
+      dynamicParams: { source_asset_ids: [1, 2, 3] },
       prompts: ['fade', 'sparkle'],
       transitionDurations: [1.2, 9],
     });
@@ -103,5 +117,21 @@ describe('buildGenerationRequest', () => {
     const result = buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.durations).toEqual([1, 5]);
+  });
+
+  it('accepts source_asset_ids for video_transition without imageUrls', () => {
+    const context = createBaseContext({
+      operationType: 'video_transition',
+      prompt: 'make it seamless',
+      dynamicParams: { source_asset_ids: [1, 2, 3] },
+      prompts: ['fade', 'sparkle'],
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params).toMatchObject({
+      source_asset_ids: [1, 2, 3],
+      prompts: ['fade', 'sparkle'],
+    });
   });
 });

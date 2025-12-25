@@ -33,7 +33,7 @@ import {
 import { Ref, type AssetRef } from '@pixsim7/shared.types';
 import type { AssetModel } from '@features/assets';
 import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
-import { useResolveComponentSettings, getInstanceId, useScopeInstanceId } from '@features/panels';
+import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
 import { useDockviewId } from '@lib/dockview/contextMenu';
 import { resolveAssetMediaTypes } from '@features/assets/lib/assetMediaType';
 
@@ -116,6 +116,7 @@ function resolveDisplayAssets(
   multiAssetQueue: any[],
   lastSelectedAsset?: SelectedAsset,
   inputMode?: 'single' | 'multi',
+  allowAnySelected?: boolean,
 ): AssetModel[] {
   const metadata = OPERATION_METADATA[operationType];
   const isOptionalMultiAsset = metadata?.multiAssetMode === 'optional';
@@ -123,7 +124,7 @@ function resolveDisplayAssets(
   const effectiveInputMode = isRequiredMultiAsset ? 'multi' : (inputMode ?? 'single');
   const isInMultiMode = (isOptionalMultiAsset && effectiveInputMode === 'multi') || isRequiredMultiAsset;
 
-  if (operationType === 'video_transition' || isInMultiMode) {
+  if ((operationType === 'video_transition' || isInMultiMode) && multiAssetQueue.length > 0) {
     return multiAssetQueue.map((item: any) => item.asset);
   }
 
@@ -132,13 +133,17 @@ function resolveDisplayAssets(
     return [mainQueue[index].asset];
   }
 
+  if (multiAssetQueue.length > 0) {
+    return [multiAssetQueue[0].asset];
+  }
+
   if (lastSelectedAsset) {
     const matchesOperation =
       (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
       (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
       (operationType === 'video_extend' && lastSelectedAsset.type === 'video');
 
-    if (matchesOperation) {
+    if (matchesOperation || allowAnySelected) {
       return [buildFallbackAsset(lastSelectedAsset)];
     }
   }
@@ -153,9 +158,12 @@ function resolveDisplayAssets(
  */
 export function AssetPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
+  const allowAnySelected = !ctx;
   const controller = useQuickGenerateController();
   const containerRef = useRef<HTMLDivElement>(null);
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-asset';
+  const scopeInstanceId = useScopeInstanceId("generation");
+  const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   // Subscribe directly to store for live queue data
   const storeMainQueue = useGenerationQueueStore(s => s.mainQueue);
@@ -183,6 +191,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
       controller.multiAssetQueue,
       controller.lastSelectedAsset,
       operationInputModePrefs[operationType],
+      allowAnySelected,
     );
   }, [
     ctx?.displayAssets,
@@ -192,6 +201,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
     controller.multiAssetQueue,
     controller.lastSelectedAsset,
     operationInputModePrefs,
+    allowAnySelected,
   ]);
 
   useProvideCapability<AssetInputContext>(
@@ -239,6 +249,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
       },
     },
     [displayAssets, isFlexibleOperation, panelInstanceId],
+    { scope: capabilityScope },
   );
 
   // Use store values directly for queue operations
@@ -296,9 +307,10 @@ export function AssetPanel(props: QuickGenPanelProps) {
   // Build queue items for grid popup - use index as part of key to ensure uniqueness
   const queueItems = mainQueue.flatMap((item, idx) => {
     if (!item?.asset) return [];
+    const thumbUrl = item.asset.thumbnailUrl ?? item.asset.remoteUrl ?? item.asset.fileUrl ?? '';
     return [{
       id: `${item.asset.id}-${idx}`,
-      thumbnailUrl: item.asset.thumbnailUrl ?? '',
+      thumbnailUrl: thumbUrl,
     }];
   });
 
@@ -337,12 +349,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
  */
 export function PromptPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
+  const allowAnySelected = !ctx;
   const controller = useQuickGenerateController();
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
   const scopeInstanceId = useScopeInstanceId("generation");
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
+  const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance
@@ -367,6 +381,8 @@ export function PromptPanel(props: QuickGenPanelProps) {
       controller.mainQueueIndex,
       controller.multiAssetQueue,
       controller.lastSelectedAsset,
+      undefined,
+      allowAnySelected,
     ),
     isFlexibleOperation = FLEXIBLE_OPERATIONS.has(operationType),
     error = controller.error,
@@ -390,6 +406,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
       }),
     },
     [prompt, setPrompt, maxChars, providerId, operationType, panelInstanceId],
+    { scope: capabilityScope },
   );
 
   return (
@@ -440,6 +457,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-settings';
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
+  const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance
@@ -473,6 +491,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
       }),
     },
     [canGenerate, controller.generating, controller.error, controller.generate, panelInstanceId, useDefaultPanel],
+    { scope: capabilityScope },
   );
 
   // Don't show loading state - just render empty during brief mode transitions

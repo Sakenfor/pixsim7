@@ -136,14 +136,20 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
 
   // Auto-set dynamic params from viewed asset
   useEffect(() => {
-    const assetUrl = asset.fullUrl || asset.url;
+    if (!asset.id) return;
 
     if (asset.type === 'video') {
-      setDynamicParams((prev: Record<string, any>) => ({ ...prev, video_url: assetUrl }));
+      setDynamicParams((prev: Record<string, any>) => {
+        const { video_url, ...rest } = prev;
+        return { ...rest, source_asset_id: asset.id };
+      });
     } else if (asset.type === 'image') {
-      setDynamicParams((prev: Record<string, any>) => ({ ...prev, image_url: assetUrl }));
+      setDynamicParams((prev: Record<string, any>) => {
+        const { image_url, ...rest } = prev;
+        return { ...rest, source_asset_id: asset.id };
+      });
     }
-  }, [asset.fullUrl, asset.url, asset.type, setDynamicParams]);
+  }, [asset.id, asset.type, setDynamicParams]);
 
   const generationContextValue = useMemo<GenerationContextSummary>(
     () => {

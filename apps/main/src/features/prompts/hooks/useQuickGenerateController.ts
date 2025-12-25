@@ -52,7 +52,7 @@ export function useQuickGenerateController() {
     generationId ? s.generations.get(generationId) : undefined
   );
   const watchedStatus = watchedGeneration?.status;
-  const watchedErrorMessage = watchedGeneration?.error_message;
+  const watchedErrorMessage = watchedGeneration?.errorMessage;
 
   // Track which generation we've already shown error for (prevents re-triggering)
   const errorShownForRef = useRef<number | null>(null);
@@ -66,6 +66,10 @@ export function useQuickGenerateController() {
     // (not for other failures like quota, network errors, output rejections, etc.)
     const lowerError = watchedErrorMessage.toLowerCase();
     const isPromptRejection =
+      lowerError.includes('content filtered (prompt)') ||
+      lowerError.includes('content filtered (text)') ||
+      lowerError.includes('prompt rejected') ||
+      lowerError.includes('text input was rejected') ||
       lowerError.includes('sensitive') ||
       lowerError.includes('500063') ||
       (lowerError.includes('content') && lowerError.includes('text'));
@@ -89,16 +93,15 @@ export function useQuickGenerateController() {
       const hasOverrideInput =
         overrideParams.image_url ||
         overrideParams.video_url ||
-        overrideParams.original_video_id;
+        overrideParams.original_video_id ||
+        overrideParams.source_asset_id ||
+        (Array.isArray(overrideParams.source_asset_ids) && overrideParams.source_asset_ids.length > 0);
 
       // Handle frame extraction for video assets with locked timestamps
       let modifiedDynamicParams = {
         ...bindings.dynamicParams,
         ...overrideParams,
       };
-      let modifiedImageUrls = [...bindings.imageUrls];
-      const resolveAssetUrl = (asset: { remoteUrl?: string | null; thumbnailUrl?: string | null; fileUrl?: string | null }) =>
-        asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '';
 
       // Get current queue state directly from store to avoid stale React hook values
       // This is critical when assets are enqueued right before generation
@@ -116,18 +119,22 @@ export function useQuickGenerateController() {
           if (asset.mediaType === 'image') {
             modifiedDynamicParams = {
               ...modifiedDynamicParams,
-              image_url: resolveAssetUrl(asset),
+              // Pass asset ID so backend can look up provider_uploads
+              source_asset_id: asset.id,
             };
             delete modifiedDynamicParams.video_url;
             delete modifiedDynamicParams.original_video_id;
+            delete modifiedDynamicParams.image_url;
           }
         } else if (operationType === 'video_extend') {
           if (asset.mediaType === 'video') {
             modifiedDynamicParams = {
               ...modifiedDynamicParams,
-              video_url: resolveAssetUrl(asset),
+              // Pass asset ID so backend can look up provider_uploads
+              source_asset_id: asset.id,
             };
             delete modifiedDynamicParams.image_url;
+            delete modifiedDynamicParams.video_url;
           }
         }
       }
@@ -139,36 +146,44 @@ export function useQuickGenerateController() {
             video_asset_id: currentQueueItem.asset.id,
             timestamp: currentQueueItem.lockedTimestamp,
           }));
-          // Use extracted frame URL instead of video URL
-          modifiedDynamicParams.image_url = resolveAssetUrl(extractedFrame);
+          // Prefer asset ID; backend will resolve provider-specific URL
+          modifiedDynamicParams.source_asset_id = extractedFrame.id;
+          delete modifiedDynamicParams.image_url;
         }
       }
 
       // For video_transition: extract frames for videos with locked timestamps
       const currentMultiAssetQueue = queueState.multiAssetQueue;
       if (operationType === 'video_transition' && currentMultiAssetQueue.length > 0) {
-        const extractedUrls: string[] = [];
+        const extractedAssetIds: number[] = [];
         for (const queueItem of currentMultiAssetQueue) {
           if (queueItem.lockedTimestamp !== undefined && queueItem.asset.mediaType === 'video') {
             const extractedFrame = fromAssetResponse(await extractFrame({
               video_asset_id: queueItem.asset.id,
               timestamp: queueItem.lockedTimestamp,
             }));
-            extractedUrls.push(resolveAssetUrl(extractedFrame));
+            extractedAssetIds.push(extractedFrame.id);
           } else {
             // Use original URL (for images or videos without locked timestamp)
-            extractedUrls.push(resolveAssetUrl(queueItem.asset));
+            extractedAssetIds.push(queueItem.asset.id);
           }
         }
-        modifiedImageUrls = extractedUrls;
+        modifiedDynamicParams = {
+          ...modifiedDynamicParams,
+          source_asset_ids: extractedAssetIds,
+        };
       }
+
+      const sourceAssetIds = Array.isArray(modifiedDynamicParams.source_asset_ids)
+        ? modifiedDynamicParams.source_asset_ids
+        : undefined;
 
       const buildResult = buildGenerationRequest({
         operationType,
         prompt,
         presetParams,
         dynamicParams: modifiedDynamicParams,
-        imageUrls: modifiedImageUrls,
+        sourceAssetIds,
         prompts: bindings.prompts,
         transitionDurations: bindings.transitionDurations,
         activeAsset: bindings.lastSelectedAsset,
@@ -185,7 +200,10 @@ export function useQuickGenerateController() {
 
       // For flexible operations: switch to text-based operation if no image provided
       let effectiveOperationType = operationType;
-      const hasImage = buildResult.params.image_url || modifiedImageUrls.length > 0;
+      const hasImage =
+        buildResult.params.image_url ||
+        buildResult.params.source_asset_id ||
+        (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
       if (!hasImage) {
         if (operationType === 'image_to_video') {
           effectiveOperationType = 'text_to_video';
@@ -212,31 +230,34 @@ export function useQuickGenerateController() {
       const now = new Date().toISOString();
       addOrUpdateGeneration({
         id: genId,
-        user_id: 0, // unknown client-side until fetched
-        workspace_id: null,
-        operation_type: operationType,
-        provider_id: providerId || 'pixverse',
-        raw_params: buildResult.params,
-        canonical_params: buildResult.params,
-        inputs: [],
-        reproducible_hash: null,
-        prompt_version_id: null,
-        final_prompt: finalPrompt,
-        prompt_config: null,
-        prompt_source_type: 'inline',
+        createdAt: now,
+        updatedAt: now,
+        startedAt: null,
+        completedAt: null,
+        scheduledAt: null,
         status: result.status || 'pending',
+        errorMessage: null,
+        retryCount: 0,
         priority: 5,
-        scheduled_at: null,
-        started_at: null,
-        completed_at: null,
-        error_message: null,
-        retry_count: 0,
-        parent_generation_id: null,
-        asset_id: null,
         name: null,
         description: null,
-        created_at: now,
-        updated_at: now,
+        operationType,
+        providerId: providerId || 'pixverse',
+        finalPrompt,
+        promptSourceType: 'inline',
+        promptVersionId: null,
+        promptConfig: null,
+        rawParams: buildResult.params,
+        canonicalParams: buildResult.params,
+        inputs: [],
+        reproducibleHash: null,
+        account: null,
+        accountEmail: null,
+        asset: null,
+        assetId: null,
+        user: null,
+        workspace: null,
+        parentGeneration: null,
       });
 
       logEvent('INFO', 'generation_created', {

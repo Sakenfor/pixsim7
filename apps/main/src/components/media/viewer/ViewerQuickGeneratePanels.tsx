@@ -16,6 +16,7 @@ import {
 } from "@features/contextHub";
 import { Ref, type AssetRef } from "@pixsim7/shared.types";
 import { resolveAssetMediaType } from "@features/assets/lib/assetMediaType";
+import { resolveCapabilityScopeFromScopeInstanceId, useScopeInstanceId } from "@features/panels";
 
 export type ViewerQuickGenSettingsMode = "asset" | "controlCenter";
 
@@ -50,6 +51,8 @@ export function ViewerQuickGenPromptPanel({ context }: PanelProps) {
   const settingsMode = context?.settingsMode ?? "controlCenter";
   const handleKeyDown = context?.handleKeyDown ?? noop;
   const isReady = !!context;
+  const scopeInstanceId = useScopeInstanceId("generation");
+  const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   useProvideCapability<PromptBoxContext>(
     CAP_PROMPT_BOX,
@@ -65,6 +68,7 @@ export function ViewerQuickGenPromptPanel({ context }: PanelProps) {
       }),
     },
     [activePrompt, setActivePrompt, maxChars, isReady],
+    { scope: capabilityScope },
   );
 
   useProvideCapability<AssetInputContext>(
@@ -107,6 +111,7 @@ export function ViewerQuickGenPromptPanel({ context }: PanelProps) {
       },
     },
     [asset, isReady],
+    { scope: capabilityScope },
   );
 
   if (!context) {
@@ -159,6 +164,8 @@ export function ViewerQuickGenSettingsPanel({ context }: PanelProps) {
   const handleGenerate = context?.handleGenerate ?? noop;
   const activeError = context?.activeError ?? null;
   const isReady = !!context;
+  const scopeInstanceId = useScopeInstanceId("generation");
+  const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   const resolvedCanGenerate =
     promptBox?.prompt?.trim().length ? promptBox.prompt.trim().length > 0 : canGenerate;
@@ -178,6 +185,7 @@ export function ViewerQuickGenSettingsPanel({ context }: PanelProps) {
       }),
     },
     [resolvedCanGenerate, generating, activeError, handleGenerate, isReady],
+    { scope: capabilityScope },
   );
 
   if (!context) {

@@ -20,8 +20,6 @@ export interface QuickGenerateBindings {
   multiAssetQueueIndex: number;
   dynamicParams: Record<string, any>;
   setDynamicParams: Dispatch<SetStateAction<Record<string, any>>>;
-  imageUrls: string[];
-  setImageUrls: Dispatch<SetStateAction<string[]>>;
   prompts: string[];
   setPrompts: Dispatch<SetStateAction<string[]>>;
   transitionDurations: number[];
@@ -73,12 +71,8 @@ export function useQuickGenerateBindings(
   const setDynamicParams = useSettingsStore((s) => s.setDynamicParams);
 
   // Operation-specific array fields for video_transition
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [prompts, setPrompts] = useState<string[]>([]);
   const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
-
-  const resolveAssetUrl = (asset: { remoteUrl?: string | null; thumbnailUrl?: string | null; fileUrl?: string | null }) =>
-    asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '';
 
   // Track previous queue state to detect adds vs cycles vs initial hydration
   const prevMainQueueLengthRef = useRef<number | null>(null);
@@ -90,9 +84,21 @@ export function useQuickGenerateBindings(
     if (!lastSelectedAsset) return;
 
     if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') {
-      setDynamicParams(prev => ({ ...prev, image_url: lastSelectedAsset.url }));
+      setDynamicParams((prev) => {
+        const { image_url, ...rest } = prev;
+        return {
+          ...rest,
+          source_asset_id: lastSelectedAsset.id,
+        };
+      });
     } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
-      setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
+      setDynamicParams((prev) => {
+        const { video_url, ...rest } = prev;
+        return {
+          ...rest,
+          source_asset_id: lastSelectedAsset.id,
+        };
+      });
     }
   };
 
@@ -101,9 +107,21 @@ export function useQuickGenerateBindings(
     if (!lastSelectedAsset) return;
 
     if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image' && !dynamicParams.image_url) {
-      setDynamicParams(prev => ({ ...prev, image_url: lastSelectedAsset.url }));
+      setDynamicParams((prev) => {
+        const { image_url, ...rest } = prev;
+        return {
+          ...rest,
+          source_asset_id: lastSelectedAsset.id,
+        };
+      });
     } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video' && !dynamicParams.video_url) {
-      setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
+      setDynamicParams((prev) => {
+        const { video_url, ...rest } = prev;
+        return {
+          ...rest,
+          source_asset_id: lastSelectedAsset.id,
+        };
+      });
     }
   }, [lastSelectedAsset, operationType]);
 
@@ -154,13 +172,25 @@ export function useQuickGenerateBindings(
 
       // Auto-fill based on operation and asset type
       if ((operation === 'image_to_video' || !operation) && asset.mediaType === 'image') {
-        setDynamicParams(prev => ({ ...prev, image_url: resolveAssetUrl(asset) }));
+        setDynamicParams((prev) => {
+          const { image_url, ...rest } = prev;
+          return {
+            ...rest,
+            source_asset_id: asset.id,
+          };
+        });
         // Only auto-select operation type if setting is enabled
         if (!operation && autoSelectOperationType) {
           setOperationType('image_to_video');
         }
       } else if ((operation === 'video_extend' || !operation) && asset.mediaType === 'video') {
-        setDynamicParams(prev => ({ ...prev, video_url: resolveAssetUrl(asset) }));
+        setDynamicParams((prev) => {
+          const { video_url, ...rest } = prev;
+          return {
+            ...rest,
+            source_asset_id: asset.id,
+          };
+        });
         // Only auto-select operation type if setting is enabled
         if (!operation && autoSelectOperationType) {
           setOperationType('video_extend');
@@ -169,16 +199,40 @@ export function useQuickGenerateBindings(
     } else if (indexChanged || itemChanged) {
       // Index changed (user cycled) - update params to reflect the current item
       if (asset.mediaType === 'image') {
-        setDynamicParams(prev => ({ ...prev, image_url: resolveAssetUrl(asset) }));
+        setDynamicParams((prev) => {
+          const { image_url, ...rest } = prev;
+          return {
+            ...rest,
+            source_asset_id: asset.id,
+          };
+        });
       } else if (asset.mediaType === 'video') {
-        setDynamicParams(prev => ({ ...prev, video_url: resolveAssetUrl(asset) }));
+        setDynamicParams((prev) => {
+          const { video_url, ...rest } = prev;
+          return {
+            ...rest,
+            source_asset_id: asset.id,
+          };
+        });
       }
     } else {
       // On initial load, only fill params if empty (don't override user choices)
       if (asset.mediaType === 'image' && !dynamicParams.image_url) {
-        setDynamicParams(prev => ({ ...prev, image_url: resolveAssetUrl(asset) }));
+        setDynamicParams((prev) => {
+          const { image_url, ...rest } = prev;
+          return {
+            ...rest,
+            source_asset_id: asset.id,
+          };
+        });
       } else if (asset.mediaType === 'video' && !dynamicParams.video_url) {
-        setDynamicParams(prev => ({ ...prev, video_url: resolveAssetUrl(asset) }));
+        setDynamicParams((prev) => {
+          const { video_url, ...rest } = prev;
+          return {
+            ...rest,
+            source_asset_id: asset.id,
+          };
+        });
       }
     }
     prevMainQueueItemIdRef.current = currentItemId;
@@ -193,9 +247,12 @@ export function useQuickGenerateBindings(
     prevTransitionQueueLengthRef.current = currentLength;
 
     if (currentLength === 0) {
-      setImageUrls([]);
       setPrompts([]);
       setTransitionDurations([]);
+      setDynamicParams((prev) => {
+        const { source_asset_ids, ...rest } = prev;
+        return rest;
+      });
       return;
     }
 
@@ -203,13 +260,14 @@ export function useQuickGenerateBindings(
     // The slot picker now handles this via setOperationInputMode() for optional multi-asset operations.
     // Operation type should be explicitly controlled by the user, not auto-switched when adding to queue.
 
-    // Fill image URLs from transition queue
-    const urls = multiAssetQueue.map(item => resolveAssetUrl(item.asset));
-    setImageUrls(urls);
+    setDynamicParams((prev) => ({
+      ...prev,
+      source_asset_ids: multiAssetQueue.map((item) => item.asset.id),
+    }));
 
     // Initialize prompts array with N-1 elements (one per transition between images)
     // For N images, we have N-1 transitions
-    const numTransitions = Math.max(0, urls.length - 1);
+    const numTransitions = Math.max(0, multiAssetQueue.length - 1);
     setPrompts(prev => {
       const newPrompts = [...prev];
       while (newPrompts.length < numTransitions) {
@@ -239,8 +297,6 @@ export function useQuickGenerateBindings(
     multiAssetQueueIndex,
     dynamicParams,
     setDynamicParams,
-    imageUrls,
-    setImageUrls,
     prompts,
     setPrompts,
     transitionDurations,
