@@ -259,6 +259,11 @@ class WebSocketManager {
                 try {
                   await apiClient.post(`/assets/${assetId}/sync`);
                   debugFlags.log('websocket', 'Asset synced to local storage successfully');
+
+                  // Re-fetch asset and emit update event so gallery refreshes thumbnails
+                  const { data: syncedAsset } = await apiClient.get(`/assets/${assetId}`);
+                  assetEvents.emitAssetUpdated(syncedAsset);
+                  debugFlags.log('websocket', 'Emitted asset update event');
                 } catch (err) {
                   console.error('[WebSocket] Failed to auto-sync asset:', assetId, err);
                 }

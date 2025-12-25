@@ -30,7 +30,7 @@ export function mapAssetToGeneration(
 ): GenerationStatusInfo | undefined {
   // Find the most recent generation for this asset
   const gen = generations
-    .filter(g => g.asset?.id === assetId)
+    .filter(g => (g.asset?.id ?? g.assetId) === assetId)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
   if (!gen) return undefined;
@@ -56,8 +56,9 @@ export function getAssetsWithActiveGenerations(
   const assetIds = new Set<number>();
 
   for (const gen of generations) {
-    if (gen.asset?.id && isGenerationActive(gen.status)) {
-      assetIds.add(gen.asset.id);
+    const assetId = gen.asset?.id ?? gen.assetId;
+    if (assetId && isGenerationActive(gen.status)) {
+      assetIds.add(assetId);
     }
   }
 
@@ -73,8 +74,9 @@ export function getAssetsWithFailedGenerations(
   const assetIds = new Set<number>();
 
   for (const gen of generations) {
-    if (gen.asset?.id && gen.status === 'failed') {
-      assetIds.add(gen.asset.id);
+    const assetId = gen.asset?.id ?? gen.assetId;
+    if (assetId && gen.status === 'failed') {
+      assetIds.add(assetId);
     }
   }
 

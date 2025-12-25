@@ -11,12 +11,15 @@
  */
 import type {
   GenerationResponse,
-  GenerationStatus,
+  GenerationStatus as ApiGenerationStatus,
   OperationType,
 } from '@pixsim7/api-client/domains';
 
 // Re-export types that don't need mapping (enums, etc.)
-export type { GenerationStatus, OperationType };
+export type { OperationType };
+
+// Extend API status with queued (API may emit this even if OpenAPI doesn't).
+export type GenerationStatus = ApiGenerationStatus | 'queued';
 
 /**
  * Entity reference (id + optional metadata)
@@ -24,6 +27,7 @@ export type { GenerationStatus, OperationType };
  */
 export interface EntityRef {
   id: number;
+  type?: string;
   meta?: Record<string, unknown> | null;
 }
 
@@ -71,6 +75,7 @@ export interface GenerationModel {
   account: EntityRef | null;
   accountEmail: string | null;
   asset: EntityRef | null;
+  assetId: number | null;
   user: EntityRef | null;
   workspace: EntityRef | null;
   parentGeneration: EntityRef | null;
@@ -123,13 +128,26 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     reproducibleHash: response.reproducible_hash,
 
     // Relationships
-    account: response.account ? { id: response.account.id, meta: response.account.meta } : null,
+    account: response.account
+      ? { id: response.account.id, type: response.account.type, meta: response.account.meta }
+      : null,
     accountEmail: response.account_email ?? null,
-    asset: response.asset ? { id: response.asset.id, meta: response.asset.meta } : null,
-    user: response.user ? { id: response.user.id, meta: response.user.meta } : null,
-    workspace: response.workspace ? { id: response.workspace.id, meta: response.workspace.meta } : null,
+    asset: response.asset
+      ? { id: response.asset.id, type: response.asset.type, meta: response.asset.meta }
+      : null,
+    assetId: response.asset?.id ?? (response as { asset_id?: number | null }).asset_id ?? null,
+    user: response.user
+      ? { id: response.user.id, type: response.user.type, meta: response.user.meta }
+      : null,
+    workspace: response.workspace
+      ? { id: response.workspace.id, type: response.workspace.type, meta: response.workspace.meta }
+      : null,
     parentGeneration: response.parent_generation
-      ? { id: response.parent_generation.id, meta: response.parent_generation.meta }
+      ? {
+          id: response.parent_generation.id,
+          type: response.parent_generation.type,
+          meta: response.parent_generation.meta,
+        }
       : null,
   };
 }

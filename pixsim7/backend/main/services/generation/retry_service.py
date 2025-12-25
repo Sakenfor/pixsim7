@@ -156,7 +156,23 @@ class GenerationRetryService:
 
         error_msg = generation.error_message.lower()
 
-        # Content filtering indicators
+        # Non-retryable patterns (prompt/input rejections - same input = same rejection)
+        non_retryable_patterns = [
+            "content filtered (prompt)",  # Pixverse prompt rejection
+            "content filtered (text)",    # Text input rejection
+            "prompt was rejected",
+            "text input was rejected",
+        ]
+
+        for pattern in non_retryable_patterns:
+            if pattern in error_msg:
+                logger.info(
+                    f"Generation {generation.id} will NOT auto-retry: "
+                    f"non-retryable pattern '{pattern}' detected"
+                )
+                return False
+
+        # Content filtering indicators (retryable - output varies)
         content_filter_keywords = [
             "content filter",
             "content policy",
@@ -173,6 +189,8 @@ class GenerationRetryService:
             # Pixverse-specific error codes (mapped in pixverse adapter)
             "safety or policy reasons",
             "content moderation failed",
+            "content filtered (output)",  # Output rejection - retryable
+            "content filtered (image)",   # Image output rejection - retryable
         ]
 
         # Temporary error indicators

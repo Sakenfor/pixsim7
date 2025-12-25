@@ -447,15 +447,19 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             />
           </button>
 
-          {generation.asset && (
-            <button
-              onClick={() => onOpenAsset(generation.asset!.id)}
-              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
-              title="Open asset"
-            >
-              <ThemedIcon name="externalLink" size={14} className="text-neutral-600 dark:text-neutral-400" />
-            </button>
-          )}
+          {(() => {
+            const assetId = generation.asset?.id ?? generation.assetId;
+            if (!assetId) return null;
+            return (
+              <button
+                onClick={() => onOpenAsset(assetId)}
+                className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
+                title="Open asset"
+              >
+                <ThemedIcon name="externalLink" size={14} className="text-neutral-600 dark:text-neutral-400" />
+              </button>
+            );
+          })()}
           {canRetry && (
             <>
               <button
@@ -595,14 +599,18 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 {generation.id}
               </span>
             </div>
-            {generation.asset && (
-              <div>
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">Asset ID:</span>
-                <span className="ml-1 text-neutral-600 dark:text-neutral-400 font-mono">
-                  {generation.asset.id}
-                </span>
-              </div>
-            )}
+            {(() => {
+              const assetId = generation.asset?.id ?? generation.assetId;
+              if (!assetId) return null;
+              return (
+                <div>
+                  <span className="font-medium text-neutral-700 dark:text-neutral-300">Asset ID:</span>
+                  <span className="ml-1 text-neutral-600 dark:text-neutral-400 font-mono">
+                    {assetId}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Provider/Account Debug Info */}

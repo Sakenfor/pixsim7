@@ -577,15 +577,24 @@ class GenerationCreationService:
             image_url = gen_config.get("image_url") or params.get("image_url")
             if image_url:
                 canonical["image_url"] = image_url
+            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
+            if source_asset_id:
+                canonical["source_asset_id"] = source_asset_id
 
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
             # Image-to-image may use a single image_url or a list of image_urls.
             image_url = gen_config.get("image_url") or params.get("image_url")
             image_urls = gen_config.get("image_urls") or params.get("image_urls")
+            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
+            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
             if image_urls:
                 canonical["image_urls"] = image_urls
             elif image_url:
                 canonical["image_urls"] = [image_url]
+            if source_asset_ids:
+                canonical["source_asset_ids"] = source_asset_ids
+            elif source_asset_id:
+                canonical["source_asset_id"] = source_asset_id
 
             # Optional: inpainting-style image edits may provide an explicit mask.
             # Provider adapters can opt into using these fields without changing
@@ -612,6 +621,9 @@ class GenerationCreationService:
             original_video_id = gen_config.get("original_video_id") or params.get("original_video_id")
             if original_video_id:
                 canonical["original_video_id"] = original_video_id
+            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
+            if source_asset_id:
+                canonical["source_asset_id"] = source_asset_id
 
         elif operation_type == OperationType.VIDEO_TRANSITION:
             image_urls = gen_config.get("image_urls") or params.get("image_urls")
@@ -620,6 +632,9 @@ class GenerationCreationService:
                 canonical["image_urls"] = image_urls
             if prompts:
                 canonical["prompts"] = prompts
+            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
+            if source_asset_ids:
+                canonical["source_asset_ids"] = source_asset_ids
 
         elif operation_type == OperationType.FUSION:
             fusion_assets = gen_config.get("fusion_assets") or params.get("fusion_assets")
@@ -683,8 +698,18 @@ class GenerationCreationService:
 
         if operation_type == OperationType.IMAGE_TO_VIDEO:
             # Single image input
+            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
             image_url = gen_config.get("image_url") or params.get("image_url")
-            if image_url:
+            if source_asset_id:
+                asset_input = self._parse_asset_input(
+                    value=source_asset_id,
+                    role="source_image",
+                    sequence_order=0,
+                    gen_config=gen_config,
+                )
+                if asset_input:
+                    inputs.append(asset_input)
+            elif image_url:
                 asset_input = self._parse_asset_input(
                     value=image_url,
                     role="source_image",
@@ -698,9 +723,15 @@ class GenerationCreationService:
             # Single or multiple image inputs
             image_urls = gen_config.get("image_urls") or params.get("image_urls")
             image_url = gen_config.get("image_url") or params.get("image_url")
+            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
+            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
 
             urls_to_process = []
-            if image_urls and isinstance(image_urls, list):
+            if source_asset_ids and isinstance(source_asset_ids, list):
+                urls_to_process = source_asset_ids
+            elif source_asset_id:
+                urls_to_process = [source_asset_id]
+            elif image_urls and isinstance(image_urls, list):
                 urls_to_process = image_urls
             elif image_url:
                 urls_to_process = [image_url]
@@ -719,9 +750,10 @@ class GenerationCreationService:
             # Video input
             video_url = gen_config.get("video_url") or params.get("video_url")
             original_video_id = gen_config.get("original_video_id") or params.get("original_video_id")
+            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
 
             # Prefer original_video_id (direct asset reference)
-            video_ref = original_video_id or video_url
+            video_ref = original_video_id or source_asset_id or video_url
             if video_ref:
                 asset_input = self._parse_asset_input(
                     value=video_ref,
@@ -735,7 +767,18 @@ class GenerationCreationService:
         elif operation_type == OperationType.VIDEO_TRANSITION:
             # Multiple image inputs for transition
             image_urls = gen_config.get("image_urls") or params.get("image_urls")
-            if image_urls and isinstance(image_urls, list):
+            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
+            if source_asset_ids and isinstance(source_asset_ids, list):
+                for i, url in enumerate(source_asset_ids):
+                    asset_input = self._parse_asset_input(
+                        value=url,
+                        role="transition_input",
+                        sequence_order=i,
+                        gen_config=gen_config,
+                    )
+                    if asset_input:
+                        inputs.append(asset_input)
+            elif image_urls and isinstance(image_urls, list):
                 for i, url in enumerate(image_urls):
                     asset_input = self._parse_asset_input(
                         value=url,
@@ -1026,21 +1069,24 @@ class GenerationCreationService:
                     f"{operation_type.value} operation requires a non-empty 'prompt'"
                 )
 
-        # IMAGE_TO_VIDEO requires image_url
+        # IMAGE_TO_VIDEO requires image_url or source_asset_id
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            if not has_field("image_url"):
+            if not has_field("image_url") and not has_field("source_asset_id"):
                 raise InvalidOperationError(
-                    "IMAGE_TO_VIDEO operation requires 'image_url' field in generation config"
+                    "IMAGE_TO_VIDEO operation requires 'image_url' or 'source_asset_id' field in generation config"
                 )
 
         # IMAGE_TO_IMAGE requires image_urls or image_url
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
             image_urls = get_field("image_urls")
             image_url = get_field("image_url")
+            source_asset_id = get_field("source_asset_id")
+            source_asset_ids = get_field("source_asset_ids")
 
-            if not image_urls and not image_url:
+            if not image_urls and not image_url and not source_asset_id and not source_asset_ids:
                 raise InvalidOperationError(
-                    "IMAGE_TO_IMAGE operation requires 'image_urls' (list) or 'image_url' (single URL)"
+                    "IMAGE_TO_IMAGE operation requires 'image_urls' (list), 'image_url' (single URL), "
+                    "or 'source_asset_id(s)'"
                 )
 
             # If image_urls is provided, ensure it's non-empty
@@ -1051,19 +1097,24 @@ class GenerationCreationService:
 
         # VIDEO_EXTEND requires video_url or original_video_id
         elif operation_type == OperationType.VIDEO_EXTEND:
-            if not has_field("video_url") and not has_field("original_video_id"):
+            if not has_field("video_url") and not has_field("original_video_id") and not has_field("source_asset_id"):
                 raise InvalidOperationError(
-                    "VIDEO_EXTEND operation requires 'video_url' or 'original_video_id'"
+                    "VIDEO_EXTEND operation requires 'video_url', 'original_video_id', or 'source_asset_id'"
                 )
 
         # VIDEO_TRANSITION requires image_urls and prompts with correct counts
         elif operation_type == OperationType.VIDEO_TRANSITION:
             image_urls = get_field("image_urls")
+            source_asset_ids = get_field("source_asset_ids")
             prompts = get_field("prompts")
 
-            if not image_urls or not isinstance(image_urls, list) or len(image_urls) < 2:
+            if (
+                (image_urls and (not isinstance(image_urls, list) or len(image_urls) < 2))
+                or (source_asset_ids and (not isinstance(source_asset_ids, list) or len(source_asset_ids) < 2))
+                or (not image_urls and not source_asset_ids)
+            ):
                 raise InvalidOperationError(
-                    "VIDEO_TRANSITION operation requires 'image_urls' list with at least 2 images"
+                    "VIDEO_TRANSITION operation requires 'image_urls' or 'source_asset_ids' list with at least 2 images"
                 )
 
             if not prompts or not isinstance(prompts, list):
@@ -1071,11 +1122,11 @@ class GenerationCreationService:
                     "VIDEO_TRANSITION operation requires 'prompts' list"
                 )
 
-            expected_prompts = len(image_urls) - 1
+            expected_prompts = (len(source_asset_ids) if source_asset_ids else len(image_urls)) - 1
             if len(prompts) != expected_prompts:
                 raise InvalidOperationError(
                     f"VIDEO_TRANSITION requires exactly {expected_prompts} prompt(s) "
-                    f"for {len(image_urls)} images, but got {len(prompts)}"
+                    f"for {len(source_asset_ids) if source_asset_ids else len(image_urls)} images, but got {len(prompts)}"
                 )
 
     def _validate_content_rating(

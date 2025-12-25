@@ -93,6 +93,7 @@ class GenerationNodeConfigSchema(BaseModel):
     - image_url: Source image URL for image_to_video operations
     - video_url: Source video URL for video_extend operations
     - image_urls: Image URLs for video_transition operations
+    - source_asset_id(s): Asset references for provider URL resolution
     - prompts: Transition prompts for video_transition operations
     """
     generation_type: str = Field(..., pattern="^(text_to_image|transition|variation|dialogue|environment|npc_response|image_edit|video_extend|fusion)$")
@@ -113,6 +114,8 @@ class GenerationNodeConfigSchema(BaseModel):
     video_url: Optional[str] = None
     image_urls: Optional[List[str]] = None
     prompts: Optional[List[str]] = None
+    source_asset_id: Optional[int] = None
+    source_asset_ids: Optional[List[int]] = None
 
     # Allow extra fields for future extensions
     model_config = {"extra": "allow"}

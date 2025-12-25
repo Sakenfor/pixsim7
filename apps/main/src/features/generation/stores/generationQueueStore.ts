@@ -121,6 +121,79 @@ type QueueKeys = {
   indexKey: 'mainQueueIndex' | 'multiAssetQueueIndex';
 };
 
+function normalizeQueuedAsset(asset: any): AssetModel {
+  if (!asset || typeof asset !== 'object') {
+    return {
+      id: 0,
+      createdAt: new Date().toISOString(),
+      description: null,
+      durationSec: null,
+      fileSizeBytes: null,
+      fileUrl: null,
+      height: null,
+      isArchived: false,
+      lastUploadStatusByProvider: null,
+      localPath: null,
+      mediaType: 'image',
+      mimeType: null,
+      previewKey: null,
+      previewUrl: null,
+      providerAssetId: 'unknown',
+      providerId: 'unknown',
+      providerStatus: null,
+      remoteUrl: null,
+      sourceGenerationId: null,
+      storedKey: null,
+      syncStatus: 'remote',
+      tags: undefined,
+      thumbnailKey: null,
+      thumbnailUrl: null,
+      userId: 0,
+      width: null,
+    };
+  }
+
+  if (asset.mediaType) {
+    return asset as AssetModel;
+  }
+
+  const mediaType =
+    asset.media_type ||
+    asset.type ||
+    asset.mediaType ||
+    'image';
+
+  return {
+    id: asset.id,
+    createdAt: asset.createdAt || asset.created_at || new Date().toISOString(),
+    description: asset.description ?? null,
+    durationSec: asset.durationSec ?? asset.duration_sec ?? null,
+    fileSizeBytes: asset.fileSizeBytes ?? asset.file_size_bytes ?? null,
+    fileUrl: asset.fileUrl ?? asset.file_url ?? null,
+    height: asset.height ?? null,
+    isArchived: asset.isArchived ?? asset.is_archived ?? false,
+    lastUploadStatusByProvider:
+      asset.lastUploadStatusByProvider ?? asset.last_upload_status_by_provider ?? null,
+    localPath: asset.localPath ?? asset.local_path ?? null,
+    mediaType,
+    mimeType: asset.mimeType ?? asset.mime_type ?? null,
+    previewKey: asset.previewKey ?? asset.preview_key ?? null,
+    previewUrl: asset.previewUrl ?? asset.preview_url ?? null,
+    providerAssetId: asset.providerAssetId ?? asset.provider_asset_id ?? String(asset.id),
+    providerId: asset.providerId ?? asset.provider_id ?? 'unknown',
+    providerStatus: asset.providerStatus ?? asset.provider_status ?? null,
+    remoteUrl: asset.remoteUrl ?? asset.remote_url ?? null,
+    sourceGenerationId: asset.sourceGenerationId ?? asset.source_generation_id ?? null,
+    storedKey: asset.storedKey ?? asset.stored_key ?? null,
+    syncStatus: asset.syncStatus ?? asset.sync_status ?? 'remote',
+    tags: asset.tags ?? undefined,
+    thumbnailKey: asset.thumbnailKey ?? asset.thumbnail_key ?? null,
+    thumbnailUrl: asset.thumbnailUrl ?? asset.thumbnail_url ?? null,
+    userId: asset.userId ?? asset.user_id ?? 0,
+    width: asset.width ?? null,
+  };
+}
+
 function getQueueKeys(queueType: 'main' | 'multi'): QueueKeys {
   return queueType === 'main'
     ? { queueKey: 'mainQueue', indexKey: 'mainQueueIndex' }
@@ -438,7 +511,7 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
   },
     {
       name: 'generation_queue_v4',
-      version: 1,
+      version: 2,
       // Queues, indices, and preferences need to be persisted; methods are recreated.
       partialize: (state) => ({
         mainQueue: state.mainQueue,
@@ -450,12 +523,25 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<GenerationQueueState>;
 
-        // Migration from v3 (no version) to v4 with version 1
-        // Just ensure operationInputModePrefs exists
         if (version < 1) {
           return {
             ...state,
             operationInputModePrefs: state.operationInputModePrefs ?? {},
+          };
+        }
+
+        if (version < 2) {
+          const normalizeQueue = (queue?: QueuedAsset[]) =>
+            (queue ?? []).map((item) =>
+              item && item.asset
+                ? { ...item, asset: normalizeQueuedAsset(item.asset) }
+                : item
+            );
+
+          return {
+            ...state,
+            mainQueue: normalizeQueue(state.mainQueue),
+            multiAssetQueue: normalizeQueue(state.multiAssetQueue),
           };
         }
 
