@@ -13,6 +13,7 @@ export * from './CustomTabComponent';
 export * from './DockviewIdContext';
 export * from './useComponentContextMenu';
 export * from './contextDataResolver';
+export * from './capabilityHelpers';
 export { contextMenuRegistry } from './ContextMenuRegistry';
 
 // Actions - import to register with the global registry

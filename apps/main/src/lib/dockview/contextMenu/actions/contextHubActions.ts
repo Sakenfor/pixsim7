@@ -2,6 +2,10 @@
  * ContextHub Connection Actions
  *
  * Allows users to connect panels/components by selecting a capability provider.
+ *
+ * NOTE: This file uses the LIVE STATE pattern (ctx.contextHubState) because it
+ * needs to enumerate all providers, check availability, and support preferred
+ * provider selection. See types.ts for capability access pattern documentation.
  */
 
 import type { MenuAction, MenuActionContext } from "../types";
@@ -14,6 +18,13 @@ import {
 import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
 import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 import { panelRegistry } from "@features/panels";
+import {
+  getRegistryChain,
+  getAllProviders,
+  resolveProvider,
+  hasLiveState,
+  type ProviderEntry,
+} from "../capabilityHelpers";
 
 const CAPABILITY_LABELS: Record<string, string> = {
   [CAP_PROMPT_BOX]: "Prompt Box",
@@ -35,40 +46,10 @@ function summarizeProvider(provider: CapabilityProvider) {
   return "anonymous";
 }
 
-type ProviderEntry = {
-  scope: string;
-  provider: CapabilityProvider;
-  available: boolean;
-};
-
 type CapabilityUsage = {
   key: CapabilityKey;
   source: "consumed" | "declared";
 };
-
-function getRegistryChain(ctx: MenuActionContext) {
-  const chain: Array<{ label: string; registry: any }> = [];
-  let current = ctx.contextHubState;
-  let index = 0;
-  while (current) {
-    const label = current.hostId ? current.hostId : index === 0 ? "local" : `scope-${index}`;
-    chain.push({ label, registry: current.registry });
-    current = current.parent;
-    index += 1;
-  }
-  return chain;
-}
-
-function getProviderEntries(ctx: MenuActionContext, key: CapabilityKey): ProviderEntry[] {
-  const chain = getRegistryChain(ctx);
-  return chain.flatMap((scope) =>
-    scope.registry.getAll(key).map((provider: CapabilityProvider) => ({
-      scope: scope.label,
-      provider,
-      available: provider.isAvailable ? provider.isAvailable() : true,
-    })),
-  );
-}
 
 function getPreferredProviderId(
   key: CapabilityKey,
@@ -76,40 +57,6 @@ function getPreferredProviderId(
 ): string | undefined {
   const store = useContextHubOverridesStore.getState();
   return store.getPreferredProviderId(key, hostId);
-}
-
-function resolveProvider(
-  ctx: MenuActionContext,
-  key: CapabilityKey,
-  preferredProviderId?: string,
-): CapabilityProvider | null {
-  let current = ctx.contextHubState;
-  if (!current) return null;
-
-  if (preferredProviderId) {
-    while (current) {
-      const candidates = current.registry.getAll(key);
-      const match = candidates.find((provider) => {
-        if (!provider?.id || provider.id !== preferredProviderId) {
-          return false;
-        }
-        if (provider.isAvailable && !provider.isAvailable()) {
-          return false;
-        }
-        return true;
-      });
-      if (match) return match;
-      current = current.parent;
-    }
-  }
-
-  current = ctx.contextHubState;
-  while (current) {
-    const provider = current.registry.getBest(key);
-    if (provider) return provider;
-    current = current.parent;
-  }
-  return null;
 }
 
 function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
@@ -167,7 +114,7 @@ function buildProviderActions(
   key: CapabilityKey,
   usageSource: CapabilityUsage["source"],
 ): MenuAction[] {
-  const providers = getProviderEntries(ctx, key);
+  const providers = getAllProviders(ctx, key);
   if (providers.length === 0) {
     return [
       {
@@ -327,7 +274,7 @@ export const contextHubActions: MenuAction[] = [
     category: "zzz",
     divider: true,
     availableIn: ["panel-content", "tab"],
-    visible: (ctx) => !!ctx.contextHubState,
+    visible: (ctx) => hasLiveState(ctx),
     children: (ctx) => buildCapabilityListActions(ctx),
     execute: () => {},
   },
@@ -337,7 +284,7 @@ export const contextHubActions: MenuAction[] = [
     icon: "link",
     category: "connect",
     availableIn: ["panel-content", "tab"],
-    visible: (ctx) => !!ctx.contextHubState,
+    visible: (ctx) => hasLiveState(ctx),
     children: (ctx) => {
       const usage = getPanelCapabilityUsage(ctx);
       const actions: MenuAction[] = [];

@@ -9,6 +9,43 @@ import type { useWorkspaceStore } from '@features/workspace/stores/workspaceStor
 import type { ContextHubState } from '@features/contextHub';
 import type { DockviewHost } from '../host';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Capability Access Patterns
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// There are TWO ways to access capabilities in menu actions:
+//
+// 1. SNAPSHOT (ctx.capabilities) - Pre-resolved values
+//    - Built once when context menu opens
+//    - Contains resolved values for all exposed capability keys
+//    - Fast, stable, simple to use
+//    - Use for: Simple value checks, reading capability data
+//
+//    Example:
+//    ```ts
+//    const genContext = ctx.capabilities?.generationContext as GenerationContextSummary | null;
+//    if (genContext?.mode === 'quick') { ... }
+//    ```
+//
+// 2. LIVE STATE (ctx.contextHubState) - Full registry chain
+//    - Provides access to the actual ContextHubState
+//    - Can walk parent chain, query all providers, check isAvailable()
+//    - Use for: Introspection, multi-provider scenarios, debugging
+//
+//    Example:
+//    ```ts
+//    // Walk the scope chain
+//    let current = ctx.contextHubState;
+//    while (current) {
+//      const providers = current.registry.getAll(key);
+//      current = current.parent;
+//    }
+//    ```
+//
+// GUIDELINE: Prefer snapshot for most actions. Only use live state when you
+// need to enumerate providers, check availability, or walk the scope chain.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface PanelRegistryLike {
   getAll: () => Array<{
     id: string;
@@ -64,9 +101,36 @@ export interface MenuActionContext {
   /** Generic data payload for the clicked item */
   data?: any;
 
-  /** ContextHub capability snapshots (optional) */
+  /**
+   * Pre-resolved capability values (SNAPSHOT).
+   *
+   * Use for simple value access in most actions.
+   * Values are resolved once when the context menu opens.
+   *
+   * @example
+   * const genContext = ctx.capabilities?.generationContext as GenerationContextSummary | null;
+   */
   capabilities?: Record<string, unknown>;
-  /** ContextHub state for scoped capability resolution (optional) */
+
+  /**
+   * Live ContextHub state for advanced capability queries (LIVE STATE).
+   *
+   * Use only when you need to:
+   * - Enumerate all providers for a capability key
+   * - Check provider.isAvailable() status
+   * - Walk the scope chain for debugging/introspection
+   * - Support preferred provider selection
+   *
+   * For simple value access, prefer `ctx.capabilities` instead.
+   *
+   * @example
+   * // Walk the scope chain
+   * let current = ctx.contextHubState;
+   * while (current) {
+   *   const providers = current.registry.getAll(key);
+   *   current = current.parent;
+   * }
+   */
   contextHubState?: ContextHubState | null;
 
   // Multi-dockview support

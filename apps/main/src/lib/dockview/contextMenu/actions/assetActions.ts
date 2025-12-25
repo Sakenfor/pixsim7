@@ -2,6 +2,9 @@
  * Asset Actions
  *
  * Context menu actions for asset cards.
+ *
+ * NOTE: This file uses the SNAPSHOT pattern (ctx.capabilities) for simple
+ * value access. See types.ts for capability access pattern documentation.
  */
 
 import type { MenuAction } from '../types';
@@ -14,6 +17,7 @@ import { useGenerationQueueStore } from '@features/generation/stores/generationQ
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import type { GenerationContextSummary } from '@features/contextHub';
+import { getCapability } from '../capabilityHelpers';
 
 type AssetActionInput = {
   id: number;
@@ -145,10 +149,7 @@ const sendToActiveGeneratorAction: MenuAction = {
     const assets = resolveAssets(ctx);
     if (!assets.length) return;
 
-    const generationContext = ctx.capabilities?.generationContext as
-      | GenerationContextSummary
-      | null
-      | undefined;
+    const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
 
     if (generationContext?.id === 'assetViewer') {
       const viewerAsset = toViewerAsset(assets[0]);
