@@ -1910,6 +1910,29 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/backfill-content-blobs": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Backfill Content Blobs
+         * @description Backfill content blob links and logical size for assets.
+         *
+         *     Links assets that have SHA256 but no content_id, and fills
+         *     logical_size_bytes from file_size_bytes when missing.
+         */
+        readonly post: operations["backfill_content_blobs_api_v1_assets_backfill_content_blobs_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/backfill-sha": {
         readonly parameters: {
             readonly query?: never;
@@ -2042,6 +2065,54 @@ export interface paths {
          *     Use this before uploading to avoid duplicate uploads.
          */
         readonly post: operations["check_asset_by_hash_api_v1_assets_check_by_hash_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/check-by-hash-batch": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Check Assets By Hash Batch
+         * @description Check if assets with the given SHA256 hashes already exist for the current user.
+         *
+         *     Returns a list of results indicating which hashes have matching assets.
+         *     This is a read-only check that does NOT modify any data.
+         *
+         *     Use this to check multiple local files at once before uploading.
+         */
+        readonly post: operations["check_assets_by_hash_batch_api_v1_assets_check_by_hash_batch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/content-blob-stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Content Blob Stats
+         * @description Get statistics about content blob linkage for user's assets.
+         *
+         *     Content blobs enable future cross-user deduplication by linking
+         *     assets to a global SHA256 record.
+         */
+        readonly get: operations["get_content_blob_stats_api_v1_assets_content_blob_stats_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -9100,6 +9171,10 @@ export interface components {
             readonly provider_id: string;
             /** Provider Status */
             readonly provider_status?: ("ok" | "local_only" | "unknown" | "flagged") | null;
+            /** Provider Uploads */
+            readonly provider_uploads?: {
+                readonly [key: string]: string;
+            } | null;
             /** Remote Url */
             readonly remote_url?: string | null;
             /** Source Generation Id */
@@ -9215,6 +9290,24 @@ export interface components {
             readonly providers: readonly Record<string, unknown>[];
         };
         /**
+         * BackfillContentBlobsResponse
+         * @description Response from content blob backfill operation
+         */
+        readonly BackfillContentBlobsResponse: {
+            /** Errors */
+            readonly errors: number;
+            /** Linked */
+            readonly linked: number;
+            /** Processed */
+            readonly processed: number;
+            /** Skipped */
+            readonly skipped: number;
+            /** Success */
+            readonly success: boolean;
+            /** Updated Sizes */
+            readonly updated_sizes: number;
+        };
+        /**
          * BackfillSHAResponse
          * @description Response from SHA backfill operation
          */
@@ -9229,6 +9322,45 @@ export interface components {
             readonly success: boolean;
             /** Updated */
             readonly updated: number;
+        };
+        /**
+         * BatchCheckByHashRequest
+         * @description Request body for checking multiple assets by SHA256 hashes.
+         */
+        readonly BatchCheckByHashRequest: {
+            /**
+             * Hashes
+             * @description List of SHA256 hashes to check (max 500)
+             */
+            readonly hashes: readonly string[];
+        };
+        /**
+         * BatchCheckByHashResponse
+         * @description Response for batch hash check.
+         */
+        readonly BatchCheckByHashResponse: {
+            /**
+             * Found Count
+             * @description Number of hashes that matched existing assets
+             */
+            readonly found_count: number;
+            /**
+             * Results
+             * @description Results for each hash
+             */
+            readonly results: readonly components["schemas"]["BatchHashResult"][];
+        };
+        /**
+         * BatchHashResult
+         * @description Result for a single hash in batch check.
+         */
+        readonly BatchHashResult: {
+            /** Asset Id */
+            readonly asset_id?: number | null;
+            /** Exists */
+            readonly exists: boolean;
+            /** Sha256 */
+            readonly sha256: string;
         };
         /**
          * BatchSyncCreditsRequest
@@ -9837,6 +9969,24 @@ export interface components {
             readonly rating?: string | null;
             /** Required Elements */
             readonly required_elements?: readonly string[] | null;
+        };
+        /**
+         * ContentBlobStatsResponse
+         * @description Content blob linkage statistics
+         */
+        readonly ContentBlobStatsResponse: {
+            /** Missing Content Id */
+            readonly missing_content_id: number;
+            /** Missing Logical Size */
+            readonly missing_logical_size: number;
+            /** Missing With Sha */
+            readonly missing_with_sha: number;
+            /** Percentage */
+            readonly percentage: number;
+            /** Total Assets */
+            readonly total_assets: number;
+            /** With Content Id */
+            readonly with_content_id: number;
         };
         /**
          * CookieImportRequest
@@ -11117,6 +11267,7 @@ export interface components {
          *     - image_url: Source image URL for image_to_video operations
          *     - video_url: Source video URL for video_extend operations
          *     - image_urls: Image URLs for video_transition operations
+         *     - source_asset_id(s): Asset references for provider URL resolution
          *     - prompts: Transition prompts for video_transition operations
          */
         readonly GenerationNodeConfigSchema: {
@@ -11142,6 +11293,10 @@ export interface components {
             readonly purpose: string;
             /** Seed Source */
             readonly seed_source?: string | null;
+            /** Source Asset Id */
+            readonly source_asset_id?: number | null;
+            /** Source Asset Ids */
+            readonly source_asset_ids?: readonly number[] | null;
             /** Strategy */
             readonly strategy: string;
             readonly style: components["schemas"]["StyleRulesSchema"];
@@ -12225,10 +12380,8 @@ export interface components {
             /**
              * Kind
              * @description What is being generated: 'video' or 'image'.
-             * @default video
-             * @enum {string}
              */
-            readonly kind: "video" | "image";
+            readonly kind?: ("video" | "image") | null;
             /**
              * Model
              * @description Model ID (e.g. v5, v5.5, qwen-image, seedream-4.0)
@@ -17041,6 +17194,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Filter by provider */
                 readonly provider_id?: string | null;
+                /** @description Filter by provider status (ok, local_only, flagged, unknown) */
+                readonly provider_status?: string | null;
                 /** @description Full-text search over description/tags */
                 readonly q?: string | null;
                 /** @description Filter by sync status */
@@ -17360,6 +17515,40 @@ export interface operations {
             };
         };
     };
+    readonly backfill_content_blobs_api_v1_assets_backfill_content_blobs_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Max assets to process */
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BackfillContentBlobsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly backfill_sha_hashes_api_v1_assets_backfill_sha_post: {
         readonly parameters: {
             readonly query?: {
@@ -17558,6 +17747,72 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CheckByHashResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly check_assets_by_hash_batch_api_v1_assets_check_by_hash_batch_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BatchCheckByHashRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BatchCheckByHashResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_content_blob_stats_api_v1_assets_content_blob_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ContentBlobStatsResponse"];
                 };
             };
             /** @description Validation Error */
