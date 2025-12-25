@@ -28,9 +28,15 @@ export type { DockviewHost } from './host';
 export {
   getDockviewHost,
   getDockviewHostIds,
+  getDockviewApi,
+  getDockviewCapabilities,
+  getDockviewRegistration,
+  getAllDockviewHosts,
   registerDockviewHost,
   unregisterDockviewHost,
+  subscribeToDockviewRegistry,
 } from './hostRegistry';
+export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
 
 export type {
   LocalPanelDefinition,

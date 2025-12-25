@@ -21,6 +21,16 @@ import type { DockviewApi } from 'dockview-core';
 import { contextMenuRegistry, type ContextMenuRegistry } from './ContextMenuRegistry';
 import type { MenuActionContext, PanelRegistryLike } from './types';
 import type { DockviewHost } from '../host';
+import {
+  getDockviewHost as getHostFromRegistry,
+  getDockviewApi as getApiFromRegistry,
+  getDockviewHostIds as getHostIdsFromRegistry,
+  getDockviewCapabilities,
+  registerDockviewHost as registerInRegistry,
+  unregisterDockviewHost as unregisterFromRegistry,
+  type DockviewCapabilities,
+} from '../hostRegistry';
+import { createDockviewHost } from '../host';
 import { useContextHubOverridesStore, useContextHubState } from '@features/contextHub';
 import type { CapabilityKey, ContextHubState, CapabilityProvider } from '@features/contextHub';
 
@@ -49,27 +59,27 @@ interface ContextMenuContextValue {
   registry: ContextMenuRegistry;
   /** Current menu state */
   state: ContextMenuState;
-  /** Register a dockview instance with optional capabilities */
+  /**
+   * Register a dockview instance with optional capabilities.
+   * Delegates to the central hostRegistry.
+   */
   registerDockview: (
     id: string,
     api: DockviewApi,
-    capabilities?: {
-      floatPanelHandler?: MenuActionContext['floatPanelHandler'];
-    }
+    capabilities?: DockviewCapabilities
   ) => void;
-  /** Register a dockview host with unified add/focus helpers */
-  registerDockviewHost: (id: string, host: DockviewHost) => void;
-  /** Unregister a dockview instance */
+  /**
+   * Unregister a dockview instance.
+   * Delegates to the central hostRegistry.
+   */
   unregisterDockview: (id: string) => void;
-  /** Unregister a dockview host */
-  unregisterDockviewHost: (id: string) => void;
-  /** Get a dockview API by ID */
+  /** Get a dockview API by ID (delegates to hostRegistry) */
   getDockviewApi: (id: string) => DockviewApi | undefined;
-  /** Get all registered dockview IDs */
+  /** Get all registered dockview IDs (delegates to hostRegistry) */
   getDockviewIds: () => string[];
-  /** Get a dockview host by ID */
+  /** Get a dockview host by ID (delegates to hostRegistry) */
   getDockviewHost: (id: string) => DockviewHost | undefined;
-  /** Get all registered dockview host IDs */
+  /** Get all registered dockview host IDs (delegates to hostRegistry) */
   getDockviewHostIds: () => string[];
 }
 
@@ -122,68 +132,46 @@ export function ContextMenuProvider({
   const capabilitiesSnapshotRef = useRef(capabilitiesSnapshot);
   capabilitiesSnapshotRef.current = capabilitiesSnapshot;
 
-  // Track multiple dockview APIs by ID
-  const dockviewApisRef = useRef<Map<string, DockviewApi>>(new Map());
-  // Track dockview hosts by ID
-  const dockviewHostsRef = useRef<Map<string, DockviewHost>>(new Map());
-
-  // Track per-dockview capabilities (like float handlers)
-  const dockviewCapabilitiesRef = useRef<
-    Map<string, { floatPanelHandler?: MenuActionContext['floatPanelHandler'] }>
-  >(new Map());
+  // Registration and lookup now delegates to the central hostRegistry.
+  // This eliminates duplicate state and ensures all systems see the same dockviews.
 
   const registerDockview = useCallback(
-    (
-      id: string,
-      api: DockviewApi,
-      capabilities?: {
-        floatPanelHandler?: MenuActionContext['floatPanelHandler'];
-      }
-    ) => {
-      dockviewApisRef.current.set(id, api);
-      if (capabilities) {
-        dockviewCapabilitiesRef.current.set(id, capabilities);
-      }
+    (id: string, api: DockviewApi, capabilities?: DockviewCapabilities) => {
+      // Create host and register with central registry
+      const host = createDockviewHost(id, api);
+      registerInRegistry(host, capabilities);
     },
     []
   );
 
   const unregisterDockview = useCallback((id: string) => {
-    dockviewApisRef.current.delete(id);
-    dockviewCapabilitiesRef.current.delete(id);
+    unregisterFromRegistry(id);
   }, []);
 
-  const registerDockviewHost = useCallback((id: string, host: DockviewHost) => {
-    dockviewHostsRef.current.set(id, host);
-  }, []);
-
-  const unregisterDockviewHost = useCallback((id: string) => {
-    dockviewHostsRef.current.delete(id);
-  }, []);
-
+  // Delegate lookups to hostRegistry
   const getDockviewApi = useCallback((id: string): DockviewApi | undefined => {
-    return dockviewApisRef.current.get(id);
+    return getApiFromRegistry(id);
   }, []);
 
   const getDockviewIds = useCallback((): string[] => {
-    return Array.from(dockviewApisRef.current.keys());
+    return getHostIdsFromRegistry();
   }, []);
 
   const getDockviewHost = useCallback((id: string): DockviewHost | undefined => {
-    return dockviewHostsRef.current.get(id);
+    return getHostFromRegistry(id);
   }, []);
 
   const getDockviewHostIds = useCallback((): string[] => {
-    return Array.from(dockviewHostsRef.current.keys());
+    return getHostIdsFromRegistry();
   }, []);
 
   const showContextMenu = useCallback((partial: Partial<MenuActionContext>) => {
     // Get current dockview API if ID provided
     const currentDockviewId = partial.currentDockviewId;
-    const currentApi = currentDockviewId ? dockviewApisRef.current.get(currentDockviewId) : undefined;
+    const currentApi = currentDockviewId ? getApiFromRegistry(currentDockviewId) : undefined;
 
-    // Get capabilities for current dockview
-    const capabilities = currentDockviewId ? dockviewCapabilitiesRef.current.get(currentDockviewId) : undefined;
+    // Get capabilities for current dockview from central registry
+    const dockviewCaps = currentDockviewId ? getDockviewCapabilities(currentDockviewId) : undefined;
 
     // Build full context with injected services and dockview capabilities
     const fullContext: MenuActionContext = {
@@ -199,8 +187,8 @@ export function ContextMenuProvider({
       // Inject global services from props
       workspaceStore: servicesRef.current.workspaceStore,
       panelRegistry: servicesRef.current.panelRegistry,
-      // Inject dockview-specific capabilities
-      floatPanelHandler: capabilities?.floatPanelHandler,
+      // Inject dockview-specific capabilities from central registry
+      floatPanelHandler: dockviewCaps?.floatPanelHandler,
       ...partial,
     };
 
@@ -223,9 +211,7 @@ export function ContextMenuProvider({
       registry,
       state,
       registerDockview,
-      registerDockviewHost,
       unregisterDockview,
-      unregisterDockviewHost,
       getDockviewApi,
       getDockviewIds,
       getDockviewHost,
@@ -237,9 +223,7 @@ export function ContextMenuProvider({
       registry,
       state,
       registerDockview,
-      registerDockviewHost,
       unregisterDockview,
-      unregisterDockviewHost,
       getDockviewApi,
       getDockviewIds,
       getDockviewHost,

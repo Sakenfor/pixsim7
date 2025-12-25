@@ -76,7 +76,7 @@ import {
   contextDataRegistry,
 } from './contextMenu';
 import { createDockviewHost } from './host';
-import { registerDockviewHost, unregisterDockviewHost } from './hostRegistry';
+import { registerDockviewHost, unregisterDockviewHost, getDockviewHost } from './hostRegistry';
 
 /** Base props shared by all modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -802,30 +802,29 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       // Initialize smart features (tab visibility, persistence)
       onSmartReady(event.api);
 
-      // Register with panel manager if ID provided
+      // Register with central hostRegistry via context menu provider.
+      // This single call creates the host and registers with hostRegistry.
+      // Other systems (PanelManager, context menu actions) access via hostRegistry.
+      if (enableContextMenu && contextMenuRef.current) {
+        contextMenuRef.current.registerDockview(contextMenuDockviewId, event.api, capabilitiesRef.current);
+      } else {
+        // If context menu not enabled, register directly with hostRegistry
+        registerDockviewHost(createDockviewHost(contextMenuDockviewId, event.api), capabilitiesRef.current);
+      }
+
+      // Register with panel manager if ID provided (stores reference in panel metadata)
       if (panelManagerId) {
         import('@features/panels/lib/PanelManager').then(({ panelManager }) => {
           const meta = panelManager.getPanelMetadata(panelManagerId);
           if (meta?.dockview?.hasDockview) {
-            panelManager.registerDockview(
-              panelManagerId,
-              createDockviewHost(panelManagerId, event.api),
-            );
+            // Get host from central registry to ensure consistency
+            const host = getDockviewHost(panelManagerId) ?? createDockviewHost(panelManagerId, event.api);
+            panelManager.registerDockview(panelManagerId, host);
           }
         }).catch(() => {
           // Panel manager not available
         });
       }
-      if (enableContextMenu && contextMenuRef.current) {
-        contextMenuRef.current.registerDockview(contextMenuDockviewId, event.api, capabilitiesRef.current);
-        if (contextMenuRef.current.registerDockviewHost) {
-          contextMenuRef.current.registerDockviewHost(
-            contextMenuDockviewId,
-            createDockviewHost(contextMenuDockviewId, event.api),
-          );
-        }
-      }
-      registerDockviewHost(createDockviewHost(contextMenuDockviewId, event.api));
 
       // Try to load saved layout
       const loaded = loadLayout();
@@ -861,16 +860,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     ]
   );
 
-  // Unregister on unmount
+  // Unregister on unmount - single cleanup via context menu provider or directly
   useEffect(() => {
     return () => {
       if (enableContextMenu && contextMenuRef.current) {
+        // This delegates to hostRegistry internally
         contextMenuRef.current.unregisterDockview(contextMenuDockviewId);
-        if (contextMenuRef.current.unregisterDockviewHost) {
-          contextMenuRef.current.unregisterDockviewHost(contextMenuDockviewId);
-        }
+      } else {
+        // Direct cleanup if context menu not enabled
+        unregisterDockviewHost(contextMenuDockviewId);
       }
-      unregisterDockviewHost(contextMenuDockviewId);
     };
   }, [enableContextMenu, contextMenuDockviewId]);
 
