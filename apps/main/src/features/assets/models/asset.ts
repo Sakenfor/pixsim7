@@ -44,6 +44,8 @@ export interface AssetModel {
   providerAssetId: string;
   providerId: string;
   providerStatus?: AssetProviderStatus | null;
+  /** Map of provider_id -> uploaded asset URL/ID for cross-provider operations */
+  providerUploads?: Record<string, string> | null;
   remoteUrl?: string | null;
   sourceGenerationId?: number | null;
   storedKey?: string | null;
@@ -81,6 +83,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     providerAssetId: response.provider_asset_id,
     providerId: response.provider_id,
     providerStatus: response.provider_status,
+    providerUploads: (response as any).provider_uploads as Record<string, string> | null | undefined,
     remoteUrl: response.remote_url,
     sourceGenerationId: response.source_generation_id,
     storedKey: response.stored_key,

@@ -30,6 +30,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   const [hasMore, setHasMore] = useState(true);
   // Guard to avoid duplicate initial loads in React StrictMode
   const initialLoadRequestedRef = useRef(false);
+  // Request ID to ignore stale responses after filter changes
+  const requestIdRef = useRef(0);
 
   const filterParams = useMemo(() => ({
     q: filters.q?.trim() || undefined,
@@ -53,36 +55,33 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     if (loading || !hasMore) return;
     setLoading(true);
     setError(null);
+
+    // Capture request ID to detect stale responses
+    const thisRequestId = requestIdRef.current;
+
     try {
       const currentFilters = filterParamsRef.current;
       const currentCursor = cursorRef.current;
 
-      const params = new URLSearchParams();
-      params.set('limit', String(limit));
-      if (currentCursor) params.set('cursor', currentCursor);
-      if (currentFilters.q) params.set('q', currentFilters.q);
-      if (currentFilters.tag) params.set('tag', currentFilters.tag);
-      if (currentFilters.provider_id) params.set('provider_id', String(currentFilters.provider_id));
-      // 'sort' may be ignored by backend; included for future compatibility
-      if (currentFilters.sort) params.set('sort', currentFilters.sort);
-      if (currentFilters.media_type) params.set('media_type', currentFilters.media_type);
-
-      let data: AssetListResponse = await listAssets({
+      // Build query params for API call
+      const queryParams: Record<string, any> = {
         limit,
         cursor: currentCursor || undefined,
-        q: currentFilters.q,
-        tag: currentFilters.tag,
+        q: currentFilters.q || undefined,
+        tag: currentFilters.tag || undefined,
         provider_id: currentFilters.provider_id || undefined,
+        provider_status: currentFilters.provider_status || undefined,
         media_type: currentFilters.media_type || undefined,
         include_archived: currentFilters.include_archived || undefined,
-      });
+        // TODO: Add sort support to backend, for now it's always newest first
+        // sort: currentFilters.sort || undefined,
+      };
 
-      // Client-side filter for provider_status (backend doesn't support this yet)
-      if (currentFilters.provider_status) {
-        data = {
-          ...data,
-          assets: data.assets.filter(a => a.provider_status === currentFilters.provider_status),
-        };
+      const data: AssetListResponse = await listAssets(queryParams);
+
+      // Ignore stale response if filters changed during request
+      if (thisRequestId !== requestIdRef.current) {
+        return;
       }
 
       // Convert to AssetModel and merge while avoiding duplicates by ID.
@@ -101,17 +100,27 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       setCursor(data.next_cursor || null);
       setHasMore(Boolean(data.next_cursor));
     } catch (e: unknown) {
+      // Ignore errors from stale requests
+      if (thisRequestId !== requestIdRef.current) {
+        return;
+      }
       setError(e instanceof Error ? e.message : 'Failed to load assets');
     } finally {
-      setLoading(false);
+      // Only update loading state if this is still the current request
+      if (thisRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [loading, hasMore, limit]);
 
   const reset = useCallback(() => {
+    // Increment request ID to invalidate any in-flight requests
+    requestIdRef.current += 1;
     setItems([]);
     setCursor(null);
     setHasMore(true);
     setError(null);
+    setLoading(false); // Also reset loading state
     initialLoadRequestedRef.current = false;
   }, []);
 
@@ -125,6 +134,22 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
         return prev;
       }
       return [asset, ...prev];
+    });
+  }, []);
+
+  // Update an existing asset in the list (used when asset is synced)
+  const updateAsset = useCallback((response: AssetResponse) => {
+    const asset = fromAssetResponse(response);
+    setItems((prev) => {
+      const index = prev.findIndex((a) => a.id === asset.id);
+      if (index === -1) {
+        // Asset not in list, ignore
+        return prev;
+      }
+      // Replace with updated asset
+      const newItems = [...prev];
+      newItems[index] = asset;
+      return newItems;
     });
   }, []);
 
@@ -154,6 +179,15 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
 
     return unsubscribe;
   }, [filterParams, prependAsset]);
+
+  // Subscribe to asset update events (from sync completions)
+  useEffect(() => {
+    const unsubscribe = assetEvents.subscribeToUpdates((asset) => {
+      updateAsset(asset);
+    });
+
+    return unsubscribe;
+  }, [updateAsset]);
 
   // Reset when filters change
   useEffect(() => {

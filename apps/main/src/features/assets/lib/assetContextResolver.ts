@@ -38,7 +38,8 @@ export function useAssetContextMenu(
   asset: AssetModel | null | undefined,
 ): ContextMenuAttrs | Record<string, never> {
   const isLocalOnly = asset
-    ? asset.providerStatus === 'local_only' || !asset.remoteUrl
+    ? asset.providerStatus === 'local_only' ||
+      (asset.syncStatus === 'downloaded' && !asset.remoteUrl)
     : false;
 
   return useContextMenuItem(

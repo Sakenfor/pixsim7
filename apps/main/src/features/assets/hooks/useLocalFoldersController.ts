@@ -63,6 +63,10 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Track blob URLs for cleanup when they're no longer needed
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
 
+  // Track which folders have had SHA computed and checked against backend
+  const hashCheckedFoldersRef = useRef<Set<string>>(new Set());
+  const hashCheckInProgressRef = useRef<Set<string>>(new Set());
+
   // Upload state (persisted provider)
   const [providerId, setProviderId] = usePersistentState<string | undefined>(
     'ps7_localFolders_providerId',
@@ -145,6 +149,122 @@ export function useLocalFoldersController(): LocalFoldersController {
   const viewerItems = useMemo(() => {
     return viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
   }, [viewMode, selectedFolderPath, filteredAssets, assetList]);
+
+  // Compute SHA and check against backend when folder is selected
+  useEffect(() => {
+    if (!selectedFolderPath || !crypto.subtle) return;
+
+    // Skip if already checked or in progress
+    if (hashCheckedFoldersRef.current.has(selectedFolderPath)) return;
+    if (hashCheckInProgressRef.current.has(selectedFolderPath)) return;
+
+    // Get assets that need hashing
+    const assetsToHash = filteredAssets.filter(asset => {
+      // Skip if already has valid hash
+      if (asset.sha256 && asset.sha256_file_size === asset.size && asset.sha256_last_modified === asset.lastModified) {
+        return false;
+      }
+      // Skip if already marked as success (uploaded)
+      if (asset.lastUploadStatus === 'success') return false;
+      return true;
+    });
+
+    // Also get assets that have hash but weren't checked yet
+    const assetsWithHash = filteredAssets.filter(asset =>
+      asset.sha256 &&
+      asset.sha256_file_size === asset.size &&
+      asset.sha256_last_modified === asset.lastModified &&
+      asset.lastUploadStatus !== 'success'
+    );
+
+    // If nothing to do, mark as checked
+    if (assetsToHash.length === 0 && assetsWithHash.length === 0) {
+      hashCheckedFoldersRef.current.add(selectedFolderPath);
+      return;
+    }
+
+    // Mark as in progress
+    hashCheckInProgressRef.current.add(selectedFolderPath);
+
+    // Background hash computation and check
+    const computeAndCheck = async () => {
+      try {
+        const hashesWithKeys: { sha256: string; assetKey: string }[] = [];
+
+        // Add existing hashes
+        for (const asset of assetsWithHash) {
+          if (asset.sha256) {
+            hashesWithKeys.push({ sha256: asset.sha256, assetKey: asset.key });
+          }
+        }
+
+        // Compute hashes for assets that need it (in chunks to avoid blocking UI)
+        const CHUNK_SIZE = 5;
+        for (let i = 0; i < assetsToHash.length; i += CHUNK_SIZE) {
+          const chunk = assetsToHash.slice(i, i + CHUNK_SIZE);
+
+          await Promise.all(chunk.map(async (asset) => {
+            try {
+              const file = await getFileForAsset(asset);
+              if (!file) return;
+
+              const sha256 = await computeFileSha256(file);
+              await updateAssetHash(asset.key, sha256, file);
+              hashesWithKeys.push({ sha256, assetKey: asset.key });
+            } catch (e) {
+              console.warn('Failed to hash asset:', asset.name, e);
+            }
+          }));
+
+          // Yield to main thread between chunks
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        // Call batch API to check which hashes exist
+        if (hashesWithKeys.length > 0) {
+          const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+          const token = localStorage.getItem('access_token');
+          const headers: HeadersInit = { 'Content-Type': 'application/json' };
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+
+          try {
+            const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/check-by-hash-batch`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ hashes: hashesWithKeys.map(h => h.sha256) }),
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const foundHashes = new Set(
+                (data.results || [])
+                  .filter((r: { exists: boolean }) => r.exists)
+                  .map((r: { sha256: string }) => r.sha256)
+              );
+
+              // Update status for assets that exist in system
+              for (const { sha256, assetKey } of hashesWithKeys) {
+                if (foundHashes.has(sha256)) {
+                  await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
+                  setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
+                  setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to check hashes against backend:', e);
+          }
+        }
+      } finally {
+        hashCheckInProgressRef.current.delete(selectedFolderPath);
+        hashCheckedFoldersRef.current.add(selectedFolderPath);
+      }
+    };
+
+    void computeAndCheck();
+  }, [selectedFolderPath, filteredAssets, getFileForAsset, updateAssetHash, updateAssetUploadStatus]);
 
   // Load preview for an asset
   const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
