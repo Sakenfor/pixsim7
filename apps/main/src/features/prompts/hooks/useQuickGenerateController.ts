@@ -8,6 +8,7 @@ import { logEvent } from '@lib/utils/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { getFallbackOperation } from '@/types/operations';
 
 /**
  * Hook: useQuickGenerateController
@@ -167,18 +168,10 @@ export function useQuickGenerateController() {
       const finalPrompt = buildResult.finalPrompt;
 
       // For flexible operations: switch to text-based operation if no image provided
-      let effectiveOperationType = operationType;
-      const hasImage =
-        buildResult.params.image_url ||
-        buildResult.params.source_asset_id ||
+      const hasAssetInput =
+        !!buildResult.params.source_asset_id ||
         (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
-      if (!hasImage) {
-        if (operationType === 'image_to_video') {
-          effectiveOperationType = 'text_to_video';
-        } else if (operationType === 'image_to_image') {
-          effectiveOperationType = 'text_to_image';
-        }
-      }
+      const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
 
       // Normalize asset params: remove legacy URL params when asset IDs are present
       // This is the single point where we ensure clean params go to the backend

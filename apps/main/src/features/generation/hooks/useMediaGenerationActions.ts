@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { AssetModel } from '@features/assets';
+import { toSelectedAsset } from '@features/assets/models/asset';
 import { useGenerationQueueStore } from '../stores/generationQueueStore';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
@@ -37,14 +38,7 @@ export function useMediaGenerationActions() {
 
   // Helper to select asset in selection store
   const selectAssetFromSummary = useCallback((asset: AssetModel) => {
-    selectAsset({
-      id: asset.id,
-      key: `asset-${asset.id}`,
-      name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
-      type: asset.mediaType === 'video' ? 'video' : 'image',
-      url: asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '',
-      source: 'gallery',
-    });
+    selectAsset(toSelectedAsset(asset, 'gallery'));
   }, [selectAsset]);
 
   // Smart queue action - automatically routes to main or multi-asset queue via enqueueAsset

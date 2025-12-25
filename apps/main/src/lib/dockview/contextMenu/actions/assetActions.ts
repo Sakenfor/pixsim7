@@ -6,7 +6,7 @@
 
 import type { MenuAction } from '../types';
 import type { AssetModel } from '@features/assets';
-import { toViewerAsset } from '@features/assets';
+import { toViewerAsset, toSelectedAsset } from '@features/assets';
 import { resolveAssetMediaType } from '@features/assets/lib/assetMediaType';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
@@ -170,14 +170,7 @@ const sendToActiveGeneratorAction: MenuAction = {
     });
 
     const first = assets[0];
-    selectionStore.selectAsset({
-      id: first.id,
-      key: `asset-${first.id}`,
-      name: first.description || first.providerAssetId || `Asset ${first.id}`,
-      type: first.mediaType === 'video' ? 'video' : 'image',
-      url: first.remoteUrl || first.thumbnailUrl || first.fileUrl || '',
-      source: 'gallery',
-    });
+    selectionStore.selectAsset(toSelectedAsset(first, 'gallery'));
 
     if (controlCenterStore.operationType !== operationType) {
       controlCenterStore.setOperationType(operationType);

@@ -327,6 +327,55 @@ export function operationRequiresVideo(operationType: OperationType): boolean {
 }
 
 /**
+ * Check if an asset's media type is compatible with an operation.
+ * This is a convenience wrapper around operationAcceptsMediaType that handles
+ * the common case of checking asset compatibility.
+ *
+ * @param assetMediaType - The media type of the asset ('image' | 'video')
+ * @param operationType - The operation to check compatibility for
+ * @returns true if the asset can be used as input for the operation
+ *
+ * @example
+ * // Check if an image asset can be used for image_to_video
+ * if (isAssetCompatibleWithOperation('image', 'image_to_video')) {
+ *   // Asset is compatible
+ * }
+ */
+export function isAssetCompatibleWithOperation(
+  assetMediaType: MediaType,
+  operationType: OperationType
+): boolean {
+  return operationAcceptsMediaType(operationType, assetMediaType);
+}
+
+/**
+ * Get the appropriate fallback operation when an asset is incompatible.
+ * For image-based operations without an image, falls back to text-to-* equivalent.
+ *
+ * @param operationType - The original operation type
+ * @param hasAssetInput - Whether any valid asset input was provided
+ * @returns The effective operation type to use
+ */
+export function getFallbackOperation(
+  operationType: OperationType,
+  hasAssetInput: boolean
+): OperationType {
+  if (hasAssetInput) {
+    return operationType;
+  }
+
+  // Fallback to text-to-* when no asset provided for image-based operations
+  switch (operationType) {
+    case 'image_to_video':
+      return 'text_to_video';
+    case 'image_to_image':
+      return 'text_to_image';
+    default:
+      return operationType;
+  }
+}
+
+/**
  * Validate operation parameters and return list of error messages.
  * Used for optional dev-time validation.
  */

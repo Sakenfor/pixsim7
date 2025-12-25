@@ -97,6 +97,7 @@ export {
   fromAssetResponses,
   toViewerAsset,
   toViewerAssets,
+  toSelectedAsset,
   type AssetMediaType,
   type AssetSyncStatus,
   type AssetProviderStatus,

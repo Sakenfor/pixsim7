@@ -8,6 +8,7 @@
 
 import type { AssetResponse } from '@pixsim7/api-client/domains';
 import type { ViewerAsset } from '../stores/assetViewerStore';
+import type { SelectedAsset } from '../stores/assetSelectionStore';
 
 // Re-export the media type for convenience
 export type AssetMediaType = 'video' | 'image' | 'audio' | '3d_model';
@@ -143,4 +144,26 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
  */
 export function toViewerAssets(assets: AssetModel[]): ViewerAsset[] {
   return assets.map(toViewerAsset);
+}
+
+/**
+ * Maps an AssetModel to SelectedAsset format.
+ * SelectedAsset only supports 'image' | 'video' types.
+ *
+ * @param asset - The asset model to convert
+ * @param source - Where the selection originated ('gallery', 'cube', 'panel')
+ * @returns SelectedAsset for use with assetSelectionStore
+ */
+export function toSelectedAsset(
+  asset: AssetModel,
+  source: 'gallery' | 'cube' | 'panel' = 'gallery'
+): SelectedAsset {
+  return {
+    id: asset.id,
+    key: `asset-${asset.id}`,
+    name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
+    type: asset.mediaType === 'video' ? 'video' : 'image',
+    url: asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '',
+    source,
+  };
 }
