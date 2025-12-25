@@ -429,11 +429,17 @@ class ActionExecutor:
 
             elif a_type == "repeat":
                 # Repeat nested actions N times or while condition is met
-                count = int(params.get("count", 1))
+                raw_count = self._subst(params.get("count", 1), ctx)
+                try:
+                    count = int(raw_count)
+                except (TypeError, ValueError):
+                    # Optional fallback if count is templated but missing/unparseable
+                    fallback = self._subst(params.get("fallback_count", 1), ctx)
+                    count = int(fallback) if str(fallback).strip() else 1
                 max_iterations = int(params.get("max_iterations", 100))  # Safety limit
                 nested_actions = params.get("actions", []) or []
 
-                for i in range(min(count, max_iterations)):
+                for i in range(min(max(0, count), max_iterations)):
                     for nested_idx, nested_action in enumerate(nested_actions):
                         ctx.action_path.append(nested_idx)
                         try:

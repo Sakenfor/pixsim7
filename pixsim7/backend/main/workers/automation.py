@@ -148,6 +148,33 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                         has_global_password=bool(password and not account.password)
                     )
 
+                    # Provider-specific dynamic variables (best-effort).
+                    # For Pixverse rewards, the daily ad cap (total_counts) can change over time
+                    # (e.g., 2 or 3). Fetch the current task status once so presets can loop
+                    # the correct number of times.
+                    if account.provider_id == "pixverse":
+                        try:
+                            from pixsim7.backend.main.services.provider import registry as provider_registry
+                            provider = provider_registry.get("pixverse")
+                            ad_task = None
+                            if hasattr(provider, "get_ad_watch_task"):
+                                ad_task = await provider.get_ad_watch_task(
+                                    account,
+                                    retry_on_session_error=False,
+                                )
+                            if isinstance(ad_task, dict):
+                                total_counts = ad_task.get("total_counts")
+                                if total_counts is not None:
+                                    variables["pixverse_ad_total_counts"] = int(total_counts)
+                                progress = ad_task.get("progress")
+                                if progress is not None:
+                                    variables["pixverse_ad_progress"] = int(progress)
+                                completed_counts = ad_task.get("completed_counts")
+                                if completed_counts is not None:
+                                    variables["pixverse_ad_completed_counts"] = int(completed_counts)
+                        except Exception:
+                            pass
+
                 ctx = ExecutionContext(serial=device.adb_id, variables=variables, screenshots_dir=screenshots_dir)
 
                 # Add root preset to call stack to detect self-referential calls

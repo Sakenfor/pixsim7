@@ -443,7 +443,31 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Fall through to mark as failed if requeue fails
 
                 # Content filtered - retry only if retryable (output rejection, not prompt rejection)
-                elif isinstance(e, ProviderContentFilteredError) and getattr(e, 'retryable', True):
+                elif isinstance(e, ProviderContentFilteredError):
+                    is_retryable = getattr(e, 'retryable', True)
+
+                    if not is_retryable:
+                        # Non-retryable (e.g., prompt rejected) - mark failed and DON'T re-raise
+                        # This prevents ARQ from retrying
+                        gen_logger.warning(
+                            "content_filter_not_retryable",
+                            generation_id=generation.id,
+                            error=str(e),
+                        )
+                        await generation_service.mark_failed(generation_id, str(e))
+                        try:
+                            await account_service.release_account(account.id)
+                        except Exception as release_err:
+                            gen_logger.warning("account_release_failed", error=str(release_err))
+                        # Return instead of raise to prevent ARQ retry
+                        return {
+                            "status": "failed",
+                            "reason": "content_filtered_not_retryable",
+                            "generation_id": generation_id,
+                            "error": str(e),
+                        }
+
+                    # Retryable content filter (output rejection)
                     # Release account reservation
                     try:
                         await account_service.release_account(account.id)
