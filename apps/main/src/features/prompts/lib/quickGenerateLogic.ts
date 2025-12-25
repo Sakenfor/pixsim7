@@ -71,11 +71,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue > activeAsset
-    let imageUrl = dynamicParams.image_url;
+    // Priority: dynamicParams.source_asset_id > queue > activeAsset
+    // NOTE: Legacy image_url is no longer checked - use source_asset_id only
     let sourceAssetId = dynamicParams.source_asset_id;
 
-    if (!imageUrl && !sourceAssetId) {
+    if (!sourceAssetId) {
       if (mainQueueCurrent?.asset.mediaType === 'image') {
         sourceAssetId = mainQueueCurrent.asset.id;
       } else if (activeAsset?.type === 'image') {
@@ -83,8 +83,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    // Validate we have a URL
-    if (!imageUrl && !sourceAssetId) {
+    // Validate we have an asset ID
+    if (!sourceAssetId) {
       return {
         error: 'No image selected. Select an image from the gallery to transform.',
         finalPrompt: trimmedPrompt,
@@ -104,11 +104,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_video') {
-    // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue
-    let imageUrl = dynamicParams.image_url;
+    // Priority: dynamicParams.source_asset_id > queue > activeAsset
+    // NOTE: Legacy image_url is no longer checked - use source_asset_id only
     let sourceAssetId = dynamicParams.source_asset_id;
 
-    if (!imageUrl && !sourceAssetId) {
+    if (!sourceAssetId) {
       if (mainQueueCurrent?.asset.mediaType === 'image') {
         sourceAssetId = mainQueueCurrent.asset.id;
       } else if (activeAsset?.type === 'image') {
@@ -116,9 +116,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    // Validate we have a URL (optional - can fall back to text_to_video)
-    // If no image, the caller will handle switching to text_to_video
-    if ((imageUrl || sourceAssetId) && !trimmedPrompt) {
+    // Validate prompt if we have an asset (optional - can fall back to text_to_video)
+    // If no asset, the caller will handle switching to text_to_video
+    if (sourceAssetId && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing the motion/action for Image to Video.',
         finalPrompt: trimmedPrompt,
@@ -131,12 +131,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'video_extend') {
-    // Priority: dynamicParams (set by "Use Media Viewer Asset" or user input) > queue
-    let videoUrl = dynamicParams.video_url;
-    const hasOriginalId = Boolean(dynamicParams.original_video_id);
+    // Priority: dynamicParams.source_asset_id > queue > activeAsset
+    // NOTE: Legacy video_url/original_video_id are no longer checked - use source_asset_id only
     let sourceAssetId = dynamicParams.source_asset_id;
 
-    if (!videoUrl && !hasOriginalId && !sourceAssetId) {
+    if (!sourceAssetId) {
       if (mainQueueCurrent?.asset.mediaType === 'video') {
         sourceAssetId = mainQueueCurrent.asset.id;
       } else if (activeAsset?.type === 'video') {
@@ -144,10 +143,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    // Validate we have a URL or ID
-    if (!videoUrl && !hasOriginalId && !sourceAssetId) {
+    // Validate we have an asset ID
+    if (!sourceAssetId) {
       return {
-        error: 'No video selected. Click "Video Extend" on a gallery video, or paste a video URL in Settings.',
+        error: 'No video selected. Click "Video Extend" on a gallery video to extend it.',
         finalPrompt: trimmedPrompt,
       };
     }
@@ -159,42 +158,40 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   let transitionDurations: number[] | undefined;
   if (operationType === 'video_transition') {
+    // NOTE: Legacy image_urls is no longer checked - use source_asset_ids only
     const transitionSourceIds = Array.isArray(dynamicParams.source_asset_ids)
       ? dynamicParams.source_asset_ids
       : Array.isArray(sourceAssetIds)
         ? sourceAssetIds
         : [];
-    const fallbackImageUrls = Array.isArray(dynamicParams.image_urls)
-      ? dynamicParams.image_urls
-      : [];
-    const imageCount = transitionSourceIds.length || fallbackImageUrls.length;
+    const assetCount = transitionSourceIds.length;
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
 
-    if (!imageCount) {
+    if (!assetCount) {
       return {
         error: 'No images in transition queue. Use "Add to Transition" from the gallery to add images.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    if (imageCount < 2) {
+    if (assetCount < 2) {
       return {
         error: 'Need at least 2 images to create a transition.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    const expectedPrompts = imageCount - 1;
+    const expectedPrompts = assetCount - 1;
     if (!validPrompts.length) {
       return {
-        error: `Transition prompts are required. Add ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} describing the transitions between your ${imageCount} images.`,
+        error: `Transition prompts are required. Add ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} describing the transitions between your ${assetCount} images.`,
         finalPrompt: trimmedPrompt,
       };
     }
 
     if (validPrompts.length !== expectedPrompts) {
       return {
-        error: `You have ${imageCount} images but ${validPrompts.length} prompts. You need exactly ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} (one for each transition between images).`,
+        error: `You have ${assetCount} images but ${validPrompts.length} prompts. You need exactly ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} (one for each transition between images).`,
         finalPrompt: trimmedPrompt,
       };
     }
@@ -228,14 +225,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   // Add array fields for video_transition
   if (operationType === 'video_transition') {
-    if (!params.source_asset_ids || params.source_asset_ids.length === 0) {
-      const fallbackImageUrls = Array.isArray(dynamicParams.image_urls)
-        ? dynamicParams.image_urls
-        : [];
-      if (fallbackImageUrls.length > 0) {
-        params.image_urls = fallbackImageUrls.map((s) => String(s).trim()).filter(Boolean);
-      }
-    }
+    // NOTE: Legacy image_urls fallback removed - source_asset_ids is now required
     params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
     if (transitionDurations && transitionDurations.length) {
       params.durations = transitionDurations;

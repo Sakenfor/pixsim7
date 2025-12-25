@@ -103,10 +103,11 @@ export function useQuickGenerateBindings(
   };
 
   // Auto-fill when active asset changes (if compatible with operation)
+  // NOTE: No longer checking for legacy params - always use source_asset_id
   useEffect(() => {
     if (!lastSelectedAsset) return;
 
-    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image' && !dynamicParams.image_url) {
+    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') {
       setDynamicParams((prev) => {
         const { image_url, ...rest } = prev;
         return {
@@ -114,7 +115,7 @@ export function useQuickGenerateBindings(
           source_asset_id: lastSelectedAsset.id,
         };
       });
-    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video' && !dynamicParams.video_url) {
+    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
       setDynamicParams((prev) => {
         const { video_url, ...rest } = prev;
         return {
@@ -216,23 +217,26 @@ export function useQuickGenerateBindings(
         });
       }
     } else {
-      // On initial load, only fill params if empty (don't override user choices)
-      if (asset.mediaType === 'image' && !dynamicParams.image_url) {
-        setDynamicParams((prev) => {
-          const { image_url, ...rest } = prev;
-          return {
-            ...rest,
-            source_asset_id: asset.id,
-          };
-        });
-      } else if (asset.mediaType === 'video' && !dynamicParams.video_url) {
-        setDynamicParams((prev) => {
-          const { video_url, ...rest } = prev;
-          return {
-            ...rest,
-            source_asset_id: asset.id,
-          };
-        });
+      // On initial load, only fill params if source_asset_id not already set
+      // NOTE: No longer checking for legacy params - only check source_asset_id
+      if (!dynamicParams.source_asset_id) {
+        if (asset.mediaType === 'image') {
+          setDynamicParams((prev) => {
+            const { image_url, ...rest } = prev;
+            return {
+              ...rest,
+              source_asset_id: asset.id,
+            };
+          });
+        } else if (asset.mediaType === 'video') {
+          setDynamicParams((prev) => {
+            const { video_url, ...rest } = prev;
+            return {
+              ...rest,
+              source_asset_id: asset.id,
+            };
+          });
+        }
       }
     }
     prevMainQueueItemIdRef.current = currentItemId;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGenerationsStore, useGenerationQueueStore } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
+import { normalizeAssetParams } from '@features/generation/lib/core';
 import { generateAsset } from '@features/controlCenter/lib/api';
 import { extractFrame, fromAssetResponse } from '@features/assets';
 import { logEvent } from '@lib/utils/logging';
@@ -212,12 +213,16 @@ export function useQuickGenerateController() {
         }
       }
 
+      // Normalize asset params: remove legacy URL params when asset IDs are present
+      // This is the single point where we ensure clean params go to the backend
+      const normalizedParams = normalizeAssetParams(buildResult.params);
+
       const result = await generateAsset({
         prompt: finalPrompt,
         providerId,
         presetId,
         operationType: effectiveOperationType,
-        extraParams: buildResult.params,
+        extraParams: normalizedParams,
         presetParams,
       });
 
@@ -247,8 +252,8 @@ export function useQuickGenerateController() {
         promptSourceType: 'inline',
         promptVersionId: null,
         promptConfig: null,
-        rawParams: buildResult.params,
-        canonicalParams: buildResult.params,
+        rawParams: normalizedParams,
+        canonicalParams: normalizedParams,
         inputs: [],
         reproducibleHash: null,
         account: null,

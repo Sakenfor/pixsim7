@@ -646,6 +646,10 @@ class GenerationCreationService:
             if context_key in params:
                 canonical[context_key] = params[context_key]
 
+        # Warn when legacy URL params are present alongside asset IDs
+        # This indicates incomplete frontend migration to the asset ID pattern
+        self._warn_legacy_asset_params(canonical, operation_type)
+
         logger.info(
             f"Canonicalized structured params for {provider_id}: "
             f"model={canonical.get('model')}, quality={canonical.get('quality')}, "
@@ -653,6 +657,79 @@ class GenerationCreationService:
         )
 
         return canonical
+
+    def _warn_legacy_asset_params(
+        self,
+        canonical: Dict[str, Any],
+        operation_type: OperationType
+    ) -> None:
+        """
+        Log warning/error for legacy URL params usage.
+
+        This helps track migration progress from URL-based to ID-based asset references.
+        The pattern is: frontend should pass asset IDs, backend resolves to provider URLs.
+
+        Legacy params (deprecated):
+        - image_url, video_url, image_urls, original_video_id
+
+        New params (preferred):
+        - source_asset_id, source_asset_ids
+
+        Logging levels:
+        - WARNING: When legacy params are present alongside asset IDs (drift)
+        - ERROR: When legacy params are used alone (should migrate to asset IDs)
+        """
+        # Define legacy keys per operation type
+        legacy_keys_by_op = {
+            OperationType.IMAGE_TO_VIDEO: ["image_url"],
+            OperationType.IMAGE_TO_IMAGE: ["image_url", "image_urls"],
+            OperationType.VIDEO_EXTEND: ["video_url", "original_video_id"],
+            OperationType.VIDEO_TRANSITION: ["image_urls"],
+        }
+
+        legacy_keys = legacy_keys_by_op.get(operation_type, [])
+        if not legacy_keys:
+            return
+
+        # Check if we have asset IDs
+        has_asset_id = bool(canonical.get("source_asset_id"))
+        has_asset_ids = bool(canonical.get("source_asset_ids"))
+
+        # Check for legacy params
+        found_legacy = [key for key in legacy_keys if canonical.get(key)]
+        if not found_legacy:
+            return
+
+        if has_asset_id or has_asset_ids:
+            # Log warning - both legacy and new params present (drift)
+            logger.warning(
+                "legacy_asset_params_with_asset_id",
+                extra={
+                    "operation_type": operation_type.value,
+                    "legacy_params_found": found_legacy,
+                    "has_source_asset_id": has_asset_id,
+                    "has_source_asset_ids": has_asset_ids,
+                    "msg": (
+                        "Received both legacy URL params and source_asset_id(s). "
+                        "Backend will prefer source_asset_id(s). "
+                        "Consider updating frontend to remove legacy params."
+                    ),
+                }
+            )
+        else:
+            # Log error - legacy params used alone (deprecated usage)
+            logger.error(
+                "legacy_asset_params_without_asset_id",
+                extra={
+                    "operation_type": operation_type.value,
+                    "legacy_params_found": found_legacy,
+                    "msg": (
+                        "DEPRECATED: Using legacy URL params without source_asset_id(s). "
+                        "This pattern is deprecated and will stop working in a future release. "
+                        "Please migrate to source_asset_id/source_asset_ids."
+                    ),
+                }
+            )
 
     def _extract_inputs(
         self,

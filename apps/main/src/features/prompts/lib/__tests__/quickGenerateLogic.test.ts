@@ -36,26 +36,22 @@ describe('buildGenerationRequest', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: '   ',
-      dynamicParams: { image_url: 'https://example.com/image.png' },
+      dynamicParams: { source_asset_id: 42 },
     });
 
     const result = buildGenerationRequest(context);
     expect(result.error).toContain('Please enter a prompt');
   });
 
-  it('passes validation when image_to_image has prompt and image_url', () => {
+  it('requires source_asset_id for image_to_image (legacy image_url no longer supported)', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Add neon rim light',
-      dynamicParams: { image_url: 'https://example.com/image.png' },
+      dynamicParams: {},  // No source_asset_id
     });
 
     const result = buildGenerationRequest(context);
-    expect(result.error).toBeUndefined();
-    expect(result.params).toMatchObject({
-      prompt: 'Add neon rim light',
-      image_url: 'https://example.com/image.png',
-    });
+    expect(result.error).toContain('No image selected');
   });
 
   it('passes validation when image_to_image uses source_asset_id', () => {

@@ -110,12 +110,39 @@ class GenerationNodeConfigSchema(BaseModel):
 
     # Control Center fields - passed through for canonicalization
     prompt: Optional[str] = None
-    image_url: Optional[str] = None
-    video_url: Optional[str] = None
-    image_urls: Optional[List[str]] = None
+
+    # Asset input fields - NEW pattern (preferred)
+    # Frontend passes asset IDs, backend resolves to provider-specific URLs
+    source_asset_id: Optional[int] = Field(
+        None,
+        description="Asset ID for single-asset operations (image_to_video, image_to_image, video_extend). Backend resolves to provider-specific URL."
+    )
+    source_asset_ids: Optional[List[int]] = Field(
+        None,
+        description="Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL."
+    )
+
+    # Legacy asset URL fields - DEPRECATED
+    # These are kept for backwards compatibility but will be removed in a future release.
+    # New code should use source_asset_id/source_asset_ids instead.
+    image_url: Optional[str] = Field(
+        None,
+        deprecated=True,
+        description="DEPRECATED: Use source_asset_id instead. Direct image URL (legacy pattern)."
+    )
+    video_url: Optional[str] = Field(
+        None,
+        deprecated=True,
+        description="DEPRECATED: Use source_asset_id instead. Direct video URL (legacy pattern)."
+    )
+    image_urls: Optional[List[str]] = Field(
+        None,
+        deprecated=True,
+        description="DEPRECATED: Use source_asset_ids instead. List of image URLs (legacy pattern)."
+    )
+
+    # Multi-prompt field for video_transition
     prompts: Optional[List[str]] = None
-    source_asset_id: Optional[int] = None
-    source_asset_ids: Optional[List[int]] = None
 
     # Allow extra fields for future extensions
     model_config = {"extra": "allow"}
