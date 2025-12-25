@@ -1,14 +1,29 @@
 import { useMemo } from 'react';
-import { useLocalFolders } from '../stores/localFoldersStore';
+import { useLocalFoldersController } from '../hooks/useLocalFoldersController';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import type { ExpansionComponentProps } from '@/plugins/ui/cube-formation-v1/lib/cubeExpansionRegistry';
+import type { LocalAsset } from '../stores/localFoldersStore';
+
+/**
+ * Simple hash function to convert string key to numeric ID.
+ * Used for asset selection store which requires numeric IDs.
+ */
+function hashKeyToId(key: string): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
 
 /**
  * Gallery preview expansion for cube
  * Shows grid of recent assets
  */
 export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
-  const { assets, previews } = useLocalFolders();
+  const { assets, previews } = useLocalFoldersController();
   const { selectAsset, isSelected } = useAssetSelectionStore();
 
   // Get most recent assets (up to 9)
@@ -18,12 +33,15 @@ export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
 
   const assetCount = assets.length;
 
-  const handleAssetClick = (asset: typeof assets[0], previewUrl: string) => {
+  const handleAssetClick = (asset: LocalAsset, previewUrl: string) => {
+    // Only select image/video assets (not audio/other)
+    if (asset.kind !== 'image' && asset.kind !== 'video') return;
+
     selectAsset({
-      id: asset.stats.size, // Use a unique identifier (size for now, should be proper ID)
+      id: hashKeyToId(asset.key),
       key: asset.key,
       name: asset.name,
-      type: asset.type as 'image' | 'video',
+      type: asset.kind,
       url: previewUrl,
       source: 'cube',
     });
@@ -47,7 +65,7 @@ export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
         <div className="grid grid-cols-3 gap-1">
           {recentAssets.map((asset) => {
             const previewUrl = previews[asset.key];
-            const selected = isSelected(asset.stats.size);
+            const selected = isSelected(hashKeyToId(asset.key));
 
             return (
               <button
@@ -65,7 +83,7 @@ export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
               >
                 {previewUrl ? (
                   <>
-                    {asset.type === 'video' ? (
+                    {asset.kind === 'video' ? (
                       <video
                         src={previewUrl}
                         className="w-full h-full object-cover"
@@ -86,7 +104,7 @@ export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
                   </>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-2xl text-white/30">
-                    {asset.type === 'video' ? '🎥' : '🖼️'}
+                    {asset.kind === 'video' ? '🎥' : '🖼️'}
                   </div>
                 )}
               </button>
