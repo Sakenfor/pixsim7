@@ -65,6 +65,8 @@ const CANONICAL_CONFIG_KEYS = new Set([
   'image_urls',
   'video_url',
   'original_video_id',
+  'source_asset_id',
+  'source_asset_ids',
   'prompts',
   'fusion_assets',
   'pacing',
@@ -154,6 +156,9 @@ function buildGenerationConfig(
   if (merged.original_video_id) {
     config.original_video_id = merged.original_video_id;
   }
+  if (merged.source_asset_id) {
+    config.source_asset_id = merged.source_asset_id;
+  }
 
   // Include transition-specific fields
   if (merged.image_urls) {
@@ -161,6 +166,9 @@ function buildGenerationConfig(
   }
   if (merged.prompts) {
     config.prompts = merged.prompts;
+  }
+  if (merged.source_asset_ids) {
+    config.source_asset_ids = merged.source_asset_ids;
   }
 
   // Include fusion-specific fields

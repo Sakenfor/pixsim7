@@ -12,6 +12,7 @@ import { useControlCenterStore } from '@features/controlCenter/stores/controlCen
 import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
 import { NotificationTicker } from './NotificationTicker';
+import { ContentModerationWarning } from './ContentModerationWarning';
 
 /** Quick navigation item configuration */
 export interface QuickNavItem {
@@ -25,6 +26,7 @@ export interface QuickNavItem {
 export const DEFAULT_QUICK_NAV: QuickNavItem[] = [
   { id: 'gallery', icon: '🖼️', label: 'Gallery', path: '/assets' },
   { id: 'workspace', icon: '🎨', label: 'Workspace', path: '/workspace' },
+  { id: 'plugin-workspace', icon: '🔌', label: 'Plugin Workspace', path: '/plugin-workspace' },
   { id: 'home', icon: '🏠', label: 'Home', path: '/' },
   { id: 'graph', icon: '🕸️', label: 'Graph', path: '/graph/1' },
 ];
@@ -179,72 +181,77 @@ export function DockToolbar({
       {/* News ticker for generation events */}
       <NotificationTicker />
 
-      {/* Quick Navigation Shortcuts */}
-      {showQuickNav && quickNavItems.length > 0 && (
-        <div className="flex items-center gap-0.5 mr-2">
-          {quickNavItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => navigate(item.path)}
-              className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-              title={item.label}
-              aria-label={`Navigate to ${item.label}`}
-            >
-              {item.icon}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Content moderation warnings */}
+      <ContentModerationWarning />
 
-      {/* Dock Position Selector */}
-      <ExpandableButtonGroup
-        trigger={
-          <button
-            className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95"
-            aria-label={`Dock position: ${dockPosition}`}
-          >
-            {positionIcon}
-          </button>
-        }
-        direction={expandDirection}
-        hoverDelay={200}
-        offset={6}
-        contentClassName="right-0"
-      >
-        <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
-          <PositionButton
-            position="top"
-            icon="⬆"
-            currentPosition={dockPosition}
-            onClick={onDockPositionChange}
-          />
-          <PositionButton
-            position="left"
-            icon="⬅"
-            currentPosition={dockPosition}
-            onClick={onDockPositionChange}
-          />
-          <PositionButton
-            position="floating"
-            icon="⊡"
-            currentPosition={dockPosition}
-            onClick={onDockPositionChange}
-            variant="purple"
-          />
-          <PositionButton
-            position="right"
-            icon="➡"
-            currentPosition={dockPosition}
-            onClick={onDockPositionChange}
-          />
-          <PositionButton
-            position="bottom"
-            icon="⬇"
-            currentPosition={dockPosition}
-            onClick={onDockPositionChange}
-          />
-        </div>
-      </ExpandableButtonGroup>
+      <div className="ml-auto flex items-center gap-2">
+        {/* Quick Navigation Shortcuts */}
+        {showQuickNav && quickNavItems.length > 0 && (
+          <div className="flex items-center gap-0.5">
+            {quickNavItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => navigate(item.path)}
+                className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                title={item.label}
+                aria-label={`Navigate to ${item.label}`}
+              >
+                {item.icon}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Dock Position Selector */}
+        <ExpandableButtonGroup
+          trigger={
+            <button
+              className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95"
+              aria-label={`Dock position: ${dockPosition}`}
+            >
+              {positionIcon}
+            </button>
+          }
+          direction={expandDirection}
+          hoverDelay={200}
+          offset={6}
+          contentClassName="right-0"
+        >
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
+            <PositionButton
+              position="top"
+              icon="⬆"
+              currentPosition={dockPosition}
+              onClick={onDockPositionChange}
+            />
+            <PositionButton
+              position="left"
+              icon="⬅"
+              currentPosition={dockPosition}
+              onClick={onDockPositionChange}
+            />
+            <PositionButton
+              position="floating"
+              icon="⊡"
+              currentPosition={dockPosition}
+              onClick={onDockPositionChange}
+              variant="purple"
+            />
+            <PositionButton
+              position="right"
+              icon="➡"
+              currentPosition={dockPosition}
+              onClick={onDockPositionChange}
+            />
+            <PositionButton
+              position="bottom"
+              icon="⬇"
+              currentPosition={dockPosition}
+              onClick={onDockPositionChange}
+            />
+          </div>
+        </ExpandableButtonGroup>
+      </div>
     </div>
   );
 }

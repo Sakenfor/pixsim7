@@ -129,7 +129,9 @@ export function CompactAssetCard({
     }
   };
 
-  const isLocalOnly = asset.providerStatus === 'local_only' || !asset.remoteUrl;
+  const isLocalOnly =
+    asset.providerStatus === 'local_only' ||
+    (asset.syncStatus === 'downloaded' && !asset.remoteUrl);
   const statusColor = isLocalOnly
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
