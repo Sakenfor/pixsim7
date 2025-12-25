@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback } from 'react';
+import { useMemo, useEffect, useCallback, useRef } from 'react';
 import { useGenerationScopeStores } from './useGenerationScope';
 import { useProviders } from '@features/providers';
 import { useProviderSpecs } from '@features/providers';
@@ -53,7 +53,7 @@ export interface GenerationWorkbenchState {
   dynamicParams: Record<string, any>;
   /** Update dynamic parameters */
   setDynamicParams: React.Dispatch<React.SetStateAction<Record<string, any>>>;
-  /** Handle a single param change */
+  /** Handle a single param change with type coercion */
   handleParamChange: (name: string, value: any) => void;
   /** Whether the settings bar should be visible */
   showSettings: boolean;
@@ -69,6 +69,96 @@ export interface GenerationWorkbenchState {
   effectiveOperationType: OperationType;
 }
 
+// ============================================================================
+// Pure Helper Functions
+// ============================================================================
+
+/**
+ * Coerce a value to match the expected param type.
+ * Called on input change to normalize values immediately.
+ */
+function coerceParamValue(value: any, spec: ParamSpec | undefined): any {
+  if (spec?.type === 'number' && typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return undefined;
+    const numeric = Number(trimmed);
+    return Number.isNaN(numeric) ? value : numeric;
+  }
+  return value;
+}
+
+/**
+ * Apply preset overrides to params.
+ * Returns new params object if changes were made, otherwise returns input.
+ */
+function applyPresetOverrides(
+  params: Record<string, any>,
+  presetParams: Record<string, any>,
+  specParams: ParamSpec[]
+): Record<string, any> {
+  let changed = false;
+  const next = { ...params };
+
+  for (const spec of specParams) {
+    const presetValue = presetParams[spec.name];
+    if (presetValue !== undefined && next[spec.name] !== presetValue) {
+      next[spec.name] = presetValue;
+      changed = true;
+    }
+  }
+
+  return changed ? next : params;
+}
+
+/**
+ * Validate params against specs and apply defaults.
+ * - Removes invalid enum values
+ * - Applies defaults for undefined values
+ * Returns new params object if changes were made, otherwise returns input.
+ */
+function validateAndApplyDefaults(
+  params: Record<string, any>,
+  specParams: ParamSpec[],
+  presetParams: Record<string, any>
+): Record<string, any> {
+  let changed = false;
+  const next = { ...params };
+
+  for (const spec of specParams) {
+    const { name } = spec;
+
+    // Skip if preset controls this value
+    if (presetParams[name] !== undefined) continue;
+
+    const currentValue = next[name];
+
+    // Apply default if undefined
+    if (currentValue === undefined) {
+      if (spec.default !== undefined && spec.default !== null) {
+        next[name] = spec.default;
+        changed = true;
+      }
+      continue;
+    }
+
+    // Validate enum values
+    if (Array.isArray(spec.enum) && !spec.enum.includes(currentValue)) {
+      if (spec.default !== undefined) {
+        next[name] = spec.default;
+      } else {
+        delete next[name];
+      }
+      changed = true;
+    }
+  }
+
+  return changed ? next : params;
+}
+
+// ============================================================================
+// Hook
+// ============================================================================
+
 /**
  * Hook: useGenerationWorkbench
  *
@@ -77,20 +167,14 @@ export interface GenerationWorkbenchState {
  * and IntimacySceneComposer for managing provider selection, parameter specs,
  * and settings bar visibility.
  *
- * @example
- * ```tsx
- * const {
- *   providerId,
- *   setProvider,
- *   providers,
- *   paramSpecs,
- *   dynamicParams,
- *   handleParamChange,
- *   showSettings,
- *   toggleSettings,
- *   generating,
- * } = useGenerationWorkbench({ operationType: 'text_to_video' });
- * ```
+ * Responsibilities:
+ * - Provider/specs resolution (UI layer)
+ * - Settings visibility management
+ * - Preset application
+ * - Param validation against specs
+ *
+ * NOTE: This hook does NOT handle generation validation or API calls.
+ * That's handled by quickGenerateLogic and useQuickGenerateController.
  */
 export function useGenerationWorkbench(
   options: UseGenerationWorkbenchOptions = {}
@@ -133,14 +217,8 @@ export function useGenerationWorkbench(
 
   const inferredProviderId = useProviderIdForModel(dynamicParams?.model as string | undefined);
   const resolvedProviderId = useMemo(() => {
-    if (providerId) {
-      return providerId;
-    }
-    if (inferredProviderId) {
-      return inferredProviderId;
-    }
-    // Default to pixverse when no provider is explicitly selected
-    // This ensures specs are always available for the UI
+    if (providerId) return providerId;
+    if (inferredProviderId) return inferredProviderId;
     return 'pixverse';
   }, [providerId, inferredProviderId]);
 
@@ -148,14 +226,11 @@ export function useGenerationWorkbench(
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(resolvedProviderId);
 
-  // Handle provider changes - use store or allow override
   const setProvider = (id: string | undefined) => {
     setStoreProvider(id);
   };
 
-  // Prefer native image_to_image specs when the provider exposes them.
-  // Fall back to image_to_video only for providers that don't define
-  // image_to_image in their operation_specs.
+  // Prefer native image_to_image specs when the provider exposes them
   const hasNativeImageToImageSpec =
     !!specs?.operation_specs && !!specs.operation_specs['image_to_image'];
   const effectiveOperationType: OperationType =
@@ -169,97 +244,60 @@ export function useGenerationWorkbench(
     const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return [];
 
-    // Filter out excluded parameters
     const excludeSet = new Set(excludeParams);
     return opSpec.parameters.filter((p: any) => !excludeSet.has(p.name));
   }, [specs, effectiveOperationType, excludeParams]);
 
-  // Auto-show settings for operations with visible options
-  // Only auto-show on first load, not on every render (respect user's persisted preference)
-  const hasVisibleOptions = paramSpecs.length > 0 || operationType === 'image_to_image';
-  useEffect(() => {
-    // Wait for hydration before auto-showing to respect persisted preference
-    if (!hasHydrated) return;
-    // Only auto-show if settings are currently hidden and we have options
-    // This respects the user's choice if they previously collapsed settings
-    if (autoShowSettings && hasVisibleOptions && !showSettings) {
-      // Don't auto-show - let user control visibility after first hydration
-      // setShowSettings(true);
+  // Create a map for quick spec lookup in handleParamChange
+  const paramSpecMap = useMemo(() => {
+    const map = new Map<string, ParamSpec>();
+    for (const spec of paramSpecs) {
+      map.set(spec.name, spec);
     }
-  }, [autoShowSettings, hasVisibleOptions, operationType, hasHydrated, showSettings]);
+    return map;
+  }, [paramSpecs]);
 
-  // Keep primary dynamic params in sync with preset parameters
+  // Track previous preset to detect changes
+  const prevPresetParamsRef = useRef(presetParams);
+
+  // Effect 1: Apply preset overrides when presetParams change
   useEffect(() => {
-    // Wait for hydration before syncing defaults to avoid overwriting persisted values
+    if (!hasHydrated) return;
+
+    const prevPreset = prevPresetParamsRef.current;
+    prevPresetParamsRef.current = presetParams;
+
+    // Only run if presetParams actually changed
+    if (prevPreset === presetParams) return;
+
+    if (!specs?.operation_specs) return;
+    const opSpec = specs.operation_specs[effectiveOperationType];
+    if (!opSpec?.parameters) return;
+
+    setDynamicParams((prev) => applyPresetOverrides(prev, presetParams, opSpec.parameters));
+  }, [hasHydrated, presetParams, specs, effectiveOperationType, setDynamicParams]);
+
+  // Effect 2: Validate params and apply defaults when specs change
+  useEffect(() => {
     if (!hasHydrated) return;
     if (!specs?.operation_specs) return;
     const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return;
 
-    setDynamicParams((prev) => {
-      const next = { ...prev };
-      let changed = false;
+    setDynamicParams((prev) =>
+      validateAndApplyDefaults(prev, opSpec.parameters, presetParams)
+    );
+  }, [hasHydrated, specs, effectiveOperationType, setDynamicParams, presetParams]);
 
-      for (const param of opSpec.parameters as ParamSpec[]) {
-        const name = param.name;
-        const presetOverride = presetParams[name];
-
-        if (presetOverride !== undefined) {
-          if (next[name] !== presetOverride) {
-            next[name] = presetOverride;
-            changed = true;
-          }
-          continue;
-        }
-
-        let currentValue = next[name];
-
-        if (param.type === 'number' && typeof currentValue === 'string') {
-          if (currentValue.trim() === '') {
-            if (next[name] !== undefined) {
-              delete next[name];
-              changed = true;
-            }
-            continue;
-          }
-
-          const numeric = Number(currentValue);
-          if (!Number.isNaN(numeric) && next[name] !== numeric) {
-            next[name] = numeric;
-            currentValue = numeric;
-            changed = true;
-          }
-        }
-
-        if (currentValue === undefined) {
-          if (param.default !== undefined && param.default !== null && next[name] !== param.default) {
-            next[name] = param.default;
-            changed = true;
-          }
-          continue;
-        }
-
-        if (Array.isArray(param.enum) && !param.enum.includes(currentValue)) {
-          if (param.default !== undefined) {
-            if (next[name] !== param.default) {
-              next[name] = param.default;
-              changed = true;
-            }
-          } else {
-            delete next[name];
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [hasHydrated, presetParams, specs, effectiveOperationType, setDynamicParams]);
-
-  // Handler for dynamic param changes
-  const handleParamChange = useCallback((name: string, value: any) => {
-    setDynamicParams(prev => ({ ...prev, [name]: value }));
-  }, [setDynamicParams]);
+  // Handler for dynamic param changes - coerces types on input
+  const handleParamChange = useCallback(
+    (name: string, value: any) => {
+      const spec = paramSpecMap.get(name);
+      const coercedValue = coerceParamValue(value, spec);
+      setDynamicParams((prev) => ({ ...prev, [name]: coercedValue }));
+    },
+    [paramSpecMap, setDynamicParams]
+  );
 
   return {
     providerId,
