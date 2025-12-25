@@ -234,7 +234,7 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
     {
         "name": "Claim Pixverse Daily Rewards",
         "category": "rewards",
-        "description": "Watch ads and claim daily rewards in Pixverse app.",
+        "description": "Watch daily ads and claim rewards in Pixverse app (ad count is read dynamically).",
         "app_package": PIXVERSE_PACKAGE,
         "actions": [
             # Step 0: Ensure app is running
@@ -271,48 +271,38 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
                 "description": "Wait for rewards screen to load"
             },
 
-            # Step 4: Click first ad button
+            # Step 4: Watch daily ads (count injected dynamically from ad task status)
             {
-                "type": "click_coords",
+                "type": "repeat",
                 "params": {
-                    "x": 540,
-                    "y": 800
+                    "count": "{pixverse_ad_total_counts}",
+                    # Fallback if ad task status couldn't be fetched (historically 2).
+                    "fallback_count": 2,
+                    "delay_between": 1,
+                    "actions": [
+                        {
+                            "type": "click_coords",
+                            "params": {"x": 540, "y": 800},
+                            "description": "Click ad button"
+                        },
+                        {
+                            "type": "wait",
+                            "params": {"seconds": 40},
+                            "description": "Wait for ad to complete"
+                        },
+                    ],
                 },
-                "description": "Click first ad button"
+                "description": "Watch daily reward ads"
             },
 
-            # Step 5: Wait for ad to complete (40 seconds)
-            {
-                "type": "wait",
-                "params": {"seconds": 40},
-                "description": "Wait for first ad to complete"
-            },
-
-            # Step 6: Click second ad button
-            {
-                "type": "click_coords",
-                "params": {
-                    "x": 540,
-                    "y": 800
-                },
-                "description": "Click second ad button"
-            },
-
-            # Step 7: Wait for second ad
-            {
-                "type": "wait",
-                "params": {"seconds": 40},
-                "description": "Wait for second ad to complete"
-            },
-
-            # Step 8: Take screenshot
+            # Step 5: Take screenshot
             {
                 "type": "screenshot",
                 "params": {},
                 "description": "Capture post-rewards screenshot"
             },
 
-            # Step 9: Go back to main screen
+            # Step 6: Go back to main screen
             {
                 "type": "press_back",
                 "params": {},

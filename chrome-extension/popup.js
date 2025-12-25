@@ -23,7 +23,8 @@ let accountsRequestSeq = 0;
 // Unified account extended info cache (per-field TTLs)
 const ACCOUNT_EXTENDED_INFO_CACHE_STORAGE_KEY = 'pixsim7AccountExtendedInfoCache';
 const ACCOUNT_EXTENDED_INFO_TTLs = {
-  ad_watch_task: 24 * 60 * 60 * 1000,  // 24 hours (resets daily)
+  // Keep short so UI reflects backend/task changes (Pixverse daily cap can vary).
+  ad_watch_task: 5 * 60 * 1000,         // 5 minutes
   account_stats: 60 * 60 * 1000,        // 1 hour (changes infrequently)
   credits: 5 * 60 * 1000,               // 5 minutes (for future use)
 };
