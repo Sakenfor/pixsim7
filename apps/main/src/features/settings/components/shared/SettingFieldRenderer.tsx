@@ -12,7 +12,7 @@ import type {
   NumberSettingField,
   TextSettingField,
   CustomSettingField,
-} from './types';
+} from '../../lib/core/types';
 
 interface SettingFieldRendererProps {
   field: SettingField;

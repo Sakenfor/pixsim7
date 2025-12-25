@@ -6,9 +6,10 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { useAuthStore } from '@/stores/authStore';
 import { settingsSchemaRegistry } from '../../lib/core';
 import { SettingFieldRenderer } from './SettingFieldRenderer';
-import type { SettingGroup, SettingTab } from './types';
+import type { SettingGroup, SettingTab } from '../../lib/core/types';
 
 interface DynamicSettingsPanelProps {
   categoryId: string;
@@ -24,7 +25,13 @@ function SettingGroupRenderer({
   useStore: () => { get: (id: string) => any; set: (id: string, value: any) => void; getAll: () => Record<string, any> };
 }) {
   const store = useStore();
-  const allValues = store.getAll();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  const allValues = { ...store.getAll(), __isAdmin: !!isAdmin, __userRole: user?.role };
+
+  if (group.showWhen && !group.showWhen(allValues)) {
+    return null;
+  }
 
   return (
     <div className="space-y-3">
@@ -121,26 +128,28 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
   // Tabbed layout (show all tabs with navigation)
   if (hasTabs) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden text-xs text-neutral-800 dark:text-neutral-100">
-        {/* Tab bar */}
-        <div className="flex-shrink-0 flex gap-1 p-2 border-b border-neutral-200 dark:border-neutral-800">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTabId(tab.id)}
-              className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                activeTabId === tab.id
-                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
-            >
-              {tab.icon && <span>{tab.icon}</span>}
-              {tab.label}
-            </button>
-          ))}
+      <div className="flex-1 flex overflow-hidden text-xs text-neutral-800 dark:text-neutral-100">
+        {/* Left sidebar - vertical tabs */}
+        <div className="flex-shrink-0 w-40 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 flex flex-col">
+          <div className="flex-1 overflow-auto py-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTabId(tab.id)}
+                className={`w-full px-3 py-2 text-[11px] font-medium transition-colors flex items-center gap-2 text-left ${
+                  activeTabId === tab.id
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-r-2 border-blue-500'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {tab.icon && <span className="text-sm">{tab.icon}</span>}
+                <span className="truncate">{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Tab content */}
+        {/* Right content area */}
         <div className="flex-1 overflow-auto p-4">
           {activeTab && <TabContent tab={activeTab} useStore={category.useStore} />}
         </div>

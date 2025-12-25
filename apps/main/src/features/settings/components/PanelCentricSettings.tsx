@@ -94,6 +94,10 @@ function PanelSchemaGroupRenderer({
   instanceOverrides?: Record<string, unknown>;
   onResetField?: (fieldId: string) => void;
 }) {
+  if (group.showWhen && !group.showWhen(values)) {
+    return null;
+  }
+
   return (
     <div className="space-y-2">
       {group.title && (

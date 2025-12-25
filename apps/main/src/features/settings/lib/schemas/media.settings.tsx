@@ -12,6 +12,9 @@ import { apiClient } from '@/lib/api';
 import { SHAManagement } from '../../components/shared/SHAManagement';
 import { StorageSync } from '../../components/shared/StorageSync';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
+import { ContentBlobManagement } from '../../components/shared/ContentBlobManagement';
+
+const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
 
 // Fetch server settings on mount
 async function fetchServerSettings(): Promise<ServerMediaSettings> {
@@ -174,6 +177,7 @@ const maintenanceTab: SettingTab = {
       id: 'sha-hashes',
       title: 'SHA256 Hashes',
       description: 'Compute hashes for duplicate detection.',
+      showWhen: adminOnly,
       fields: [
         {
           id: 'sha-management-widget',
@@ -187,12 +191,27 @@ const maintenanceTab: SettingTab = {
       id: 'storage-sync',
       title: 'Storage System',
       description: 'Content-addressed storage status.',
+      showWhen: adminOnly,
       fields: [
         {
           id: 'storage-sync-widget',
           type: 'custom',
           label: 'Storage System',
           component: StorageSync,
+        },
+      ],
+    },
+    {
+      id: 'content-blobs',
+      title: 'Content Dedup',
+      description: 'Link assets to global content records for future deduplication.',
+      showWhen: adminOnly,
+      fields: [
+        {
+          id: 'content-blob-widget',
+          type: 'custom',
+          label: 'Content Dedup',
+          component: ContentBlobManagement,
         },
       ],
     },

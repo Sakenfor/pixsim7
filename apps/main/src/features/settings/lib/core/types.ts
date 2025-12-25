@@ -113,6 +113,8 @@ export interface SettingGroup {
   title?: string;
   /** Optional group description */
   description?: string;
+  /** Condition to show/hide this group based on current values */
+  showWhen?: (values: Record<string, any>) => boolean;
   /** Fields in this group */
   fields: SettingField[];
 }
