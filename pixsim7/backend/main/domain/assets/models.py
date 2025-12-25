@@ -39,6 +39,12 @@ class Asset(SQLModel, table=True):
         index=False,  # Indexed via composite index below
         description="File content hash (for per-user deduplication)"
     )
+    content_id: Optional[int] = Field(
+        default=None,
+        foreign_key="content_blobs.id",
+        index=True,
+        description="Global content reference (for future cross-user deduplication)"
+    )
     media_type: MediaType = Field(description="Asset type: video or image")
 
     # ===== PROVIDER TRACKING =====
@@ -90,6 +96,10 @@ class Asset(SQLModel, table=True):
     height: Optional[int] = None
     duration_sec: Optional[float] = None
     file_size_bytes: Optional[int] = None
+    logical_size_bytes: Optional[int] = Field(
+        default=None,
+        description="Logical size for quota accounting (independent of physical storage)"
+    )
     fps: Optional[float] = None
 
     # ===== IMAGE TRACKING =====

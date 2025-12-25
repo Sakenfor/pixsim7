@@ -70,6 +70,7 @@ from .enums import (
 from .user import User, UserSession, UserQuotaUsage, UserRole
 from .workspace import Workspace
 from .assets.models import Asset, AssetVariant
+from .assets.content import ContentBlob
 from .generation.models import Generation
 from .providers import ProviderSubmission, ProviderAccount, ProviderCredit
 
@@ -122,6 +123,7 @@ __all__ = [
     "Workspace",
     "Asset",
     "AssetVariant",
+    "ContentBlob",
     "Generation",
     "ProviderSubmission",
     "ProviderAccount",

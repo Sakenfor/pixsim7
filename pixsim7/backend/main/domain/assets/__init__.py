@@ -14,6 +14,7 @@ Usage:
     from pixsim7.backend.main.domain.assets import Tag
 """
 from .models import Asset, AssetVariant
+from .content import ContentBlob
 from .analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
 from .lineage import AssetLineage
 from .branching import AssetBranch, AssetBranchVariant, AssetClip
@@ -29,6 +30,7 @@ __all__ = [
     # Core models
     "Asset",
     "AssetVariant",
+    "ContentBlob",
     # Analysis
     "AssetAnalysis",
     "AnalysisStatus",
