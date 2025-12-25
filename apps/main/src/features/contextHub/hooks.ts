@@ -85,7 +85,7 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   const hub = useContextHubState();
   const hostId = useContextHubHostId();
   const preferredProviderId = useContextHubOverridesStore(
-    (state) => state.overrides[key]?.preferredProviderId,
+    (state) => state.getPreferredProviderId(key, hostId),
   );
   const registries = useMemo(() => getRegistryChain(hub), [hub]);
   const lastSnapshotRef = useRef<CapabilitySnapshot<T>>({
@@ -116,12 +116,12 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   // Record consumption for debugging/visualization (throttled internally)
   // Always record at root level so it's accessible from Properties popup
   useEffect(() => {
-    if (hostId && hub && snapshot.provider) {
+    if (hostId && hub) {
       let root = hub;
       while (root.parent) {
         root = root.parent;
       }
-      root.registry.recordConsumption(key, hostId, snapshot.provider);
+      root.registry.recordConsumption(key, hostId, snapshot.provider ?? null);
     }
   }, [hub, hostId, key, snapshot.provider]);
 

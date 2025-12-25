@@ -114,7 +114,7 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     consumerHostId: string,
     provider: CapabilityProvider | null,
   ) => {
-    if (!provider || !consumerHostId) return;
+    if (!consumerHostId) return;
 
     const now = Date.now();
     let keyMap = consumption.get(key);
@@ -132,8 +132,8 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     keyMap.set(consumerHostId, {
       key,
       consumerHostId,
-      providerId: provider.id ?? 'anonymous',
-      providerLabel: provider.label,
+      providerId: provider?.id ?? 'none',
+      providerLabel: provider?.label,
       lastSeenAt: now,
     });
   };
