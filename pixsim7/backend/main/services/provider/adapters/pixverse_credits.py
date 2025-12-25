@@ -24,6 +24,36 @@ PIXVERSE_CREDITS_TIMEOUT_SEC = 8.0
 class PixverseCreditsMixin:
     """Mixin for Pixverse credits operations"""
 
+    async def get_ad_watch_task(
+        self,
+        account: ProviderAccount,
+        *,
+        retry_on_session_error: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch Pixverse daily watch-ad task status only (no credits)."""
+
+        async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
+            return await self._get_ad_task_status_best_effort(account, session)
+
+        try:
+            return await self.session_manager.run_with_session(
+                account=account,
+                op_name="get_ad_watch_task",
+                operation=_operation,
+                retry_on_session_error=retry_on_session_error,
+            )
+        except Exception as exc:
+            log_provider_error(
+                provider_id="pixverse",
+                operation="get_ad_watch_task",
+                account_id=account.id,
+                email=account.email,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+                severity="warning",
+            )
+            return None
+
     async def get_credits(
         self,
         account: ProviderAccount,
@@ -202,7 +232,7 @@ class PixverseCreditsMixin:
           - task_type == 1
           - sub_type == 11
 
-        Example response snippet:
+        Example response snippet (note: total_counts can change over time):
             {
               "ErrCode": 0,
               "ErrMsg": "Success",
@@ -404,4 +434,3 @@ class PixverseCreditsMixin:
             operation=_operation,
             retry_on_session_error=False,  # Don't trigger heavy reauth for stats
         )
-

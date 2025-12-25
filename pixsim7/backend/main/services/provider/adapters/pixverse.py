@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 try:  # pragma: no cover - exercised indirectly via providers API
     from pixverse import PixverseClient  # type: ignore
     from pixverse import get_video_operation_fields  # type: ignore[attr-defined]
+    from pixverse import ContentModerationError as PixverseContentModerationError  # type: ignore
     from pixverse.models import (  # type: ignore
         GenerationOptions,
         TransitionOptions,
@@ -35,6 +36,7 @@ try:  # pragma: no cover - exercised indirectly via providers API
     from pixverse import infer_video_dimensions  # type: ignore - New in SDK
 except ImportError:  # pragma: no cover
     PixverseClient = None  # type: ignore
+    PixverseContentModerationError = None  # type: ignore
     GenerationOptions = TransitionOptions = object  # fallbacks
     VideoModel = ImageModel = CameraMovement = None  # type: ignore
     get_video_operation_fields = None  # type: ignore
@@ -152,6 +154,10 @@ class PixverseProvider(
         # Key format: (account_id, use_method or 'auto', jwt_prefix)
         self._client_cache: Dict[tuple, Any] = {}
         self.session_manager = PixverseSessionManager(self)
+
+    def requires_file_preparation(self) -> bool:
+        """Enable prepare_execution_params hook for provider-specific URL resolution."""
+        return True
 
     @property
     def provider_id(self) -> str:
@@ -286,6 +292,10 @@ class PixverseProvider(
                 if value is not None:
                     mapped[field] = value
 
+        # Pass through source_asset_id for provider_uploads resolution
+        if "source_asset_id" in params and params["source_asset_id"] is not None:
+            mapped["source_asset_id"] = params["source_asset_id"]
+
         # === Operation-specific parameters ===
         if operation_type == OperationType.IMAGE_TO_VIDEO:
             if "image_url" in params and params["image_url"] is not None:
@@ -358,6 +368,180 @@ class PixverseProvider(
         # to the Pixverse API. This keeps the mapping logic simple while
         # ensuring providers only see fields that are intentionally set.
         return {k: v for k, v in mapped.items() if v is not None}
+
+    async def prepare_execution_params(
+        self,
+        generation,  # Generation model
+        mapped_params: Dict[str, Any],
+        resolve_source_fn,
+    ) -> Dict[str, Any]:
+        """
+        Resolve provider-specific URLs from asset references.
+
+        For operations like IMAGE_TO_IMAGE, the SDK requires Pixverse-hosted URLs.
+        This method checks for source_asset_id in params and looks up provider_uploads.
+        """
+        from pixsim7.backend.main.domain.assets.models import Asset
+        from pixsim7.backend.main.services.asset.sync_service import AssetSyncService
+        from sqlalchemy import select
+        from pixsim7.backend.main.infrastructure.database.session import get_async_session
+
+        result_params = dict(mapped_params)
+        operation_type = generation.operation_type
+
+        def _resolve_pixverse_ref(value: Any, *, allow_img_id: bool) -> str | None:
+            if not value:
+                return None
+            if not isinstance(value, str):
+                value = str(value)
+            if value.startswith("http://") or value.startswith("https://"):
+                return value
+            if value.startswith("upload/"):
+                return f"https://media.pixverse.ai/{value}"
+            if value.startswith("img_id:"):
+                return value if allow_img_id else None
+            if value.isdigit():
+                return f"img_id:{value}" if allow_img_id else None
+            return value
+
+        logger.info(
+            "prepare_execution_params_called",
+            has_source_asset_id="source_asset_id" in mapped_params,
+            has_source_asset_ids="source_asset_ids" in mapped_params,
+            source_asset_id=mapped_params.get("source_asset_id"),
+            image_url=mapped_params.get("image_url", "")[:50] if mapped_params.get("image_url") else None,
+            operation_type=generation.operation_type.value if generation.operation_type else None,
+        )
+
+        # Check for explicit source_asset_id(s) from frontend
+        canonical = generation.canonical_params or {}
+        source_asset_ids = mapped_params.get("source_asset_ids") or canonical.get("source_asset_ids")
+        source_asset_id = mapped_params.get("source_asset_id") or canonical.get("source_asset_id")
+
+        if not source_asset_id and not source_asset_ids:
+            # No explicit asset ID(s) - return as-is
+            return result_params
+
+        # Look up the asset to get provider_uploads
+        async with get_async_session() as session:
+            async def resolve_asset_ref(asset_id: int | str) -> tuple[str | None, Asset | None]:
+                query = select(Asset).where(Asset.id == asset_id)
+                result = await session.execute(query)
+                asset = result.scalar_one_or_none()
+
+                if not asset:
+                    logger.warning(
+                        "source_asset_not_found",
+                        source_asset_id=asset_id,
+                    )
+                    return None, None
+
+                provider_ref: Any = None
+
+                if asset.provider_uploads and self.provider_id in asset.provider_uploads:
+                    provider_ref = asset.provider_uploads[self.provider_id]
+                    logger.debug(
+                        "using_provider_uploads_url",
+                        asset_id=asset_id,
+                        url=str(provider_ref)[:50] if provider_ref else None,
+                    )
+                elif asset.provider_id == self.provider_id and asset.remote_url:
+                    provider_ref = asset.remote_url
+                    logger.debug(
+                        "using_pixverse_remote_url",
+                        asset_id=asset_id,
+                        url=str(provider_ref)[:50] if provider_ref else None,
+                    )
+
+                if not provider_ref:
+                    sync_service = AssetSyncService(session)
+                    try:
+                        provider_ref = await sync_service.get_asset_for_provider(
+                            asset_id=int(asset_id),
+                            target_provider_id=self.provider_id,
+                        )
+                        logger.info(
+                            "provider_upload_completed",
+                            asset_id=asset_id,
+                            provider_id=self.provider_id,
+                            provider_ref=str(provider_ref)[:50] if provider_ref else None,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "provider_upload_failed",
+                            asset_id=asset_id,
+                            provider_id=self.provider_id,
+                            error=str(exc),
+                        )
+
+                return provider_ref, asset
+
+            allow_img_id = operation_type == OperationType.IMAGE_TO_VIDEO
+
+            if source_asset_ids and isinstance(source_asset_ids, (list, tuple)):
+                image_urls = result_params.get("image_urls")
+                resolved_urls: list[str] = []
+                for idx, asset_id in enumerate(source_asset_ids):
+                    provider_ref, asset = await resolve_asset_ref(asset_id)
+                    resolved_ref = _resolve_pixverse_ref(provider_ref, allow_img_id=allow_img_id)
+                    if resolved_ref:
+                        resolved_urls.append(resolved_ref)
+                    elif isinstance(image_urls, list) and idx < len(image_urls):
+                        resolved_urls.append(image_urls[idx])
+
+                if resolved_urls:
+                    result_params["image_urls"] = resolved_urls
+
+                if "image_url" in result_params and len(source_asset_ids) == 1:
+                    provider_ref, asset = await resolve_asset_ref(source_asset_ids[0])
+                    resolved_ref = _resolve_pixverse_ref(provider_ref, allow_img_id=allow_img_id)
+                    if resolved_ref:
+                        result_params["image_url"] = resolved_ref
+                elif "image_url" not in result_params and len(resolved_urls) == 1:
+                    result_params["image_url"] = resolved_urls[0]
+
+            if source_asset_id:
+                provider_ref, asset = await resolve_asset_ref(source_asset_id)
+                resolved_ref = _resolve_pixverse_ref(provider_ref, allow_img_id=allow_img_id)
+
+                if resolved_ref:
+                    # Substitute the URL in params
+                    logger.info(
+                        "substituting_pixverse_url",
+                        asset_id=source_asset_id,
+                        original_url=result_params.get("image_url", "")[:50] if result_params.get("image_url") else None,
+                        pixverse_url=resolved_ref[:50] if resolved_ref else None,
+                    )
+                    if "image_url" in result_params:
+                        result_params["image_url"] = resolved_ref
+                    elif operation_type == OperationType.IMAGE_TO_VIDEO:
+                        result_params["image_url"] = resolved_ref
+                    if "image_urls" in result_params and isinstance(result_params["image_urls"], list):
+                        if len(result_params["image_urls"]) == 1:
+                            result_params["image_urls"] = [resolved_ref]
+                    elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.VIDEO_TRANSITION}:
+                        result_params["image_urls"] = [resolved_ref]
+                    if "video_url" in result_params:
+                        result_params["video_url"] = resolved_ref
+                    elif operation_type == OperationType.VIDEO_EXTEND:
+                        result_params["video_url"] = resolved_ref
+                else:
+                    if asset:
+                        logger.error(
+                            "no_pixverse_url_for_asset",
+                            asset_id=source_asset_id,
+                            provider_id=asset.provider_id,
+                            has_provider_uploads=bool(asset.provider_uploads),
+                            provider_uploads_keys=list(asset.provider_uploads.keys()) if asset.provider_uploads else [],
+                            remote_url=asset.remote_url[:50] if asset.remote_url else None,
+                            msg="Asset must be uploaded to Pixverse first for image-to-image operations",
+                        )
+
+        # Remove source_asset_id from params (not needed by SDK)
+        result_params.pop("source_asset_id", None)
+        result_params.pop("source_asset_ids", None)
+
+        return result_params
 
     def get_operation_parameter_spec(self) -> dict:
         """
@@ -1055,6 +1239,23 @@ class PixverseProvider(
                 friendly += " This is a provider-side issue; please update pixverse-py or contact support."
 
                 raise ProviderError(friendly)
+
+        # Handle SDK ContentModerationError directly (cleaner path)
+        if PixverseContentModerationError and isinstance(error, PixverseContentModerationError):
+            err_code = getattr(error, "err_code", None)
+            err_msg = getattr(error, "err_msg", None)
+            moderation_type = getattr(error, "moderation_type", "unknown")
+            retryable = getattr(error, "retryable", False)
+
+            logger.warning(
+                "pixverse_content_moderation",
+                err_code=err_code,
+                moderation_type=moderation_type,
+                retryable=retryable,
+            )
+
+            friendly = f"Content filtered ({moderation_type}): {err_msg or raw_error}"
+            raise ContentFilteredError("pixverse", friendly, retryable=retryable)
 
         # Try to extract structured ErrCode/ErrMsg from SDK error (if available)
         err_code: int | None = None
