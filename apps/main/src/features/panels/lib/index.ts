@@ -74,6 +74,17 @@ export {
   type ResolvedSettings,
 } from "./instanceSettingsResolver";
 
+// Dock widget registry (dockview containers)
+export {
+  dockWidgetRegistry,
+  registerDockWidget,
+  getDockWidget,
+  getDockWidgetByDockviewId,
+  resolvePresetScope,
+  getDockWidgetPanelIds,
+  type DockWidgetDefinition,
+} from "./dockWidgetRegistry";
+
 // Scope instance helpers
 export {
   ScopeInstanceProvider,

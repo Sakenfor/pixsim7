@@ -61,6 +61,16 @@ export {
 } from "./lib/panelSettingsHelpers";
 
 export {
+  dockWidgetRegistry,
+  registerDockWidget,
+  getDockWidget,
+  getDockWidgetByDockviewId,
+  resolvePresetScope,
+  getDockWidgetPanelIds,
+  type DockWidgetDefinition,
+} from "./lib/dockWidgetRegistry";
+
+export {
   PANEL_CATEGORIES,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -75,6 +85,7 @@ export {
   getScopeMode,
   type ScopeResolveContext,
   resolveScopeInstanceId,
+  resolveCapabilityScopeFromScopeInstanceId,
 } from "./lib/panelSettingsScopes";
 
 export {

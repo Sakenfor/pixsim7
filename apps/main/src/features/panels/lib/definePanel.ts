@@ -57,6 +57,7 @@ export interface DefinePanelOptions<TSettings = any> {
   supportsMultipleInstances?: boolean;
   instances?: PanelInstancePolicy;
   maxInstances?: number;
+  consumesCapabilities?: string[];
 
   // Settings
   defaultSettings?: TSettings;
@@ -103,6 +104,7 @@ export function definePanel<TSettings = any>(
     supportsMultipleInstances = false,
     instances,
     maxInstances,
+    consumesCapabilities,
     defaultSettings,
     settingsVersion,
     orchestration,
@@ -140,6 +142,7 @@ export function definePanel<TSettings = any>(
     supportsMultipleInstances: resolvedInstances.supportsMultipleInstances,
     maxInstances: resolvedInstances.maxInstances,
     instances,
+    consumesCapabilities,
     defaultSettings,
     settingsVersion,
     orchestration,

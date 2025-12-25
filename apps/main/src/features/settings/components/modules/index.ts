@@ -17,3 +17,4 @@ import './GenerationSettings';
 import './PluginsSettings';
 import './DebugSettings';
 import './ContextSettings';
+import './WidgetPresetsSettings';

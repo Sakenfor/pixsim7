@@ -62,6 +62,13 @@ export interface BasePanelDefinition<TParams = any> {
   scopes?: string[];
 
   /**
+   * Optional declarative hint for capabilities this panel consumes.
+   * Used by UI tooling (e.g., "Connect" context menu) when runtime
+   * consumption has not been recorded yet.
+   */
+  consumesCapabilities?: string[];
+
+  /**
    * Dockview scope IDs where this panel can appear.
    * Used by SmartDockview's `scope` prop to filter available panels.
    *

@@ -8,7 +8,9 @@
 import { pluginManager } from "./panelPlugin";
 import { corePanelsPlugin } from "./corePanelsPlugin";
 import { helperPanelsPlugin } from "./helperPanelsPlugin";
+import { registerBuiltinDockWidget } from "@lib/plugins/registryBridge";
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
+import { dockWidgetRegistry } from "./dockWidgetRegistry";
 import { panelRegistry } from "./panelRegistry";
 import { autoRegisterPanels } from "./autoDiscovery";
 
@@ -29,6 +31,11 @@ export async function initializePanels(): Promise<void> {
     // Load helper panels plugin (global context-aware panels)
     if (!pluginManager.isPluginLoaded(helperPanelsPlugin.id)) {
       await pluginManager.loadPlugin(helperPanelsPlugin);
+    }
+
+    // Register dock widgets with the unified plugin catalog
+    for (const widget of dockWidgetRegistry.getAll()) {
+      registerBuiltinDockWidget(widget);
     }
 
     // Auto-discover and register panels from definitions directory
