@@ -29,7 +29,8 @@ export interface QuickGenerateBindings {
   clearMultiAssetQueue: () => void;
   cycleQueue: (queueType?: 'main' | 'multi', direction?: 'next' | 'prev') => void;
   /**
-   * Apply the currently active asset (if compatible) to dynamic parameters.
+   * Explicitly set source_asset_id from the active asset.
+   * This is for manual "Use This Asset" actions - inference happens automatically in logic.
    */
   useActiveAsset: () => void;
 }
@@ -37,12 +38,17 @@ export interface QuickGenerateBindings {
 /**
  * Hook: useQuickGenerateBindings
  *
- * Encapsulates how QuickGenerateModule binds to:
- * - Active asset selection
- * - Main and transition generation queues
- * - Dynamic parameter / array field state
+ * Exposes queue and selection state to QuickGenerateModule.
  *
- * This keeps the React component mostly focused on layout and rendering.
+ * IMPORTANT: This hook does NOT auto-fill source_asset_id into dynamicParams.
+ * Asset ID inference happens in buildGenerationRequest (quickGenerateLogic.ts)
+ * which has access to mainQueueCurrent and activeAsset via context.
+ *
+ * This hook manages:
+ * - State exposure (queues, selection, dynamicParams)
+ * - Operation type auto-switching when items added to queue
+ * - source_asset_ids array sync for video_transition
+ * - prompts/durations arrays for video_transition
  */
 export function useQuickGenerateBindings(
   operationType: OperationType,
@@ -74,175 +80,71 @@ export function useQuickGenerateBindings(
   const [prompts, setPrompts] = useState<string[]>([]);
   const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
 
-  // Track previous queue state to detect adds vs cycles vs initial hydration
+  // Track previous queue state to detect adds
   const prevMainQueueLengthRef = useRef<number | null>(null);
   const prevTransitionQueueLengthRef = useRef<number | null>(null);
-  const prevMainQueueItemIdRef = useRef<number | null>(null);
 
-  // Function to use active asset explicitly (e.g., "Use Asset" button)
+  /**
+   * Explicitly set source_asset_id from active asset.
+   * Use this for "Use This Asset" button actions.
+   * Note: Inference from activeAsset also happens in logic, so this is optional.
+   */
   const useActiveAsset = () => {
     if (!lastSelectedAsset) return;
 
-    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') {
-      setDynamicParams((prev) => {
-        const { image_url, ...rest } = prev;
-        return {
-          ...rest,
-          source_asset_id: lastSelectedAsset.id,
-        };
-      });
+    if (
+      (operationType === 'image_to_video' || operationType === 'image_to_image') &&
+      lastSelectedAsset.type === 'image'
+    ) {
+      setDynamicParams((prev) => ({
+        ...prev,
+        source_asset_id: lastSelectedAsset.id,
+      }));
     } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
-      setDynamicParams((prev) => {
-        const { video_url, ...rest } = prev;
-        return {
-          ...rest,
-          source_asset_id: lastSelectedAsset.id,
-        };
-      });
+      setDynamicParams((prev) => ({
+        ...prev,
+        source_asset_id: lastSelectedAsset.id,
+      }));
     }
   };
 
-  // Auto-fill when active asset changes (if compatible with operation)
-  // NOTE: No longer checking for legacy params - always use source_asset_id
-  useEffect(() => {
-    if (!lastSelectedAsset) return;
-
-    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') {
-      setDynamicParams((prev) => {
-        const { image_url, ...rest } = prev;
-        return {
-          ...rest,
-          source_asset_id: lastSelectedAsset.id,
-        };
-      });
-    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
-      setDynamicParams((prev) => {
-        const { video_url, ...rest } = prev;
-        return {
-          ...rest,
-          source_asset_id: lastSelectedAsset.id,
-        };
-      });
-    }
-  }, [lastSelectedAsset, operationType]);
-
-  // Track previous index to detect cycling
-  const prevMainQueueIndexRef = useRef<number | null>(null);
-
-  // Auto-fill from main generation queue based on current index
+  // Auto-switch operation type when items added to main queue
+  // NOTE: We no longer set source_asset_id here - logic infers it from mainQueueCurrent
   useEffect(() => {
     const prevLength = prevMainQueueLengthRef.current;
-    const prevIndex = prevMainQueueIndexRef.current;
     const currentLength = mainQueue.length;
 
-    // Update refs for next render
+    // Update ref for next render
     prevMainQueueLengthRef.current = currentLength;
-    prevMainQueueIndexRef.current = mainQueueIndex;
 
-    if (currentLength === 0) {
-      prevMainQueueItemIdRef.current = null;
-      return;
-    }
+    if (currentLength === 0) return;
 
     // Get current item based on index (1-based index, convert to 0-based)
     const currentIdx = Math.max(0, Math.min(mainQueueIndex - 1, currentLength - 1));
     const currentItem = mainQueue[currentIdx];
-    if (!currentItem) {
-      prevMainQueueItemIdRef.current = null;
-      return;
-    }
-    const currentItemId = currentItem.asset?.id ?? null;
-    const prevItemId = prevMainQueueItemIdRef.current;
+    if (!currentItem) return;
 
     const { asset, operation } = currentItem;
 
-    // Detect different scenarios:
-    // - itemsWereAdded: new items added to queue (switch operation + fill params)
-    // - indexChanged: user cycled through queue (update params to current item)
-    // - itemChanged: queue mutated while index stayed the same
-    // - initialHydration: first render with data (fill only if empty)
+    // Only auto-switch operation type when items are added (not on cycle/initial load)
     const itemsWereAdded = prevLength !== null && currentLength > prevLength;
-    const indexChanged = prevIndex !== null && prevIndex !== mainQueueIndex;
-    const itemChanged = prevItemId !== null && currentItemId !== null && prevItemId !== currentItemId;
 
     if (itemsWereAdded) {
       // Set operation type if explicitly specified in queue item
       if (operation) {
         setOperationType(operation);
-      }
-
-      // Auto-fill based on operation and asset type
-      if ((operation === 'image_to_video' || !operation) && asset.mediaType === 'image') {
-        setDynamicParams((prev) => {
-          const { image_url, ...rest } = prev;
-          return {
-            ...rest,
-            source_asset_id: asset.id,
-          };
-        });
-        // Only auto-select operation type if setting is enabled
-        if (!operation && autoSelectOperationType) {
+      } else if (autoSelectOperationType) {
+        // Auto-select operation type based on asset type
+        if (asset.mediaType === 'image') {
           setOperationType('image_to_video');
-        }
-      } else if ((operation === 'video_extend' || !operation) && asset.mediaType === 'video') {
-        setDynamicParams((prev) => {
-          const { video_url, ...rest } = prev;
-          return {
-            ...rest,
-            source_asset_id: asset.id,
-          };
-        });
-        // Only auto-select operation type if setting is enabled
-        if (!operation && autoSelectOperationType) {
+        } else if (asset.mediaType === 'video') {
           setOperationType('video_extend');
         }
       }
-    } else if (indexChanged || itemChanged) {
-      // Index changed (user cycled) - update params to reflect the current item
-      if (asset.mediaType === 'image') {
-        setDynamicParams((prev) => {
-          const { image_url, ...rest } = prev;
-          return {
-            ...rest,
-            source_asset_id: asset.id,
-          };
-        });
-      } else if (asset.mediaType === 'video') {
-        setDynamicParams((prev) => {
-          const { video_url, ...rest } = prev;
-          return {
-            ...rest,
-            source_asset_id: asset.id,
-          };
-        });
-      }
-    } else {
-      // On initial load, only fill params if source_asset_id not already set
-      // NOTE: No longer checking for legacy params - only check source_asset_id
-      if (!dynamicParams.source_asset_id) {
-        if (asset.mediaType === 'image') {
-          setDynamicParams((prev) => {
-            const { image_url, ...rest } = prev;
-            return {
-              ...rest,
-              source_asset_id: asset.id,
-            };
-          });
-        } else if (asset.mediaType === 'video') {
-          setDynamicParams((prev) => {
-            const { video_url, ...rest } = prev;
-            return {
-              ...rest,
-              source_asset_id: asset.id,
-            };
-          });
-        }
-      }
     }
-    prevMainQueueItemIdRef.current = currentItemId;
   }, [mainQueue, mainQueueIndex, setOperationType, autoSelectOperationType]);
 
-  // Auto-fill transition queue data (but don't auto-switch operation type on load)
+  // Sync source_asset_ids and prompts/durations arrays for video_transition
   useEffect(() => {
     const prevLength = prevTransitionQueueLengthRef.current;
     const currentLength = multiAssetQueue.length;
@@ -260,24 +162,20 @@ export function useQuickGenerateBindings(
       return;
     }
 
-    // NOTE: Removed auto-switch to video_transition here.
-    // The slot picker now handles this via setOperationInputMode() for optional multi-asset operations.
-    // Operation type should be explicitly controlled by the user, not auto-switched when adding to queue.
-
+    // Sync source_asset_ids array from multiAssetQueue
+    // This IS needed here because it's an array that must stay in sync with the queue
     setDynamicParams((prev) => ({
       ...prev,
       source_asset_ids: multiAssetQueue.map((item) => item.asset.id),
     }));
 
     // Initialize prompts array with N-1 elements (one per transition between images)
-    // For N images, we have N-1 transitions
     const numTransitions = Math.max(0, multiAssetQueue.length - 1);
     setPrompts(prev => {
       const newPrompts = [...prev];
       while (newPrompts.length < numTransitions) {
         newPrompts.push('');
       }
-      // Trim if we have more prompts than transitions
       return newPrompts.slice(0, numTransitions);
     });
     setTransitionDurations(prev => {
@@ -287,7 +185,7 @@ export function useQuickGenerateBindings(
       }
       return next.slice(0, numTransitions);
     });
-  }, [multiAssetQueue, setOperationType]);
+  }, [multiAssetQueue, setDynamicParams]);
 
   const clearMultiAssetQueue = () => {
     clearQueue('multi');

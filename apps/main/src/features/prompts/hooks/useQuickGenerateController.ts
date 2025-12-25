@@ -91,21 +91,15 @@ export function useQuickGenerateController() {
 
     try {
       const overrideParams = options?.overrideDynamicParams || {};
-      const hasOverrideInput =
-        overrideParams.image_url ||
-        overrideParams.video_url ||
-        overrideParams.original_video_id ||
-        overrideParams.source_asset_id ||
-        (Array.isArray(overrideParams.source_asset_ids) && overrideParams.source_asset_ids.length > 0);
 
-      // Handle frame extraction for video assets with locked timestamps
+      // Merge dynamic params with any overrides
       let modifiedDynamicParams = {
         ...bindings.dynamicParams,
         ...overrideParams,
       };
 
       // Get current queue state directly from store to avoid stale React hook values
-      // This is critical when assets are enqueued right before generation
+      // This is critical for frame extraction and passing context to logic
       const queueState = useGenerationQueueStore.getState();
       const currentMainQueue = queueState.mainQueue;
       const currentMainQueueIndex = queueState.mainQueueIndex;
@@ -114,31 +108,9 @@ export function useQuickGenerateController() {
       const currentIdx = Math.max(0, Math.min(currentMainQueueIndex - 1, currentMainQueue.length - 1));
       const currentQueueItem = currentMainQueue.length > 0 ? currentMainQueue[currentIdx] : null;
 
-      if (!hasOverrideInput && currentQueueItem) {
-        const asset = currentQueueItem.asset;
-        if (operationType === 'image_to_video' || operationType === 'image_to_image') {
-          if (asset.mediaType === 'image') {
-            modifiedDynamicParams = {
-              ...modifiedDynamicParams,
-              // Pass asset ID so backend can look up provider_uploads
-              source_asset_id: asset.id,
-            };
-            delete modifiedDynamicParams.video_url;
-            delete modifiedDynamicParams.original_video_id;
-            delete modifiedDynamicParams.image_url;
-          }
-        } else if (operationType === 'video_extend') {
-          if (asset.mediaType === 'video') {
-            modifiedDynamicParams = {
-              ...modifiedDynamicParams,
-              // Pass asset ID so backend can look up provider_uploads
-              source_asset_id: asset.id,
-            };
-            delete modifiedDynamicParams.image_url;
-            delete modifiedDynamicParams.video_url;
-          }
-        }
-      }
+      // NOTE: We no longer set source_asset_id from queue here.
+      // That inference happens in buildGenerationRequest via mainQueueCurrent context.
+      // Controller only handles async operations (frame extraction).
 
       // For image_to_video: extract frame if video has locked timestamp
       if (operationType === 'image_to_video' && currentQueueItem) {
@@ -147,9 +119,8 @@ export function useQuickGenerateController() {
             video_asset_id: currentQueueItem.asset.id,
             timestamp: currentQueueItem.lockedTimestamp,
           }));
-          // Prefer asset ID; backend will resolve provider-specific URL
+          // Set extracted frame's asset ID - this overrides queue inference in logic
           modifiedDynamicParams.source_asset_id = extractedFrame.id;
-          delete modifiedDynamicParams.image_url;
         }
       }
 
@@ -165,14 +136,10 @@ export function useQuickGenerateController() {
             }));
             extractedAssetIds.push(extractedFrame.id);
           } else {
-            // Use original URL (for images or videos without locked timestamp)
             extractedAssetIds.push(queueItem.asset.id);
           }
         }
-        modifiedDynamicParams = {
-          ...modifiedDynamicParams,
-          source_asset_ids: extractedAssetIds,
-        };
+        modifiedDynamicParams.source_asset_ids = extractedAssetIds;
       }
 
       const sourceAssetIds = Array.isArray(modifiedDynamicParams.source_asset_ids)
