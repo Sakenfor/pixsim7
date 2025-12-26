@@ -16,6 +16,10 @@ export * from './contextDataResolver';
 export * from './capabilityHelpers';
 export { contextMenuRegistry } from './ContextMenuRegistry';
 
+// Auto-context menu system
+export * from './autoContextMenu';
+export * from './autoContextPresets';
+
 // Actions - import to register with the global registry
 export * from './actions';
 export { registerContextMenuActions } from './actions';

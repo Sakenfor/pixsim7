@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ccSelectors } from '@/stores/selectors';
 import { Settings2 } from 'lucide-react';
 import { PresetOperator, type TimelineAsset } from './PresetOperator';
+import { useAutoContextMenu } from '@lib/dockview/contextMenu';
 
 type PresetItem = {
   id: string;
@@ -148,6 +149,75 @@ const FALLBACK_PRESETS: PresetItem[] = [
   },
 ];
 
+/**
+ * PresetCard component with automatic context menu registration
+ */
+function PresetCard({
+  preset,
+  operationType,
+  isSelected,
+  supportsOperator,
+  onSelect,
+  onOpenOperator,
+}: {
+  preset: PresetItem;
+  operationType: string;
+  isSelected: boolean;
+  supportsOperator: boolean;
+  onSelect: () => void;
+  onOpenOperator: () => void;
+}) {
+  // Auto-register context menu with preset type
+  const contextMenuProps = useAutoContextMenu('preset', preset);
+
+  return (
+    <div
+      className={clsx(
+        'flex flex-col gap-1.5 p-2 rounded-lg cursor-pointer',
+        'border transition-all duration-150',
+        isSelected
+          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-sm'
+          : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-blue-300'
+      )}
+      onClick={onSelect}
+      {...contextMenuProps}
+    >
+      {/* Operation Type Badge */}
+      <div className="text-[9px] font-bold uppercase tracking-wide text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded self-start">
+        {operationType.replace('_', '→')}
+      </div>
+
+      <div className="flex items-start justify-between gap-1">
+        <span className="text-xs font-medium text-neutral-900 dark:text-neutral-100 leading-tight">
+          {preset.name}
+        </span>
+        {isSelected && (
+          <span className="text-[10px] text-blue-600 dark:text-blue-400">✓</span>
+        )}
+      </div>
+
+      {/* Compact params */}
+      <div className="text-[10px] text-neutral-500 dark:text-neutral-500 font-mono line-clamp-2">
+        {Object.entries(preset.params)
+          .map(([k, v]) => `${k}:${v}`)
+          .join(' ')}
+      </div>
+
+      {/* Compact action */}
+      {supportsOperator && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onOpenOperator(); }}
+          className="mt-1 py-0.5 px-1.5 text-[10px] rounded bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-0.5 self-start"
+          title="Open advanced operator"
+        >
+          <Settings2 className="w-2.5 h-2.5" />
+          Op
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function PresetsModule() {
   // Use stable selectors to reduce re-renders
   const providerId = useControlCenterStore(ccSelectors.providerId);
@@ -223,55 +293,17 @@ export function PresetsModule() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-        {presets.map(preset => {
-          const isSelected = preset.id === presetId;
-          return (
-            <div
-              key={preset.id}
-              className={clsx(
-                'flex flex-col gap-1.5 p-2 rounded-lg cursor-pointer',
-                'border transition-all duration-150',
-                isSelected
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-sm'
-                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-blue-300'
-              )}
-              onClick={() => selectPreset(preset)}
-            >
-              {/* Operation Type Badge */}
-              <div className="text-[9px] font-bold uppercase tracking-wide text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded self-start">
-                {operationType.replace('_', '→')}
-              </div>
-
-              <div className="flex items-start justify-between gap-1">
-                <span className="text-xs font-medium text-neutral-900 dark:text-neutral-100 leading-tight">
-                  {preset.name}
-                </span>
-                {isSelected && (
-                  <span className="text-[10px] text-blue-600 dark:text-blue-400">✓</span>
-                )}
-              </div>
-
-              {/* Compact params */}
-              <div className="text-[10px] text-neutral-500 dark:text-neutral-500 font-mono line-clamp-2">
-                {Object.entries(preset.params)
-                  .map(([k, v]) => `${k}:${v}`)
-                  .join(' ')}
-              </div>
-
-              {/* Compact action */}
-              {supportsOperator && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); openOperator(preset); }}
-                  className="mt-1 py-0.5 px-1.5 text-[10px] rounded bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-0.5 self-start"
-                  title="Open advanced operator"
-                >
-                  <Settings2 className="w-2.5 h-2.5" />
-                  Op
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {presets.map(preset => (
+          <PresetCard
+            key={preset.id}
+            preset={preset}
+            operationType={operationType}
+            isSelected={preset.id === presetId}
+            supportsOperator={!!supportsOperator}
+            onSelect={() => selectPreset(preset)}
+            onOpenOperator={() => openOperator(preset)}
+          />
+        ))}
       </div>
 
       {/* Operator Popup */}

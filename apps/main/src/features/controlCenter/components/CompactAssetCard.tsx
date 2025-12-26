@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ThemedIcon } from '@lib/icons';
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import { useContextMenuItem } from '@lib/dockview/contextMenu';
+import { useAssetAutoContextMenu } from '@lib/dockview/contextMenu';
 import type { AssetModel } from '@features/assets';
 
 export interface ThumbnailGridItem {
@@ -136,26 +136,8 @@ export function CompactAssetCard({
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
 
-  // Context menu: combined hook registers data + returns attrs (Pattern B)
-  const contextMenuProps = useContextMenuItem('asset', asset.id, {
-    id: asset.id,
-    name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
-    type: asset.mediaType,
-    asset, // full object for actions
-    provider: asset.providerId,
-    providerAssetId: asset.providerAssetId,
-    thumbnailUrl: asset.thumbnailUrl,
-    isLocalOnly,
-  }, [
-    asset.id,
-    asset.description,
-    asset.providerAssetId,
-    asset.mediaType,
-    asset.providerId,
-    asset.thumbnailUrl,
-    asset.providerStatus,
-    asset.remoteUrl,
-  ]);
+  // Context menu: automatic registration with type-specific preset
+  const contextMenuProps = useAssetAutoContextMenu(asset);
 
   return (
     <div

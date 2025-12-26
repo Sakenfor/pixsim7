@@ -7,6 +7,7 @@
 import { useRef } from 'react';
 import type { ViewerAsset } from '@features/assets';
 import type { ViewerSettings } from '../types';
+import { useAutoContextMenu } from '@lib/dockview/contextMenu';
 
 export type FitMode = 'contain' | 'cover' | 'actual' | 'fill';
 
@@ -21,6 +22,21 @@ export function MediaDisplay({ asset, settings, fitMode, zoom }: MediaDisplayPro
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaUrl = asset.fullUrl || asset.url;
 
+  // Auto-register context menu for the displayed asset
+  const contextMenuProps = useAutoContextMenu('viewer-asset', asset, {
+    labelField: 'name',
+    computeFields: (a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      url: a.url,
+      fullUrl: a.fullUrl,
+      source: a.source,
+      sourceGenerationId: a.sourceGenerationId,
+    }),
+    includeFullObject: true,
+  });
+
   const getFitClass = () => {
     switch (fitMode) {
       case 'contain': return 'max-w-full max-h-full object-contain';
@@ -32,7 +48,10 @@ export function MediaDisplay({ asset, settings, fitMode, zoom }: MediaDisplayPro
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-2 min-h-0 bg-neutral-50 dark:bg-neutral-950 overflow-auto">
+    <div
+      className="flex-1 flex items-center justify-center p-2 min-h-0 bg-neutral-50 dark:bg-neutral-950 overflow-auto"
+      {...contextMenuProps}
+    >
       {asset.type === 'video' ? (
         <video
           ref={videoRef}
