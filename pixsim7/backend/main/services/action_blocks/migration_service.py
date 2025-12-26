@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlmodel import SQLModel
 
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 
 
 class ActionBlockMigrationService:
@@ -116,7 +116,7 @@ class ActionBlockMigrationService:
 
         # Check if block already exists
         existing = await self.db.execute(
-            select(ActionBlockDB).where(ActionBlockDB.block_id == block_id)
+            select(PromptBlock).where(PromptBlock.block_id == block_id)
         )
         if existing.scalar_one_or_none():
             return False  # Skip, already exists
@@ -155,7 +155,7 @@ class ActionBlockMigrationService:
             tags = {"custom": tags}
 
         # Create database model
-        db_block = ActionBlockDB(
+        db_block = PromptBlock(
             id=uuid4(),
             block_id=block_id,
             kind=kind,
@@ -205,7 +205,7 @@ class ActionBlockMigrationService:
     async def _clear_package_blocks(self, package_name: str):
         """Clear all blocks for a package"""
         await self.db.execute(
-            delete(ActionBlockDB).where(ActionBlockDB.package_name == package_name)
+            delete(PromptBlock).where(PromptBlock.package_name == package_name)
         )
         await self.db.commit()
 
@@ -235,18 +235,18 @@ class ActionBlockMigrationService:
         output_path.mkdir(parents=True, exist_ok=True)
 
         # Build query
-        query = select(ActionBlockDB)
+        query = select(PromptBlock)
 
         if package_name:
-            query = query.where(ActionBlockDB.package_name == package_name)
+            query = query.where(PromptBlock.package_name == package_name)
 
         if filter_criteria:
             if 'complexity_level' in filter_criteria:
-                query = query.where(ActionBlockDB.complexity_level == filter_criteria['complexity_level'])
+                query = query.where(PromptBlock.complexity_level == filter_criteria['complexity_level'])
             if 'source_type' in filter_criteria:
-                query = query.where(ActionBlockDB.source_type == filter_criteria['source_type'])
+                query = query.where(PromptBlock.source_type == filter_criteria['source_type'])
             if 'is_public' in filter_criteria:
-                query = query.where(ActionBlockDB.is_public == filter_criteria['is_public'])
+                query = query.where(PromptBlock.is_public == filter_criteria['is_public'])
 
         # Fetch blocks
         result = await self.db.execute(query)
@@ -290,8 +290,8 @@ class ActionBlockMigrationService:
         Returns:
             Number of blocks exported
         """
-        query = select(ActionBlockDB).where(
-            ActionBlockDB.package_name == package_name
+        query = select(PromptBlock).where(
+            PromptBlock.package_name == package_name
         )
         result = await self.db.execute(query)
         blocks = result.scalars().all()
@@ -313,7 +313,7 @@ class ActionBlockMigrationService:
             Comparison statistics
         """
         # Count database blocks
-        db_result = await self.db.execute(select(ActionBlockDB))
+        db_result = await self.db.execute(select(PromptBlock))
         db_blocks = db_result.scalars().all()
 
         # Count blocks by package in database

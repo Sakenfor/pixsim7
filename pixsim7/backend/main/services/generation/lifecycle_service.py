@@ -281,7 +281,7 @@ class GenerationLifecycleService:
     async def _increment_prompt_metrics(self, prompt_version_id) -> None:
         """Increment prompt version usage metrics"""
         from uuid import UUID
-        from pixsim7.backend.main.domain.prompt_versioning import PromptVersion
+        from pixsim7.backend.main.domain.prompt import PromptVersion
 
         result = await self.db.execute(
             select(PromptVersion).where(PromptVersion.id == prompt_version_id)

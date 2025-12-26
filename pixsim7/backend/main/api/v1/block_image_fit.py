@@ -9,7 +9,7 @@ Purpose:
 
 Design:
 - Dev-only endpoints (no production use yet)
-- Integrates with ActionBlockDB, Asset, and Generation models
+- Integrates with PromptBlock, Asset, and Generation models
 - Stores fit feedback in BlockImageFit table
 """
 from fastapi import APIRouter, HTTPException
@@ -19,7 +19,7 @@ from uuid import UUID
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
@@ -40,13 +40,13 @@ router = APIRouter(prefix="/dev/block-fit", tags=["dev", "block_fit"])
 
 class ComputeFitRequest(BaseModel):
     """Request to compute fit score between a block and asset."""
-    block_id: UUID = Field(..., description="ActionBlockDB.id to evaluate")
+    block_id: UUID = Field(..., description="PromptBlock.id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
 
 
 class RateFitRequest(BaseModel):
     """Request to rate and record block-to-asset fit."""
-    block_id: UUID = Field(..., description="ActionBlockDB.id to evaluate")
+    block_id: UUID = Field(..., description="PromptBlock.id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
     generation_id: Optional[int] = Field(None, description="Optional Generation.id")
     role_in_sequence: str = Field(
@@ -113,7 +113,7 @@ async def compute_fit_score(
     """
     # Load block
     block_result = await db.execute(
-        select(ActionBlockDB).where(ActionBlockDB.id == request.block_id)
+        select(PromptBlock).where(PromptBlock.id == request.block_id)
     )
     block = block_result.scalar_one_or_none()
     if not block:
@@ -187,7 +187,7 @@ async def rate_fit(
     """
     # Load block
     block_result = await db.execute(
-        select(ActionBlockDB).where(ActionBlockDB.id == request.block_id)
+        select(PromptBlock).where(PromptBlock.id == request.block_id)
     )
     block = block_result.scalar_one_or_none()
     if not block:

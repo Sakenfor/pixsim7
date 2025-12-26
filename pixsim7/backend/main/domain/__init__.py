@@ -24,7 +24,7 @@ from their respective submodules.
    - Generation, ProviderSubmission, ProviderAccount, ProviderCredit
    - Scene, SceneAsset, SceneConnection
    - LogEntry
-   - PromptFamily, PromptVersion, PromptVariantFeedback
+   - PromptFamily, PromptVersion, PromptBlock, PromptVersionBlock, PromptVariantFeedback
 
 🔒 Extended subsystems (import from submodules):
    - Providers domain: from pixsim7.backend.main.domain.providers import ...
@@ -96,8 +96,15 @@ from .scene import Scene, SceneAsset, SceneConnection
 # Logging models (Phase 6)
 from .log_entry import LogEntry
 
-# Prompt versioning (Phase 7)
-from .prompt_versioning import PromptFamily, PromptVersion, PromptVariantFeedback
+# Prompt domain (Phase 7)
+from .prompt import (
+    PromptFamily,
+    PromptVersion,
+    PromptBlock,
+    PromptVersionBlock,
+    PromptVariantFeedback,
+    PromptSegmentRole,
+)
 
 # AI interactions (AI Hub)
 from .ai_interaction import AiInteraction
@@ -144,10 +151,13 @@ __all__ = [
     "SceneConnection",
     # Logging models
     "LogEntry",
-    # Prompt versioning
+    # Prompt domain
     "PromptFamily",
     "PromptVersion",
+    "PromptBlock",
+    "PromptVersionBlock",
     "PromptVariantFeedback",
+    "PromptSegmentRole",
     # AI interactions
     "AiInteraction",
     # Asset analysis

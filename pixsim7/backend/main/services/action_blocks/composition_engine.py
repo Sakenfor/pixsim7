@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.action_blocks.action_block_service import ActionBlockService
 
 
@@ -96,7 +96,7 @@ class BlockCompositionEngine:
 
     def _compose_sequential(
         self,
-        blocks: List[ActionBlockDB],
+        blocks: List[PromptBlock],
         custom_separators: Optional[Dict[int, str]] = None
     ) -> str:
         """Compose blocks sequentially with separators
@@ -129,7 +129,7 @@ class BlockCompositionEngine:
 
     def _compose_layered(
         self,
-        blocks: List[ActionBlockDB]
+        blocks: List[PromptBlock]
     ) -> str:
         """Compose blocks in layers (technical specs → characters → actions → style)
 
@@ -195,7 +195,7 @@ class BlockCompositionEngine:
 
     def _compose_merged(
         self,
-        blocks: List[ActionBlockDB]
+        blocks: List[PromptBlock]
     ) -> str:
         """Intelligently merge blocks, removing redundancy
 
@@ -210,7 +210,7 @@ class BlockCompositionEngine:
 
     def _check_compatibility(
         self,
-        blocks: List[ActionBlockDB]
+        blocks: List[PromptBlock]
     ) -> List[str]:
         """Check if blocks are compatible with each other
 
@@ -263,11 +263,11 @@ class BlockCompositionEngine:
 
     async def _create_composite_block(
         self,
-        component_blocks: List[ActionBlockDB],
+        component_blocks: List[PromptBlock],
         assembled_prompt: str,
         composition_strategy: str,
         created_by: Optional[str]
-    ) -> ActionBlockDB:
+    ) -> PromptBlock:
         """Create a new composite block from components
 
         Args:
@@ -277,7 +277,7 @@ class BlockCompositionEngine:
             created_by: Creator
 
         Returns:
-            Created composite ActionBlockDB
+            Created composite PromptBlock
         """
         # Generate unique ID
         composite_id = f"composite_{uuid4().hex[:8]}"
@@ -308,7 +308,7 @@ class BlockCompositionEngine:
             complexity = "very_complex"
 
         # Create composite block
-        composite = ActionBlockDB(
+        composite = PromptBlock(
             id=uuid4(),
             block_id=composite_id,
             kind=composite_kind,
@@ -398,8 +398,8 @@ class BlockCompositionEngine:
 
     def _calculate_compatibility_score(
         self,
-        block1: ActionBlockDB,
-        block2: ActionBlockDB
+        block1: PromptBlock,
+        block2: PromptBlock
     ) -> float:
         """Calculate compatibility score between two blocks (0-1)
 

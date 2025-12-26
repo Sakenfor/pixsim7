@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 
-from pixsim7.backend.main.domain.prompt_versioning import PromptVersion, PromptFamily
+from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
 from pixsim7.backend.main.services.prompts import PromptVersionService
 
 

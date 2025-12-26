@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from sqlmodel import SQLModel
 
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.action_blocks.tagging import normalize_tags
 
 
@@ -27,7 +27,7 @@ class ActionBlockService:
         self,
         block_data: Dict[str, Any],
         created_by: Optional[str] = None
-    ) -> ActionBlockDB:
+    ) -> PromptBlock:
         """Create a new action block
 
         Args:
@@ -35,7 +35,7 @@ class ActionBlockService:
             created_by: User who created this block
 
         Returns:
-            Created ActionBlockDB instance
+            Created PromptBlock instance
         """
         # Calculate counts
         prompt = block_data['prompt']
@@ -65,24 +65,24 @@ class ActionBlockService:
             block_data['tags'] = normalize_tags(block_data['tags'])
 
         # Create block
-        block = ActionBlockDB(**block_data)
+        block = PromptBlock(**block_data)
         self.db.add(block)
         await self.db.commit()
         await self.db.refresh(block)
 
         return block
 
-    async def get_block(self, block_id: UUID) -> Optional[ActionBlockDB]:
+    async def get_block(self, block_id: UUID) -> Optional[PromptBlock]:
         """Get block by database ID"""
         result = await self.db.execute(
-            select(ActionBlockDB).where(ActionBlockDB.id == block_id)
+            select(PromptBlock).where(PromptBlock.id == block_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_block_by_block_id(self, block_id: str) -> Optional[ActionBlockDB]:
+    async def get_block_by_block_id(self, block_id: str) -> Optional[PromptBlock]:
         """Get block by block_id (string identifier)"""
         result = await self.db.execute(
-            select(ActionBlockDB).where(ActionBlockDB.block_id == block_id)
+            select(PromptBlock).where(PromptBlock.block_id == block_id)
         )
         return result.scalar_one_or_none()
 
@@ -90,7 +90,7 @@ class ActionBlockService:
         self,
         block_id: UUID,
         updates: Dict[str, Any]
-    ) -> Optional[ActionBlockDB]:
+    ) -> Optional[PromptBlock]:
         """Update block fields
 
         Args:
@@ -149,7 +149,7 @@ class ActionBlockService:
         min_rating: Optional[float] = None,
         limit: int = 100,
         offset: int = 0
-    ) -> List[ActionBlockDB]:
+    ) -> List[PromptBlock]:
         """Search and filter action blocks
 
         Args:
@@ -166,37 +166,37 @@ class ActionBlockService:
         Returns:
             List of matching blocks
         """
-        query = select(ActionBlockDB)
+        query = select(PromptBlock)
 
         # Apply filters
         if kind:
-            query = query.where(ActionBlockDB.kind == kind)
+            query = query.where(PromptBlock.kind == kind)
 
         if complexity_level:
-            query = query.where(ActionBlockDB.complexity_level == complexity_level)
+            query = query.where(PromptBlock.complexity_level == complexity_level)
 
         if package_name:
-            query = query.where(ActionBlockDB.package_name == package_name)
+            query = query.where(PromptBlock.package_name == package_name)
 
         if source_type:
-            query = query.where(ActionBlockDB.source_type == source_type)
+            query = query.where(PromptBlock.source_type == source_type)
 
         if is_public is not None:
-            query = query.where(ActionBlockDB.is_public == is_public)
+            query = query.where(PromptBlock.is_public == is_public)
 
         if min_rating is not None:
-            query = query.where(ActionBlockDB.avg_rating >= min_rating)
+            query = query.where(PromptBlock.avg_rating >= min_rating)
 
         # Tag filters (JSON queries)
         if tag_filters:
             for tag_key, tag_value in tag_filters.items():
                 # PostgreSQL JSON query
                 query = query.where(
-                    ActionBlockDB.tags[tag_key].astext == str(tag_value)
+                    PromptBlock.tags[tag_key].astext == str(tag_value)
                 )
 
         # Order and pagination
-        query = query.order_by(ActionBlockDB.created_at.desc())
+        query = query.order_by(PromptBlock.created_at.desc())
         query = query.limit(limit).offset(offset)
 
         # Execute
@@ -207,7 +207,7 @@ class ActionBlockService:
         self,
         block_id: str,
         direction: str = "next"
-    ) -> List[ActionBlockDB]:
+    ) -> List[PromptBlock]:
         """Find blocks compatible with given block
 
         Args:
@@ -232,8 +232,8 @@ class ActionBlockService:
             return []
 
         # Fetch compatible blocks
-        query = select(ActionBlockDB).where(
-            ActionBlockDB.block_id.in_(compatible_ids)
+        query = select(PromptBlock).where(
+            PromptBlock.block_id.in_(compatible_ids)
         )
         result = await self.db.execute(query)
         return list(result.scalars().all())
@@ -279,7 +279,7 @@ class ActionBlockService:
     async def get_package_blocks(
         self,
         package_name: str
-    ) -> List[ActionBlockDB]:
+    ) -> List[PromptBlock]:
         """Get all blocks for a package
 
         Args:
@@ -288,8 +288,8 @@ class ActionBlockService:
         Returns:
             List of blocks in package
         """
-        query = select(ActionBlockDB).where(
-            ActionBlockDB.package_name == package_name
+        query = select(PromptBlock).where(
+            PromptBlock.package_name == package_name
         )
         result = await self.db.execute(query)
         return list(result.scalars().all())
@@ -301,37 +301,37 @@ class ActionBlockService:
             Statistics dictionary
         """
         # Total blocks
-        total_query = select(func.count(ActionBlockDB.id))
+        total_query = select(func.count(PromptBlock.id))
         total_result = await self.db.execute(total_query)
         total_blocks = total_result.scalar()
 
         # By complexity
         complexity_query = select(
-            ActionBlockDB.complexity_level,
-            func.count(ActionBlockDB.id)
-        ).group_by(ActionBlockDB.complexity_level)
+            PromptBlock.complexity_level,
+            func.count(PromptBlock.id)
+        ).group_by(PromptBlock.complexity_level)
         complexity_result = await self.db.execute(complexity_query)
         by_complexity = dict(complexity_result.all())
 
         # By package
         package_query = select(
-            ActionBlockDB.package_name,
-            func.count(ActionBlockDB.id)
-        ).group_by(ActionBlockDB.package_name)
+            PromptBlock.package_name,
+            func.count(PromptBlock.id)
+        ).group_by(PromptBlock.package_name)
         package_result = await self.db.execute(package_query)
         by_package = dict(package_result.all())
 
         # By source type
         source_query = select(
-            ActionBlockDB.source_type,
-            func.count(ActionBlockDB.id)
-        ).group_by(ActionBlockDB.source_type)
+            PromptBlock.source_type,
+            func.count(PromptBlock.id)
+        ).group_by(PromptBlock.source_type)
         source_result = await self.db.execute(source_query)
         by_source = dict(source_result.all())
 
         # Most used
-        most_used_query = select(ActionBlockDB).order_by(
-            ActionBlockDB.usage_count.desc()
+        most_used_query = select(PromptBlock).order_by(
+            PromptBlock.usage_count.desc()
         ).limit(10)
         most_used_result = await self.db.execute(most_used_query)
         most_used = [
@@ -340,9 +340,9 @@ class ActionBlockService:
         ]
 
         # Highest rated
-        highest_rated_query = select(ActionBlockDB).where(
-            ActionBlockDB.avg_rating.isnot(None)
-        ).order_by(ActionBlockDB.avg_rating.desc()).limit(10)
+        highest_rated_query = select(PromptBlock).where(
+            PromptBlock.avg_rating.isnot(None)
+        ).order_by(PromptBlock.avg_rating.desc()).limit(10)
         highest_rated_result = await self.db.execute(highest_rated_query)
         highest_rated = [
             {"block_id": b.block_id, "avg_rating": b.avg_rating}
@@ -362,7 +362,7 @@ class ActionBlockService:
         self,
         search_text: str,
         limit: int = 20
-    ) -> List[ActionBlockDB]:
+    ) -> List[PromptBlock]:
         """Search blocks by text in prompt or description
 
         Args:
@@ -374,11 +374,11 @@ class ActionBlockService:
         """
         search_pattern = f"%{search_text}%"
 
-        query = select(ActionBlockDB).where(
+        query = select(PromptBlock).where(
             or_(
-                ActionBlockDB.prompt.ilike(search_pattern),
-                ActionBlockDB.description.ilike(search_pattern),
-                ActionBlockDB.block_id.ilike(search_pattern)
+                PromptBlock.prompt.ilike(search_pattern),
+                PromptBlock.description.ilike(search_pattern),
+                PromptBlock.block_id.ilike(search_pattern)
             )
         ).limit(limit)
 

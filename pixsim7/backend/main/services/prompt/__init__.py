@@ -1,0 +1,95 @@
+"""
+Prompt Services
+
+Consolidated prompt domain services including:
+- Analysis: Prompt parsing and analysis orchestration
+- Block: Reusable block management, extraction, composition
+- Parser: Parsing implementations (simple, LLM)
+- Context: Prompt context resolution and mapping
+- Git: Git-like versioning operations (branch, merge)
+- Versioning: Family and version management
+
+Usage:
+    from pixsim7.backend.main.services.prompt import (
+        PromptAnalysisService,
+        PromptBlockService,
+        PromptFamilyService,
+        PromptVersionService,
+    )
+"""
+
+# Core services
+from .analysis_service import PromptAnalysisService
+from .version_service import PromptVersionService
+from .family_service import PromptFamilyService
+from .variant_service import PromptVariantService
+from .analytics_service import PromptAnalyticsService
+from .operations_service import PromptOperationsService
+
+# Block services
+from .block import (
+    PromptBlockService,
+    BlockCompositionEngine,
+    AIBlockExtractor,
+    ConceptRegistry,
+    ExtractionConfigService,
+    ExtractionConfig,
+)
+
+# Parser
+from .parser import (
+    SimplePromptParser,
+    PromptParseResult,
+    PromptSegment,
+    PromptSegmentRole,
+    analyze_prompt_with_llm,
+    analyzer_registry,
+    analyze_prompt,
+    parse_prompt_to_blocks,
+)
+
+# Context
+from .context import (
+    FieldMapping,
+    merge_field_mappings,
+)
+
+# Git operations
+from .git import (
+    GitOperationsService,
+    GitBranchService,
+    GitMergeService,
+)
+
+__all__ = [
+    # Core services
+    "PromptAnalysisService",
+    "PromptVersionService",
+    "PromptFamilyService",
+    "PromptVariantService",
+    "PromptAnalyticsService",
+    "PromptOperationsService",
+    # Block services
+    "PromptBlockService",
+    "BlockCompositionEngine",
+    "AIBlockExtractor",
+    "ConceptRegistry",
+    "ExtractionConfigService",
+    "ExtractionConfig",
+    # Parser
+    "SimplePromptParser",
+    "PromptParseResult",
+    "PromptSegment",
+    "PromptSegmentRole",
+    "analyze_prompt_with_llm",
+    "analyzer_registry",
+    "analyze_prompt",
+    "parse_prompt_to_blocks",
+    # Context
+    "FieldMapping",
+    "merge_field_mappings",
+    # Git operations
+    "GitOperationsService",
+    "GitBranchService",
+    "GitMergeService",
+]

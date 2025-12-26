@@ -24,7 +24,7 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.semantic_packs.utils import (
     build_draft_pack_from_suggestion,
     merge_parser_hints,
@@ -266,7 +266,7 @@ class ApplyPackSuggestionRequest(BaseModel):
 
 
 class ApplyBlockSuggestionRequest(BaseModel):
-    """Request to apply a block suggestion as a draft ActionBlockDB"""
+    """Request to apply a block suggestion as a draft PromptBlock"""
     block_id: str = Field(..., description="Unique block identifier")
     prompt: str = Field(..., description="The prompt text for this block")
     tags: Dict[str, Any] = Field(
@@ -455,7 +455,7 @@ async def apply_block_suggestion(
     request: ApplyBlockSuggestionRequest,
 ) -> ApplyBlockSuggestionResponse:
     """
-    Apply a block suggestion by creating a draft ActionBlockDB.
+    Apply a block suggestion by creating a draft PromptBlock.
 
     Behavior:
     - If block with block_id exists: return 400 error (no overwrites)
@@ -493,7 +493,7 @@ async def apply_block_suggestion(
     try:
         # Check if block already exists
         result = await db.execute(
-            select(ActionBlockDB).where(ActionBlockDB.block_id == block_id)
+            select(PromptBlock).where(PromptBlock.block_id == block_id)
         )
         existing_block = result.scalar_one_or_none()
 

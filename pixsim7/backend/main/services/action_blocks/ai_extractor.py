@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.action_blocks.action_block_service import ActionBlockService
 from pixsim7.backend.main.services.action_blocks.concept_registry_service import ConceptRegistry
 from pixsim7.backend.main.services.llm import LLMService, LLMRequest
@@ -262,8 +262,8 @@ Return JSON array of block definitions."""
         block_data: Dict[str, Any],
         source_prompt_version_id: Optional[UUID],
         created_by: Optional[str]
-    ) -> ActionBlockDB:
-        """Create ActionBlockDB from extracted block data
+    ) -> PromptBlock:
+        """Create PromptBlock from extracted block data
 
         Args:
             block_data: Extracted block definition from AI
@@ -271,7 +271,7 @@ Return JSON array of block definitions."""
             created_by: Creator
 
         Returns:
-            Created ActionBlockDB
+            Created PromptBlock
         """
         # Generate unique block_id if needed
         block_id = block_data.get('block_id')
@@ -285,7 +285,7 @@ Return JSON array of block definitions."""
             block_id = f"{block_id}_{uuid4().hex[:4]}"
 
         # Create block
-        db_block = ActionBlockDB(
+        db_block = PromptBlock(
             id=uuid4(),
             block_id=block_id,
             kind=block_data.get('kind', 'single_state'),

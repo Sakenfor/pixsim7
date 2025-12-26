@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
 from pixsim7.backend.main.domain.game.entities import CharacterCapability
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 
 
 class CharacterCapabilityService:
@@ -173,7 +173,7 @@ class CharacterCapabilityService:
     async def get_action_blocks_for_capability(
         self,
         capability_id: UUID
-    ) -> List[ActionBlockDB]:
+    ) -> List[PromptBlock]:
         """Get action blocks enabled by a capability
 
         Args:
@@ -188,8 +188,8 @@ class CharacterCapabilityService:
 
         # Get action blocks
         result = await self.db.execute(
-            select(ActionBlockDB).where(
-                ActionBlockDB.id.in_(capability.action_blocks)
+            select(PromptBlock).where(
+                PromptBlock.id.in_(capability.action_blocks)
             )
         )
         return list(result.scalars().all())

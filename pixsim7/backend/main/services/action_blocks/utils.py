@@ -1,13 +1,13 @@
 """
 Utilities for building ActionBlock objects from AI suggestions
 
-Helps convert category discovery suggestions into draft ActionBlockDB instances
+Helps convert category discovery suggestions into draft PromptBlock instances
 that can be persisted via the existing API.
 """
 from typing import Optional
 from datetime import datetime
 
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.shared.schemas.discovery_schemas import SuggestedActionBlock
 
 
@@ -15,9 +15,9 @@ def build_draft_action_block_from_suggestion(
     suggestion: SuggestedActionBlock,
     package_name: Optional[str] = None,
     source_prompt: Optional[str] = None,
-) -> ActionBlockDB:
+) -> PromptBlock:
     """
-    Build a draft ActionBlockDB instance from an AI suggestion.
+    Build a draft PromptBlock instance from an AI suggestion.
 
     Creates a minimal draft action block with:
     - block_id from suggestion.block_id
@@ -33,7 +33,7 @@ def build_draft_action_block_from_suggestion(
         source_prompt: Optional excerpt from the prompt that generated this suggestion
 
     Returns:
-        A new ActionBlockDB instance (not yet persisted to DB)
+        A new PromptBlock instance (not yet persisted to DB)
     """
     # Build metadata for traceability (Task D)
     block_metadata = {
@@ -70,7 +70,7 @@ def build_draft_action_block_from_suggestion(
         kind = "single_state"
 
     # Create the draft action block
-    block = ActionBlockDB(
+    block = PromptBlock(
         block_id=suggestion.block_id,
         kind=kind,
         prompt=suggestion.prompt,

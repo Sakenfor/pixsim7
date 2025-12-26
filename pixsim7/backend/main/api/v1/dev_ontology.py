@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.ontology import get_ontology_registry
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.action_blocks.tagging import extract_ontology_ids_from_tags
 from sqlalchemy import select
 from pixsim_logging import get_logger
@@ -143,7 +143,7 @@ async def count_ontology_id_usage(db, ontology_id: str, limit: int = 5) -> tuple
     # Query all action blocks (limited to avoid performance issues)
     # In production, this should be optimized with better indexing or caching
     result = await db.execute(
-        select(ActionBlockDB).limit(1000)  # Limit scan to first 1000 blocks
+        select(PromptBlock).limit(1000)  # Limit scan to first 1000 blocks
     )
     blocks = result.scalars().all()
 
@@ -213,7 +213,7 @@ async def get_ontology_usage(
         id_usages.sort(key=lambda x: (-x.action_block_count, x.id))
 
         # Count total action blocks scanned
-        result = await db.execute(select(ActionBlockDB))
+        result = await db.execute(select(PromptBlock))
         total_blocks = len(result.scalars().all())
 
         response = OntologyUsageResponse(

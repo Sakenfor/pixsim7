@@ -15,7 +15,7 @@ from sqlmodel import func
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.shared.schemas.semantic_pack_schemas import (
     SemanticPackManifest,
@@ -252,8 +252,8 @@ async def export_semantic_pack(
     # Include ActionBlocks if requested
     if include_action_blocks and pack.action_block_ids:
         result = await db.execute(
-            select(ActionBlockDB).where(
-                ActionBlockDB.block_id.in_(pack.action_block_ids)
+            select(PromptBlock).where(
+                PromptBlock.block_id.in_(pack.action_block_ids)
             )
         )
         blocks = result.scalars().all()

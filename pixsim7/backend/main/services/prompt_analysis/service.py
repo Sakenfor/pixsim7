@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.prompt_versioning import PromptVersion
+from pixsim7.backend.main.domain.prompt import PromptVersion
 from pixsim7.backend.main.services.prompt_parser import analyzer_registry
 
 logger = logging.getLogger(__name__)

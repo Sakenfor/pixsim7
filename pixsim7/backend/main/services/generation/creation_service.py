@@ -22,7 +22,7 @@ from pixsim7.backend.main.domain import (
     BillingState,
     User,
 )
-from pixsim7.backend.main.domain.prompt_versioning import PromptVersion
+from pixsim7.backend.main.domain.prompt import PromptVersion
 from pixsim7.backend.main.shared.errors import (
     QuotaError,
     InvalidOperationError,
@@ -1301,7 +1301,7 @@ class GenerationCreationService:
         Returns:
             Final prompt after substitution, or None if version not found
         """
-        from pixsim7.backend.main.domain.prompt_versioning import PromptVersion
+        from pixsim7.backend.main.domain.prompt import PromptVersion
 
         result = await self.db.execute(
             select(PromptVersion).where(PromptVersion.id == prompt_version_id)
@@ -1350,7 +1350,7 @@ class GenerationCreationService:
             Tuple of (final_prompt, prompt_version_id, source_type)
             source_type is one of: "versioned", "inline", "unknown"
         """
-        from pixsim7.backend.main.domain.prompt_versioning import PromptVersion, PromptFamily
+        from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
 
         # Check for inline prompt (deprecated path)
         if "inlinePrompt" in prompt_config and prompt_config["inlinePrompt"]:

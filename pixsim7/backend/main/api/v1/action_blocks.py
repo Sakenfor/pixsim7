@@ -23,7 +23,7 @@ from pixsim7.backend.main.services.action_blocks import (
     ExtractionConfig
 )
 from pixsim7.backend.main.services.action_blocks.concept_registry_service import ConceptRegistry
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.user import User
 
 router = APIRouter(prefix="/action-blocks", tags=["action_blocks"])
@@ -564,11 +564,11 @@ async def list_packages(
     service = ActionBlockService(db)
     # Get all unique package names
     from sqlalchemy import select, distinct
-    from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+    from pixsim7.backend.main.domain.prompt import PromptBlock
 
     result = await db.execute(
-        select(distinct(ActionBlockDB.package_name)).where(
-            ActionBlockDB.package_name.isnot(None)
+        select(distinct(PromptBlock.package_name)).where(
+            PromptBlock.package_name.isnot(None)
         )
     )
     packages = [p[0] for p in result.all()]

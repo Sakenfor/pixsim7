@@ -4,12 +4,12 @@ Heuristic scoring to determine how well an ActionBlock fits a specific asset/ima
 based on ontology-aligned tags.
 """
 from typing import Dict, Any, Tuple, List, Set
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.action_blocks.tagging import extract_ontology_ids_from_tags
 
 
 def compute_block_asset_fit(
-    block: ActionBlockDB,
+    block: PromptBlock,
     asset_tags: Dict[str, Any],
 ) -> Tuple[float, Dict[str, Any]]:
     """
@@ -31,7 +31,7 @@ def compute_block_asset_fit(
           then clamp to [0.0, 1.0].
 
     Args:
-        block: ActionBlockDB to evaluate
+        block: PromptBlock to evaluate
         asset_tags: Dict with "ontology_ids" from tag_asset_from_metadata
 
     Returns:

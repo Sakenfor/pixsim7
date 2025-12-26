@@ -22,7 +22,7 @@ class BlockImageFit(SQLModel, table=True):
     block_id: UUID = Field(
         foreign_key="action_blocks.id",
         index=True,
-        description="ActionBlockDB.id being evaluated"
+        description="PromptBlock.id being evaluated"
     )
 
     asset_id: Optional[int] = Field(

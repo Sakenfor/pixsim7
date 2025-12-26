@@ -12,7 +12,7 @@ from uuid import uuid4, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 
 
 class ConceptRegistry:
@@ -175,8 +175,8 @@ class ConceptRegistry:
 
         # Find similar blocks in database
         for keyword in keywords[:10]:  # Top 10 keywords
-            query = select(ActionBlockDB).where(
-                ActionBlockDB.prompt.ilike(f"%{keyword}%")
+            query = select(PromptBlock).where(
+                PromptBlock.prompt.ilike(f"%{keyword}%")
             ).limit(5)
 
             result = await self.db.execute(query)
@@ -216,19 +216,19 @@ class ConceptRegistry:
         """
         # Count unique block types
         block_type_query = select(
-            ActionBlockDB.block_metadata['block_type'].astext,
-            func.count(ActionBlockDB.id)
+            PromptBlock.block_metadata['block_type'].astext,
+            func.count(PromptBlock.id)
         ).where(
-            ActionBlockDB.block_metadata['block_type'].isnot(None)
-        ).group_by(ActionBlockDB.block_metadata['block_type'].astext)
+            PromptBlock.block_metadata['block_type'].isnot(None)
+        ).group_by(PromptBlock.block_metadata['block_type'].astext)
 
         block_type_result = await self.db.execute(block_type_query)
         block_types = dict(block_type_result.all())
 
         # Count unique tags
         # This is simplified - in production you'd want better JSONB queries
-        all_blocks_query = select(ActionBlockDB.tags).where(
-            ActionBlockDB.tags.isnot(None)
+        all_blocks_query = select(PromptBlock.tags).where(
+            PromptBlock.tags.isnot(None)
         )
         all_tags_result = await self.db.execute(all_blocks_query)
         all_tags_lists = all_tags_result.scalars().all()
@@ -257,13 +257,13 @@ class ConceptRegistry:
 
         # Check database (simplified)
         if concept_type == 'block_type':
-            query = select(ActionBlockDB).where(
-                ActionBlockDB.block_metadata['block_type'].astext == value
+            query = select(PromptBlock).where(
+                PromptBlock.block_metadata['block_type'].astext == value
             ).limit(1)
         elif concept_type == 'tag':
             # Check if any block uses this tag
             # This is simplified - proper JSONB query needed
-            query = select(ActionBlockDB).limit(1)
+            query = select(PromptBlock).limit(1)
         else:
             return False
 

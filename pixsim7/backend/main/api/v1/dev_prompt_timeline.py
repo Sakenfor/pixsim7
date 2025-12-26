@@ -26,7 +26,7 @@ from sqlalchemy.orm import selectinload
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompts import PromptVersionService
-from pixsim7.backend.main.domain.generation.action_block import ActionBlockDB
+from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.assets.models import Asset
@@ -53,7 +53,7 @@ class TimelineVersion(BaseModel):
 class TimelineBlockSummary(BaseModel):
     """ActionBlock summary with performance metrics"""
     block_id: str                 # ActionBlock.block_id
-    db_id: str                    # ActionBlockDB.id (UUID) as string
+    db_id: str                    # PromptBlock.id (UUID) as string
     prompt_version_id: Optional[UUID]
     usage_count: int
     avg_fit_score: Optional[float]
@@ -136,9 +136,9 @@ async def get_family_timeline(
 
         # 3. Get ActionBlocks that reference these versions
         # Look for blocks with prompt_version_id or extracted_from_prompt_version
-        blocks_query = select(ActionBlockDB).where(
-            (ActionBlockDB.prompt_version_id.in_(version_ids)) |
-            (ActionBlockDB.extracted_from_prompt_version.in_(version_ids))
+        blocks_query = select(PromptBlock).where(
+            (PromptBlock.prompt_version_id.in_(version_ids)) |
+            (PromptBlock.extracted_from_prompt_version.in_(version_ids))
         )
         blocks_result = await db.execute(blocks_query)
         blocks = blocks_result.scalars().all()
@@ -207,8 +207,8 @@ async def get_family_timeline(
                     # Convert block DB IDs to block_id strings
                     source_block_ids = []
                     if block_db_ids:
-                        block_ids_query = select(ActionBlockDB.block_id).where(
-                            ActionBlockDB.id.in_(block_db_ids)
+                        block_ids_query = select(PromptBlock.block_id).where(
+                            PromptBlock.id.in_(block_db_ids)
                         )
                         block_ids_result = await db.execute(block_ids_query)
                         source_block_ids = list(block_ids_result.scalars().all())
