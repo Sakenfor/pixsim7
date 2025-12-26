@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
+import { ButtonGroup, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
@@ -438,10 +438,12 @@ function SlotPickerContent({
   const slots = Array.from({ length: visibleSlots }, (_, i) => i);
 
   return (
-    <div className="flex flex-col gap-1 p-1.5 rounded-lg bg-blue-600/95 backdrop-blur-sm shadow-2xl">
-      {slots.map((slotIndex) => {
+    <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
+      {slots.map((slotIndex, idx) => {
         const queuedAsset = queue[slotIndex];
         const isFilled = !!queuedAsset;
+        const isFirst = idx === 0;
+        const isLast = idx === slots.length - 1;
         const thumbSrc = isFilled
           ? queuedAsset.asset.thumbnailUrl ||
             queuedAsset.asset.remoteUrl ||
@@ -450,32 +452,40 @@ function SlotPickerContent({
           : '';
 
         return (
-          <button
-            key={slotIndex}
-            onClick={() => onSelectSlot(asset, slotIndex)}
-            className="relative w-7 h-7 rounded transition-all flex items-center justify-center text-sm bg-white/20 hover:bg-white/30 text-white"
-            title={`Multi-asset slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
-            type="button"
-          >
-            {isFilled ? (
-              ccIsOpen ? (
-                // CC is open: show simple checkmark
-                <Icon name="check" size={12} className="text-white" />
+          <React.Fragment key={slotIndex}>
+            {/* Divider between slots */}
+            {!isFirst && <div className="h-px bg-blue-400/50" />}
+            <button
+              onClick={() => onSelectSlot(asset, slotIndex)}
+              className={`
+                relative w-8 h-8 transition-all flex items-center justify-center text-sm
+                hover:bg-white/20 text-white
+                ${isFirst ? 'rounded-t-full pt-0.5' : ''}
+                ${isLast ? 'rounded-b-full pb-0.5' : ''}
+              `}
+              title={`Multi-asset slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
+              type="button"
+            >
+              {isFilled ? (
+                ccIsOpen ? (
+                  // CC is open: show simple checkmark
+                  <Icon name="check" size={12} className="text-white" />
+                ) : (
+                  // CC is retracted: show thumbnail
+                  <img
+                    src={thumbSrc}
+                    alt={`Slot ${slotIndex + 1}`}
+                    className="w-6 h-6 object-cover rounded"
+                  />
+                )
               ) : (
-                // CC is retracted: show thumbnail
-                <img
-                  src={thumbSrc}
-                  alt={`Slot ${slotIndex + 1}`}
-                  className="w-full h-full object-cover rounded"
-                />
-              )
-            ) : (
-              // Empty slot: show slot number
-              <span className="text-[10px] font-medium">
-                {slotIndex + 1}
-              </span>
-            )}
-          </button>
+                // Empty slot: show slot number
+                <span className="text-[10px] font-medium">
+                  {slotIndex + 1}
+                </span>
+              )}
+            </button>
+          </React.Fragment>
         );
       })}
     </div>
@@ -484,48 +494,11 @@ function SlotPickerContent({
 
 /**
  * Create quick add button (+) widget
- * Shows next to generation menu for silently adding to queue
+ * @deprecated Use createGenerationButtonGroup which now includes quick generate
  */
 export function createQuickAddButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, actions, badgeConfig, presetCapabilities } = props;
-
-  // Show quick add button only when generation button group shows
-  if (!presetCapabilities?.showsGenerationMenu) {
-    return null;
-  }
-
-  const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
-
-  if (!showGenerationBadge || !actions?.onQuickAdd) {
-    return null;
-  }
-
-  return {
-    id: 'quick-add',
-    type: 'custom',
-    // Position to the right of the generation button group (which is at bottom-center)
-    position: { anchor: 'bottom-center', offset: { x: 55, y: -8 } },
-    visibility: { trigger: 'hover-container' },
-    priority: 34, // Just below generation button group (35)
-    interactive: true,
-    handlesOwnInteraction: true,
-    render: (data: MediaCardOverlayData) => {
-      // Placeholder button - will be repurposed later
-      return (
-        <button
-          onClick={() => {
-            // TODO: Add functionality
-            console.log('Quick add button clicked - to be implemented');
-          }}
-          className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-all hover:scale-125 hover:shadow-xl flex items-center justify-center border-2 border-white/30"
-          title="Quick action (coming soon)"
-          type="button"
-        >
-          <Icon name="add" size={20} strokeWidth={3} />
-        </button>
-      );
-    },
-  };
+  // Quick add is now integrated into the generation button group
+  return null;
 }
 
 /**
@@ -721,48 +694,42 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         return null;
       }
 
-      return (
-        <div className="relative flex">
-          {/* Menu trigger button (left) */}
-          <button
-            ref={triggerRef}
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="
-              px-2 py-1.5
-              bg-blue-500 hover:bg-blue-600
-              text-white
-              rounded-l-md
-              border-r border-blue-400
-              transition-colors
-            "
-            title="Generation options"
-          >
-            <Icon name="chevronDown" size={14} />
-          </button>
+      const hasQuickGenerate = !!actions?.onQuickAdd;
 
-          {/* Smart action button (right) - with slot picker on hover */}
-          <ExpandableButtonGroup
-            trigger={
-              <button
-                onClick={handleSmartAction}
-                className="
-                  px-2 py-1.5
-                  bg-blue-500 hover:bg-blue-600
-                  text-white
-                  rounded-r-md
-                  transition-colors
-                "
-                title={`${smartActionLabel}\nShift: add to multi-asset\nHover: slot picker`}
-              >
-                <Icon name="zap" size={14} />
-              </button>
-            }
-            direction="up"
-            hoverDelay={150}
-            offset={6}
-          >
+      // Build button group items
+      const buttonItems: ButtonGroupItem[] = [
+        {
+          id: 'menu',
+          icon: <Icon name="chevronDown" size={14} />,
+          onClick: () => setIsMenuOpen(!isMenuOpen),
+          title: 'Generation options',
+        },
+        {
+          id: 'smart-action',
+          icon: <Icon name="zap" size={14} />,
+          onClick: handleSmartAction,
+          title: `${smartActionLabel}\nShift: add to multi-asset\nHover: slot picker`,
+          expandContent: (
             <SlotPickerContent asset={queueAsset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
-          </ExpandableButtonGroup>
+          ),
+          expandDelay: 150,
+        },
+      ];
+
+      if (hasQuickGenerate) {
+        buttonItems.push({
+          id: 'quick-generate',
+          icon: <Icon name="sparkles" size={14} />,
+          onClick: () => actions?.onQuickAdd?.(),
+          title: 'Quick generate with current settings',
+        });
+      }
+
+      return (
+        <div className="relative">
+          <div ref={triggerRef}>
+            <ButtonGroup layout="pill" items={buttonItems} expandOffset={8} />
+          </div>
 
           {/* Menu dropdown */}
           {isMenuOpen && (

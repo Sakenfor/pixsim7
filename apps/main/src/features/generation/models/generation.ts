@@ -198,3 +198,58 @@ export function getStatusLabel(status: GenerationStatus): string {
       return status;
   }
 }
+
+// ============================================================================
+// Factory Helpers
+// ============================================================================
+
+export interface CreatePendingGenerationOptions {
+  id: number;
+  operationType: OperationType;
+  providerId?: string;
+  finalPrompt: string;
+  params: Record<string, unknown>;
+  status?: GenerationStatus;
+}
+
+/**
+ * Create a pending generation model for seeding the store
+ *
+ * Use this when starting a new generation to immediately add it to the
+ * generations store with a pending status before the API confirms.
+ */
+export function createPendingGeneration(options: CreatePendingGenerationOptions): GenerationModel {
+  const now = new Date().toISOString();
+
+  return {
+    id: options.id,
+    createdAt: now,
+    updatedAt: now,
+    startedAt: null,
+    completedAt: null,
+    scheduledAt: null,
+    status: options.status ?? 'pending',
+    errorMessage: null,
+    retryCount: 0,
+    priority: 5,
+    name: null,
+    description: null,
+    operationType: options.operationType,
+    providerId: options.providerId ?? 'pixverse',
+    finalPrompt: options.finalPrompt,
+    promptSourceType: 'inline',
+    promptVersionId: null,
+    promptConfig: null,
+    rawParams: options.params,
+    canonicalParams: options.params,
+    inputs: [],
+    reproducibleHash: null,
+    account: null,
+    accountEmail: null,
+    asset: null,
+    assetId: null,
+    user: null,
+    workspace: null,
+    parentGeneration: null,
+  };
+}

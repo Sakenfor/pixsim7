@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useGenerationsStore, useGenerationQueueStore } from '@features/generation';
+import { useGenerationsStore, useGenerationQueueStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { normalizeAssetParams } from '@features/generation/lib/core';
 import { generateAsset } from '@features/controlCenter/lib/api';
@@ -8,7 +8,7 @@ import { logEvent } from '@lib/utils/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { getFallbackOperation } from '@/types/operations';
+import { getFallbackOperation, OPERATION_METADATA } from '@/types/operations';
 
 /**
  * Hook: useQuickGenerateController
@@ -143,7 +143,20 @@ export function useQuickGenerateController() {
         modifiedDynamicParams.source_asset_ids = extractedAssetIds;
       }
 
-      const sourceAssetIds = Array.isArray(modifiedDynamicParams.source_asset_ids)
+      const metadata = OPERATION_METADATA[operationType];
+      const inputModePref = queueState.operationInputModePrefs?.[operationType] ?? 'single';
+      const inputMode = metadata?.multiAssetMode === 'required'
+        ? 'multi'
+        : metadata?.multiAssetMode === 'optional' && inputModePref === 'multi'
+          ? 'multi'
+          : 'single';
+
+      if (inputMode !== 'multi' && 'source_asset_ids' in modifiedDynamicParams) {
+        const { source_asset_ids, ...rest } = modifiedDynamicParams;
+        modifiedDynamicParams = rest;
+      }
+
+      const sourceAssetIds = inputMode === 'multi' && Array.isArray(modifiedDynamicParams.source_asset_ids)
         ? modifiedDynamicParams.source_asset_ids
         : undefined;
 
@@ -192,38 +205,14 @@ export function useQuickGenerateController() {
       setWatchingGeneration(genId);
 
       // Seed store with initial generation status
-      const now = new Date().toISOString();
-      addOrUpdateGeneration({
+      addOrUpdateGeneration(createPendingGeneration({
         id: genId,
-        createdAt: now,
-        updatedAt: now,
-        startedAt: null,
-        completedAt: null,
-        scheduledAt: null,
-        status: result.status || 'pending',
-        errorMessage: null,
-        retryCount: 0,
-        priority: 5,
-        name: null,
-        description: null,
         operationType,
-        providerId: providerId || 'pixverse',
+        providerId,
         finalPrompt,
-        promptSourceType: 'inline',
-        promptVersionId: null,
-        promptConfig: null,
-        rawParams: normalizedParams,
-        canonicalParams: normalizedParams,
-        inputs: [],
-        reproducibleHash: null,
-        account: null,
-        accountEmail: null,
-        asset: null,
-        assetId: null,
-        user: null,
-        workspace: null,
-        parentGeneration: null,
-      });
+        params: normalizedParams,
+        status: result.status || 'pending',
+      }));
 
       logEvent('INFO', 'generation_created', {
         generationId: genId,

@@ -78,7 +78,7 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
     queueVideoExtend,
     queueAddToTransition,
     queueAutoGenerate,
-    queueSilentAdd,
+    quickGenerate,
   } = useMediaGenerationActions();
 
   // Selection state
@@ -99,8 +99,8 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
     onVideoExtend: queueVideoExtend,
     onAddToTransition: queueAddToTransition,
     onAddToGenerate: queueAutoGenerate,
-    onQuickAdd: queueSilentAdd,
-  }), [queueImageToImage, queueImageToVideo, queueVideoExtend, queueAddToTransition, queueAutoGenerate, queueSilentAdd]);
+    onQuickAdd: quickGenerate,
+  }), [queueImageToImage, queueImageToVideo, queueVideoExtend, queueAddToTransition, queueAutoGenerate, quickGenerate]);
 
   // Get per-asset actions
   const getAssetActions = useCallback((asset: AssetModel) => {

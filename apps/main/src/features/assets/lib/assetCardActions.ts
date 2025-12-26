@@ -28,6 +28,8 @@ export interface AssetActionHandlers {
   onAddToTransition?: (asset: AssetModel) => void;
   /** Add asset to auto-generate queue */
   onAddToGenerate?: (asset: AssetModel) => void;
+  /** Quick generate - use asset with current scope settings */
+  onQuickAdd?: (asset: AssetModel) => void | Promise<void>;
   /** Delete asset */
   onDelete?: (asset: AssetModel) => void | Promise<void>;
   /** Upload/re-upload asset to provider */
@@ -48,6 +50,7 @@ export interface AssetActions {
   onVideoExtend?: () => void;
   onAddToTransition?: () => void;
   onAddToGenerate?: () => void;
+  onQuickAdd?: () => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
   onReupload?: (providerId: string) => void | Promise<void>;
   [key: string]: any;
@@ -91,6 +94,7 @@ const STANDARD_HANDLERS = [
   'onVideoExtend',
   'onAddToTransition',
   'onAddToGenerate',
+  'onQuickAdd',
   'onDelete',
 ] as const;
 
