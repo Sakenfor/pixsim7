@@ -31,6 +31,10 @@ from .dsl_adapter import (
 
 # Re-export PromptSegmentRole from domain for convenience
 from pixsim7.backend.main.domain.prompt.enums import PromptSegmentRole
+from pixsim7.backend.main.services.prompt.role_registry import (
+    PromptRoleRegistry,
+    PromptRoleDefinition,
+)
 
 __all__ = [
     # Parser
@@ -38,6 +42,8 @@ __all__ = [
     "PromptParseResult",
     "PromptSegment",
     "PromptSegmentRole",
+    "PromptRoleRegistry",
+    "PromptRoleDefinition",
     "parse_prompt",
     # LLM
     "analyze_prompt_with_llm",

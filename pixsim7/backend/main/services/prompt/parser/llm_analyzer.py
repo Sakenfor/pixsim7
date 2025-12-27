@@ -8,22 +8,16 @@ Produces output compatible with SimplePromptParser for unified processing.
 import logging
 from typing import Dict, Any, List, Optional
 
-from pixsim7.backend.main.domain.prompt.enums import PromptSegmentRole
+from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 
 logger = logging.getLogger(__name__)
 
-
-ANALYSIS_SYSTEM_PROMPT = """You are a prompt analyzer for an AI video generation system.
+BASE_ANALYSIS_SYSTEM_PROMPT = """You are a prompt analyzer for an AI video generation system.
 
 Your task is to parse a prompt into semantic blocks, classifying each by role.
 
 ROLES (use exactly these values):
-- "character": Descriptions of people, creatures, beings (e.g., "A muscular werewolf")
-- "action": Actions, movements, behaviors (e.g., "walks slowly toward the camera")
-- "setting": Environment, location, time (e.g., "in a moonlit forest clearing")
-- "mood": Emotional tone, atmosphere (e.g., "with a sense of mystery")
-- "romance": Romantic or intimate content (e.g., "gazes lovingly")
-- "other": Camera directions, technical instructions, or unclassifiable content
+{role_lines}
 
 INSTRUCTIONS:
 1. Split the prompt into logical semantic units (phrases or sentences)
@@ -42,13 +36,13 @@ RESPONSE FORMAT (JSON only, no other text):
 {
   "blocks": [
     {
-      "role": "character|action|setting|mood|romance|other",
+      "role": "<role_id>",
       "text": "the exact text from the prompt",
       "category": "fine-grained label like 'entrance', 'description', 'camera_move'",
       "ontology_ids": ["act:walk", "manner:slow"]
     }
   ],
-  "tags": ["has:character", "tone:soft", "cam:pov"]
+  "tags": ["has:<role_id>", "tone:soft", "cam:pov"]
 }
 
 Be precise. Extract meaningful semantic information. Return ONLY valid JSON."""
@@ -58,6 +52,7 @@ async def analyze_prompt_with_llm(
     text: str,
     model_id: Optional[str] = None,
     provider_id: Optional[str] = None,
+    role_registry: Optional[PromptRoleRegistry] = None,
 ) -> Dict[str, Any]:
     """
     Analyze prompt using an LLM for deeper semantic understanding.
@@ -86,6 +81,7 @@ async def analyze_prompt_with_llm(
         model_id = "claude-sonnet-4-20250514"
 
     logger.info(f"LLM prompt analysis: provider={provider_id}, model={model_id}")
+    role_registry = role_registry or PromptRoleRegistry.default()
 
     try:
         llm_provider = llm_registry.get(provider_id)
@@ -100,7 +96,7 @@ async def analyze_prompt_with_llm(
 Return the analysis as JSON following the specified schema."""
 
     try:
-        full_prompt = f"{ANALYSIS_SYSTEM_PROMPT}\n\n{user_prompt}"
+        full_prompt = f"{_build_system_prompt(role_registry)}\n\n{user_prompt}"
 
         response_text = await llm_provider.edit_prompt(
             model_id=model_id,
@@ -112,7 +108,7 @@ Return the analysis as JSON following the specified schema."""
         cleaned = _clean_json_response(response_text)
         result = json.loads(cleaned)
 
-        blocks = _normalize_blocks(result.get("blocks", []))
+        blocks = _normalize_blocks(result.get("blocks", []), role_registry)
         tags = result.get("tags", [])
 
         derived_tags = _derive_tags_from_blocks(blocks)
@@ -152,18 +148,21 @@ def _clean_json_response(response: str) -> str:
     return cleaned.strip()
 
 
-def _normalize_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _normalize_blocks(
+    blocks: List[Dict[str, Any]],
+    role_registry: PromptRoleRegistry,
+) -> List[Dict[str, Any]]:
     """Normalize and validate blocks from LLM response."""
-    valid_roles = {r.value for r in PromptSegmentRole}
     normalized = []
 
     for block in blocks:
-        role = block.get("role", "other").lower()
-        if role not in valid_roles:
-            role = "other"
+        role = block.get("role")
+        role_id = role_registry.resolve_role_id(str(role)) if role else "other"
+        if not role_registry.has_role(role_id):
+            role_id = "other"
 
         normalized.append({
-            "role": role,
+            "role": role_id,
             "text": block.get("text", ""),
             "category": block.get("category"),
             "ontology_ids": block.get("ontology_ids", []),
@@ -199,3 +198,11 @@ async def _fallback_to_simple(text: str) -> Dict[str, Any]:
     from .dsl_adapter import analyze_prompt
     logger.info("Falling back to simple parser")
     return await analyze_prompt(text)
+
+
+def _build_system_prompt(role_registry: PromptRoleRegistry) -> str:
+    role_lines = []
+    for role in role_registry.list_roles(sort_by_priority=True):
+        description = role.description or role.label
+        role_lines.append(f'- "{role.id}": {description}')
+    return BASE_ANALYSIS_SYSTEM_PROMPT.format(role_lines="\n".join(role_lines))

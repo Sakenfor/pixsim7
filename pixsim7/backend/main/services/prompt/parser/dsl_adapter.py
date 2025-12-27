@@ -17,10 +17,17 @@ Design:
 """
 from typing import Dict, Any, List, Set, Optional
 
+from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from .simple import SimplePromptParser
 
 
-async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> Dict[str, Any]:
+async def parse_prompt_to_blocks(
+    text: str,
+    model_id: Optional[str] = None,
+    *,
+    role_registry: Optional[PromptRoleRegistry] = None,
+    parser_hints: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, Any]:
     """
     Parse prompt text into PixSim7 block format.
 
@@ -33,11 +40,13 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
             - "parser:native-simple" (default): Simple native parser
             - "parser:native-strict": Strict native parser (future)
             - None: Uses default (simple)
+        role_registry: Optional PromptRoleRegistry for dynamic roles.
+        parser_hints: Optional parser hints to augment role keywords.
 
     Returns:
         Dict with "blocks" key containing list of:
         {
-            "role": "character" | "action" | "setting" | "mood" | "romance" | "other",
+            "role": "<role_id>",
             "text": "...",
         }
     """
@@ -46,18 +55,18 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
 
     # Select parser based on model_id
     if model_id in ("parser:native-simple", "native:simple", "prompt-dsl:simple"):
-        parser = SimplePromptParser()
+        parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)
     elif model_id in ("parser:native-strict", "prompt-dsl:strict"):
-        parser = SimplePromptParser()  # Future: strict parser
+        parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)  # Future: strict parser
     else:
-        parser = SimplePromptParser()
+        parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)
 
     parsed = await parser.parse(text)
 
     blocks: List[Dict[str, Any]] = []
     for segment in parsed.segments:
         block = {
-            "role": segment.role.value,
+            "role": segment.role,
             "text": segment.text,
         }
         blocks.append(block)
@@ -97,6 +106,9 @@ def _derive_tags_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
 async def analyze_prompt(
     text: str,
     analyzer_id: Optional[str] = None,
+    *,
+    role_registry: Optional[PromptRoleRegistry] = None,
+    parser_hints: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
     """
     Generic, source-agnostic prompt analysis.
@@ -110,6 +122,8 @@ async def analyze_prompt(
             - "parser:simple" (default): Fast keyword-based parser
             - "llm:claude": Claude-based semantic analysis
             - "llm:openai": OpenAI-based semantic analysis
+        role_registry: Optional PromptRoleRegistry for dynamic roles.
+        parser_hints: Optional parser hints to augment role keywords.
 
     Returns:
         {
@@ -120,6 +134,10 @@ async def analyze_prompt(
     """
     if not analyzer_id:
         analyzer_id = "parser:simple"
+
+    if role_registry is None and parser_hints:
+        role_registry = PromptRoleRegistry.default()
+        role_registry.apply_hints(parser_hints)
 
     if analyzer_id.startswith("llm:"):
         from .llm_analyzer import analyze_prompt_with_llm
@@ -133,10 +151,15 @@ async def analyze_prompt(
         return await analyze_prompt_with_llm(
             text=text,
             provider_id=provider_id,
+            role_registry=role_registry,
         )
 
     # Default: use simple parser
-    blocks_result = await parse_prompt_to_blocks(text)
+    blocks_result = await parse_prompt_to_blocks(
+        text,
+        role_registry=role_registry,
+        parser_hints=parser_hints,
+    )
     blocks: List[Dict[str, Any]] = blocks_result.get("blocks", [])
     tags = _derive_tags_from_blocks(blocks)
 

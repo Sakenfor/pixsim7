@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
+from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 
 
 class ParserHintProvider:
@@ -74,6 +75,31 @@ class ParserHintProvider:
                         merged[key].append(word)
 
         return merged
+
+    @staticmethod
+    def extract_role_definitions(packs: List[SemanticPackDB]) -> List[Dict[str, object]]:
+        """Extract role definitions from semantic pack extra metadata."""
+        roles: List[Dict[str, object]] = []
+        for pack in packs:
+            extra = pack.extra or {}
+            pack_roles = extra.get("roles")
+            if isinstance(pack_roles, list):
+                roles.extend([r for r in pack_roles if isinstance(r, dict)])
+        return roles
+
+    @staticmethod
+    def build_role_registry(
+        packs: List[SemanticPackDB],
+        base_registry: Optional[PromptRoleRegistry] = None,
+    ) -> PromptRoleRegistry:
+        """Build a role registry from semantic packs (roles + parser hints)."""
+        registry = base_registry.clone() if base_registry else PromptRoleRegistry.default()
+
+        for pack in packs:
+            registry.register_roles_from_pack(pack)
+            registry.apply_hints(pack.parser_hints or {})
+
+        return registry
 
     @staticmethod
     def build_keyword_map_sync(

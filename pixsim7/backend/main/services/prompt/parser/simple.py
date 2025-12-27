@@ -9,14 +9,14 @@ import re
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
-from .ontology import ROLE_KEYWORDS, ACTION_VERBS
+from .ontology import ACTION_VERBS
 from pixsim7.backend.main.domain.ontology import match_keywords
-from pixsim7.backend.main.domain.prompt.enums import PromptSegmentRole
+from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 
 
 class PromptSegment(BaseModel):
     """A single segment parsed from a prompt."""
-    role: PromptSegmentRole
+    role: str
     text: str
     start_pos: int
     end_pos: int
@@ -42,7 +42,11 @@ class SimplePromptParser:
 
     SENTENCE_PATTERN = re.compile(r'([^.!?]+[.!?]+)')
 
-    def __init__(self, hints: Optional[Dict[str, List[str]]] = None):
+    def __init__(
+        self,
+        hints: Optional[Dict[str, List[str]]] = None,
+        role_registry: Optional[PromptRoleRegistry] = None,
+    ):
         """
         Initialize parser with ontology keywords.
 
@@ -50,28 +54,12 @@ class SimplePromptParser:
             hints: Optional parser hints from semantic packs to augment classification.
                    Format: { 'role:character': ['minotaur', 'werecow'], ... }
         """
-        self.role_keywords = ROLE_KEYWORDS.copy()
+        self.role_registry = role_registry.clone() if role_registry else PromptRoleRegistry.default()
         self.action_verbs = set(ACTION_VERBS)
-
         if hints:
-            self._merge_hints(hints)
-
-    def _merge_hints(self, hints: Dict[str, List[str]]) -> None:
-        """Merge parser hints from semantic packs into role keywords."""
-        for key, words in hints.items():
-            if key.startswith("role:"):
-                role = key.replace("role:", "")
-            else:
-                continue
-
-            if role not in self.role_keywords:
-                continue
-
-            existing = [k.lower() for k in self.role_keywords[role]]
-            for word in words:
-                w = word.lower()
-                if w not in existing:
-                    self.role_keywords[role].append(w)
+            self.role_registry.apply_hints(hints)
+        self.role_keywords = self.role_registry.get_role_keywords()
+        self.role_priorities = self.role_registry.get_role_priorities()
 
     async def parse(self, text: str, hints: Optional[Dict[str, List[str]]] = None) -> PromptParseResult:
         """
@@ -85,7 +73,7 @@ class SimplePromptParser:
             PromptParseResult with classified segments
         """
         if hints:
-            parser = SimplePromptParser(hints=hints)
+            parser = SimplePromptParser(hints=hints, role_registry=self.role_registry)
             return await parser.parse(text)
 
         sentences = self._split_sentences(text)
@@ -133,7 +121,7 @@ class SimplePromptParser:
 
         return sentences
 
-    def _classify_sentence(self, text: str) -> tuple[PromptSegmentRole, Dict[str, Any]]:
+    def _classify_sentence(self, text: str) -> tuple[str, Dict[str, Any]]:
         """Classify a sentence into a role using keyword heuristics."""
         text_lower = text.lower()
         metadata: Dict[str, Any] = {}
@@ -143,7 +131,8 @@ class SimplePromptParser:
             count = sum(1 for keyword in keywords if keyword in text_lower)
             if count > 0:
                 found_roles[role] = count
-                metadata[f"has_{role}_keywords"] = count
+                role_key = role.replace(":", "_")
+                metadata[f"has_{role_key}_keywords"] = count
 
         words = re.findall(r'\b\w+\b', text_lower)
         has_verb = any(word in self.action_verbs for word in words)
@@ -157,34 +146,22 @@ class SimplePromptParser:
         except Exception:
             pass
 
-        # Camera → OTHER
-        if "camera" in found_roles:
-            metadata["has_camera_word"] = True
-            return (PromptSegmentRole.OTHER, metadata)
-
-        # Priority: romance > mood > setting > character+action > character > action > other
-        if "romance" in found_roles:
-            return (PromptSegmentRole.ROMANCE, metadata)
-
-        if "mood" in found_roles:
-            return (PromptSegmentRole.MOOD, metadata)
-
-        if "setting" in found_roles:
-            if "character" in found_roles and has_verb:
-                return (PromptSegmentRole.ACTION, metadata)
-            return (PromptSegmentRole.SETTING, metadata)
-
-        if "character" in found_roles and has_verb:
+        if "setting" in found_roles and "character" in found_roles and has_verb and "action" in self.role_keywords:
             metadata["character_action"] = True
-            return (PromptSegmentRole.ACTION, metadata)
+            return ("action", metadata)
+        if "character" in found_roles and has_verb and "action" in self.role_keywords:
+            metadata["character_action"] = True
+            return ("action", metadata)
 
-        if "character" in found_roles:
-            return (PromptSegmentRole.CHARACTER, metadata)
+        if found_roles:
+            def sort_key(item):
+                role_id, count = item
+                return (count, self.role_priorities.get(role_id, 0))
 
-        if has_verb or "action" in found_roles:
-            return (PromptSegmentRole.ACTION, metadata)
+            best_role = max(found_roles.items(), key=sort_key)[0]
+            return (best_role, metadata)
 
-        return (PromptSegmentRole.OTHER, metadata)
+        return ("other", metadata)
 
 
 async def parse_prompt(text: str) -> PromptParseResult:
