@@ -6,7 +6,7 @@ Manages NPC memories, emotions, milestones, world events, and personality evolut
 
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
@@ -17,7 +17,7 @@ from pixsim7.backend.main.services.npc import (
 from pixsim7.backend.main.domain.game.entities.npc_memory import MemoryImportance, MemoryType
 
 
-router = APIRouter()
+router = APIRouter(tags=["npc-state"])
 
 
 class SetEmotionRequest(BaseModel):

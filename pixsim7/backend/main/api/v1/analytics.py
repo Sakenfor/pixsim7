@@ -13,7 +13,7 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.npc import DialogueAnalyticsService
 
 
-router = APIRouter()
+router = APIRouter(prefix="/dialogue/analytics", tags=["dialogue-analytics"])
 
 
 @router.get("/cost-summary")

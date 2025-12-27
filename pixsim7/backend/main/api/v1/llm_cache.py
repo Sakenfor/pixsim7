@@ -12,7 +12,7 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, get_llm_service, 
 from pixsim7.backend.main.services.llm import LLMService, LLMCacheStats, CacheInvalidationRequest
 
 
-router = APIRouter()
+router = APIRouter(prefix="/llm", tags=["llm-cache"])
 
 
 @router.get("/cache/stats", response_model=LLMCacheStats)
