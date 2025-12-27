@@ -718,14 +718,13 @@ If your use case requires deviation:
 |----------|----------------------|------------------|
 | PanelRegistry | Yes | Complete |
 | SettingsRegistry | Yes | Complete |
+| GatingRegistry | Yes | Complete |
 | NodeTypeRegistry | No | Justified exception |
 | GalleryToolRegistry | No | TODO |
 | BrainToolRegistry | No | TODO |
 | WorldToolRegistry | No | TODO |
 | CapabilityRegistry | No | Justified exception |
-| GatingRegistry | No | TODO |
 
 ### Migration Priority
 
-1. **GatingRegistry** — Procedural, isolated
-2. **Gallery/Brain/WorldToolRegistry** — Near-identical implementations, migrate together
+1. **Gallery/Brain/WorldToolRegistry** — Near-identical implementations, migrate together

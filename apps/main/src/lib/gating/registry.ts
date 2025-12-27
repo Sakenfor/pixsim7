@@ -4,15 +4,119 @@
  * Central registry for gating plugins, similar to stat package registry.
  * Plugins register themselves at module load time or dynamically.
  *
+ * Extends BaseRegistry for standard CRUD operations and listener support.
+ *
  * @see apps/main/src/lib/gating/types.ts
  */
+
+import { BaseRegistry } from '@lib/core/BaseRegistry';
 
 import type { GatingPlugin, GatingPluginMeta } from './types';
 
 /**
- * Global plugin registry
+ * GatingRegistry - Registry for gating plugins
+ *
+ * Extends BaseRegistry with domain-specific functionality:
+ * - Filtering by category and tags
+ * - Plugin unwrapping (get returns plugin, not meta)
+ * - World-specific plugin resolution with fallback
  */
-const GATING_PLUGINS = new Map<string, GatingPluginMeta>();
+class GatingRegistry extends BaseRegistry<GatingPluginMeta> {
+  /**
+   * Register a gating plugin with metadata
+   *
+   * @param plugin - Plugin implementation
+   * @param options - Optional metadata (category, tags)
+   */
+  registerPlugin(
+    plugin: GatingPlugin,
+    options?: {
+      category?: string;
+      tags?: string[];
+    }
+  ): void {
+    const meta: GatingPluginMeta = {
+      id: plugin.id,
+      plugin,
+      registeredAt: new Date(),
+      category: options?.category,
+      tags: options?.tags,
+    };
+
+    if (this.has(plugin.id)) {
+      console.warn(`[Gating] Plugin ${plugin.id} is already registered. Overwriting.`);
+    }
+
+    this.forceRegister(meta);
+    console.log(`[Gating] Registered plugin: ${plugin.name} v${plugin.version} (${plugin.id})`);
+  }
+
+  /**
+   * Get the unwrapped plugin by ID
+   *
+   * @param id - Plugin ID
+   * @returns Plugin implementation or undefined
+   */
+  getPlugin(id: string): GatingPlugin | undefined {
+    return this.get(id)?.plugin;
+  }
+
+  /**
+   * List plugins with optional filtering
+   *
+   * @param options - Optional filters (category, tag)
+   * @returns Array of plugin metadata
+   */
+  list(options?: { category?: string; tag?: string }): GatingPluginMeta[] {
+    let plugins = this.getAll();
+
+    if (options?.category) {
+      plugins = plugins.filter(p => p.category === options.category);
+    }
+
+    if (options?.tag) {
+      plugins = plugins.filter(p => p.tags?.includes(options.tag));
+    }
+
+    return plugins;
+  }
+
+  /**
+   * Get gating plugin for a world with fallback
+   *
+   * @param worldMeta - World metadata object
+   * @returns Gating plugin to use
+   * @throws Error if default plugin is not registered
+   */
+  getForWorld(worldMeta?: { gating_plugin?: string; [key: string]: unknown }): GatingPlugin {
+    const pluginId = worldMeta?.gating_plugin || 'intimacy.default';
+    const plugin = this.getPlugin(pluginId);
+
+    if (!plugin) {
+      console.warn(
+        `[Gating] Plugin '${pluginId}' not found, falling back to 'intimacy.default'`
+      );
+      const fallback = this.getPlugin('intimacy.default');
+      if (!fallback) {
+        throw new Error(
+          '[Gating] Default plugin intimacy.default is not registered! ' +
+            'Make sure to import plugins/intimacyDefault.ts'
+        );
+      }
+      return fallback;
+    }
+
+    return plugin;
+  }
+}
+
+/** Global gating plugin registry instance */
+export const gatingRegistry = new GatingRegistry();
+
+// ============================================================================
+// Backward-compatible function exports
+// These wrap the class methods for existing callers
+// ============================================================================
 
 /**
  * Register a gating plugin
@@ -35,18 +139,7 @@ export function registerGatingPlugin(
     tags?: string[];
   }
 ): void {
-  if (GATING_PLUGINS.has(plugin.id)) {
-    console.warn(`[Gating] Plugin ${plugin.id} is already registered. Overwriting.`);
-  }
-
-  GATING_PLUGINS.set(plugin.id, {
-    plugin,
-    registeredAt: new Date(),
-    category: options?.category,
-    tags: options?.tags,
-  });
-
-  console.log(`[Gating] Registered plugin: ${plugin.name} v${plugin.version} (${plugin.id})`);
+  gatingRegistry.registerPlugin(plugin, options);
 }
 
 /**
@@ -54,17 +147,9 @@ export function registerGatingPlugin(
  *
  * @param id - Plugin ID (e.g., 'intimacy.default')
  * @returns Plugin implementation or undefined
- *
- * @example
- * ```ts
- * const plugin = getGatingPlugin('intimacy.default');
- * if (plugin) {
- *   const result = plugin.checkContentGate(state, 'romantic');
- * }
- * ```
  */
 export function getGatingPlugin(id: string): GatingPlugin | undefined {
-  return GATING_PLUGINS.get(id)?.plugin;
+  return gatingRegistry.getPlugin(id);
 }
 
 /**
@@ -72,28 +157,12 @@ export function getGatingPlugin(id: string): GatingPlugin | undefined {
  *
  * @param options - Optional filters
  * @returns Array of plugin metadata
- *
- * @example
- * ```ts
- * const romancePlugins = listGatingPlugins({ category: 'romance' });
- * const allPlugins = listGatingPlugins();
- * ```
  */
 export function listGatingPlugins(options?: {
   category?: string;
   tag?: string;
 }): GatingPluginMeta[] {
-  let plugins = Array.from(GATING_PLUGINS.values());
-
-  if (options?.category) {
-    plugins = plugins.filter(p => p.category === options.category);
-  }
-
-  if (options?.tag) {
-    plugins = plugins.filter(p => p.tags?.includes(options.tag));
-  }
-
-  return plugins;
+  return gatingRegistry.list(options);
 }
 
 /**
@@ -103,7 +172,7 @@ export function listGatingPlugins(options?: {
  * @returns True if plugin was removed, false if not found
  */
 export function unregisterGatingPlugin(id: string): boolean {
-  return GATING_PLUGINS.delete(id);
+  return gatingRegistry.unregister(id);
 }
 
 /**
@@ -113,7 +182,7 @@ export function unregisterGatingPlugin(id: string): boolean {
  * @returns True if plugin exists
  */
 export function hasGatingPlugin(id: string): boolean {
-  return GATING_PLUGINS.has(id);
+  return gatingRegistry.has(id);
 }
 
 /**
@@ -124,33 +193,10 @@ export function hasGatingPlugin(id: string): boolean {
  *
  * @param worldMeta - World metadata object
  * @returns Gating plugin to use
- *
- * @example
- * ```ts
- * const plugin = getWorldGatingPlugin(world.meta);
- * const result = plugin.checkContentGate(state, 'romantic', world.meta.gating_config);
- * ```
  */
 export function getWorldGatingPlugin(worldMeta?: {
   gating_plugin?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }): GatingPlugin {
-  const pluginId = worldMeta?.gating_plugin || 'intimacy.default';
-  const plugin = getGatingPlugin(pluginId);
-
-  if (!plugin) {
-    console.warn(
-      `[Gating] Plugin '${pluginId}' not found, falling back to 'intimacy.default'`
-    );
-    const fallback = getGatingPlugin('intimacy.default');
-    if (!fallback) {
-      throw new Error(
-        '[Gating] Default plugin intimacy.default is not registered! ' +
-        'Make sure to import plugins/intimacyDefault.ts'
-      );
-    }
-    return fallback;
-  }
-
-  return plugin;
+  return gatingRegistry.getForWorld(worldMeta);
 }

@@ -16,8 +16,9 @@ export type {
   GateRequirements,
 } from './types';
 
-// Export registry functions
+// Export registry class instance and functions
 export {
+  gatingRegistry,
   registerGatingPlugin,
   getGatingPlugin,
   listGatingPlugins,

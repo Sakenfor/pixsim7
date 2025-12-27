@@ -146,8 +146,14 @@ export interface GatingPlugin {
 
 /**
  * Plugin metadata for registration
+ *
+ * Extends Identifiable for BaseRegistry compatibility.
+ * The id is derived from the wrapped plugin's id.
  */
 export interface GatingPluginMeta {
+  /** Unique ID (same as plugin.id, for BaseRegistry compatibility) */
+  id: string;
+
   /** Plugin implementation */
   plugin: GatingPlugin;
 
