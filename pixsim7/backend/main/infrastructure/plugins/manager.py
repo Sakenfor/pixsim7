@@ -411,6 +411,12 @@ class PluginManager:
 
         Shows: ID, Kind, Required, Enabled, Status
         """
+        import sys
+
+        # Use ASCII markers on Windows to avoid encoding issues with legacy consoles
+        ok_marker = "[OK]" if sys.platform == "win32" else "✓"
+        fail_marker = "[FAIL]" if sys.platform == "win32" else "✗"
+
         rows = []
 
         # Add loaded plugins
@@ -421,7 +427,7 @@ class PluginManager:
                 'kind': manifest.kind,
                 'required': "Yes" if manifest.required else "No",
                 'enabled': "Yes" if plugin['enabled'] else "No",
-                'status': "✓ Loaded"
+                'status': f"{ok_marker} Loaded"
             })
 
         # Add failed plugins
@@ -439,11 +445,11 @@ class PluginManager:
                 'kind': kind,
                 'required': "Yes" if required else "No",
                 'enabled': "?",
-                'status': f"✗ Failed: {error[:40]}..."
+                'status': f"{fail_marker} Failed: {error[:40]}..."
             })
 
         # Sort by status (loaded first), then by ID
-        rows.sort(key=lambda r: (0 if r['status'].startswith("✓") else 1, r['id']))
+        rows.sort(key=lambda r: (0 if ok_marker in r['status'] else 1, r['id']))
 
         # Format table manually
         headers = ["Plugin ID", "Kind", "Required", "Enabled", "Status"]

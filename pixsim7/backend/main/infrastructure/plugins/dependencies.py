@@ -20,9 +20,12 @@ from typing import Callable, Optional
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
+import structlog
 
 from .context import PluginContext
 from .manager import PluginManager
+
+logger = structlog.get_logger(__name__)
 
 
 # Global plugin manager registry (set during app startup)
@@ -107,6 +110,7 @@ async def _get_database_optional():
     Get database session (optional - returns None if not available).
 
     This is a wrapper around standard DB dependencies that returns None on error.
+    Logs warnings when database is unavailable to aid debugging.
     """
     try:
         from pixsim7.backend.main.api.dependencies import get_async_db
@@ -114,17 +118,31 @@ async def _get_database_optional():
         async for db in get_async_db():
             yield db
             return  # Only yield once
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "plugin_database_unavailable",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Database unavailable for plugin context"
+        )
         yield None
 
 
 async def _get_redis_optional():
     """
     Get Redis client (optional - returns None if not available).
+
+    Logs warnings when Redis is unavailable to aid debugging.
     """
     try:
         from pixsim7.backend.main.infrastructure.redis import get_redis
         redis = await get_redis()
         yield redis
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "plugin_redis_unavailable",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Redis unavailable for plugin context"
+        )
         yield None
