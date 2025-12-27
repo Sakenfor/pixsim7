@@ -387,6 +387,7 @@ async def setup_plugins(
     plugin_manager = init_plugin_manager(
         app,
         str(plugins_dir),
+        plugin_type="feature",
         fail_fast=fail_fast
     )
     logger.info(
@@ -399,6 +400,7 @@ async def setup_plugins(
     routes_manager = init_plugin_manager(
         app,
         str(routes_dir),
+        plugin_type="route",
         fail_fast=fail_fast
     )
     logger.info(

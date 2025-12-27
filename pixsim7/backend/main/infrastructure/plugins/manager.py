@@ -34,8 +34,16 @@ class PluginManager:
     - Hook system
     """
 
-    def __init__(self, app: FastAPI):
+    def __init__(self, app: FastAPI, plugin_type: str = "feature"):
+        """
+        Initialize plugin manager.
+
+        Args:
+            app: FastAPI application instance
+            plugin_type: Plugin type for module namespacing ("feature" or "route")
+        """
         self.app = app
+        self.plugin_type = plugin_type
         self.plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {manifest, router, module}
         self.load_order: list[str] = []
         self.failed_plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {error_message, manifest?, required?}
@@ -88,9 +96,11 @@ class PluginManager:
                 }
                 return False
 
-            # Import module dynamically
+            # Import module dynamically with namespaced module path
+            # e.g., "pixsim7.plugins.feature.analytics" or "pixsim7.plugins.route.generations"
+            module_name = f"pixsim7.plugins.{self.plugin_type}.{plugin_name}"
             spec = importlib.util.spec_from_file_location(
-                f"plugins.{plugin_name}",
+                module_name,
                 module_path
             )
             if not spec or not spec.loader:
@@ -232,7 +242,7 @@ class PluginManager:
                 module_path = Path(plugin_dir) / plugin_name / 'manifest.py'
                 if module_path.exists():
                     spec = importlib.util.spec_from_file_location(
-                        f"plugins.{plugin_name}.manifest_check",
+                        f"pixsim7.plugins.{self.plugin_type}.{plugin_name}._manifest_check",
                         module_path
                     )
                     if spec and spec.loader:
@@ -531,6 +541,7 @@ class PluginManager:
 def init_plugin_manager(
     app: FastAPI,
     plugin_dir: str | Path,
+    plugin_type: str = "feature",
     fail_fast: bool = False,
     print_health: bool = True
 ) -> PluginManager:
@@ -540,16 +551,17 @@ def init_plugin_manager(
     Args:
         app: FastAPI application instance
         plugin_dir: Directory containing plugin manifests
+        plugin_type: Plugin type for module namespacing ("feature" or "route")
         fail_fast: If True, raise exception if required plugins fail to load (useful for dev/CI)
         print_health: If True, print health table after loading
 
     Usage in main.py:
         from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
 
-        plugin_manager = init_plugin_manager(app, "pixsim7/backend/main/plugins")
-        routes_manager = init_plugin_manager(app, "pixsim7/backend/main/routes", fail_fast=settings.debug)
+        plugin_manager = init_plugin_manager(app, "pixsim7/backend/main/plugins", plugin_type="feature")
+        routes_manager = init_plugin_manager(app, "pixsim7/backend/main/routes", plugin_type="route")
     """
-    manager = PluginManager(app)
+    manager = PluginManager(app, plugin_type=plugin_type)
 
     # Auto-discover plugins
     discovered = manager.discover_plugins(plugin_dir)
