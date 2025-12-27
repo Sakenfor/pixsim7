@@ -17,7 +17,7 @@ export const workspaceModule: Module = {
     // Register workspace capabilities (hotspots, scene builder, etc.)
     registerWorkspaceFeature();
 
-    // Ensure core panels (panelRegistry + corePanelsPlugin) are initialized
+    // Ensure core panels (panel registry + auto-discovery) are initialized
     // even if the workspace route hasn't been visited yet. This allows
     // features like the Control Center to open workspace panels (e.g. providers)
     // as floating windows from anywhere.

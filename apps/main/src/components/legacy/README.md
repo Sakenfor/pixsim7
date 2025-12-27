@@ -109,7 +109,7 @@ The following components are **actively imported** and will be migrated:
 - **GraphPanel.tsx** - Used in `lib/graph/registerEditors.ts`
   - Migration target: To be determined (possibly `components/scene/panels/` or graph-specific location)
 
-- **SceneBuilderPanel.tsx** - Used in `lib/panels/corePanelsPlugin.tsx`
+- **SceneBuilderPanel.tsx** - Used in `features/panels/definitions/scene/index.ts`
   - Migration target: `components/scene/panels/SceneBuilderPanel.tsx`
 
 - **SessionStateViewer.tsx** - Used in `lib/devtools/registerDevTools.ts`

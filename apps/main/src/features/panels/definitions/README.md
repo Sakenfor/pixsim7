@@ -112,7 +112,7 @@ At startup, `initializePanels()` calls `autoRegisterPanels()` which:
 
 ## Backward Compatibility
 
-Existing panels registered via `helperPanelsPlugin` or `corePanelsPlugin` continue to work. The auto-discovery system runs after plugin loading, so manually registered panels take precedence.
+Existing panels registered via legacy plugins continue to work. The auto-discovery system runs after plugin loading, so manually registered panels take precedence.
 
 ## Best Practices
 

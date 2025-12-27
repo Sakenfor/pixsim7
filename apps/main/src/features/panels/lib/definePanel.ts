@@ -22,9 +22,20 @@
  */
 
 import type { ComponentType } from 'react';
-import type { PanelDefinition, PanelCategory, WorkspaceContext } from './panelRegistry';
+import type {
+  ContextLabelStrategy,
+  CoreEditorRole,
+  PanelDefinition,
+  PanelCategory,
+  PanelSettingsFormSchema,
+  PanelSettingsProps,
+  PanelSettingsSection,
+  PanelSettingsTab,
+  WorkspaceContext,
+} from './panelRegistry';
 import type { PanelOrchestrationMetadata } from './panelRegistry';
 import type { PanelAvailabilityPolicy, PanelInstancePolicy } from './panelTypes';
+import type { z } from 'zod';
 
 /**
  * Simplified panel definition options.
@@ -41,12 +52,16 @@ export interface DefinePanelOptions<TSettings = any> {
   tags?: string[];
   icon?: string;
   description?: string;
+  order?: number;
+  enabledByDefault?: boolean;
 
   // Availability - which dockviews this panel can appear in
   // Prefer availability.docks over contexts
   availability?: PanelAvailabilityPolicy;
   // Legacy: dockview contexts (deprecated - use availability.docks)
   contexts?: string[];
+  // Legacy: direct availableIn for dock scopes
+  availableIn?: string[];
 
   // Visibility
   showWhen?: (context: WorkspaceContext) => boolean;
@@ -58,16 +73,33 @@ export interface DefinePanelOptions<TSettings = any> {
   instances?: PanelInstancePolicy;
   maxInstances?: number;
   consumesCapabilities?: string[];
+  settingScopes?: string[];
+  scopes?: string[];
 
   // Settings
   defaultSettings?: TSettings;
   settingsVersion?: number;
+  settingsSchema?: z.ZodSchema<TSettings>;
+  settingsComponent?: ComponentType<PanelSettingsProps<TSettings>>;
+  settingsSections?: PanelSettingsSection<TSettings>[];
+  settingsTabs?: PanelSettingsTab<TSettings>[];
+  settingsForm?: PanelSettingsFormSchema;
+  componentSettings?: string[];
+  migrateSettings?: (oldSettings: unknown, oldVersion: number) => TSettings;
 
   // Orchestration
   orchestration?: PanelOrchestrationMetadata;
 
+  // Context labeling + core editor role
+  contextLabel?: ContextLabelStrategy;
+  coreEditorRole?: CoreEditorRole;
+
   // Internal panel (hidden from user lists)
   internal?: boolean;
+
+  // Lifecycle hooks
+  onMount?: () => void;
+  onUnmount?: () => void;
 }
 
 /**
@@ -96,8 +128,11 @@ export function definePanel<TSettings = any>(
     tags = [],
     icon,
     description,
+    order,
+    enabledByDefault,
     availability,
     contexts = [],
+    availableIn,
     showWhen,
     requiresContext = false,
     supportsCompactMode = false,
@@ -105,13 +140,27 @@ export function definePanel<TSettings = any>(
     instances,
     maxInstances,
     consumesCapabilities,
+    settingScopes,
+    scopes,
     defaultSettings,
     settingsVersion,
+    settingsSchema,
+    settingsComponent,
+    settingsSections,
+    settingsTabs,
+    settingsForm,
+    componentSettings,
+    migrateSettings,
     orchestration,
+    contextLabel,
+    coreEditorRole,
     internal = false,
+    onMount,
+    onUnmount,
   } = options;
 
-  const resolvedContexts = availability?.docks ?? contexts;
+  const resolvedContexts = availability?.docks ?? availableIn ?? contexts;
+  const resolvedSettingScopes = settingScopes ?? scopes;
 
   const resolvedInstances =
     instances === "single"
@@ -136,6 +185,8 @@ export function definePanel<TSettings = any>(
     tags: derivedTags,
     icon,
     description,
+    order,
+    enabledByDefault,
     showWhen,
     requiresContext,
     supportsCompactMode,
@@ -143,9 +194,22 @@ export function definePanel<TSettings = any>(
     maxInstances: resolvedInstances.maxInstances,
     instances,
     consumesCapabilities,
+    settingScopes: resolvedSettingScopes,
+    scopes,
     defaultSettings,
+    settingsSchema,
+    settingsComponent,
+    settingsSections,
+    settingsTabs,
+    settingsForm,
+    componentSettings,
     settingsVersion,
+    migrateSettings,
     orchestration,
+    contextLabel,
+    coreEditorRole,
+    onMount,
+    onUnmount,
     isInternal: internal,
 
     // Map contexts to availableIn for SmartDockview scope filtering

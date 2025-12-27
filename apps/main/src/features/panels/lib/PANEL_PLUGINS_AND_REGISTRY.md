@@ -32,9 +32,9 @@ Workspace panels in PixSim7 are now first-class plugins integrated with the unif
    - Helper functions for dual registration
    - Syncs panel state across systems
 
-4. **Core Panels Plugin** (`corePanelsPlugin.tsx`)
-   - Registers all built-in workspace panels
-   - Uses registry bridge for plugin integration
+4. **Panel Definitions** (`definitions/*/index.ts`)
+   - Auto-discovered built-in workspace panels
+   - Registered via registry bridge during auto-discovery
 
 5. **Plugin Browser UI** (`PluginBrowser.tsx`)
    - Workspace Panels tab for browsing panels
@@ -453,8 +453,8 @@ Panel IDs should be unique, lowercase, and kebab-case (e.g., `'my-custom-panel'`
    - Added panel sync to `syncCatalogFromRegistries()`
    - Added panels to `printRegistryComparison()`
 
-3. `apps/main/src/lib/panels/corePanelsPlugin.tsx`
-   - Updated `initialize()` to register all panels via bridge
+3. `apps/main/src/features/panels/definitions/*/index.ts`
+   - Built-in panels defined for auto-discovery (registered via bridge)
 
 4. `apps/main/src/components/plugins/PluginBrowser.tsx`
    - Added **Workspace Panels** tab

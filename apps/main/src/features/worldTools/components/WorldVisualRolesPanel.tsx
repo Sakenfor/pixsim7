@@ -5,7 +5,7 @@
  * (portraits, POV, backgrounds, comic panels) for characters and locations.
  *
  * Integration points:
- * - Uses existing panel system (corePanelsPlugin)
+ * - Uses existing panel system (auto-discovery definitions)
  * - Integrates with assetPickerStore for asset selection
  * - Stores bindings in world.meta.visualRoles
  * - Uses Task 99 asset resolver for suggestions

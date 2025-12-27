@@ -26,6 +26,7 @@ import type { PanelDefinition } from './panelRegistry';
 import { panelRegistry } from './panelRegistry';
 import type { PanelModule } from './definePanel';
 import { getPanelContexts } from './definePanel';
+import { registerBuiltinPanel } from '../../../lib/plugins/registryBridge';
 
 /**
  * Discovered panel with metadata.
@@ -71,14 +72,6 @@ const panelModules = import.meta.glob<PanelModule>(
 );
 
 /**
- * Also support legacy helper panels location for backward compatibility.
- */
-const helperPanelModules = import.meta.glob<PanelModule>(
-  '../components/helpers/*/panel.ts',
-  { eager: true }
-);
-
-/**
  * Discover all panels from the definitions directory.
  * Does not register them - returns the discovered panels for inspection.
  */
@@ -87,17 +80,6 @@ export function discoverPanels(): DiscoveredPanel[] {
 
   // Process main definitions directory
   for (const [path, module] of Object.entries(panelModules)) {
-    if (module.default) {
-      discovered.push({
-        definition: module.default,
-        sourcePath: path,
-        contexts: getPanelContexts(module.default),
-      });
-    }
-  }
-
-  // Process legacy helper panels
-  for (const [path, module] of Object.entries(helperPanelModules)) {
     if (module.default) {
       discovered.push({
         definition: module.default,
@@ -158,8 +140,8 @@ export function autoRegisterPanels(
         continue;
       }
 
-      // Register the panel
-      panelRegistry.register(panel.definition);
+      // Register the panel via catalog-aware bridge
+      registerBuiltinPanel(panel.definition);
       registered.push(panel);
 
       if (verbose) {

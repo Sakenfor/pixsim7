@@ -38,7 +38,6 @@ export {
   PanelPluginManager,
   pluginManager,
 } from "./panelPlugin";
-export { corePanelsPlugin } from "./corePanelsPlugin";
 export { initializePanels } from "./initializePanels";
 export { PanelHostLite } from "./PanelHostLite";
 

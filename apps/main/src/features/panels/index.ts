@@ -93,7 +93,6 @@ export {
   PanelPluginManager,
   pluginManager,
 } from "./lib/panelPlugin";
-export { corePanelsPlugin } from "./lib/corePanelsPlugin";
 export { initializePanels } from "./lib/initializePanels";
 export { PanelHostLite } from "./lib/PanelHostLite";
 

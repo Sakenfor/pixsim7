@@ -299,7 +299,7 @@ The World Tools feature integrates with:
 
 - **Game2D Route**: Primary consumer of world tools for in-game debugging
 - **HUD Feature** (`@features/hud`): Provides HUD layout management
-- **Panel System**: Registered via `corePanelsPlugin`
+- **Panel System**: Registered via `features/panels/definitions/*` auto-discovery
 - **Gizmo Surface Registry**: WorldToolsPanel registered as a gizmo surface
 
 ## Shared Systems
