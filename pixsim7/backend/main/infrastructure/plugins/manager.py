@@ -83,6 +83,9 @@ class PluginManager:
 
         Returns True if loaded successfully, False otherwise.
         """
+        import time
+        start_time = time.perf_counter()
+
         try:
             plugin_dir = Path(plugin_dir)
             module_path = plugin_dir / plugin_name / 'manifest.py'
@@ -137,11 +140,19 @@ class PluginManager:
             manifest: PluginManifest = module.manifest
             router: APIRouter = module.router
 
-            # Validate manifest
+            # Validate manifest ID matches directory name (security: prevent ID spoofing)
             if manifest.id != plugin_name:
-                logger.warning(
-                    f"Plugin ID mismatch: directory={plugin_name}, manifest={manifest.id}"
+                logger.error(
+                    f"Plugin ID must match directory name",
+                    directory=plugin_name,
+                    manifest_id=manifest.id,
                 )
+                self.failed_plugins[plugin_name] = {
+                    'error': f"Manifest ID '{manifest.id}' must match directory name '{plugin_name}'",
+                    'required': False,
+                    'manifest': manifest
+                }
+                return False
 
             # Validate and expand permissions
             expanded_permissions = expand_permission_groups(manifest.permissions)
@@ -213,7 +224,19 @@ class PluginManager:
                     module.on_load(self.app)
                     logger.debug(f"Called on_load for {manifest.id}")
                 except Exception as e:
-                    logger.error(f"Error in on_load for {manifest.id}: {e}")
+                    logger.error(f"Error in on_load for {manifest.id}: {e}", exc_info=True)
+                    # Unload plugin if on_load fails
+                    self.plugins.pop(manifest.id, None)
+                    self.failed_plugins[plugin_name] = {
+                        'error': f"on_load hook failed: {e}",
+                        'required': manifest.required,
+                        'manifest': manifest
+                    }
+                    if manifest.required:
+                        raise RuntimeError(
+                            f"Required plugin '{manifest.id}' failed on_load: {e}"
+                        )
+                    return False
             elif hasattr(module, 'on_load') and not effective_enabled:
                 logger.debug(
                     f"Skipping on_load for disabled plugin: {manifest.id}"
@@ -227,6 +250,14 @@ class PluginManager:
 
             # Emit event (sync context)
             plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, manifest.id)
+
+            # Log load time metrics
+            load_duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(
+                "Plugin load completed",
+                plugin_id=manifest.id,
+                duration_ms=round(load_duration_ms, 2),
+            )
 
             return True
 

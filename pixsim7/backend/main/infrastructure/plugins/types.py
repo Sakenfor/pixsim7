@@ -134,40 +134,67 @@ class PluginHooks:
         Emit an event, calling all registered callbacks.
 
         Supports both sync and async callbacks.
+        Exceptions in callbacks are caught and logged to prevent cascade failures.
         """
+        import structlog
+        logger = structlog.get_logger(__name__)
+
         results = []
         for callback in self._hooks.get(event, []):
             if not callable(callback):
                 results.append(None)
                 continue
 
-            result = callback(*args, **kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-            results.append(result)
+            try:
+                result = callback(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+                results.append(result)
+            except Exception as e:
+                callback_name = callback.__name__ if hasattr(callback, '__name__') else str(callback)
+                logger.error(
+                    "Hook callback failed",
+                    event=event,
+                    callback=callback_name,
+                    error=str(e),
+                    exc_info=True
+                )
+                results.append(None)
         return results
 
     def emit_sync(self, event: str, *args, **kwargs) -> None:
         """
         Emit an event from synchronous code, calling only sync callbacks.
         Async callbacks will be skipped with a warning.
+        Exceptions in callbacks are caught and logged to prevent cascade failures.
 
         Use this when emitting events from non-async contexts (e.g., plugin loading).
         """
+        import structlog
+        logger = structlog.get_logger(__name__)
+
         for callback in self._hooks.get(event, []):
             if not callable(callback):
                 continue
 
-            result = callback(*args, **kwargs)
-            if inspect.isawaitable(result):
-                # Can't await in sync context, skip async callbacks
-                import structlog
-                logger = structlog.get_logger(__name__)
-                logger.warning(
-                    f"Skipping async callback for {event} in sync context",
-                    callback=callback.__name__ if hasattr(callback, '__name__') else str(callback)
+            try:
+                result = callback(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    # Can't await in sync context, skip async callbacks
+                    logger.warning(
+                        f"Skipping async callback for {event} in sync context",
+                        callback=callback.__name__ if hasattr(callback, '__name__') else str(callback)
+                    )
+                    continue
+            except Exception as e:
+                callback_name = callback.__name__ if hasattr(callback, '__name__') else str(callback)
+                logger.error(
+                    "Hook callback failed (sync)",
+                    event=event,
+                    callback=callback_name,
+                    error=str(e),
+                    exc_info=True
                 )
-                continue
 
     def clear(self, event: Optional[str] = None) -> None:
         """Clear hooks for an event, or all hooks if event is None"""
