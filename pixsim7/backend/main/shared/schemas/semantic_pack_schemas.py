@@ -17,6 +17,16 @@ class SemanticPackStatus(str, Enum):
     DEPRECATED = "deprecated"
 
 
+class PromptRoleDefinitionSchema(BaseModel):
+    """Role definition for dynamic prompt role registration."""
+    id: str = Field(..., description="Role ID (e.g., 'character', 'camera')")
+    label: Optional[str] = Field(None, description="Human-readable label")
+    description: Optional[str] = Field(None, description="Role description")
+    keywords: List[str] = Field(default_factory=list, description="Keywords for parser matching")
+    aliases: List[str] = Field(default_factory=list, description="Alias role IDs")
+    priority: Optional[int] = Field(None, description="Role priority for classification")
+
+
 class SemanticPackManifest(BaseModel):
     """
     Manifest for a Semantic Pack.
@@ -60,6 +70,16 @@ class SemanticPackManifest(BaseModel):
         ),
     )
 
+    # Dynamic roles and operation profiles
+    roles: List[PromptRoleDefinitionSchema] = Field(
+        default_factory=list,
+        description="Dynamic role definitions provided by this pack",
+    )
+    operation_profiles: Dict[str, Dict[str, str]] = Field(
+        default_factory=dict,
+        description="Operation mode -> role intent mapping overrides",
+    )
+
     # Links to content (ActionBlocks, PromptFamilies)
     action_block_ids: List[str] = Field(
         default_factory=list,
@@ -97,6 +117,8 @@ class SemanticPackCreateRequest(BaseModel):
 
     tags: List[str] = Field(default_factory=list)
     parser_hints: Dict[str, List[str]] = Field(default_factory=dict)
+    roles: List[PromptRoleDefinitionSchema] = Field(default_factory=list)
+    operation_profiles: Dict[str, Dict[str, str]] = Field(default_factory=dict)
     action_block_ids: List[str] = Field(default_factory=list)
     prompt_family_slugs: List[str] = Field(default_factory=list)
     status: SemanticPackStatus = SemanticPackStatus.DRAFT

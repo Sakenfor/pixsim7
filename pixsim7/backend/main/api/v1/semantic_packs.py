@@ -144,6 +144,13 @@ async def create_or_update_semantic_pack(
 
     if existing_pack:
         # Update existing pack
+        extra = dict(existing_pack.extra or {})
+        extra.update(request.extra or {})
+        if request.roles:
+            extra["roles"] = [role.model_dump() for role in request.roles]
+        if request.operation_profiles:
+            extra["operation_profiles"] = request.operation_profiles
+
         existing_pack.version = request.version
         existing_pack.label = request.label
         existing_pack.description = request.description
@@ -155,12 +162,18 @@ async def create_or_update_semantic_pack(
         existing_pack.action_block_ids = request.action_block_ids
         existing_pack.prompt_family_slugs = request.prompt_family_slugs
         existing_pack.status = request.status.value if isinstance(request.status, SemanticPackStatus) else request.status
-        existing_pack.extra = request.extra
+        existing_pack.extra = extra
         existing_pack.updated_at = datetime.utcnow()
 
         pack = existing_pack
     else:
         # Create new pack
+        extra = dict(request.extra or {})
+        if request.roles:
+            extra["roles"] = [role.model_dump() for role in request.roles]
+        if request.operation_profiles:
+            extra["operation_profiles"] = request.operation_profiles
+
         pack = SemanticPackDB(
             id=request.id,
             version=request.version,
@@ -174,7 +187,7 @@ async def create_or_update_semantic_pack(
             action_block_ids=request.action_block_ids,
             prompt_family_slugs=request.prompt_family_slugs,
             status=request.status.value if isinstance(request.status, SemanticPackStatus) else request.status,
-            extra=request.extra,
+            extra=extra,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )

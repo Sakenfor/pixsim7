@@ -135,6 +135,8 @@ class SemanticPackDB(SQLModel, table=True):
             SemanticPackStatus,
         )
 
+        extra = self.extra or {}
+
         return SemanticPackManifest(
             id=self.id,
             version=self.version,
@@ -147,6 +149,8 @@ class SemanticPackDB(SQLModel, table=True):
             ontology_version_max=self.ontology_version_max,
             tags=self.tags,
             parser_hints=self.parser_hints,
+            roles=extra.get("roles") or [],
+            operation_profiles=extra.get("operation_profiles") or {},
             action_block_ids=self.action_block_ids,
             prompt_family_slugs=self.prompt_family_slugs,
             status=SemanticPackStatus(self.status),
