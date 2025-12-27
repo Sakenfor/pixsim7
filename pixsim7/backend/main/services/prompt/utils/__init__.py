@@ -4,14 +4,14 @@ Prompt Utilities
 Diff, similarity, and template utilities for prompts.
 """
 
-from .diff_utils import (
+from .diff import (
     generate_unified_diff,
     DiffFormat,
 )
-from .similarity_utils import (
+from .similarity import (
     calculate_text_similarity,
 )
-from .template_utils import (
+from .template import (
     render_template,
     extract_template_variables,
 )

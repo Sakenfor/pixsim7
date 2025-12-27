@@ -11,7 +11,7 @@ from typing import Dict, Iterable, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.services.prompt.intent_service import PromptIntentService
+from pixsim7.backend.main.services.prompt.intent import PromptIntentService
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.parser.hints import ParserHintProvider
 

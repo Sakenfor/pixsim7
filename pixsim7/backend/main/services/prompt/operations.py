@@ -19,7 +19,7 @@ from pixsim7.backend.main.domain.prompt import (
 )
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.assets.models import Asset
-from .utils.similarity_utils import calculate_text_similarity as calculate_similarity
+from .utils.similarity import calculate_text_similarity as calculate_similarity
 
 
 class PromptOperationsService:
@@ -288,7 +288,7 @@ class PromptOperationsService:
         Returns:
             List of similar versions with similarity scores
         """
-        from .utils.similarity_utils import calculate_text_similarity
+        from .utils.similarity import calculate_text_similarity
 
         query = select(PromptVersion)
         if family_id:
@@ -332,7 +332,7 @@ class PromptOperationsService:
         Returns:
             Validation result with errors/warnings
         """
-        from .utils.template_utils import validate_prompt_text, parse_variable_definitions
+        from .utils.template import validate_prompt_text, parse_variable_definitions
 
         parsed_defs = None
         if variable_defs:
@@ -358,7 +358,7 @@ class PromptOperationsService:
         Returns:
             Rendered prompt text
         """
-        from .utils.template_utils import substitute_variables, parse_variable_definitions
+        from .utils.template import substitute_variables, parse_variable_definitions
 
         parsed_defs = None
         if variable_defs:

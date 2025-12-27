@@ -17,7 +17,7 @@ from pixsim7.backend.main.domain.prompt import (
     PromptVersion,
 )
 from pixsim7.backend.main.domain.generation.models import Generation
-from .utils.diff_utils import generate_inline_diff
+from .utils.diff import generate_inline_diff
 
 
 def _slugify(text: str) -> str:

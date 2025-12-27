@@ -14,10 +14,10 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .family_service import PromptFamilyService
-from .variant_service import PromptVariantService
-from .analytics_service import PromptAnalyticsService
-from .operations_service import PromptOperationsService
+from .family import PromptFamilyService
+from .variant import PromptVariantService
+from .analytics import PromptAnalyticsService
+from .operations import PromptOperationsService
 
 
 class PromptVersionService:

@@ -22,7 +22,7 @@ from pixsim7.backend.main.services.prompt.block import (
     ExtractionConfigService,
     ExtractionConfig
 )
-from pixsim7.backend.main.services.prompt.block.concept_registry_service import ConceptRegistry
+from pixsim7.backend.main.services.prompt.block.concept_registry import ConceptRegistry
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.user import User
 

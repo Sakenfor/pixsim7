@@ -4,12 +4,12 @@ Prompt Block Services
 Block management, extraction, composition, and concept registry.
 """
 
-from .action_block_service import ActionBlockService, ActionBlockService as PromptBlockService
-from .migration_service import ActionBlockMigrationService
+from .action import ActionBlockService, ActionBlockService as PromptBlockService
+from .migration import ActionBlockMigrationService
 from .composition_engine import BlockCompositionEngine
 from .ai_extractor import AIActionBlockExtractor, AIActionBlockExtractor as AIBlockExtractor
-from .concept_registry_service import ConceptRegistry
-from .extraction_config_service import (
+from .concept_registry import ConceptRegistry
+from .extraction_config import (
     ExtractionConfigService,
     ExtractionConfig,
 )

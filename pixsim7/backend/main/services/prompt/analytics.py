@@ -16,7 +16,7 @@ from pixsim7.backend.main.domain.prompt import (
     PromptVariantFeedback,
 )
 from pixsim7.backend.main.domain.generation.models import Generation
-from .utils.diff_utils import generate_inline_diff, get_change_summary
+from .utils.diff import generate_inline_diff, get_change_summary
 
 
 class PromptAnalyticsService:
@@ -49,7 +49,7 @@ class PromptAnalyticsService:
         if not parent:
             return None
 
-        from .utils.diff_utils import generate_unified_diff, generate_inline_diff, get_change_summary
+        from .utils.diff import generate_unified_diff, generate_inline_diff, get_change_summary
 
         result = {
             "version_id": str(version_id),
@@ -97,7 +97,7 @@ class PromptAnalyticsService:
         if not from_version or not to_version:
             raise ValueError("One or both versions not found")
 
-        from .utils.diff_utils import generate_unified_diff, generate_inline_diff, get_change_summary
+        from .utils.diff import generate_unified_diff, generate_inline_diff, get_change_summary
 
         result = {
             "from_version_id": str(from_version_id),

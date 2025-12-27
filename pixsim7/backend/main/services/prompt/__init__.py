@@ -19,20 +19,20 @@ Usage:
 """
 
 # Core services
-from .analysis_service import PromptAnalysisService
-from .version_service import PromptVersionService
-from .family_service import PromptFamilyService
-from .variant_service import PromptVariantService
-from .analytics_service import PromptAnalyticsService
-from .operations_service import PromptOperationsService
-from .intent_service import PromptIntentService
+from .analysis import PromptAnalysisService
+from .version import PromptVersionService
+from .family import PromptFamilyService
+from .variant import PromptVariantService
+from .analytics import PromptAnalyticsService
+from .operations import PromptOperationsService
+from .intent import PromptIntentService
 from .role_registry import PromptRoleRegistry, PromptRoleDefinition
 from .semantic_context import (
     PromptSemanticContext,
     build_prompt_semantic_context,
     build_prompt_semantic_context_from_packs,
 )
-from .import_service import (
+from .import_ import (
     PromptSource,
     PromptImportSpec,
     prepare_import_payloads,

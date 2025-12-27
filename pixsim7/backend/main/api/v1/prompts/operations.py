@@ -451,7 +451,7 @@ async def analyze_prompt(
     - tags: Derived tags (has:character, tone:soft, etc.)
     - ontology_ids: Matched ontology keywords
     """
-    from pixsim7.backend.main.services.prompt.analysis_service import PromptAnalysisService
+    from pixsim7.backend.main.services.prompt.analysis import PromptAnalysisService
 
     service = PromptAnalysisService(db)
 

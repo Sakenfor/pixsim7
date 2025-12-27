@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompt import PromptVersionService
-from pixsim7.backend.main.services.prompt.import_service import (
+from pixsim7.backend.main.services.prompt.import_ import (
     PromptSource,
     PromptImportSpec,
     prepare_import_payloads,
