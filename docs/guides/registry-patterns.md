@@ -719,12 +719,14 @@ If your use case requires deviation:
 | PanelRegistry | Yes | Complete |
 | SettingsRegistry | Yes | Complete |
 | GatingRegistry | Yes | Complete |
+| GalleryToolRegistry | Yes | Complete |
+| BrainToolRegistry | Yes | Complete |
+| WorldToolRegistry | Yes | Complete |
 | NodeTypeRegistry | No | Justified exception |
-| GalleryToolRegistry | No | TODO |
-| BrainToolRegistry | No | TODO |
-| WorldToolRegistry | No | TODO |
 | CapabilityRegistry | No | Justified exception |
 
-### Migration Priority
+### Migration Complete
 
-1. **Gallery/Brain/WorldToolRegistry** — Near-identical implementations, migrate together
+All registries that should extend BaseRegistry have been migrated. The remaining two
+(NodeTypeRegistry and CapabilityRegistry) have documented justifications for their
+custom implementations.

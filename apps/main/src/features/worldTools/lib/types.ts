@@ -9,9 +9,13 @@
  * - Inventory management
  * - Custom world state analyzers
  * - Character sheets and stats
+ *
+ * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 
 import type { ReactNode } from 'react';
+
+import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
 import { debugFlags } from '@lib/utils/debugFlags';
 import type {
   GameSessionDTO,
@@ -25,12 +29,14 @@ import type { NpcSlotAssignment } from '@pixsim7/game.engine';
  * Re-export context types from separate file to avoid circular dependencies
  */
 
+import type { WorldToolContext } from './context';
+
 export type { WorldTime, WorldToolContext } from './context';
 
 /**
  * World tool plugin definition
  */
-export interface WorldToolPlugin {
+export interface WorldToolPlugin extends Identifiable {
   /** Unique identifier */
   id: string;
 
@@ -67,46 +73,29 @@ export interface WorldToolPlugin {
 
 /**
  * World tool registry
+ *
+ * Extends BaseRegistry with world-specific functionality:
+ * - Tool validation on register
+ * - Category filtering
+ * - Visibility predicates with error isolation
  */
-export class WorldToolRegistry {
-  private tools = new Map<string, WorldToolPlugin>();
-
+export class WorldToolRegistry extends BaseRegistry<WorldToolPlugin> {
   /**
    * Register a world tool plugin
    */
-  register(tool: WorldToolPlugin): void {
-    if (this.tools.has(tool.id)) {
-      console.warn(`World tool "${tool.id}" is already registered. Overwriting.`);
-    }
-
-    // Validate
+  register(tool: WorldToolPlugin): boolean {
+    // Validate required fields
     if (!tool.id || !tool.name || !tool.render) {
       throw new Error('World tool must have id, name, and render properties');
     }
 
-    this.tools.set(tool.id, tool);
+    if (this.has(tool.id)) {
+      console.warn(`World tool "${tool.id}" is already registered. Overwriting.`);
+    }
+
+    this.forceRegister(tool);
     debugFlags.log('registry', `✓ Registered world tool: ${tool.id}`);
-  }
-
-  /**
-   * Unregister a tool
-   */
-  unregister(id: string): boolean {
-    return this.tools.delete(id);
-  }
-
-  /**
-   * Get a specific tool by ID
-   */
-  get(id: string): WorldToolPlugin | undefined {
-    return this.tools.get(id);
-  }
-
-  /**
-   * Get all registered tools
-   */
-  getAll(): WorldToolPlugin[] {
-    return Array.from(this.tools.values());
+    return true;
   }
 
   /**
@@ -129,13 +118,6 @@ export class WorldToolRegistry {
         return false;
       }
     });
-  }
-
-  /**
-   * Clear all tools (useful for testing)
-   */
-  clear(): void {
-    this.tools.clear();
   }
 }
 

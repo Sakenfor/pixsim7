@@ -7,9 +7,13 @@
  * - Bulk operations (tagging, moving, deleting)
  * - AI tagging assistants
  * - Custom filters and views
+ *
+ * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 
 import type { ReactNode } from 'react';
+
+import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
 import type { AssetModel } from '@features/assets';
 
 /**
@@ -49,7 +53,7 @@ export interface GalleryToolContext {
 /**
  * Gallery tool plugin definition
  */
-export interface GalleryToolPlugin {
+export interface GalleryToolPlugin extends Identifiable {
   /** Unique identifier */
   id: string;
 
@@ -92,46 +96,29 @@ export interface GalleryToolPlugin {
 
 /**
  * Gallery tool registry
+ *
+ * Extends BaseRegistry with gallery-specific functionality:
+ * - Tool validation on register
+ * - Category and surface filtering
+ * - Visibility predicates with error isolation
  */
-export class GalleryToolRegistry {
-  private tools = new Map<string, GalleryToolPlugin>();
-
+export class GalleryToolRegistry extends BaseRegistry<GalleryToolPlugin> {
   /**
    * Register a gallery tool plugin
    */
-  register(tool: GalleryToolPlugin): void {
-    if (this.tools.has(tool.id)) {
-      console.warn(`Gallery tool "${tool.id}" is already registered. Overwriting.`);
-    }
-
-    // Validate
+  register(tool: GalleryToolPlugin): boolean {
+    // Validate required fields
     if (!tool.id || !tool.name || !tool.render) {
       throw new Error('Gallery tool must have id, name, and render properties');
     }
 
-    this.tools.set(tool.id, tool);
+    if (this.has(tool.id)) {
+      console.warn(`Gallery tool "${tool.id}" is already registered. Overwriting.`);
+    }
+
+    this.forceRegister(tool);
     console.log(`✓ Registered gallery tool: ${tool.id}`);
-  }
-
-  /**
-   * Unregister a tool
-   */
-  unregister(id: string): boolean {
-    return this.tools.delete(id);
-  }
-
-  /**
-   * Get a specific tool by ID
-   */
-  get(id: string): GalleryToolPlugin | undefined {
-    return this.tools.get(id);
-  }
-
-  /**
-   * Get all registered tools
-   */
-  getAll(): GalleryToolPlugin[] {
-    return Array.from(this.tools.values());
+    return true;
   }
 
   /**
@@ -180,13 +167,6 @@ export class GalleryToolRegistry {
         return false;
       }
     });
-  }
-
-  /**
-   * Clear all tools (useful for testing)
-   */
-  clear(): void {
-    this.tools.clear();
   }
 }
 

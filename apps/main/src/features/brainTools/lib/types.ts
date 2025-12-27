@@ -10,9 +10,13 @@
  * - Custom brain state analyzers
  *
  * Uses data-driven BrainState that adapts to whatever stat packages a world uses.
+ *
+ * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 
 import type { ReactNode } from 'react';
+
+import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
 import type { BrainState } from '@lib/core/types';
 import type { GameSessionDTO } from '../api/game';
 
@@ -47,7 +51,7 @@ export type BrainToolCategory =
 /**
  * Brain tool plugin definition
  */
-export interface BrainToolPlugin {
+export interface BrainToolPlugin extends Identifiable {
   /** Unique identifier */
   id: string;
 
@@ -84,46 +88,29 @@ export interface BrainToolPlugin {
 
 /**
  * Brain tool registry
+ *
+ * Extends BaseRegistry with brain-specific functionality:
+ * - Tool validation on register
+ * - Category filtering
+ * - Visibility predicates with error isolation
  */
-export class BrainToolRegistry {
-  private tools = new Map<string, BrainToolPlugin>();
-
+export class BrainToolRegistry extends BaseRegistry<BrainToolPlugin> {
   /**
    * Register a brain tool plugin
    */
-  register(tool: BrainToolPlugin): void {
-    if (this.tools.has(tool.id)) {
-      console.warn(`Brain tool "${tool.id}" is already registered. Overwriting.`);
-    }
-
-    // Validate
+  register(tool: BrainToolPlugin): boolean {
+    // Validate required fields
     if (!tool.id || !tool.name || !tool.render) {
       throw new Error('Brain tool must have id, name, and render properties');
     }
 
-    this.tools.set(tool.id, tool);
+    if (this.has(tool.id)) {
+      console.warn(`Brain tool "${tool.id}" is already registered. Overwriting.`);
+    }
+
+    this.forceRegister(tool);
     console.log(`✓ Registered brain tool: ${tool.id}`);
-  }
-
-  /**
-   * Unregister a tool
-   */
-  unregister(id: string): boolean {
-    return this.tools.delete(id);
-  }
-
-  /**
-   * Get a specific tool by ID
-   */
-  get(id: string): BrainToolPlugin | undefined {
-    return this.tools.get(id);
-  }
-
-  /**
-   * Get all registered tools
-   */
-  getAll(): BrainToolPlugin[] {
-    return Array.from(this.tools.values());
+    return true;
   }
 
   /**
@@ -146,13 +133,6 @@ export class BrainToolRegistry {
         return false;
       }
     });
-  }
-
-  /**
-   * Clear all tools (useful for testing)
-   */
-  clear(): void {
-    this.tools.clear();
   }
 }
 

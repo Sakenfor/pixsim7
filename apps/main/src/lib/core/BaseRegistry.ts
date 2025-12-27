@@ -18,10 +18,10 @@
  * |----------|--------|---------------|
  * | SettingsRegistry | Migrated | Extends BaseRegistry |
  * | GatingRegistry | Migrated | Extends BaseRegistry |
+ * | GalleryToolRegistry | Migrated | Extends BaseRegistry |
+ * | BrainToolRegistry | Migrated | Extends BaseRegistry |
+ * | WorldToolRegistry | Migrated | Extends BaseRegistry |
  * | NodeTypeRegistry | Justified | Needs LRU cache + lazy loading |
- * | GalleryToolRegistry | TODO: migrate | No blocking reason |
- * | BrainToolRegistry | TODO: migrate | No blocking reason |
- * | WorldToolRegistry | TODO: migrate | No blocking reason |
  * | CapabilityRegistry | Justified | Factory pattern for multi-provider |
  *
  * @see docs/guides/registry-patterns.md - Frontend registry checklist
