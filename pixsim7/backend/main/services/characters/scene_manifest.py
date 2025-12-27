@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.game.entities import SceneCharacterManifest
-from pixsim7.backend.main.services.characters.character_service import CharacterService
-from pixsim7.backend.main.services.characters.capability_service import CharacterCapabilityService
+from pixsim7.backend.main.services.characters.character import CharacterService
+from pixsim7.backend.main.services.characters.capability import CharacterCapabilityService
 
 
 class SceneCharacterManifestService:
@@ -148,7 +148,7 @@ class SceneCharacterManifestService:
 
         # Check instance requirements (if world specified)
         if world_id and manifest.instance_requirements:
-            from pixsim7.backend.main.services.characters.instance_service import CharacterInstanceService
+            from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
             instance_service = CharacterInstanceService(self.db)
 
             for char_id, requirements in manifest.instance_requirements.items():

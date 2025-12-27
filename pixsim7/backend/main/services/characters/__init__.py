@@ -11,13 +11,13 @@ Services for managing the character registry including:
 - Usage tracking
 - Game NPC integration
 """
-from pixsim7.backend.main.services.characters.character_service import CharacterService
+from pixsim7.backend.main.services.characters.character import CharacterService
 from pixsim7.backend.main.services.characters.template_engine import CharacterTemplateEngine
-from pixsim7.backend.main.services.characters.instance_service import CharacterInstanceService
-from pixsim7.backend.main.services.characters.npc_sync_service import CharacterNPCSyncService
-from pixsim7.backend.main.services.characters.capability_service import CharacterCapabilityService
-from pixsim7.backend.main.services.characters.scene_manifest_service import SceneCharacterManifestService
-from pixsim7.backend.main.services.characters.prompt_context_service import (
+from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
+from pixsim7.backend.main.services.characters.npc_sync import CharacterNPCSyncService
+from pixsim7.backend.main.services.characters.capability import CharacterCapabilityService
+from pixsim7.backend.main.services.characters.scene_manifest import SceneCharacterManifestService
+from pixsim7.backend.main.services.characters.prompt_context import (
     EnricherFn,
     PromptContextRequest,
     PromptContextService,

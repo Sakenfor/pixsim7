@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.links import ObjectLink
 from pixsim7.backend.main.domain.game import GameNPC, NPCState
-from pixsim7.backend.main.services.characters.instance_service import CharacterInstanceService
+from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
 from pixsim7.backend.main.services.links.link_service import LinkService
 from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver
 from pixsim7.backend.main.services.prompt.context.mapping import get_nested_value, set_nested_value

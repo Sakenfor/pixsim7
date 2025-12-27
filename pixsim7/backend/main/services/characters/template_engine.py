@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game.entities import Character
-from pixsim7.backend.main.services.characters.character_service import CharacterService
+from pixsim7.backend.main.services.characters.character import CharacterService
 
 
 class CharacterTemplateEngine:

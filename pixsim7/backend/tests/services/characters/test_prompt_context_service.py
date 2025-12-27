@@ -4,7 +4,7 @@ import pytest
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, Mock
 
-from pixsim7.backend.main.services.characters.prompt_context_service import (
+from pixsim7.backend.main.services.characters.prompt_context import (
     _NpcContextResolver,
     EnricherFn,
     PromptContextRequest,

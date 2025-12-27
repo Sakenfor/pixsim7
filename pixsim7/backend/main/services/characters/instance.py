@@ -15,7 +15,7 @@ from sqlalchemy import select, and_, or_
 
 from pixsim7.backend.main.domain.game.entities import Character
 from pixsim7.backend.main.domain.game.entities import CharacterInstance
-from pixsim7.backend.main.services.characters.character_service import CharacterService
+from pixsim7.backend.main.services.characters.character import CharacterService
 
 
 class CharacterInstanceService:

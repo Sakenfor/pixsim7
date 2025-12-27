@@ -25,10 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game import GameNPC, NPCState
 from pixsim7.backend.main.domain.game.stats import StatEngine, create_stat_engine
-from pixsim7.backend.main.services.characters.instance_service import (
+from pixsim7.backend.main.services.characters.instance import (
     CharacterInstanceService,
 )
-from pixsim7.backend.main.services.characters.npc_sync_service import (
+from pixsim7.backend.main.services.characters.npc_sync import (
     CharacterNPCSyncService,
 )
 from pixsim7.backend.main.services.prompt.context.mapping import (
