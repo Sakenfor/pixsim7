@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.prompt import PromptBlock
-from pixsim7.backend.main.services.action_blocks.action_block_service import ActionBlockService
+from pixsim7.backend.main.services.prompt.block.action_block_service import ActionBlockService
 
 
 class BlockCompositionEngine:

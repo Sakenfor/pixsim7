@@ -5,7 +5,7 @@ based on ontology-aligned tags.
 """
 from typing import Dict, Any, Tuple, List, Set
 from pixsim7.backend.main.domain.prompt import PromptBlock
-from pixsim7.backend.main.services.action_blocks.tagging import extract_ontology_ids_from_tags
+from pixsim7.backend.main.services.prompt.block.tagging import extract_ontology_ids_from_tags
 
 
 def compute_block_asset_fit(
