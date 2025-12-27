@@ -10,7 +10,7 @@ Domain-specific mappings can be added in their respective modules.
 """
 from typing import Dict
 from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
-from pixsim7.backend.main.services.characters.npc_prompt_mapping import NPC_FIELD_MAPPING
+from pixsim7.backend.main.services.prompt.context.mappings.npc import NPC_FIELD_MAPPING
 from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
 
 

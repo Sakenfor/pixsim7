@@ -14,6 +14,7 @@ from .dialogue_analytics import DialogueAnalyticsService
 from .stat import NPCStatService as NpcStatService
 from .spatial import NpcSpatialService
 from .expression import NpcExpressionService
+from .character_sync import CharacterNPCSyncService
 
 __all__ = [
     "MemoryService",
@@ -25,4 +26,5 @@ __all__ = [
     "NpcStatService",
     "NpcSpatialService",
     "NpcExpressionService",
+    "CharacterNPCSyncService",
 ]

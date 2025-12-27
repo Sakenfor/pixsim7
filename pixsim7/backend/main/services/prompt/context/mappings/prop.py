@@ -6,7 +6,7 @@ Shows how props would integrate with the generic mapping infrastructure.
 """
 
 from typing import Dict
-from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
+from ..mapping import FieldMapping
 
 
 # Prop Prompt Context Mapping Configuration (Placeholder)

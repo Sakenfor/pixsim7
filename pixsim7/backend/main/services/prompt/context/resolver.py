@@ -18,28 +18,24 @@ Example: Register an enricher to add relationship data
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Protocol
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Protocol, TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game import GameNPC, NPCState
 from pixsim7.backend.main.domain.game.stats import StatEngine, create_stat_engine
-from pixsim7.backend.main.services.characters.instance import (
-    CharacterInstanceService,
-)
-from pixsim7.backend.main.services.characters.npc_sync import (
-    CharacterNPCSyncService,
-)
-from pixsim7.backend.main.services.prompt.context.mapping import (
+from .mapping import (
     FieldMapping,
     merge_field_mappings,
     set_nested_value,
     get_nested_value,
 )
-from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
-    get_npc_field_mapping,
-)
+from .mappings.npc import get_npc_field_mapping
+
+if TYPE_CHECKING:
+    from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
+    from pixsim7.backend.main.services.npc.character_sync import CharacterNPCSyncService
 
 # -------------------------------------------------------------------------------------------------
 # Generic context types
@@ -376,9 +372,15 @@ class PromptContextService:
         self._resolvers: Dict[str, EntityContextResolver] = {}
         self._enrichers: Dict[str, List[EnricherFn]] = {}
 
-        # Store injected or default dependencies
-        self._instance_service = instance_service or CharacterInstanceService(db)
-        self._sync_service = sync_service or CharacterNPCSyncService(db)
+        # Store injected or default dependencies (local imports to avoid circular dependency)
+        if instance_service is None:
+            from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
+            instance_service = CharacterInstanceService(db)
+        if sync_service is None:
+            from pixsim7.backend.main.services.npc.character_sync import CharacterNPCSyncService
+            sync_service = CharacterNPCSyncService(db)
+        self._instance_service = instance_service
+        self._sync_service = sync_service
         self._stat_engine = stat_engine or create_stat_engine()
 
         # Link resolver for generic link resolution

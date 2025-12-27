@@ -4,14 +4,14 @@ import pytest
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, Mock
 
-from pixsim7.backend.main.services.characters.prompt_context import (
+from pixsim7.backend.main.services.prompt.context.resolver import (
     _NpcContextResolver,
     EnricherFn,
     PromptContextRequest,
     PromptContextService,
     PromptContextSnapshot,
 )
-from pixsim7.backend.main.services.characters.npc_prompt_mapping import (
+from pixsim7.backend.main.services.prompt.context.mappings.npc import (
     get_npc_field_mapping,
 )
 

@@ -10,7 +10,7 @@ services.prompt.context.mapping and can be reused for other entity types
 """
 
 from typing import Dict
-from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
+from ..mapping import FieldMapping
 
 
 # NPC Prompt Context Mapping Configuration
