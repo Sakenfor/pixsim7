@@ -742,6 +742,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Proxy image fetch for HTTP URLs (avoids mixed content issues on HTTPS pages)
+  // Once backend has HTTPS, this proxy is bypassed automatically
+  if (message.action === 'proxyImage') {
+    (async () => {
+      try {
+        const { url } = message;
+        if (!url) throw new Error('url is required');
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const blob = await response.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to read blob'));
+          reader.readAsDataURL(blob);
+        });
+
+        sendResponse({ success: true, dataUrl });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Sync credits for an account (best-effort, respects TTL unless force=true)
   if (message.action === 'syncAccountCredits') {
     (async () => {

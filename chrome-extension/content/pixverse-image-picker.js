@@ -335,7 +335,23 @@ window.PXS7 = window.PXS7 || {};
             bgHasContent = style.includes('url(') && !style.includes('data:image/gif');
           }
 
-          hasImage = imgHasContent || bgHasContent || !!uploadListItem || !!previewEl;
+          // Validate preview element actually contains an image
+          let previewHasContent = false;
+          if (previewEl) {
+            // Check if preview element itself or its children have actual image content
+            const previewImg = previewEl.querySelector('img[src]');
+            const previewBg = previewEl.querySelector('[style*="background-image"]') ||
+                              (previewEl.style?.backgroundImage && previewEl.style.backgroundImage !== 'none');
+            if (previewImg) {
+              const src = previewImg.src || '';
+              previewHasContent = src.length > 100 || src.includes('media.pixverse') || src.includes('blob:') || src.includes('aliyun');
+            } else if (previewBg) {
+              const style = typeof previewBg === 'object' ? (previewBg.getAttribute?.('style') || '') : '';
+              previewHasContent = style.includes('url(') && !style.includes('data:image/gif');
+            }
+          }
+
+          hasImage = imgHasContent || bgHasContent || !!uploadListItem || previewHasContent;
         }
       }
 
@@ -935,6 +951,31 @@ window.PXS7 = window.PXS7 || {};
     document.head.appendChild(style);
   }
 
+  // Load image src, proxying HTTP URLs through background script to avoid mixed content issues
+  // HTTPS URLs are loaded directly (no proxy needed)
+  async function loadImageSrc(img, url) {
+    if (!url) return;
+    // HTTPS URLs can be loaded directly
+    if (url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+      img.src = url;
+      return;
+    }
+    // HTTP URLs need to be proxied through background script
+    if (url.startsWith('http://')) {
+      try {
+        const response = await chrome.runtime.sendMessage({ action: 'proxyImage', url });
+        if (response && response.success && response.dataUrl) {
+          img.src = response.dataUrl;
+          return;
+        }
+      } catch (e) {
+        // Proxy failed, fall through to direct load (might fail due to mixed content)
+      }
+    }
+    // Fallback: try direct load
+    img.src = url;
+  }
+
   function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null) {
     injectGridStyles();
 
@@ -955,9 +996,9 @@ window.PXS7 = window.PXS7 || {};
       if (name) thumb.title = name;
 
       const img = document.createElement('img');
-      img.src = thumbUrl;
       img.loading = 'lazy';
       img.decoding = 'async';
+      loadImageSrc(img, thumbUrl); // Proxies HTTP URLs through background script
       thumb.appendChild(img);
 
       itemDataMap.set(index, { thumbUrl, fullUrl, name, element: thumb });
@@ -1079,14 +1120,14 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function renderAssetsTab(container, panel, loadAssets) {
-    // For thumbnails: prefer remote_url (CDN, no CORS issues) over local backend URLs
-    // Local backend URLs (thumbnail_url, file_url) are blocked by CORS when loaded from HTTPS pages
+    // For thumbnails: prefer backend thumbnail_url (local control, consistent sizing)
+    // HTTP URLs are automatically proxied through background script to avoid mixed content issues
+    // Once backend has HTTPS, proxy is bypassed automatically
     const getThumbUrl = (a) => {
-      // Prefer remote URLs (HTTPS CDN) to avoid CORS issues
-      const remoteUrl = a.remote_url || a.external_url;
-      if (remoteUrl && remoteUrl.startsWith('https://')) return remoteUrl;
-      // Fall back to any available URL
-      return a.thumbnail_url || a.remote_url || a.file_url || a.external_url || a.url || a.src;
+      // Prefer backend thumbnail (local control over quality/size)
+      if (a.thumbnail_url) return a.thumbnail_url;
+      // Fall back to CDN/remote URLs
+      return a.remote_url || a.file_url || a.external_url || a.url || a.src;
     };
 
     let urls = assetsCache.map(a => ({
