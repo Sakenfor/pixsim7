@@ -33,7 +33,7 @@ Example:
 """
 
 from typing import Dict, Any, Optional
-from pixsim7.backend.main.services.prompt_context.mapping import (
+from pixsim7.backend.main.services.prompt.context.mapping import (
     FieldMapping,
     set_nested_value,
     get_nested_value,
