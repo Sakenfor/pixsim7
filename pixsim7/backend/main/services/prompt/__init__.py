@@ -25,6 +25,18 @@ from .family_service import PromptFamilyService
 from .variant_service import PromptVariantService
 from .analytics_service import PromptAnalyticsService
 from .operations_service import PromptOperationsService
+from .intent_service import PromptIntentService
+from .role_registry import PromptRoleRegistry, PromptRoleDefinition
+from .semantic_context import (
+    PromptSemanticContext,
+    build_prompt_semantic_context,
+    build_prompt_semantic_context_from_packs,
+)
+from .import_service import (
+    PromptSource,
+    PromptImportSpec,
+    prepare_import_payloads,
+)
 
 # Block services
 from .block import (
@@ -69,6 +81,15 @@ __all__ = [
     "PromptVariantService",
     "PromptAnalyticsService",
     "PromptOperationsService",
+    "PromptIntentService",
+    "PromptRoleRegistry",
+    "PromptRoleDefinition",
+    "PromptSemanticContext",
+    "build_prompt_semantic_context",
+    "build_prompt_semantic_context_from_packs",
+    "PromptSource",
+    "PromptImportSpec",
+    "prepare_import_payloads",
     # Block services
     "PromptBlockService",
     "BlockCompositionEngine",

@@ -8,7 +8,7 @@ file imports, external systems, etc.) without tying to any specific source.
 Purpose:
 - Provide a generic import specification (PromptImportSpec)
 - Convert import specs into standard API request models
-- Use prompt_dsl_adapter for analysis while keeping it isolated
+- Use prompt parser analysis while keeping it isolated
 - Work with existing PromptFamily/PromptVersion models
 
 Design:
@@ -19,11 +19,11 @@ Design:
 from enum import Enum
 from typing import Dict, Any, List, Optional, Tuple
 
-from ..api.v1.prompts.schemas import (
+from pixsim7.backend.main.api.v1.prompts.schemas import (
     CreatePromptFamilyRequest,
     CreatePromptVersionRequest,
 )
-from .prompt_dsl_adapter import analyze_prompt
+from .parser import analyze_prompt
 
 
 class PromptSource(str, Enum):

@@ -245,6 +245,28 @@ def generate_template_examples(
     return examples[:num_examples]
 
 
+def extract_template_variables(template: str) -> List[str]:
+    """Return template variable names as a sorted list."""
+    return sorted(extract_variables(template))
+
+
+def render_template(
+    template: str,
+    variables: Dict[str, Any],
+    variable_defs: Optional[Dict[str, Any]] = None,
+    strict: bool = True,
+) -> str:
+    """Backward-compatible wrapper for template substitution."""
+    parsed_defs: Optional[Dict[str, VariableDefinition]] = None
+    if variable_defs:
+        first_value = next(iter(variable_defs.values()), None)
+        if isinstance(first_value, VariableDefinition):
+            parsed_defs = variable_defs  # type: ignore[assignment]
+        else:
+            parsed_defs = parse_variable_definitions(variable_defs)
+    return substitute_variables(template, variables, parsed_defs, strict)
+
+
 def validate_prompt_text(
     prompt_text: str,
     variable_defs: Optional[Dict[str, VariableDefinition]] = None
