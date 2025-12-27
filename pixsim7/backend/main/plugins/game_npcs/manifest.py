@@ -21,14 +21,14 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 # ===== PLUGIN MANIFEST =====
 
 manifest = PluginManifest(
-    id="game-npcs",
+    id="game_npcs",
     name="Game NPCs & Schedules",
     version="1.0.0",
     description="Provides NPC management, expressions, schedules, and presence tracking",
     author="PixSim Team",
     kind="feature",
     prefix="/api/v1",
-    tags=["game-npcs"],
+    tags=["game_npcs"],
     dependencies=[],  # Independent - no dependencies
     requires_db=True,
     requires_redis=False,

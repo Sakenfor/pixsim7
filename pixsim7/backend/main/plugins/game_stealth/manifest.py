@@ -16,14 +16,14 @@ from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
 # ===== PLUGIN MANIFEST =====
 
 manifest = PluginManifest(
-    id="game-stealth",
+    id="game_stealth",
     name="Game Stealth & Pickpocket",
     version="3.0.0",  # Updated to use ECS components and metric registry
     description="Provides stealth mechanics including pickpocket interactions",
     author="PixSim Team",
     kind="feature",
     prefix="/api/v1",
-    tags=["game-stealth"],
+    tags=["game_stealth"],
     dependencies=[],
     requires_db=True,  # PluginContext will provide DB access via capabilities
     requires_redis=False,
@@ -64,7 +64,7 @@ class PickpocketResponse(BaseModel):
 @router.post("/pickpocket", response_model=PickpocketResponse)
 async def attempt_pickpocket(
     req: PickpocketRequest,
-    ctx: PluginContext = Depends(get_plugin_context("game-stealth")),  # NEW: Use PluginContext
+    ctx: PluginContext = Depends(get_plugin_context("game_stealth")),  # NEW: Use PluginContext
 ) -> PickpocketResponse:
     """
     Attempt to pickpocket an NPC at a specific slot.
@@ -209,7 +209,7 @@ def on_load(app):
     try:
         success = behavior_registry.register_component_schema(
             component_name="plugin:game-stealth:stealth",  # Fully qualified name
-            plugin_id="game-stealth",
+            plugin_id="game_stealth",
             schema={
                 "suspicion": {"type": "float", "min": 0, "max": 1},
                 "lastCaughtAt": {"type": "integer"},

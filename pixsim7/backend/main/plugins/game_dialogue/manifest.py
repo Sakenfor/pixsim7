@@ -44,14 +44,14 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 # ===== PLUGIN MANIFEST =====
 
 manifest = PluginManifest(
-    id="game-dialogue",
+    id="game_dialogue",
     name="Game Dialogue & Narrative",
     version="1.0.0",
     description="Provides narrative engine and action block generation for NPC dialogues and interactions",
     author="PixSim Team",
     kind="feature",
     prefix="/api/v1",
-    tags=["game-dialogue"],
+    tags=["game_dialogue"],
     dependencies=[],  # Could depend on game-sessions, game-npcs, but they're optional
     requires_db=True,
     requires_redis=False,
@@ -1126,10 +1126,10 @@ def on_load(app):
 
     # Register semantic aliases used by dialogue/narrative systems.
     # These map high-level concepts onto canonical OperationType values.
-    register_generation_alias("npc_response", OperationType.IMAGE_TO_VIDEO, owner="game-dialogue")
-    register_generation_alias("dialogue", OperationType.TEXT_TO_VIDEO, owner="game-dialogue")
-    register_generation_alias("environment", OperationType.TEXT_TO_VIDEO, owner="game-dialogue")
-    register_generation_alias("variation", OperationType.TEXT_TO_VIDEO, owner="game-dialogue")
+    register_generation_alias("npc_response", OperationType.IMAGE_TO_VIDEO, owner="game_dialogue")
+    register_generation_alias("dialogue", OperationType.TEXT_TO_VIDEO, owner="game_dialogue")
+    register_generation_alias("environment", OperationType.TEXT_TO_VIDEO, owner="game_dialogue")
+    register_generation_alias("variation", OperationType.TEXT_TO_VIDEO, owner="game_dialogue")
 
     logger = configure_logging("plugin.game-dialogue")
     logger.info("Game Dialogue plugin loaded")

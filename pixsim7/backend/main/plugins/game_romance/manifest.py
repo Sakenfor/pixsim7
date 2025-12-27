@@ -17,14 +17,14 @@ from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
 # ===== PLUGIN MANIFEST =====
 
 manifest = PluginManifest(
-    id="game-romance",
+    id="game_romance",
     name="Game Romance & Sensual Touch",
     version="3.0.0",  # Updated to use ECS components and metric registry
     description="Provides romance mechanics including sensual touch interactions with gizmo integration",
     author="PixSim Team",
     kind="feature",
     prefix="/api/v1",
-    tags=["game-romance"],
+    tags=["game_romance"],
     dependencies=[],  # Could depend on "game-sessions" plugin
     requires_db=True,  # PluginContext will provide DB access via capabilities
     requires_redis=False,
@@ -203,7 +203,7 @@ def determine_tool_unlock(
 @router.post("/sensual-touch", response_model=SensualTouchResponse)
 async def attempt_sensual_touch(
     req: SensualTouchRequest,
-    ctx: PluginContext = Depends(get_plugin_context("game-romance")),  # NEW: Use PluginContext
+    ctx: PluginContext = Depends(get_plugin_context("game_romance")),  # NEW: Use PluginContext
 ) -> SensualTouchResponse:
     """
     Attempt a sensual touch interaction with an NPC.
@@ -413,7 +413,7 @@ async def attempt_sensual_touch(
 @router.get("/npc-preferences/{npc_id}")
 async def get_npc_romance_preferences(
     npc_id: int,
-    ctx: PluginContext = Depends(get_plugin_context("game-romance")),  # NEW: Use PluginContext
+    ctx: PluginContext = Depends(get_plugin_context("game_romance")),  # NEW: Use PluginContext
 ) -> dict[str, Any]:
     """
     Get NPC's romance preferences for debugging/UI hints.
@@ -441,7 +441,7 @@ def on_load(app):
     try:
         success = behavior_registry.register_component_schema(
             component_name="plugin:game-romance:romance",  # Fully qualified name
-            plugin_id="game-romance",
+            plugin_id="game_romance",
             schema={
                 "arousal": {"type": "float", "min": 0, "max": 1},
                 "consentLevel": {"type": "float", "min": 0, "max": 1},
