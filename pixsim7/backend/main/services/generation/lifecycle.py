@@ -27,7 +27,7 @@ from pixsim7.backend.main.infrastructure.events.bus import (
     JOB_FAILED,
     JOB_CANCELLED
 )
-from pixsim7.backend.main.services.generation.telemetry_service import GenerationTelemetryService
+from pixsim7.backend.main.services.generation.telemetry import GenerationTelemetryService
 
 logger = logging.getLogger(__name__)
 

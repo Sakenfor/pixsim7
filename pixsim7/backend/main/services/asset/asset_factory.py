@@ -302,7 +302,7 @@ async def create_lineage_links_with_metadata(
         Number of lineage edges created
     """
     from pixsim7.backend.main.domain.assets.lineage import AssetLineage
-    from pixsim7.backend.main.services.generation.creation_service import get_relation_type_for_role
+    from pixsim7.backend.main.services.generation.creation import get_relation_type_for_role
 
     created_count = 0
 

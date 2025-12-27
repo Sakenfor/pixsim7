@@ -25,10 +25,10 @@ from pixsim7.backend.main.domain import (
 from pixsim7.backend.main.services.user.user_service import UserService
 
 # Import focused services
-from .creation_service import GenerationCreationService
-from .lifecycle_service import GenerationLifecycleService
-from .query_service import GenerationQueryService
-from .retry_service import GenerationRetryService
+from .creation import GenerationCreationService
+from .lifecycle import GenerationLifecycleService
+from .query import GenerationQueryService
+from .retry import GenerationRetryService
 
 logger = logging.getLogger(__name__)
 

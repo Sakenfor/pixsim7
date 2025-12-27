@@ -20,7 +20,7 @@ from pixsim7.backend.main.shared.errors import (
 )
 
 if TYPE_CHECKING:
-    from .creation_service import GenerationCreationService
+    from .creation import GenerationCreationService
 
 logger = get_logger()
 
