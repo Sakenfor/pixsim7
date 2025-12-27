@@ -11,8 +11,8 @@
  */
 
 import React from 'react';
-import type { Campaign, CampaignProgression } from '@/modules/campaign';
-import { validateCampaign } from '@/modules/campaign';
+import type { Campaign, CampaignProgression } from '@domain/campaign';
+import { validateCampaign } from '@domain/campaign';
 
 interface CampaignMapViewProps {
   /** Campaign to visualize */

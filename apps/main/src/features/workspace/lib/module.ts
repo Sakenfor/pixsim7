@@ -1,4 +1,4 @@
-import type { Module } from "@/modules/types";
+import type { Module } from "@app/modules/types";
 import { registerWorkspaceFeature } from "./capabilities";
 import { initializePanels } from "@features/panels";
 import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";

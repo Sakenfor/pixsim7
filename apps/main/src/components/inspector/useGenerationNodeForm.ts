@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { DraftSceneNode } from '@/modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 import type {
   GenerationNodeConfig,
   GenerationStrategy,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { moduleRegistry, PAGE_CATEGORIES, type PageCategory } from '../modules';
+import { moduleRegistry, PAGE_CATEGORIES, type PageCategory } from '@app/modules';
 import { Button, Panel, ThemeToggle } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { usePageTracking } from '../hooks/usePageTracking';

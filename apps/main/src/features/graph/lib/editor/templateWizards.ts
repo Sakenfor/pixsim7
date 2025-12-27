@@ -1,5 +1,5 @@
 import type { GraphTemplate } from './graphTemplates';
-import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 
 /**
  * Phase 7: Template Wizard System

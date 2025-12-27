@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 export interface NodeRendererProps {
   node: DraftSceneNode;

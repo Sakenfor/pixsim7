@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useGraphStore, type GraphState } from "@features/graph";
-import type { DraftEdge } from "@/modules/scene-builder";
+import type { DraftEdge } from "@domain/sceneBuilder";
 import { Button, useToast } from "@pixsim7/shared.ui";
 import {
   type EdgeEffect,

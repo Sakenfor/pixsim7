@@ -1,6 +1,6 @@
 import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@lib/registries';
-import type { QuestNodeData } from '@/modules/arc-graph';
+import type { QuestNodeData } from '@features/graph/domain/arcGraph';
 
 /**
  * Quest node renderer - shows quest objective information

@@ -1,4 +1,4 @@
-import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 
 /**
  * Clipboard data structure for graph nodes and edges

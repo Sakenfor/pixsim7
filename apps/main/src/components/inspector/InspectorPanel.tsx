@@ -1,6 +1,6 @@
 import { useState, useEffect, Suspense } from 'react';
 import type { ComponentType } from 'react';
-import { type DraftSceneNode } from '@/modules/scene-builder';
+import { type DraftSceneNode } from '@domain/sceneBuilder';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useToast } from '@pixsim7/shared.ui';

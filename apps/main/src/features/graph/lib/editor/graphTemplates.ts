@@ -1,4 +1,4 @@
-import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 import { nodeTypeRegistry } from '@lib/registries';
 
 /**
@@ -379,7 +379,7 @@ export function validateTemplate(template: GraphTemplate): {
  */
 export function validatePreconditions(
   template: GraphTemplate,
-  scene: import('../../modules/scene-builder').DraftScene
+  scene: import('@domain/sceneBuilder').DraftScene
 ): {
   compatible: boolean;
   errors: string[];

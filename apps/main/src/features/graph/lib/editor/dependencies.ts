@@ -15,10 +15,10 @@
  * enabling dependency-aware delete operations and usage indicators.
  */
 
-import type { ArcGraph } from '../../modules/arc-graph';
-import type { SceneCollection } from '../../modules/scene-collection';
-import type { Campaign } from '../../modules/campaign';
-import type { DraftScene } from '../../modules/scene-graph';
+import type { ArcGraph } from '@features/graph/domain/arcGraph';
+import type { SceneCollection } from '@domain/sceneCollection';
+import type { Campaign } from '@domain/campaign';
+import type { DraftScene } from '@domain/sceneBuilder';
 
 /**
  * Arc-Scene dependency index

@@ -1,5 +1,5 @@
 import type { StateCreator, NodeManagementState, GraphState } from './types';
-import type { DraftSceneNode } from '@/modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 /**
  * Node Management Slice

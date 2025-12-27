@@ -11,8 +11,8 @@
 
 import React, { useState } from 'react';
 import { useCampaignStore } from '@/stores/campaignStore';
-import { validateCampaign } from '@/modules/campaign';
-import type { Campaign, CampaignType } from '@/modules/campaign';
+import { validateCampaign } from '@domain/campaign';
+import type { Campaign, CampaignType } from '@domain/campaign';
 
 interface CampaignPanelProps {
   /** Current world ID for filtering campaigns */

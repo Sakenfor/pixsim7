@@ -9,7 +9,7 @@ import {
   type TemplateCategory,
 } from '../../lib/editor/graphTemplates';
 import type { GraphTemplate } from '../../lib/editor/graphTemplates';
-import type { DraftScene } from '@/modules/scene-builder';
+import type { DraftScene } from '@domain/sceneBuilder';
 
 // Available categories for filtering
 const TEMPLATE_CATEGORIES: (TemplateCategory | 'All')[] = [

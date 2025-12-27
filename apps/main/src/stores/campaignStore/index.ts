@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { Campaign, CampaignProgression, CampaignType } from '../../modules/campaign';
+import type { Campaign, CampaignProgression, CampaignType } from '@domain/campaign';
 import { createTemporalStore, campaignStorePartialize } from '../_shared/temporal';
 
 interface CampaignState {

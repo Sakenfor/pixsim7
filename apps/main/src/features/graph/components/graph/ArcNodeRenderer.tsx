@@ -1,6 +1,6 @@
 import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@lib/registries';
-import type { ArcNodeData } from '@/modules/arc-graph';
+import type { ArcNodeData } from '@features/graph/domain/arcGraph';
 
 /**
  * Type guard to check if a node is an ArcNodeData

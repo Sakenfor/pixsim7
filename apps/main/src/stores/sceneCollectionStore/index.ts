@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { SceneCollection, SceneCollectionType } from '../../modules/scene-collection';
+import type { SceneCollection, SceneCollectionType } from '@domain/sceneCollection';
 import { createTemporalStore, sceneCollectionStorePartialize } from '../_shared/temporal';
 
 interface SceneCollectionState {

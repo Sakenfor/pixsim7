@@ -1,5 +1,5 @@
 import type { StateCreator, ImportExportState } from './types';
-import type { DraftScene } from '@/modules/scene-builder';
+import type { DraftScene } from '@domain/sceneBuilder';
 import { logEvent } from '@lib/utils/logging';
 
 /**

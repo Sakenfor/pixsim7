@@ -15,12 +15,12 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { Button, useToast } from '@pixsim7/shared.ui';
 import { useGraphStore, type GraphState, SceneNode, NodeGroup, NodePalette, type NodeType } from '@features/graph';
-import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@/modules/scene-builder/graphSync';
+import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { logEvent } from '@lib/utils/logging';
 import { Breadcrumbs } from '../navigation/Breadcrumbs';
-import type { DraftSceneNode, DraftEdge } from '@/modules/scene-builder';
-import { validateConnection, getValidationMessage } from '@/modules/scene-builder/portValidation';
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
+import { validateConnection, getValidationMessage } from '@domain/sceneBuilder/portValidation';
 import { previewBridge } from '@lib/preview-bridge';
 import { ValidationPanel } from '../../features/panels/components/tools/ValidationPanel';
 import { EdgeEffectsPanel } from '../../features/panels/components/tools/EdgeEffectsPanel';

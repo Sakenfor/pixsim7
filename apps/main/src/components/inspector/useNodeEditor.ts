@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { DraftSceneNode } from '@/modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 import type { NodeEditorProps } from './editorTypes';
 
 // Re-export for convenience

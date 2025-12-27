@@ -1,5 +1,5 @@
 import type { ArcStateCreator, ArcImportExportState } from './types';
-import { exportArcGraph as exportGraph, importArcGraph as importGraph } from '@/modules/arc-graph/utils';
+import { exportArcGraph as exportGraph, importArcGraph as importGraph } from '@features/graph/domain/arcGraph/utils';
 
 /**
  * Arc Import/Export Slice

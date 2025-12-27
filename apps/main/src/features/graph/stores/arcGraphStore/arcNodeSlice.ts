@@ -1,6 +1,6 @@
 import type { ArcStateCreator, ArcNodeManagementState } from './types';
-import type { ArcGraphNode, ArcGraphEdge } from '@/modules/arc-graph';
-import { validateArcGraphReferences } from '@/modules/arc-graph/validation';
+import type { ArcGraphNode, ArcGraphEdge } from '@features/graph/domain/arcGraph';
+import { validateArcGraphReferences } from '@features/graph/domain/arcGraph/validation';
 import { useGraphStore } from '../graphStore';
 import { useToastStore } from '@pixsim7/shared.ui';
 

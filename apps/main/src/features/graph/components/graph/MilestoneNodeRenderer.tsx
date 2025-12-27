@@ -1,6 +1,6 @@
 import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@lib/registries';
-import type { MilestoneNodeData } from '@/modules/arc-graph';
+import type { MilestoneNodeData } from '@features/graph/domain/arcGraph';
 
 /**
  * Milestone node renderer - shows major story checkpoint information

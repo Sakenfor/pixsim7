@@ -1,5 +1,5 @@
 import type { StateCreator } from './types';
-import type { NodeGroupData } from '@/modules/scene-builder';
+import type { NodeGroupData } from '@domain/sceneBuilder';
 import { logEvent } from '@lib/utils/logging';
 
 /**

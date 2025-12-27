@@ -10,7 +10,7 @@ import {
   sceneHasDependencies,
   getDependencyCount,
 } from './dependencies';
-import type { ArcGraph } from '../../modules/arc-graph/types';
+import type { ArcGraph } from '@features/graph/domain/arcGraph/types';
 
 describe('Graph Dependency Tracking', () => {
   describe('buildArcSceneDependencyIndex', () => {

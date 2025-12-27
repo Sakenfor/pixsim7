@@ -1,4 +1,4 @@
-import type { DraftScene } from '@/modules/scene-builder';
+import type { DraftScene } from '@domain/sceneBuilder';
 import type { StateCreator, SceneManagementState } from './types';
 
 /**

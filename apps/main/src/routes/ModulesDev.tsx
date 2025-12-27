@@ -5,7 +5,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { moduleRegistry } from '../modules';
+import { moduleRegistry } from '@app/modules';
 import { Panel, Button } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 

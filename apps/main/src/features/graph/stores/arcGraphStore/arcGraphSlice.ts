@@ -1,6 +1,6 @@
 import type { ArcStateCreator, ArcGraphManagementState } from './types';
-import { createEmptyArcGraph } from '@/modules/arc-graph/utils';
-import type { ArcGraph } from '@/modules/arc-graph';
+import { createEmptyArcGraph } from '@features/graph/domain/arcGraph/utils';
+import type { ArcGraph } from '@features/graph/domain/arcGraph';
 
 /**
  * Arc Graph Management Slice

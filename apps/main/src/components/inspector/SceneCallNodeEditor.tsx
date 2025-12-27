@@ -2,7 +2,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useNodeEditor } from './useNodeEditor';
 import type { NodeEditorProps } from './useNodeEditor';
 import { useGraphStore, type GraphState } from '@features/graph';
-import type { SceneCallNodeData } from '@/modules/scene-builder';
+import type { SceneCallNodeData } from '@domain/sceneBuilder';
 
 interface SceneCallConfig {
   targetSceneId: string;

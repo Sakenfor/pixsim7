@@ -7,7 +7,7 @@ import type {
   SceneReturnPoint,
   SceneMetadata,
   NodeGroupData,
-} from '@/modules/scene-builder';
+} from '@domain/sceneBuilder';
 import type { Scene } from '@lib/registries';
 import type { StateCreator as ZustandStateCreator } from 'zustand';
 

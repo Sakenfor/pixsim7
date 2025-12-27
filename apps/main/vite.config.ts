@@ -12,6 +12,8 @@ export default defineConfig({
       { find: '@/scene', replacement: path.resolve(__dirname, '../../packages/game/engine/src/narrative') },
       { find: '@/gizmos', replacement: path.resolve(__dirname, './src/features/gizmos/lib/core') },
       { find: '@/types', replacement: path.resolve(__dirname, './src/types') },
+      { find: '@app', replacement: path.resolve(__dirname, './src/app') },
+      { find: '@domain', replacement: path.resolve(__dirname, './src/domain') },
       { find: '@shared/types', replacement: path.resolve(__dirname, '../../packages/shared/types/src') },
       // Lib modules - Core registries & systems
       { find: '@lib/core', replacement: path.resolve(__dirname, './src/lib/core') },
@@ -56,6 +58,7 @@ export default defineConfig({
       { find: '@features/automation', replacement: path.resolve(__dirname, './src/features/automation') },
       { find: '@features/interactions', replacement: path.resolve(__dirname, './src/features/interactions') },
       { find: '@features/prompts', replacement: path.resolve(__dirname, './src/features/prompts') },
+      { find: '@features/plugins', replacement: path.resolve(__dirname, './src/features/plugins') },
       { find: '@features/providers', replacement: path.resolve(__dirname, './src/features/providers') },
       { find: '@features/settings', replacement: path.resolve(__dirname, './src/features/settings') },
       { find: '@features/gallery', replacement: path.resolve(__dirname, './src/features/gallery') },
@@ -74,6 +77,7 @@ export default defineConfig({
       { find: '@features/panels', replacement: path.resolve(__dirname, './src/features/panels') },
       { find: '@features/contextHub', replacement: path.resolve(__dirname, './src/features/contextHub') },
       { find: '@features/componentSettings', replacement: path.resolve(__dirname, './src/features/componentSettings') },
+      { find: '@features/npcs', replacement: path.resolve(__dirname, './src/features/npcs') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

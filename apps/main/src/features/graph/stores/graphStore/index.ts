@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, devtools } from 'zustand/middleware';
 import type { GraphState } from './types';
-import type { DraftSceneNode } from '@/modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 import { createSceneSlice } from './sceneSlice';
 import { createSignatureSlice } from './signatureSlice';
 import { createNodeSlice } from './nodeSlice';

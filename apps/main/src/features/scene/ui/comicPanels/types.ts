@@ -1,4 +1,4 @@
-import type { ComicSessionFlags, SceneMetaComicPanel } from '@/modules/scene-builder';
+import type { ComicSessionFlags, SceneMetaComicPanel } from '@domain/sceneBuilder';
 import type { NpcRef, LocationRef, AssetRef } from '@pixsim7/shared.types';
 
 /**

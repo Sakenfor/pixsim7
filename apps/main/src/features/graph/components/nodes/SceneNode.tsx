@@ -1,11 +1,11 @@
 import { memo, useState, useCallback, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
-import { getNodePorts, getPortPosition } from '@/modules/scene-builder/portConfig';
-import { validateScene } from '@/modules/scene-builder/validation';
+import { getNodePorts, getPortPosition } from '@domain/sceneBuilder/portConfig';
+import { validateScene } from '@domain/sceneBuilder/validation';
 import { nodeRendererRegistry } from '../../lib/editor/nodeRendererRegistry';
 
-import type { DraftSceneNode } from '@/modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 interface SceneNodeData {
   label: string;

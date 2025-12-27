@@ -4,7 +4,7 @@ import {
   validateScene,
   type ValidationIssue,
   type ValidationResult,
-} from "@/modules/scene-builder/validation";
+} from "@domain/sceneBuilder/validation";
 import { useSelectionStore } from "@/stores/selectionStore";
 import { Button } from "@pixsim7/shared.ui";
 
