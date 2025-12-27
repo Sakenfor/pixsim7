@@ -3936,7 +3936,7 @@ export interface paths {
         readonly put?: never;
         /**
          * Apply Block Suggestion
-         * @description Apply a block suggestion by creating a draft ActionBlockDB.
+         * @description Apply a block suggestion by creating a draft PromptBlock.
          *
          *     Behavior:
          *     - If block with block_id exists: return 400 error (no overwrites)
@@ -8986,7 +8986,7 @@ export interface components {
         };
         /**
          * ApplyBlockSuggestionRequest
-         * @description Request to apply a block suggestion as a draft ActionBlockDB
+         * @description Request to apply a block suggestion as a draft PromptBlock
          */
         readonly ApplyBlockSuggestionRequest: {
             /**
@@ -9937,7 +9937,7 @@ export interface components {
             /**
              * Block Id
              * Format: uuid
-             * @description ActionBlockDB.id to evaluate
+             * @description PromptBlock.id to evaluate
              */
             readonly block_id: string;
         };
@@ -11281,9 +11281,17 @@ export interface components {
             readonly fallback: components["schemas"]["FallbackConfigSchema"];
             /** Generation Type */
             readonly generation_type: string;
-            /** Image Url */
+            /**
+             * Image Url
+             * @deprecated
+             * @description DEPRECATED: Use source_asset_id instead. Direct image URL (legacy pattern).
+             */
             readonly image_url?: string | null;
-            /** Image Urls */
+            /**
+             * Image Urls
+             * @deprecated
+             * @description DEPRECATED: Use source_asset_ids instead. List of image URLs (legacy pattern).
+             */
             readonly image_urls?: readonly string[] | null;
             /** Prompt */
             readonly prompt?: string | null;
@@ -11293,9 +11301,15 @@ export interface components {
             readonly purpose: string;
             /** Seed Source */
             readonly seed_source?: string | null;
-            /** Source Asset Id */
+            /**
+             * Source Asset Id
+             * @description Asset ID for single-asset operations (image_to_video, image_to_image, video_extend). Backend resolves to provider-specific URL.
+             */
             readonly source_asset_id?: number | null;
-            /** Source Asset Ids */
+            /**
+             * Source Asset Ids
+             * @description Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL.
+             */
             readonly source_asset_ids?: readonly number[] | null;
             /** Strategy */
             readonly strategy: string;
@@ -11307,7 +11321,11 @@ export interface components {
              * @default 1
              */
             readonly version: number;
-            /** Video Url */
+            /**
+             * Video Url
+             * @deprecated
+             * @description DEPRECATED: Use source_asset_id instead. Direct video URL (legacy pattern).
+             */
             readonly video_url?: string | null;
         } & {
             readonly [key: string]: unknown;
@@ -12288,6 +12306,11 @@ export interface components {
              */
             readonly analyzer_id?: string | null;
             /**
+             * Pack Ids
+             * @description Semantic pack IDs to extend role registry and parser hints
+             */
+            readonly pack_ids?: readonly string[] | null;
+            /**
              * Text
              * @description Prompt text to analyze
              */
@@ -12906,6 +12929,42 @@ export interface components {
             readonly version: components["schemas"]["PromptVersionResponse"];
         };
         /**
+         * PromptRoleDefinitionSchema
+         * @description Role definition for dynamic prompt role registration.
+         */
+        readonly PromptRoleDefinitionSchema: {
+            /**
+             * Aliases
+             * @description Alias role IDs
+             */
+            readonly aliases?: readonly string[];
+            /**
+             * Description
+             * @description Role description
+             */
+            readonly description?: string | null;
+            /**
+             * Id
+             * @description Role ID (e.g., 'character', 'camera')
+             */
+            readonly id: string;
+            /**
+             * Keywords
+             * @description Keywords for parser matching
+             */
+            readonly keywords?: readonly string[];
+            /**
+             * Label
+             * @description Human-readable label
+             */
+            readonly label?: string | null;
+            /**
+             * Priority
+             * @description Role priority for classification
+             */
+            readonly priority?: number | null;
+        };
+        /**
          * PromptSource
          * @description Source of prompt import.
          * @enum {string}
@@ -13103,7 +13162,7 @@ export interface components {
             /**
              * Block Id
              * Format: uuid
-             * @description ActionBlockDB.id to evaluate
+             * @description PromptBlock.id to evaluate
              */
             readonly block_id: string;
             /**
@@ -13556,12 +13615,20 @@ export interface components {
             readonly ontology_version_max?: string | null;
             /** Ontology Version Min */
             readonly ontology_version_min?: string | null;
+            /** Operation Profiles */
+            readonly operation_profiles?: {
+                readonly [key: string]: {
+                    readonly [key: string]: string;
+                };
+            };
             /** Parser Hints */
             readonly parser_hints?: {
                 readonly [key: string]: readonly string[];
             };
             /** Prompt Family Slugs */
             readonly prompt_family_slugs?: readonly string[];
+            /** Roles */
+            readonly roles?: readonly components["schemas"]["PromptRoleDefinitionSchema"][];
             /** @default draft */
             readonly status: components["schemas"]["SemanticPackStatus"];
             /** Tags */
@@ -13634,6 +13701,15 @@ export interface components {
              */
             readonly ontology_version_min?: string | null;
             /**
+             * Operation Profiles
+             * @description Operation mode -> role intent mapping overrides
+             */
+            readonly operation_profiles?: {
+                readonly [key: string]: {
+                    readonly [key: string]: string;
+                };
+            };
+            /**
              * Parser Hints
              * @description Role/attribute-specific keywords keyed by ontology-aligned IDs. Role hints must use 'role:<name>' keys (e.g. 'role:character', 'role:action') to augment classification. Other keys should be ontology IDs or attribute IDs (e.g. 'act:sit_closer', 'phys:size:large') and are reserved for higher-level tools.
              */
@@ -13645,6 +13721,11 @@ export interface components {
              * @description PromptFamily slugs referenced by this pack
              */
             readonly prompt_family_slugs?: readonly string[];
+            /**
+             * Roles
+             * @description Dynamic role definitions provided by this pack
+             */
+            readonly roles?: readonly components["schemas"]["PromptRoleDefinitionSchema"][];
             /**
              * @description Pack status (draft/published/deprecated)
              * @default draft
