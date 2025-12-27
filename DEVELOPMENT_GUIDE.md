@@ -507,6 +507,41 @@ class BadService:
 - **Configuration**: Future-proof for different configs
 - **Explicitness**: Dependencies are visible in constructor
 
+### **Component Location Decision Tree**
+
+When creating a new React component, use this decision tree:
+
+```
+Is this component used by multiple features?
+├─ Yes → apps/main/src/components/
+│         └─ Shared UI primitives, layouts, common widgets
+│
+└─ No → Is it feature-specific?
+         ├─ Yes → apps/main/src/features/<feature>/components/
+         │         └─ Feature-owned components
+         │
+         └─ No → Is it a legacy component being migrated?
+                  ├─ Yes → Leave in components/legacy/ until migration complete
+                  │         └─ Create adapter in new location if needed
+                  │
+                  └─ No → apps/main/src/components/
+                           └─ Default for general-purpose components
+```
+
+**Key Principles:**
+- Features own their components — feature-specific UI lives in `features/<name>/components/`
+- Shared components live in `apps/main/src/components/` — but prefer feature-local first
+- Legacy components stay in `components/legacy/` — don't move until actively migrating
+- Don't create new components in `components/legacy/`
+
+**Examples:**
+| Component | Location | Reason |
+|-----------|----------|--------|
+| `<Button>`, `<Modal>` | `components/` | Used everywhere |
+| `<GenerationProgress>` | `features/generation/components/` | Feature-specific |
+| `<AssetCard>` | `features/assets/components/` | Feature-specific |
+| `<LegacyGalleryGrid>` | `components/legacy/` | Pending migration |
+
 ---
 
 ## 📝 Code Style & Conventions

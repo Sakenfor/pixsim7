@@ -3,6 +3,28 @@
  *
  * Provides common functionality for map-based registries with listeners.
  * Part of Task 91 - UI Registry Base & Feature Normalization
+ *
+ * ## ARCHITECTURAL REQUIREMENT
+ *
+ * **All new frontend registries MUST extend this class.**
+ *
+ * If you're creating a registry that doesn't extend BaseRegistry, you need:
+ *   1. A documented justification in the file header
+ *   2. Code review approval from architecture owner
+ *
+ * ### Existing Non-Compliant Registries (tracked for migration)
+ *
+ * | Registry | Status | Justification |
+ * |----------|--------|---------------|
+ * | SettingsRegistry | TODO: migrate | No blocking reason |
+ * | NodeTypeRegistry | Justified | Needs LRU cache + lazy loading |
+ * | GalleryToolRegistry | TODO: migrate | No blocking reason |
+ * | BrainToolRegistry | TODO: migrate | No blocking reason |
+ * | WorldToolRegistry | TODO: migrate | No blocking reason |
+ * | CapabilityRegistry | Justified | Factory pattern for multi-provider |
+ * | GatingRegistry | TODO: migrate | No blocking reason |
+ *
+ * @see docs/guides/registry-patterns.md - Frontend registry checklist
  */
 
 /**

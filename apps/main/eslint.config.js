@@ -112,4 +112,44 @@ export default defineConfig([
       'import/no-internal-modules': 'off',
     },
   },
+
+  // Hook naming convention - only for files named use*.ts (actual hook files)
+  // This avoids false positives on helper functions within hooks directories
+  {
+    files: ['**/hooks/**/use*.{ts,tsx}', '**/use*.hook.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/naming-convention': [
+        'warn',
+        {
+          selector: 'function',
+          modifiers: ['exported'],
+          format: ['camelCase'],
+          custom: {
+            regex: '^use[A-Z]',
+            match: true,
+          },
+        },
+      ],
+    },
+  },
+
+  // Restrict global store imports from feature code
+  // Features should use feature-local stores or pass via props/context
+  {
+    files: ['**/features/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['@/stores/*', '../../../stores/*', '../../../../stores/*'],
+              message:
+                'Features should not import global stores directly. Use feature-local stores or pass via props/context.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])

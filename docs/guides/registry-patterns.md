@@ -650,3 +650,83 @@ After migration is complete:
 - **Task 28** - Extensible scoring system (uses SCORING_FACTORS)
 - **effects.py** - EFFECT_HANDLERS to migrate
 - **ecs.py** - COMPONENT_SCHEMAS fallback to remove
+
+---
+
+## Frontend Registry Patterns
+
+**Last Updated:** 2025-12-27
+
+The frontend has its own registry system with `BaseRegistry<T>` as the standard base class.
+
+### Before Creating a New Frontend Registry
+
+#### Required Checklist
+
+- [ ] **Extends BaseRegistry** — If not, document justification in file header
+- [ ] **Has standard interface:**
+  - `register(item: T): boolean` — Returns false if already exists
+  - `forceRegister(item: T): void` — Overwrites existing
+  - `unregister(id: string): boolean` — Returns true if removed
+  - `get(id: string): T | undefined`
+  - `getAll(): T[]`
+  - `has(id: string): boolean`
+  - `clear(): void` — For testing
+- [ ] **Has listener support** via BaseRegistry `subscribe()` method
+- [ ] **Exported as singleton** instance (e.g., `export const myRegistry = new MyRegistry()`)
+- [ ] **Type constraint** — Item type extends `Identifiable` (has `id: string`)
+
+#### Standard Implementation
+
+```typescript
+// features/myFeature/lib/registry.ts
+import { BaseRegistry, Identifiable } from '@lib/core/BaseRegistry';
+
+export interface MyItem extends Identifiable {
+  id: string;
+  name: string;
+  // ... other fields
+}
+
+class MyRegistry extends BaseRegistry<MyItem> {
+  // Add domain-specific methods if needed
+  getByCategory(category: string): MyItem[] {
+    return this.getAll().filter(item => item.category === category);
+  }
+}
+
+export const myRegistry = new MyRegistry();
+```
+
+### Justified Exceptions
+
+Some registries don't extend BaseRegistry for valid architectural reasons:
+
+| Registry | Justification |
+|----------|---------------|
+| NodeTypeRegistry | Requires LRU cache (50 entries), lazy loading, category/scope indexes |
+| CapabilityRegistry | Factory pattern for multi-provider capability resolution |
+
+If your use case requires deviation:
+1. Document the reason in the file header
+2. Get architecture review approval
+3. Add to the exception table in `BaseRegistry.ts` JSDoc
+
+### Current Frontend Registry Status
+
+| Registry | Extends BaseRegistry? | Migration Status |
+|----------|----------------------|------------------|
+| PanelRegistry | Yes | Complete |
+| SettingsRegistry | No | TODO |
+| NodeTypeRegistry | No | Justified exception |
+| GalleryToolRegistry | No | TODO |
+| BrainToolRegistry | No | TODO |
+| WorldToolRegistry | No | TODO |
+| CapabilityRegistry | No | Justified exception |
+| GatingRegistry | No | TODO |
+
+### Migration Priority
+
+1. **SettingsRegistry** — Simple, similar interface already
+2. **GatingRegistry** — Procedural, isolated
+3. **Gallery/Brain/WorldToolRegistry** — Near-identical implementations, migrate together
