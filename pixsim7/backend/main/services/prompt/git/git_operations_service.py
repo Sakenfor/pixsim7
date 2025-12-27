@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
-from pixsim7.backend.main.services.prompts import PromptVersionService
+from pixsim7.backend.main.services.prompt.version_service import PromptVersionService
 
 
 class GitOperationsService:
