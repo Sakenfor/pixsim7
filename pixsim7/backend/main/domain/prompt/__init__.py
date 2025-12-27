@@ -11,7 +11,7 @@ Models:
 - PromptVariantFeedback: User feedback on prompt variants
 
 Enums:
-- PromptSegmentRole: character, action, setting, mood, romance, other
+- PromptSegmentRole: baseline role IDs (dynamic roles are registered at runtime)
 - BlockSourceType: library, parsed, ai_extracted, user_created, etc.
 - CurationStatus: raw, reviewed, curated
 - BlockKind: single_state, transition
@@ -27,6 +27,7 @@ from .enums import (
     BlockKind,
     ComplexityLevel,
     PromptSourceType,
+    BlockIntent,
 )
 
 # Core models
@@ -51,6 +52,7 @@ __all__ = [
     "BlockKind",
     "ComplexityLevel",
     "PromptSourceType",
+    "BlockIntent",
     # Core models
     "PromptFamily",
     "PromptVersion",

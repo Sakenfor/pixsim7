@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
-from pixsim7.backend.main.services.prompts import PromptVersionService
+from pixsim7.backend.main.services.prompt import PromptVersionService
 from .schemas import (
     CreatePromptVariantRequest,
     RatePromptVariantRequest,

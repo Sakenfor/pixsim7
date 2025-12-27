@@ -10,7 +10,7 @@ Registers prompt versioning models with SQLModel:
 from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
 
 # Import models from existing domain module
-from pixsim7.backend.main.domain.prompt_versioning import (
+from pixsim7.backend.main.domain.prompt import (
     PromptFamily,
     PromptVersion,
     PromptVariantFeedback,

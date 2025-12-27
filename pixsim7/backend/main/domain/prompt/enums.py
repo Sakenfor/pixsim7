@@ -8,9 +8,10 @@ from enum import Enum
 
 
 class PromptSegmentRole(str, Enum):
-    """Coarse role classification for prompt segments/blocks.
+    """Core role IDs for prompt segments/blocks.
 
-    Used by both the parser (PromptSegment) and storage (PromptBlock).
+    This enum is the built-in baseline. The role registry can extend beyond
+    these values at runtime (dynamic roles).
     """
     CHARACTER = "character"
     ACTION = "action"
@@ -57,3 +58,12 @@ class PromptSourceType(str, Enum):
     INLINE = "inline"         # Direct inline text (deprecated)
     GENERATED = "generated"   # AI-generated
     UNKNOWN = "unknown"       # Legacy/unknown source
+
+
+class BlockIntent(str, Enum):
+    """How a block should be applied relative to input context."""
+    GENERATE = "generate"   # Create new content for this role
+    PRESERVE = "preserve"   # Keep input content for this role
+    MODIFY = "modify"       # Alter existing content for this role
+    ADD = "add"             # Add a new element for this role
+    REMOVE = "remove"       # Remove content for this role

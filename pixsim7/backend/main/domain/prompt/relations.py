@@ -9,7 +9,7 @@ from sqlmodel import SQLModel, Field, Index
 from uuid import UUID
 
 from pixsim7.backend.main.domain.enums import enum_column
-from pixsim7.backend.main.domain.prompt.enums import PromptSegmentRole
+from pixsim7.backend.main.domain.prompt.enums import BlockIntent
 
 
 class PromptVersionBlock(SQLModel, table=True):
@@ -46,15 +46,20 @@ class PromptVersionBlock(SQLModel, table=True):
     )
 
     # Per-instance overrides (NULL = use block defaults)
-    role_override: Optional[PromptSegmentRole] = Field(
+    role_override: Optional[str] = Field(
         default=None,
-        sa_column=enum_column(PromptSegmentRole, "pvb_role_override_enum"),
-        description="Override block's default role for this usage"
+        max_length=64,
+        description="Override block's role ID for this usage"
     )
     category_override: Optional[str] = Field(
         default=None,
         max_length=64,
         description="Override block's default category for this usage"
+    )
+    intent_override: Optional[BlockIntent] = Field(
+        default=None,
+        sa_column=enum_column(BlockIntent, "pvb_intent_override_enum"),
+        description="Override block intent for this usage"
     )
 
     # Provenance

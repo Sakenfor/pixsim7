@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
-from pixsim7.backend.main.services.action_blocks import (
+from pixsim7.backend.main.services.prompt.block import (
     ActionBlockService,
     ActionBlockMigrationService,
     AIActionBlockExtractor,
@@ -22,7 +22,7 @@ from pixsim7.backend.main.services.action_blocks import (
     ExtractionConfigService,
     ExtractionConfig
 )
-from pixsim7.backend.main.services.action_blocks.concept_registry_service import ConceptRegistry
+from pixsim7.backend.main.services.prompt.block.concept_registry_service import ConceptRegistry
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.user import User
 

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
-from pixsim7.backend.main.services.prompts import PromptVersionService
+from pixsim7.backend.main.services.prompt import PromptVersionService
 from .schemas import (
     BatchVersionRequest,
     CreatePromptVersionRequest,
@@ -418,6 +418,10 @@ class AnalyzePromptRequest(BaseModel):
     """Request for prompt analysis preview."""
     text: str = Field(..., min_length=1, max_length=10000, description="Prompt text to analyze")
     analyzer_id: Optional[str] = Field(None, description="Analyzer ID (default: prompt:simple)")
+    pack_ids: Optional[List[str]] = Field(
+        None,
+        description="Semantic pack IDs to extend role registry and parser hints",
+    )
 
 
 class AnalyzePromptResponse(BaseModel):
@@ -430,6 +434,7 @@ class AnalyzePromptResponse(BaseModel):
 async def analyze_prompt(
     request: AnalyzePromptRequest,
     user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Analyze a prompt without storage (preview only).
@@ -446,12 +451,16 @@ async def analyze_prompt(
     - tags: Derived tags (has:character, tone:soft, etc.)
     - ontology_ids: Matched ontology keywords
     """
-    from pixsim7.backend.main.services.prompt_analysis import PromptAnalysisService
+    from pixsim7.backend.main.services.prompt.analysis_service import PromptAnalysisService
 
-    service = PromptAnalysisService()  # No DB needed for preview
+    service = PromptAnalysisService(db)
 
     analyzer_id = request.analyzer_id or "prompt:simple"
-    analysis = await service.analyze(request.text, analyzer_id)
+    analysis = await service.analyze(
+        request.text,
+        analyzer_id,
+        pack_ids=request.pack_ids,
+    )
 
     return AnalyzePromptResponse(
         analysis=analysis,

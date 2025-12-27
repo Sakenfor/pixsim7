@@ -15,11 +15,11 @@ import hashlib
 
 from pixsim7.backend.main.domain.enums import enum_column
 from pixsim7.backend.main.domain.prompt.enums import (
-    PromptSegmentRole,
     BlockSourceType,
     CurationStatus,
     BlockKind,
     ComplexityLevel,
+    BlockIntent,
 )
 
 
@@ -301,10 +301,11 @@ class PromptBlock(SQLModel, table=True):
     )
 
     # Classification
-    role: Optional[PromptSegmentRole] = Field(
+    role: Optional[str] = Field(
         default=None,
-        sa_column=enum_column(PromptSegmentRole, "prompt_segment_role_enum", index=True),
-        description="Coarse classification: character, action, setting, mood, romance, other"
+        max_length=64,
+        index=True,
+        description="Role ID for this block (dynamic, e.g., character/action/setting/camera)"
     )
     category: Optional[str] = Field(
         default=None,
@@ -317,6 +318,18 @@ class PromptBlock(SQLModel, table=True):
         index=True,
         default="single_state",
         description="Block type: 'single_state' or 'transition'"
+    )
+
+    # Intent hints
+    default_intent: Optional[BlockIntent] = Field(
+        default=None,
+        sa_column=enum_column(BlockIntent, "prompt_block_intent_enum"),
+        description="Default intent for this block (generate/preserve/modify/add/remove)"
+    )
+    intent_by_operation: Dict[str, str] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Per-operation intent overrides (operation -> intent string)"
     )
 
     # Core Content
@@ -553,9 +566,13 @@ class PromptBlock(SQLModel, table=True):
         if self.description:
             result["description"] = self.description
         if self.role:
-            result["role"] = self.role.value
+            result["role"] = self.role
         if self.category:
             result["category"] = self.category
+        if self.default_intent:
+            result["defaultIntent"] = self.default_intent.value
+        if self.intent_by_operation:
+            result["intentByOperation"] = self.intent_by_operation
 
         # Type-specific fields
         if self.kind == "single_state":
