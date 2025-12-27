@@ -3,7 +3,7 @@
 Registers FieldMapping configurations for standard entity pairs.
 Each mapping defines field-level sync behavior between template and runtime entities.
 
-Mapping ID format: "templateKind->runtimeKind" (e.g., "character->npc")
+Mapping ID format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
 
 This module should be called on service startup to register default mappings.
 Domain-specific mappings can be added in their respective modules.
@@ -21,15 +21,15 @@ def register_default_mappings():
     FieldMapping configurations for core entity type pairs.
 
     Registered mappings:
-    - character->npc: CharacterInstance ↔ GameNPC (existing)
+    - characterInstance->npc: CharacterInstance ↔ GameNPC (existing)
     - itemTemplate->item: ItemTemplate ↔ ItemInstance (stub)
     - propTemplate->prop: PropTemplate ↔ PropInstance (stub)
     """
     registry = get_mapping_registry()
 
-    # Register existing NPC mapping under 'character->npc'
+    # Register existing NPC mapping under 'characterInstance->npc'
     # This reuses the existing npc_prompt_mapping configuration
-    registry.register('character->npc', NPC_FIELD_MAPPING)
+    registry.register('characterInstance->npc', NPC_FIELD_MAPPING)
 
     # Register stub mappings for other entity pairs
     # These can be expanded as the corresponding entity types are implemented

@@ -2,7 +2,7 @@
  * Generic Template↔Runtime Link Types
  *
  * Defines type-safe link contracts for connecting template entities
- * (Character, ItemTemplate, etc.) to runtime entities (NPC, Item, etc.)
+ * (CharacterInstance, ItemTemplate, etc.) to runtime entities (NPC, Item, etc.)
  * with bidirectional sync, field-level authority, and activation conditions.
  */
 
@@ -32,8 +32,8 @@ export interface ObjectLink {
   /** UUID primary key */
   linkId: string;
 
-  /** Template entity type (e.g., 'character', 'itemTemplate') */
-  templateKind: 'character' | 'itemTemplate' | 'propTemplate' | (string & {});
+  /** Template entity type (e.g., 'characterInstance', 'itemTemplate') */
+  templateKind: 'characterInstance' | 'itemTemplate' | 'propTemplate' | (string & {});
 
   /** Template entity ID (usually UUID) */
   templateId: TemplateId;
@@ -52,7 +52,7 @@ export interface ObjectLink {
 
   /**
    * Mapping ID pointing to registered FieldMapping config
-   * Format: "templateKind->runtimeKind" (e.g., "character->npc")
+   * Format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
    */
   mappingId?: string;
 
@@ -89,7 +89,7 @@ export interface ObjectLink {
  * Using ASCII-safe delimiter (->)
  */
 export type LinkKind =
-  | 'character->npc'
+  | 'characterInstance->npc'
   | 'itemTemplate->item'
   | 'propTemplate->prop'
   | (string & {});
@@ -105,7 +105,7 @@ export interface ParsedMappingId {
 /**
  * Helper to extract template/runtime kinds from mapping ID
  *
- * Mapping ID format: "templateKind->runtimeKind" (e.g., "character->npc")
+ * Mapping ID format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
  *
  * @param mappingId - Mapping ID string
  * @returns Parsed template and runtime kinds
@@ -147,9 +147,9 @@ export function isObjectLink(value: unknown): value is ObjectLink {
 /**
  * Creates a standard mapping ID from template and runtime kinds
  *
- * @param templateKind - Template entity kind (e.g., 'character')
+ * @param templateKind - Template entity kind (e.g., 'characterInstance')
  * @param runtimeKind - Runtime entity kind (e.g., 'npc')
- * @returns Mapping ID string (e.g., 'character->npc')
+ * @returns Mapping ID string (e.g., 'characterInstance->npc')
  */
 export function createMappingId(templateKind: string, runtimeKind: string): string {
   return `${templateKind}->${runtimeKind}`;

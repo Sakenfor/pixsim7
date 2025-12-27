@@ -26,11 +26,11 @@ class TestObjectLinkResolver:
             await resolver.load_entity('unknown_type', 'id')
 
     @pytest.mark.asyncio
-    async def test_load_entity_character(self, db_session, sample_character_instance):
-        """Test loading character entity via registry"""
+    async def test_load_entity_character_instance(self, db_session, sample_character_instance):
+        """Test loading character instance via registry"""
         resolver = ObjectLinkResolver(db_session)
 
-        character = await resolver.load_entity('character', str(sample_character_instance.id))
+        character = await resolver.load_entity('characterInstance', str(sample_character_instance.id))
 
         assert character is not None
         assert character.id == sample_character_instance.id
@@ -51,7 +51,7 @@ class TestObjectLinkResolver:
         resolver = ObjectLinkResolver(db_session)
 
         runtime_ref = await resolver.resolve_template_to_runtime(
-            'character',
+            'characterInstance',
             str(sample_character_instance.id)
         )
 
@@ -118,7 +118,7 @@ class TestObjectLinkResolver:
         resolver = ObjectLinkResolver(db_session)
 
         resolved_data = await resolver.resolve_prompt_context(
-            'character',
+            'characterInstance',
             str(sample_character_instance.id),
             runtime_kind='npc',
             runtime_id=sample_npc.id
@@ -199,13 +199,13 @@ def sample_object_link(db_session, sample_character_instance, sample_npc):
 
     link = ObjectLink(
         link_id=uuid4(),
-        template_kind='character',
+        template_kind='characterInstance',
         template_id=str(sample_character_instance.id),
         runtime_kind='npc',
         runtime_id=sample_npc.id,
         sync_enabled=True,
         sync_direction='bidirectional',
-        mapping_id='character->npc',
+        mapping_id='characterInstance->npc',
         priority=10
     )
 
@@ -224,13 +224,13 @@ def sample_object_link_disabled(db_session, sample_character_instance, sample_np
 
     link = ObjectLink(
         link_id=uuid4(),
-        template_kind='character',
+        template_kind='characterInstance',
         template_id=str(sample_character_instance.id),
         runtime_kind='npc',
         runtime_id=sample_npc.id,
         sync_enabled=False,  # Disabled
         sync_direction='bidirectional',
-        mapping_id='character->npc',
+        mapping_id='characterInstance->npc',
         priority=10
     )
 

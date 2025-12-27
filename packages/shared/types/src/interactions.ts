@@ -350,7 +350,7 @@ export interface NpcInteractionDefinition {
   /** Template/Link target references (additive, backward compatible)
    * Allows interactions to target template entities that resolve to runtime entities via ObjectLink
    */
-  targetTemplateKind?: string;  // e.g., 'character', 'itemTemplate'
+  targetTemplateKind?: string;  // e.g., 'characterInstance', 'itemTemplate'
   targetTemplateId?: string;    // Template entity ID (usually UUID)
   targetLinkId?: string;        // Optional explicit link ID
 

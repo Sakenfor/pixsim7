@@ -294,16 +294,16 @@ class TestSetupLinkSystem:
         # Verify stats returned
         assert 'loaders' in stats
         assert 'mappings' in stats
-        assert stats['loaders'] >= 2  # At least character, npc
-        assert stats['mappings'] >= 1  # At least character->npc
+        assert stats['loaders'] >= 2  # At least characterInstance, npc
+        assert stats['mappings'] >= 1  # At least characterInstance->npc
 
         # Verify loaders registered
-        assert loader_registry.has_loader('character')
+        assert loader_registry.has_loader('characterInstance')
         assert loader_registry.has_loader('npc')
         assert loader_registry.has_loader('location')
 
         # Verify mappings registered
-        assert mapping_registry.has_mapping('character->npc')
+        assert mapping_registry.has_mapping('characterInstance->npc')
 
     def test_setup_link_system_idempotent(self):
         """Test that setup_link_system() can be called multiple times"""

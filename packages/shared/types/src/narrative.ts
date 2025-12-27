@@ -302,7 +302,7 @@ export interface SceneTransitionNode extends NarrativeNodeBase {
 
   /** Template-based role bindings (additive, backward compatible)
    * Maps role to template reference that resolves to runtime entity via ObjectLink
-   * Format: { role: { templateKind: 'character', templateId: 'uuid' } }
+   * Format: { role: { templateKind: 'characterInstance', templateId: 'uuid' } }
    */
   templateRoleBindings?: Record<string, { templateKind: string; templateId: string; linkId?: string }>;
 

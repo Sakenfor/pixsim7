@@ -12,10 +12,10 @@ Usage:
     async def load_character_instance(entity_id, db):
         return await db.get(CharacterInstance, entity_id)
 
-    registry.register_loader('character', load_character_instance)
+    registry.register_loader('characterInstance', load_character_instance)
 
     # Load an entity
-    entity = await registry.load('character', 'abc-123', db)
+    entity = await registry.load('characterInstance', 'abc-123', db)
 """
 from typing import Any, Callable, Awaitable, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +28,7 @@ EntityLoaderFn = Callable[[Any, AsyncSession], Awaitable[Any]]
 class EntityLoaderRegistry:
     """Registry of entity loader functions for different entity kinds
 
-    Maps entity kinds (e.g., 'character', 'npc', 'item') to loader functions
+    Maps entity kinds (e.g., 'characterInstance', 'npc', 'item') to loader functions
     that fetch the entity from the database.
     """
 
@@ -39,7 +39,7 @@ class EntityLoaderRegistry:
         """Register an entity loader function
 
         Args:
-            entity_kind: Entity kind identifier (e.g., 'character', 'npc')
+            entity_kind: Entity kind identifier (e.g., 'characterInstance', 'npc')
             loader_fn: Async function that loads entity by ID and db session
 
         Example:
@@ -135,7 +135,7 @@ def register_default_loaders():
     """Register default entity loaders for standard entity types
 
     This function should be called on service startup to register loaders
-    for core entity types (character, npc, item, etc.).
+    for core entity types (characterInstance, npc, item, etc.).
 
     Domain-specific loaders can be registered in their respective modules.
     """
@@ -153,7 +153,7 @@ def register_default_loaders():
             instance_id = UUID(instance_id)
         return await db.get(CharacterInstance, instance_id)
 
-    registry.register_loader('character', load_character_instance)
+    registry.register_loader('characterInstance', load_character_instance)
 
     # GameNPC loader
     async def load_npc(npc_id: int, db: AsyncSession):

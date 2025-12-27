@@ -180,7 +180,7 @@ class GenericSyncService:
         """Load an entity by kind and ID using entity loader registry
 
         Args:
-            entity_kind: Entity kind identifier (e.g., 'character', 'npc')
+            entity_kind: Entity kind identifier (e.g., 'characterInstance', 'npc')
             entity_id: Entity ID
 
         Returns:
