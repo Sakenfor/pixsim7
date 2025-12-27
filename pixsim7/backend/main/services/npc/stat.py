@@ -28,7 +28,7 @@ except ImportError:
 
 from pixsim7.backend.main.domain.game import GameNPC, NPCState, GameWorld
 from pixsim7.backend.main.domain.game.stats import StatEngine, WorldStatsConfig
-from pixsim7.backend.main.services.game.stat_service import StatService
+from pixsim7.backend.main.services.game.stat import StatService
 
 
 class NPCStatService:

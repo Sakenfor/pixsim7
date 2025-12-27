@@ -24,7 +24,7 @@ from pixsim7.backend.main.domain.game import (
     GameSessionEvent,
     GameWorld,
 )
-from pixsim7.backend.main.services.game.stat_service import StatService
+from pixsim7.backend.main.services.game.stat import StatService
 
 
 # Type for action names - kept short for storage efficiency

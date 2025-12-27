@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
-from pixsim7.backend.main.services.game.quest_service import QuestService, Quest
+from pixsim7.backend.main.services.game.quest import QuestService, Quest
 
 router = APIRouter(prefix="/game/quests", tags=["game-quests"])
 

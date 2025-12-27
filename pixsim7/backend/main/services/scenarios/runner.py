@@ -17,7 +17,7 @@ from pixsim7.backend.main.domain.scenarios.models import (
     WorldSnapshot,
 )
 from pixsim7.backend.main.services.scenarios.snapshot_service import SnapshotService
-from pixsim7.backend.main.services.game.game_world_service import GameWorldService
+from pixsim7.backend.main.services.game.world import GameWorldService
 
 
 class ScenarioStepResult:
