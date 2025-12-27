@@ -113,6 +113,7 @@ export {
   type PanelConfigState,
   type PanelConfigActions,
   type GalleryPanelSettings,
+  type PanelRegistryOverride,
 } from "./stores/panelConfigStore";
 export {
   usePanelInstanceSettingsStore,
@@ -120,7 +121,6 @@ export {
   type PanelInstanceSettingsState,
   type PanelInstanceSettingsActions,
 } from "./stores/panelInstanceSettingsStore";
-export { usePanelRegistryOverridesStore } from "./stores/panelRegistryOverridesStore";
 
 // Re-export lib index for convenience
 export * from "./lib";

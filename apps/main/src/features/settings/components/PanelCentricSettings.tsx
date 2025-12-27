@@ -14,7 +14,6 @@ import {
   usePanelConfigStore,
   panelSettingsScopeRegistry,
   usePanelInstanceSettingsStore,
-  usePanelRegistryOverridesStore,
   useResolvePanelSettings,
   useResolveComponentSettings,
   getScopeMode,
@@ -337,11 +336,11 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     [metadata.id]
   );
   const [componentRegistryVersion, setComponentRegistryVersion] = useState(0);
-  const panelRegistryOverride = usePanelRegistryOverridesStore(
-    (state) => state.overrides[metadata.id]
+  const panelRegistryOverride = usePanelConfigStore(
+    (state) => state.panelConfigs[metadata.id as PanelId]?.registryOverride
   );
-  const setPanelRegistryOverride = usePanelRegistryOverridesStore((state) => state.setOverride);
-  const clearPanelRegistryOverride = usePanelRegistryOverridesStore((state) => state.clearOverride);
+  const setRegistryOverride = usePanelConfigStore((state) => state.setRegistryOverride);
+  const clearRegistryOverride = usePanelConfigStore((state) => state.clearRegistryOverride);
 
   const supportsMultipleDefault = panelDefinition?.supportsMultipleInstances ?? false;
   const supportsMultipleResolved =
@@ -487,9 +486,9 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                 onChange={(event) => {
                   const value = event.target.value;
                   if (value === "default") {
-                    clearPanelRegistryOverride(metadata.id);
+                    clearRegistryOverride(metadata.id as PanelId);
                   } else {
-                    setPanelRegistryOverride(metadata.id, {
+                    setRegistryOverride(metadata.id as PanelId, {
                       supportsMultipleInstances: value === "allow",
                     });
                   }
@@ -820,8 +819,8 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     supportsMultipleDefault,
     supportsMultipleResolved,
     supportsMultipleOverrideValue,
-    setPanelRegistryOverride,
-    clearPanelRegistryOverride,
+    setRegistryOverride,
+    clearRegistryOverride,
     // Instance settings
     hasInstancePanelOverrides,
     instanceSchemaValues,

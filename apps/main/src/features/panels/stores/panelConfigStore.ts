@@ -18,6 +18,14 @@ import type { PanelCategory } from "../lib/panelConstants";
  * Part of Task 50 Phase 50.2 - Panel Configuration UI
  */
 
+/**
+ * Registry-level overrides for panel behavior
+ * (consolidated from panelRegistryOverridesStore)
+ */
+export interface PanelRegistryOverride {
+  supportsMultipleInstances?: boolean;
+}
+
 export interface PanelConfig {
   id: PanelId;
   enabled: boolean;
@@ -26,6 +34,7 @@ export interface PanelConfig {
   tags?: string[];
   description?: string;
   icon?: string;
+  registryOverride?: PanelRegistryOverride;
 }
 
 export interface PanelInstance {
@@ -75,6 +84,11 @@ export interface PanelConfigActions {
   getEnabledPanels: () => PanelId[];
   getPanelsByCategory: (category: string) => PanelConfig[];
   searchPanels: (query: string) => PanelConfig[];
+
+  // Registry overrides (consolidated from panelRegistryOverridesStore)
+  setRegistryOverride: (panelId: PanelId, override: PanelRegistryOverride) => void;
+  clearRegistryOverride: (panelId: PanelId) => void;
+  getRegistryOverride: (panelId: PanelId) => PanelRegistryOverride | undefined;
 
   // Reset
   reset: () => void;
@@ -366,6 +380,34 @@ export const usePanelConfigStore = create<
 
           return matchesId || matchesDescription || matchesTags;
         });
+      },
+
+      // Registry overrides (consolidated from panelRegistryOverridesStore)
+      setRegistryOverride: (panelId, override) => {
+        const config = get().panelConfigs[panelId];
+        if (config) {
+          const merged = { ...config.registryOverride, ...override };
+          // Prune undefined values
+          Object.keys(merged).forEach((key) => {
+            if (merged[key as keyof PanelRegistryOverride] === undefined) {
+              delete merged[key as keyof PanelRegistryOverride];
+            }
+          });
+          get().setPanelConfig(panelId, {
+            registryOverride: Object.keys(merged).length > 0 ? merged : undefined,
+          });
+        }
+      },
+
+      clearRegistryOverride: (panelId) => {
+        const config = get().panelConfigs[panelId];
+        if (config) {
+          get().setPanelConfig(panelId, { registryOverride: undefined });
+        }
+      },
+
+      getRegistryOverride: (panelId) => {
+        return get().panelConfigs[panelId]?.registryOverride;
       },
 
       // Reset
