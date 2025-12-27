@@ -191,6 +191,15 @@ class PixverseSessionManager:
                 is_session_error=True,
                 original_error=error,
             )
+        elif "token is expired" in msg or "10002" in msg:
+            outcome = SessionErrorOutcome(
+                should_invalidate_cache=True,
+                should_attempt_reauth=True,
+                error_code="10002",
+                error_reason="token_expired",
+                is_session_error=True,
+                original_error=error,
+            )
         elif "session expired" in msg:
             outcome = SessionErrorOutcome(
                 should_invalidate_cache=True,

@@ -394,6 +394,7 @@ class PixverseProvider(
                 return None
             if not isinstance(value, str):
                 value = str(value)
+            value = unquote(value)
             if value.startswith("http://") or value.startswith("https://"):
                 return value
             if value.startswith("upload/"):
@@ -424,6 +425,8 @@ class PixverseProvider(
 
         # Look up the asset to get provider_uploads
         async with get_async_session() as session:
+            allow_img_id = operation_type == OperationType.IMAGE_TO_VIDEO
+
             async def resolve_asset_ref(asset_id: int | str) -> tuple[str | None, Asset | None]:
                 query = select(Asset).where(Asset.id == asset_id)
                 result = await session.execute(query)
@@ -440,12 +443,18 @@ class PixverseProvider(
 
                 if asset.provider_uploads and self.provider_id in asset.provider_uploads:
                     provider_ref = asset.provider_uploads[self.provider_id]
-                    logger.debug(
-                        "using_provider_uploads_url",
-                        asset_id=asset_id,
-                        url=str(provider_ref)[:50] if provider_ref else None,
-                    )
-                elif asset.provider_id == self.provider_id and asset.remote_url:
+                    resolved_upload_ref = _resolve_pixverse_ref(provider_ref, allow_img_id=allow_img_id)
+                    if resolved_upload_ref:
+                        provider_ref = resolved_upload_ref
+                        logger.debug(
+                            "using_provider_uploads_url",
+                            asset_id=asset_id,
+                            url=str(provider_ref)[:50] if provider_ref else None,
+                        )
+                    else:
+                        provider_ref = None
+
+                if not provider_ref and asset.provider_id == self.provider_id and asset.remote_url:
                     provider_ref = asset.remote_url
                     logger.debug(
                         "using_pixverse_remote_url",
@@ -476,8 +485,6 @@ class PixverseProvider(
 
                 return provider_ref, asset
 
-            allow_img_id = operation_type == OperationType.IMAGE_TO_VIDEO
-
             if source_asset_ids and isinstance(source_asset_ids, (list, tuple)):
                 image_urls = result_params.get("image_urls")
                 resolved_urls: list[str] = []
@@ -488,6 +495,12 @@ class PixverseProvider(
                         resolved_urls.append(resolved_ref)
                     elif isinstance(image_urls, list) and idx < len(image_urls):
                         resolved_urls.append(image_urls[idx])
+
+                if not resolved_urls:
+                    raise ProviderError(
+                        f"Pixverse image operations require a Pixverse-hosted source image. "
+                        f"Failed to resolve source_asset_ids: {source_asset_ids}"
+                    )
 
                 if resolved_urls:
                     result_params["image_urls"] = resolved_urls
@@ -526,6 +539,10 @@ class PixverseProvider(
                     elif operation_type == OperationType.VIDEO_EXTEND:
                         result_params["video_url"] = resolved_ref
                 else:
+                    raise ProviderError(
+                        f"Pixverse image operations require a Pixverse-hosted source image. "
+                        f"Failed to resolve source_asset_id: {source_asset_id}"
+                    )
                     if asset:
                         logger.error(
                             "no_pixverse_url_for_asset",
