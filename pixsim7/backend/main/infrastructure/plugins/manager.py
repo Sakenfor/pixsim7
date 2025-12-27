@@ -48,6 +48,10 @@ class PluginManager:
         self.load_order: list[str] = []
         self.failed_plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {error_message, manifest?, required?}
 
+    # Valid plugin name pattern: lowercase alphanumeric, underscores, hyphens
+    _PLUGIN_NAME_PATTERN = __import__('re').compile(r'^[a-z][a-z0-9_-]*$')
+    _RESERVED_NAMES = {'plugin', 'plugins', 'core', 'system', 'internal', 'test', 'tests'}
+
     def discover_plugins(self, plugin_dir: str | Path) -> list[str]:
         """
         Discover plugins in a directory.
@@ -60,6 +64,9 @@ class PluginManager:
           custom_plugin/
             __init__.py
             manifest.py
+
+        Plugin names must be lowercase alphanumeric with underscores/hyphens.
+        Reserved names (plugin, core, system, etc.) are not allowed.
         """
         plugin_dir = Path(plugin_dir)
         discovered = []
@@ -70,6 +77,18 @@ class PluginManager:
 
         for item in plugin_dir.iterdir():
             if item.is_dir() and not item.name.startswith('_'):
+                # Validate plugin name format
+                if not self._PLUGIN_NAME_PATTERN.match(item.name):
+                    logger.warning(
+                        f"Skipping invalid plugin name (must be lowercase alphanumeric with _/-): {item.name}"
+                    )
+                    continue
+
+                # Check reserved names
+                if item.name in self._RESERVED_NAMES:
+                    logger.warning(f"Skipping reserved plugin name: {item.name}")
+                    continue
+
                 manifest_file = item / 'manifest.py'
                 if manifest_file.exists():
                     discovered.append(item.name)
@@ -169,6 +188,14 @@ class PluginManager:
                     'manifest': manifest
                 }
                 return False
+
+            # Warn about unknown permissions (possible typos) even when allowed
+            for unknown_perm in validation.unknown:
+                logger.warning(
+                    f"Plugin '{manifest.id}' uses unknown permission (possible typo)",
+                    plugin_id=manifest.id,
+                    permission=unknown_perm,
+                )
 
             # Log permission warnings
             for warning in validation.warnings:
@@ -306,13 +333,19 @@ class PluginManager:
         loaded = set()
         load_order = []
 
-        def visit(plugin_id: str, visiting: set):
+        def visit(plugin_id: str, visiting: set, path: list):
             if plugin_id in loaded:
                 return
             if plugin_id in visiting:
-                raise ValueError(f"Circular dependency detected: {plugin_id}")
+                # Build cycle path for clear error message
+                cycle_start = path.index(plugin_id)
+                cycle_path = path[cycle_start:] + [plugin_id]
+                raise ValueError(
+                    f"Circular dependency detected: {' -> '.join(cycle_path)}"
+                )
 
             visiting.add(plugin_id)
+            path.append(plugin_id)
 
             plugin = self.plugins.get(plugin_id)
             if not plugin:
@@ -325,7 +358,9 @@ class PluginManager:
                     raise ValueError(
                         f"Plugin '{plugin_id}' depends on '{dep}' which is disabled"
                     )
-                visit(dep, visiting)
+                visit(dep, visiting, path)
+
+            path.pop()
 
             visiting.remove(plugin_id)
             loaded.add(plugin_id)
@@ -333,7 +368,7 @@ class PluginManager:
 
         # Visit all plugins
         for plugin_id in self.plugins:
-            visit(plugin_id, set())
+            visit(plugin_id, set(), [])
 
         return load_order
 
