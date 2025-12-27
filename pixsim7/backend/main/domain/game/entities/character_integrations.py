@@ -19,6 +19,9 @@ This allows:
 - Each world can have different character version (evolved/original/wounded)
 - Each instance can sync with different NPCs
 - Character evolves independently per world
+
+NPC links are stored in ObjectLink (domain/links.py) with
+template_kind="characterInstance" and runtime_kind="npc".
 """
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -87,57 +90,6 @@ class CharacterInstance(SQLModel, table=True):
     )
 
     is_active: bool = Field(default=True, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class CharacterNPCLink(SQLModel, table=True):
-    """Many-to-many link between character instances and NPCs
-
-    Allows:
-    - One character instance → multiple NPCs (e.g., Koba controls 2 NPCs in same world)
-    - One NPC → multiple character instances (NPC switches appearance based on context)
-    - Bidirectional sync configuration per link
-    """
-    __tablename__ = "character_npc_links"
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-
-    # Links
-    character_instance_id: UUID = Field(foreign_key="character_instances.id", index=True)
-    npc_id: int = Field(foreign_key="game_npcs.id", index=True)
-
-    # Sync configuration
-    sync_enabled: bool = Field(default=True)
-    sync_direction: str = Field(default="bidirectional")  # "bidirectional", "character_to_npc", "npc_to_character"
-
-    # Field mapping (which character fields sync to which NPC fields)
-    field_mappings: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSONB)
-    )
-    # Example:
-    # {
-    #   "visual_traits.scars": "personality.appearance.scars",
-    #   "current_state.health": "state.health",
-    #   "current_state.location": "current_location_id"
-    # }
-
-    # Link priority (if NPC has multiple character links, highest priority wins)
-    priority: int = Field(default=0)
-
-    # Context-based activation (when this link is active)
-    activation_conditions: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSONB)
-    )
-    # Example: {"location_id": 5, "time_of_day": "night"}
-    # This link only active when NPC is at location 5 during night
-
-    # Last sync metadata
-    last_synced_at: Optional[datetime] = None
-    last_sync_direction: Optional[str] = None  # "from_character", "from_npc"
-
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

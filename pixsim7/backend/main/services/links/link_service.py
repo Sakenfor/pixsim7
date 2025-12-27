@@ -295,7 +295,7 @@ class LinkService:
         # Update allowed fields
         allowed_fields = {
             'sync_enabled', 'sync_direction', 'priority',
-            'activation_conditions', 'meta'
+            'activation_conditions', 'sync_field_mappings', 'meta'
         }
 
         for key, value in kwargs.items():

@@ -260,7 +260,11 @@ class CharacterNPCSyncService:
         changes = {}
 
         # Get field mappings (use link-specific or defaults)
-        field_mappings = link.sync_field_mappings or self._get_default_field_mappings()
+        field_mappings = (
+            link.sync_field_mappings
+            if link.sync_field_mappings is not None
+            else self._get_default_field_mappings()
+        )
 
         # Apply field mappings
         for char_field, npc_field in field_mappings.items():
@@ -317,7 +321,11 @@ class CharacterNPCSyncService:
         changes = {}
 
         # Get field mappings (use link-specific or defaults)
-        field_mappings = link.sync_field_mappings or self._get_default_field_mappings()
+        field_mappings = (
+            link.sync_field_mappings
+            if link.sync_field_mappings is not None
+            else self._get_default_field_mappings()
+        )
 
         # Reverse field mappings (NPC → Character)
         for char_field, npc_field in field_mappings.items():

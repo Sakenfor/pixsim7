@@ -8,7 +8,6 @@ from .character import (
 
 from .character_integrations import (
     CharacterInstance,
-    CharacterNPCLink,
     CharacterCapability,
     SceneCharacterManifest,
     CharacterDialogueProfile,
@@ -50,7 +49,6 @@ __all__ = [
     "CharacterUsage",
     # Character integrations
     "CharacterInstance",
-    "CharacterNPCLink",
     "CharacterCapability",
     "SceneCharacterManifest",
     "CharacterDialogueProfile",

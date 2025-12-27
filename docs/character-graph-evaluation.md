@@ -115,7 +115,7 @@ Game Runtime: NPC_1234 exists in game. Which character templates does it represe
 ```
 - **With Graph**: `find_characters_for_npc(1234)` returns all linked character instances/templates
 - **Without Graph**:
-  1. Query character_npc_links for NPC_1234
+  1. Query object_links for template_kind='characterInstance', runtime_kind='npc', runtime_id=1234
   2. Get character instances
   3. For each instance, get character template
   4. Manually aggregate

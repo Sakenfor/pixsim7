@@ -22,7 +22,7 @@ from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkR
 resolver = ObjectLinkResolver(db)
 
 # Load a character instance
-character = await resolver.load_entity('character', character_id)
+character = await resolver.load_entity('characterInstance', character_id)
 
 # Load an NPC
 npc = await resolver.load_entity('npc', npc_id)
@@ -36,7 +36,7 @@ location = await resolver.load_entity('location', location_id)
 ```python
 # Find the runtime entity linked to a template
 runtime_ref = await resolver.resolve_template_to_runtime(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='abc-123-uuid',
     context={'location.zone': 'downtown'}  # Optional activation context
 )
@@ -51,7 +51,7 @@ if runtime_ref:
 ```python
 # Resolve and merge template + runtime data
 context = await resolver.resolve_prompt_context(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='abc-123-uuid'
 )
 
@@ -70,7 +70,7 @@ service = PromptContextService(db)
 
 # NEW generic API using ObjectLinkResolver
 snapshot = await service.get_prompt_context_from_link(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='abc-123-uuid',
     context={'location.zone': 'downtown'}
 )
@@ -105,7 +105,7 @@ Currently registered:
 ### Field Mappings
 
 Currently registered:
-- `character->npc`: Maps CharacterInstance fields to GameNPC fields
+- `characterInstance->npc`: Maps CharacterInstance fields to GameNPC fields
 - `itemTemplate->item`: Stub mapping for future use
 - `propTemplate->prop`: Stub mapping for future use
 
@@ -225,7 +225,7 @@ Links can be conditionally active based on runtime context:
 ```python
 # Create link with activation conditions
 link = await link_service.create_link(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='abc-123',
     runtime_kind='npc',
     runtime_id=456,
@@ -234,14 +234,14 @@ link = await link_service.create_link(
 
 # Resolve with context
 runtime_ref = await resolver.resolve_template_to_runtime(
-    'character',
+    'characterInstance',
     'abc-123',
     context={'location.zone': 'downtown'}  # Matches condition
 )
 # Returns the link
 
 runtime_ref = await resolver.resolve_template_to_runtime(
-    'character',
+    'characterInstance',
     'abc-123',
     context={'location.zone': 'suburbs'}  # Doesn't match
 )
@@ -268,7 +268,7 @@ link2 = await link_service.create_link(
 )
 
 # Resolve returns highest priority active link
-runtime_ref = await resolver.resolve_template_to_runtime('character', 'character-a')
+runtime_ref = await resolver.resolve_template_to_runtime('characterInstance', 'character-a')
 # Returns link1 (priority 100)
 ```
 
@@ -315,7 +315,7 @@ See `tests/services/links/test_object_link_resolver.py` for examples:
 @pytest.mark.asyncio
 async def test_load_entity(db_session):
     resolver = ObjectLinkResolver(db_session)
-    character = await resolver.load_entity('character', 'some-uuid')
+    character = await resolver.load_entity('characterInstance', 'some-uuid')
     assert character is not None
 ```
 
@@ -343,33 +343,16 @@ link_system_initialized loaders=3 mappings=3
 ```
 
 Verify in logs that:
-- At least 2 loaders registered (character, npc)
-- At least 1 mapping registered (character->npc)
+- At least 2 loaders registered (characterInstance, npc)
+- At least 1 mapping registered (characterInstance->npc)
 
 ## Migration from Legacy Systems
 
-### From CharacterNPCLink
+### CharacterNPCLink Consolidation
 
-The old `CharacterNPCLink` system coexists with ObjectLink:
-
-```python
-# OLD: Direct CharacterNPCLink
-link = await sync_service.create_link(
-    character_instance_id=uuid,
-    npc_id=123
-)
-
-# NEW: Generic ObjectLink
-link = await link_service.create_link(
-    template_kind='character',
-    template_id=str(uuid),
-    runtime_kind='npc',
-    runtime_id=123,
-    mapping_id='character->npc'
-)
-```
-
-Both systems work simultaneously. The resolver checks ObjectLink first, then falls back to CharacterNPCLink.
+The old `CharacterNPCLink` table has been consolidated into `ObjectLink`.
+Use `LinkService` with `template_kind='characterInstance'` and
+`runtime_kind='npc'` for all character↔NPC links.
 
 ### From Direct DB Queries
 
@@ -380,7 +363,7 @@ npc = await db.get(GameNPC, npc_id)
 
 # NEW: Loader registry (consistent, cacheable, extensible)
 # The link_resolver is always available after startup
-instance = await resolver.load_entity('character', str(instance_id))
+instance = await resolver.load_entity('characterInstance', str(instance_id))
 npc = await resolver.load_entity('npc', npc_id)
 ```
 
@@ -423,7 +406,7 @@ except ValueError as e:
     print(e)  # "No mapping registered for 'unmapped_template->unmapped_runtime'"
 
 # No link found
-runtime_ref = await resolver.resolve_template_to_runtime('character', 'id')
+runtime_ref = await resolver.resolve_template_to_runtime('characterInstance', 'id')
 assert runtime_ref is None  # No error, just None
 ```
 

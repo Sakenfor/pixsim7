@@ -24,7 +24,7 @@ Core game models and state management:
 ### Entities (`entities/`)
 Character and NPC entity models:
 - **character.py**: Character templates (reusable archetypes)
-- **character_integrations.py**: CharacterInstance (world-specific), CharacterNPCLink
+- **character_integrations.py**: CharacterInstance (world-specific). NPC links live in ObjectLink (domain/links.py)
 - **character_graph.py**: Graph traversal queries
 - **character_linkage.py**: Metadata linkage helpers
 - **npc_memory.py**: Conversation memory, emotions, milestones

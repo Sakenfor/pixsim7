@@ -27,11 +27,11 @@ A generic link contract that connects a template entity to a runtime entity:
 ```typescript
 interface ObjectLink {
   linkId: string;
-  templateKind: 'character' | 'itemTemplate' | 'propTemplate' | ...;
+  templateKind: 'characterInstance' | 'itemTemplate' | 'propTemplate' | ...;
   templateId: string;
   runtimeKind: 'npc' | 'item' | 'prop' | ...;
   runtimeId: number;
-  mappingId: string;  // e.g., 'character->npc'
+  mappingId: string;  // e.g., 'characterInstance->npc'
   priority: number;
   activationConditions?: Record<string, unknown>;
   // ... metadata fields
@@ -62,13 +62,13 @@ FieldMapping(
 
 ### Mapping Registry
 
-Central registry that maps `mappingId` (e.g., `'character->npc'`) to FieldMapping configurations.
+Central registry that maps `mappingId` (e.g., `'characterInstance->npc'`) to FieldMapping configurations.
 
 Each entity pair registers its FieldMapping configuration on service startup, making it available for links to reference.
 
 ```python
 registry = get_mapping_registry()
-registry.register('character->npc', NPC_FIELD_MAPPING)
+registry.register('characterInstance->npc', NPC_FIELD_MAPPING)
 registry.register('itemTemplate->item', ITEM_FIELD_MAPPING)
 ```
 
@@ -84,7 +84,7 @@ registry = get_entity_loader_registry()
 async def load_character_instance(instance_id, db):
     return await db.get(CharacterInstance, instance_id)
 
-registry.register_loader('character', load_character_instance)
+registry.register_loader('characterInstance', load_character_instance)
 ```
 
 ## Architecture
@@ -105,8 +105,8 @@ No inheritance. No instanceof checks. Pure composition.
 ```
 Template Entity (CharacterInstance)
           ↓
-    ObjectLink (character->npc)
-          ↓  (FieldMapping: character->npc)
+    ObjectLink (characterInstance->npc)
+          ↓  (FieldMapping: characterInstance->npc)
           ↓  (Sync direction, priority, activation)
           ↓
 Runtime Entity (GameNPC)
@@ -199,7 +199,7 @@ Get links for a template or runtime entity:
 ```python
 # Get all links for a template
 template_links = await link_service.get_links_for_template(
-    'character', 'abc-123'
+    'characterInstance', 'abc-123'
 )
 
 # Get all links for a runtime entity
@@ -247,11 +247,11 @@ The link pattern integrates with the existing prompt context infrastructure:
 
 ### Mapping IDs
 
-- **Format**: `templateKind->runtimeKind` (e.g., `character->npc`)
+- **Format**: `templateKind->runtimeKind` (e.g., `characterInstance->npc`)
 - **Delimiter**: Use `->` (ASCII-safe, easy to type)
 - **Case**: Use camelCase to match TypeScript conventions
 - **Examples**:
-  - `character->npc`
+  - `characterInstance->npc`
   - `itemTemplate->item`
   - `propTemplate->prop`
   - `locationTemplate->location`
@@ -259,7 +259,7 @@ The link pattern integrates with the existing prompt context infrastructure:
 ### Template Kinds
 
 - Use singular nouns in camelCase
-- Examples: `character`, `itemTemplate`, `propTemplate`
+- Examples: `characterInstance`, `itemTemplate`, `propTemplate`
 - Match the domain model name when possible
 - Avoid abbreviations unless standard (e.g., `npc` is OK)
 
@@ -277,33 +277,12 @@ The link pattern integrates with the existing prompt context infrastructure:
 - Use branded types in TypeScript for type safety where possible
 - Document any domain-specific ID format deviations
 
-## Migration Path
+## Consolidation Status
 
-The existing CharacterNPCLink system continues to work unchanged:
-
-### Current State
-
-- **CharacterNPCLink table**: Remains as-is, no breaking changes
-- **CharacterNPCSyncService**: Continues using CharacterNPCLink
-- **npc_prompt_mapping**: Registered as `character->npc` in mapping registry
-
-### Gradual Migration
-
-1. **Phase 1 (Current)**: Both systems coexist
-   - New code can use ObjectLink via `create_link_via_generic_service()`
-   - Existing code continues using CharacterNPCLink via `create_link()`
-
-2. **Phase 2 (Optional)**: Migrate data
-   - Script to copy CharacterNPCLink → ObjectLink rows
-   - Verify data integrity
-   - Dual-write to both tables for safety
-
-3. **Phase 3 (Future)**: Deprecate old system
-   - Switch CharacterNPCSyncService to use ObjectLink internally
-   - Deprecate CharacterNPCLink table
-   - Remove after migration period
-
-No forced migration. Teams can adopt the generic pattern at their own pace.
+CharacterNPCLink has been consolidated into ObjectLink. Character-NPC links now
+use `template_kind="characterInstance"` and `runtime_kind="npc"` exclusively.
+`CharacterNPCSyncService` delegates to `LinkService` for link creation and
+resolution.
 
 ## Example: Character-NPC Link
 
@@ -314,15 +293,7 @@ from services.characters.npc_sync_service import CharacterNPCSyncService
 
 service = CharacterNPCSyncService(db)
 
-# Option 1: Use existing CharacterNPCLink (unchanged)
 link = await service.create_link(
-    character_instance_id=instance_id,
-    npc_id=npc_id,
-    priority=10
-)
-
-# Option 2: Use generic ObjectLink (new)
-link = await service.create_link_via_generic_service(
     character_instance_id=instance_id,
     npc_id=npc_id,
     priority=10,
@@ -336,7 +307,7 @@ Links can be context-aware for dynamic behavior:
 
 ```python
 # Day appearance (low priority)
-day_link = await service.create_link_via_generic_service(
+day_link = await service.create_link(
     character_instance_id=instance_id,
     npc_id=npc_id,
     priority=5,
@@ -344,7 +315,7 @@ day_link = await service.create_link_via_generic_service(
 )
 
 # Night appearance (higher priority)
-night_link = await service.create_link_via_generic_service(
+night_link = await service.create_link(
     character_instance_id=instance_id,
     npc_id=npc_id,
     priority=10,
@@ -377,7 +348,7 @@ night_link = await service.create_link_via_generic_service(
 
 ### Integration
 
-- `pixsim7/backend/main/services/characters/npc_sync_service.py` - CharacterNPCSyncService with `create_link_via_generic_service()` method
+- `pixsim7/backend/main/services/characters/npc_sync_service.py` - CharacterNPCSyncService (ObjectLink-based)
 
 ### Database
 
@@ -436,7 +407,7 @@ The ObjectLink system enables powerful content authoring patterns that were diff
   id: "quest:save_the_village",
   nodes: [{
     type: 'scene',
-    templateKind: 'character',
+    templateKind: 'characterInstance',
     templateId: 'koba-uuid',  // Koba character template
     // At runtime: resolves to npc:42 in world_1, npc:89 in world_2
   }]
@@ -456,7 +427,7 @@ The ObjectLink system enables powerful content authoring patterns that were diff
 ```python
 # Link 1: Daytime Koba (friendly merchant)
 await link_service.create_link(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='koba-uuid',
     runtime_kind='npc',
     runtime_id=42,  # Merchant NPC
@@ -466,7 +437,7 @@ await link_service.create_link(
 
 # Link 2: Nighttime Koba (mysterious informant)
 await link_service.create_link(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='koba-uuid',
     runtime_kind='npc',
     runtime_id=99,  # Informant NPC
@@ -542,11 +513,11 @@ ObjectLink(
 {
   templateRoleBindings: {
     'mentor': {
-      templateKind: 'character',
+      templateKind: 'characterInstance',
       templateId: 'obi-wan-uuid'
     },
     'student': {
-      templateKind: 'character',
+      templateKind: 'characterInstance',
       templateId: 'luke-uuid'
     }
   }
@@ -571,7 +542,7 @@ ObjectLink(
 // Interaction definition
 {
   id: "interaction:intimate_conversation",
-  targetTemplateKind: 'character',
+  targetTemplateKind: 'characterInstance',
   targetTemplateId: 'love-interest-uuid',
   // Resolves via link with activation conditions
 }
@@ -630,7 +601,7 @@ ObjectLink(
 ```python
 # Get snapshot with link-resolved data
 snapshot = await prompt_service.get_prompt_context_from_template(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id='koba-uuid',
     context={'location': {'zone': 'downtown'}}
 )
@@ -658,11 +629,11 @@ mod_character_id = 'mod:custom-companion-uuid'
 
 # Mod creates ObjectLink using standard mapping
 await link_service.create_link(
-    template_kind='character',
+    template_kind='characterInstance',
     template_id=mod_character_id,
     runtime_kind='npc',
     runtime_id=mod_npc_id,
-    mapping_id='character->npc'  # Uses standard mapping
+    mapping_id='characterInstance->npc'  # Uses standard mapping
 )
 
 # All existing systems automatically work:
@@ -753,6 +724,6 @@ ObjectLink(
 
 - Current spatial model: `packages/shared/types/src/game.ts`
 - FieldMapping and generic_resolver: `services/prompt_context/`
-- Existing CharacterNPCLink: `domain/character_integrations.py`
+- ObjectLink model: `pixsim7/backend/main/domain/links.py`
 - CharacterNPCSyncService: `services/characters/npc_sync_service.py`
 - npc_prompt_mapping: `services/characters/npc_prompt_mapping.py`

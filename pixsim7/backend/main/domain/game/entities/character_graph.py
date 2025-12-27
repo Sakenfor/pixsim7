@@ -19,10 +19,10 @@ from sqlalchemy.orm import selectinload
 from .character import Character, CharacterUsage, CharacterRelationship
 from .character_integrations import (
     CharacterInstance,
-    CharacterNPCLink,
     SceneCharacterManifest,
 )
 from ..core.models import GameNPC, GameScene, GameSceneNode, NpcExpression
+from pixsim7.backend.main.domain.links import ObjectLink
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
 
@@ -209,15 +209,19 @@ async def get_character_graph(
         return _build_graph_response(nodes, edges, character_id)
 
     # Depth 2: NPCs linked to instances
-    instance_ids = [inst.id for inst in instances]
+    instance_ids = [str(inst.id) for inst in instances]
     if instance_ids:
-        npc_links_query = select(CharacterNPCLink).where(
-            CharacterNPCLink.character_instance_id.in_(instance_ids)
+        npc_links_query = select(ObjectLink).where(
+            and_(
+                ObjectLink.template_kind == "characterInstance",
+                ObjectLink.runtime_kind == "npc",
+                ObjectLink.template_id.in_(instance_ids),
+            )
         )
         npc_links_result = await db.execute(npc_links_query)
         npc_links = npc_links_result.scalars().all()
 
-        npc_ids = list(set(link.npc_id for link in npc_links))
+        npc_ids = list(set(link.runtime_id for link in npc_links))
         if npc_ids:
             npcs_query = select(GameNPC).where(GameNPC.id.in_(npc_ids))
             npcs_result = await db.execute(npcs_query)
@@ -231,8 +235,8 @@ async def get_character_graph(
 
             # Add edges from instances to NPCs
             for link in npc_links:
-                instance_id = f"instance:{link.character_instance_id}"
-                npc_id = f"npc:{link.npc_id}"
+                instance_id = f"instance:{link.template_id}"
+                npc_id = f"npc:{link.runtime_id}"
                 edges.append(
                     {
                         "type": "syncs_with",
@@ -395,7 +399,13 @@ async def find_characters_for_npc(
         return {"error": "NPC not found"}
 
     # Get character-NPC links
-    links_query = select(CharacterNPCLink).where(CharacterNPCLink.npc_id == npc_id)
+    links_query = select(ObjectLink).where(
+        and_(
+            ObjectLink.template_kind == "characterInstance",
+            ObjectLink.runtime_kind == "npc",
+            ObjectLink.runtime_id == npc_id,
+        )
+    )
     links_result = await db.execute(links_query)
     links = links_result.scalars().all()
 
@@ -409,7 +419,7 @@ async def find_characters_for_npc(
         }
 
     # Get instances
-    instance_ids = [link.character_instance_id for link in links]
+    instance_ids = [UUID(link.template_id) for link in links]
     instances_query = select(CharacterInstance).where(CharacterInstance.id.in_(instance_ids))
     if world_id is not None:
         instances_query = instances_query.where(CharacterInstance.world_id == world_id)
@@ -429,7 +439,7 @@ async def find_characters_for_npc(
         "character_instances": [_build_character_instance_node(i) for i in instances],
         "links": [
             {
-                "character_instance_id": str(link.character_instance_id),
+                "character_instance_id": link.template_id,
                 "sync_enabled": link.sync_enabled,
                 "sync_direction": link.sync_direction,
                 "priority": link.priority,
@@ -502,8 +512,12 @@ async def find_scenes_for_character(
             return scene_nodes  # Return what we found from character_id
 
         # Get NPCs for this instance
-        links_query = select(CharacterNPCLink).where(
-            CharacterNPCLink.character_instance_id == character_instance_id
+        links_query = select(ObjectLink).where(
+            and_(
+                ObjectLink.template_kind == "characterInstance",
+                ObjectLink.runtime_kind == "npc",
+                ObjectLink.template_id == str(character_instance_id),
+            )
         )
         links_result = await db.execute(links_query)
         links = links_result.scalars().all()
@@ -564,13 +578,17 @@ async def find_assets_for_character(
         instance = await db.get(CharacterInstance, character_instance_id)
         if instance:
             # Get NPCs for this instance
-            links_query = select(CharacterNPCLink).where(
-                CharacterNPCLink.character_instance_id == character_instance_id
+            links_query = select(ObjectLink).where(
+                and_(
+                    ObjectLink.template_kind == "characterInstance",
+                    ObjectLink.runtime_kind == "npc",
+                    ObjectLink.template_id == str(character_instance_id),
+                )
             )
             links_result = await db.execute(links_query)
             links = links_result.scalars().all()
 
-            npc_ids = [link.npc_id for link in links]
+            npc_ids = [link.runtime_id for link in links]
             if npc_ids:
                 # Get NPC expressions
                 expressions_query = select(NpcExpression).where(
@@ -670,13 +688,23 @@ async def get_character_usage_stats(
     instances_count = await db.scalar(instances_count_query) or 0
 
     # Count NPCs (via instances)
-    npc_count_query = (
-        select(func.count(func.distinct(CharacterNPCLink.npc_id)))
-        .select_from(CharacterNPCLink)
-        .join(CharacterInstance, CharacterInstance.id == CharacterNPCLink.character_instance_id)
-        .where(CharacterInstance.character_id == character_id)
+    instance_ids_result = await db.execute(
+        select(CharacterInstance.id).where(CharacterInstance.character_id == character_id)
     )
-    npc_count = await db.scalar(npc_count_query) or 0
+    instance_ids = [str(row[0]) for row in instance_ids_result.all()]
+    if instance_ids:
+        npc_count_query = select(
+            func.count(func.distinct(ObjectLink.runtime_id))
+        ).where(
+            and_(
+                ObjectLink.template_kind == "characterInstance",
+                ObjectLink.runtime_kind == "npc",
+                ObjectLink.template_id.in_(instance_ids),
+            )
+        )
+        npc_count = await db.scalar(npc_count_query) or 0
+    else:
+        npc_count = 0
 
     # Count scenes
     scenes_query = select(SceneCharacterManifest).where(
