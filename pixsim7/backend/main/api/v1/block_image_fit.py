@@ -24,7 +24,7 @@ from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
 from pixsim7.backend.main.services.asset.tags import tag_asset_from_metadata
-from pixsim7.backend.main.services.action_blocks.fit_scoring import (
+from pixsim7.backend.main.services.prompt.block.fit_scoring import (
     compute_block_asset_fit,
     explain_fit_score
 )

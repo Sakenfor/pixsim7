@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.infrastructure.database.session import get_async_session
 from pixsim7.backend.main.domain.generation import Generation
 from pixsim7.backend.main.domain.prompt_versioning import PromptFamily, PromptVersion
-from pixsim7.backend.main.services.prompts import PromptVersionService
+from pixsim7.backend.main.services.prompt import PromptVersionService
 
 
 class InlinePromptConverter:

@@ -6,7 +6,7 @@ Shows how players would integrate with the generic mapping infrastructure.
 """
 
 from typing import Dict
-from pixsim7.backend.main.services.prompt_context.mapping import FieldMapping
+from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
 
 
 # Player Prompt Context Mapping Configuration (Placeholder)

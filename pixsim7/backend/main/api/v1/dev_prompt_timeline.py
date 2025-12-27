@@ -25,7 +25,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.prompts import PromptVersionService
+from pixsim7.backend.main.services.prompt import PromptVersionService
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
 from pixsim7.backend.main.domain.generation.models import Generation

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.ontology import get_ontology_registry
 from pixsim7.backend.main.domain.prompt import PromptBlock
-from pixsim7.backend.main.services.action_blocks.tagging import extract_ontology_ids_from_tags
+from pixsim7.backend.main.services.prompt.block.tagging import extract_ontology_ids_from_tags
 from sqlalchemy import select
 from pixsim_logging import get_logger
 

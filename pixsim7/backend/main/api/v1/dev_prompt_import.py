@@ -7,7 +7,7 @@ using the generic import pipeline (Task 7x).
 
 Purpose:
 - Import prompts from any source (manual, file, external)
-- Use prompt_dsl_adapter for automatic analysis and tagging
+- Use prompt parser analysis for automatic tagging
 - Create PromptFamily and PromptVersion via existing services
 
 Design:
@@ -21,8 +21,8 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.prompts import PromptVersionService
-from pixsim7.backend.main.services.prompt_import import (
+from pixsim7.backend.main.services.prompt import PromptVersionService
+from pixsim7.backend.main.services.prompt.import_service import (
     PromptSource,
     PromptImportSpec,
     prepare_import_payloads,

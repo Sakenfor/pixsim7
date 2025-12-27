@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import List, Optional
 from pydantic import BaseModel
 
-from pixsim7.backend.main.services.prompt_parser import analyzer_registry, AnalyzerTarget
+from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
 
 router = APIRouter()
 

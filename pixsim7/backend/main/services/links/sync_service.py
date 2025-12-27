@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.services.links.link_service import LinkService
 from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
 from pixsim7.backend.main.services.links.entity_loaders import get_entity_loader_registry
-from pixsim7.backend.main.services.prompt_context.generic_resolver import resolve_entity_context
+from pixsim7.backend.main.services.prompt.context.generic_resolver import resolve_entity_context
 
 
 class GenericSyncService:

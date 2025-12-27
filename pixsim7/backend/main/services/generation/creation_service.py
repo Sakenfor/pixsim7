@@ -125,7 +125,7 @@ class GenerationCreationService:
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
         """
-        from pixsim7.backend.main.services.prompt_analysis import PromptAnalysisService
+        from pixsim7.backend.main.services.prompt.analysis_service import PromptAnalysisService
 
         service = PromptAnalysisService(self.db)
         return await service.analyze_and_attach_version(

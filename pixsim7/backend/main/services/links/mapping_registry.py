@@ -14,7 +14,7 @@ Usage:
     mapping = registry.get('character->npc')
 """
 from typing import Dict, Optional
-from pixsim7.backend.main.services.prompt_context.mapping import FieldMapping
+from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
 
 
 class MappingRegistry:

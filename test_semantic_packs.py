@@ -9,8 +9,8 @@ Demonstrates:
 """
 
 import asyncio
-from pixsim7.backend.main.services.prompt_parser.simple import SimplePromptParser
-from pixsim7.backend.main.services.prompt_parser.hints import ParserHintProvider
+from pixsim7.backend.main.services.prompt.parser.simple import SimplePromptParser
+from pixsim7.backend.main.services.prompt.parser.hints import ParserHintProvider
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
 
 
@@ -84,7 +84,7 @@ async def test_parser_with_hints():
     print(f"   Prompt: '{test_prompt}'")
     print(f"   Blocks found: {len(result_default.blocks)}")
     for i, block in enumerate(result_default.blocks):
-        print(f"   [{i+1}] Role: {block.role.value:12} | Text: {block.text}")
+        print(f"   [{i+1}] Role: {block.role:12} | Text: {block.text}")
         if block.metadata:
             print(f"       Metadata: {block.metadata}")
 
@@ -97,7 +97,7 @@ async def test_parser_with_hints():
     print(f"   Prompt: '{test_prompt}'")
     print(f"   Blocks found: {len(result_custom.blocks)}")
     for i, block in enumerate(result_custom.blocks):
-        print(f"   [{i+1}] Role: {block.role.value:12} | Text: {block.text}")
+        print(f"   [{i+1}] Role: {block.role:12} | Text: {block.text}")
         if block.metadata:
             print(f"       Metadata: {block.metadata}")
 
@@ -105,11 +105,11 @@ async def test_parser_with_hints():
     print("\n5. Comparison:")
     print("   WITHOUT hints:")
     for block in result_default.blocks:
-        print(f"   - {block.role.value}: {block.text[:50]}...")
+        print(f"   - {block.role}: {block.text[:50]}...")
 
     print("\n   WITH hints:")
     for block in result_custom.blocks:
-        print(f"   - {block.role.value}: {block.text[:50]}...")
+        print(f"   - {block.role}: {block.text[:50]}...")
 
     # ===== Test 6: Demonstrate hint extraction =====
     print("\n6. Testing hint extraction for specific roles...")

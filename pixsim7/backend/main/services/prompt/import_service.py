@@ -16,14 +16,18 @@ Design:
 - No source-specific logic (works for any import source)
 - Returns standard Pydantic request models
 """
-from enum import Enum
-from typing import Dict, Any, List, Optional, Tuple
+from __future__ import annotations
 
-from pixsim7.backend.main.api.v1.prompts.schemas import (
-    CreatePromptFamilyRequest,
-    CreatePromptVersionRequest,
-)
+from enum import Enum
+from typing import Dict, Any, List, Optional, Tuple, TYPE_CHECKING
+
 from .parser import analyze_prompt
+
+if TYPE_CHECKING:
+    from pixsim7.backend.main.api.v1.prompts.schemas import (
+        CreatePromptFamilyRequest,
+        CreatePromptVersionRequest,
+    )
 
 
 class PromptSource(str, Enum):
@@ -73,13 +77,18 @@ class PromptImportSpec:
 
 async def prepare_import_payloads(
     spec: PromptImportSpec,
-) -> Tuple[CreatePromptFamilyRequest, CreatePromptVersionRequest]:
+) -> Tuple["CreatePromptFamilyRequest", "CreatePromptVersionRequest"]:
     """
     Pure helper: takes an import spec, runs prompt analysis, and returns
     ready-to-use Pydantic request models for the existing prompts API.
 
     No DB writes happen here.
     """
+    from pixsim7.backend.main.api.v1.prompts.schemas import (
+        CreatePromptFamilyRequest,
+        CreatePromptVersionRequest,
+    )
+
     analysis = await analyze_prompt(spec.prompt_text)
     auto_tags: List[str] = analysis.get("tags", [])
 

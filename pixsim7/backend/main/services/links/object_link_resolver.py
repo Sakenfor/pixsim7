@@ -19,7 +19,7 @@ from pixsim7.backend.main.services.links.entity_loaders import get_entity_loader
 from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
 from pixsim7.backend.main.services.links.link_service import LinkService
 from pixsim7.backend.main.domain.links import ObjectLink
-from pixsim7.backend.main.services.prompt_context.mapping import (
+from pixsim7.backend.main.services.prompt.context.mapping import (
     get_nested_value,
     set_nested_value,
 )

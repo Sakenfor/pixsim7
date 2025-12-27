@@ -9,7 +9,7 @@ from sqlmodel import Session
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.ontology import match_keywords
-from pixsim7.backend.main.services.prompt_parser import SimplePromptParser
+from pixsim7.backend.main.services.prompt.parser import SimplePromptParser
 
 
 async def tag_asset_from_metadata(
@@ -53,8 +53,8 @@ async def tag_asset_from_metadata(
         parsed = await parser.parse(generation.final_prompt)
 
         # Extract roles from parsed blocks
-        for block in parsed.blocks:
-            role = block.role.value
+        for block in parsed.segments:
+            role = block.role
             if role not in roles:
                 roles.append(role)
 

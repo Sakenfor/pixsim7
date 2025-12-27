@@ -11,7 +11,7 @@ Purpose:
 
 Design:
 - Read-only inspection (no DB changes)
-- Uses prompt_dsl_adapter for parsing
+- Uses prompt parser adapter for parsing
 - Returns plain JSON (no DSL types)
 """
 from fastapi import APIRouter, HTTPException, Query
@@ -21,7 +21,7 @@ from sqlmodel import select
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.assets.models import Asset
-from pixsim7.backend.main.services.prompt_dsl_adapter import parse_prompt_to_blocks, analyze_prompt
+from pixsim7.backend.main.services.prompt.parser import parse_prompt_to_blocks, analyze_prompt
 from pixsim_logging import get_logger
 from pydantic import BaseModel
 

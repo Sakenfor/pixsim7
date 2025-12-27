@@ -5,12 +5,12 @@ Declares which fields come from CharacterInstance vs GameNPC,
 which fields map to stat axes, and fallback behavior.
 
 This is one implementation example. The generic infrastructure lives in
-services.prompt_context.mapping and can be reused for other entity types
+services.prompt.context.mapping and can be reused for other entity types
 (locations, props, buildings, etc.).
 """
 
 from typing import Dict
-from pixsim7.backend.main.services.prompt_context.mapping import FieldMapping
+from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
 
 
 # NPC Prompt Context Mapping Configuration

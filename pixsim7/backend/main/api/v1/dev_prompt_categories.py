@@ -21,7 +21,7 @@ import logging
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
+from pixsim7.backend.main.services.prompt.parser import analyze_prompt
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
 from pixsim7.backend.main.domain.prompt import PromptBlock
@@ -29,7 +29,7 @@ from pixsim7.backend.main.services.semantic_packs.utils import (
     build_draft_pack_from_suggestion,
     merge_parser_hints,
 )
-from pixsim7.backend.main.services.action_blocks.utils import (
+from pixsim7.backend.main.services.prompt.block.utils import (
     build_draft_action_block_from_suggestion,
 )
 from pixsim7.backend.main.shared.schemas.discovery_schemas import (

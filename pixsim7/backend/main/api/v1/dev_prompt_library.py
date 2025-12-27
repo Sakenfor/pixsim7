@@ -22,8 +22,8 @@ from pydantic import BaseModel
 from uuid import UUID
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.prompts import PromptVersionService
-from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
+from pixsim7.backend.main.services.prompt import PromptVersionService
+from pixsim7.backend.main.services.prompt.parser import analyze_prompt
 from pixsim_logging import get_logger
 
 logger = get_logger()
