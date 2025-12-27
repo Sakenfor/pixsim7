@@ -4291,6 +4291,112 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/dialogue/analytics/cost-summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Cost Summary
+         * @description Get cost summary for dialogue generation
+         *
+         *     Shows LLM costs, cache savings, and usage statistics
+         */
+        readonly get: operations["get_cost_summary_api_v1_dialogue_analytics_cost_summary_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dialogue/analytics/engagement": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Engagement Metrics
+         * @description Get player engagement metrics
+         *
+         *     Shows response rates, conversation continuation, and sentiment
+         */
+        readonly get: operations["get_engagement_metrics_api_v1_dialogue_analytics_engagement_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dialogue/analytics/model-performance": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Model Performance
+         * @description Compare performance across different LLM models
+         */
+        readonly get: operations["get_model_performance_api_v1_dialogue_analytics_model_performance_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dialogue/analytics/program-performance": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Program Performance
+         * @description Analyze performance by prompt program
+         */
+        readonly get: operations["get_program_performance_api_v1_dialogue_analytics_program_performance_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dialogue/analytics/quality": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Quality Metrics
+         * @description Get dialogue quality metrics
+         *
+         *     Shows memory reference rate, emotional consistency, and dialogue length
+         */
+        readonly get: operations["get_quality_metrics_api_v1_dialogue_analytics_quality_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/example-concepts/demo-block": {
         readonly parameters: {
             readonly query?: never;
@@ -6287,6 +6393,82 @@ export interface paths {
         readonly patch: operations["update_llm_instance_api_v1_llm_instances__instance_id__patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/llm/cache/clear-stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Clear Llm Cache Stats
+         * @description Clear LLM cache statistics.
+         *
+         *     Resets hit/miss counters and cost savings tracking.
+         *     Does NOT delete cached responses - use /invalidate for that.
+         */
+        readonly post: operations["clear_llm_cache_stats_api_v1_llm_cache_clear_stats_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/llm/cache/invalidate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Invalidate Llm Cache
+         * @description Invalidate LLM cache entries.
+         *
+         *     Supports:
+         *     - Invalidating by pattern (e.g., 'npc:*', '*relationship*')
+         *     - Invalidating specific cache keys
+         *     - Invalidating all LLM cache entries
+         *
+         *     Use cases:
+         *     - Clear cache for specific NPC when personality changes
+         *     - Clear cache when relationship reaches milestone
+         *     - Clear all cache during development/testing
+         */
+        readonly post: operations["invalidate_llm_cache_api_v1_llm_cache_invalidate_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/llm/cache/stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Llm Cache Stats
+         * @description Get LLM cache statistics.
+         *
+         *     Returns cache hit rate, total keys, estimated cost savings, etc.
+         *     Useful for monitoring cache performance and cost optimization.
+         */
+        readonly get: operations["get_llm_cache_stats_api_v1_llm_cache_stats_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/logs/console-fields": {
         readonly parameters: {
             readonly query?: never;
@@ -6709,7 +6891,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/plugins": {
+    readonly "/api/v1/npcs/{npc_id}/emotions": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6717,45 +6899,31 @@ export interface paths {
             readonly cookie?: never;
         };
         /**
-         * List Plugins
-         * @description List available plugins
+         * Get Npc Emotions
+         * @description Get current emotional states for an NPC
          *
-         *     Returns all plugins from the catalog with the user's enabled/disabled state.
-         *     Use `family` to filter by plugin type (e.g., "scene" for scene-view plugins).
-         *     Use `enabled_only=true` to get only plugins the user has enabled.
+         *     Returns active emotions with intensities
          */
-        readonly get: operations["list_plugins_api_v1_plugins_get"];
+        readonly get: operations["get_npc_emotions_api_v1_npcs__npc_id__emotions_get"];
         readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/plugins/{plugin_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
         /**
-         * Get Plugin
-         * @description Get a specific plugin by ID
+         * Set Npc Emotion
+         * @description Set an emotional state for an NPC
          *
-         *     Returns plugin details including the user's enabled state.
+         *     Triggers a new emotion with specified intensity and duration
          */
-        readonly get: operations["get_plugin_api_v1_plugins__plugin_id__get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
+        readonly post: operations["set_npc_emotion_api_v1_npcs__npc_id__emotions_post"];
+        /**
+         * Clear All Npc Emotions
+         * @description Clear all active emotions for an NPC
+         */
+        readonly delete: operations["clear_all_npc_emotions_api_v1_npcs__npc_id__emotions_delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/plugins/{plugin_id}/disable": {
+    readonly "/api/v1/npcs/{npc_id}/emotions/{emotion_id}": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6764,44 +6932,197 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
+        readonly post?: never;
         /**
-         * Disable Plugin
-         * @description Disable a plugin for the current user
-         *
-         *     The plugin will not be loaded on next app startup.
-         *     Note: Built-in plugins can be disabled but will remain in the catalog.
+         * Clear Npc Emotion
+         * @description Clear a specific emotional state
          */
-        readonly post: operations["disable_plugin_api_v1_plugins__plugin_id__disable_post"];
-        readonly delete?: never;
+        readonly delete: operations["clear_npc_emotion_api_v1_npcs__npc_id__emotions__emotion_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/plugins/{plugin_id}/enable": {
+    readonly "/api/v1/npcs/{npc_id}/memories": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /**
+         * Get Npc Memories
+         * @description Get conversation memories for an NPC
+         *
+         *     Args:
+         *         npc_id: NPC ID
+         *         topic: Filter by topic
+         *         limit: Maximum results
+         *         session_id: Filter by session
+         *
+         *     Returns:
+         *         List of memories
+         */
+        readonly get: operations["get_npc_memories_api_v1_npcs__npc_id__memories_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/memories/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Npc Memory Summary
+         * @description Get memory summary statistics for an NPC
+         *
+         *     Returns count by type and importance
+         */
+        readonly get: operations["get_npc_memory_summary_api_v1_npcs__npc_id__memories_summary_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/milestones": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Npc Milestones
+         * @description Get all relationship milestones for an NPC
+         *
+         *     Returns milestone history in chronological order
+         */
+        readonly get: operations["get_npc_milestones_api_v1_npcs__npc_id__milestones_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/milestones/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Milestone Summary
+         * @description Get summary of relationship milestones
+         */
+        readonly get: operations["get_milestone_summary_api_v1_npcs__npc_id__milestones_summary_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/personality/history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Personality History
+         * @description Get personality evolution history for an NPC
+         */
+        readonly get: operations["get_personality_history_api_v1_npcs__npc_id__personality_history_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/personality/summary": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Personality Summary
+         * @description Get summary of personality evolution
+         */
+        readonly get: operations["get_personality_summary_api_v1_npcs__npc_id__personality_summary_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/personality/trajectory/{trait}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Trait Trajectory
+         * @description Get trajectory/trend for a specific personality trait
+         */
+        readonly get: operations["get_trait_trajectory_api_v1_npcs__npc_id__personality_trajectory__trait__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/npcs/{npc_id}/world-events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get World Events
+         * @description Get relevant world events that an NPC is aware of
+         */
+        readonly get: operations["get_world_events_api_v1_npcs__npc_id__world_events_get"];
         readonly put?: never;
         /**
-         * Enable Plugin
-         * @description Enable a plugin for the current user
+         * Register World Event
+         * @description Register a world event that an NPC is aware of
          *
-         *     The plugin will be loaded on next app startup or can be loaded
-         *     immediately by the frontend via dynamic import.
+         *     This allows NPCs to reference recent events in dialogue
          */
-        readonly post: operations["enable_plugin_api_v1_plugins__plugin_id__enable_post"];
+        readonly post: operations["register_world_event_api_v1_npcs__npc_id__world_events_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/plugins/enabled/list": {
+    readonly "/api/v1/npcs/{npc_id}/world-events/summary": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6809,13 +7130,10 @@ export interface paths {
             readonly cookie?: never;
         };
         /**
-         * List Enabled Plugins
-         * @description List only enabled plugins for the current user
-         *
-         *     Convenience endpoint that returns just the plugins the user has enabled.
-         *     The frontend uses this to know which plugin bundles to load.
+         * Get World Context Summary
+         * @description Get summary of NPC's world awareness
          */
-        readonly get: operations["list_enabled_plugins_api_v1_plugins_enabled_list_get"];
+        readonly get: operations["get_world_context_summary_api_v1_npcs__npc_id__world_events_summary_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -7083,6 +7401,378 @@ export interface paths {
          */
         readonly post: operations["import_family_api_v1_prompts_families_import_post"];
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/activity": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Activity Summary
+         * @description Get activity summary for last N days
+         */
+        readonly get: operations["get_activity_summary_api_v1_prompts_git_families__family_id__activity_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/branches": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Branches
+         * @description List all branches in a family (like git branch)
+         */
+        readonly get: operations["list_branches_api_v1_prompts_git_families__family_id__branches_get"];
+        readonly put?: never;
+        /**
+         * Create Branch
+         * @description Create a new branch (like git branch or git checkout -b)
+         */
+        readonly post: operations["create_branch_api_v1_prompts_git_families__family_id__branches_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/branches/{branch_name}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete Branch
+         * @description Delete a branch (like git branch -d)
+         */
+        readonly delete: operations["delete_branch_api_v1_prompts_git_families__family_id__branches__branch_name__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/branches/{branch_name}/history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Branch History
+         * @description Get commit history for a branch (like git log)
+         */
+        readonly get: operations["get_branch_history_api_v1_prompts_git_families__family_id__branches__branch_name__history_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/branches/{branch_name}/switch": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Switch Branch
+         * @description Switch to a branch (like git checkout)
+         */
+        readonly post: operations["switch_branch_api_v1_prompts_git_families__family_id__branches__branch_name__switch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/branches/divergence": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Branch Divergence
+         * @description Get divergence between two branches
+         */
+        readonly get: operations["get_branch_divergence_api_v1_prompts_git_families__family_id__branches_divergence_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/branches/visualize": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Visualize Branches
+         * @description Generate branch visualization data (like git log --graph)
+         */
+        readonly get: operations["visualize_branches_api_v1_prompts_git_families__family_id__branches_visualize_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/cherry-pick": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Cherry Pick Version
+         * @description Cherry-pick a specific version's changes (like git cherry-pick)
+         */
+        readonly post: operations["cherry_pick_version_api_v1_prompts_git_families__family_id__cherry_pick_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/merge": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Merge Versions
+         * @description Merge two versions (like git merge)
+         *
+         *     Strategies:
+         *     - auto: Automatically choose best strategy
+         *     - fast-forward: Fast-forward if possible
+         *     - three-way: Combine changes from both
+         *     - ours: Keep target version
+         *     - theirs: Use source version
+         *     - ai: AI-powered intelligent merge
+         */
+        readonly post: operations["merge_versions_api_v1_prompts_git_families__family_id__merge_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/revert/{version_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Revert Version
+         * @description Revert a specific version's changes (like git revert)
+         */
+        readonly post: operations["revert_version_api_v1_prompts_git_families__family_id__revert__version_id__post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/rollback": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Rollback To Version
+         * @description Rollback to a previous version (like git reset)
+         */
+        readonly post: operations["rollback_to_version_api_v1_prompts_git_families__family_id__rollback_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/tags": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description List all tags used in a family
+         */
+        readonly get: operations["list_tags_api_v1_prompts_git_families__family_id__tags_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/tags/{tag}/versions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Find Versions By Tag
+         * @description Find all versions with a specific tag
+         */
+        readonly get: operations["find_versions_by_tag_api_v1_prompts_git_families__family_id__tags__tag__versions_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/families/{family_id}/timeline": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Timeline
+         * @description Get timeline view of all changes (like git log --all --graph)
+         */
+        readonly get: operations["get_timeline_api_v1_prompts_git_families__family_id__timeline_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/merge/detect-conflicts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Detect Merge Conflicts
+         * @description Detect merge conflicts between two versions
+         */
+        readonly get: operations["detect_merge_conflicts_api_v1_prompts_git_merge_detect_conflicts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/versions/{version_id}/stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Version Stats
+         * @description Get detailed statistics for a version
+         */
+        readonly get: operations["get_version_stats_api_v1_prompts_git_versions__version_id__stats_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/versions/{version_id}/tags": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Add Tag
+         * @description Add a tag to a version (like git tag)
+         */
+        readonly post: operations["add_tag_api_v1_prompts_git_versions__version_id__tags_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/prompts/git/versions/{version_id}/tags/{tag}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Remove Tag
+         * @description Remove a tag from a version
+         */
+        readonly delete: operations["remove_tag_api_v1_prompts_git_versions__version_id__tags__tag__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -8533,6 +9223,8 @@ export interface components {
             readonly blocks: readonly Record<string, unknown>[];
             /** Compatibility Score */
             readonly compatibility_score: number;
+            /** Composition Assets */
+            readonly composition_assets: readonly Record<string, unknown>[];
             /** Fallback Reason */
             readonly fallback_reason?: string | null;
             /** Prompts */
@@ -9731,6 +10423,28 @@ export interface components {
              */
             readonly tags: readonly string[];
         };
+        /**
+         * CacheInvalidationRequest
+         * @description Request to invalidate cache entries
+         */
+        readonly CacheInvalidationRequest: {
+            /**
+             * Cache Keys
+             * @description Specific cache keys to invalidate
+             */
+            readonly cache_keys?: readonly string[] | null;
+            /**
+             * Invalidate All
+             * @description Invalidate all LLM cache entries
+             * @default false
+             */
+            readonly invalidate_all: boolean;
+            /**
+             * Pattern
+             * @description Redis key pattern to match (e.g., 'npc:*', 'dialogue:*')
+             */
+            readonly pattern?: string | null;
+        };
         /** CharacterDetailResponse */
         readonly CharacterDetailResponse: {
             /** Archetype */
@@ -9874,6 +10588,20 @@ export interface components {
              */
             readonly uploaded_to_providers?: readonly string[] | null;
         };
+        /** CherryPickRequest */
+        readonly CherryPickRequest: {
+            /**
+             * Target Branch
+             * @description Branch to apply to (None = current/main)
+             */
+            readonly target_branch?: string | null;
+            /**
+             * Version To Pick Id
+             * Format: uuid
+             * @description Version to cherry-pick
+             */
+            readonly version_to_pick_id: string;
+        };
         /**
          * ClearExecutionsResponse
          * @description Response from clearing automation executions.
@@ -9923,6 +10651,66 @@ export interface components {
              * @default true
              */
             readonly validate_compatibility: boolean;
+        };
+        /**
+         * CompositionAsset
+         * @description Single asset in an image composition.
+         */
+        readonly CompositionAsset: {
+            /** @description Asset reference (EntityRef, asset:id string, or raw id) */
+            readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
+            /** Camera Framing Id */
+            readonly camera_framing_id?: string | null;
+            /** Camera View Id */
+            readonly camera_view_id?: string | null;
+            /** Character Id */
+            readonly character_id?: string | null;
+            /** Expression Id */
+            readonly expression_id?: string | null;
+            /**
+             * Intent
+             * @description How this asset should be used relative to the intent
+             */
+            readonly intent?: string | null;
+            /**
+             * Layer
+             * @description Composition layer (0=background, higher=foreground)
+             */
+            readonly layer?: number | null;
+            /** Location Id */
+            readonly location_id?: string | null;
+            /** Pose Id */
+            readonly pose_id?: string | null;
+            /**
+             * Priority
+             * @description Priority for conflict resolution (higher wins)
+             */
+            readonly priority?: number | null;
+            /** Prop Id */
+            readonly prop_id?: string | null;
+            /** Provider Params */
+            readonly provider_params?: Record<string, unknown>;
+            /**
+             * Ref Name
+             * @description Optional reference token name for prompt injection
+             */
+            readonly ref_name?: string | null;
+            /**
+             * Role
+             * @description Composition role id (e.g., main_character, environment)
+             */
+            readonly role?: string | null;
+            /** Surface Type */
+            readonly surface_type?: string | null;
+            /** Tags */
+            readonly tags?: readonly string[];
+            /**
+             * Url
+             * @description External or provider URL (used when asset ref is unavailable)
+             */
+            readonly url?: string | null;
+        } & {
+            readonly [key: string]: unknown;
         };
         /**
          * ComputeFitRequest
@@ -10123,6 +10911,19 @@ export interface components {
              * @description Provider to use for analysis (e.g., 'openai', 'anthropic')
              */
             readonly provider_id: string;
+        };
+        /** CreateBranchRequest */
+        readonly CreateBranchRequest: {
+            /**
+             * Branch Name
+             * @description Name for the new branch
+             */
+            readonly branch_name: string;
+            /**
+             * From Version Id
+             * @description Branch from this version (None = latest)
+             */
+            readonly from_version_id?: string | null;
         };
         /** CreateCharacterRequest */
         readonly CreateCharacterRequest: {
@@ -11271,6 +12072,11 @@ export interface components {
          *     - prompts: Transition prompts for video_transition operations
          */
         readonly GenerationNodeConfigSchema: {
+            /**
+             * Composition Assets
+             * @description Structured composition assets (role/layer/intent) for multi-image operations.
+             */
+            readonly composition_assets?: readonly components["schemas"]["CompositionAsset"][] | null;
             readonly constraints: components["schemas"]["ConstraintSetSchema"];
             readonly duration: components["schemas"]["DurationRuleSchema"];
             /**
@@ -11613,6 +12419,46 @@ export interface components {
             readonly timestamp: number;
             /** Worldid */
             readonly worldId: number;
+        };
+        /**
+         * LLMCacheStats
+         * @description Statistics about LLM cache
+         */
+        readonly LLMCacheStats: {
+            /**
+             * Estimated Savings Usd
+             * @description Estimated cost savings from cache
+             * @default 0
+             */
+            readonly estimated_savings_usd: number;
+            /**
+             * Hit Rate
+             * @description Cache hit rate (0.0-1.0)
+             * @default 0
+             */
+            readonly hit_rate: number;
+            /**
+             * Storage Bytes
+             * @description Approximate cache storage size
+             */
+            readonly storage_bytes?: number | null;
+            /**
+             * Total Hits
+             * @description Total cache hits
+             * @default 0
+             */
+            readonly total_hits: number;
+            /**
+             * Total Keys
+             * @description Total number of cached responses
+             */
+            readonly total_keys: number;
+            /**
+             * Total Misses
+             * @description Total cache misses
+             * @default 0
+             */
+            readonly total_misses: number;
         };
         /**
          * LlmInstanceCreate
@@ -12021,6 +12867,29 @@ export interface components {
          * @enum {string}
          */
         readonly MediaType: "video" | "image" | "audio" | "3d_model";
+        /** MergeRequest */
+        readonly MergeRequest: {
+            /** Commit Message */
+            readonly commit_message?: string | null;
+            /**
+             * Source Version Id
+             * Format: uuid
+             * @description Version to merge FROM
+             */
+            readonly source_version_id: string;
+            /**
+             * Strategy
+             * @description Merge strategy: auto, fast-forward, three-way, ours, theirs, ai
+             * @default auto
+             */
+            readonly strategy: string;
+            /**
+             * Target Version Id
+             * Format: uuid
+             * @description Version to merge INTO
+             */
+            readonly target_version_id: string;
+        };
         /** MessageResponse */
         readonly MessageResponse: {
             /** Message */
@@ -12482,100 +13351,6 @@ export interface components {
             readonly stats?: {
                 readonly [key: string]: number;
             } | null;
-        };
-        /**
-         * PluginListResponse
-         * @description List of plugins response
-         */
-        readonly PluginListResponse: {
-            /** Plugins */
-            readonly plugins: readonly components["schemas"]["PluginResponse"][];
-            /** Total */
-            readonly total: number;
-        };
-        /**
-         * PluginMetadata
-         * @description Plugin metadata from manifest
-         */
-        readonly PluginMetadata: {
-            /**
-             * Default
-             * @default false
-             */
-            readonly default: boolean;
-            /** Permissions */
-            readonly permissions?: readonly string[];
-            /** Surfaces */
-            readonly surfaces?: readonly string[];
-        };
-        /**
-         * PluginResponse
-         * @description Plugin catalog entry response
-         */
-        readonly PluginResponse: {
-            /** Author */
-            readonly author?: string | null;
-            /**
-             * Bundle Url
-             * @description URL to plugin bundle
-             */
-            readonly bundle_url: string;
-            /** Description */
-            readonly description?: string | null;
-            /**
-             * Family
-             * @description Plugin family (scene, ui, tool)
-             */
-            readonly family: string;
-            /** Icon */
-            readonly icon?: string | null;
-            /**
-             * Is Builtin
-             * @description Built-in plugin
-             */
-            readonly is_builtin: boolean;
-            /**
-             * Is Enabled
-             * @description Enabled for current user
-             */
-            readonly is_enabled: boolean;
-            /** Manifest Url */
-            readonly manifest_url?: string | null;
-            readonly metadata?: components["schemas"]["PluginMetadata"];
-            /**
-             * Name
-             * @description Display name
-             */
-            readonly name: string;
-            /**
-             * Plugin Id
-             * @description Unique plugin identifier
-             */
-            readonly plugin_id: string;
-            /**
-             * Plugin Type
-             * @description Plugin type within family
-             */
-            readonly plugin_type: string;
-            /** Tags */
-            readonly tags?: readonly string[];
-            /**
-             * Version
-             * @description Semantic version
-             */
-            readonly version: string;
-        };
-        /**
-         * PluginStateResponse
-         * @description Response after enabling/disabling a plugin
-         */
-        readonly PluginStateResponse: {
-            /** Is Enabled */
-            readonly is_enabled: boolean;
-            /** Message */
-            readonly message: string;
-            /** Plugin Id */
-            readonly plugin_id: string;
         };
         /**
          * PresetExecutionMode
@@ -13259,6 +14034,43 @@ export interface components {
             readonly username: string;
         };
         /**
+         * RegisterWorldEventRequest
+         * @description Request to register a world event
+         */
+        readonly RegisterWorldEventRequest: {
+            /**
+             * Duration Hours
+             * @description How long event is relevant
+             */
+            readonly duration_hours?: number | null;
+            /**
+             * Event Description
+             * @description What happened
+             */
+            readonly event_description: string;
+            /**
+             * Event Name
+             * @description Event identifier
+             */
+            readonly event_name: string;
+            /**
+             * Event Type
+             * @description Type of event (time_of_day, weather, story_event, etc.)
+             */
+            readonly event_type: string;
+            /**
+             * Opinion
+             * @description NPC's opinion on the event
+             */
+            readonly opinion?: string | null;
+            /**
+             * Relevance Score
+             * @description How relevant to NPC
+             * @default 0.5
+             */
+            readonly relevance_score: number;
+        };
+        /**
          * RelationshipDelta
          * @description Relationship changes as a result of interaction.
          *
@@ -13329,6 +14141,17 @@ export interface components {
             readonly variable_defs?: Record<string, unknown> | null;
             /** Variables */
             readonly variables: Record<string, unknown>;
+        };
+        /** RollbackRequest */
+        readonly RollbackRequest: {
+            /** Commit Message */
+            readonly commit_message?: string | null;
+            /**
+             * Target Version Id
+             * Format: uuid
+             * @description Version to rollback to
+             */
+            readonly target_version_id: string;
         };
         /** SceneEdge */
         readonly SceneEdge: {
@@ -13967,6 +14790,38 @@ export interface components {
             };
         };
         /**
+         * SetEmotionRequest
+         * @description Request to set NPC emotion
+         */
+        readonly SetEmotionRequest: {
+            /**
+             * Duration Seconds
+             * @description How long it lasts
+             */
+            readonly duration_seconds?: number | null;
+            /**
+             * Emotion
+             * @description Emotion type (happy, sad, angry, etc.)
+             */
+            readonly emotion: string;
+            /**
+             * Intensity
+             * @description Intensity (0.0-1.0)
+             * @default 0.7
+             */
+            readonly intensity: number;
+            /**
+             * Session Id
+             * @description Session this is part of
+             */
+            readonly session_id?: number | null;
+            /**
+             * Triggered By
+             * @description What caused this
+             */
+            readonly triggered_by?: string | null;
+        };
+        /**
          * SHAStatsResponse
          * @description SHA hash coverage statistics
          */
@@ -14245,6 +15100,14 @@ export interface components {
             readonly tags: readonly components["schemas"]["TagSummary"][];
             /** Total */
             readonly total: number;
+        };
+        /** TagRequest */
+        readonly TagRequest: {
+            /**
+             * Tag
+             * @description Tag name
+             */
+            readonly tag: string;
         };
         /**
          * TagSummary
@@ -20770,6 +21633,175 @@ export interface operations {
             };
         };
     };
+    readonly get_cost_summary_api_v1_dialogue_analytics_cost_summary_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly days?: number;
+                readonly npc_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_engagement_metrics_api_v1_dialogue_analytics_engagement_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly days?: number;
+                readonly npc_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_model_performance_api_v1_dialogue_analytics_model_performance_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly days?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_program_performance_api_v1_dialogue_analytics_program_performance_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly days?: number;
+                readonly npc_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_quality_metrics_api_v1_dialogue_analytics_quality_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly days?: number;
+                readonly npc_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_demo_block_api_v1_example_concepts_demo_block_get: {
         readonly parameters: {
             readonly query?: never;
@@ -23927,6 +24959,103 @@ export interface operations {
             };
         };
     };
+    readonly clear_llm_cache_stats_api_v1_llm_cache_clear_stats_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly invalidate_llm_cache_api_v1_llm_cache_invalidate_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CacheInvalidationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_llm_cache_stats_api_v1_llm_cache_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LLMCacheStats"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_console_fields_api_v1_logs_console_fields_get: {
         readonly parameters: {
             readonly query?: never;
@@ -24561,18 +25690,17 @@ export interface operations {
             };
         };
     };
-    readonly list_plugins_api_v1_plugins_get: {
+    readonly get_npc_emotions_api_v1_npcs__npc_id__emotions_get: {
         readonly parameters: {
             readonly query?: {
-                /** @description Only return enabled plugins */
-                readonly enabled_only?: boolean;
-                /** @description Filter by plugin family (scene, ui, tool) */
-                readonly family?: string | null;
+                readonly session_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
             };
-            readonly path?: never;
+            readonly path: {
+                readonly npc_id: number;
+            };
             readonly cookie?: never;
         };
         readonly requestBody?: never;
@@ -24583,7 +25711,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PluginListResponse"];
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -24597,18 +25725,22 @@ export interface operations {
             };
         };
     };
-    readonly get_plugin_api_v1_plugins__plugin_id__get: {
+    readonly set_npc_emotion_api_v1_npcs__npc_id__emotions_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
                 readonly authorization?: string | null;
             };
             readonly path: {
-                readonly plugin_id: string;
+                readonly npc_id: number;
             };
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetEmotionRequest"];
+            };
+        };
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
@@ -24616,7 +25748,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PluginResponse"];
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -24630,82 +25762,17 @@ export interface operations {
             };
         };
     };
-    readonly disable_plugin_api_v1_plugins__plugin_id__disable_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly plugin_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PluginStateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly enable_plugin_api_v1_plugins__plugin_id__enable_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly plugin_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PluginStateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly list_enabled_plugins_api_v1_plugins_enabled_list_get: {
+    readonly clear_all_npc_emotions_api_v1_npcs__npc_id__emotions_delete: {
         readonly parameters: {
             readonly query?: {
-                /** @description Filter by plugin family */
-                readonly family?: string | null;
+                readonly session_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
             };
-            readonly path?: never;
+            readonly path: {
+                readonly npc_id: number;
+            };
             readonly cookie?: never;
         };
         readonly requestBody?: never;
@@ -24716,7 +25783,390 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PluginListResponse"];
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly clear_npc_emotion_api_v1_npcs__npc_id__emotions__emotion_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly emotion_id: number;
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_npc_memories_api_v1_npcs__npc_id__memories_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly session_id?: number | null;
+                readonly topic?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_npc_memory_summary_api_v1_npcs__npc_id__memories_summary_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_npc_milestones_api_v1_npcs__npc_id__milestones_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_milestone_summary_api_v1_npcs__npc_id__milestones_summary_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_personality_history_api_v1_npcs__npc_id__personality_history_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_personality_summary_api_v1_npcs__npc_id__personality_summary_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_trait_trajectory_api_v1_npcs__npc_id__personality_trajectory__trait__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+                readonly trait: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_world_events_api_v1_npcs__npc_id__world_events_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly min_relevance?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly register_world_event_api_v1_npcs__npc_id__world_events_post: {
+        readonly parameters: {
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RegisterWorldEventRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_world_context_summary_api_v1_npcs__npc_id__world_events_summary_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly npc_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
@@ -25176,6 +26626,660 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PromptFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_activity_summary_api_v1_prompts_git_families__family_id__activity_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Number of days to look back */
+                readonly days?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_branches_api_v1_prompts_git_families__family_id__branches_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly Record<string, unknown>[];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_branch_api_v1_prompts_git_families__family_id__branches_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateBranchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_branch_api_v1_prompts_git_families__family_id__branches__branch_name__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Force delete even if unmerged */
+                readonly force?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly branch_name: string;
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_branch_history_api_v1_prompts_git_families__family_id__branches__branch_name__history_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly branch_name: string;
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly Record<string, unknown>[];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly switch_branch_api_v1_prompts_git_families__family_id__branches__branch_name__switch_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly branch_name: string;
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_branch_divergence_api_v1_prompts_git_families__family_id__branches_divergence_get: {
+        readonly parameters: {
+            readonly query: {
+                /** @description First branch name */
+                readonly branch1: string;
+                /** @description Second branch name */
+                readonly branch2: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly visualize_branches_api_v1_prompts_git_families__family_id__branches_visualize_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly cherry_pick_version_api_v1_prompts_git_families__family_id__cherry_pick_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CherryPickRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly merge_versions_api_v1_prompts_git_families__family_id__merge_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MergeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly revert_version_api_v1_prompts_git_families__family_id__revert__version_id__post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+                readonly version_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly rollback_to_version_api_v1_prompts_git_families__family_id__rollback_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RollbackRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_tags_api_v1_prompts_git_families__family_id__tags_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly Record<string, unknown>[];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly find_versions_by_tag_api_v1_prompts_git_families__family_id__tags__tag__versions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+                readonly tag: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly Record<string, unknown>[];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_timeline_api_v1_prompts_git_families__family_id__timeline_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Filter by branch */
+                readonly branch_name?: string | null;
+                /** @description Filter to this date */
+                readonly end_date?: string | null;
+                /** @description Filter from this date */
+                readonly start_date?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly Record<string, unknown>[];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly detect_merge_conflicts_api_v1_prompts_git_merge_detect_conflicts_get: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Source version */
+                readonly source_version_id: string;
+                /** @description Target version */
+                readonly target_version_id: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_version_stats_api_v1_prompts_git_versions__version_id__stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly version_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly add_tag_api_v1_prompts_git_versions__version_id__tags_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly version_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TagRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly remove_tag_api_v1_prompts_git_versions__version_id__tags__tag__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly tag: string;
+                readonly version_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
             /** @description Validation Error */
