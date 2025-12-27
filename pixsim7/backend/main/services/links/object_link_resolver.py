@@ -52,7 +52,7 @@ class ObjectLinkResolver:
         """Load an entity using the loader registry
 
         Args:
-            entity_kind: Entity type (e.g., 'character', 'npc', 'location')
+            entity_kind: Entity type (e.g., 'characterInstance', 'npc', 'location')
             entity_id: Entity identifier (UUID, int, etc.)
 
         Returns:
@@ -78,40 +78,25 @@ class ObjectLinkResolver:
     ) -> Optional[EntityRef]:
         """Resolve a template entity to its linked runtime entity
 
+        Delegates to LinkService.get_active_link_for_template() for canonical
+        sync_enabled + activation + priority filtering logic.
+
         Args:
-            template_kind: Template entity type (e.g., 'character')
+            template_kind: Template entity type (e.g., 'characterInstance')
             template_id: Template entity ID
             context: Optional context for activation conditions
 
         Returns:
             EntityRef with runtime entity, or None if no link
         """
-        # Get all links for this template
-        links = await self.link_service.get_links_for_template(
+        # Delegate to LinkService for canonical filtering logic
+        link = await self.link_service.get_active_link_for_template(
             template_kind,
-            template_id
+            template_id,
+            context
         )
 
-        if not links:
-            return None
-
-        # Filter by activation conditions if context provided
-        if context is not None:
-            from pixsim7.backend.main.services.links.activation import filter_active_links
-            links = filter_active_links(links, context)
-        else:
-            # If no context, filter out links with activation conditions
-            links = [link for link in links if not link.activation_conditions]
-
-        if not links:
-            return None
-
-        # Sort by priority (descending) and get highest priority link
-        links.sort(key=lambda l: l.priority or 0, reverse=True)
-        link = links[0]
-
-        # Only include sync-enabled links
-        if not link.sync_enabled:
+        if not link:
             return None
 
         # Load the runtime entity

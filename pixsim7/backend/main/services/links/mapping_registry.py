@@ -3,15 +3,15 @@
 Provides a centralized registry for FieldMapping configurations
 that define how template and runtime entities sync via ObjectLinks.
 
-Mapping ID format: "templateKind->runtimeKind" (e.g., "character->npc")
+Mapping ID format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
 
 Usage:
     # Register a mapping
     registry = get_mapping_registry()
-    registry.register('character->npc', NPC_FIELD_MAPPING)
+    registry.register('characterInstance->npc', NPC_FIELD_MAPPING)
 
     # Retrieve a mapping
-    mapping = registry.get('character->npc')
+    mapping = registry.get('characterInstance->npc')
 """
 from typing import Dict, Optional
 from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
@@ -20,7 +20,7 @@ from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
 class MappingRegistry:
     """Registry of FieldMapping configurations for different entity pairs
 
-    Maps mapping IDs (e.g., "character->npc") to FieldMapping dictionaries
+    Maps mapping IDs (e.g., "characterInstance->npc") to FieldMapping dictionaries
     that define field-level sync behavior between template and runtime entities.
     """
 
@@ -35,7 +35,7 @@ class MappingRegistry:
             field_mappings: Dictionary of field mappings defining sync behavior
 
         Example:
-            registry.register('character->npc', {
+            registry.register('characterInstance->npc', {
                 'name': FieldMapping(...),
                 'personality.openness': FieldMapping(...)
             })
@@ -46,7 +46,7 @@ class MappingRegistry:
         if '->' not in mapping_id:
             raise ValueError(
                 f"Invalid mapping_id format: '{mapping_id}'. "
-                "Expected 'templateKind->runtimeKind' (e.g., 'character->npc')"
+                "Expected 'templateKind->runtimeKind' (e.g., 'characterInstance->npc')"
             )
 
         self._mappings[mapping_id] = field_mappings
@@ -80,6 +80,55 @@ class MappingRegistry:
             True if mapping exists, False otherwise
         """
         return mapping_id in self._mappings
+
+    def get_runtime_kinds(self, template_kind: str) -> list[str]:
+        """Get all runtime kinds that have mappings for a template kind
+
+        Args:
+            template_kind: Template entity kind (e.g., 'characterInstance')
+
+        Returns:
+            List of runtime kinds (e.g., ['npc', 'companion'])
+
+        Example:
+            kinds = registry.get_runtime_kinds('characterInstance')
+            # Returns ['npc'] if only characterInstance->npc is registered
+        """
+        runtime_kinds = []
+        prefix = f"{template_kind}->"
+        for mapping_id in self._mappings:
+            if mapping_id.startswith(prefix):
+                runtime_kind = mapping_id.split('->')[-1]
+                runtime_kinds.append(runtime_kind)
+        return runtime_kinds
+
+    def get_runtime_kind(self, template_kind: str) -> Optional[str]:
+        """Get the runtime kind for a template kind (requires exactly one)
+
+        Args:
+            template_kind: Template entity kind (e.g., 'characterInstance')
+
+        Returns:
+            Runtime kind string, or None if no mapping exists
+
+        Raises:
+            ValueError: If multiple runtime kinds are registered for the template kind
+
+        Example:
+            kind = registry.get_runtime_kind('characterInstance')  # Returns 'npc'
+        """
+        runtime_kinds = self.get_runtime_kinds(template_kind)
+
+        if not runtime_kinds:
+            return None
+
+        if len(runtime_kinds) > 1:
+            raise ValueError(
+                f"Multiple runtime kinds registered for '{template_kind}': {runtime_kinds}. "
+                f"Use get_runtime_kinds() to get all, or specify mapping_id explicitly."
+            )
+
+        return runtime_kinds[0]
 
     def unregister(self, mapping_id: str) -> bool:
         """Unregister a mapping

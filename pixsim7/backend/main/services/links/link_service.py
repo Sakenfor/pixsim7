@@ -8,15 +8,15 @@ Usage:
 
     # Create a link
     link = await service.create_link(
-        template_kind='character',
+        template_kind='characterInstance',
         template_id='abc-123',
         runtime_kind='npc',
         runtime_id=456,
-        mapping_id='character->npc'
+        mapping_id='characterInstance->npc'
     )
 
     # Get links for a template
-    links = await service.get_links_for_template('character', 'abc-123')
+    links = await service.get_links_for_template('characterInstance', 'abc-123')
 
     # Get active link for runtime entity
     link = await service.get_active_link_for_runtime('npc', 456, context)
@@ -61,12 +61,13 @@ class LinkService:
         sync_direction: str = 'bidirectional',
         priority: int = 0,
         activation_conditions: Optional[Dict[str, Any]] = None,
+        sync_field_mappings: Optional[Dict[str, str]] = None,
         meta: Optional[Dict[str, Any]] = None
     ) -> ObjectLink:
         """Create a new template↔runtime link
 
         Args:
-            template_kind: Template entity kind (e.g., 'character')
+            template_kind: Template entity kind (e.g., 'characterInstance')
             template_id: Template entity ID (usually UUID)
             runtime_kind: Runtime entity kind (e.g., 'npc')
             runtime_id: Runtime entity ID (usually integer)
@@ -75,6 +76,7 @@ class LinkService:
             sync_direction: 'bidirectional', 'template_to_runtime', 'runtime_to_template'
             priority: Priority for conflict resolution (higher wins)
             activation_conditions: Context-based activation (e.g., location, time)
+            sync_field_mappings: Per-link field mappings for sync (source_path -> target_path)
             meta: Extensible metadata
 
         Returns:
@@ -84,7 +86,7 @@ class LinkService:
             ValueError: If mapping_id is invalid or no mapping registered
         """
         # Auto-generate mapping_id if not provided
-        # Format: "templateKind->runtimeKind" (e.g., "character->npc")
+        # Format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
         if not mapping_id:
             mapping_id = f"{template_kind}->{runtime_kind}"
 
@@ -106,6 +108,7 @@ class LinkService:
             mapping_id=mapping_id,
             priority=priority,
             activation_conditions=activation_conditions,
+            sync_field_mappings=sync_field_mappings,
             meta=meta
         )
 
@@ -196,7 +199,7 @@ class LinkService:
     ) -> Optional[ObjectLink]:
         """Get highest-priority active link for a runtime entity
 
-        Filters links by activation conditions (if context provided),
+        Filters links by sync_enabled, activation conditions (if context provided),
         then returns the one with the highest priority.
 
         Args:
@@ -213,6 +216,12 @@ class LinkService:
         if not links:
             return None
 
+        # Filter to sync-enabled links only
+        links = [link for link in links if link.sync_enabled]
+
+        if not links:
+            return None
+
         # If no context provided, return highest priority link
         if context is None:
             # Filter out links with activation conditions (inactive without context)
@@ -220,6 +229,49 @@ class LinkService:
             return links[0] if links else None
 
         # Get highest priority active link
+        return get_highest_priority_active_link(links, context)
+
+    async def get_active_link_for_template(
+        self,
+        template_kind: str,
+        template_id: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Optional[ObjectLink]:
+        """Get highest-priority active link for a template entity
+
+        Filters links by sync_enabled, activation conditions (if context provided),
+        then returns the one with the highest priority.
+
+        Args:
+            template_kind: Template entity kind (e.g., 'characterInstance')
+            template_id: Template entity ID
+            context: Runtime context for activation evaluation
+
+        Returns:
+            Highest-priority active link, or None if no active links
+        """
+        # Get all links for template entity
+        links = await self.get_links_for_template(template_kind, template_id)
+
+        if not links:
+            return None
+
+        # Filter to sync-enabled links only
+        links = [link for link in links if link.sync_enabled]
+
+        if not links:
+            return None
+
+        # If no context provided, filter out links with activation conditions
+        if context is None:
+            links = [link for link in links if not link.activation_conditions]
+            if not links:
+                return None
+            # Sort by priority and return highest
+            links.sort(key=lambda l: l.priority or 0, reverse=True)
+            return links[0]
+
+        # Get highest priority active link using activation filter
         return get_highest_priority_active_link(links, context)
 
     async def update_link(

@@ -8,7 +8,7 @@ Usage:
     # Resolve a template reference to runtime entity ID
     runtime_id = await resolve_template_to_runtime(
         db=db,
-        template_kind='character',
+        template_kind='characterInstance',
         template_id='abc-123-uuid',
         context={'location': {'zone': 'downtown'}}
     )
@@ -24,7 +24,6 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.services.links.link_service import LinkService
-from pixsim7.backend.main.services.links.activation import get_highest_priority_active_link
 
 
 async def resolve_template_to_runtime(
@@ -38,9 +37,12 @@ async def resolve_template_to_runtime(
     """
     Resolve a template entity reference to a runtime entity ID via ObjectLink.
 
+    Delegates to LinkService.get_active_link_for_template() for canonical
+    sync_enabled + activation + priority filtering.
+
     Args:
         db: Database session
-        template_kind: Template entity kind (e.g., 'character', 'itemTemplate')
+        template_kind: Template entity kind (e.g., 'characterInstance', 'itemTemplate')
         template_id: Template entity ID (usually UUID)
         link_id: Optional explicit link ID to use
         context: Runtime context for activation-based resolution
@@ -49,9 +51,9 @@ async def resolve_template_to_runtime(
         Runtime entity ID (int) or None if no active link found
 
     Example:
-        # Resolve character template to active NPC
+        # Resolve character instance to active NPC
         npc_id = await resolve_template_to_runtime(
-            db, 'character', 'abc-123',
+            db, 'characterInstance', 'abc-123',
             context={'location': {'zone': 'downtown'}}
         )
     """
@@ -65,26 +67,14 @@ async def resolve_template_to_runtime(
             return link.runtime_id
         return None
 
-    # Find active link for this template
-    links = await link_service.get_links_for_template(template_kind, template_id)
+    # Delegate to LinkService for canonical filtering (sync_enabled + activation + priority)
+    link = await link_service.get_active_link_for_template(
+        template_kind,
+        template_id,
+        context
+    )
 
-    if not links:
-        return None
-
-    # Filter to enabled links
-    enabled_links = [l for l in links if l.sync_enabled]
-
-    if not enabled_links:
-        return None
-
-    # Use context-aware or priority-based resolution
-    if context:
-        active_link = get_highest_priority_active_link(enabled_links, context)
-        return active_link.runtime_id if active_link else None
-    else:
-        # Simple highest-priority resolution
-        enabled_links.sort(key=lambda l: l.priority or 0, reverse=True)
-        return enabled_links[0].runtime_id
+    return link.runtime_id if link else None
 
 
 async def resolve_interaction_targets(

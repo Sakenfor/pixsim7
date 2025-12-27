@@ -1,7 +1,7 @@
 """Generic Template↔Runtime Link Domain Models
 
 This module provides generic link infrastructure for connecting any template entity
-(Character, ItemTemplate, PropTemplate) to any runtime entity (NPC, Item, Prop).
+(CharacterInstance, ItemTemplate, PropTemplate) to any runtime entity (NPC, Item, Prop).
 
 The link pattern supports:
 - Bidirectional sync with field-level authority
@@ -11,12 +11,12 @@ The link pattern supports:
 - Extensible metadata
 
 Architecture:
-    Template Entity (character, itemTemplate, etc.)
+    Template Entity (characterInstance, itemTemplate, etc.)
       └─ ObjectLink
            └─ Runtime Entity (npc, item, etc.)
 
 Example links:
-- character->npc: CharacterInstance ↔ GameNPC
+- characterInstance->npc: CharacterInstance ↔ GameNPC
 - itemTemplate->item: ItemTemplate ↔ ItemInstance
 - propTemplate->prop: PropTemplate ↔ PropInstance
 """
@@ -34,15 +34,15 @@ class ObjectLink(SQLModel, table=True):
     Links a template entity (design/definition) to a runtime entity (in-game instance)
     with configurable sync behavior, priority, and activation conditions.
 
-    Mapping ID format: "templateKind->runtimeKind" (e.g., "character->npc")
+    Mapping ID format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
 
     Example:
         ObjectLink(
-            template_kind='character',
+            template_kind='characterInstance',
             template_id='abc-123-uuid',
             runtime_kind='npc',
             runtime_id=456,
-            mapping_id='character->npc',
+            mapping_id='characterInstance->npc',
             priority=10,
             activation_conditions={'location.zone': 'downtown'}
         )
@@ -55,7 +55,7 @@ class ObjectLink(SQLModel, table=True):
     # Template reference
     template_kind: str = Field(
         max_length=50,
-        description="Template entity kind (e.g., 'character', 'itemTemplate')"
+        description="Template entity kind (e.g., 'characterInstance', 'itemTemplate')"
     )
     template_id: str = Field(
         max_length=255,
@@ -86,7 +86,16 @@ class ObjectLink(SQLModel, table=True):
     mapping_id: Optional[str] = Field(
         None,
         max_length=100,
-        description="Mapping ID pointing to FieldMapping config (e.g., 'character->npc')"
+        description="Mapping ID pointing to FieldMapping config (e.g., 'characterInstance->npc')"
+    )
+
+    # Per-link sync field mappings (simple path-to-path map for sync operations)
+    # Format: {"source.path": "target.path"} e.g., {"visual_traits.scars": "personality.appearance.scars"}
+    # This is for sync services, NOT for overriding FieldMapping registry configs
+    sync_field_mappings: Optional[Dict[str, str]] = Field(
+        None,
+        sa_column=Column(JSONB),
+        description="Per-link field mappings for sync operations (source_path -> target_path)"
     )
 
     # Link behavior
