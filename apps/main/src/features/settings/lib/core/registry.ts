@@ -3,10 +3,14 @@
  *
  * Allows modules to register settings tabs that appear in the Settings panel.
  * Each module provides its own component to render settings UI.
+ *
+ * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 import { type ComponentType, type ReactNode } from 'react';
 
-export interface SettingsModule {
+import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
+
+export interface SettingsModule extends Identifiable {
   /** Unique identifier for the settings module */
   id: string;
   /** Display label for the tab */
@@ -19,56 +23,29 @@ export interface SettingsModule {
   order?: number;
 }
 
-type SettingsListener = () => void;
-
-class SettingsRegistry {
-  private modules: Map<string, SettingsModule> = new Map();
-  private listeners: Set<SettingsListener> = new Set();
-
+class SettingsRegistry extends BaseRegistry<SettingsModule> {
   /**
-   * Register a settings module
+   * Register a settings module.
+   * Overwrites if a module with the same ID already exists (for hot-reload compatibility).
+   *
+   * @param module - The settings module to register
    */
-  register(module: SettingsModule): void {
-    this.modules.set(module.id, module);
-    this.notify();
+  register(module: SettingsModule): boolean {
+    // Use forceRegister to maintain backward compatibility (always overwrite)
+    this.forceRegister(module);
+    return true;
   }
 
   /**
-   * Unregister a settings module
-   */
-  unregister(id: string): void {
-    this.modules.delete(id);
-    this.notify();
-  }
-
-  /**
-   * Get all registered modules, sorted by order
+   * Get all registered modules, sorted by order.
+   * Lower order values appear first.
    */
   getAll(): SettingsModule[] {
-    return Array.from(this.modules.values()).sort((a, b) => {
+    return super.getAll().sort((a, b) => {
       const orderA = a.order ?? 100;
       const orderB = b.order ?? 100;
       return orderA - orderB;
     });
-  }
-
-  /**
-   * Get a specific module by ID
-   */
-  get(id: string): SettingsModule | undefined {
-    return this.modules.get(id);
-  }
-
-  /**
-   * Subscribe to registry changes
-   */
-  subscribe(listener: SettingsListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private notify(): void {
-    this.listeners.forEach(listener => listener());
   }
 }
 

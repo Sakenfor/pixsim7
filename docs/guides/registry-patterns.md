@@ -717,7 +717,7 @@ If your use case requires deviation:
 | Registry | Extends BaseRegistry? | Migration Status |
 |----------|----------------------|------------------|
 | PanelRegistry | Yes | Complete |
-| SettingsRegistry | No | TODO |
+| SettingsRegistry | Yes | Complete |
 | NodeTypeRegistry | No | Justified exception |
 | GalleryToolRegistry | No | TODO |
 | BrainToolRegistry | No | TODO |
@@ -727,6 +727,5 @@ If your use case requires deviation:
 
 ### Migration Priority
 
-1. **SettingsRegistry** — Simple, similar interface already
-2. **GatingRegistry** — Procedural, isolated
-3. **Gallery/Brain/WorldToolRegistry** — Near-identical implementations, migrate together
+1. **GatingRegistry** — Procedural, isolated
+2. **Gallery/Brain/WorldToolRegistry** — Near-identical implementations, migrate together

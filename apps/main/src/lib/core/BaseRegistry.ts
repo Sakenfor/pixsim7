@@ -16,7 +16,7 @@
  *
  * | Registry | Status | Justification |
  * |----------|--------|---------------|
- * | SettingsRegistry | TODO: migrate | No blocking reason |
+ * | SettingsRegistry | Migrated | Extends BaseRegistry |
  * | NodeTypeRegistry | Justified | Needs LRU cache + lazy loading |
  * | GalleryToolRegistry | TODO: migrate | No blocking reason |
  * | BrainToolRegistry | TODO: migrate | No blocking reason |
