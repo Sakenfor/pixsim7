@@ -23,7 +23,7 @@ from pixsim7.backend.main.shared.errors import (
 from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
-from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
+from pixsim7.backend.main.services.prompt.parser import analyze_prompt
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -375,8 +375,11 @@ class AssetCoreService:
             List of assets
         """
         # Base query
-        from sqlalchemy import and_, or_
+        from sqlalchemy import and_, or_, case, literal
+        from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
+
         query = select(Asset)
+        tag_joined = False
 
         # Filter by user (unless admin)
         if not user.is_admin():
@@ -394,20 +397,63 @@ class AssetCoreService:
         if provider_id:
             query = query.where(Asset.provider_id == provider_id)
         if provider_status:
-            query = query.where(Asset.provider_status == provider_status)
+            provider_status_expr = case(
+                (Asset.remote_url.ilike("http%"), literal("ok")),
+                (
+                    and_(
+                        Asset.provider_asset_id.isnot(None),
+                        ~Asset.provider_asset_id.ilike("local_%"),
+                    ),
+                    literal("ok"),
+                ),
+                (
+                    and_(
+                        Asset.provider_asset_id.isnot(None),
+                        Asset.provider_asset_id.ilike("local_%"),
+                    ),
+                    literal("local_only"),
+                ),
+                else_=literal("unknown"),
+            )
+            if provider_status == "flagged":
+                query = query.where(literal(False))
+            else:
+                query = query.where(provider_status_expr == provider_status)
         if tag:
-            # JSON array contains tag (postgres jsonb @>)
-            query = query.where(Asset.tags.contains([tag]))
+            query = (
+                query.join(AssetTag, AssetTag.asset_id == Asset.id)
+                .join(Tag, Tag.id == AssetTag.tag_id)
+                .where(
+                    or_(
+                        Tag.slug == tag,
+                        Tag.display_name.ilike(f"%{tag}%"),
+                        Tag.name.ilike(f"%{tag}%"),
+                    )
+                )
+            )
+            tag_joined = True
         if q:
-            # Search across multiple text fields
+            # Search across multiple text fields (including tags)
             like = f"%{q}%"
+            if not tag_joined:
+                query = (
+                    query.outerjoin(AssetTag, AssetTag.asset_id == Asset.id)
+                    .outerjoin(Tag, Tag.id == AssetTag.tag_id)
+                )
+                tag_joined = True
             query = query.where(
                 or_(
                     Asset.description.ilike(like),
                     Asset.local_path.ilike(like),
                     Asset.original_source_url.ilike(like),
+                    Tag.slug.ilike(like),
+                    Tag.display_name.ilike(like),
+                    Tag.name.ilike(like),
                 )
             )
+
+        if tag_joined:
+            query = query.distinct()
 
         # Order by creation time desc and id desc for stable pagination
         query = query.order_by(Asset.created_at.desc(), Asset.id.desc())

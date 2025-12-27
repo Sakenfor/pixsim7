@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
 from pixsim7.backend.main.domain.game import GameScene, GameSceneNode, GameSceneEdge
+from pixsim7.backend.main.services.tag_service import TagService
 
 
 router = APIRouter()
@@ -112,6 +113,8 @@ async def get_scene(
     if not scene:
         raise HTTPException(status_code=404, detail="Scene not found")
 
+    tag_service = TagService(db)
+
     # Fetch nodes and edges
     nodes_result = await db.execute(
         select(GameSceneNode).where(GameSceneNode.scene_id == scene.id)
@@ -135,13 +138,14 @@ async def get_scene(
                 asset = await asset_service.get_asset_for_user(n.asset_id, user)
                 # Use remote_url or download_url
                 remote_url = asset.remote_url or asset.download_url
+                tag_slugs = [t.slug for t in await tag_service.get_asset_tags(asset.id)]
                 if remote_url:
                     media_segments.append(
                         MediaSegment(
                             id=str(asset.id),
                             url=remote_url,
                             durationSec=asset.duration_sec,
-                            tags=asset.tags or None,
+                            tags=tag_slugs or None,
                         )
                     )
             except Exception:
@@ -166,11 +170,12 @@ async def get_scene(
                 try:
                     asset = await asset_service.get_asset_for_user(seg_asset_id_int, user)
                     remote_url = asset.remote_url or asset.download_url
+                    tag_slugs = [t.slug for t in await tag_service.get_asset_tags(asset.id)]
                     if not remote_url:
                         continue
 
                     seg_id = seg.get("id") or asset.id or seg_asset_id_int
-                    tags = seg.get("tags") or asset.tags or None
+                    tags = seg.get("tags") or tag_slugs or None
 
                     media_segments.append(
                         MediaSegment(

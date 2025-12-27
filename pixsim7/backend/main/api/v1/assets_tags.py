@@ -74,7 +74,8 @@ async def assign_tags_to_asset(
 async def analyze_asset_for_tags(
     asset_id: int,
     user: CurrentUser,
-    asset_service: AssetSvc
+    asset_service: AssetSvc,
+    db: DatabaseSession,
 ):
     """
     Analyze an asset and suggest tags using heuristics.
@@ -86,6 +87,7 @@ async def analyze_asset_for_tags(
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
+        tag_service = TagService(db)
         suggestions = []
 
         # Add media type tag
@@ -118,7 +120,7 @@ async def analyze_asset_for_tags(
                 suggestions.append("long")
             suggestions.append("cinematic")
 
-        existing_tags = asset.tags or []
+        existing_tags = [t.slug for t in await tag_service.get_asset_tags(asset.id)]
 
         return {
             "suggested_tags": suggestions,
