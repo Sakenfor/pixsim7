@@ -10,6 +10,14 @@ import { persist } from 'zustand/middleware';
 
 export type ViewerMode = 'side' | 'fullscreen' | 'closed';
 
+/**
+ * Gallery quality mode for thumbnail/preview loading
+ * - 'thumbnail': Always load 320px thumbnails (fastest, lowest quality)
+ * - 'preview': Always load 800px previews (best quality, slower)
+ * - 'auto': Load preview when available, fallback to thumbnail
+ */
+export type GalleryQualityMode = 'thumbnail' | 'preview' | 'auto';
+
 export interface ViewerAsset {
   /** Unique identifier */
   id: string | number;
@@ -37,7 +45,7 @@ export interface ViewerAsset {
   };
 }
 
-interface ViewerSettings {
+export interface ViewerSettings {
   /** Default mode when opening an asset */
   defaultMode: 'side' | 'fullscreen';
   /** Panel width as percentage (20-60) */
@@ -48,6 +56,8 @@ interface ViewerSettings {
   showMetadata: boolean;
   /** Loop videos */
   loopVideos: boolean;
+  /** Gallery quality mode for thumbnail loading */
+  qualityMode: GalleryQualityMode;
 }
 
 interface AssetViewerState {
@@ -93,6 +103,7 @@ const defaultSettings: ViewerSettings = {
   autoPlayVideos: true,
   showMetadata: false,
   loopVideos: true,
+  qualityMode: 'auto',
 };
 
 export const useAssetViewerStore = create<AssetViewerState>()(

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BACKEND_BASE } from '../lib/api/client';
 import { useMediaSettingsStore } from '../stores/mediaSettingsStore';
-import { useGallerySettingsStore } from '../stores/gallerySettingsStore';
-import { assetEvents } from '@features/assets';
+import { assetEvents, useAssetViewerStore } from '@features/assets';
 
 export interface UseMediaThumbnailOptions {
   /**
@@ -80,7 +79,7 @@ export function useMediaThumbnailFull(
   const [retryTrigger, setRetryTrigger] = useState(0);
   const objectUrlRef = useRef<string | null>(null);
   const globalPreventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
-  const galleryQualityMode = useGallerySettingsStore((s) => s.qualityMode);
+  const galleryQualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
 
   const preventDiskCache = options?.preventDiskCache ?? globalPreventDiskCache;
 

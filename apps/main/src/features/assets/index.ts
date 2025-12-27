@@ -71,6 +71,8 @@ export {
   selectCanNavigateNext,
   type ViewerAsset,
   type ViewerMode,
+  type ViewerSettings,
+  type GalleryQualityMode,
 } from './stores/assetViewerStore';
 
 export {

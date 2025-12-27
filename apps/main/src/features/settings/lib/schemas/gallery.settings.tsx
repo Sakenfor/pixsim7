@@ -2,10 +2,11 @@
  * Gallery Settings Schema
  *
  * User preferences for gallery display behavior.
+ * Settings are stored in the unified assetViewerStore.
  */
 
 import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '../core';
-import { useGallerySettingsStore, type GalleryQualityMode } from '@/stores/gallerySettingsStore';
+import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
 
 const galleryGroups: SettingGroup[] = [
   {
@@ -30,8 +31,8 @@ const galleryGroups: SettingGroup[] = [
 ];
 
 function useGallerySettingsStoreAdapter(): SettingStoreAdapter {
-  const qualityMode = useGallerySettingsStore((s) => s.qualityMode);
-  const setQualityMode = useGallerySettingsStore((s) => s.setQualityMode);
+  const qualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
+  const updateSettings = useAssetViewerStore((s) => s.updateSettings);
 
   return {
     get: (fieldId: string) => {
@@ -39,9 +40,9 @@ function useGallerySettingsStoreAdapter(): SettingStoreAdapter {
       return undefined;
     },
 
-    set: (fieldId: string, value: any) => {
+    set: (fieldId: string, value: unknown) => {
       if (fieldId === 'qualityMode') {
-        setQualityMode(value as GalleryQualityMode);
+        updateSettings({ qualityMode: value as GalleryQualityMode });
       }
     },
 
