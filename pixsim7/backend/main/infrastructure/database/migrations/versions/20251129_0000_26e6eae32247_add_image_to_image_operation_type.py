@@ -17,10 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add IMAGE_TO_IMAGE to the operationtype enum
+    # Add image_to_image to the operationtype enum (lowercase to match existing values)
     # PostgreSQL doesn't support ALTER TYPE ... ADD VALUE in a transaction,
     # so we need to use EXECUTE
-    op.execute("ALTER TYPE operationtype ADD VALUE IF NOT EXISTS 'IMAGE_TO_IMAGE'")
+    op.execute("ALTER TYPE operationtype ADD VALUE IF NOT EXISTS 'image_to_image'")
 
 
 def downgrade() -> None:
