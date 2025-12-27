@@ -180,7 +180,7 @@ async def finalize_upload(
     # Queue thumbnail generation if we have a local copy
     if stored_key:
         try:
-            from pixsim7.backend.main.services.asset.ingestion_service import AssetIngestionService
+            from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
             ingestion_service = AssetIngestionService(db)
             await ingestion_service.queue_ingestion(asset.id)
         except Exception as e:

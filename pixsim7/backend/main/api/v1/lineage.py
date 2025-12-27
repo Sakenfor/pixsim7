@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.lineage import AssetLineage
-from pixsim7.backend.main.services.asset.lineage_service import AssetLineageService
-from pixsim7.backend.main.services.asset.branching_service import AssetBranchingService
-from pixsim7.backend.main.services.asset.lineage_refresh_service import LineageRefreshService
+from pixsim7.backend.main.services.asset.lineage import AssetLineageService
+from pixsim7.backend.main.services.asset.branching import AssetBranchingService
+from pixsim7.backend.main.services.asset.lineage_refresh import LineageRefreshService
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim_logging import get_logger
 

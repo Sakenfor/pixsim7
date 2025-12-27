@@ -13,10 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import User
 from pixsim7.backend.main.services.user.user_service import UserService
-from .core_service import AssetCoreService
-from .sync_service import AssetSyncService
-from .enrichment_service import AssetEnrichmentService
-from .quota_service import AssetQuotaService
+from .core import AssetCoreService
+from .sync import AssetSyncService
+from .enrichment import AssetEnrichmentService
+from .quota import AssetQuotaService
 
 
 class AssetService:

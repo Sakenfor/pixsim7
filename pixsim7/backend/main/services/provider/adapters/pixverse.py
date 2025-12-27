@@ -382,7 +382,7 @@ class PixverseProvider(
         This method checks for source_asset_id in params and looks up provider_uploads.
         """
         from pixsim7.backend.main.domain.assets.models import Asset
-        from pixsim7.backend.main.services.asset.sync_service import AssetSyncService
+        from pixsim7.backend.main.services.asset.sync import AssetSyncService
         from sqlalchemy import select
         from pixsim7.backend.main.infrastructure.database.session import get_async_session
 

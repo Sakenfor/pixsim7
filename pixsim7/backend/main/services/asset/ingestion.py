@@ -35,7 +35,7 @@ from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
-from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
+from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim_logging import get_logger
 
 logger = get_logger()

@@ -16,7 +16,7 @@ from pixsim7.backend.main.domain import (
     SyncStatus,
     User,
 )
-from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
+from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
@@ -245,7 +245,7 @@ class AssetSyncService:
         Returns:
             Updated Asset (now DOWNLOADED with stored_key) or existing if already ingested.
         """
-        from pixsim7.backend.main.services.asset.ingestion_service import AssetIngestionService
+        from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
 
         # Get asset with authorization check
         result = await self.db.execute(
@@ -262,7 +262,7 @@ class AssetSyncService:
         if asset.ingest_status == "completed" and is_content_addressed:
             # Still do embedded extraction if requested
             if include_embedded:
-                from pixsim7.backend.main.services.asset.enrichment_service import AssetEnrichmentService
+                from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
                 enrichment_service = AssetEnrichmentService(self.db)
                 await enrichment_service._extract_and_register_embedded(asset, user)
             return asset
@@ -281,7 +281,7 @@ class AssetSyncService:
 
             # Embedded asset extraction (provider-specific, kept in sync_service)
             if include_embedded:
-                from pixsim7.backend.main.services.asset.enrichment_service import AssetEnrichmentService
+                from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
                 enrichment_service = AssetEnrichmentService(self.db)
                 await enrichment_service._extract_and_register_embedded(asset, user)
 

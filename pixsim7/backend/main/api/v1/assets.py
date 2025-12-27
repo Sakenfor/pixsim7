@@ -884,7 +884,7 @@ async def upload_asset_to_provider(
                 # Queue thumbnail generation if we have a local copy
                 if stored_key and new_asset:
                     try:
-                        from pixsim7.backend.main.services.asset.ingestion_service import AssetIngestionService
+                        from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
                         ingestion_service = AssetIngestionService(db)
                         await ingestion_service.queue_ingestion(new_asset.id)
                     except Exception as e:

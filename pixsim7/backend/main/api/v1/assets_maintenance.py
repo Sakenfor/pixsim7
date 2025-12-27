@@ -442,7 +442,7 @@ async def backfill_content_blobs(
     """
     from sqlalchemy import select, or_, and_
     from pixsim7.backend.main.domain.assets.models import Asset
-    from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
+    from pixsim7.backend.main.services.asset.content import ensure_content_blob
 
     try:
         result = await db.execute(

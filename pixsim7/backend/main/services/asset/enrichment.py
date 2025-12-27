@@ -15,7 +15,7 @@ from pixsim7.backend.main.domain import (
     User,
     MediaType,
 )
-from pixsim7.backend.main.services.asset.content_utils import ensure_content_blob
+from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
 )

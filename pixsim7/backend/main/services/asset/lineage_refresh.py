@@ -99,7 +99,7 @@ class LineageRefreshService:
             await self.db.commit()
 
         # Strategy 1: Delegate to existing enrichment logic for embedded extraction
-        from pixsim7.backend.main.services.asset.enrichment_service import AssetEnrichmentService
+        from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
 
         enrichment = AssetEnrichmentService(self.db)
         await enrichment._extract_and_register_embedded(asset, user)
