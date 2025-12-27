@@ -51,10 +51,12 @@ class BaseCapabilityAPI:
                 raise PermissionDeniedError(self.plugin_id, required, capability_name)
             elif behavior == PermissionDeniedBehavior.WARN:
                 self.logger.warning(
-                    "Permission denied",
+                    "plugin_permission_denied",
                     plugin_id=self.plugin_id,
                     required_permission=required,
                     capability=capability_name,
+                    action="blocked",
+                    msg=f"Plugin '{self.plugin_id}' lacks permission '{required}' for {capability_name}",
                 )
             # SILENT: do nothing
             return False

@@ -753,14 +753,18 @@ async def evaluate_condition(
             exc_info=True,
         )
 
-        # Track failure metrics
+        # Track failure metrics with error classification
         from .observability import metrics_tracker
         metrics_tracker.record_condition_evaluation(metadata.plugin_id, success=False)
         metrics_tracker.record_error(
             metadata.plugin_id,
             "ConditionEvaluationError",
             str(e),
-            {"condition_id": condition_id},
+            {
+                "condition_id": condition_id,
+                "error_type": type(e).__name__,
+                "is_plugin_error": True,  # Distinguishes from "plugin disabled" or "missing context"
+            },
         )
 
         return False  # Failed conditions = False
@@ -835,14 +839,18 @@ async def apply_effect(
             exc_info=True,
         )
 
-        # Track failure metrics
+        # Track failure metrics with error classification
         from .observability import metrics_tracker
         metrics_tracker.record_effect_application(metadata.plugin_id, success=False)
         metrics_tracker.record_error(
             metadata.plugin_id,
             "EffectApplicationError",
             str(e),
-            {"effect_id": effect_id},
+            {
+                "effect_id": effect_id,
+                "error_type": type(e).__name__,
+                "is_plugin_error": True,  # Distinguishes from "plugin disabled"
+            },
         )
 
         return None  # Failed effects return None

@@ -72,6 +72,9 @@ class WorldReadAPI(BaseCapabilityAPI):
             "flags": row[4],
         }
 
+    # Valid config key pattern: alphanumeric, underscores, dots for nesting
+    _CONFIG_KEY_PATTERN = __import__('re').compile(r'^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$')
+
     async def get_world_config(self, world_id: int, key: str) -> Optional[Any]:
         """
         Get a specific config value from world.meta.
@@ -83,6 +86,15 @@ class WorldReadAPI(BaseCapabilityAPI):
         Returns:
             Config value or None if not found
         """
+        # Validate key format
+        if not key or not self._CONFIG_KEY_PATTERN.match(key):
+            self.logger.warning(
+                "Invalid config key format",
+                plugin_id=self.plugin_id,
+                key=key,
+            )
+            return None
+
         world = await self.get_world(world_id)
         if not world or not world.get("meta"):
             return None
