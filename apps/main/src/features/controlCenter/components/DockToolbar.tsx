@@ -2,7 +2,7 @@
  * DockToolbar Component
  *
  * Compact toolbar for the control center dock header.
- * Includes module tabs, quick navigation, and position controls.
+ * Includes quick navigation shortcuts, position controls, and notifications.
  */
 
 import { useMemo, useState, useRef, useEffect } from 'react';
@@ -10,7 +10,6 @@ import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
-import { GenerationHistoryButton } from '../generation/GenerationHistoryButton';
 import { NotificationTicker } from './NotificationTicker';
 import { ContentModerationWarning } from './ContentModerationWarning';
 

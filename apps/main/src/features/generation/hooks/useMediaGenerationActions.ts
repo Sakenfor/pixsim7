@@ -7,7 +7,7 @@ import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionSt
 import { useGenerationScopeStores } from './useGenerationScope';
 import { useGenerationsStore } from '../stores/generationsStore';
 import { createPendingGeneration } from '../models';
-import { buildGenerationRequest } from '@features/prompts/lib/quickGenerateLogic';
+import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 import { generateAsset } from '@features/controlCenter/lib/api';
 import { normalizeAssetParams } from '../lib/core';
 import { extractErrorMessage } from '@lib/api/errorHandling';

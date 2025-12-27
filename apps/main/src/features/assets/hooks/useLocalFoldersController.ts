@@ -177,9 +177,13 @@ export function useLocalFoldersController(): LocalFoldersController {
       asset.lastUploadStatus !== 'success'
     );
 
-    // If nothing to do, mark as checked
+    // If nothing to do, mark as checked - but ONLY if we actually have assets in this folder.
+    // If filteredAssets is empty, the assets may not have loaded yet (race condition).
+    // Don't mark as checked so we can re-run when assets load.
     if (assetsToHash.length === 0 && assetsWithHash.length === 0) {
-      hashCheckedFoldersRef.current.add(selectedFolderPath);
+      if (filteredAssets.length > 0) {
+        hashCheckedFoldersRef.current.add(selectedFolderPath);
+      }
       return;
     }
 
