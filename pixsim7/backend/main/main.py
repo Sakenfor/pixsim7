@@ -153,8 +153,9 @@ async def lifespan(app: FastAPI):
     app.state.routes_manager = routes_manager
     app.state.middleware_manager = middleware_manager
 
-    # Also set global plugin manager for backward compatibility
-    set_plugin_manager(plugin_manager)
+    # Register both plugin managers for PluginContext dependency injection
+    set_plugin_manager(plugin_manager, namespace="feature")
+    set_plugin_manager(routes_manager, namespace="route")
 
     # Lock behavior registry
     stats = setup_behavior_registry_lock(plugin_manager, routes_manager)

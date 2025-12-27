@@ -81,6 +81,11 @@ class PluginManager:
 
             if not module_path.exists():
                 logger.error(f"Plugin manifest not found: {module_path}")
+                self.failed_plugins[plugin_name] = {
+                    'error': f"Manifest not found: {module_path}",
+                    'required': False,
+                    'manifest': None
+                }
                 return False
 
             # Import module dynamically
@@ -90,6 +95,11 @@ class PluginManager:
             )
             if not spec or not spec.loader:
                 logger.error(f"Failed to load spec for {plugin_name}")
+                self.failed_plugins[plugin_name] = {
+                    'error': "Failed to create module spec",
+                    'required': False,
+                    'manifest': None
+                }
                 return False
 
             module = importlib.util.module_from_spec(spec)
@@ -98,10 +108,20 @@ class PluginManager:
             # Validate plugin exports
             if not hasattr(module, 'manifest'):
                 logger.error(f"Plugin {plugin_name} missing 'manifest'")
+                self.failed_plugins[plugin_name] = {
+                    'error': "Module missing 'manifest' export",
+                    'required': False,
+                    'manifest': None
+                }
                 return False
 
             if not hasattr(module, 'router'):
                 logger.error(f"Plugin {plugin_name} missing 'router'")
+                self.failed_plugins[plugin_name] = {
+                    'error': "Module missing 'router' export",
+                    'required': False,
+                    'manifest': None
+                }
                 return False
 
             manifest: PluginManifest = module.manifest
@@ -122,6 +142,11 @@ class PluginManager:
                     f"Plugin {manifest.id} has invalid permissions",
                     unknown=validation.unknown,
                 )
+                self.failed_plugins[plugin_name] = {
+                    'error': f"Invalid permissions: {validation.unknown}",
+                    'required': manifest.required,
+                    'manifest': manifest
+                }
                 return False
 
             # Log permission warnings
@@ -252,8 +277,13 @@ class PluginManager:
             if not plugin:
                 raise ValueError(f"Missing dependency: {plugin_id}")
 
-            # Visit dependencies first
+            # Visit dependencies first (and validate they are enabled)
             for dep in plugin['manifest'].dependencies:
+                dep_plugin = self.plugins.get(dep)
+                if dep_plugin and not dep_plugin['enabled']:
+                    raise ValueError(
+                        f"Plugin '{plugin_id}' depends on '{dep}' which is disabled"
+                    )
                 visit(dep, visiting)
 
             visiting.remove(plugin_id)

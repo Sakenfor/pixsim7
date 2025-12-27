@@ -25,18 +25,23 @@ from .context import PluginContext
 from .manager import PluginManager
 
 
-# Global plugin manager instance (set during app startup)
-_plugin_manager: Optional[PluginManager] = None
+# Global plugin manager registry (set during app startup)
+# Supports multiple managers: "feature" for feature plugins, "route" for route plugins
+_plugin_managers: dict[str, PluginManager] = {}
 
 
-def set_plugin_manager(manager: PluginManager) -> None:
+def set_plugin_manager(manager: PluginManager, namespace: str = "feature") -> None:
     """
-    Set the global plugin manager instance.
+    Register a plugin manager for a namespace.
+
+    Args:
+        manager: PluginManager instance
+        namespace: Manager namespace ("feature" or "route")
 
     Called during app startup (main.py).
     """
-    global _plugin_manager
-    _plugin_manager = manager
+    global _plugin_managers
+    _plugin_managers[namespace] = manager
 
 
 def get_plugin_context(plugin_id: str) -> Callable:
@@ -65,13 +70,22 @@ def get_plugin_context(plugin_id: str) -> Callable:
         """
         Dependency that creates PluginContext for the specified plugin.
         """
-        # Get plugin manifest
-        if not _plugin_manager:
-            raise RuntimeError("Plugin manager not initialized")
+        # Search all registered managers for the plugin
+        if not _plugin_managers:
+            raise RuntimeError("No plugin managers initialized")
 
-        plugin_info = _plugin_manager.get_plugin(plugin_id)
+        plugin_info = None
+        for manager in _plugin_managers.values():
+            plugin_info = manager.get_plugin(plugin_id)
+            if plugin_info:
+                break
+
         if not plugin_info:
-            raise RuntimeError(f"Plugin '{plugin_id}' not found")
+            namespaces = list(_plugin_managers.keys())
+            raise RuntimeError(
+                f"Plugin '{plugin_id}' not found in any manager. "
+                f"Registered namespaces: {namespaces}"
+            )
 
         manifest = plugin_info["manifest"]
 
