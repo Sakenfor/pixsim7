@@ -130,4 +130,17 @@ describe('buildGenerationRequest', () => {
       prompts: ['fade', 'sparkle'],
     });
   });
+
+  it('prefers source_asset_id and strips legacy image_url for image_to_video', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_video',
+      prompt: 'animate this',
+      dynamicParams: { source_asset_id: 7, image_url: 'img_id:legacy' },
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.source_asset_id).toBe(7);
+    expect(result.params).not.toHaveProperty('image_url');
+  });
 });

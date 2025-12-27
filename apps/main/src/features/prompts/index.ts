@@ -13,7 +13,7 @@
  * } from '@features/prompts';
  *
  * // Or import specific modules
- * import { buildGenerationRequest } from '@features/prompts/lib/quickGenerateLogic';
+ * import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
  * ```
  */
 
@@ -54,7 +54,7 @@ export {
   type QuickGenerateBindings,
 } from './hooks/useQuickGenerateBindings';
 
-export { useQuickGenerateController } from './hooks/useQuickGenerateController';
+export { useQuickGenerateController } from '@features/generation/hooks/useQuickGenerateController';
 
 // ============================================================================
 // Library - Generation Logic
@@ -64,4 +64,4 @@ export {
   buildGenerationRequest,
   type QuickGenerateContext,
   type BuildGenerationResult,
-} from './lib/quickGenerateLogic';
+} from '@features/generation/lib/quickGenerateLogic';

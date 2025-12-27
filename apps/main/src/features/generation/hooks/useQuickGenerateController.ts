@@ -6,7 +6,7 @@ import { generateAsset } from '@features/controlCenter/lib/api';
 import { extractFrame, fromAssetResponse } from '@features/assets';
 import { logEvent } from '@lib/utils/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
-import { useQuickGenerateBindings } from './useQuickGenerateBindings';
+import { useQuickGenerateBindings } from '@features/prompts/hooks/useQuickGenerateBindings';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { getFallbackOperation, OPERATION_METADATA } from '@/types/operations';
 

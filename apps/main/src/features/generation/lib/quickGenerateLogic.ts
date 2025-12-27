@@ -62,6 +62,43 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   let inferredSourceAssetId: number | undefined;
   let inferredSourceAssetIds: number[] | undefined;
 
+  // Helper to resolve a single-asset input (prefers queue, then dynamic param, then active selection)
+  const resolveSingleSourceAssetId = (options: {
+    allowVideo?: boolean;
+  } = {}): number | undefined => {
+    const allowVideo = options.allowVideo ?? false;
+    let sourceAssetId = dynamicParams.source_asset_id;
+    const queueAssetId =
+      mainQueueCurrent && (
+        mainQueueCurrent.asset.mediaType === 'image' ||
+        (allowVideo && mainQueueCurrent.asset.mediaType === 'video')
+      )
+        ? mainQueueCurrent.asset.id
+        : undefined;
+
+    if (queueAssetId) {
+      sourceAssetId = queueAssetId;
+    } else if (!sourceAssetId && activeAsset) {
+      const isImage = activeAsset.type === 'image';
+      const isVideo = activeAsset.type === 'video';
+      if (isImage || (allowVideo && isVideo)) {
+        sourceAssetId = activeAsset.id;
+      }
+    }
+
+    return sourceAssetId;
+  };
+
+  // Helper to strip legacy URL params once asset IDs are present
+  const stripLegacyAssetParams = (params: Record<string, any>) => {
+    if (params.source_asset_id || (Array.isArray(params.source_asset_ids) && params.source_asset_ids.length > 0)) {
+      delete params.image_url;
+      delete params.image_urls;
+      delete params.video_url;
+      delete params.original_video_id;
+    }
+  };
+
   // Operation-specific validation with context-aware messages
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
     return {
@@ -71,50 +108,62 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    // Priority: dynamicParams.source_asset_id > queue > activeAsset
-    // NOTE: Legacy image_url is no longer checked - use source_asset_id only
-    let sourceAssetId = dynamicParams.source_asset_id;
+    // Priority: multi-asset list > queue selection > dynamic params > activeAsset
+    // NOTE: Legacy image_url is no longer checked - use source_asset_id(s) only
+    const multiSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
+      ? dynamicParams.source_asset_ids
+      : Array.isArray(sourceAssetIds) && sourceAssetIds.length > 0
+        ? sourceAssetIds
+        : undefined;
 
-    if (!sourceAssetId) {
-      if (mainQueueCurrent?.asset.mediaType === 'image') {
-        sourceAssetId = mainQueueCurrent.asset.id;
-      } else if (activeAsset?.type === 'image') {
+    if (multiSourceIds?.length) {
+      if (!dynamicParams.source_asset_ids) {
+        inferredSourceAssetIds = multiSourceIds;
+      }
+
+      if (!trimmedPrompt) {
+        return {
+          error: 'Please enter a prompt describing how to transform the image.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+    } else {
+      let sourceAssetId = dynamicParams.source_asset_id;
+      const queueAssetId = mainQueueCurrent?.asset.mediaType === 'image'
+        ? mainQueueCurrent.asset.id
+        : undefined;
+
+      if (queueAssetId) {
+        sourceAssetId = queueAssetId;
+      } else if (!sourceAssetId && activeAsset?.type === 'image') {
         sourceAssetId = activeAsset.id;
       }
-    }
 
-    // Validate we have an asset ID
-    if (!sourceAssetId) {
-      return {
-        error: 'No image selected. Select an image from the gallery to transform.',
-        finalPrompt: trimmedPrompt,
-      };
-    }
+      // Validate we have an asset ID
+      if (!sourceAssetId) {
+        return {
+          error: 'No image selected. Select an image from the gallery to transform.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
 
-    if (!trimmedPrompt) {
-      return {
-        error: 'Please enter a prompt describing how to transform the image.',
-        finalPrompt: trimmedPrompt,
-      };
-    }
+      if (!trimmedPrompt) {
+        return {
+          error: 'Please enter a prompt describing how to transform the image.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
 
-    if (!dynamicParams.source_asset_id && sourceAssetId) {
-      inferredSourceAssetId = sourceAssetId;
+      if (!dynamicParams.source_asset_id && sourceAssetId) {
+        inferredSourceAssetId = sourceAssetId;
+      }
     }
   }
 
   if (operationType === 'image_to_video') {
-    // Priority: dynamicParams.source_asset_id > queue > activeAsset
+    // Priority: queue selection > dynamic params > activeAsset
     // NOTE: Legacy image_url is no longer checked - use source_asset_id only
-    let sourceAssetId = dynamicParams.source_asset_id;
-
-    if (!sourceAssetId) {
-      if (mainQueueCurrent?.asset.mediaType === 'image') {
-        sourceAssetId = mainQueueCurrent.asset.id;
-      } else if (activeAsset?.type === 'image') {
-        sourceAssetId = activeAsset.id;
-      }
-    }
+    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
 
     // Validate prompt if we have an asset (optional - can fall back to text_to_video)
     // If no asset, the caller will handle switching to text_to_video
@@ -131,16 +180,17 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'video_extend') {
-    // Priority: dynamicParams.source_asset_id > queue > activeAsset
+    // Priority: queue selection > dynamic params > activeAsset
     // NOTE: Legacy video_url/original_video_id are no longer checked - use source_asset_id only
     let sourceAssetId = dynamicParams.source_asset_id;
+    const queueAssetId = mainQueueCurrent?.asset.mediaType === 'video'
+      ? mainQueueCurrent.asset.id
+      : undefined;
 
-    if (!sourceAssetId) {
-      if (mainQueueCurrent?.asset.mediaType === 'video') {
-        sourceAssetId = mainQueueCurrent.asset.id;
-      } else if (activeAsset?.type === 'video') {
-        sourceAssetId = activeAsset.id;
-      }
+    if (queueAssetId) {
+      sourceAssetId = queueAssetId;
+    } else if (!sourceAssetId && activeAsset?.type === 'video') {
+      sourceAssetId = activeAsset.id;
     }
 
     // Validate we have an asset ID
@@ -222,6 +272,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   if (inferredSourceAssetIds && !params.source_asset_ids) {
     params.source_asset_ids = inferredSourceAssetIds;
   }
+
+  // Drop legacy URL params when asset IDs are present to avoid leaking img_id refs
+  stripLegacyAssetParams(params);
 
   // Add array fields for video_transition
   if (operationType === 'video_transition') {
