@@ -97,9 +97,22 @@ class WorldReadAPI(BaseCapabilityAPI):
 
         return value
 
-    async def list_world_locations(self, world_id: int) -> list[dict]:
+    # Maximum query result limit to prevent memory issues
+    MAX_QUERY_LIMIT = 500
+
+    async def list_world_locations(
+        self,
+        world_id: int,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
         """
-        List all locations in a world.
+        List locations in a world with pagination.
+
+        Args:
+            world_id: World ID to query
+            limit: Max results to return (default 100, max 500)
+            offset: Number of results to skip (for pagination)
 
         Returns:
             List of location dicts (id, name, location_type, meta)
@@ -114,9 +127,14 @@ class WorldReadAPI(BaseCapabilityAPI):
         if not self.db:
             return []
 
+        # Enforce limits
+        limit = min(max(1, limit), self.MAX_QUERY_LIMIT)
+        offset = max(0, offset)
+
         result = await self.db.execute(
-            "SELECT id, name, location_type, meta FROM game_locations WHERE world_id = :world_id",
-            {"world_id": world_id}
+            "SELECT id, name, location_type, meta FROM game_locations "
+            "WHERE world_id = :world_id LIMIT :limit OFFSET :offset",
+            {"world_id": world_id, "limit": limit, "offset": offset}
         )
 
         locations = [
@@ -134,13 +152,25 @@ class WorldReadAPI(BaseCapabilityAPI):
             plugin_id=self.plugin_id,
             world_id=world_id,
             count=len(locations),
+            limit=limit,
+            offset=offset,
         )
 
         return locations
 
-    async def list_world_npcs(self, world_id: int) -> list[dict]:
+    async def list_world_npcs(
+        self,
+        world_id: int,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
         """
-        List all NPCs in a world.
+        List NPCs in a world with pagination.
+
+        Args:
+            world_id: World ID to query
+            limit: Max results to return (default 100, max 500)
+            offset: Number of results to skip (for pagination)
 
         Returns:
             List of NPC dicts (id, name, role, meta)
@@ -155,9 +185,14 @@ class WorldReadAPI(BaseCapabilityAPI):
         if not self.db:
             return []
 
+        # Enforce limits
+        limit = min(max(1, limit), self.MAX_QUERY_LIMIT)
+        offset = max(0, offset)
+
         result = await self.db.execute(
-            "SELECT id, name, role, meta FROM game_npcs WHERE world_id = :world_id",
-            {"world_id": world_id}
+            "SELECT id, name, role, meta FROM game_npcs "
+            "WHERE world_id = :world_id LIMIT :limit OFFSET :offset",
+            {"world_id": world_id, "limit": limit, "offset": offset}
         )
 
         npcs = [
@@ -175,6 +210,8 @@ class WorldReadAPI(BaseCapabilityAPI):
             plugin_id=self.plugin_id,
             world_id=world_id,
             count=len(npcs),
+            limit=limit,
+            offset=offset,
         )
 
         return npcs

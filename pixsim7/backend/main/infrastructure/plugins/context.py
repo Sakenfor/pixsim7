@@ -13,7 +13,7 @@ PluginContext exposes narrow, well-typed capability APIs that:
 See: claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md Phase 16.3
 """
 
-from typing import Optional
+from typing import Optional, Set
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
@@ -26,6 +26,17 @@ from .capabilities import (
     BehaviorExtensionAPI,
     LoggingAPI,
 )
+
+
+# Permission constants for capability discovery
+_CAPABILITY_PERMISSIONS = {
+    'world': ['world:read'],
+    'session': ['session:read'],
+    'session_write': ['session:write'],
+    'components': ['session:write'],
+    'behavior': ['behavior:extend_conditions', 'behavior:extend_effects'],
+    'log': ['log:emit'],
+}
 
 
 class PluginContext:
@@ -55,6 +66,16 @@ class PluginContext:
 
             ctx.log.info("Did something")
     """
+
+    # Type hints for IDE autocomplete
+    plugin_id: str
+    permissions: Set[str]
+    world: WorldReadAPI
+    session: SessionReadAPI
+    session_write: SessionMutationsAPI
+    components: ComponentAPI
+    behavior: BehaviorExtensionAPI
+    log: LoggingAPI
 
     def __init__(
         self,
@@ -106,3 +127,22 @@ class PluginContext:
                 permission,
                 "PluginContext.require_permission"
             )
+
+    def get_available_capabilities(self) -> dict[str, bool]:
+        """
+        Get available capabilities based on plugin's permissions.
+
+        Returns:
+            Dict mapping capability names to availability.
+            True = has required permission(s), False = missing permission(s).
+
+        Example:
+            caps = ctx.get_available_capabilities()
+            if caps['world']:
+                world = await ctx.world.get_world(world_id)
+        """
+        result = {}
+        for capability, required_perms in _CAPABILITY_PERMISSIONS.items():
+            # Capability available if ANY of the required permissions are granted
+            result[capability] = any(p in self.permissions for p in required_perms)
+        return result

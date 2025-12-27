@@ -722,10 +722,22 @@ async def evaluate_condition(
             )
             return False
 
-    # Evaluate condition (with error handling and metrics)
+    # Evaluate condition (with error handling, timing, and metrics)
+    import time
+    start_time = time.perf_counter()
     try:
         result = metadata.evaluator(context)
         success = bool(result)
+
+        # Warn about slow callbacks (> 100ms)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        if duration_ms > 100:
+            logger.warning(
+                "Slow condition evaluation",
+                condition_id=condition_id,
+                plugin_id=metadata.plugin_id,
+                duration_ms=round(duration_ms, 2),
+            )
 
         # Track metrics
         from .observability import metrics_tracker
@@ -793,9 +805,21 @@ async def apply_effect(
     # Merge params with defaults
     merged_params = {**metadata.default_params, **(params or {})}
 
-    # Apply effect (with error handling and metrics)
+    # Apply effect (with error handling, timing, and metrics)
+    import time
+    start_time = time.perf_counter()
     try:
         result = metadata.handler(context, merged_params)
+
+        # Warn about slow callbacks (> 100ms)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        if duration_ms > 100:
+            logger.warning(
+                "Slow effect application",
+                effect_id=effect_id,
+                plugin_id=metadata.plugin_id,
+                duration_ms=round(duration_ms, 2),
+            )
 
         # Track metrics
         from .observability import metrics_tracker
