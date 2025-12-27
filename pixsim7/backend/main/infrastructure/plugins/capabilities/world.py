@@ -5,11 +5,13 @@ Provides read-only access to world metadata, locations, and NPCs.
 """
 
 from typing import Optional, Any
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from ..permissions import PluginPermission, PermissionDeniedBehavior
 from ..context_base import BaseCapabilityAPI
+from pixsim7.backend.main.domain.game.core.models import GameWorld, GameLocation, GameNPC
 
 
 class WorldReadAPI(BaseCapabilityAPI):
@@ -47,15 +49,11 @@ class WorldReadAPI(BaseCapabilityAPI):
             self.logger.error("WorldReadAPI requires database access")
             return None
 
-        from pixsim7.backend.main.domain.game.world import GameWorld
+        stmt = select(GameWorld).where(GameWorld.id == world_id)
+        result = await self.db.execute(stmt)
+        world = result.scalar_one_or_none()
 
-        result = await self.db.execute(
-            "SELECT id, name, description, meta, flags FROM game_worlds WHERE id = :world_id",
-            {"world_id": world_id}
-        )
-        row = result.fetchone()
-
-        if not row:
+        if not world:
             return None
 
         self.logger.debug(
@@ -64,12 +62,13 @@ class WorldReadAPI(BaseCapabilityAPI):
             world_id=world_id,
         )
 
+        meta = world.meta or {}
         return {
-            "id": row[0],
-            "name": row[1],
-            "description": row[2],
-            "meta": row[3],
-            "flags": row[4],
+            "id": world.id,
+            "name": world.name,
+            "description": meta.get("description"),
+            "meta": meta,
+            "flags": meta.get("flags", {}),
         }
 
     # Valid config key pattern: alphanumeric, underscores, dots for nesting
@@ -143,21 +142,22 @@ class WorldReadAPI(BaseCapabilityAPI):
         limit = min(max(1, limit), self.MAX_QUERY_LIMIT)
         offset = max(0, offset)
 
-        result = await self.db.execute(
-            "SELECT id, name, location_type, meta FROM game_locations "
-            "WHERE world_id = :world_id LIMIT :limit OFFSET :offset",
-            {"world_id": world_id, "limit": limit, "offset": offset}
-        )
+        # Note: GameLocation has no direct world_id column; filter via meta if present
+        stmt = select(GameLocation).limit(limit).offset(offset)
+        result = await self.db.execute(stmt)
+        rows = result.scalars().all()
 
-        locations = [
-            {
-                "id": row[0],
-                "name": row[1],
-                "location_type": row[2],
-                "meta": row[3],
-            }
-            for row in result.fetchall()
-        ]
+        # Filter by world_id from meta and build response
+        locations = []
+        for loc in rows:
+            loc_meta = loc.meta or {}
+            if loc_meta.get("world_id") == world_id:
+                locations.append({
+                    "id": loc.id,
+                    "name": loc.name,
+                    "location_type": loc_meta.get("location_type"),
+                    "meta": loc_meta,
+                })
 
         self.logger.debug(
             "list_world_locations",
@@ -201,21 +201,22 @@ class WorldReadAPI(BaseCapabilityAPI):
         limit = min(max(1, limit), self.MAX_QUERY_LIMIT)
         offset = max(0, offset)
 
-        result = await self.db.execute(
-            "SELECT id, name, role, meta FROM game_npcs "
-            "WHERE world_id = :world_id LIMIT :limit OFFSET :offset",
-            {"world_id": world_id, "limit": limit, "offset": offset}
-        )
+        # Note: GameNPC has no direct world_id column; filter via personality meta if present
+        stmt = select(GameNPC).limit(limit).offset(offset)
+        result = await self.db.execute(stmt)
+        rows = result.scalars().all()
 
-        npcs = [
-            {
-                "id": row[0],
-                "name": row[1],
-                "role": row[2],
-                "meta": row[3],
-            }
-            for row in result.fetchall()
-        ]
+        # Filter by world_id from personality and build response
+        npcs = []
+        for npc in rows:
+            npc_meta = npc.personality or {}
+            if npc_meta.get("world_id") == world_id:
+                npcs.append({
+                    "id": npc.id,
+                    "name": npc.name,
+                    "role": npc_meta.get("role"),
+                    "meta": npc_meta,
+                })
 
         self.logger.debug(
             "list_world_npcs",
@@ -246,15 +247,11 @@ class WorldReadAPI(BaseCapabilityAPI):
             self.logger.error("WorldReadAPI requires database access")
             return None
 
-        from pixsim7.backend.main.domain.game.core.models import GameNPC
+        stmt = select(GameNPC).where(GameNPC.id == npc_id)
+        result = await self.db.execute(stmt)
+        npc = result.scalar_one_or_none()
 
-        result = await self.db.execute(
-            "SELECT id, name, personality, meta, home_location_id FROM game_npcs WHERE id = :npc_id",
-            {"npc_id": npc_id}
-        )
-        row = result.fetchone()
-
-        if not row:
+        if not npc:
             return None
 
         self.logger.debug(
@@ -263,10 +260,12 @@ class WorldReadAPI(BaseCapabilityAPI):
             npc_id=npc_id,
         )
 
+        # Note: GameNPC has no separate meta column; personality serves as metadata
+        personality = npc.personality or {}
         return {
-            "id": row[0],
-            "name": row[1],
-            "personality": row[2],
-            "meta": row[3],
-            "home_location_id": row[4],
+            "id": npc.id,
+            "name": npc.name,
+            "personality": personality,
+            "meta": personality.get("meta", {}),
+            "home_location_id": npc.home_location_id,
         }

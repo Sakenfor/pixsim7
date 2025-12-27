@@ -5,11 +5,13 @@ Provides access to NPC ECS (Entity-Component-System) components.
 """
 
 from typing import Optional, Any
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from ..permissions import PluginPermission, PermissionDeniedBehavior
 from ..context_base import BaseCapabilityAPI
+from pixsim7.backend.main.domain.game.core.models import GameSession
 
 
 class ComponentAPI(BaseCapabilityAPI):
@@ -80,13 +82,11 @@ class ComponentAPI(BaseCapabilityAPI):
             return default
 
         # Fetch session
-        result = await self.db.execute(
-            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             self.logger.warning(
                 "Session not found",
                 plugin_id=self.plugin_id,
@@ -94,8 +94,7 @@ class ComponentAPI(BaseCapabilityAPI):
             )
             return default
 
-        session_id_db, flags = row
-        flags = flags or {}
+        flags = session.flags or {}
 
         # Namespace component name for non-core components
         # Core components: "core", "romance", "stealth", "mood", "behavior", "interactions"
@@ -170,13 +169,11 @@ class ComponentAPI(BaseCapabilityAPI):
             return False
 
         # Fetch session
-        result = await self.db.execute(
-            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             self.logger.warning(
                 "Session not found",
                 plugin_id=self.plugin_id,
@@ -184,8 +181,7 @@ class ComponentAPI(BaseCapabilityAPI):
             )
             return False
 
-        session_id_db, flags = row
-        flags = flags or {}
+        flags = session.flags or {}
 
         # Namespace component name for non-core components
         core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
@@ -204,10 +200,8 @@ class ComponentAPI(BaseCapabilityAPI):
         set_npc_component(session_stub, npc_id, component_name, value, validate=validate)
 
         # Update session in database
-        await self.db.execute(
-            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
-            {"flags": session_stub.flags, "session_id": session_id}
-        )
+        session.flags = session_stub.flags
+        self.db.add(session)
         await self.db.commit()
 
         self.logger.info(
@@ -260,17 +254,14 @@ class ComponentAPI(BaseCapabilityAPI):
             return False
 
         # Fetch session
-        result = await self.db.execute(
-            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             return False
 
-        session_id_db, flags = row
-        flags = flags or {}
+        flags = session.flags or {}
 
         # Namespace component name
         core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
@@ -288,10 +279,8 @@ class ComponentAPI(BaseCapabilityAPI):
         update_npc_component(session_stub, npc_id, component_name, updates, validate=validate)
 
         # Update session in database
-        await self.db.execute(
-            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
-            {"flags": session_stub.flags, "session_id": session_id}
-        )
+        session.flags = session_stub.flags
+        self.db.add(session)
         await self.db.commit()
 
         self.logger.info(
@@ -336,17 +325,14 @@ class ComponentAPI(BaseCapabilityAPI):
             return False
 
         # Fetch session
-        result = await self.db.execute(
-            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             return False
 
-        session_id_db, flags = row
-        flags = flags or {}
+        flags = session.flags or {}
 
         # Namespace component name
         core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
@@ -372,10 +358,8 @@ class ComponentAPI(BaseCapabilityAPI):
         delete_npc_component(session_stub, npc_id, component_name)
 
         # Update session in database
-        await self.db.execute(
-            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
-            {"flags": session_stub.flags, "session_id": session_id}
-        )
+        session.flags = session_stub.flags
+        self.db.add(session)
         await self.db.commit()
 
         self.logger.info(

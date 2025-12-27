@@ -5,11 +5,13 @@ Provides read and write access to session state (flags, relationships).
 """
 
 from typing import Optional, Any
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from ..permissions import PluginPermission, PermissionDeniedBehavior
 from ..context_base import BaseCapabilityAPI
+from pixsim7.backend.main.domain.game.core.models import GameSession
 
 
 class SessionReadAPI(BaseCapabilityAPI):
@@ -47,13 +49,11 @@ class SessionReadAPI(BaseCapabilityAPI):
             self.logger.error("SessionReadAPI requires database access")
             return None
 
-        result = await self.db.execute(
-            "SELECT id, world_id, flags, relationships FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             return None
 
         self.logger.debug(
@@ -62,11 +62,13 @@ class SessionReadAPI(BaseCapabilityAPI):
             session_id=session_id,
         )
 
+        # Note: relationships are stored in stats field
+        stats = session.stats or {}
         return {
-            "id": row[0],
-            "world_id": row[1],
-            "flags": row[2] or {},
-            "relationships": row[3] or {},
+            "id": session.id,
+            "world_id": session.world_id,
+            "flags": session.flags or {},
+            "relationships": stats.get("relationships", {}),
         }
 
     async def get_session_flag(self, session_id: int, flag_key: str) -> Optional[Any]:
@@ -157,16 +159,12 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             self.logger.error("SessionMutationsAPI requires database access")
             return False
 
-        from pixsim7.backend.main.domain.game.session import GameSession
-
         # Fetch session
-        result = await self.db.execute(
-            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             self.logger.warning(
                 "Session not found",
                 plugin_id=self.plugin_id,
@@ -174,8 +172,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             )
             return False
 
-        session_id_db, flags = row
-        flags = flags or {}
+        flags = session.flags or {}
 
         # Namespace flag under plugin ID
         namespaced_key = f"plugin:{self.plugin_id}:{flag_key}"
@@ -184,10 +181,8 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         flags[namespaced_key] = value
 
         # Update session
-        await self.db.execute(
-            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
-            {"flags": flags, "session_id": session_id}
-        )
+        session.flags = flags
+        self.db.add(session)
         await self.db.commit()
 
         self.logger.info(
@@ -227,17 +222,16 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             return False
 
         # Fetch session
-        result = await self.db.execute(
-            "SELECT id, relationships FROM game_sessions WHERE id = :session_id",
-            {"session_id": session_id}
-        )
-        row = result.fetchone()
+        stmt = select(GameSession).where(GameSession.id == session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
 
-        if not row:
+        if not session:
             return False
 
-        session_id_db, relationships = row
-        relationships = relationships or {}
+        # Note: relationships are stored in stats field
+        stats = session.stats or {}
+        relationships = stats.get("relationships", {})
 
         # Get existing relationship or create new
         if npc_key not in relationships:
@@ -252,10 +246,9 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         relationships[npc_key]["meta"]["last_modified_by"] = self.plugin_id
 
         # Update session
-        await self.db.execute(
-            "UPDATE game_sessions SET relationships = :relationships WHERE id = :session_id",
-            {"relationships": relationships, "session_id": session_id}
-        )
+        stats["relationships"] = relationships
+        session.stats = stats
+        self.db.add(session)
         await self.db.commit()
 
         self.logger.info(
