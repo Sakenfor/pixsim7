@@ -5,27 +5,26 @@ This directory contains core API route plugins that are auto-discovered and load
 ## Overview
 
 Core routes are the fundamental API endpoints for PixSim7:
-- **Authentication** (auth)
-- **User Management** (users)
-- **Job Processing** (jobs)
-- **Asset Management** (assets)
-- **Admin Functions** (admin)
-- **Game Features** (game_sessions, game_locations, etc.)
-- **System Administration** (database, migrations)
+- **Authentication & users** (auth, users)
+- **Assets & lineage** (assets, lineage, tags)
+- **Generation & prompts** (generations, prompts, semantic_packs, action_blocks)
+- **Game systems** (characters, game_sessions, game_worlds, game_scenes, etc.)
+- **Admin & diagnostics** (admin, admin_plugins, logs, services, migrations, database)
+- **Dev tools** (dev_* routes for internal tooling)
 
 ## Directory Structure
 
 ```
 routes/
-  ├── auth/                  # Authentication endpoints
-  │   ├── __init__.py
-  │   └── manifest.py
-  ├── users/                 # User management
-  │   ├── __init__.py
-  │   └── manifest.py
-  ├── jobs/                  # Job processing
-  │   ├── __init__.py
-  │   └── manifest.py
+  auth/               # Authentication endpoints
+    __init__.py
+    manifest.py
+  users/              # User management
+    __init__.py
+    manifest.py
+  assets/             # Asset management
+    __init__.py
+    manifest.py
   ... (and more)
 ```
 
@@ -43,7 +42,7 @@ routes/
 - Core API functionality
 - Essential for application operation
 - Represents stable, production-ready endpoints
-- Examples: auth, users, jobs, assets
+- Examples: auth, users, assets
 
 **Plugins** (`pixsim7/backend/main/plugins/`)
 - Optional feature extensions
@@ -142,28 +141,24 @@ manifest = PluginManifest(
 
 ## Available Routes
 
-Current core routes:
+Current core routes are defined by directory name under `routes/`.
+See each `manifest.py` for descriptions, tags, and dependencies.
 
-| Route | Description | Dependencies | Tags |
-|-------|-------------|--------------|------|
-| `auth` | Authentication | - | `["auth"]` |
-| `users` | User management | `auth` | `["users"]` |
-| `jobs` | Job processing | `auth` | `["jobs"]` |
-| `assets` | Asset management | `auth` | `["assets"]` |
-| `admin` | Admin functions | `auth` | `["admin"]` |
-| `services` | Service orchestration | `auth` | `["services"]` |
-| `accounts` | Provider accounts | `auth` | `["accounts"]` |
-| `automation` | Android automation | `auth` | `["automation"]` |
-| `device_agents` | Device agents | - | `["device-agents"]` |
-| `providers` | Video providers | `auth` | `["providers"]` |
-| `lineage` | Asset lineage | `auth`, `assets` | `["lineage"]` |
-| `logs` | System logs | `auth` | `["logs"]` |
-| `game_scenes` | Game scenes | `auth` | `["game-scenes"]` |
-| `game_sessions` | Game sessions | `auth` | `["game-sessions"]` |
-| `game_locations` | Game locations | `auth` | `["game-locations"]` |
-| `game_worlds` | Game worlds | `auth` | `["game-worlds"]` |
-| `database` | DB admin | - | `["database"]` |
-| `migrations` | Migration admin | - | `["migrations"]` |
+Core routes:
+`accounts`, `action_blocks`, `admin`, `admin_plugins`, `ai`, `analyses`, `analytics`,
+`analyzers`, `assets`, `auth`, `automation`, `behavior_registry`, `character_graph`,
+`characters`, `database`, `device_agents`, `dialogue_analytics`, `game_behavior`,
+`game_inventory`, `game_locations`, `game_npc_mood_preview`, `game_quests`,
+`game_reputation_preview`, `game_scenes`, `game_sessions`, `game_worlds`,
+`generations`, `lineage`, `llm_cache`, `logs`, `media`, `migrations`,
+`npc_interactions`, `npc_state`, `pixverse_sync`, `plugins`, `prompts`,
+`prompts_git`, `providers`, `semantic_packs`, `services`, `stat_preview`,
+`tags`, `users`, `websocket`
+
+Dev tool routes:
+`dev_ai_models`, `dev_architecture`, `dev_block_fit`, `dev_info`, `dev_ontology`,
+`dev_pixverse_sync`, `dev_prompt_categories`, `dev_prompt_import`,
+`dev_prompt_inspector`, `dev_prompt_library`, `dev_prompt_timeline`
 
 ## Lifecycle Hooks
 
