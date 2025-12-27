@@ -6,6 +6,8 @@
  * Use these for documentation and optional dev-time validation only.
  */
 
+import type { CompositionAsset } from '@pixsim7/shared.types';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Common Parameter Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +57,7 @@ export interface ImageToVideoParams extends QualityParams, AspectParams, MotionP
 export interface ImageToImageParams extends QualityParams, AspectParams {
   kind: 'image_to_image';
   prompt: string;
-  image_url: string;
+  composition_assets: CompositionAsset[];
   negative_prompt?: string;
   strength?: number;          // How much to change the image (0-1)
   seed?: number;
@@ -79,7 +81,7 @@ export interface VideoTransitionParams extends QualityParams, AspectParams, Dura
 
 export interface FusionParams extends QualityParams, DurationParams {
   kind: 'fusion';
-  fusion_assets: string[];
+  composition_assets: CompositionAsset[];
   prompt?: string;
   blend_mode?: string;
 }
@@ -410,8 +412,8 @@ export function validateOperationParams(params: Partial<OperationParams>): strin
       if (!params.prompt || typeof params.prompt !== 'string') {
         errors.push('image_to_image requires a prompt (string)');
       }
-      if (!params.image_url || typeof params.image_url !== 'string') {
-        errors.push('image_to_image requires image_url (string)');
+      if (!Array.isArray(params.composition_assets) || params.composition_assets.length === 0) {
+        errors.push('image_to_image requires non-empty composition_assets array');
       }
       if (params.strength !== undefined && (typeof params.strength !== 'number' || params.strength < 0 || params.strength > 1)) {
         errors.push('image_to_image strength must be a number between 0 and 1');
@@ -441,8 +443,8 @@ export function validateOperationParams(params: Partial<OperationParams>): strin
       break;
 
     case 'fusion':
-      if (!Array.isArray(params.fusion_assets) || params.fusion_assets.length === 0) {
-        errors.push('fusion requires non-empty fusion_assets array');
+      if (!Array.isArray(params.composition_assets) || params.composition_assets.length === 0) {
+        errors.push('fusion requires non-empty composition_assets array');
       }
       break;
   }

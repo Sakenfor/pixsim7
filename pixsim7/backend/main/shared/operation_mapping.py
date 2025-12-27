@@ -74,7 +74,7 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
   OperationType.IMAGE_TO_IMAGE: OperationSpec(
     operation_type=OperationType.IMAGE_TO_IMAGE,
     output_media="image",
-    required_inputs=["image_url|image_urls"],  # Either one
+    required_inputs=["composition_assets"],
     generation_type_aliases=["image_edit"],  # Canonical
   ),
   OperationType.TEXT_TO_VIDEO: OperationSpec(
@@ -107,7 +107,7 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
   OperationType.FUSION: OperationSpec(
     operation_type=OperationType.FUSION,
     output_media="video",
-    required_inputs=["fusion_assets"],
+    required_inputs=["composition_assets"],
     generation_type_aliases=["fusion"],  # Canonical
   ),
 }
@@ -359,4 +359,3 @@ def assert_operation_coverage() -> None:
     for err in result["errors"]:
       error_msg += f"  - {err}\n"
     raise AssertionError(error_msg)
-

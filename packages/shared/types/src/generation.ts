@@ -1,7 +1,50 @@
 // Dynamic Generation System Types
 // These types define configuration and runtime contracts for generation nodes and edges.
 
+import type { AssetRef } from './ids';
+
 export type GenerationStrategy = 'once' | 'per_playthrough' | 'per_player' | 'always'
+
+// ============================================================================
+// Image Composition (Multi-Image Roles)
+// ============================================================================
+
+export type ImageCompositionRole =
+  | 'main_character'
+  | 'companion'
+  | 'environment'
+  | 'prop'
+  | 'style_reference'
+  | 'effect'
+
+export interface CompositionAsset {
+  /** Asset reference (asset:id string or numeric id) */
+  asset?: AssetRef | number
+  /** External or provider URL */
+  url?: string
+  /** Composition role */
+  role?: ImageCompositionRole | string
+  /** Intent for how this image should be applied */
+  intent?: 'generate' | 'preserve' | 'modify' | 'add' | 'remove'
+  /** Priority for conflict resolution (higher wins) */
+  priority?: number
+  /** Layer for composition (0=background, higher=foreground) */
+  layer?: number
+  /** Optional ref name for prompt injection */
+  ref_name?: string
+
+  // Ontology-aligned hints (snake_case to match backend)
+  character_id?: string
+  location_id?: string
+  pose_id?: string
+  expression_id?: string
+  camera_view_id?: string
+  camera_framing_id?: string
+  surface_type?: string
+  prop_id?: string
+  tags?: string[]
+  provider_params?: Record<string, unknown>
+}
 
 // ============================================================================
 // Social Context (Intimacy & Relationships)
@@ -151,6 +194,10 @@ export interface GenerateContentRequest {
    * Contains intimacy/relationship state to inform content generation
    */
   social_context?: GenerationSocialContext
+  /**
+   * Multi-image composition assets (fusion + image_edit)
+   */
+  composition_assets?: CompositionAsset[]
   // NPC response specific params
   npc_params?: NpcResponseParams
 }

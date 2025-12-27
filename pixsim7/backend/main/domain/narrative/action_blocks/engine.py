@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 import pixsim_logging
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
+from pixsim7.backend.main.shared.composition import map_tag_to_composition_role
 
 from .types_unified import (
     ActionBlock,
@@ -199,10 +200,12 @@ class ActionEngine:
 
         # Resolve templates to assets if we have a DB session
         resolved_images = []
+        composition_assets = []
         if db_session:
             resolved_images = await self._resolve_images(
                 result.blocks, context, db_session
             )
+            composition_assets = self._build_composition_assets(resolved_images)
 
         # Render prompts with template substitution
         prompts = self._render_prompts(result.blocks, context)
@@ -225,6 +228,7 @@ class ActionEngine:
             blocks=result.blocks,
             totalDuration=result.totalDuration,
             resolvedImages=resolved_images,
+            compositionAssets=composition_assets,
             compatibilityScore=score,
             fallbackReason=fallback_reason,
             prompts=prompts,
@@ -234,6 +238,103 @@ class ActionEngine:
     # =========================================================================
     # Image Resolution
     # =========================================================================
+
+    def _build_composition_assets(
+        self,
+        resolved_images: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Normalize resolved images into composition_assets shape."""
+        composition_assets: List[Dict[str, Any]] = []
+
+        for image in resolved_images:
+            asset_id = image.get("assetId") or image.get("asset_id")
+            asset_ref = {"type": "asset", "id": asset_id} if asset_id else None
+
+            candidate = {
+                "asset": asset_ref,
+                "url": image.get("url"),
+                "role": image.get("role"),
+                "intent": image.get("intent"),
+                "priority": image.get("priority"),
+                "layer": image.get("layer"),
+                "character_id": image.get("character_id"),
+                "location_id": image.get("location_id"),
+                "pose_id": image.get("pose_id"),
+                "expression_id": image.get("expression_id"),
+                "camera_view_id": image.get("camera_view_id"),
+                "camera_framing_id": image.get("camera_framing_id"),
+                "surface_type": image.get("surface_type"),
+                "prop_id": image.get("prop_id"),
+                "tags": image.get("tags"),
+            }
+
+            composition_assets.append({
+                key: value
+                for key, value in candidate.items()
+                if value is not None and value != []
+            })
+
+        return composition_assets
+
+    def _infer_reference_role(
+        self,
+        ref: ReferenceImage,
+        block: ActionBlock,
+        context: ActionSelectionContext,
+    ) -> Optional[str]:
+        """Infer a composition role when ReferenceImage.role is missing."""
+        if ref.role:
+            return ref.role
+
+        for tag in ref.tags or []:
+            if ":" in tag:
+                namespace, name = tag.split(":", 1)
+                role = map_tag_to_composition_role(namespace, name=name, slug=tag)
+            else:
+                role = map_tag_to_composition_role(tag, slug=tag)
+            if role:
+                return role
+
+        if block.tags.location:
+            return "environment"
+
+        if ref.npc or block.tags.pose or block.tags.intimacy_level:
+            return "main_character"
+
+        return None
+
+    def _build_reference_meta(
+        self,
+        ref: ReferenceImage,
+        default_role: Optional[str],
+    ) -> Dict[str, Any]:
+        """Extract composition-related metadata from a ReferenceImage."""
+        meta: Dict[str, Any] = {}
+        role = ref.role or default_role
+        if role:
+            meta["role"] = role
+
+        for key in [
+            "intent",
+            "priority",
+            "layer",
+            "character_id",
+            "location_id",
+            "pose_id",
+            "expression_id",
+            "camera_view_id",
+            "camera_framing_id",
+            "surface_type",
+            "prop_id",
+        ]:
+            value = getattr(ref, key, None)
+            if value is not None:
+                meta[key] = value
+
+        if ref.tags:
+            meta["tags"] = list(ref.tags)
+
+        return meta
 
     async def _resolve_images(
         self,
@@ -250,45 +351,51 @@ class ActionEngine:
         resolved = []
 
         for block in blocks:
-            if block.is_single_state() and block.referenceImage:
-                resolved_img = await self._resolve_single_image(
-                    block.referenceImage,
-                    context,
-                    db_session,
-                )
-                if resolved_img:
-                    resolved.append(resolved_img)
+            if block.is_single_state():
+                references: List[ReferenceImage] = []
+                if block.referenceImages:
+                    references.extend(block.referenceImages)
+                elif block.referenceImage:
+                    references.append(block.referenceImage)
+
+                for ref in references:
+                    default_role = self._infer_reference_role(ref, block, context)
+                    resolved_img = await self._resolve_single_image(
+                        ref,
+                        context,
+                        db_session,
+                        default_role=default_role,
+                    )
+                    if resolved_img:
+                        resolved.append(resolved_img)
 
             elif block.is_transition():
-                # Resolve from image
+                async def _resolve_endpoint(endpoint) -> None:
+                    if not endpoint:
+                        return
+                    refs: List[ReferenceImage] = []
+                    if endpoint.referenceImages:
+                        refs.extend(endpoint.referenceImages)
+                    elif endpoint.referenceImage:
+                        refs.append(endpoint.referenceImage)
+
+                    for ref in refs:
+                        default_role = self._infer_reference_role(ref, block, context)
+                        resolved_img = await self._resolve_single_image(
+                            ref,
+                            context,
+                            db_session,
+                            default_role=default_role,
+                        )
+                        if resolved_img:
+                            resolved.append(resolved_img)
+
                 if block.from_:
-                    from_img = await self._resolve_single_image(
-                        block.from_.referenceImage,
-                        context,
-                        db_session,
-                    )
-                    if from_img:
-                        resolved.append(from_img)
-
-                # Resolve via images
+                    await _resolve_endpoint(block.from_)
                 for via in block.via:
-                    via_img = await self._resolve_single_image(
-                        via.referenceImage,
-                        context,
-                        db_session,
-                    )
-                    if via_img:
-                        resolved.append(via_img)
-
-                # Resolve to image
+                    await _resolve_endpoint(via)
                 if block.to:
-                    to_img = await self._resolve_single_image(
-                        block.to.referenceImage,
-                        context,
-                        db_session,
-                    )
-                    if to_img:
-                        resolved.append(to_img)
+                    await _resolve_endpoint(block.to)
 
         return resolved
 
@@ -297,8 +404,10 @@ class ActionEngine:
         ref: ReferenceImage,
         context: ActionSelectionContext,
         db_session: Any,
+        default_role: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Resolve a single reference image to an asset."""
+        composition_meta = self._build_reference_meta(ref, default_role)
         # Already resolved by asset ID
         if ref.asset:
             from pixsim7.backend.main.domain.assets.models import Asset
@@ -308,19 +417,23 @@ class ActionEngine:
                 # Compute thumbnail URL from key or fallback to main URL
                 thumbnail = storage_key_to_url(asset.thumbnail_key) or asset.remote_url
 
-                return {
+                resolved = {
                     "assetId": asset.id,
                     "url": asset.remote_url or asset.local_path,
                     "thumbnail": thumbnail,
                     "crop": ref.crop,
                 }
+                resolved.update(composition_meta)
+                return resolved
 
         # External URL
         if ref.url:
-            return {
+            resolved = {
                 "url": ref.url,
                 "crop": ref.crop,
             }
+            resolved.update(composition_meta)
+            return resolved
 
         # Template query - find matching asset
         if ref.npc and ref.tags:
@@ -352,12 +465,14 @@ class ActionEngine:
                     # Compute thumbnail URL from key or fallback to main URL
                     thumbnail = storage_key_to_url(asset.thumbnail_key) or asset.remote_url
 
-                    return {
+                    resolved = {
                         "assetId": asset.id,
                         "url": asset.remote_url or asset.local_path,
                         "thumbnail": thumbnail,
                         "crop": ref.crop or expr.crop,
                     }
+                    resolved.update(composition_meta)
+                    return resolved
 
             logger.warning(
                 "template_image_not_resolved",

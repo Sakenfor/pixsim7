@@ -43,7 +43,7 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toContain('Please enter a prompt');
   });
 
-  it('requires source_asset_id for image_to_image (legacy image_url no longer supported)', () => {
+  it('requires a source image for image_to_image', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Add neon rim light',
@@ -54,7 +54,7 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toContain('No image selected');
   });
 
-  it('passes validation when image_to_image uses source_asset_id', () => {
+  it('passes validation when image_to_image uses composition_assets', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Add neon rim light',
@@ -65,7 +65,9 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       prompt: 'Add neon rim light',
-      source_asset_id: 42,
+      composition_assets: [
+        { asset: 'asset:42', layer: 0 },
+      ],
     });
   });
 

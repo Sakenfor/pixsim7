@@ -22,6 +22,8 @@ import type {
   DurationRule,
   ConstraintSet,
   FallbackConfig,
+  ImageCompositionRole,
+  CompositionAsset,
   AssetRequest,
   Asset,
 } from '@pixsim7/shared.types';
@@ -928,7 +930,12 @@ export interface FusionAssetSlot {
    * Slot role/name - fully dynamic!
    * Examples: 'main_character', 'companion', 'environment', 'prop_bench', 'lighting', 'effect_particles'
    */
-  role: string;
+  role: ImageCompositionRole | string;
+
+  /**
+   * Intent hint for how this slot should be applied.
+   */
+  intent?: 'generate' | 'preserve' | 'modify' | 'add' | 'remove';
 
   /**
    * Asset request for this slot - reuses existing AssetRequest!
@@ -1020,7 +1027,7 @@ export interface FusionAssetRequest {
   fallback?: 'similar' | 'any' | 'none';
 
   /**
-   * Asset ordering for fusion (order in fusion_assets array sent to backend).
+   * Asset ordering for fusion (order in composition_assets array sent to backend).
    * If not specified, uses layer values from slots, then priority, then insertion order.
    * Example: ['environment', 'prop_bench', 'main_character']
    */
@@ -1056,8 +1063,8 @@ export interface ResolvedFusionAssets {
     };
   }>;
 
-  /** All asset URLs in layer order (for fusion_assets backend param) */
-  fusionUrls: string[];
+  /** Composition assets in layer order (for backend composition_assets param) */
+  compositionAssets: CompositionAsset[];
 
   /** Overall resolution metadata */
   metadata: {

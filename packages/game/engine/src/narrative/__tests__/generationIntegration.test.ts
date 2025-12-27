@@ -35,7 +35,28 @@ const mockBlockResolver = {
 };
 
 const mockFusionResolver = {
-  resolveAssets: vi.fn().mockResolvedValue({ sourceImage: 'img-1', targetPose: 'pose-1' }),
+  resolve: vi.fn().mockResolvedValue({
+    slots: {},
+    compositionAssets: [],
+    metadata: {
+      totalSlots: 0,
+      exactMatches: 0,
+      fallbackMatches: 0,
+      missingSlots: 0,
+      failedRoles: [],
+    },
+  }),
+  resolveFromActionBlock: vi.fn().mockResolvedValue({
+    slots: {},
+    compositionAssets: [],
+    metadata: {
+      totalSlots: 0,
+      exactMatches: 0,
+      fallbackMatches: 0,
+      missingSlots: 0,
+      failedRoles: [],
+    },
+  }),
 };
 
 // Helper to create mock action block node

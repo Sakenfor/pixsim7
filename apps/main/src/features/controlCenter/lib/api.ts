@@ -68,7 +68,7 @@ const CANONICAL_CONFIG_KEYS = new Set([
   'source_asset_id',
   'source_asset_ids',
   'prompts',
-  'fusion_assets',
+  'composition_assets',
   'pacing',
 ]);
 
@@ -171,9 +171,9 @@ function buildGenerationConfig(
     config.source_asset_ids = merged.source_asset_ids;
   }
 
-  // Include fusion-specific fields
-  if (merged.fusion_assets) {
-    config.fusion_assets = merged.fusion_assets;
+  // Include composition-specific fields
+  if (merged.composition_assets) {
+    config.composition_assets = merged.composition_assets;
   }
 
   return config;

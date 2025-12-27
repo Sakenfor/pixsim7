@@ -10,6 +10,10 @@ from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.ontology import match_keywords
 from pixsim7.backend.main.services.prompt.parser import SimplePromptParser
+from pixsim7.backend.main.shared.composition import (
+    ImageCompositionRole,
+    map_tag_to_composition_role,
+)
 
 
 async def tag_asset_from_metadata(
@@ -105,69 +109,45 @@ def extract_ontology_ids_from_asset_tags(asset_tags: Dict[str, Any]) -> List[str
     return asset_tags.get("ontology_ids", [])
 
 
-# ===== FUSION TYPE INFERENCE =====
+# ===== COMPOSITION ROLE INFERENCE =====
 
-# Tag namespace to fusion type mapping
-SUBJECT_NAMESPACES = {'character', 'object', 'prop', 'person', 'animal', 'vehicle'}
-BACKGROUND_NAMESPACES = {'location', 'environment', 'setting', 'background', 'scene', 'place'}
+COMPOSITION_ROLE_PRIORITY = [
+    ImageCompositionRole.MAIN_CHARACTER.value,
+    ImageCompositionRole.COMPANION.value,
+    ImageCompositionRole.PROP.value,
+    ImageCompositionRole.STYLE_REFERENCE.value,
+    ImageCompositionRole.EFFECT.value,
+    ImageCompositionRole.ENVIRONMENT.value,
+]
 
 
-def infer_fusion_type_from_namespace(namespace: str) -> Optional[str]:
+def infer_composition_role_from_namespace(
+    namespace: str,
+    *,
+    name: Optional[str] = None,
+    slug: Optional[str] = None,
+) -> Optional[str]:
     """
-    Infer fusion type (subject/background) from tag namespace.
-
-    Args:
-        namespace: Tag namespace (e.g., 'character', 'location')
-
-    Returns:
-        'subject', 'background', or None if cannot infer
-
-    Examples:
-        >>> infer_fusion_type_from_namespace('character')
-        'subject'
-        >>> infer_fusion_type_from_namespace('location')
-        'background'
-        >>> infer_fusion_type_from_namespace('style')
-        None
+    Infer composition role from tag namespace/name.
     """
-    namespace_lower = namespace.lower()
-
-    if namespace_lower in SUBJECT_NAMESPACES:
-        return 'subject'
-    elif namespace_lower in BACKGROUND_NAMESPACES:
-        return 'background'
-
-    return None
+    return map_tag_to_composition_role(namespace, name=name, slug=slug)
 
 
-async def infer_fusion_type_from_tags(
+async def infer_composition_role_from_tags(
     asset: Asset,
     session: Session
 ) -> Optional[str]:
     """
-    Infer fusion type (subject/background) from asset's tags.
+    Infer composition role from asset tags.
 
     Strategy:
     1. Load all tags for the asset
-    2. Check each tag's namespace against known mappings
-    3. Return first matched type (subject takes priority over background)
-
-    Args:
-        asset: Asset to check
-        session: Database session
-
-    Returns:
-        'subject', 'background', or None if cannot infer from tags
-
-    Examples:
-        Asset tagged with 'character:alice' → 'subject'
-        Asset tagged with 'location:tokyo' → 'background'
-        Asset with no tags or ambiguous tags → None
+    2. Map each tag to a composition role
+    3. Return the highest-priority role that appears
     """
     from sqlmodel import select
     from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
 
-    # Load tags for this asset
     query = (
         select(Tag)
         .join(AssetTag, AssetTag.tag_id == Tag.id)
@@ -177,16 +157,19 @@ async def infer_fusion_type_from_tags(
     result = await session.execute(query)
     tags = result.scalars().all()
 
-    # First pass: look for subject tags (higher priority)
+    roles = set()
     for tag in tags:
-        fusion_type = infer_fusion_type_from_namespace(tag.namespace)
-        if fusion_type == 'subject':
-            return 'subject'
+        role = infer_composition_role_from_namespace(
+            tag.namespace,
+            name=getattr(tag, "name", None),
+            slug=getattr(tag, "slug", None),
+        )
+        if role:
+            roles.add(role)
 
-    # Second pass: look for background tags
-    for tag in tags:
-        fusion_type = infer_fusion_type_from_namespace(tag.namespace)
-        if fusion_type == 'background':
-            return 'background'
+    for role in COMPOSITION_ROLE_PRIORITY:
+        if role in roles:
+            return role
 
     return None
+

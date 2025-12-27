@@ -91,7 +91,7 @@ export function PresetOperator({
 
     // Filter out asset-related fields we handle in the UI
     return opSpec.parameters.filter((p: any) =>
-      !['prompt', 'image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'prompts', 'fusion_assets'].includes(p.name)
+      !['prompt', 'image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'prompts', 'composition_assets'].includes(p.name)
     );
   }, [specs, operationType]);
 

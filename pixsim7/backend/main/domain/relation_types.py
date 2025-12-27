@@ -36,17 +36,26 @@ VIDEO_CLIP = "VIDEO_CLIP"
 """Segment/clip extracted from a larger video"""
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Fusion & Character Consistency
+# Composition & Multi-Image
 # ─────────────────────────────────────────────────────────────────────────────
 
-FUSION_CHARACTER = "FUSION_CHARACTER"
-"""Character asset for fusion consistency operations"""
+COMPOSITION_MAIN_CHARACTER = "COMPOSITION_MAIN_CHARACTER"
+"""Main character asset for multi-image composition"""
 
-FUSION_BACKGROUND = "FUSION_BACKGROUND"
-"""Background asset for fusion consistency operations"""
+COMPOSITION_COMPANION = "COMPOSITION_COMPANION"
+"""Companion/secondary character asset for multi-image composition"""
 
-FUSION_REFERENCE = "FUSION_REFERENCE"
-"""Generic fusion reference asset"""
+COMPOSITION_ENVIRONMENT = "COMPOSITION_ENVIRONMENT"
+"""Background/environment asset for multi-image composition"""
+
+COMPOSITION_PROP = "COMPOSITION_PROP"
+"""Prop/object asset for multi-image composition"""
+
+COMPOSITION_STYLE_REFERENCE = "COMPOSITION_STYLE_REFERENCE"
+"""Style reference asset for multi-image composition"""
+
+COMPOSITION_EFFECT = "COMPOSITION_EFFECT"
+"""Effect/overlay asset for multi-image composition"""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Generic
@@ -78,13 +87,16 @@ VIDEO_RELATIONS = {
     VIDEO_CLIP,
 }
 
-FUSION_RELATIONS = {
-    FUSION_CHARACTER,
-    FUSION_BACKGROUND,
-    FUSION_REFERENCE,
+COMPOSITION_RELATIONS = {
+    COMPOSITION_MAIN_CHARACTER,
+    COMPOSITION_COMPANION,
+    COMPOSITION_ENVIRONMENT,
+    COMPOSITION_PROP,
+    COMPOSITION_STYLE_REFERENCE,
+    COMPOSITION_EFFECT,
 }
 
 ALL_RELATION_TYPES = (
-    IMAGE_RELATIONS | VIDEO_RELATIONS | FUSION_RELATIONS |
+    IMAGE_RELATIONS | VIDEO_RELATIONS | COMPOSITION_RELATIONS |
     {SOURCE, DERIVATION, REFERENCE}
 )

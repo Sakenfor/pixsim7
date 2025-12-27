@@ -70,10 +70,22 @@ ROLE_TO_RELATION_TYPE = {
     "reference_image": relation_types.REFERENCE_IMAGE,
     "reference": relation_types.REFERENCE,
 
-    # Fusion roles
-    "fusion_character": relation_types.FUSION_CHARACTER,
-    "fusion_background": relation_types.FUSION_BACKGROUND,
-    "fusion_reference": relation_types.FUSION_REFERENCE,
+    # Composition roles
+    "main_character": relation_types.COMPOSITION_MAIN_CHARACTER,
+    "companion": relation_types.COMPOSITION_COMPANION,
+    "environment": relation_types.COMPOSITION_ENVIRONMENT,
+    "prop": relation_types.COMPOSITION_PROP,
+    "style_reference": relation_types.COMPOSITION_STYLE_REFERENCE,
+    "effect": relation_types.COMPOSITION_EFFECT,
+
+    # Provider-specific collapsed roles
+    "subject": relation_types.COMPOSITION_MAIN_CHARACTER,
+    "background": relation_types.COMPOSITION_ENVIRONMENT,
+
+    # Legacy fusion role hints (treated as composition)
+    "fusion_character": relation_types.COMPOSITION_MAIN_CHARACTER,
+    "fusion_background": relation_types.COMPOSITION_ENVIRONMENT,
+    "fusion_reference": relation_types.COMPOSITION_STYLE_REFERENCE,
 
     # Generic
     "source": relation_types.SOURCE,
@@ -82,6 +94,47 @@ ROLE_TO_RELATION_TYPE = {
     "from_scene": relation_types.SOURCE_IMAGE,
     "to_scene": relation_types.TRANSITION_INPUT,
 }
+
+
+def _extract_asset_id(value: Any) -> Optional[int]:
+    """Extract integer asset id from EntityRef, asset:id string, or raw id."""
+    if value is None:
+        return None
+    if hasattr(value, "id"):
+        try:
+            return int(value.id)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, dict):
+        if value.get("type") == "asset" and value.get("id") is not None:
+            try:
+                return int(value["id"])
+            except (TypeError, ValueError):
+                return None
+    if isinstance(value, str):
+        if value.startswith("asset:"):
+            try:
+                return int(value.split(":", 1)[1])
+            except (TypeError, ValueError):
+                return None
+        if value.isdigit():
+            return int(value)
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _extract_asset_ref(value: Any) -> Optional[str]:
+    """Extract asset ref string or URL from common formats."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value.startswith("asset:") or value.startswith("http://") or value.startswith("https://"):
+            return value
+    asset_id = _extract_asset_id(value)
+    if asset_id is not None:
+        return f"asset:{asset_id}"
+    return None
 
 
 def get_relation_type_for_role(role: str) -> str:
@@ -582,19 +635,36 @@ class GenerationCreationService:
                 canonical["source_asset_id"] = source_asset_id
 
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
-            # Image-to-image may use a single image_url or a list of image_urls.
-            image_url = gen_config.get("image_url") or params.get("image_url")
-            image_urls = gen_config.get("image_urls") or params.get("image_urls")
-            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
-            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
-            if image_urls:
-                canonical["image_urls"] = image_urls
-            elif image_url:
-                canonical["image_urls"] = [image_url]
-            if source_asset_ids:
-                canonical["source_asset_ids"] = source_asset_ids
-            elif source_asset_id:
-                canonical["source_asset_id"] = source_asset_id
+            # Canonical composition assets for multi-image edits
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets:
+                canonical["composition_assets"] = composition_assets
+
+                # If all assets are explicit IDs, also expose source_asset_ids for provider resolution
+                asset_ids: List[int] = []
+                asset_refs: List[str] = []
+                all_refs_present = True
+                for item in composition_assets:
+                    if hasattr(item, "model_dump"):
+                        item = item.model_dump()
+                    asset_value = None
+                    if isinstance(item, dict):
+                        asset_value = item.get("asset") or item.get("asset_id") or item.get("assetId")
+                    else:
+                        asset_value = item
+                    asset_id = _extract_asset_id(asset_value)
+                    if asset_id is not None:
+                        asset_ids.append(asset_id)
+                    asset_ref = _extract_asset_ref(asset_value)
+                    if asset_ref:
+                        asset_refs.append(asset_ref)
+                    else:
+                        all_refs_present = False
+
+                if asset_ids and len(asset_ids) == len(composition_assets):
+                    canonical["source_asset_ids"] = asset_ids
+                if all_refs_present and asset_refs and len(asset_refs) == len(composition_assets):
+                    canonical["image_urls"] = asset_refs
 
             # Optional: inpainting-style image edits may provide an explicit mask.
             # Provider adapters can opt into using these fields without changing
@@ -637,9 +707,9 @@ class GenerationCreationService:
                 canonical["source_asset_ids"] = source_asset_ids
 
         elif operation_type == OperationType.FUSION:
-            fusion_assets = gen_config.get("fusion_assets") or params.get("fusion_assets")
-            if fusion_assets:
-                canonical["fusion_assets"] = fusion_assets
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets:
+                canonical["composition_assets"] = composition_assets
 
         # Preserve scene_context and other structured fields if present
         for context_key in ["scene_context", "player_context", "social_context"]:
@@ -797,31 +867,54 @@ class GenerationCreationService:
                     inputs.append(asset_input)
 
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
-            # Single or multiple image inputs
-            image_urls = gen_config.get("image_urls") or params.get("image_urls")
-            image_url = gen_config.get("image_url") or params.get("image_url")
-            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
-            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets and isinstance(composition_assets, list):
+                for i, item in enumerate(composition_assets):
+                    if hasattr(item, "model_dump"):
+                        item = item.model_dump()
 
-            urls_to_process = []
-            if source_asset_ids and isinstance(source_asset_ids, list):
-                urls_to_process = source_asset_ids
-            elif source_asset_id:
-                urls_to_process = [source_asset_id]
-            elif image_urls and isinstance(image_urls, list):
-                urls_to_process = image_urls
-            elif image_url:
-                urls_to_process = [image_url]
+                    role = "composition_reference"
+                    asset_value = None
+                    composition_meta: Dict[str, Any] = {}
 
-            for i, url in enumerate(urls_to_process):
-                asset_input = self._parse_asset_input(
-                    value=url,
-                    role="source_image",
-                    sequence_order=i,
-                    gen_config=gen_config,
-                )
-                if asset_input:
-                    inputs.append(asset_input)
+                    if isinstance(item, dict):
+                        role = item.get("role") or role
+                        asset_value = (
+                            item.get("asset")
+                            or item.get("asset_id")
+                            or item.get("assetId")
+                            or item.get("url")
+                        )
+                        for key in [
+                            "intent",
+                            "priority",
+                            "layer",
+                            "ref_name",
+                            "character_id",
+                            "location_id",
+                            "pose_id",
+                            "expression_id",
+                            "camera_view_id",
+                            "camera_framing_id",
+                            "surface_type",
+                            "prop_id",
+                            "tags",
+                        ]:
+                            if item.get(key) is not None:
+                                composition_meta[key] = item.get(key)
+                    else:
+                        asset_value = item
+
+                    asset_input = self._parse_asset_input(
+                        value=asset_value,
+                        role=role,
+                        sequence_order=i,
+                        gen_config=gen_config,
+                    )
+                    if asset_input:
+                        if composition_meta:
+                            asset_input.setdefault("meta", {})["composition"] = composition_meta
+                        inputs.append(asset_input)
 
         elif operation_type == OperationType.VIDEO_EXTEND:
             # Video input
@@ -867,32 +960,55 @@ class GenerationCreationService:
                         inputs.append(asset_input)
 
         elif operation_type == OperationType.FUSION:
-            # Fusion assets with specific roles
-            fusion_assets = gen_config.get("fusion_assets") or params.get("fusion_assets")
-            if fusion_assets and isinstance(fusion_assets, list):
-                for i, fa in enumerate(fusion_assets):
-                    if isinstance(fa, dict):
-                        role = fa.get("role", "fusion_reference")
-                        value = fa.get("asset") or fa.get("asset_id") or fa.get("url")
-                        if value:
-                            asset_input = self._parse_asset_input(
-                                value=value,
-                                role=role,
-                                sequence_order=i,
-                                gen_config=gen_config,
-                            )
-                            if asset_input:
-                                inputs.append(asset_input)
-                    else:
-                        # Simple reference
-                        asset_input = self._parse_asset_input(
-                            value=fa,
-                            role="fusion_reference",
-                            sequence_order=i,
-                            gen_config=gen_config,
+            # Composition assets with specific roles
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets and isinstance(composition_assets, list):
+                for i, item in enumerate(composition_assets):
+                    if hasattr(item, "model_dump"):
+                        item = item.model_dump()
+
+                    role = "composition_reference"
+                    asset_value = None
+                    composition_meta: Dict[str, Any] = {}
+
+                    if isinstance(item, dict):
+                        role = item.get("role") or role
+                        asset_value = (
+                            item.get("asset")
+                            or item.get("asset_id")
+                            or item.get("assetId")
+                            or item.get("url")
                         )
-                        if asset_input:
-                            inputs.append(asset_input)
+                        for key in [
+                            "intent",
+                            "priority",
+                            "layer",
+                            "ref_name",
+                            "character_id",
+                            "location_id",
+                            "pose_id",
+                            "expression_id",
+                            "camera_view_id",
+                            "camera_framing_id",
+                            "surface_type",
+                            "prop_id",
+                            "tags",
+                        ]:
+                            if item.get(key) is not None:
+                                composition_meta[key] = item.get(key)
+                    else:
+                        asset_value = item
+
+                    asset_input = self._parse_asset_input(
+                        value=asset_value,
+                        role=role,
+                        sequence_order=i,
+                        gen_config=gen_config,
+                    )
+                    if asset_input:
+                        if composition_meta:
+                            asset_input.setdefault("meta", {})["composition"] = composition_meta
+                        inputs.append(asset_input)
 
         # ==========================
         # Extract scene-based inputs (fallback/supplement)
@@ -1153,23 +1269,16 @@ class GenerationCreationService:
                     "IMAGE_TO_VIDEO operation requires 'image_url' or 'source_asset_id' field in generation config"
                 )
 
-        # IMAGE_TO_IMAGE requires image_urls or image_url
+        # IMAGE_TO_IMAGE requires composition_assets
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
-            image_urls = get_field("image_urls")
-            image_url = get_field("image_url")
-            source_asset_id = get_field("source_asset_id")
-            source_asset_ids = get_field("source_asset_ids")
-
-            if not image_urls and not image_url and not source_asset_id and not source_asset_ids:
+            composition_assets = get_field("composition_assets")
+            if not composition_assets or not isinstance(composition_assets, list):
                 raise InvalidOperationError(
-                    "IMAGE_TO_IMAGE operation requires 'image_urls' (list), 'image_url' (single URL), "
-                    "or 'source_asset_id(s)'"
+                    "IMAGE_TO_IMAGE operation requires 'composition_assets' list"
                 )
-
-            # If image_urls is provided, ensure it's non-empty
-            if image_urls and (not isinstance(image_urls, list) or len(image_urls) == 0):
+            if len(composition_assets) == 0:
                 raise InvalidOperationError(
-                    "IMAGE_TO_IMAGE 'image_urls' must be a non-empty list"
+                    "IMAGE_TO_IMAGE 'composition_assets' must be a non-empty list"
                 )
 
         # VIDEO_EXTEND requires video_url or original_video_id
@@ -1204,6 +1313,17 @@ class GenerationCreationService:
                 raise InvalidOperationError(
                     f"VIDEO_TRANSITION requires exactly {expected_prompts} prompt(s) "
                     f"for {len(source_asset_ids) if source_asset_ids else len(image_urls)} images, but got {len(prompts)}"
+                )
+
+        elif operation_type == OperationType.FUSION:
+            composition_assets = get_field("composition_assets")
+            if not composition_assets or not isinstance(composition_assets, list):
+                raise InvalidOperationError(
+                    "FUSION operation requires 'composition_assets' list"
+                )
+            if len(composition_assets) == 0:
+                raise InvalidOperationError(
+                    "FUSION 'composition_assets' must be a non-empty list"
                 )
 
     def _validate_content_rating(

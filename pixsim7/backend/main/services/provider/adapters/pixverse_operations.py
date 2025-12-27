@@ -359,6 +359,16 @@ class PixverseOperationsMixin:
             image_urls = params["image_urls"]
         elif "image_url" in params and isinstance(params["image_url"], str):
             image_urls = [params["image_url"]]
+        elif "composition_assets" in params and isinstance(params["composition_assets"], list):
+            for item in params["composition_assets"]:
+                if hasattr(item, "model_dump"):
+                    item = item.model_dump()
+                if isinstance(item, dict):
+                    url = item.get("url")
+                    if url:
+                        image_urls.append(url)
+                elif isinstance(item, str):
+                    image_urls.append(item)
 
         if not image_urls:
             raise ProviderError("Pixverse IMAGE_TO_IMAGE operation requires at least one image_url")
@@ -495,61 +505,92 @@ class PixverseOperationsMixin:
         """
         Generate fusion (character consistency).
 
-        Converts fusion_assets to Pixverse image_references format with:
+        Converts composition_assets to Pixverse image_references format with:
         - Numeric ref names (@1, @2, @3) by default
         - Type inference from tags (subject/background) with fallback rules
         - Prompt rewriting to ensure @ref tokens match
         """
-        from pixsim7.backend.main.services.asset.tags import infer_fusion_type_from_tags
+        from pixsim7.backend.main.services.asset.tags import infer_composition_role_from_tags
+        from pixsim7.backend.main.shared.composition import (
+            map_composition_role_to_pixverse_type,
+            normalize_composition_role,
+        )
         from pixsim7.backend.main.domain.assets.models import Asset
         from sqlmodel import select
         import re
 
-        fusion_assets = params.get("fusion_assets", [])
-        if not fusion_assets:
-            raise ValueError("fusion_assets required for fusion generation")
+        composition_assets = params.get("composition_assets", [])
+        if not composition_assets:
+            raise ValueError("composition_assets required for fusion generation")
 
         # Enforce max 3 references (Pixverse limit)
-        if len(fusion_assets) > 3:
-            raise ValueError(f"Maximum 3 fusion assets allowed, got {len(fusion_assets)}")
+        if len(composition_assets) > 3:
+            raise ValueError(f"Maximum 3 composition assets allowed, got {len(composition_assets)}")
 
         # Get database session for loading assets
         from pixsim7.backend.main.infrastructure.database.session import get_async_session
 
-        image_references = []
         prompt = params.get("prompt", "")
+        image_entries: List[Dict[str, Any]] = []
+
+        def _extract_asset_id(value: Any) -> Optional[int]:
+            if value is None:
+                return None
+            if hasattr(value, "id"):
+                try:
+                    return int(value.id)
+                except (TypeError, ValueError):
+                    return None
+            if isinstance(value, dict):
+                if value.get("type") == "asset" and value.get("id") is not None:
+                    try:
+                        return int(value["id"])
+                    except (TypeError, ValueError):
+                        return None
+            if isinstance(value, str):
+                if value.startswith("asset:"):
+                    try:
+                        return int(value.split(":", 1)[1])
+                    except (TypeError, ValueError):
+                        return None
+                if value.isdigit():
+                    return int(value)
+            if isinstance(value, int):
+                return value
+            return None
 
         async with get_async_session() as session:
-            for idx, fusion_asset in enumerate(fusion_assets, start=1):
-                # Parse fusion_asset format
-                # Expected formats:
-                # - {"asset_id": 123, "fusion_type": "subject", "ref_name": "character"}
-                # - {"asset_id": 123}  (infer type, use numeric ref)
-                # - "asset:123" (entity ref format)
-                # - 123 (raw asset ID)
-
-                asset_id = None
-                fusion_type = None
+            for idx, composition_asset in enumerate(composition_assets, start=1):
+                asset_value = None
+                composition_role = None
+                layer = None
                 ref_name = None
+                pixverse_override = None
 
-                if isinstance(fusion_asset, dict):
-                    asset_id = fusion_asset.get("asset_id") or fusion_asset.get("id")
-                    fusion_type = fusion_asset.get("fusion_type")
-                    ref_name = fusion_asset.get("ref_name")
-                elif isinstance(fusion_asset, str):
-                    # Parse "asset:123" format
-                    if ":" in fusion_asset:
-                        parts = fusion_asset.split(":", 1)
-                        asset_id = int(parts[1])
-                    else:
-                        asset_id = int(fusion_asset)
-                elif isinstance(fusion_asset, int):
-                    asset_id = fusion_asset
+                if hasattr(composition_asset, "model_dump"):
+                    composition_asset = composition_asset.model_dump()
+
+                if isinstance(composition_asset, dict):
+                    asset_value = (
+                        composition_asset.get("asset")
+                        or composition_asset.get("asset_id")
+                        or composition_asset.get("assetId")
+                    )
+                    composition_role = composition_asset.get("role")
+                    layer = composition_asset.get("layer")
+                    ref_name = composition_asset.get("ref_name")
+                    provider_params = composition_asset.get("provider_params") or {}
+                    if isinstance(provider_params, dict):
+                        pixverse_override = (
+                            provider_params.get("pixverse_role")
+                            or provider_params.get("pixverse_type")
+                        )
                 else:
-                    raise ValueError(f"Invalid fusion_asset format: {fusion_asset}")
+                    asset_value = composition_asset
 
+                asset_id = _extract_asset_id(asset_value)
                 if not asset_id:
-                    raise ValueError(f"Could not extract asset_id from fusion_asset: {fusion_asset}")
+                    raise ValueError(f"Could not extract asset_id from composition_asset: {composition_asset}")
 
                 # Load asset from database
                 query = select(Asset).where(Asset.id == asset_id)
@@ -559,15 +600,23 @@ class PixverseOperationsMixin:
                 if not asset:
                     raise ValueError(f"Asset {asset_id} not found")
 
-                # Determine fusion type using priority rules
-                if not fusion_type:
-                    # Rule 1: Try to infer from tags
-                    fusion_type = await infer_fusion_type_from_tags(asset, session)
+                normalized_role = normalize_composition_role(composition_role) if composition_role else None
+                pixverse_type = None
 
-                if not fusion_type:
-                    # Rule 2: Fallback assignment
-                    # First asset = background, remaining = subject
-                    fusion_type = "background" if idx == 1 else "subject"
+                if pixverse_override in {"subject", "background"}:
+                    pixverse_type = pixverse_override
+                else:
+                    pixverse_type = map_composition_role_to_pixverse_type(
+                        normalized_role,
+                        layer=layer,
+                    )
+
+                if not pixverse_type:
+                    inferred_role = await infer_composition_role_from_tags(asset, session)
+                    pixverse_type = map_composition_role_to_pixverse_type(
+                        inferred_role,
+                        layer=layer,
+                    )
 
                 # Determine ref_name (default to numeric)
                 if not ref_name:
@@ -595,11 +644,32 @@ class PixverseOperationsMixin:
                     # If it's not numeric, it might be a valid ID format - keep as string
                     pass
 
-                image_references.append({
-                    "type": fusion_type,
+                image_entries.append({
+                    "type": pixverse_type,
                     "img_id": img_id,
-                    "ref_name": ref_name
+                    "ref_name": ref_name,
+                    "layer": layer,
                 })
+
+        # Ensure at least one background if nothing explicit was mapped
+        if image_entries and not any(ref["type"] == "background" for ref in image_entries):
+            def _layer_sort_key(ref: Dict[str, Any]) -> int:
+                if ref.get("layer") is None:
+                    return 999
+                return int(ref["layer"])
+
+            background_ref = min(image_entries, key=_layer_sort_key)
+            background_ref["type"] = "background"
+
+        # Fill any remaining types as subject
+        for ref in image_entries:
+            if not ref.get("type"):
+                ref["type"] = "subject"
+
+        image_references = [
+            {"type": ref["type"], "img_id": ref["img_id"], "ref_name": ref["ref_name"]}
+            for ref in image_entries
+        ]
 
         # Rewrite prompt to ensure @ref tokens match ref_names
         # If prompt doesn't contain any @refs, inject them
@@ -626,7 +696,7 @@ class PixverseOperationsMixin:
             "fusion_generation",
             image_references=image_references,
             prompt=prompt,
-            msg="Converted fusion_assets to image_references"
+            msg="Converted composition_assets to image_references"
         )
 
         # Call pixverse-py fusion method with proper format

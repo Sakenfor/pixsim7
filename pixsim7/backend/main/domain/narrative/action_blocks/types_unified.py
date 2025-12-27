@@ -42,6 +42,7 @@ from pixsim7.backend.main.shared.schemas.concept_ref import (
     IntimacyLevelConceptRef,
     BranchIntentConceptRef,
 )
+from pixsim7.backend.main.shared.composition import normalize_composition_role
 
 
 # ============================================================================
@@ -152,11 +153,47 @@ class ReferenceImage(BaseModel):
     )
     tags: List[str] = Field(default_factory=list, description="Tags to match assets")
 
+    # Composition role hints
+    role: Optional[str] = Field(
+        default=None,
+        description="Composition role id (e.g., main_character, environment)",
+    )
+    intent: Optional[str] = Field(
+        default=None,
+        pattern="^(generate|preserve|modify|add|remove)$",
+        description="How this image should be applied in composition",
+    )
+    priority: Optional[int] = Field(
+        default=None,
+        description="Priority for role conflict resolution (higher wins)",
+    )
+    layer: Optional[int] = Field(
+        default=None,
+        description="Composition layer (0=background, higher=foreground)",
+    )
+
+    # Ontology-aligned hints
+    character_id: Optional[str] = None
+    location_id: Optional[str] = None
+    pose_id: Optional[str] = None
+    expression_id: Optional[str] = None
+    camera_view_id: Optional[str] = None
+    camera_framing_id: Optional[str] = None
+    surface_type: Optional[str] = None
+    prop_id: Optional[str] = None
+
     # External URL
     url: Optional[str] = Field(None, description="External URL for prototyping")
 
     # Framing
     crop: Literal["full_body", "waist_up", "portrait"] = "full_body"
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        return normalize_composition_role(str(v))
 
     def is_resolved(self) -> bool:
         """Check if this reference points to a specific asset."""
@@ -178,7 +215,14 @@ class ReferenceImage(BaseModel):
 
 class TransitionEndpoint(BaseModel):
     """Start or end point of a transition."""
-    referenceImage: ReferenceImage
+    referenceImage: Optional[ReferenceImage] = Field(
+        None,
+        description="Primary reference image for this endpoint",
+    )
+    referenceImages: List[ReferenceImage] = Field(
+        default_factory=list,
+        description="Optional list of reference images for composition",
+    )
     pose: str = Field(description="Abstract pose identifier for chaining")
 
     @field_validator("pose", mode="before")
@@ -337,8 +381,8 @@ class ActionBlock(BaseModel):
     as Optional fields - no more hasattr() checks needed.
 
     Validation enforces:
-    - single_state: referenceImage required, from_/to/via forbidden
-    - transition: from_ and to required, referenceImage forbidden
+    - single_state: referenceImage/referenceImages required, from_/to/via forbidden
+    - transition: from_ and to required, top-level referenceImage(s) forbidden
     - prompt must not be empty
     - duration must be within bounds
     """
@@ -358,6 +402,10 @@ class ActionBlock(BaseModel):
     referenceImage: Optional[ReferenceImage] = Field(
         None,
         description="Reference image for single-state blocks",
+    )
+    referenceImages: List[ReferenceImage] = Field(
+        default_factory=list,
+        description="Optional list of reference images for multi-image composition",
     )
     isImageToVideo: bool = Field(
         True,
@@ -439,10 +487,10 @@ class ActionBlock(BaseModel):
     def validate_kind_fields(self) -> "ActionBlock":
         """Validate fields based on kind."""
         if self.kind == "single_state":
-            # Single-state: require referenceImage, forbid from_/to
-            if self.referenceImage is None:
+            # Single-state: require referenceImage(s), forbid from_/to
+            if self.referenceImage is None and not self.referenceImages:
                 raise ValueError(
-                    "single_state blocks require 'referenceImage'"
+                    "single_state blocks require 'referenceImage' or 'referenceImages'"
                 )
             if self.from_ is not None or self.to is not None:
                 raise ValueError(
@@ -454,9 +502,9 @@ class ActionBlock(BaseModel):
                 raise ValueError(
                     "transition blocks require both 'from' and 'to' fields"
                 )
-            if self.referenceImage is not None:
+            if self.referenceImage is not None or self.referenceImages:
                 raise ValueError(
-                    "transition blocks cannot have 'referenceImage' field"
+                    "transition blocks cannot have 'referenceImage(s)' field"
                 )
 
         return self
@@ -473,7 +521,16 @@ class ActionBlock(BaseModel):
     def total_images(self) -> int:
         """Get total number of reference images (for transitions)."""
         if self.kind == "transition" and self.from_ and self.to:
-            return 2 + len(self.via)
+            total = 0
+            endpoints = [self.from_, *self.via, self.to]
+            for endpoint in endpoints:
+                if endpoint.referenceImages:
+                    total += len(endpoint.referenceImages)
+                elif endpoint.referenceImage:
+                    total += 1
+            return total
+        if self.referenceImages:
+            return len(self.referenceImages)
         return 1 if self.referenceImage else 0
 
     def has_enhanced_features(self) -> bool:
@@ -589,6 +646,7 @@ class ActionSelectionResult(BaseModel):
 
     # Resolution info
     resolvedImages: List[Dict[str, Any]] = Field(default_factory=list)
+    compositionAssets: List[Dict[str, Any]] = Field(default_factory=list)
 
     # Metadata
     compatibilityScore: float = Field(1.0, ge=0.0, le=1.0)

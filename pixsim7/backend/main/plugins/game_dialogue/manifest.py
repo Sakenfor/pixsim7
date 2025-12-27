@@ -521,6 +521,7 @@ class ActionSelectionResponse(BaseModel):
     blocks: List[Dict[str, Any]]
     total_duration: float
     resolved_images: List[Dict[str, Any]]
+    composition_assets: List[Dict[str, Any]]
     compatibility_score: float
     fallback_reason: Optional[str] = None
     prompts: List[str]
@@ -662,6 +663,7 @@ async def _run_action_selection(
         blocks=blocks_data,
         total_duration=result.totalDuration,
         resolved_images=result.resolvedImages,
+        composition_assets=result.compositionAssets,
         compatibility_score=result.compatibilityScore,
         fallback_reason=result.fallbackReason,
         prompts=result.prompts,

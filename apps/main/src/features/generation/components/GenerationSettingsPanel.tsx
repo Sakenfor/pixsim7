@@ -136,7 +136,7 @@ export interface GenerationSettingsPanelProps {
     /** Label override (default: "Go ⚡") */
     label?: string;
   };
-  /** Params to filter out from display (default: ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'negative_prompt', 'prompt']) */
+  /** Params to filter out from display (default: ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt']) */
   excludeParams?: string[];
   /** Error message to display */
   error?: string | null;
@@ -150,7 +150,7 @@ export function GenerationSettingsPanel({
   onGenerate,
   className,
   secondaryButton,
-  excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'negative_prompt', 'prompt'],
+  excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt'],
   error,
 }: GenerationSettingsPanelProps) {
   const { useSessionStore } = useGenerationScopeStores();
@@ -210,7 +210,7 @@ export function GenerationSettingsPanel({
   // Advanced params: those not shown in the main settings panel
   const advancedParams = useMemo(() => {
     const PRIMARY_PARAMS = ['model', 'quality', 'duration', 'aspect_ratio', 'motion_mode', 'camera_movement'];
-    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids'];
+    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets'];
 
     return filteredParamSpecs.filter(p => {
       if (PRIMARY_PARAMS.includes(p.name)) return false;

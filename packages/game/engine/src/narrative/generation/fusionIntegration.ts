@@ -192,7 +192,7 @@ export function createFusionGenerationHooks(config: {
       });
 
       // Check if any assets were resolved
-      if (fusionAssets.fusionUrls.length === 0) {
+      if (fusionAssets.compositionAssets.length === 0) {
         // Could inspect fusionAssets.metadata.failedRoles to see what's missing
         const failedRoles = fusionAssets.metadata.failedRoles.join(', ');
         return {
@@ -226,8 +226,8 @@ export function createFusionGenerationHooks(config: {
         constraints: worldConfig?.defaultConstraints,
       };
 
-      // Add fusion-specific params (these get mapped to fusion_assets in backend)
-      (request as any).fusion_assets = fusionAssets.fusionUrls;
+      // Add fusion-specific params (these get mapped to composition_assets in backend)
+      (request as any).composition_assets = fusionAssets.compositionAssets;
       (request as any).prompt = prompt;
 
       try {

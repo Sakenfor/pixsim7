@@ -32,7 +32,8 @@ export interface UseGenerationWorkbenchOptions {
 
   /**
    * Names of parameters to filter out from paramSpecs (e.g., 'prompt', 'image_urls').
-   * Defaults to ['prompt', 'image_urls', 'prompts'].
+   * Defaults to common prompt/asset inputs (prompt(s), negative_prompt, image/video URLs,
+   * source_asset_id(s), composition_assets).
    */
   excludeParams?: string[];
 }
@@ -181,7 +182,18 @@ export function useGenerationWorkbench(
 ): GenerationWorkbenchState {
   const {
     autoShowSettings = true,
-    excludeParams = ['prompt', 'image_urls', 'prompts'],
+    excludeParams = [
+      'prompt',
+      'prompts',
+      'negative_prompt',
+      'image_url',
+      'image_urls',
+      'video_url',
+      'original_video_id',
+      'source_asset_id',
+      'source_asset_ids',
+      'composition_assets',
+    ],
   } = options;
 
   const { useSessionStore, useSettingsStore } = useGenerationScopeStores();

@@ -261,11 +261,11 @@ def build_embedded_from_pixverse_metadata(
             fusion_type = fusion_type_list[idx] if idx < len(fusion_type_list) else None
 
             if fusion_type == "subject":
-                relation_type = "FUSION_CHARACTER"
+                relation_type = "COMPOSITION_MAIN_CHARACTER"
             elif fusion_type == "background":
-                relation_type = "FUSION_BACKGROUND"
+                relation_type = "COMPOSITION_ENVIRONMENT"
             else:
-                relation_type = "FUSION_REFERENCE"
+                relation_type = "COMPOSITION_STYLE_REFERENCE"
 
             item["relation_type"] = relation_type
             # Operation type matches OperationType.FUSION.value

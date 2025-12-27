@@ -17,6 +17,7 @@ from pixsim7.backend.main.shared.schemas.entity_ref import (
     GenerationRef,
     AccountRef,
 )
+from pixsim7.backend.main.shared.schemas.composition_schemas import CompositionAsset
 
 
 # ===== GENERATION CONFIG SCHEMAS =====
@@ -120,6 +121,12 @@ class GenerationNodeConfigSchema(BaseModel):
     source_asset_ids: Optional[List[int]] = Field(
         None,
         description="Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL."
+    )
+
+    # Canonical multi-image composition input (preferred for fusion + image edit)
+    composition_assets: Optional[List[CompositionAsset]] = Field(
+        None,
+        description="Structured composition assets (role/layer/intent) for multi-image operations.",
     )
 
     # Legacy asset URL fields - DEPRECATED

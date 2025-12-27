@@ -11,6 +11,7 @@
  */
 
 import type { GalleryAsset } from '../gallery/types';
+import type { CompositionAsset } from '@pixsim7/shared.types';
 import {
   resolveAssetsForAction,
   resolveSingleAsset,
@@ -112,7 +113,7 @@ export function examplePopulateI2IOperation(
   availableAssets: GalleryAsset[]
 ): {
   operation: 'image_to_image';
-  image_url?: string;
+  composition_assets: CompositionAsset[];
   prompt: string;
   metadata: {
     resolvedFrom: string[];
@@ -123,10 +124,23 @@ export function examplePopulateI2IOperation(
 
   // Pick the best background asset as the base image
   const baseAsset = result.backgroundAsset || result.heroAssets[0];
+  const compositionAssets: CompositionAsset[] = [];
+
+  if (baseAsset?.id) {
+    compositionAssets.push({
+      asset: `asset:${baseAsset.id}`,
+      role: result.backgroundAsset ? 'environment' : 'main_character',
+    });
+  } else if (baseAsset?.remote_url || baseAsset?.thumbnail_url) {
+    compositionAssets.push({
+      url: baseAsset.remote_url || baseAsset.thumbnail_url,
+      role: result.backgroundAsset ? 'environment' : 'main_character',
+    });
+  }
 
   return {
     operation: 'image_to_image',
-    image_url: baseAsset?.remote_url || baseAsset?.thumbnail_url,
+    composition_assets: compositionAssets,
     prompt: actionBlock.prompt,
     metadata: {
       resolvedFrom: [
@@ -152,7 +166,7 @@ export function examplePopulateFusionOperation(
   availableAssets: GalleryAsset[]
 ): {
   operation: 'fusion';
-  fusion_assets: string[];
+  composition_assets: CompositionAsset[];
   assetTypes: Array<'character' | 'background'>;
   metadata: {
     backgroundMatch: 'exact' | 'fallback' | 'none';
@@ -170,24 +184,45 @@ export function examplePopulateFusionOperation(
     availableAssets
   );
 
-  const fusionAssets: string[] = [];
+  const compositionAssets: CompositionAsset[] = [];
   const assetTypes: Array<'character' | 'background'> = [];
 
   // Add background asset
   if (result.backgroundAsset) {
-    fusionAssets.push(result.backgroundAsset.remote_url || result.backgroundAsset.thumbnail_url!);
+    if (result.backgroundAsset.id) {
+      compositionAssets.push({
+        asset: `asset:${result.backgroundAsset.id}`,
+        role: 'environment',
+      });
+    } else if (result.backgroundAsset.remote_url || result.backgroundAsset.thumbnail_url) {
+      compositionAssets.push({
+        url: result.backgroundAsset.remote_url || result.backgroundAsset.thumbnail_url,
+        role: 'environment',
+      });
+    }
     assetTypes.push('background');
   }
 
   // Add character asset
   if (result.heroAssets[0]) {
-    fusionAssets.push(result.heroAssets[0].remote_url || result.heroAssets[0].thumbnail_url!);
+    const heroAsset = result.heroAssets[0];
+    if (heroAsset.id) {
+      compositionAssets.push({
+        asset: `asset:${heroAsset.id}`,
+        role: 'main_character',
+      });
+    } else if (heroAsset.remote_url || heroAsset.thumbnail_url) {
+      compositionAssets.push({
+        url: heroAsset.remote_url || heroAsset.thumbnail_url,
+        role: 'main_character',
+      });
+    }
     assetTypes.push('character');
   }
 
   return {
     operation: 'fusion',
-    fusion_assets: fusionAssets,
+    composition_assets: compositionAssets,
     assetTypes,
     metadata: {
       backgroundMatch: result.metadata.hasExactLocationMatch

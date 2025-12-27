@@ -204,7 +204,10 @@ The `original_video_id` would be obtained from a previous generation job.
   "operation_type": "fusion",
   "provider_id": "pixverse",
   "params": {
-    "fusion_assets": ["asset_123", "asset_456"],
+    "composition_assets": [
+      { "asset": "asset:123", "role": "main_character" },
+      { "asset": "asset:456", "role": "environment" }
+    ],
     "prompt": "Blend these scenes smoothly",
     "preset_id": "preset_5",
     "quality": "1080p"

@@ -337,8 +337,8 @@ class PixverseProvider(
                     mapped["durations"] = sanitized
 
         elif operation_type == OperationType.FUSION:
-            if "fusion_assets" in params and params["fusion_assets"] is not None:
-                mapped["fusion_assets"] = params["fusion_assets"]
+            if "composition_assets" in params and params["composition_assets"] is not None:
+                mapped["composition_assets"] = params["composition_assets"]
 
         # credit_change hint: provide expected Pixverse credit delta based on
         # model/quality/duration. For image operations we use a static table;
@@ -731,9 +731,9 @@ class PixverseProvider(
             "name": "prompts", "type": "array", "required": True, "default": None,
             "enum": None, "description": "Prompt list corresponding to transition images", "group": "core"
         }
-        fusion_assets = {
-            "name": "fusion_assets", "type": "array", "required": True, "default": None,
-            "enum": None, "description": "Assets used for fusion consistency", "group": "source"
+        composition_assets = {
+            "name": "composition_assets", "type": "array", "required": True, "default": None,
+            "enum": None, "description": "Assets used for multi-image composition", "group": "source"
         }
         # Camera movements (only for image_to_video - requires image input)
         # Derived from SDK's CameraMovement.ALL, with "none" as default
@@ -896,7 +896,7 @@ class PixverseProvider(
             "image_to_image": {
                 "parameters": [
                     base_prompt,
-                    image_url,
+                    composition_assets,
                     image_model,
                     image_quality,
                     aspect_ratio,
@@ -965,7 +965,7 @@ class PixverseProvider(
             },
             # video_transition: aspect ratio is determined by source images
             "video_transition": {"parameters": [image_urls, prompts, model, quality, transition_duration]},
-            "fusion": {"parameters": [base_prompt, fusion_assets, model, quality, duration, aspect_ratio, seed]},
+            "fusion": {"parameters": [base_prompt, composition_assets, model, quality, duration, aspect_ratio, seed]},
         }
         return spec
 

@@ -276,7 +276,7 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   // Advanced params: those not shown in the main settings panel
   const advancedParams = useMemo(() => {
     const PRIMARY_PARAMS = ['model', 'quality', 'duration', 'aspect_ratio', 'motion_mode', 'camera_movement'];
-    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids'];
+    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets'];
 
     return filteredParamSpecs.filter(p => {
       // Skip primary params shown inline

@@ -154,6 +154,36 @@ class RemakerProvider(Provider):
         image_urls = params.get("image_urls") or []
         if isinstance(image_urls, str):
             image_urls = [image_urls]
+        if not image_urls and isinstance(params.get("composition_assets"), list):
+            derived_urls: list[str] = []
+
+            def _asset_ref(value: Any) -> Optional[str]:
+                if value is None:
+                    return None
+                if hasattr(value, "id"):
+                    return f"asset:{value.id}"
+                if isinstance(value, dict) and value.get("type") == "asset":
+                    return f"asset:{value.get('id')}"
+                if isinstance(value, int):
+                    return f"asset:{value}"
+                if isinstance(value, str):
+                    return value
+                return None
+
+            for item in params["composition_assets"]:
+                if hasattr(item, "model_dump"):
+                    item = item.model_dump()
+                if isinstance(item, dict):
+                    ref_value = item.get("asset") or item.get("asset_id") or item.get("assetId") or item.get("url")
+                    ref = _asset_ref(ref_value)
+                    if ref:
+                        derived_urls.append(ref)
+                else:
+                    ref = _asset_ref(item)
+                    if ref:
+                        derived_urls.append(ref)
+
+            image_urls = derived_urls
         if not isinstance(image_urls, list) or not image_urls:
             raise ProviderError("Remaker requires 'image_urls' with at least one entry")
 

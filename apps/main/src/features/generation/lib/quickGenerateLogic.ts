@@ -273,6 +273,26 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     params.source_asset_ids = inferredSourceAssetIds;
   }
 
+  if (operationType === 'image_to_image') {
+    if (!params.composition_assets) {
+      const sourceIds = Array.isArray(params.source_asset_ids)
+        ? params.source_asset_ids
+        : params.source_asset_id
+          ? [params.source_asset_id]
+          : [];
+
+      if (sourceIds.length > 0) {
+        params.composition_assets = sourceIds.map((id: number, index: number) => ({
+          asset: `asset:${id}`,
+          layer: index,
+        }));
+      }
+    }
+
+    delete params.source_asset_id;
+    delete params.source_asset_ids;
+  }
+
   // Drop legacy URL params when asset IDs are present to avoid leaking img_id refs
   stripLegacyAssetParams(params);
 
