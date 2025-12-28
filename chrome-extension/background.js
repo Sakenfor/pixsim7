@@ -743,6 +743,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Proxy image fetch for HTTP URLs (avoids mixed content issues on HTTPS pages)
+  // Also handles Private Network Access (PNA) restrictions when loading from private IPs
   // Once backend has HTTPS, this proxy is bypassed automatically
   if (message.action === 'proxyImage') {
     (async () => {
@@ -750,7 +751,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { url } = message;
         if (!url) throw new Error('url is required');
 
-        const response = await fetch(url);
+        // Include auth token for backend media endpoints
+        const settings = await getSettings();
+        const headers = {};
+        if (settings.pixsim7Token) {
+          headers['Authorization'] = `Bearer ${settings.pixsim7Token}`;
+        }
+
+        const response = await fetch(url, { headers });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const blob = await response.blob();

@@ -578,36 +578,63 @@ window.PXS7 = window.PXS7 || {};
       // For other URLs, fetch and upload normally
       if (showToast) showToast('Fetching image...', true);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      let blob;
 
-      let response;
-      try {
-        response = await fetch(imageUrl, {
-          signal: controller.signal,
-          mode: 'cors',
-          credentials: 'omit'
-        });
-        clearTimeout(timeoutId);
-      } catch (fetchErr) {
-        clearTimeout(timeoutId);
-        if (fetchErr.name === 'AbortError') {
-          throw new Error('Fetch timeout - image took too long');
-        }
-        console.log('[PixSim7] CORS fetch failed, trying no-cors...');
+      // HTTP URLs must be proxied through background script (mixed content + PNA restrictions)
+      if (imageUrl.startsWith('http://')) {
+        console.log('[PixSim7] Using proxy for HTTP image fetch');
         try {
-          response = await fetch(imageUrl, { mode: 'no-cors' });
-        } catch (e) {
-          throw new Error('Failed to fetch image: ' + fetchErr.message);
+          const proxyResponse = await chrome.runtime.sendMessage({ action: 'proxyImage', url: imageUrl });
+          if (!proxyResponse || !proxyResponse.success || !proxyResponse.dataUrl) {
+            throw new Error(proxyResponse?.error || 'Proxy failed');
+          }
+          // Convert data URL to blob
+          const dataUrlParts = proxyResponse.dataUrl.split(',');
+          const mimeMatch = dataUrlParts[0].match(/:(.*?);/);
+          const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+          const binaryStr = atob(dataUrlParts[1]);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          blob = new Blob([bytes], { type: mime });
+        } catch (proxyErr) {
+          throw new Error('Failed to fetch image via proxy: ' + proxyErr.message);
         }
-      }
+      } else {
+        // HTTPS URLs can be fetched directly
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      if (!response.ok && response.type !== 'opaque') {
-        throw new Error(`Failed to fetch image: ${response.status}`);
+        let response;
+        try {
+          response = await fetch(imageUrl, {
+            signal: controller.signal,
+            mode: 'cors',
+            credentials: 'omit'
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          if (fetchErr.name === 'AbortError') {
+            throw new Error('Fetch timeout - image took too long');
+          }
+          console.log('[PixSim7] CORS fetch failed, trying no-cors...');
+          try {
+            response = await fetch(imageUrl, { mode: 'no-cors' });
+          } catch (e) {
+            throw new Error('Failed to fetch image: ' + fetchErr.message);
+          }
+        }
+
+        if (!response.ok && response.type !== 'opaque') {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+
+        blob = await response.blob();
       }
 
       if (showToast) showToast('Processing image...', true);
-      const blob = await response.blob();
 
       if (blob.size === 0) {
         throw new Error('Empty image data received');
@@ -911,7 +938,7 @@ window.PXS7 = window.PXS7 || {};
 
       // Only update src if URL changed (avoid reloading same image)
       if (lastPreviewUrl !== previewUrl) {
-        hoverPreviewImg.src = previewUrl;
+        loadImageSrc(hoverPreviewImg, previewUrl);
         lastPreviewUrl = previewUrl;
       }
 
@@ -955,12 +982,12 @@ window.PXS7 = window.PXS7 || {};
   // HTTPS URLs are loaded directly (no proxy needed)
   async function loadImageSrc(img, url) {
     if (!url) return;
-    // HTTPS URLs can be loaded directly
+    // HTTPS, data, and blob URLs can be loaded directly
     if (url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
       img.src = url;
       return;
     }
-    // HTTP URLs need to be proxied through background script
+    // HTTP URLs must be proxied through background script (mixed content + PNA restrictions)
     if (url.startsWith('http://')) {
       try {
         const response = await chrome.runtime.sendMessage({ action: 'proxyImage', url });
@@ -968,11 +995,15 @@ window.PXS7 = window.PXS7 || {};
           img.src = response.dataUrl;
           return;
         }
+        // Proxy returned error - don't fallback to direct load (will fail anyway)
+        console.warn('[pxs7] Image proxy failed:', response?.error || 'unknown error', url);
       } catch (e) {
-        // Proxy failed, fall through to direct load (might fail due to mixed content)
+        console.warn('[pxs7] Image proxy error:', e.message, url);
       }
+      // Don't attempt direct HTTP load on HTTPS page - it will fail with mixed content error
+      return;
     }
-    // Fallback: try direct load
+    // Relative URLs or other protocols - try direct load
     img.src = url;
   }
 
