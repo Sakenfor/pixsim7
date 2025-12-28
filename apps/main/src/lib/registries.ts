@@ -15,6 +15,39 @@
  * ```
  */
 
+// ===== Shared Types =====
+// Re-export commonly used types from shared packages for convenience
+export type {
+  // Game types
+  GameSessionDTO,
+  GameWorldDetail,
+  GameWorldSummary,
+  GameLocationDetail,
+  GameLocationSummary,
+  GameNpcDetail,
+  GameNpcSummary,
+  GameHotspotDTO,
+  NpcSlot2d,
+  NpcExpressionDTO,
+  NpcPresenceDTO,
+  NpcSurfacePackage,
+  Scene,
+  SessionUpdatePayload,
+  PickpocketRequest,
+  PickpocketResponse,
+  SensualTouchRequest,
+  SensualTouchResponse,
+  QuestObjectiveDTO,
+  QuestDTO,
+  InventoryItemDTO,
+  WorldManifest,
+  // Links/template resolution types
+  ResolveTemplateResponse,
+  ResolveBatchResponse,
+  TemplateKind,
+  TemplateRef,
+} from '@shared/types';
+
 // ===== Session Helper Registry =====
 // Manages session state helpers (built-in and custom)
 // Source:@pixsim7/game.engine

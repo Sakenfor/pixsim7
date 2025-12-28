@@ -9,7 +9,9 @@ import type {
   GameSessionDTO,
   GameWorldDetail,
   ExecuteInteractionResponse,
+  TemplateKind,
 } from '@pixsim7/shared.types';
+import { createTemplateRefKey } from '@pixsim7/shared.types';
 import type {
   GameRuntime as IGameRuntime,
   GameRuntimeConfig,
@@ -91,9 +93,124 @@ export class GameRuntime implements IGameRuntime {
   // Track NPC relationship states for change detection
   private relationshipCache = new Map<number, NpcRelationshipState>();
 
+  // Cache for template→runtime resolution (keyed by "templateKind:templateId")
+  private templateCache = new Map<string, number | null>();
+
   constructor(config: GameRuntimeConfig) {
     this.config = config;
     this.log('GameRuntime initialized');
+  }
+
+  // ============================================
+  // Template Resolution (ObjectLink system)
+  // ============================================
+
+  /**
+   * Resolve a template entity to its linked runtime entity ID.
+   * Uses the ObjectLink system with context-based activation.
+   * Results are cached for the session duration.
+   *
+   * @param templateKind - Template entity kind (e.g., 'characterInstance')
+   * @param templateId - Template entity ID
+   * @returns Runtime entity ID, or null if no active link found
+   */
+  async resolveTemplateToRuntime(
+    templateKind: TemplateKind,
+    templateId: string
+  ): Promise<number | null> {
+    const cacheKey = createTemplateRefKey(templateKind, templateId);
+
+    // Check cache first
+    if (this.templateCache.has(cacheKey)) {
+      return this.templateCache.get(cacheKey) ?? null;
+    }
+
+    // Check if API client supports template resolution
+    if (!this.config.apiClient.resolveTemplate) {
+      this.log(`API client does not support resolveTemplate, cannot resolve ${cacheKey}`);
+      return null;
+    }
+
+    try {
+      // Build context from current game state
+      const context = this.buildResolutionContext();
+
+      const result = await this.config.apiClient.resolveTemplate(
+        templateKind,
+        templateId,
+        context
+      );
+
+      const runtimeId = result.resolved ? (result.runtimeId ?? null) : null;
+
+      // Cache the result
+      this.templateCache.set(cacheKey, runtimeId);
+
+      this.log(
+        `Resolved ${cacheKey} → ${runtimeId !== null ? `runtime:${runtimeId}` : 'not found'}`
+      );
+
+      return runtimeId;
+    } catch (error) {
+      this.log(`Failed to resolve ${cacheKey}: ${error}`);
+      // Cache the failure to avoid repeated API calls
+      this.templateCache.set(cacheKey, null);
+      return null;
+    }
+  }
+
+  /**
+   * Build resolution context from current game state.
+   * Used for activation condition evaluation on the backend.
+   */
+  private buildResolutionContext(): Record<string, unknown> {
+    const session = this.getSession();
+    const world = this.getWorld();
+
+    const context: Record<string, unknown> = {};
+
+    // Location context
+    if (session?.flags?.currentLocationId) {
+      context['location.id'] = session.flags.currentLocationId;
+    }
+    if (session?.flags?.currentZone) {
+      context['location.zone'] = session.flags.currentZone;
+    }
+
+    // Time context
+    if (world?.world_time !== undefined) {
+      const hour = Math.floor(world.world_time / 3600) % 24;
+      context['time.hour'] = hour;
+      context['time.period'] = this.getTimePeriod(hour);
+    }
+
+    // Session context
+    if (session?.id) {
+      context['session.id'] = session.id;
+    }
+
+    return context;
+  }
+
+  /**
+   * Get time period from hour (for activation conditions)
+   */
+  private getTimePeriod(hour: number): string {
+    if (hour >= 6 && hour < 12) return 'morning';
+    if (hour >= 12 && hour < 18) return 'afternoon';
+    if (hour >= 18 && hour < 22) return 'evening';
+    return 'night';
+  }
+
+  /**
+   * Invalidate template resolution cache.
+   * Call when context changes (location, time, etc.)
+   */
+  invalidateTemplateCache(): void {
+    if (this.templateCache.size > 0) {
+      this.log(`Invalidating template cache (${this.templateCache.size} entries)`);
+      this.templateCache.clear();
+    }
   }
 
   /**
@@ -136,6 +253,7 @@ export class GameRuntime implements IGameRuntime {
       this.session = session;
       this.world = world;
       this.relationshipCache.clear();
+      this.templateCache.clear(); // Invalidate template cache on session load
 
       // Run plugin hooks
       await this.runPluginHook('onSessionLoaded', session);
@@ -166,7 +284,9 @@ export class GameRuntime implements IGameRuntime {
   }
 
   /**
-   * Apply an interaction to the current session
+   * Apply an interaction to the current session.
+   * Supports both direct NPC targeting (npcId) and template-based targeting
+   * (templateKind + templateId, resolved via ObjectLink).
    */
   async applyInteraction(intent: InteractionIntent): Promise<ExecuteInteractionResponse> {
     this.checkDisposed();
@@ -175,7 +295,41 @@ export class GameRuntime implements IGameRuntime {
       throw new Error('No session loaded');
     }
 
-    this.log(`Applying interaction: ${intent.interactionId} with NPC ${intent.npcId}`);
+    // Resolve NPC ID - either direct or via template
+    let resolvedNpcId = intent.npcId;
+
+    if (intent.templateKind && intent.templateId && resolvedNpcId === undefined) {
+      // Template-based targeting: resolve via ObjectLink
+      this.log(
+        `Resolving template ${intent.templateKind}:${intent.templateId} for interaction ${intent.interactionId}`
+      );
+
+      resolvedNpcId = (await this.resolveTemplateToRuntime(
+        intent.templateKind,
+        intent.templateId
+      )) ?? undefined;
+
+      if (resolvedNpcId === undefined) {
+        this.log(
+          `Failed to resolve ${intent.templateKind}:${intent.templateId} - no active link found`
+        );
+        return {
+          success: false,
+          message: `Failed to resolve ${intent.templateKind}:${intent.templateId} to runtime entity`,
+          timestamp: Date.now(),
+        };
+      }
+
+      this.log(`Resolved to NPC ${resolvedNpcId}`);
+    }
+
+    if (resolvedNpcId === undefined) {
+      throw new Error(
+        'InteractionIntent must have either npcId or templateKind+templateId'
+      );
+    }
+
+    this.log(`Applying interaction: ${intent.interactionId} with NPC ${resolvedNpcId}`);
 
     try {
       // Run before hooks (can cancel interaction)
@@ -193,7 +347,7 @@ export class GameRuntime implements IGameRuntime {
       const response = await this.config.apiClient.executeInteraction({
         worldId: intent.worldId,
         sessionId: intent.sessionId,
-        npcId: intent.npcId,
+        npcId: resolvedNpcId,
         interactionId: intent.interactionId,
         playerInput: intent.playerInput,
         context: intent.context,
@@ -268,6 +422,9 @@ export class GameRuntime implements IGameRuntime {
 
       const changes: SessionChanges = { worldTime: true };
       this.emitSessionUpdated(previousSession, this.session, changes);
+
+      // Invalidate template cache (time-based activation conditions may change)
+      this.invalidateTemplateCache();
 
       // Emit world time advanced event
       const event: WorldTimeAdvancedEvent = {
@@ -388,6 +545,7 @@ export class GameRuntime implements IGameRuntime {
     this.session = null;
     this.world = null;
     this.relationshipCache.clear();
+    this.templateCache.clear();
     this.disposed = true;
     this.log('Runtime disposed');
   }

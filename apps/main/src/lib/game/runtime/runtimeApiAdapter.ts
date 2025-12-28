@@ -6,12 +6,14 @@
  */
 
 import type { GameApiClient, SessionStorage } from '@pixsim7/game.engine';
-import type { GameSessionDTO, GameWorldDetail } from '@lib/registries';
+import type { GameSessionDTO, GameWorldDetail, TemplateKind } from '@lib/registries';
 import {
   getGameSession,
   updateGameSession,
   getGameWorld,
   advanceGameWorldTime,
+  resolveTemplate,
+  resolveTemplateBatch,
 } from '../../api/game';
 
 /**
@@ -68,6 +70,26 @@ export const gameRuntimeApiClient: GameApiClient = {
       message: 'executeInteraction not implemented in runtime adapter',
       timestamp: Date.now(),
     };
+  },
+
+  // Template Resolution APIs (ObjectLink system)
+  async resolveTemplate(
+    templateKind: TemplateKind,
+    templateId: string,
+    context?: Record<string, unknown>
+  ) {
+    return await resolveTemplate(templateKind, templateId, context);
+  },
+
+  async resolveTemplateBatch(
+    refs: Array<{
+      templateKind: TemplateKind;
+      templateId: string;
+      context?: Record<string, unknown>;
+    }>,
+    sharedContext?: Record<string, unknown>
+  ) {
+    return await resolveTemplateBatch(refs, sharedContext);
   },
 };
 

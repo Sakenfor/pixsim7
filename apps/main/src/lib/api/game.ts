@@ -22,6 +22,9 @@ import type {
   QuestDTO,
   InventoryItemDTO,
   WorldManifest,
+  ResolveTemplateResponse,
+  ResolveBatchResponse,
+  TemplateKind,
 } from '@lib/registries';
 import { IDs } from '@shared/types';
 
@@ -48,6 +51,9 @@ export type {
   QuestDTO,
   InventoryItemDTO,
   WorldManifest,
+  ResolveTemplateResponse,
+  ResolveBatchResponse,
+  TemplateKind,
 };
 
 export async function listGameLocations(): Promise<GameLocationSummary[]> {
@@ -447,5 +453,58 @@ export async function clearInventory(sessionId: number): Promise<{ message: stri
 
 export async function getInventoryStats(sessionId: number): Promise<{ unique_items: number; total_quantity: number }> {
   const res = await apiClient.get<{ unique_items: number; total_quantity: number }>(`/game/inventory/sessions/${sessionId}/stats`);
+  return res.data;
+}
+
+// =============================================================================
+// Template Resolution API (ObjectLink system)
+// =============================================================================
+
+/**
+ * Resolve a template entity to its linked runtime entity.
+ * Uses the ObjectLink system with activation conditions based on context.
+ *
+ * @param templateKind - Template entity kind (e.g., 'characterInstance')
+ * @param templateId - Template entity ID (usually UUID)
+ * @param context - Optional runtime context for activation-based resolution
+ * @returns Resolution result with runtimeId if found
+ */
+export async function resolveTemplate(
+  templateKind: TemplateKind,
+  templateId: string,
+  context?: Record<string, unknown>
+): Promise<ResolveTemplateResponse> {
+  const res = await apiClient.post<ResolveTemplateResponse>('/game/links/resolve', {
+    template_kind: templateKind,
+    template_id: templateId,
+    context,
+  });
+  return res.data;
+}
+
+/**
+ * Batch resolve multiple template references in one call.
+ * More efficient than multiple single resolveTemplate calls.
+ *
+ * @param refs - Array of template references to resolve
+ * @param sharedContext - Context applied to all refs (merged with per-ref context)
+ * @returns Batch resolution result keyed by "templateKind:templateId"
+ */
+export async function resolveTemplateBatch(
+  refs: Array<{
+    templateKind: TemplateKind;
+    templateId: string;
+    context?: Record<string, unknown>;
+  }>,
+  sharedContext?: Record<string, unknown>
+): Promise<ResolveBatchResponse> {
+  const res = await apiClient.post<ResolveBatchResponse>('/game/links/resolve-batch', {
+    refs: refs.map((ref) => ({
+      template_kind: ref.templateKind,
+      template_id: ref.templateId,
+      context: ref.context,
+    })),
+    shared_context: sharedContext,
+  });
   return res.data;
 }

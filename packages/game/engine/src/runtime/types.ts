@@ -13,6 +13,9 @@ import type {
   ExecuteInteractionResponse,
   ListInteractionsRequest,
   ListInteractionsResponse,
+  ResolveTemplateResponse,
+  ResolveBatchResponse,
+  TemplateKind,
 } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
 
@@ -41,6 +44,30 @@ export interface GameApiClient {
 
   // NPC APIs
   getNpcDetail?(npcId: number): Promise<any>;
+
+  // Template Resolution APIs (ObjectLink system)
+  /**
+   * Resolve a template entity to its linked runtime entity.
+   * Uses the ObjectLink system with activation conditions based on context.
+   */
+  resolveTemplate?(
+    templateKind: TemplateKind,
+    templateId: string,
+    context?: Record<string, unknown>
+  ): Promise<ResolveTemplateResponse>;
+
+  /**
+   * Batch resolve multiple template references in one call.
+   * More efficient than multiple single resolveTemplate calls.
+   */
+  resolveTemplateBatch?(
+    refs: Array<{
+      templateKind: TemplateKind;
+      templateId: string;
+      context?: Record<string, unknown>;
+    }>,
+    sharedContext?: Record<string, unknown>
+  ): Promise<ResolveBatchResponse>;
 }
 
 /**
@@ -123,13 +150,35 @@ export interface GameRuntimeConfig {
 
 /**
  * InteractionIntent - encapsulates everything needed to execute an interaction
+ *
+ * Supports two targeting modes:
+ * 1. Direct: Specify npcId directly (legacy, still supported)
+ * 2. Template-based: Specify templateKind + templateId, resolved via ObjectLink
+ *
+ * Template-based targeting is preferred for authored content as it allows
+ * the same content to work across different worlds/playthroughs.
  */
 export interface InteractionIntent {
   /** Unique identifier for the interaction */
   interactionId: string;
 
-  /** NPC ID to interact with */
-  npcId: number;
+  /**
+   * NPC ID to interact with (direct targeting).
+   * Optional if using template-based targeting.
+   */
+  npcId?: number;
+
+  /**
+   * Template entity kind for template-based targeting.
+   * When set with templateId, the runtime will resolve to npcId via ObjectLink.
+   */
+  templateKind?: TemplateKind;
+
+  /**
+   * Template entity ID for template-based targeting.
+   * Used with templateKind for ObjectLink resolution.
+   */
+  templateId?: string;
 
   /** World ID */
   worldId: number;
@@ -314,7 +363,11 @@ export type GameInputIntent =
   | {
       type: 'interact';
       interactionId: string;
-      npcId: number;
+      /** Direct NPC targeting (optional if using template-based) */
+      npcId?: number;
+      /** Template-based targeting (optional if using npcId) */
+      templateKind?: TemplateKind;
+      templateId?: string;
       hotspotId?: string;
       playerInput?: string;
       context?: Record<string, unknown>;
@@ -322,7 +375,11 @@ export type GameInputIntent =
   | {
       type: 'selectOption';
       interactionId: string;
-      npcId: number;
+      /** Direct NPC targeting (optional if using template-based) */
+      npcId?: number;
+      /** Template-based targeting (optional if using npcId) */
+      templateKind?: TemplateKind;
+      templateId?: string;
       choiceId: string;
       choiceText?: string;
     }

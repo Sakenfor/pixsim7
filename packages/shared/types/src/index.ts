@@ -33,6 +33,12 @@ export * as Game from './game';
 // Character Identity Graph
 export * from './characterGraph';
 
+// ===================
+// Template/Runtime Links Types
+// ===================
+
+export * from './links';
+
 export type JobStatus = 'queued' | 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface JobSummary {

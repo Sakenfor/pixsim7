@@ -154,3 +154,124 @@ export function isObjectLink(value: unknown): value is ObjectLink {
 export function createMappingId(templateKind: string, runtimeKind: string): string {
   return `${templateKind}->${runtimeKind}`;
 }
+
+// =============================================================================
+// API Types for Template Resolution
+// =============================================================================
+
+/**
+ * Standard template kinds
+ */
+export type TemplateKind = 'characterInstance' | 'itemTemplate' | 'propTemplate' | (string & {});
+
+/**
+ * Standard runtime kinds
+ */
+export type RuntimeKind = 'npc' | 'item' | 'prop' | (string & {});
+
+/**
+ * Request to resolve a template entity to its runtime counterpart
+ */
+export interface ResolveTemplateRequest {
+  /** Template entity kind (e.g., 'characterInstance', 'itemTemplate') */
+  templateKind: TemplateKind;
+
+  /** Template entity ID (usually UUID) */
+  templateId: string;
+
+  /**
+   * Runtime context for activation-based resolution
+   * Uses dot-notation paths (e.g., {'location.zone': 'downtown', 'time.period': 'night'})
+   */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Response from template resolution
+ */
+export interface ResolveTemplateResponse {
+  /** Whether resolution succeeded (found an active link) */
+  resolved: boolean;
+
+  /** Runtime entity kind (e.g., 'npc', 'item') - only present if resolved */
+  runtimeKind?: RuntimeKind;
+
+  /** Runtime entity ID - only present if resolved */
+  runtimeId?: number;
+
+  /** Echo of requested template kind */
+  templateKind: string;
+
+  /** Echo of requested template ID */
+  templateId: string;
+}
+
+/**
+ * Single item in a batch resolution request
+ */
+export interface ResolveBatchItem {
+  templateKind: TemplateKind;
+  templateId: string;
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Request to resolve multiple template references in one call
+ */
+export interface ResolveBatchRequest {
+  /** List of template references to resolve */
+  refs: ResolveBatchItem[];
+
+  /** Context applied to all refs (merged with per-ref context) */
+  sharedContext?: Record<string, unknown>;
+}
+
+/**
+ * Response from batch resolution
+ */
+export interface ResolveBatchResponse {
+  /** Results keyed by 'templateKind:templateId' */
+  results: Record<string, ResolveTemplateResponse>;
+
+  /** Number of successfully resolved refs */
+  resolvedCount: number;
+
+  /** Total number of refs requested */
+  totalCount: number;
+}
+
+/**
+ * Template reference for use in interactions, scenes, etc.
+ * Allows content to reference templates instead of runtime IDs.
+ */
+export interface TemplateRef {
+  /** Template entity kind */
+  templateKind: TemplateKind;
+
+  /** Template entity ID */
+  templateId: string;
+
+  /** Optional explicit link ID to use */
+  linkId?: string;
+}
+
+/**
+ * Helper to create a cache key for template resolution
+ */
+export function createTemplateRefKey(templateKind: string, templateId: string): string {
+  return `${templateKind}:${templateId}`;
+}
+
+/**
+ * Parse a template ref key back to components
+ */
+export function parseTemplateRefKey(key: string): { templateKind: string; templateId: string } {
+  const idx = key.indexOf(':');
+  if (idx === -1) {
+    throw new Error(`Invalid template ref key: "${key}". Expected "templateKind:templateId"`);
+  }
+  return {
+    templateKind: key.slice(0, idx),
+    templateId: key.slice(idx + 1),
+  };
+}
