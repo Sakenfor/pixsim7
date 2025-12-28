@@ -48,6 +48,19 @@ export type { GenerationsState, GenerationStatus } from './stores/generationsSto
 // Lib - Generation Core
 export * from './lib/core';
 
+// Lib - Multi-Asset Mode
+export {
+  resolveInputMode,
+  resolveDisplayAssets,
+  buildFallbackAsset,
+} from './lib/multiAssetMode';
+export type {
+  InputModeParams,
+  InputModeResult,
+  DisplayAssetsParams,
+  SelectedAssetLike,
+} from './lib/multiAssetMode';
+
 // Lib - Generation Types (from @shared/types)
 export * from './lib/generationTypes';
 export { registerGenerationScopes } from './lib/registerGenerationScopes';

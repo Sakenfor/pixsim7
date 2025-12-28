@@ -10,7 +10,11 @@ import { PromptInput } from '@pixsim7/shared.ui';
 import { CompactAssetCard } from './CompactAssetCard';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
-import { GenerationSettingsPanel, useGenerationQueueStore } from '@features/generation';
+import {
+  GenerationSettingsPanel,
+  useGenerationScopeStores,
+  resolveDisplayAssets,
+} from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { OPERATION_METADATA } from '@/types/operations';
 import type { OperationType } from '@/types/operations';
@@ -78,79 +82,6 @@ export interface QuickGenPanelProps extends IDockviewPanelProps {
 
 const FLEXIBLE_OPERATIONS = new Set<OperationType>(['image_to_video', 'image_to_image']);
 
-export function buildFallbackAsset(asset: SelectedAsset): AssetModel {
-  return {
-    id: asset.id,
-    createdAt: new Date().toISOString(),
-    description: asset.name,
-    durationSec: null,
-    fileSizeBytes: null,
-    fileUrl: asset.url,
-    height: null,
-    isArchived: false,
-    lastUploadStatusByProvider: null,
-    localPath: null,
-    mediaType: asset.type === 'video' ? 'video' : 'image',
-    mimeType: null,
-    previewKey: null,
-    previewUrl: asset.url,
-    providerAssetId: asset.key || String(asset.id),
-    providerId: 'selection',
-    providerStatus: 'unknown',
-    remoteUrl: asset.url,
-    sourceGenerationId: null,
-    storedKey: null,
-    syncStatus: 'remote',
-    tags: undefined,
-    thumbnailKey: null,
-    thumbnailUrl: asset.url,
-    userId: 0,
-    width: null,
-  };
-}
-
-function resolveDisplayAssets(
-  operationType: OperationType,
-  mainQueue: any[],
-  mainQueueIndex: number,
-  multiAssetQueue: any[],
-  lastSelectedAsset?: SelectedAsset,
-  inputMode?: 'single' | 'multi',
-  allowAnySelected?: boolean,
-): AssetModel[] {
-  const metadata = OPERATION_METADATA[operationType];
-  const isOptionalMultiAsset = metadata?.multiAssetMode === 'optional';
-  const isRequiredMultiAsset = metadata?.multiAssetMode === 'required';
-  const effectiveInputMode = isRequiredMultiAsset ? 'multi' : (inputMode ?? 'single');
-  const isInMultiMode = (isOptionalMultiAsset && effectiveInputMode === 'multi') || isRequiredMultiAsset;
-
-  if ((operationType === 'video_transition' || isInMultiMode) && multiAssetQueue.length > 0) {
-    return multiAssetQueue.map((item: any) => item.asset);
-  }
-
-  if (mainQueue.length > 0) {
-    const index = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
-    return [mainQueue[index].asset];
-  }
-
-  if (multiAssetQueue.length > 0) {
-    return [multiAssetQueue[0].asset];
-  }
-
-  if (lastSelectedAsset) {
-    const matchesOperation =
-      (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
-      (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
-      (operationType === 'video_extend' && lastSelectedAsset.type === 'video');
-
-    if (matchesOperation || allowAnySelected) {
-      return [buildFallbackAsset(lastSelectedAsset)];
-    }
-  }
-
-  return [];
-}
-
 /**
  * Asset Panel - Shows selected/queued assets
  * Supports mousewheel scrolling to cycle through queue
@@ -165,12 +96,13 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const scopeInstanceId = useScopeInstanceId("generation");
   const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
-  // Subscribe directly to store for live queue data
-  const storeMainQueue = useGenerationQueueStore(s => s.mainQueue);
-  const storeMainQueueIndex = useGenerationQueueStore(s => s.mainQueueIndex);
-  const storeSetQueueIndex = useGenerationQueueStore(s => s.setQueueIndex);
-  const storeCycleQueue = useGenerationQueueStore(s => s.cycleQueue);
-  const operationInputModePrefs = useGenerationQueueStore(s => s.operationInputModePrefs);
+  // Subscribe to scoped queue store for live queue data
+  const { useQueueStore } = useGenerationScopeStores();
+  const storeMainQueue = useQueueStore(s => s.mainQueue);
+  const storeMainQueueIndex = useQueueStore(s => s.mainQueueIndex);
+  const storeSetQueueIndex = useQueueStore(s => s.setQueueIndex);
+  const storeCycleQueue = useQueueStore(s => s.cycleQueue);
+  const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
 
   const {
     removeFromQueue: ctxRemoveFromQueue,
@@ -184,15 +116,15 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   const displayAssets = useMemo(() => {
     if (ctx?.displayAssets) return ctx.displayAssets;
-    return resolveDisplayAssets(
+    return resolveDisplayAssets({
       operationType,
-      controller.mainQueue,
-      controller.mainQueueIndex,
-      controller.multiAssetQueue,
-      controller.lastSelectedAsset,
-      operationInputModePrefs[operationType],
+      mainQueue: controller.mainQueue,
+      mainQueueIndex: controller.mainQueueIndex,
+      multiAssetQueue: controller.multiAssetQueue,
+      lastSelectedAsset: controller.lastSelectedAsset,
+      inputMode: operationInputModePrefs[operationType],
       allowAnySelected,
-    );
+    });
   }, [
     ctx?.displayAssets,
     operationType,
@@ -288,9 +220,9 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   const hasAsset = displayAssets.length > 0;
   const isMultiAssetDisplay = displayAssets.length > 1;
-  const storeMultiAssetQueue = useGenerationQueueStore(s => s.multiAssetQueue);
-  const storeRemoveFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
-  const storeUpdateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
+  const storeMultiAssetQueue = useQueueStore(s => s.multiAssetQueue);
+  const storeRemoveFromQueue = useQueueStore(s => s.removeFromQueue);
+  const storeUpdateLockedTimestamp = useQueueStore(s => s.updateLockedTimestamp);
 
   if (!hasAsset) {
     return (
@@ -406,15 +338,14 @@ export function PromptPanel(props: QuickGenPanelProps) {
     paramSpecs,
     generating = controller.generating,
     operationType = controller.operationType,
-    displayAssets = resolveDisplayAssets(
+    displayAssets = resolveDisplayAssets({
       operationType,
-      controller.mainQueue,
-      controller.mainQueueIndex,
-      controller.multiAssetQueue,
-      controller.lastSelectedAsset,
-      undefined,
+      mainQueue: controller.mainQueue,
+      mainQueueIndex: controller.mainQueueIndex,
+      multiAssetQueue: controller.multiAssetQueue,
+      lastSelectedAsset: controller.lastSelectedAsset,
       allowAnySelected,
-    ),
+    }),
     isFlexibleOperation = FLEXIBLE_OPERATIONS.has(operationType),
     error = controller.error,
   } = ctx || {};

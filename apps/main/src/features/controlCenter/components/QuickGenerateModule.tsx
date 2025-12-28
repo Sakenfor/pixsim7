@@ -5,16 +5,17 @@ import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGen
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import {
-  useGenerationQueueStore,
   useGenerationWebSocket,
   useGenerationWorkbench,
   useGenerationScopeStores,
   GenerationWorkbench,
   GenerationSettingsPanel,
   GenerationScopeProvider,
+  resolveInputMode,
+  resolveDisplayAssets,
 } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
-import { type QuickGenPanelContext, buildFallbackAsset } from './QuickGeneratePanels';
+import { type QuickGenPanelContext } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
 import { OPERATION_METADATA } from '@/types/operations';
 import { PromptInput } from '@pixsim7/shared.ui';
@@ -179,24 +180,19 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
 
-  const updateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
-  const setQueueIndex = useGenerationQueueStore(s => s.setQueueIndex);
+  // Get scoped queue store for all queue operations
+  const { useQueueStore } = useGenerationScopeStores();
+  const updateLockedTimestamp = useQueueStore(s => s.updateLockedTimestamp);
+  const setQueueIndex = useQueueStore(s => s.setQueueIndex);
   // Subscribe directly to operationInputModePrefs to trigger re-render on changes
-  const operationInputModePrefs = useGenerationQueueStore(s => s.operationInputModePrefs);
+  const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
 
-  // Check if we're in multi-asset mode for optional operations
-  const operationMetadata = OPERATION_METADATA[operationType];
-  const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
-  const isRequiredMultiAsset = operationMetadata?.multiAssetMode === 'required';
-  const autoMulti = isOptionalMultiAsset && multiAssetQueue.length > 0;
-  // Get input mode - required ops are always multi, optional check prefs, single ops are always single
-  const inputMode =
-    isRequiredMultiAsset || autoMulti
-      ? 'multi'
-      : operationInputModePrefs[operationType] === 'multi'
-        ? 'multi'
-        : 'single';
-  const isInMultiMode = inputMode === 'multi';
+  // Resolve input mode using shared utility
+  const { inputMode, isInMultiMode, isOptionalMultiAsset } = resolveInputMode({
+    operationType,
+    multiAssetQueueLength: multiAssetQueue.length,
+    operationInputModePrefs,
+  });
 
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
@@ -240,8 +236,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     scope: 'root',
   });
 
-  // Get scoped queue store for the widget capability
-  const { useQueueStore } = useGenerationScopeStores();
+  // Get scoped queue store actions for the widget capability
   const scopedEnqueueAsset = useQueueStore(s => s.enqueueAsset);
   const scopedSetOperationInputMode = useQueueStore(s => s.setOperationInputMode);
 
@@ -294,33 +289,15 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
 
 
-  // Get the asset to display based on operation type and input mode
-  const getDisplayAssets = () => {
-    // Multi-asset modes: video_transition OR optional operations in multi mode
-    if (operationType === 'video_transition' || isInMultiMode) {
-      return multiAssetQueue.map(q => q.asset);
-    }
-
-    // For single-asset modes: image_to_video, image_to_image, video_extend
-    if (mainQueue.length > 0) {
-      // mainQueueIndex is 1-based, convert to 0-based array index
-      const index = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
-      return [mainQueue[index].asset];
-    }
-
-    if (
-      lastSelectedAsset &&
-      ((operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
-        (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
-        (operationType === 'video_extend' && lastSelectedAsset.type === 'video'))
-    ) {
-      return [buildFallbackAsset(lastSelectedAsset)];
-    }
-
-    return [];
-  };
-
-  const displayAssets = getDisplayAssets();
+  // Resolve display assets using shared utility
+  const displayAssets = resolveDisplayAssets({
+    operationType,
+    mainQueue,
+    mainQueueIndex,
+    multiAssetQueue,
+    lastSelectedAsset,
+    inputMode,
+  });
 
   const isSingleAssetOperation = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOperation = OPERATION_CONFIG.flexible.has(operationType);

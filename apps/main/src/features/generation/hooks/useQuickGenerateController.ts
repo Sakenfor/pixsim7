@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useGenerationsStore, useGenerationQueueStore, createPendingGeneration } from '@features/generation';
+import { useGenerationsStore, useGenerationQueueStore, createPendingGeneration, resolveInputMode } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { normalizeAssetParams } from '@features/generation/lib/core';
 import { generateAsset } from '@features/controlCenter/lib/api';
@@ -8,7 +8,7 @@ import { logEvent } from '@lib/utils/logging';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useQuickGenerateBindings } from '@features/prompts/hooks/useQuickGenerateBindings';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { getFallbackOperation, OPERATION_METADATA } from '@/types/operations';
+import { getFallbackOperation } from '@/types/operations';
 
 /**
  * Hook: useQuickGenerateController
@@ -143,15 +143,11 @@ export function useQuickGenerateController() {
         modifiedDynamicParams.source_asset_ids = extractedAssetIds;
       }
 
-      const metadata = OPERATION_METADATA[operationType];
-      const inputModePref = queueState.operationInputModePrefs?.[operationType] ?? 'single';
-      const autoMulti =
-        metadata?.multiAssetMode === 'optional' && currentMultiAssetQueue.length > 0;
-      const inputMode = metadata?.multiAssetMode === 'required' || autoMulti
-        ? 'multi'
-        : metadata?.multiAssetMode === 'optional' && inputModePref === 'multi'
-          ? 'multi'
-          : 'single';
+      const { inputMode } = resolveInputMode({
+        operationType,
+        multiAssetQueueLength: currentMultiAssetQueue.length,
+        operationInputModePrefs: queueState.operationInputModePrefs,
+      });
 
       if (inputMode !== 'multi' && 'source_asset_ids' in modifiedDynamicParams) {
         const { source_asset_ids, ...rest } = modifiedDynamicParams;
