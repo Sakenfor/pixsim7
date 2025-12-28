@@ -53,6 +53,11 @@ class PixverseSessionManager:
                 session["openapi_key"] = entry["value"]
                 break
 
+        # Check for shared session IDs (for session sharing with browser)
+        cookies = account.cookies or {}
+        has_shared_trace_id = bool(cookies.get("_pxs7_trace_id"))
+        has_shared_anonymous_id = bool(cookies.get("_pxs7_anonymous_id"))
+
         logger.debug(
             "pixverse_build_session",
             account_id=account.id,
@@ -60,7 +65,17 @@ class PixverseSessionManager:
             auth_method=auth_method.value,
             has_cookies=bool(account.cookies),
             has_openapi_key="openapi_key" in session,
+            has_shared_trace_id=has_shared_trace_id,
+            has_shared_anonymous_id=has_shared_anonymous_id,
         )
+
+        if has_shared_trace_id or has_shared_anonymous_id:
+            logger.info(
+                "pixverse_using_shared_session_ids",
+                account_id=account.id,
+                has_trace_id=has_shared_trace_id,
+                has_anonymous_id=has_shared_anonymous_id,
+            )
 
         return session
 

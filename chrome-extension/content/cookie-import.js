@@ -70,6 +70,27 @@ async function _cookieImport_extractRawData(providerId, config) {
     }
   }
 
+  // For Pixverse: capture session identifiers for session sharing
+  // These allow backend to appear as the same session as the browser,
+  // preventing "logged in elsewhere" errors
+  if (providerId === 'pixverse') {
+    const sessionIds = getPixverseSessionIds();
+    if (sessionIds.traceId || sessionIds.anonymousId) {
+      data.session_ids = {
+        ai_trace_id: sessionIds.traceId,
+        ai_anonymous_id: sessionIds.anonymousId,
+      };
+      console.log('[PixSim7 Cookie Import] Captured Pixverse session IDs:', {
+        hasTraceId: !!sessionIds.traceId,
+        hasAnonymousId: !!sessionIds.anonymousId,
+      });
+    }
+    // Also capture JWT token from header if available
+    if (sessionIds.jwtToken) {
+      data.jwt_token = sessionIds.jwtToken;
+    }
+  }
+
   return data;
 }
 

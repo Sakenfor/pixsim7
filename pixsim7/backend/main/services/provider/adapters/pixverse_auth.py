@@ -448,6 +448,15 @@ class PixverseAuthMixin:
                     "Pixverse: Could not extract email or username. Ensure pixverse-py is installed on backend for getUserInfo, or JWT includes 'Mail'/'Username'."
                 )
 
+        # Include session IDs in cookies for session sharing
+        # These allow backend to appear as same session as browser, preventing
+        # "logged in elsewhere" errors
+        session_ids = raw_data.get('session_ids') or {}
+        if session_ids.get('ai_trace_id'):
+            cookies['_pxs7_trace_id'] = session_ids['ai_trace_id']
+        if session_ids.get('ai_anonymous_id'):
+            cookies['_pxs7_anonymous_id'] = session_ids['ai_anonymous_id']
+
         return {
             'email': email,
             'jwt_token': ai_token,

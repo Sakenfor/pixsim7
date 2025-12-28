@@ -101,6 +101,19 @@ function getBearerToken() {
 }
 
 /**
+ * Get captured Pixverse session identifiers from injected script
+ * These are crucial for session sharing - using the same IDs as the browser
+ * prevents Pixverse "logged in elsewhere" errors when backend uses same JWT.
+ */
+function getPixverseSessionIds() {
+  return {
+    traceId: window.__pixsim7_trace_id || null,
+    anonymousId: window.__pixsim7_anonymous_id || null,
+    jwtToken: window.__pixsim7_jwt_token || null,
+  };
+}
+
+/**
  * Inject script to capture bearer token from network requests
  */
 function injectBearerTokenCapture() {
