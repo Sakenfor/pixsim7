@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
+import { useHoverExpand } from './useHoverExpand';
 
 export interface ExpandableButtonGroupProps {
   /** The trigger element (usually a button) */
@@ -15,6 +16,8 @@ export interface ExpandableButtonGroupProps {
   contentClassName?: string;
   /** Delay in ms before expanding on hover (prevents accidental triggers) */
   hoverDelay?: number;
+  /** Delay in ms before collapsing on mouse leave (allows time to reach expanded content) */
+  collapseDelay?: number;
   /** Distance offset from trigger in pixels */
   offset?: number;
   /** Enable stagger animation for children */
@@ -30,28 +33,15 @@ export function ExpandableButtonGroup({
   triggerClassName,
   contentClassName,
   hoverDelay = 150,
+  collapseDelay = 100,
   offset = 4,
   staggerChildren = false,
   staggerDelay = 0.05,
 }: ExpandableButtonGroupProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const timeoutRef = useRef<number | undefined>(undefined);
-
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setIsExpanded(true), hoverDelay) as unknown as number;
-  };
-
-  const handleMouseLeave = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setIsExpanded(false);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
+  const { isExpanded, handlers } = useHoverExpand({
+    expandDelay: hoverDelay,
+    collapseDelay,
+  });
 
   // Animation variants based on direction
   const animations = {
@@ -104,8 +94,7 @@ export function ExpandableButtonGroup({
   return (
     <div
       className={clsx('relative inline-block', triggerClassName)}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      {...handlers}
     >
       {/* Trigger element */}
       {trigger}

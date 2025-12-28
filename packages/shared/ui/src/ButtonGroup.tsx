@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import clsx from 'clsx';
+import { useHoverExpand } from './useHoverExpand';
 
 // ============================================================================
 // Types
@@ -16,6 +17,8 @@ export interface ButtonGroupItem {
   expandContent?: React.ReactNode;
   /** Delay before showing expand content (ms) */
   expandDelay?: number;
+  /** Delay before hiding expand content (ms) - allows time to move mouse to expanded content */
+  collapseDelay?: number;
 }
 
 export type ButtonGroupLayout = 'pill' | 'stack' | 'inline';
@@ -224,24 +227,10 @@ function ExpandableItem({
   expandOffset,
   showLabels,
 }: ExpandableItemProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const delay = item.expandDelay ?? 150;
-
-  useEffect(() => {
-    if (isHovering) {
-      timeoutRef.current = setTimeout(() => setIsExpanded(true), delay);
-    } else {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      setIsExpanded(false);
-    }
-
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [isHovering, delay]);
+  const { isExpanded, handlers } = useHoverExpand({
+    expandDelay: item.expandDelay,
+    collapseDelay: item.collapseDelay,
+  });
 
   // Position expand content based on direction
   const getExpandPositionStyle = (): React.CSSProperties => {
@@ -259,10 +248,8 @@ function ExpandableItem({
 
   return (
     <div
-      ref={containerRef}
       className="relative"
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
+      {...handlers}
     >
       <button
         onClick={item.onClick}
