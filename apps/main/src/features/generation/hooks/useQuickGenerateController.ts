@@ -22,7 +22,18 @@ import { getFallbackOperation } from '@/types/operations';
  * This keeps QuickGenerateModule focused on rendering/layout.
  */
 export function useQuickGenerateController() {
-  const { useSessionStore } = useGenerationScopeStores();
+  const { useSessionStore, id: scopeId } = useGenerationScopeStores();
+  const warnedGlobalScopeRef = useRef(false);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    if (scopeId !== 'global') return;
+    if (warnedGlobalScopeRef.current) return;
+    console.warn(
+      '[QuickGenerate] Running on GLOBAL generation scope. Did you forget to wrap with GenerationScopeProvider/ScopeHost?',
+    );
+    warnedGlobalScopeRef.current = true;
+  }, [scopeId]);
 
   // Generation session state (scoped)
   const operationType = useSessionStore((s) => s.operationType);

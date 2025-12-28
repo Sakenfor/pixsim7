@@ -177,6 +177,7 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
         panels={panelIds}
         storageKey={storageKey}
         context={context}
+        defaultPanelScopes={['generation']}
         defaultLayout={defaultLayout}
         minPanelsForTabs={2}
         className={className}

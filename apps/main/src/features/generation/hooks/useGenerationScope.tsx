@@ -34,7 +34,22 @@ const GLOBAL_SCOPE: GenerationScopeStores = {
 
 export function useGenerationScopeStores(): GenerationScopeStores {
   const { value, provider } = useCapability<GenerationScopeContext>(CAP_GENERATION_SCOPE);
-  const result = (value as GenerationScopeStores) ?? GLOBAL_SCOPE;
+  const scopeInstanceId = useScopeInstanceId("generation");
+
+  // If no capability yet but we know the scope instance ID, synthesize scoped stores.
+  // This prevents falling back to global during the first render in scoped panels.
+  const fallbackScoped = useMemo<GenerationScopeStores | null>(() => {
+    if (!scopeInstanceId || scopeInstanceId === "global") return null;
+    return {
+      id: scopeInstanceId,
+      label: "Generation Settings",
+      useSessionStore: getGenerationSessionStore(scopeInstanceId),
+      useSettingsStore: getGenerationSettingsStore(scopeInstanceId),
+      useQueueStore: getGenerationQueueStore(scopeInstanceId),
+    };
+  }, [scopeInstanceId]);
+
+  const result = (value as GenerationScopeStores) ?? fallbackScoped ?? GLOBAL_SCOPE;
 
   // Debug logging in development
   if (process.env.NODE_ENV === "development") {
@@ -91,9 +106,11 @@ export function GenerationScopeProvider({
       id: `generation-scope:${effectiveScopeId}`,
       label: label ?? "Generation Scope",
       priority: 70,
+      exposeToContextMenu: true,
       getValue: () => scopeStores,
     },
     [scopeStores],
+    { scope: "root" },
   );
 
   return <>{children}</>;

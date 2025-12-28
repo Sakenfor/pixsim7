@@ -165,6 +165,7 @@ export function AssetViewerDockview({
       panels={[...VIEWER_PANEL_IDS]}
       storageKey="dockview:asset-viewer:v5"
       context={context}
+      defaultPanelScopes={['generation']}
       defaultLayout={createDefaultLayout}
       minPanelsForTabs={2}
       className={className}
