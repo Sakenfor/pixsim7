@@ -980,12 +980,17 @@ window.PXS7 = window.PXS7 || {};
 
   // Load image src, proxying HTTP URLs through background script to avoid mixed content issues
   // HTTPS URLs are loaded directly (no proxy needed)
+  // Returns true on success, false on failure (triggers onerror for fallback handling)
   async function loadImageSrc(img, url) {
-    if (!url) return;
+    if (!url) {
+      // Trigger onerror so fallback can be attempted
+      if (img.onerror) img.dispatchEvent(new Event('error'));
+      return false;
+    }
     // HTTPS, data, and blob URLs can be loaded directly
     if (url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
       img.src = url;
-      return;
+      return true;
     }
     // HTTP URLs must be proxied through background script (mixed content + PNA restrictions)
     if (url.startsWith('http://')) {
@@ -993,21 +998,24 @@ window.PXS7 = window.PXS7 || {};
         const response = await chrome.runtime.sendMessage({ action: 'proxyImage', url });
         if (response && response.success && response.dataUrl) {
           img.src = response.dataUrl;
-          return;
+          return true;
         }
-        // Proxy returned error - don't fallback to direct load (will fail anyway)
+        // Proxy returned error - trigger onerror so fallback can be attempted
         console.warn('[pxs7] Image proxy failed:', response?.error || 'unknown error', url);
+        if (img.onerror) img.dispatchEvent(new Event('error'));
+        return false;
       } catch (e) {
         console.warn('[pxs7] Image proxy error:', e.message, url);
+        if (img.onerror) img.dispatchEvent(new Event('error'));
+        return false;
       }
-      // Don't attempt direct HTTP load on HTTPS page - it will fail with mixed content error
-      return;
     }
     // Relative URLs or other protocols - try direct load
     img.src = url;
+    return true;
   }
 
-  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null) {
+  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null, getFallbackUrl = null) {
     injectGridStyles();
 
     const grid = document.createElement('div');
@@ -1020,6 +1028,7 @@ window.PXS7 = window.PXS7 || {};
       const thumbUrl = typeof getThumbUrl === 'function' ? getThumbUrl(item) : item;
       const fullUrl = getFullUrl ? getFullUrl(item) : (typeof item === 'string' ? item : item);
       const name = getName ? getName(item) : null;
+      const fallbackUrl = getFallbackUrl ? getFallbackUrl(item) : null;
 
       const thumb = document.createElement('div');
       thumb.className = 'pxs7-thumb';
@@ -1029,6 +1038,18 @@ window.PXS7 = window.PXS7 || {};
       const img = document.createElement('img');
       img.loading = 'lazy';
       img.decoding = 'async';
+
+      // Add error handler to fallback to remote URL if thumbnail fails (404)
+      if (fallbackUrl && fallbackUrl !== thumbUrl) {
+        img.onerror = () => {
+          if (!img.dataset.fallbackAttempted) {
+            img.dataset.fallbackAttempted = 'true';
+            console.log('[pxs7] Thumbnail failed, using fallback:', fallbackUrl);
+            loadImageSrc(img, fallbackUrl);
+          }
+        };
+      }
+
       loadImageSrc(img, thumbUrl); // Proxies HTTP URLs through background script
       thumb.appendChild(img);
 
@@ -1164,6 +1185,8 @@ window.PXS7 = window.PXS7 || {};
     let urls = assetsCache.map(a => ({
       thumb: getThumbUrl(a),
       full: a.remote_url || a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
+      // Fallback for thumbnail if backend thumbnail 404s (use remote/CDN URL)
+      fallback: a.remote_url || a.external_url || a.file_url || a.url || a.src,
       name: a.name || a.original_filename || a.filename || a.title || '',
       createdAt: a.created_at || a.createdAt || ''
     })).filter(u => u.thumb);
@@ -1226,7 +1249,7 @@ window.PXS7 = window.PXS7 || {};
           </div>
         `;
       } else {
-        const grid = createImageGrid(filteredUrls, (item) => item.thumb, (item) => item.full, (item) => item.name);
+        const grid = createImageGrid(filteredUrls, (item) => item.thumb, (item) => item.full, (item) => item.name, (item) => item.fallback);
         gridContainer.appendChild(grid);
       }
 
