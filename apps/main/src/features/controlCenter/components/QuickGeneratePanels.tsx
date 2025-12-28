@@ -287,6 +287,10 @@ export function AssetPanel(props: QuickGenPanelProps) {
   }, []);
 
   const hasAsset = displayAssets.length > 0;
+  const isMultiAssetDisplay = displayAssets.length > 1;
+  const storeMultiAssetQueue = useGenerationQueueStore(s => s.multiAssetQueue);
+  const storeRemoveFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
+  const storeUpdateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
 
   if (!hasAsset) {
     return (
@@ -299,6 +303,33 @@ export function AssetPanel(props: QuickGenPanelProps) {
     );
   }
 
+  // Multi-asset display: show all assets in horizontal strip
+  if (isMultiAssetDisplay) {
+    return (
+      <div ref={containerRef} className="h-full w-full p-2 overflow-x-auto">
+        <div className="flex gap-1.5 h-full">
+          {storeMultiAssetQueue.map((queueItem, idx) => (
+            <div key={idx} className="relative flex-shrink-0 h-full aspect-square">
+              <CompactAssetCard
+                asset={queueItem.asset}
+                showRemoveButton
+                onRemove={() => storeRemoveFromQueue(queueItem.asset.id, 'multi')}
+                lockedTimestamp={queueItem.lockedTimestamp}
+                onLockTimestamp={(timestamp) => storeUpdateLockedTimestamp(queueItem.asset.id, timestamp, 'multi')}
+                hideFooter
+                fillHeight
+              />
+              <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                {idx + 1}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Single-asset display: existing behavior
   // Get the current queue item based on index
   const currentQueueIndex = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
   const currentQueueItem = mainQueue[currentQueueIndex];

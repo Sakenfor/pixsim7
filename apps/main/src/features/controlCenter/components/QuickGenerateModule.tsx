@@ -283,6 +283,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   };
 
   const displayAssets = getDisplayAssets();
+
   const isSingleAssetOperation = OPERATION_CONFIG.singleAsset.has(operationType);
   const isFlexibleOperation = OPERATION_CONFIG.flexible.has(operationType);
   const showAssetPanel = isSingleAssetOperation || isFlexibleOperation;
