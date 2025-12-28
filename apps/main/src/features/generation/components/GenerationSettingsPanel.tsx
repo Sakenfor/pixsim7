@@ -13,13 +13,11 @@ import { useGenerationWorkbench, useGenerationQueueStore, useGenerationScopeStor
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { useCostEstimate, useProviderIdForModel } from '@features/providers';
 import { OPERATION_METADATA } from '@/types/operations';
-import { Icon } from '@lib/icons';
 import {
   Star,
   Zap,
   Clock,
   Camera,
-  Move,
   RotateCcw,
   Film,
   Sparkles,
@@ -27,7 +25,6 @@ import {
   ArrowUpDown,
   ZoomIn,
   Gauge,
-  type LucideIcon
 } from 'lucide-react';
 
 /** Icon configuration for param values - data-driven approach */
@@ -133,7 +130,7 @@ export interface GenerationSettingsPanelProps {
   secondaryButton?: {
     /** Callback when secondary Go button is clicked */
     onGenerate: () => void;
-    /** Label override (default: "Go ⚡") */
+    /** Label override (default: "Go") */
     label?: string;
   };
   /** Params to filter out from display (default: ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt']) */
@@ -303,33 +300,35 @@ export function GenerationSettingsPanel({
       {/* Fixed top section - Operation type & Provider */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
         {/* Operation type + Input mode toggle (inline) */}
-        {showOperationType && (
+        {(showOperationType || isOptionalMultiAsset) && (
           <div className="flex gap-1">
-            <select
-              value={operationType}
-              onChange={(e) => setOperationType(e.target.value as any)}
-              disabled={generating}
-              className={clsx(
-                'px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium',
-                isOptionalMultiAsset ? 'flex-1' : 'w-full'
-              )}
-            >
-              <option value="image_to_image">→ Image</option>
-              <option value="image_to_video">→ Video</option>
-              <option value="video_extend">Extend</option>
-              <option value="video_transition">Transition</option>
-              <option value="fusion">Fusion</option>
-            </select>
+            {showOperationType && (
+              <select
+                value={operationType}
+                onChange={(e) => setOperationType(e.target.value as any)}
+                disabled={generating}
+                className={clsx(
+                  'px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium',
+                  isOptionalMultiAsset ? 'flex-1' : 'w-full'
+                )}
+              >
+                <option value="image_to_image">Image</option>
+                <option value="image_to_video">Video</option>
+                <option value="video_extend">Extend</option>
+                <option value="video_transition">Transition</option>
+                <option value="fusion">Fusion</option>
+              </select>
+            )}
 
             {/* Input mode toggle for optional multi-asset operations */}
             {isOptionalMultiAsset && (
-              <div className="flex rounded-lg overflow-hidden shadow-sm">
+              <div className={clsx('flex rounded-lg overflow-hidden shadow-sm', showOperationType ? '' : 'w-full')}>
                 <button
                   type="button"
                   onClick={() => setOperationInputMode(operationType, 'single')}
                   disabled={generating}
                   className={clsx(
-                    'px-2 py-1.5 text-[10px] font-medium transition-colors',
+                    'px-2 py-1.5 text-[10px] font-medium transition-colors flex-1',
                     currentInputMode === 'single'
                       ? 'bg-blue-600 text-white'
                       : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-blue-50 dark:hover:bg-neutral-700'
@@ -343,7 +342,7 @@ export function GenerationSettingsPanel({
                   onClick={() => setOperationInputMode(operationType, 'multi')}
                   disabled={generating}
                   className={clsx(
-                    'px-2 py-1.5 text-[10px] font-medium transition-colors',
+                    'px-2 py-1.5 text-[10px] font-medium transition-colors flex-1',
                     currentInputMode === 'multi'
                       ? 'bg-purple-600 text-white'
                       : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-purple-50 dark:hover:bg-neutral-700'
@@ -491,7 +490,7 @@ export function GenerationSettingsPanel({
             className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded border border-red-200 dark:border-red-800"
             style={{ transition: 'none', animation: 'none' }}
           >
-            ⚠️ {error}
+            Error: {error}
           </div>
         )}
 
@@ -522,13 +521,13 @@ export function GenerationSettingsPanel({
             {generating ? (
               '...'
             ) : creditLoading ? (
-              'Go ⚡'
+              'Go'
             ) : creditEstimate !== null ? (
               <span className="flex items-center justify-center gap-1">
-                Go ⚡ <span className="text-amber-200 text-[10px]">◆{Math.round(creditEstimate)}</span>
+                Go <span className="text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
               </span>
             ) : (
-              'Go ⚡'
+              'Go'
             )}
           </button>
 
@@ -552,13 +551,13 @@ export function GenerationSettingsPanel({
               {generating ? (
                 '...'
               ) : creditLoading ? (
-                secondaryButton.label || 'Go ⚡'
+                secondaryButton.label || 'Go'
               ) : creditEstimate !== null ? (
                 <span className="flex items-center justify-center gap-1">
-                  {secondaryButton.label || 'Go ⚡'} <span className="text-amber-200 text-[10px]">◆{Math.round(creditEstimate)}</span>
+                  {secondaryButton.label || 'Go'} <span className="text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
                 </span>
               ) : (
-                secondaryButton.label || 'Go ⚡'
+                secondaryButton.label || 'Go'
               )}
             </button>
           )}

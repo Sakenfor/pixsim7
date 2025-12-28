@@ -12,6 +12,8 @@ export interface QuickGenerateContext {
   presetParams: Record<string, any>;
   dynamicParams: Record<string, any>;
   sourceAssetIds?: number[];
+  inputMode?: 'single' | 'multi';
+  multiQueueAssets?: QueuedAsset[];
   prompts: string[];
   transitionDurations?: number[];
   activeAsset?: SelectedAsset;
@@ -53,6 +55,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     presetParams,
     dynamicParams,
     sourceAssetIds,
+    inputMode = 'single',
+    multiQueueAssets,
     prompts,
     activeAsset,
     mainQueueCurrent,
@@ -89,6 +93,16 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     return sourceAssetId;
   };
 
+  const resolveCompositionAssetsFromQueue = (
+    queueAssets: QueuedAsset[] | undefined
+  ): Array<{ asset: string; layer: number }> | undefined => {
+    if (!queueAssets || queueAssets.length === 0) return undefined;
+    return queueAssets.map((queueItem, index) => ({
+      asset: `asset:${queueItem.asset.id}`,
+      layer: index,
+    }));
+  };
+
   // Helper to strip legacy URL params once asset IDs are present
   const stripLegacyAssetParams = (params: Record<string, any>) => {
     if (params.source_asset_id || (Array.isArray(params.source_asset_ids) && params.source_asset_ids.length > 0)) {
@@ -108,6 +122,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
+    const queueCompositionAssets =
+      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
+    const explicitCompositionAssets =
+      Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
+        ? dynamicParams.composition_assets
+        : undefined;
+
     // Priority: multi-asset list > queue selection > dynamic params > activeAsset
     // NOTE: Legacy image_url is no longer checked - use source_asset_id(s) only
     const multiSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
@@ -116,7 +137,14 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         ? sourceAssetIds
         : undefined;
 
-    if (multiSourceIds?.length) {
+    if (inputMode === 'multi' && !queueCompositionAssets && !explicitCompositionAssets && !multiSourceIds?.length) {
+      return {
+        error: 'No images selected. Add images from the gallery to build a multi-image edit.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
+
+    if (queueCompositionAssets || explicitCompositionAssets || multiSourceIds?.length) {
       if (!dynamicParams.source_asset_ids) {
         inferredSourceAssetIds = multiSourceIds;
       }
@@ -154,6 +182,42 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         };
       }
 
+      if (queueAssetId && queueAssetId !== dynamicParams.source_asset_id) {
+        inferredSourceAssetId = queueAssetId;
+      } else if (!dynamicParams.source_asset_id && sourceAssetId) {
+        inferredSourceAssetId = sourceAssetId;
+      }
+    }
+  }
+
+  if (operationType === 'fusion') {
+    const queueCompositionAssets =
+      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
+    const explicitCompositionAssets =
+      Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
+        ? dynamicParams.composition_assets
+        : undefined;
+    const multiSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
+      ? dynamicParams.source_asset_ids
+      : Array.isArray(sourceAssetIds) && sourceAssetIds.length > 0
+        ? sourceAssetIds
+        : undefined;
+
+    if (inputMode === 'multi' && !queueCompositionAssets && !explicitCompositionAssets && !multiSourceIds?.length) {
+      return {
+        error: 'No images selected. Add images from the gallery to build a fusion.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
+
+    if (!queueCompositionAssets && !explicitCompositionAssets && !multiSourceIds?.length) {
+      const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
+      if (!sourceAssetId) {
+        return {
+          error: 'No images selected. Add an image from the gallery to fuse.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
       if (!dynamicParams.source_asset_id && sourceAssetId) {
         inferredSourceAssetId = sourceAssetId;
       }
@@ -163,6 +227,12 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   if (operationType === 'image_to_video') {
     // Priority: queue selection > dynamic params > activeAsset
     // NOTE: Legacy image_url is no longer checked - use source_asset_id only
+    const queueAssetId =
+      mainQueueCurrent && (
+        mainQueueCurrent.asset.mediaType === 'image' || mainQueueCurrent.asset.mediaType === 'video'
+      )
+        ? mainQueueCurrent.asset.id
+        : undefined;
     const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
 
     // Validate prompt if we have an asset (optional - can fall back to text_to_video)
@@ -174,7 +244,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (!dynamicParams.source_asset_id && sourceAssetId) {
+    if (queueAssetId && queueAssetId !== dynamicParams.source_asset_id) {
+      inferredSourceAssetId = queueAssetId;
+    } else if (!dynamicParams.source_asset_id && sourceAssetId) {
       inferredSourceAssetId = sourceAssetId;
     }
   }
@@ -201,7 +273,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (!dynamicParams.source_asset_id && sourceAssetId) {
+    if (queueAssetId && queueAssetId !== dynamicParams.source_asset_id) {
+      inferredSourceAssetId = queueAssetId;
+    } else if (!dynamicParams.source_asset_id && sourceAssetId) {
       inferredSourceAssetId = sourceAssetId;
     }
   }
@@ -265,16 +339,48 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     ...dynamicParams,
   };
 
-  if (inferredSourceAssetId && !params.source_asset_id) {
+  if (inferredSourceAssetId) {
     params.source_asset_id = inferredSourceAssetId;
   }
 
-  if (inferredSourceAssetIds && !params.source_asset_ids) {
+  if (inferredSourceAssetIds) {
     params.source_asset_ids = inferredSourceAssetIds;
   }
 
   if (operationType === 'image_to_image') {
-    if (!params.composition_assets) {
+    const queueCompositionAssets =
+      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
+    const forceCompositionFromSource =
+      inputMode !== 'multi' && (inferredSourceAssetId !== undefined || inferredSourceAssetIds !== undefined);
+    if (queueCompositionAssets) {
+      params.composition_assets = queueCompositionAssets;
+    } else if (forceCompositionFromSource || !params.composition_assets) {
+      const sourceIds = Array.isArray(params.source_asset_ids)
+        ? params.source_asset_ids
+        : params.source_asset_id
+          ? [params.source_asset_id]
+          : [];
+
+      if (sourceIds.length > 0) {
+        params.composition_assets = sourceIds.map((id: number, index: number) => ({
+          asset: `asset:${id}`,
+          layer: index,
+        }));
+      }
+    }
+
+    delete params.source_asset_id;
+    delete params.source_asset_ids;
+  }
+
+  if (operationType === 'fusion') {
+    const queueCompositionAssets =
+      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
+    const forceCompositionFromSource =
+      inputMode !== 'multi' && (inferredSourceAssetId !== undefined || inferredSourceAssetIds !== undefined);
+    if (queueCompositionAssets) {
+      params.composition_assets = queueCompositionAssets;
+    } else if (forceCompositionFromSource || !params.composition_assets) {
       const sourceIds = Array.isArray(params.source_asset_ids)
         ? params.source_asset_ids
         : params.source_asset_id

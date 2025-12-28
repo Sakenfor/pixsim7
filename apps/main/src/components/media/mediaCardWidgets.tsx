@@ -22,6 +22,8 @@ import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
+import { useGenerationScopeStores } from '@features/generation';
+import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 import type { AssetModel } from '@features/assets';
 import { Icon } from '@lib/icons';
 import {
@@ -433,8 +435,9 @@ function SlotPickerContent({
 
   // Max slots from prop (provider-specific) or default to 7 (Pixverse transition limit)
   const maxAllowed = maxSlotsProp ?? 7;
-  // Show filled slots + 1 empty slot, capped at maxAllowed
-  const visibleSlots = Math.min(Math.max(queue.length + 1, 3), maxAllowed);
+  // Show full slot range when max is known, otherwise show filled + 1 empty (min 3)
+  const minVisibleSlots = maxSlotsProp ?? 3;
+  const visibleSlots = Math.min(Math.max(queue.length + 1, minVisibleSlots), maxAllowed);
   const slots = Array.from({ length: visibleSlots }, (_, i) => i);
 
   return (
@@ -558,6 +561,57 @@ function getSmartActionLabel(mediaType: MediaType, ccMode: OperationType): strin
   return `Add to ${metadata.label}${suffix}`;
 }
 
+function resolveMaxSlotsFromSpecs(
+  parameters: Array<{ name: string; metadata?: Record<string, any>; max?: number }> | undefined,
+  operationType: OperationType,
+  model?: string,
+): number | undefined {
+  if (!parameters || parameters.length === 0) return undefined;
+
+  const candidateNames =
+    operationType === 'video_transition'
+      ? ['image_urls', 'source_asset_ids', 'composition_assets']
+      : ['composition_assets', 'source_asset_ids', 'image_urls'];
+
+  const param = candidateNames
+    .map((name) => parameters.find((entry) => entry.name === name))
+    .find((entry) => !!entry);
+
+  if (!param) return undefined;
+
+  const normalizeLimit = (value: unknown): number | undefined => {
+    const num = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : null;
+    return num !== null && Number.isFinite(num) ? num : undefined;
+  };
+
+  const metadata = param.metadata ?? {};
+  const perModel = metadata.per_model_max_items ?? metadata.perModelMaxItems;
+  if (perModel && model) {
+    const normalizedModel = model.toLowerCase();
+    const match = Object.entries(perModel).find(([key]) => {
+      const normalizedKey = String(key).toLowerCase();
+      return normalizedModel === normalizedKey || normalizedModel.startsWith(normalizedKey);
+    });
+    if (match) {
+      const perModelLimit = normalizeLimit(match[1]);
+      if (perModelLimit !== undefined) return perModelLimit;
+    }
+  }
+
+  return normalizeLimit(metadata.max_items ?? metadata.maxItems ?? param.max);
+}
+
+function resolveMaxSlotsForModel(operationType: OperationType, model?: string): number {
+  const normalized = (model ?? '').toLowerCase();
+  if (normalized.startsWith('seedream-4.5')) return 7;
+  if (normalized.startsWith('seedream-4.0')) return 6;
+
+  if (operationType === 'video_transition') return 7;
+  if (operationType === 'image_to_image' || operationType === 'fusion') return 7;
+
+  return 3;
+}
+
 /**
  * Create generation button group widget (bottom-center)
  * Two merged buttons: menu (left) + smart action (right)
@@ -589,6 +643,12 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
       const menuRef = useRef<HTMLDivElement>(null);
       const triggerRef = useRef<HTMLButtonElement>(null);
       const ccMode = useControlCenterStore((s) => s.operationType);
+      const { useSessionStore, useSettingsStore } = useGenerationScopeStores();
+      const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
+      const scopedProviderId = useSessionStore((s) => s.providerId);
+      const inferredProviderId = useProviderIdForModel(activeModel);
+      const effectiveProviderId = scopedProviderId ?? inferredProviderId;
+      const operationSpec = useOperationSpec(effectiveProviderId, ccMode);
       const setControlCenterOpen = useControlCenterStore((s) => s.setOpen);
       const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
       const setOperationInputMode = useGenerationQueueStore((s) => s.setOperationInputMode);
@@ -598,9 +658,13 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
       const operationMetadata = OPERATION_METADATA[ccMode];
       const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
 
-      // TODO: Get max slots from provider specs based on ccMode and providerId
-      // For now, use defaults: video_transition = 7 (Pixverse limit), others = 10
-      const maxSlots = ccMode === 'video_transition' ? 7 : 10;
+      // Use operation specs first, fall back to model heuristics.
+      const maxSlotsFromSpecs = resolveMaxSlotsFromSpecs(
+        operationSpec?.parameters,
+        ccMode,
+        activeModel,
+      );
+      const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(ccMode, activeModel);
 
       // Reconstruct asset for slot picker
       const queueAsset: AssetModel = {
@@ -666,6 +730,9 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
           operationType: ccMode,
           forceMulti,
         });
+        if (forceMulti && isOptionalMultiAsset) {
+          setOperationInputMode(ccMode, 'multi');
+        }
         // Just open control center - don't change mode
         setControlCenterOpen(true);
       };

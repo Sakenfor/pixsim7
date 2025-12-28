@@ -4,7 +4,14 @@ import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
 import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
-import { useGenerationQueueStore, useGenerationWebSocket, useGenerationWorkbench, GenerationWorkbench, GenerationSettingsPanel } from '@features/generation';
+import {
+  useGenerationQueueStore,
+  useGenerationWebSocket,
+  useGenerationWorkbench,
+  GenerationWorkbench,
+  GenerationSettingsPanel,
+  GenerationScopeProvider,
+} from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { type QuickGenPanelContext, buildFallbackAsset } from './QuickGeneratePanels';
 import { CompactAssetCard } from './CompactAssetCard';
@@ -21,6 +28,8 @@ import {
   getInstanceId,
   getScopeMode,
   panelSettingsScopeRegistry,
+  resolveScopeInstanceId,
+  ScopeInstanceProvider,
   usePanelInstanceSettingsStore,
   type PanelSettingsScopeMode,
 } from '@features/panels';
@@ -45,6 +54,12 @@ const GENERATION_SCOPE_ID = 'generation';
 const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'dock' } as const;
 
 type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
+
+interface QuickGenerateModuleInnerProps {
+  scopeMode: PanelSettingsScopeMode;
+  onScopeChange: (next: PanelSettingsScopeMode) => void;
+  scopeLabel: string;
+}
 
 export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   // Connect to WebSocket for real-time updates
@@ -102,6 +117,38 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
     [panelInstanceId, resolvedPanelId, quickgenInstances, setScope],
   );
 
+  const scopeInstanceId = useMemo(() => {
+    if (generationScopeDefinition.resolveScopeId) {
+      return resolveScopeInstanceId(generationScopeDefinition, scopeMode, {
+        instanceId: panelInstanceId,
+        panelId: resolvedPanelId,
+        dockviewId,
+      });
+    }
+
+    if (scopeMode === 'global') return 'global';
+    if (scopeMode === 'dock') {
+      return dockviewId ? `dock:${dockviewId}:${GENERATION_SCOPE_ID}` : panelInstanceId;
+    }
+    return panelInstanceId;
+  }, [generationScopeDefinition, scopeMode, panelInstanceId, resolvedPanelId, dockviewId]);
+
+  const scopeLabel = generationScopeDefinition.label ?? 'Generation Settings';
+
+  return (
+    <ScopeInstanceProvider scopeId={GENERATION_SCOPE_ID} instanceId={scopeInstanceId}>
+      <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
+        <QuickGenerateModuleInner
+          scopeMode={scopeMode}
+          onScopeChange={handleScopeChange}
+          scopeLabel={scopeLabel}
+        />
+      </GenerationScopeProvider>
+    </ScopeInstanceProvider>
+  );
+}
+
+function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: QuickGenerateModuleInnerProps) {
   const {
     operationType,
     providerId,
@@ -138,9 +185,15 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   const operationMetadata = OPERATION_METADATA[operationType];
   const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
   const isRequiredMultiAsset = operationMetadata?.multiAssetMode === 'required';
+  const autoMulti = isOptionalMultiAsset && multiAssetQueue.length > 0;
   // Get input mode - required ops are always multi, optional check prefs, single ops are always single
-  const inputMode = isRequiredMultiAsset ? 'multi' : (operationInputModePrefs[operationType] ?? 'single');
-  const isInMultiMode = (isOptionalMultiAsset && inputMode === 'multi') || isRequiredMultiAsset;
+  const inputMode =
+    isRequiredMultiAsset || autoMulti
+      ? 'multi'
+      : operationInputModePrefs[operationType] === 'multi'
+        ? 'multi'
+        : 'single';
+  const isInMultiMode = inputMode === 'multi';
 
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
@@ -462,11 +515,11 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   const scopeControl = (
     <div className="flex items-center justify-between rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-900/40 px-2 py-1">
       <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-        {generationScopeDefinition.label ?? 'Generation Scope'}
+        {scopeLabel}
       </div>
       <ScopeModeSelect
         value={scopeMode}
-        onChange={handleScopeChange}
+        onChange={onScopeChange}
         ariaLabel="Generation scope mode"
       />
     </div>
@@ -523,7 +576,7 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
                       {hasOutgoingTransition && (
                         <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-4">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] text-white/80">→{idx + 2}</span>
+                            <span className="text-[10px] text-white/80">-&gt;{idx + 2}</span>
                             <select
                               value={transitionDurations[idx] ?? 5}
                               onChange={(e) => {

@@ -71,6 +71,28 @@ describe('buildGenerationRequest', () => {
     });
   });
 
+  it('builds composition_assets from multi-queue assets for image_to_image', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Blend the characters',
+      inputMode: 'multi',
+      multiQueueAssets: [
+        { asset: { id: 10, mediaType: 'image' }, queuedAt: '' },
+        { asset: { id: 11, mediaType: 'image' }, queuedAt: '' },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params).toMatchObject({
+      composition_assets: [
+        { asset: 'asset:10', layer: 0 },
+        { asset: 'asset:11', layer: 1 },
+      ],
+    });
+  });
+
   it('normalizes toggle params to ints and drops disabled ones', () => {
     const context = createBaseContext({
       prompt: 'waves',

@@ -145,7 +145,9 @@ export function useQuickGenerateController() {
 
       const metadata = OPERATION_METADATA[operationType];
       const inputModePref = queueState.operationInputModePrefs?.[operationType] ?? 'single';
-      const inputMode = metadata?.multiAssetMode === 'required'
+      const autoMulti =
+        metadata?.multiAssetMode === 'optional' && currentMultiAssetQueue.length > 0;
+      const inputMode = metadata?.multiAssetMode === 'required' || autoMulti
         ? 'multi'
         : metadata?.multiAssetMode === 'optional' && inputModePref === 'multi'
           ? 'multi'
@@ -166,6 +168,8 @@ export function useQuickGenerateController() {
         presetParams,
         dynamicParams: modifiedDynamicParams,
         sourceAssetIds,
+        inputMode,
+        multiQueueAssets: inputMode === 'multi' ? currentMultiAssetQueue : undefined,
         prompts: bindings.prompts,
         transitionDurations: bindings.transitionDurations,
         activeAsset: bindings.lastSelectedAsset,
@@ -182,6 +186,7 @@ export function useQuickGenerateController() {
 
       // For flexible operations: switch to text-based operation if no image provided
       const hasAssetInput =
+        (Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0) ||
         !!buildResult.params.source_asset_id ||
         (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
       const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);

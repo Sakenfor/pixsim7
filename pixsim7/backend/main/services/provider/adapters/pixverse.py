@@ -725,15 +725,38 @@ class PixverseProvider(
         }
         image_urls = {
             "name": "image_urls", "type": "array", "required": True, "default": None,
-            "enum": None, "description": "Images for transition sequence", "group": "source"
+            "enum": None, "description": "Images for transition sequence", "group": "source",
+            "metadata": {
+                "min_items": 2,
+                "max_items": 7,
+                "note": "Pixverse transitions support 2-7 images.",
+            },
         }
         prompts = {
             "name": "prompts", "type": "array", "required": True, "default": None,
             "enum": None, "description": "Prompt list corresponding to transition images", "group": "core"
         }
-        composition_assets = {
+        composition_assets_base = {
             "name": "composition_assets", "type": "array", "required": True, "default": None,
             "enum": None, "description": "Assets used for multi-image composition", "group": "source"
+        }
+        composition_assets_image = {
+            **composition_assets_base,
+            "metadata": {
+                "max_items": 7,
+                "per_model_max_items": {
+                    "seedream-4.0": 6,
+                    "seedream-4.5": 7,
+                },
+                "note": "Max images for multi-image composition.",
+            },
+        }
+        composition_assets_fusion = {
+            **composition_assets_base,
+            "metadata": {
+                "max_items": 3,
+                "note": "Pixverse fusion supports up to 3 images.",
+            },
         }
         # Camera movements (only for image_to_video - requires image input)
         # Derived from SDK's CameraMovement.ALL, with "none" as default
@@ -896,7 +919,7 @@ class PixverseProvider(
             "image_to_image": {
                 "parameters": [
                     base_prompt,
-                    composition_assets,
+                    composition_assets_image,
                     image_model,
                     image_quality,
                     aspect_ratio,
@@ -965,7 +988,7 @@ class PixverseProvider(
             },
             # video_transition: aspect ratio is determined by source images
             "video_transition": {"parameters": [image_urls, prompts, model, quality, transition_duration]},
-            "fusion": {"parameters": [base_prompt, composition_assets, model, quality, duration, aspect_ratio, seed]},
+            "fusion": {"parameters": [base_prompt, composition_assets_fusion, model, quality, duration, aspect_ratio, seed]},
         }
         return spec
 
