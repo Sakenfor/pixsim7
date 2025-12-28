@@ -13,6 +13,30 @@ export const COMPOSITION_ROLES = ["main_character","companion","environment","pr
 export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
 
 /**
+ * Role descriptions for UI display.
+ */
+export const ROLE_DESCRIPTIONS = {
+  "main_character": "Primary subject/character in the scene",
+  "companion": "Supporting characters (NPCs, pets, monsters)",
+  "environment": "Background, setting, location",
+  "prop": "Objects, vehicles, items",
+  "style_reference": "Style/aesthetic reference images",
+  "effect": "Lighting, camera, visual effects"
+} as const satisfies Record<ImageCompositionRole, string>;
+
+/**
+ * Role colors (tailwind color names) for badges/UI.
+ */
+export const ROLE_COLORS = {
+  "main_character": "blue",
+  "companion": "purple",
+  "environment": "green",
+  "prop": "orange",
+  "style_reference": "pink",
+  "effect": "cyan"
+} as const satisfies Record<ImageCompositionRole, string>;
+
+/**
  * Tag slug -> composition role mapping.
  * Exact match lookup (e.g., "bg", "char:hero").
  */

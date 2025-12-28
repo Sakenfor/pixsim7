@@ -67,7 +67,16 @@ const namespaceMappings = Object.fromEntries(
   ])
 );
 const priority = data.priority as string[];
-const roles = data.roles as string[];
+
+// Extract roles - now an object with metadata
+const rolesData = data.roles as Record<string, { description: string; color: string }>;
+const roles = Object.keys(rolesData);
+const descriptions = Object.fromEntries(
+  Object.entries(rolesData).map(([k, v]) => [k, v.description])
+);
+const colors = Object.fromEntries(
+  Object.entries(rolesData).map(([k, v]) => [k, v.color])
+);
 
 // Generate TypeScript output
 const output = `// Auto-generated from composition-roles.yaml - DO NOT EDIT
@@ -83,6 +92,16 @@ export const COMPOSITION_ROLES = ${JSON.stringify(roles)} as const;
  * Canonical composition role type, derived from YAML.
  */
 export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
+
+/**
+ * Role descriptions for UI display.
+ */
+export const ROLE_DESCRIPTIONS = ${JSON.stringify(descriptions, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
+
+/**
+ * Role colors (tailwind color names) for badges/UI.
+ */
+export const ROLE_COLORS = ${JSON.stringify(colors, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
 
 /**
  * Tag slug -> composition role mapping.

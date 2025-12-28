@@ -6,14 +6,27 @@
 #
 # To add new mappings: edit this file, then run `pnpm generate:composition-roles`
 
-# Canonical role IDs (must match ImageCompositionRole enum)
+# Canonical roles with metadata
+# Each role has: description (for UI), color (tailwind color name for badges)
 roles:
-  - main_character
-  - companion
-  - environment
-  - prop
-  - style_reference
-  - effect
+  main_character:
+    description: Primary subject/character in the scene
+    color: blue
+  companion:
+    description: Supporting characters (NPCs, pets, monsters)
+    color: purple
+  environment:
+    description: Background, setting, location
+    color: green
+  prop:
+    description: Objects, vehicles, items
+    color: orange
+  style_reference:
+    description: Style/aesthetic reference images
+    color: pink
+  effect:
+    description: Lighting, camera, visual effects
+    color: cyan
 
 # Priority order for role selection (highest first)
 # When an asset has multiple tags mapping to different roles, pick the highest priority.

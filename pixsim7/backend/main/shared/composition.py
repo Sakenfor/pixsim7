@@ -64,10 +64,12 @@ _ROLE_DATA = _load_role_data()
 
 
 def _build_composition_role_enum() -> type:
-    """Dynamically build ImageCompositionRole enum from YAML roles list."""
-    roles = _ROLE_DATA["roles"]
+    """Dynamically build ImageCompositionRole enum from YAML roles."""
+    # roles is now an object with metadata, extract keys
+    roles_data = _ROLE_DATA["roles"]
+    role_ids = list(roles_data.keys())
     # Create enum members: MAIN_CHARACTER = "main_character", etc.
-    members = {role.upper(): role for role in roles}
+    members = {role.upper(): role for role in role_ids}
     return Enum("ImageCompositionRole", members, type=str)
 
 
