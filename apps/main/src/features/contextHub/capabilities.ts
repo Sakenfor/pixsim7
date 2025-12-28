@@ -15,6 +15,7 @@ import {
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
   CAP_PANEL_CONTEXT,
+  CAP_GENERATION_WIDGET,
 } from "./capabilityKeys";
 
 export {
@@ -28,6 +29,7 @@ export {
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
   CAP_PANEL_CONTEXT,
+  CAP_GENERATION_WIDGET,
 };
 
 registerCapabilityDescriptor({
@@ -98,6 +100,13 @@ registerCapabilityDescriptor({
   label: "Panel Context",
   description: "Dockview panel context passed via SmartDockview context prop.",
   kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_GENERATION_WIDGET,
+  label: "Generation Widget",
+  description: "Generation widget actions and state for asset enqueuing.",
+  kind: "action",
   source: "contextHub",
 });
 
@@ -211,3 +220,27 @@ export interface EditorContextSnapshot {
  * @template T - The shape of the context object (defaults to unknown for flexibility)
  */
 export type PanelContextCapability<T = unknown> = T;
+
+/**
+ * Generation widget capability - exposes actions for the nearest generation widget.
+ * Allows media cards and other components to enqueue assets to the correct widget.
+ */
+export interface GenerationWidgetContext {
+  /** Whether the widget is currently visible/open */
+  isOpen: boolean;
+  /** Open/close the widget */
+  setOpen: (open: boolean) => void;
+  /** Current operation type (image_to_video, text_to_image, etc.) */
+  operationType: string;
+  /** Enqueue an asset to the widget's queue */
+  enqueueAsset: (options: {
+    asset: ViewerAsset;
+    operationType: string;
+    slotIndex?: number;
+    forceMulti?: boolean;
+  }) => void;
+  /** Set input mode preference for an operation */
+  setOperationInputMode: (operationType: string, mode: 'single' | 'multi') => void;
+  /** Unique identifier for this widget instance */
+  widgetId: string;
+}

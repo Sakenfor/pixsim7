@@ -8,16 +8,20 @@ import {
 import { useScopeInstanceId } from "@features/panels";
 import { useControlCenterStore } from "@features/controlCenter/stores/controlCenterStore";
 import { useGenerationSettingsStore } from "../stores/generationSettingsStore";
+import { useGenerationQueueStore } from "../stores/generationQueueStore";
 import type { GenerationSessionStoreHook } from "../stores/generationSessionStore";
+import type { GenerationQueueStoreHook } from "../stores/generationQueueStore";
 import {
   getGenerationSessionStore,
   getGenerationSettingsStore,
+  getGenerationQueueStore,
   type GenerationSettingsStoreHook,
 } from "../stores/generationScopeStores";
 
 export interface GenerationScopeStores extends GenerationScopeContext {
   useSessionStore: GenerationSessionStoreHook;
   useSettingsStore: GenerationSettingsStoreHook;
+  useQueueStore: GenerationQueueStoreHook;
 }
 
 const GLOBAL_SCOPE: GenerationScopeStores = {
@@ -25,6 +29,7 @@ const GLOBAL_SCOPE: GenerationScopeStores = {
   label: "Global",
   useSessionStore: useControlCenterStore as unknown as GenerationSessionStoreHook,
   useSettingsStore: useGenerationSettingsStore as unknown as GenerationSettingsStoreHook,
+  useQueueStore: useGenerationQueueStore as unknown as GenerationQueueStoreHook,
 };
 
 export function useGenerationScopeStores(): GenerationScopeStores {
@@ -76,6 +81,7 @@ export function GenerationScopeProvider({
       label: label ?? "Local Generation",
       useSessionStore: getGenerationSessionStore(effectiveScopeId),
       useSettingsStore: getGenerationSettingsStore(effectiveScopeId),
+      useQueueStore: getGenerationQueueStore(effectiveScopeId),
     };
   }, [effectiveScopeId, label]);
 

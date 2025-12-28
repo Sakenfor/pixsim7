@@ -24,6 +24,11 @@ import { useControlCenterStore } from '@features/controlCenter/stores/controlCen
 import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
 import { useGenerationScopeStores } from '@features/generation';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
+import {
+  CAP_GENERATION_WIDGET,
+  useCapability,
+  type GenerationWidgetContext,
+} from '@features/contextHub';
 import type { AssetModel } from '@features/assets';
 import { Icon } from '@lib/icons';
 import {
@@ -554,9 +559,9 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
  * Get the label for the smart action button.
  * Smart button always adds to current mode - never changes mode.
  */
-function getSmartActionLabel(mediaType: MediaType, ccMode: OperationType): string {
-  const metadata = OPERATION_METADATA[ccMode];
-  const needsFrameExtraction = mediaType === 'video' && ccMode !== 'video_extend';
+function getSmartActionLabel(mediaType: MediaType, operationType: OperationType): string {
+  const metadata = OPERATION_METADATA[operationType];
+  const needsFrameExtraction = mediaType === 'video' && operationType !== 'video_extend';
   const suffix = needsFrameExtraction ? ' (extract frame)' : '';
   return `Add to ${metadata.label}${suffix}`;
 }
@@ -642,29 +647,42 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
       const [isMenuOpen, setIsMenuOpen] = useState(false);
       const menuRef = useRef<HTMLDivElement>(null);
       const triggerRef = useRef<HTMLButtonElement>(null);
-      const ccMode = useControlCenterStore((s) => s.operationType);
-      const { useSessionStore, useSettingsStore } = useGenerationScopeStores();
+
+      // Use capability to get nearest generation widget, with global fallback
+      const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+
+      // Get scoped stores (follows same scoping as the widget capability)
+      const { useSessionStore, useSettingsStore, useQueueStore } = useGenerationScopeStores();
+      const scopedOperationType = useSessionStore((s) => s.operationType);
+      const scopedEnqueueAsset = useQueueStore((s) => s.enqueueAsset);
+      const scopedSetOperationInputMode = useQueueStore((s) => s.setOperationInputMode);
+
+      // For widget open/close, use capability if available, else fall back to control center
+      const setControlCenterOpenGlobal = useControlCenterStore((s) => s.setOpen);
+      const setWidgetOpen = widgetContext?.setOpen ?? setControlCenterOpenGlobal;
+
+      // Operation type and queue actions come from scoped stores (via capability or scope context)
+      const operationType = widgetContext?.operationType ?? scopedOperationType;
+      const enqueueAsset = widgetContext?.enqueueAsset ?? scopedEnqueueAsset;
+      const setOperationInputMode = widgetContext?.setOperationInputMode ?? scopedSetOperationInputMode;
       const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
       const scopedProviderId = useSessionStore((s) => s.providerId);
       const inferredProviderId = useProviderIdForModel(activeModel);
       const effectiveProviderId = scopedProviderId ?? inferredProviderId;
-      const operationSpec = useOperationSpec(effectiveProviderId, ccMode);
-      const setControlCenterOpen = useControlCenterStore((s) => s.setOpen);
-      const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
-      const setOperationInputMode = useGenerationQueueStore((s) => s.setOperationInputMode);
+      const operationSpec = useOperationSpec(effectiveProviderId, operationType);
 
       const menuItems = buildGenerationMenuItems(id, mediaType, actions);
-      const smartActionLabel = getSmartActionLabel(mediaType, ccMode);
-      const operationMetadata = OPERATION_METADATA[ccMode];
+      const smartActionLabel = getSmartActionLabel(mediaType, operationType);
+      const operationMetadata = OPERATION_METADATA[operationType];
       const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
 
       // Use operation specs first, fall back to model heuristics.
       const maxSlotsFromSpecs = resolveMaxSlotsFromSpecs(
         operationSpec?.parameters,
-        ccMode,
+        operationType,
         activeModel,
       );
-      const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(ccMode, activeModel);
+      const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
 
       // Reconstruct asset for slot picker
       const queueAsset: AssetModel = {
@@ -727,14 +745,14 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         // Smart button appends to queue (no slotIndex = append)
         enqueueAsset({
           asset: queueAsset,
-          operationType: ccMode,
+          operationType,
           forceMulti,
         });
         if (forceMulti && isOptionalMultiAsset) {
-          setOperationInputMode(ccMode, 'multi');
+          setOperationInputMode(operationType, 'multi');
         }
-        // Just open control center - don't change mode
-        setControlCenterOpen(true);
+        // Open the generation widget (nearest via capability, or global control center)
+        setWidgetOpen(true);
       };
 
       const handleMenuItemClick = (item: MenuItem) => {
@@ -746,14 +764,14 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
         // Slot picker always targets multiAssetQueue (for arranging compositions)
         enqueueAsset({
           asset: selectedAsset,
-          operationType: ccMode,
+          operationType,
           slotIndex,
           forceMulti: true, // Always multi queue for slot picker
         });
 
         // Auto-switch to multi mode if operation supports it
         if (isOptionalMultiAsset) {
-          setOperationInputMode(ccMode, 'multi');
+          setOperationInputMode(operationType, 'multi');
         }
       };
 

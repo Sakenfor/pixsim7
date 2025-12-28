@@ -12,6 +12,7 @@ export {
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
   CAP_PANEL_CONTEXT,
+  CAP_GENERATION_WIDGET,
 } from "./capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -30,6 +31,7 @@ export type {
   GenerateActionContext,
   EditorContextSnapshot,
   PanelContextCapability,
+  GenerationWidgetContext,
 } from "./capabilities";
 export type { CapabilityDescriptor, CapabilityDescriptorKind } from "./descriptorRegistry";
 export {

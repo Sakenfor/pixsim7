@@ -8,6 +8,7 @@ import {
   useGenerationQueueStore,
   useGenerationWebSocket,
   useGenerationWorkbench,
+  useGenerationScopeStores,
   GenerationWorkbench,
   GenerationSettingsPanel,
   GenerationScopeProvider,
@@ -19,8 +20,10 @@ import { OPERATION_METADATA } from '@/types/operations';
 import { PromptInput } from '@pixsim7/shared.ui';
 import {
   CAP_GENERATION_CONTEXT,
+  CAP_GENERATION_WIDGET,
   useProvideCapability,
   type GenerationContextSummary,
+  type GenerationWidgetContext,
 } from '@features/contextHub';
 import { Ref } from '@pixsim7/shared.types';
 import {
@@ -236,6 +239,41 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   useProvideCapability(CAP_GENERATION_CONTEXT, generationContextProvider, [generationContextValue], {
     scope: 'root',
   });
+
+  // Get scoped queue store for the widget capability
+  const { useQueueStore } = useGenerationScopeStores();
+  const scopedEnqueueAsset = useQueueStore(s => s.enqueueAsset);
+  const scopedSetOperationInputMode = useQueueStore(s => s.setOperationInputMode);
+
+  // Get control center state for open/close
+  const ccIsOpen = useControlCenterStore(s => s.isOpen);
+  const ccSetOpen = useControlCenterStore(s => s.setOpen);
+
+  // Provide CAP_GENERATION_WIDGET for media cards to target this widget
+  const generationWidgetValue = useMemo<GenerationWidgetContext>(
+    () => ({
+      isOpen: ccIsOpen,
+      setOpen: ccSetOpen,
+      operationType,
+      enqueueAsset: scopedEnqueueAsset,
+      setOperationInputMode: scopedSetOperationInputMode,
+      widgetId: 'controlCenter',
+    }),
+    [ccIsOpen, ccSetOpen, operationType, scopedEnqueueAsset, scopedSetOperationInputMode],
+  );
+
+  const generationWidgetProvider = useMemo(
+    () => ({
+      id: 'generation-widget:controlCenter',
+      label: 'Control Center',
+      priority: 50,
+      isAvailable: () => true,
+      getValue: () => generationWidgetValue,
+    }),
+    [generationWidgetValue],
+  );
+
+  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
 
   // Always show asset panel for these operations (to show queue or allow drag-drop)
   const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;

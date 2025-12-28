@@ -3,6 +3,8 @@ import type { GenerationSettingsState } from "./generationSettingsStore";
 import { createGenerationSettingsStore } from "./generationSettingsStore";
 import type { GenerationSessionStoreHook } from "./generationSessionStore";
 import { createGenerationSessionStore } from "./generationSessionStore";
+import type { GenerationQueueStoreHook } from "./generationQueueStore";
+import { createGenerationQueueStore } from "./generationQueueStore";
 
 export type GenerationSettingsStoreHook = <T>(
   selector: (state: GenerationSettingsState) => T
@@ -10,6 +12,7 @@ export type GenerationSettingsStoreHook = <T>(
 
 const sessionStores = new Map<string, GenerationSessionStoreHook>();
 const settingsStores = new Map<string, GenerationSettingsStoreHook>();
+const queueStores = new Map<string, GenerationQueueStoreHook>();
 
 function getStorageKey(prefix: string, scopeId: string) {
   return `${prefix}:${scopeId}`;
@@ -33,5 +36,16 @@ export function getGenerationSettingsStore(scopeId: string): GenerationSettingsS
     createJSONStorage(() => localStorage),
   );
   settingsStores.set(scopeId, store);
+  return store;
+}
+
+export function getGenerationQueueStore(scopeId: string): GenerationQueueStoreHook {
+  const existing = queueStores.get(scopeId);
+  if (existing) return existing;
+
+  const store = createGenerationQueueStore(
+    getStorageKey("generation_queue", scopeId),
+  );
+  queueStores.set(scopeId, store);
   return store;
 }

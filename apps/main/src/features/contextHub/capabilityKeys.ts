@@ -8,3 +8,4 @@ export const CAP_ASSET_INPUT = "assetInput" as const;
 export const CAP_GENERATE_ACTION = "generateAction" as const;
 export const CAP_EDITOR_CONTEXT = "editorContext" as const;
 export const CAP_PANEL_CONTEXT = "panelContext" as const;
+export const CAP_GENERATION_WIDGET = "generationWidget" as const;
