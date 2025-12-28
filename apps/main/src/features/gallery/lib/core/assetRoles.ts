@@ -8,9 +8,16 @@
  * - Use existing ontology IDs where they exist (from ontology.yaml)
  * - Prefer world/NPC IDs (npc:*, loc:*) over ad-hoc vocabularies
  * - No schema changes - everything is tag-based
+ *
+ * Composition roles:
+ * - AssetRole (local) = visual overlay/filtering roles (bg, char:hero, etc.)
+ * - ImageCompositionRole (canonical) = composition semantics (main_character, environment, etc.)
+ * - inferCompositionRoleFromAsset() bridges the two systems
  */
 
 import type { GalleryAsset } from './types';
+import type { ImageCompositionRole } from '@pixsim7/shared.types';
+import { inferRoleFromTags } from '@pixsim7/shared.types/composition-roles.generated';
 
 /**
  * Character identity tags (from world/NPC systems)
@@ -197,4 +204,25 @@ export function filterAssetsByRoleAndIdentity(
     }
     return true;
   });
+}
+
+// ============================================================================
+// Canonical Composition Role Inference
+// ============================================================================
+
+/**
+ * Infer canonical composition role from asset tags.
+ *
+ * Uses the generated mapping from data/composition-roles.yaml.
+ * Strategy:
+ * 1. Check exact slug match (e.g., "bg", "char:hero")
+ * 2. Extract namespace prefix (e.g., "npc:alex" -> "npc") and check namespace mapping
+ * 3. Return highest-priority role if multiple matches
+ *
+ * @param asset - GalleryAsset with tags
+ * @returns Canonical ImageCompositionRole or undefined
+ */
+export function inferCompositionRoleFromAsset(asset: GalleryAsset): ImageCompositionRole | undefined {
+  const tags = getAssetTagValues(asset);
+  return inferRoleFromTags(tags);
 }

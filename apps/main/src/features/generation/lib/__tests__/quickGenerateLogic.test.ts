@@ -66,7 +66,7 @@ describe('buildGenerationRequest', () => {
     expect(result.params).toMatchObject({
       prompt: 'Add neon rim light',
       composition_assets: [
-        { asset: 'asset:42', layer: 0 },
+        { asset: 'asset:42', layer: 0, role: 'environment' },
       ],
     });
   });
@@ -87,10 +87,113 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       composition_assets: [
-        { asset: 'asset:10', layer: 0 },
-        { asset: 'asset:11', layer: 1 },
+        { asset: 'asset:10', layer: 0, role: 'environment' },
+        { asset: 'asset:11', layer: 1, role: 'main_character' },
       ],
     });
+  });
+
+  it('assigns default roles to composition_assets (first=environment, others=main_character)', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Combine these images',
+      inputMode: 'multi',
+      multiQueueAssets: [
+        { asset: { id: 1, mediaType: 'image' }, queuedAt: '' },
+        { asset: { id: 2, mediaType: 'image' }, queuedAt: '' },
+        { asset: { id: 3, mediaType: 'image' }, queuedAt: '' },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.composition_assets).toEqual([
+      { asset: 'asset:1', layer: 0, role: 'environment' },
+      { asset: 'asset:2', layer: 1, role: 'main_character' },
+      { asset: 'asset:3', layer: 2, role: 'main_character' },
+    ]);
+  });
+
+  it('infers roles from asset tags when available', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Combine these images',
+      inputMode: 'multi',
+      multiQueueAssets: [
+        {
+          asset: {
+            id: 1,
+            mediaType: 'image',
+            tags: [{ slug: 'char:hero', name: 'hero' }],
+          },
+          queuedAt: '',
+        },
+        {
+          asset: {
+            id: 2,
+            mediaType: 'image',
+            tags: [{ slug: 'bg', name: 'bg' }],
+          },
+          queuedAt: '',
+        },
+        {
+          asset: {
+            id: 3,
+            mediaType: 'image',
+            tags: [{ slug: 'npc:alex', name: 'alex' }],
+          },
+          queuedAt: '',
+        },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    // char:hero -> main_character
+    // bg -> environment
+    // npc:alex -> main_character (namespace "npc" maps to main_character)
+    expect(result.params?.composition_assets).toEqual([
+      { asset: 'asset:1', layer: 0, role: 'main_character' },
+      { asset: 'asset:2', layer: 1, role: 'environment' },
+      { asset: 'asset:3', layer: 2, role: 'main_character' },
+    ]);
+  });
+
+  it('falls back to default role when tags do not map', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Combine these images',
+      inputMode: 'multi',
+      multiQueueAssets: [
+        {
+          asset: {
+            id: 1,
+            mediaType: 'image',
+            tags: [{ slug: 'unknown:tag', name: 'tag' }],
+          },
+          queuedAt: '',
+        },
+        {
+          asset: {
+            id: 2,
+            mediaType: 'image',
+            // no tags
+          },
+          queuedAt: '',
+        },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    // First gets default environment, second gets default main_character
+    expect(result.params?.composition_assets).toEqual([
+      { asset: 'asset:1', layer: 0, role: 'environment' },
+      { asset: 'asset:2', layer: 1, role: 'main_character' },
+    ]);
   });
 
   it('normalizes toggle params to ints and drops disabled ones', () => {

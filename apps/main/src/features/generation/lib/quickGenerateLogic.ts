@@ -2,6 +2,7 @@ import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore'
 import type { QueuedAsset } from '@features/generation';
 import { normalizeProviderParams } from '@features/generation/lib/core/normalizeProviderParams';
 import type { OperationType } from '@/types/operations';
+import { inferRoleFromTags } from '@pixsim7/shared.types/composition-roles.generated';
 
 // Re-export for backwards compatibility
 export type { OperationType };
@@ -93,14 +94,28 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     return sourceAssetId;
   };
 
+  // Helper to extract tag slugs from asset tags
+  const getTagStrings = (asset: { tags?: Array<{ slug?: string; name?: string }> }): string[] => {
+    return (asset.tags ?? [])
+      .map(t => t.slug ?? t.name ?? '')
+      .filter(Boolean);
+  };
+
   const resolveCompositionAssetsFromQueue = (
     queueAssets: QueuedAsset[] | undefined
-  ): Array<{ asset: string; layer: number }> | undefined => {
+  ): Array<{ asset: string; layer: number; role: string }> | undefined => {
     if (!queueAssets || queueAssets.length === 0) return undefined;
-    return queueAssets.map((queueItem, index) => ({
-      asset: `asset:${queueItem.asset.id}`,
-      layer: index,
-    }));
+    return queueAssets.map((queueItem, index) => {
+      const tags = getTagStrings(queueItem.asset);
+      const inferredRole = inferRoleFromTags(tags);
+      // Default: first image is environment (background), others are main_character (subjects)
+      const defaultRole = index === 0 ? 'environment' : 'main_character';
+      return {
+        asset: `asset:${queueItem.asset.id}`,
+        layer: index,
+        role: inferredRole ?? defaultRole,
+      };
+    });
   };
 
   // Helper to strip legacy URL params once asset IDs are present
@@ -362,9 +377,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           : [];
 
       if (sourceIds.length > 0) {
+        // Assign default roles: first = environment (background), others = main_character
         params.composition_assets = sourceIds.map((id: number, index: number) => ({
           asset: `asset:${id}`,
           layer: index,
+          role: index === 0 ? 'environment' : 'main_character',
         }));
       }
     }
@@ -388,9 +405,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           : [];
 
       if (sourceIds.length > 0) {
+        // Assign default roles: first = environment (background), others = main_character
         params.composition_assets = sourceIds.map((id: number, index: number) => ({
           asset: `asset:${id}`,
           layer: index,
+          role: index === 0 ? 'environment' : 'main_character',
         }));
       }
     }

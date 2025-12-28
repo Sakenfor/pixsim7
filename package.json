@@ -19,6 +19,8 @@
     "openapi:check": "tsx scripts/generate-openapi-types.ts --check",
     "branded:gen": "tsx scripts/generate-branded-types.ts",
     "branded:check": "tsx scripts/generate-branded-types.ts --check",
+    "composition-roles:gen": "tsx scripts/generate-composition-roles.ts",
+    "types:gen": "pnpm composition-roles:gen && pnpm openapi:gen && pnpm branded:gen",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "lint": "echo 'add lint script per package'",
     "generate-docs": "tsx packages/game-core/src/utils/generatePluginDocs.ts",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "esbuild": "^0.24.0",
     "openapi-typescript": "^7.10.1",
-    "tsx": "^4.20.6"
+    "tsx": "^4.20.6",
+    "yaml": "^2.8.0"
   }
 }

@@ -4,11 +4,18 @@ Shared image composition roles and mapping utilities.
 This module defines the canonical composition roles used across prompt blocks,
 fusion, and multi-image editing. Provider adapters collapse these roles into
 provider-specific formats.
+
+Role mappings are loaded from data/composition-roles.yaml (single source of truth).
+Frontend generates equivalent TS constants via scripts/generate-composition-roles.ts.
 """
 from __future__ import annotations
 
+import os
 from enum import Enum
-from typing import Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 
 class ImageCompositionRole(str, Enum):
@@ -20,35 +27,58 @@ class ImageCompositionRole(str, Enum):
     EFFECT = "effect"
 
 
-# Canonical role aliases for normalization.
-COMPOSITION_ROLE_ALIASES = {
-    # Characters
-    "character": ImageCompositionRole.MAIN_CHARACTER.value,
-    "char": ImageCompositionRole.MAIN_CHARACTER.value,
-    "hero": ImageCompositionRole.MAIN_CHARACTER.value,
-    "subject": ImageCompositionRole.MAIN_CHARACTER.value,
-    "npc": ImageCompositionRole.COMPANION.value,
-    "companion": ImageCompositionRole.COMPANION.value,
-    "monster": ImageCompositionRole.COMPANION.value,
-    # Environments
-    "environment": ImageCompositionRole.ENVIRONMENT.value,
-    "setting": ImageCompositionRole.ENVIRONMENT.value,
-    "background": ImageCompositionRole.ENVIRONMENT.value,
-    "bg": ImageCompositionRole.ENVIRONMENT.value,
-    "scene": ImageCompositionRole.ENVIRONMENT.value,
-    # Props
-    "prop": ImageCompositionRole.PROP.value,
-    "object": ImageCompositionRole.PROP.value,
-    "vehicle": ImageCompositionRole.PROP.value,
-    # Style / effects
-    "style": ImageCompositionRole.STYLE_REFERENCE.value,
-    "style_reference": ImageCompositionRole.STYLE_REFERENCE.value,
-    "reference": ImageCompositionRole.STYLE_REFERENCE.value,
-    "effect": ImageCompositionRole.EFFECT.value,
-    "lighting": ImageCompositionRole.EFFECT.value,
-}
+# ============================================================================
+# YAML Loading (Single Source of Truth)
+# ============================================================================
+
+
+def _resolve_data_path() -> Path:
+    """Resolve path to composition-roles.yaml with robust fallbacks."""
+    # Primary: same directory as this module
+    candidate = Path(__file__).resolve().parent / "composition-roles.yaml"
+    if candidate.exists():
+        return candidate
+
+    # Fallback: check PIXSIM_DATA_DIR env var
+    env_dir = os.environ.get("PIXSIM_DATA_DIR")
+    if env_dir:
+        candidate = Path(env_dir) / "composition-roles.yaml"
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(
+        f"composition-roles.yaml not found. "
+        f"Checked: {Path(__file__).resolve().parent / 'composition-roles.yaml'}. "
+        f"Set PIXSIM_DATA_DIR or ensure file exists alongside composition.py."
+    )
+
+
+def _load_role_data() -> Dict[str, Any]:
+    """Load and validate composition role data from YAML."""
+    data_path = _resolve_data_path()
+    with open(data_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    required = ["roles", "priority", "slugMappings", "namespaceMappings", "aliases"]
+    missing = [k for k in required if k not in data]
+    if missing:
+        raise ValueError(
+            f"composition-roles.yaml missing required keys: {missing}"
+        )
+    return data
+
+
+# Load at module init - fail fast with clear error
+_ROLE_DATA = _load_role_data()
+
+# Role mappings from YAML
+COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA["aliases"]
+TAG_NAMESPACE_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["namespaceMappings"]
+TAG_SLUG_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["slugMappings"]
+COMPOSITION_ROLE_PRIORITY: List[str] = _ROLE_DATA["priority"]
 
 # Prompt role mapping (PromptSegmentRole -> composition role)
+# Not in YAML because prompt roles are a separate concern from tag/alias roles
 PROMPT_ROLE_TO_COMPOSITION_ROLE = {
     "character": ImageCompositionRole.MAIN_CHARACTER.value,
     "setting": ImageCompositionRole.ENVIRONMENT.value,
@@ -56,41 +86,6 @@ PROMPT_ROLE_TO_COMPOSITION_ROLE = {
     "romance": ImageCompositionRole.STYLE_REFERENCE.value,
     "action": ImageCompositionRole.EFFECT.value,
     "camera": ImageCompositionRole.EFFECT.value,
-}
-
-# Tag namespace mapping (Tag.namespace -> composition role)
-TAG_NAMESPACE_TO_COMPOSITION_ROLE = {
-    "character": ImageCompositionRole.MAIN_CHARACTER.value,
-    "person": ImageCompositionRole.MAIN_CHARACTER.value,
-    "npc": ImageCompositionRole.MAIN_CHARACTER.value,
-    "animal": ImageCompositionRole.COMPANION.value,
-    "creature": ImageCompositionRole.COMPANION.value,
-    "object": ImageCompositionRole.PROP.value,
-    "prop": ImageCompositionRole.PROP.value,
-    "vehicle": ImageCompositionRole.PROP.value,
-    "location": ImageCompositionRole.ENVIRONMENT.value,
-    "environment": ImageCompositionRole.ENVIRONMENT.value,
-    "setting": ImageCompositionRole.ENVIRONMENT.value,
-    "background": ImageCompositionRole.ENVIRONMENT.value,
-    "scene": ImageCompositionRole.ENVIRONMENT.value,
-    "place": ImageCompositionRole.ENVIRONMENT.value,
-    "style": ImageCompositionRole.STYLE_REFERENCE.value,
-    "lighting": ImageCompositionRole.EFFECT.value,
-    "camera": ImageCompositionRole.EFFECT.value,
-}
-
-# Tag slug mapping (Tag.slug -> composition role)
-TAG_SLUG_TO_COMPOSITION_ROLE = {
-    "char:hero": ImageCompositionRole.MAIN_CHARACTER.value,
-    "char:npc": ImageCompositionRole.COMPANION.value,
-    "char:monster": ImageCompositionRole.COMPANION.value,
-    "pov:player": ImageCompositionRole.MAIN_CHARACTER.value,
-    "role:bg": ImageCompositionRole.ENVIRONMENT.value,
-    "role:environment": ImageCompositionRole.ENVIRONMENT.value,
-    "role:setting": ImageCompositionRole.ENVIRONMENT.value,
-    "role:char": ImageCompositionRole.MAIN_CHARACTER.value,
-    "role:character": ImageCompositionRole.MAIN_CHARACTER.value,
-    "comic_frame": ImageCompositionRole.STYLE_REFERENCE.value,
 }
 
 

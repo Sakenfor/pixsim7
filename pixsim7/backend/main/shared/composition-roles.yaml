@@ -1,0 +1,103 @@
+# Canonical Composition Roles - Single Source of Truth
+# Both backend (Python) and frontend (TypeScript) consume this file.
+#
+# - Backend: pixsim7/backend/main/shared/composition.py loads at module init
+# - Frontend: scripts/generate-composition-roles.ts generates TS constants
+#
+# To add new mappings: edit this file, then run `pnpm generate:composition-roles`
+
+# Canonical role IDs (must match ImageCompositionRole enum)
+roles:
+  - main_character
+  - companion
+  - environment
+  - prop
+  - style_reference
+  - effect
+
+# Priority order for role selection (highest first)
+# When an asset has multiple tags mapping to different roles, pick the highest priority.
+priority:
+  - main_character
+  - companion
+  - prop
+  - style_reference
+  - effect
+  - environment
+
+# Tag slug -> role mapping (exact match)
+# Example: tag "bg" or "char:hero" matches directly
+slugMappings:
+  # Environment slugs
+  bg: environment
+  "role:bg": environment
+  "role:environment": environment
+  "role:setting": environment
+  # Main character slugs
+  "char:hero": main_character
+  "pov:player": main_character
+  "role:char": main_character
+  "role:character": main_character
+  # Companion slugs
+  "char:npc": companion
+  "char:monster": companion
+  # Style reference slugs
+  comic_frame: style_reference
+
+# Tag namespace -> role mapping (prefix match)
+# Example: tag "npc:alex" extracts namespace "npc" and maps to main_character
+namespaceMappings:
+  # Character namespaces
+  character: main_character
+  person: main_character
+  npc: main_character
+  # Companion namespaces
+  animal: companion
+  creature: companion
+  # Prop namespaces
+  object: prop
+  prop: prop
+  vehicle: prop
+  # Environment namespaces
+  location: environment
+  environment: environment
+  setting: environment
+  background: environment
+  scene: environment
+  place: environment
+  # Style/effect namespaces
+  style: style_reference
+  lighting: effect
+  camera: effect
+
+# Aliases for user-friendly input (role name normalization)
+# Used when parsing user-provided role strings
+# Note: "npc" as user input alias = companion (supporting characters)
+#       "npc:" as tag namespace = main_character (the NPC system treats NPCs as subjects)
+aliases:
+  # Main character aliases
+  character: main_character
+  char: main_character
+  hero: main_character
+  subject: main_character
+  # Companion aliases
+  npc: companion
+  companion: companion
+  monster: companion
+  # Environment aliases
+  environment: environment
+  setting: environment
+  background: environment
+  bg: environment
+  scene: environment
+  # Prop aliases
+  prop: prop
+  object: prop
+  vehicle: prop
+  # Style aliases
+  style: style_reference
+  style_reference: style_reference
+  reference: style_reference
+  # Effect aliases
+  effect: effect
+  lighting: effect
