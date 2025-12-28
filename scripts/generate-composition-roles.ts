@@ -2,11 +2,11 @@
 /**
  * Generates TypeScript constants from composition-roles.yaml
  *
- * Source:  data/composition-roles.yaml (single source of truth)
+ * Source:  pixsim7/backend/main/shared/composition-roles.yaml (single source of truth)
  * Output:  packages/shared/types/src/composition-roles.generated.ts
  *
  * Usage:
- *   pnpm generate:composition-roles     # Generate types
+ *   pnpm composition-roles:gen     # Generate types
  *
  * This script is run during prebuild to ensure the generated file
  * is always present and current for CI/clean installs.
@@ -28,7 +28,7 @@ const OUT_PATH = path.resolve(normalizedDir, '../packages/shared/types/src/compo
 // Validate YAML file exists
 if (!fs.existsSync(YAML_PATH)) {
   console.error(`✗ Missing composition roles data: ${YAML_PATH}`);
-  console.error('  Ensure data/composition-roles.yaml exists at repo root.');
+  console.error('  Ensure pixsim7/backend/main/shared/composition-roles.yaml exists.');
   process.exit(1);
 }
 

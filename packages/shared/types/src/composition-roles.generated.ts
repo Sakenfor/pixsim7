@@ -1,5 +1,5 @@
-// Auto-generated from data/composition-roles.yaml - DO NOT EDIT
-// Re-run: pnpm generate:composition-roles
+// Auto-generated from pixsim7/backend/main/shared/composition-roles.yaml - DO NOT EDIT
+// Re-run: pnpm composition-roles:gen
 
 import type { ImageCompositionRole } from './generation';
 
