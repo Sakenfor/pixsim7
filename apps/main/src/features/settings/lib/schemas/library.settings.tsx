@@ -1,13 +1,20 @@
 /**
- * Media Settings Schema
+ * Library Settings Schema
  *
- * Performance, storage, and maintenance settings for media handling.
- * Organized into tabs: Browser, Ingestion, Maintenance.
+ * Unified settings for all library/media-related functionality:
+ * - Browser: Client-side cache and quality preferences
+ * - Downloads: Asset download behavior
+ * - Storage: Server-side ingestion and quality settings
+ * - Maintenance: Admin tools for storage management
+ *
+ * Replaces the separate Assets, Media, and Gallery settings.
  */
 
 import { useEffect } from 'react';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 import { useMediaSettingsStore, type ServerMediaSettings } from '@/stores/mediaSettingsStore';
+import { useAssetSettingsStore } from '@/stores/assetSettingsStore';
+import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
 import { apiClient } from '@/lib/api';
 import { SHAManagement } from '../../components/shared/SHAManagement';
 import { StorageSync } from '../../components/shared/StorageSync';
@@ -31,11 +38,33 @@ async function updateServerSetting(
   return response.data;
 }
 
+// =============================================================================
+// Tab: Browser
+// =============================================================================
 const browserTab: SettingTab = {
   id: 'browser',
   label: 'Browser',
   icon: '🌐',
   groups: [
+    {
+      id: 'gallery-quality',
+      title: 'Gallery Quality',
+      description: 'Control image quality in gallery views.',
+      fields: [
+        {
+          id: 'qualityMode',
+          type: 'select',
+          label: 'Image Quality',
+          description: 'Choose between thumbnails (fast), previews (high quality), or auto (adaptive).',
+          defaultValue: 'auto',
+          options: [
+            { value: 'thumbnail', label: 'Thumbnails (320px, fastest)' },
+            { value: 'preview', label: 'Previews (800px, best quality)' },
+            { value: 'auto', label: 'Auto (preview when available)' },
+          ],
+        },
+      ],
+    },
     {
       id: 'local-performance',
       title: 'Performance',
@@ -53,13 +82,30 @@ const browserTab: SettingTab = {
   ],
 };
 
-const ingestionTab: SettingTab = {
-  id: 'ingestion',
-  label: 'Ingestion',
+// =============================================================================
+// Tab: Downloads
+// =============================================================================
+const downloadsTab: SettingTab = {
+  id: 'downloads',
+  label: 'Downloads',
   icon: '📥',
   groups: [
     {
-      id: 'ingestion-settings',
+      id: 'download-behavior',
+      title: 'Download Behavior',
+      description: 'Configure how assets are downloaded.',
+      fields: [
+        {
+          id: 'downloadOnGenerate',
+          type: 'toggle',
+          label: 'Download on Generate',
+          description: 'Automatically download assets when generation completes.',
+          defaultValue: false,
+        },
+      ],
+    },
+    {
+      id: 'auto-ingestion',
       title: 'Auto-Ingestion',
       description: 'Control how media is downloaded and stored on the server.',
       fields: [
@@ -94,6 +140,42 @@ const ingestionTab: SettingTab = {
       ],
     },
     {
+      id: 'limits',
+      title: 'Limits',
+      description: 'Control resource usage for media processing.',
+      fields: [
+        {
+          id: 'max_download_size_mb',
+          type: 'number',
+          label: 'Max Download Size (MB)',
+          description: 'Maximum file size to download from providers.',
+          defaultValue: 500,
+          min: 10,
+          max: 2000,
+        },
+        {
+          id: 'concurrency_limit',
+          type: 'number',
+          label: 'Concurrent Ingestion Jobs',
+          description: 'Maximum number of simultaneous ingestion tasks.',
+          defaultValue: 4,
+          min: 1,
+          max: 16,
+        },
+      ],
+    },
+  ],
+};
+
+// =============================================================================
+// Tab: Storage
+// =============================================================================
+const storageTab: SettingTab = {
+  id: 'storage',
+  label: 'Storage',
+  icon: '💾',
+  groups: [
+    {
       id: 'quality',
       title: 'Image Quality',
       description: 'Control JPEG quality settings for thumbnails and previews.',
@@ -119,28 +201,10 @@ const ingestionTab: SettingTab = {
       ],
     },
     {
-      id: 'limits',
-      title: 'Limits',
-      description: 'Control resource usage for media processing.',
+      id: 'cache-control',
+      title: 'Cache Control',
+      description: 'Configure how media is cached by browsers.',
       fields: [
-        {
-          id: 'max_download_size_mb',
-          type: 'number',
-          label: 'Max Download Size (MB)',
-          description: 'Maximum file size to download from providers.',
-          defaultValue: 500,
-          min: 10,
-          max: 2000,
-        },
-        {
-          id: 'concurrency_limit',
-          type: 'number',
-          label: 'Concurrent Ingestion Jobs',
-          description: 'Maximum number of simultaneous ingestion tasks.',
-          defaultValue: 4,
-          min: 1,
-          max: 16,
-        },
         {
           id: 'cache_control_max_age_seconds',
           type: 'number',
@@ -152,9 +216,26 @@ const ingestionTab: SettingTab = {
         },
       ],
     },
+    {
+      id: 'deletion',
+      title: 'Deletion',
+      description: 'Configure asset deletion behavior.',
+      fields: [
+        {
+          id: 'deleteFromProvider',
+          type: 'toggle',
+          label: 'Delete from Provider',
+          description: 'Also delete assets from the provider (e.g., Pixverse) when deleting them locally.',
+          defaultValue: true,
+        },
+      ],
+    },
   ],
 };
 
+// =============================================================================
+// Tab: Maintenance
+// =============================================================================
 const maintenanceTab: SettingTab = {
   id: 'maintenance',
   label: 'Maintenance',
@@ -218,12 +299,25 @@ const maintenanceTab: SettingTab = {
   ],
 };
 
-function useMediaSettingsStoreAdapter(): SettingStoreAdapter {
-  // Local settings
+// =============================================================================
+// Unified Store Adapter
+// =============================================================================
+function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
+  // Asset settings (local)
+  const downloadOnGenerate = useAssetSettingsStore((s) => s.downloadOnGenerate);
+  const setDownloadOnGenerate = useAssetSettingsStore((s) => s.setDownloadOnGenerate);
+  const deleteFromProvider = useAssetSettingsStore((s) => s.deleteFromProvider);
+  const setDeleteFromProvider = useAssetSettingsStore((s) => s.setDeleteFromProvider);
+
+  // Gallery settings (local)
+  const qualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
+  const updateGallerySettings = useAssetViewerStore((s) => s.updateSettings);
+
+  // Media settings (local)
   const preventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const setPreventDiskCache = useMediaSettingsStore((s) => s.setPreventDiskCache);
 
-  // Server settings
+  // Media settings (server)
   const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
   const setServerSettings = useMediaSettingsStore((s) => s.setServerSettings);
   const setServerSettingsLoading = useMediaSettingsStore((s) => s.setServerSettingsLoading);
@@ -248,7 +342,14 @@ function useMediaSettingsStoreAdapter(): SettingStoreAdapter {
 
   return {
     get: (fieldId: string) => {
-      // Local settings
+      // Asset settings
+      if (fieldId === 'downloadOnGenerate') return downloadOnGenerate;
+      if (fieldId === 'deleteFromProvider') return deleteFromProvider;
+
+      // Gallery settings
+      if (fieldId === 'qualityMode') return qualityMode;
+
+      // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
 
       // Server settings
@@ -260,7 +361,23 @@ function useMediaSettingsStoreAdapter(): SettingStoreAdapter {
     },
 
     set: (fieldId: string, value: any) => {
-      // Local settings
+      // Asset settings
+      if (fieldId === 'downloadOnGenerate') {
+        setDownloadOnGenerate(value);
+        return;
+      }
+      if (fieldId === 'deleteFromProvider') {
+        setDeleteFromProvider(value);
+        return;
+      }
+
+      // Gallery settings
+      if (fieldId === 'qualityMode') {
+        updateGallerySettings({ qualityMode: value as GalleryQualityMode });
+        return;
+      }
+
+      // Local media settings
       if (fieldId === 'preventDiskCache') {
         setPreventDiskCache(value);
         return;
@@ -287,40 +404,53 @@ function useMediaSettingsStoreAdapter(): SettingStoreAdapter {
     },
 
     getAll: () => ({
+      downloadOnGenerate,
+      deleteFromProvider,
+      qualityMode,
       preventDiskCache,
       ...(serverSettings ?? {}),
     }),
   };
 }
 
-export function registerMediaSettings(): () => void {
-  // Register each tab separately so they all appear
+// =============================================================================
+// Registration
+// =============================================================================
+export function registerLibrarySettings(): () => void {
+  // Register each tab separately
   const unregister1 = settingsSchemaRegistry.register({
-    categoryId: 'media',
+    categoryId: 'library',
     category: {
-      label: 'Media',
-      icon: '🎬',
-      order: 40,
+      label: 'Library',
+      icon: '📚',
+      order: 35, // Same position as old Assets
     },
     tab: browserTab,
-    useStore: useMediaSettingsStoreAdapter,
+    useStore: useLibrarySettingsStoreAdapter,
   });
 
   const unregister2 = settingsSchemaRegistry.register({
-    categoryId: 'media',
-    tab: ingestionTab,
-    useStore: useMediaSettingsStoreAdapter,
+    categoryId: 'library',
+    tab: downloadsTab,
+    useStore: useLibrarySettingsStoreAdapter,
   });
 
   const unregister3 = settingsSchemaRegistry.register({
-    categoryId: 'media',
+    categoryId: 'library',
+    tab: storageTab,
+    useStore: useLibrarySettingsStoreAdapter,
+  });
+
+  const unregister4 = settingsSchemaRegistry.register({
+    categoryId: 'library',
     tab: maintenanceTab,
-    useStore: useMediaSettingsStoreAdapter,
+    useStore: useLibrarySettingsStoreAdapter,
   });
 
   return () => {
     unregister1();
     unregister2();
     unregister3();
+    unregister4();
   };
 }

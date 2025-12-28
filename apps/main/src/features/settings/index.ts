@@ -17,16 +17,15 @@ export { WorkspaceProfileManager } from './components/WorkspaceProfileManager';
 // Components - Settings Modules
 // ============================================================================
 
-export { AssetsSettings } from './components/modules/AssetsSettings';
+export { LibrarySettings } from './components/modules/LibrarySettings';
 export { DebugSettings } from './components/modules/DebugSettings';
-export { GallerySettings } from './components/modules/GallerySettings';
 export { GeneralSettings } from './components/modules/GeneralSettings';
 export { GenerationSettings } from './components/modules/GenerationSettings';
-export { MediaSettings } from './components/modules/MediaSettings';
 export { PanelsSettings } from './components/modules/PanelsSettings';
 export { ProfilesSettings } from './components/modules/ProfilesSettings';
 export { PromptsSettings } from './components/modules/PromptsSettings';
 // Note: UISettings is no longer exported - UI settings are now integrated into individual panels
+// Note: AssetsSettings, MediaSettings, GallerySettings removed - now unified in LibrarySettings
 
 // ============================================================================
 // Components - Shared
@@ -49,12 +48,11 @@ export { settingsSchemaRegistry } from './lib/core/settingsSchemaRegistry';
 // Lib - Settings Schemas
 // ============================================================================
 
-export { registerAssetSettings } from './lib/schemas/assets.settings';
-export { registerGallerySettings } from './lib/schemas/gallery.settings';
+export { registerLibrarySettings } from './lib/schemas/library.settings';
 export { registerGenerationSettings } from './lib/schemas/generation.settings';
-export { registerMediaSettings } from './lib/schemas/media.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';
 export { registerPanelSettings } from './lib/schemas/panel.settings';
+// Note: registerAssetSettings, registerMediaSettings, registerGallerySettings removed - now unified in registerLibrarySettings
 
 // ============================================================================
 // Stores - UI State
