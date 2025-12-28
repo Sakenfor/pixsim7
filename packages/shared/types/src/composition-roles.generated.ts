@@ -1,7 +1,16 @@
-// Auto-generated from pixsim7/backend/main/shared/composition-roles.yaml - DO NOT EDIT
+// Auto-generated from composition-roles.yaml - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
 
-import type { ImageCompositionRole } from './generation';
+/**
+ * Canonical composition roles (single source of truth).
+ * Add new roles to composition-roles.yaml, not here.
+ */
+export const COMPOSITION_ROLES = ["main_character","companion","environment","prop","style_reference","effect"] as const;
+
+/**
+ * Canonical composition role type, derived from YAML.
+ */
+export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
 
 /**
  * Tag slug -> composition role mapping.

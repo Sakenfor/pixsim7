@@ -6,7 +6,8 @@
  * Output:  packages/shared/types/src/composition-roles.generated.ts
  *
  * Usage:
- *   pnpm composition-roles:gen     # Generate types
+ *   pnpm composition-roles:gen       # Generate types
+ *   pnpm composition-roles:check     # Verify generated file is current (CI)
  *
  * This script is run during prebuild to ensure the generated file
  * is always present and current for CI/clean installs.
@@ -15,6 +16,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
+
+const CHECK_MODE = process.argv.includes('--check');
 
 const SCRIPT_DIR = path.dirname(new URL(import.meta.url).pathname);
 // Handle Windows paths (remove leading / from /C:/...)
@@ -64,12 +67,22 @@ const namespaceMappings = Object.fromEntries(
   ])
 );
 const priority = data.priority as string[];
+const roles = data.roles as string[];
 
 // Generate TypeScript output
-const output = `// Auto-generated from data/composition-roles.yaml - DO NOT EDIT
-// Re-run: pnpm generate:composition-roles
+const output = `// Auto-generated from composition-roles.yaml - DO NOT EDIT
+// Re-run: pnpm composition-roles:gen
 
-import type { ImageCompositionRole } from './generation';
+/**
+ * Canonical composition roles (single source of truth).
+ * Add new roles to composition-roles.yaml, not here.
+ */
+export const COMPOSITION_ROLES = ${JSON.stringify(roles)} as const;
+
+/**
+ * Canonical composition role type, derived from YAML.
+ */
+export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
 
 /**
  * Tag slug -> composition role mapping.
@@ -139,6 +152,23 @@ export function inferRoleFromTags(tags: string[]): ImageCompositionRole | undefi
   return undefined;
 }
 `;
+
+// Check mode: compare with existing file
+if (CHECK_MODE) {
+  if (!fs.existsSync(OUT_PATH)) {
+    console.error(`✗ Generated file missing: ${OUT_PATH}`);
+    console.error('  Run: pnpm composition-roles:gen');
+    process.exit(1);
+  }
+  const existing = fs.readFileSync(OUT_PATH, 'utf8');
+  if (existing !== output) {
+    console.error(`✗ Generated file out of date: ${OUT_PATH}`);
+    console.error('  Run: pnpm composition-roles:gen');
+    process.exit(1);
+  }
+  console.log(`✓ Generated file is current: ${OUT_PATH}`);
+  process.exit(0);
+}
 
 // Ensure output directory exists
 fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });

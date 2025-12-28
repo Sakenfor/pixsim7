@@ -5,7 +5,7 @@ This module defines the canonical composition roles used across prompt blocks,
 fusion, and multi-image editing. Provider adapters collapse these roles into
 provider-specific formats.
 
-Role mappings are loaded from data/composition-roles.yaml (single source of truth).
+Role mappings are loaded from composition-roles.yaml (single source of truth).
 Frontend generates equivalent TS constants via scripts/generate-composition-roles.ts.
 """
 from __future__ import annotations
@@ -16,15 +16,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-
-
-class ImageCompositionRole(str, Enum):
-    MAIN_CHARACTER = "main_character"
-    COMPANION = "companion"
-    ENVIRONMENT = "environment"
-    PROP = "prop"
-    STYLE_REFERENCE = "style_reference"
-    EFFECT = "effect"
 
 
 # ============================================================================
@@ -70,6 +61,18 @@ def _load_role_data() -> Dict[str, Any]:
 
 # Load at module init - fail fast with clear error
 _ROLE_DATA = _load_role_data()
+
+
+def _build_composition_role_enum() -> type:
+    """Dynamically build ImageCompositionRole enum from YAML roles list."""
+    roles = _ROLE_DATA["roles"]
+    # Create enum members: MAIN_CHARACTER = "main_character", etc.
+    members = {role.upper(): role for role in roles}
+    return Enum("ImageCompositionRole", members, type=str)
+
+
+# Build enum dynamically from YAML - no separate Python edits needed
+ImageCompositionRole = _build_composition_role_enum()
 
 # Role mappings from YAML
 COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA["aliases"]

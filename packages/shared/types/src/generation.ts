@@ -9,13 +9,9 @@ export type GenerationStrategy = 'once' | 'per_playthrough' | 'per_player' | 'al
 // Image Composition (Multi-Image Roles)
 // ============================================================================
 
-export type ImageCompositionRole =
-  | 'main_character'
-  | 'companion'
-  | 'environment'
-  | 'prop'
-  | 'style_reference'
-  | 'effect'
+// Re-export from generated file (single source of truth is YAML)
+export type { ImageCompositionRole } from './composition-roles.generated';
+import type { ImageCompositionRole } from './composition-roles.generated';
 
 export interface CompositionAsset {
   /** Asset reference (asset:id string or numeric id) */
