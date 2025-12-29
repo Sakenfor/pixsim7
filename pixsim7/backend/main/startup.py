@@ -362,16 +362,23 @@ async def setup_plugins(
     app: FastAPI,
     plugins_dir: str | Path,
     routes_dir: str | Path,
-    fail_fast: bool
+    fail_fast: bool,
+    external_plugins_dir: str | Path | None = None
 ) -> tuple:
     """
     Initialize and enable plugin managers for features and routes.
 
+    Loads plugins from two sources:
+    1. Core plugins in plugins_dir and routes_dir
+    2. External plugins in external_plugins_dir/*/backend/ (self-contained packages)
+
     Args:
         app: FastAPI application instance
-        plugins_dir: Directory containing feature plugins
-        routes_dir: Directory containing route plugins
+        plugins_dir: Directory containing core feature plugins
+        routes_dir: Directory containing core route plugins
         fail_fast: If True, abort startup on plugin failure (dev/CI mode)
+        external_plugins_dir: Optional directory containing external plugin packages
+                              (e.g., packages/plugins/). Only loaded for feature plugins.
 
     Returns:
         tuple: (plugin_manager, routes_manager)
@@ -383,20 +390,22 @@ async def setup_plugins(
     """
     from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
 
-    # Initialize feature plugins
+    # Initialize feature plugins (includes external plugins)
     plugin_manager = init_plugin_manager(
         app,
         str(plugins_dir),
         plugin_type="feature",
-        fail_fast=fail_fast
+        fail_fast=fail_fast,
+        external_plugins_dir=str(external_plugins_dir) if external_plugins_dir else None
     )
     logger.info(
         "feature_plugins_loaded",
         count=len(plugin_manager.list_plugins()),
-        plugins_dir=str(plugins_dir)
+        plugins_dir=str(plugins_dir),
+        external_plugins_dir=str(external_plugins_dir) if external_plugins_dir else None
     )
 
-    # Initialize route plugins
+    # Initialize route plugins (no external plugins for routes)
     routes_manager = init_plugin_manager(
         app,
         str(routes_dir),

@@ -140,12 +140,13 @@ async def lifespan(app: FastAPI):
     # Setup built-in game behaviors (BEFORE plugins so they can extend/override)
     behavior_stats = setup_behavior_builtins()
 
-    # Setup plugins
+    # Setup plugins (core and external)
     plugin_manager, routes_manager = await setup_plugins(
         app,
         settings.feature_plugins_dir,
         settings.route_plugins_dir,
-        fail_fast=settings.debug
+        fail_fast=settings.debug,
+        external_plugins_dir=settings.external_plugins_dir
     )
 
     # Attach managers to app.state for request-context access

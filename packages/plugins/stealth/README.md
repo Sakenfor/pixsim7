@@ -2,6 +2,8 @@
 
 Self-contained stealth plugin for PixSim7. Provides pickpocket and stealth mechanics.
 
+This plugin demonstrates the **external plugin** pattern where all code (frontend, backend, shared types) lives in a single package directory.
+
 ## Structure
 
 ```
@@ -10,28 +12,34 @@ packages/plugins/stealth/
 ├── shared/
 │   └── types.ts          # Canonical types (single source of truth)
 ├── backend/
+│   ├── __init__.py       # Python package marker
+│   ├── manifest.py       # Plugin manifest + FastAPI routes
 │   └── models.py         # Pydantic models aligned with shared/types.ts
 ├── frontend/
-│   ├── plugin.ts         # Documentation/example (types re-export)
+│   ├── plugin.ts         # Type re-exports and documentation
 │   └── index.ts          # Frontend entry (types re-export)
+├── tsconfig.json         # TypeScript configuration
 └── README.md
 ```
 
 ## How It Works
 
-The stealth plugin uses **dynamic discovery**:
+The stealth plugin uses **dynamic discovery** from the external plugins directory:
 
-1. **Backend** (`pixsim7/backend/main/plugins/game_stealth/manifest.py`):
+1. **Backend Discovery** (`packages/plugins/stealth/backend/manifest.py`):
+   - Plugin manager scans `packages/plugins/*/backend/` for plugins
+   - Finds `manifest.py` and loads the `manifest` and `router` exports
+   - Registers the plugin with the FastAPI app
    - Defines `frontend_manifest` with interaction manifests
    - Each manifest includes: `id`, `configSchema`, `apiEndpoint`, `defaultConfig`
 
-2. **Frontend** fetches manifests at startup:
-   - `GET /api/v1/admin/plugins/frontend/all`
+2. **Frontend Dynamic Loading** (at app startup):
+   - `GET /api/v1/admin/plugins/frontend/all` returns all plugin manifests
    - `dynamicLoader.ts` creates `InteractionPlugin` from each manifest
    - Registers with `interactionRegistry`
 
-3. **Types** are shared:
-   - TypeScript types in `shared/types.ts`
+3. **Types Sharing**:
+   - TypeScript types in `shared/types.ts` (single source of truth)
    - Python Pydantic models in `backend/models.py` (manually aligned)
 
 ## Usage

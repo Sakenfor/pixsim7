@@ -292,6 +292,11 @@ class Settings(BaseSettings):
         description="Directory containing feature plugins (game mechanics, capabilities, etc.)"
     )
 
+    external_plugins_dir: str | Path = Field(
+        default="packages/plugins",
+        description="Directory containing external plugin packages (each with backend/ subdirectory)"
+    )
+
     route_plugins_dir: str | Path = Field(
         default="pixsim7/backend/main/routes",
         description="Directory containing core API route plugins"
@@ -305,6 +310,7 @@ class Settings(BaseSettings):
     @field_validator(
         "domain_models_dir",
         "feature_plugins_dir",
+        "external_plugins_dir",
         "route_plugins_dir",
         "middleware_dir",
         mode="before"

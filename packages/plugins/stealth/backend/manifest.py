@@ -1,17 +1,24 @@
 """
-Game Stealth Plugin
+Game Stealth Plugin - Self-Contained Backend
 
 Provides pickpocket and stealth mechanics.
-Migrated to use PluginContext for permission-aware capability access.
+This plugin lives in packages/plugins/stealth/ with:
+- shared/types.ts: Canonical TypeScript types
+- backend/: Python backend (this directory)
+- frontend/: Frontend entry points
+
+Uses PluginContext for permission-aware capability access.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 import random
 
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.infrastructure.plugins.dependencies import get_plugin_context
 from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
+
+# Import Pydantic models from sibling file
+from backend.models import PickpocketRequest, PickpocketResponse
 
 # ===== FRONTEND MANIFEST =====
 # Defines interactions for frontend dynamic registration
@@ -86,7 +93,7 @@ FRONTEND_MANIFEST = {
 manifest = PluginManifest(
     id="game_stealth",
     name="Game Stealth & Pickpocket",
-    version="3.0.0",  # Updated to use ECS components and metric registry
+    version="3.0.0",  # Uses ECS components and metric registry
     description="Provides stealth mechanics including pickpocket interactions",
     author="PixSim Team",
     kind="feature",
@@ -114,28 +121,10 @@ manifest = PluginManifest(
 router = APIRouter(prefix="/game/stealth", tags=["game-stealth"])
 
 
-class PickpocketRequest(BaseModel):
-    """Request to attempt pickpocketing an NPC."""
-    npc_id: int
-    slot_id: str
-    base_success_chance: float
-    detection_chance: float
-    world_id: int | None = None
-    session_id: int
-
-
-class PickpocketResponse(BaseModel):
-    """Response from pickpocket attempt."""
-    success: bool
-    detected: bool
-    updated_flags: dict
-    message: str
-
-
 @router.post("/pickpocket", response_model=PickpocketResponse)
 async def attempt_pickpocket(
     req: PickpocketRequest,
-    ctx: PluginContext = Depends(get_plugin_context("game_stealth")),  # NEW: Use PluginContext
+    ctx: PluginContext = Depends(get_plugin_context("game_stealth")),
 ) -> PickpocketResponse:
     """
     Attempt to pickpocket an NPC at a specific slot.
@@ -152,7 +141,7 @@ async def attempt_pickpocket(
     if not (0 <= req.detection_chance <= 1):
         raise HTTPException(status_code=400, detail="detection_chance must be between 0 and 1")
 
-    # NEW: Use PluginContext logging (auto-tagged with plugin_id)
+    # Use PluginContext logging (auto-tagged with plugin_id)
     ctx.log.info(
         "Pickpocket attempt",
         session_id=req.session_id,
@@ -160,7 +149,7 @@ async def attempt_pickpocket(
         slot_id=req.slot_id,
     )
 
-    # NEW: Get stealth component using ECS
+    # Get stealth component using ECS
     stealth_component = await ctx.components.get_component(
         req.session_id, req.npc_id, "stealth", default={
             "suspicion": 0.0,
@@ -218,7 +207,7 @@ async def attempt_pickpocket(
         message += " You were detected!"
         ctx.log.warning("Player detected by NPC", npc_id=req.npc_id)
 
-        # NEW: Update core component for affinity penalty
+        # Update core component for affinity penalty
         core_component = await ctx.components.get_component(
             req.session_id, req.npc_id, "core", default={"affinity": 50}
         )
@@ -241,7 +230,7 @@ async def attempt_pickpocket(
         # Slowly decrease suspicion on successful undetected attempts
         component_updates['suspicion'] = max(0.0, current_suspicion - 0.05)
 
-    # NEW: Save stealth component using ECS API
+    # Save stealth component using ECS API
     await ctx.components.update_component(
         req.session_id,
         req.npc_id,
@@ -274,7 +263,7 @@ def on_load(app):
     from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
     logger = configure_logging("plugin.game-stealth")
-    logger.info("Game Stealth plugin loaded (v3.0 - using ECS components)")
+    logger.info("Game Stealth plugin loaded (v3.0 - external plugin, using ECS components)")
 
     # Register component schema and metrics directly with registry
     try:
@@ -321,7 +310,7 @@ async def on_enable():
     """Called when plugin is enabled (after app starts)"""
     from pixsim_logging import configure_logging
     logger = configure_logging("plugin.game-stealth")
-    logger.info("Game Stealth plugin enabled")
+    logger.info("Game Stealth plugin enabled (external)")
 
 
 async def on_disable():

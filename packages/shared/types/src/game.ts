@@ -1865,9 +1865,14 @@ export interface RomanceComponent {
 }
 
 /**
- * Stealth state component
- * Manages stealth-related interactions and reputation
+ * Stealth state component (generic shape)
+ * Generic ECS component shape for stealth-related state.
  * Component key: "stealth"
+ *
+ * Note: For the pickpocket-specific implementation, see
+ * @pixsim7/plugin-stealth/types which defines a more detailed
+ * StealthComponent with pickpocket attempt history.
+ *
  * Source: Typically owned by plugin:game-stealth
  */
 export interface StealthComponent {

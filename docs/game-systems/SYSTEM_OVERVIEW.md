@@ -405,26 +405,50 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ## Plugin Interaction System
 
+### Plugin Discovery Paths
+
+The backend plugin manager searches for plugins in two locations:
+
+1. **Core plugins** (`pixsim7/backend/main/plugins/`):
+   - Traditional plugins where each plugin is a subdirectory with `manifest.py`
+   - Example: `pixsim7/backend/main/plugins/game_analytics/manifest.py`
+
+2. **External plugins** (`packages/plugins/*/backend/`):
+   - Self-contained plugin packages with frontend/backend/shared structure
+   - The `backend/` subdirectory contains `manifest.py`
+   - Example: `packages/plugins/stealth/backend/manifest.py`
+
+**Configuration:**
+- `settings.feature_plugins_dir` – Core plugins directory (default: `pixsim7/backend/main/plugins`)
+- `settings.external_plugins_dir` – External plugins directory (default: `packages/plugins`)
+
 ### Dynamic Interaction Loading
 
-Backend plugins (like `game_stealth`) can expose frontend manifests that describe interactions. The frontend dynamically loads and registers these at startup.
+Backend plugins can expose frontend manifests that describe interactions. The frontend dynamically loads and registers these at startup.
 
 **Architecture:**
 
 ```
-Backend Plugin (pixsim7/backend/main/plugins/game_stealth/)
+External Plugin Package (packages/plugins/stealth/)
     │
-    ├── manifest.py
-    │   ├── PluginManifest (id, name, version, permissions)
-    │   └── frontend_manifest: {
-    │         interactions: [{
-    │           id: "pickpocket",
-    │           configSchema: { ... },
-    │           apiEndpoint: "/game/stealth/pickpocket"
-    │         }]
-    │       }
+    ├── shared/
+    │   └── types.ts          # Canonical TypeScript types
     │
-    └── router (FastAPI routes)
+    ├── backend/
+    │   ├── manifest.py       # Plugin manifest + router
+    │   │   ├── PluginManifest (id, name, version, permissions)
+    │   │   └── frontend_manifest: {
+    │   │         interactions: [{
+    │   │           id: "pickpocket",
+    │   │           configSchema: { ... },
+    │   │           apiEndpoint: "/game/stealth/pickpocket"
+    │   │         }]
+    │   │       }
+    │   └── models.py         # Pydantic models aligned with TS types
+    │
+    └── frontend/
+        ├── plugin.ts         # Frontend plugin exports
+        └── index.ts          # Type re-exports
 
 Frontend Dynamic Loader (apps/main/src/lib/game/interactions/dynamicLoader.ts)
     │
@@ -440,42 +464,74 @@ Frontend Dynamic Loader (apps/main/src/lib/game/interactions/dynamicLoader.ts)
 
 **Self-Contained Plugin Package:**
 
-Stealth plugin lives in `packages/plugins/stealth/`:
+The stealth plugin (`packages/plugins/stealth/`) demonstrates the full pattern:
 - `shared/types.ts` – Canonical types (single source of truth)
-- `backend/manifest.py` – Python Pydantic models aligned with TS types
-- `frontend/plugin.ts` – InteractionPlugin built from manifest
+- `backend/manifest.py` – Plugin manifest with `frontend_manifest` for dynamic loading
+- `backend/models.py` – Python Pydantic models aligned with TS types
+- `frontend/index.ts` – Re-exports types for frontend use
+- `package.json` – Package metadata with `pixsim.plugin` config
 
 **Key endpoints:**
 - `GET /api/v1/admin/plugins/frontend/all` – Get all frontend manifests
 - `GET /api/v1/admin/plugins/{plugin_id}/frontend` – Get specific plugin manifest
 
-**Adding a new interaction via plugin:**
+### Creating a New Self-Contained Plugin
 
-1. Add interaction manifest to your plugin's `frontend_manifest`:
-   ```python
-   # In manifest.py
-   frontend_manifest = {
-       "interactions": [{
-           "id": "my_interaction",
-           "name": "My Interaction",
-           "icon": "✨",
-           "category": "custom",
-           "apiEndpoint": "/my/endpoint",
-           "configSchema": {
-               "type": "object",
-               "properties": {
-                   "chance": {"type": "number", "minimum": 0, "maximum": 1}
-               }
-           },
-           "defaultConfig": {"chance": 0.5}
-       }]
+1. Create the plugin structure:
+   ```
+   packages/plugins/my-plugin/
+   ├── package.json
+   ├── shared/
+   │   └── types.ts
+   ├── backend/
+   │   ├── __init__.py
+   │   ├── manifest.py
+   │   └── models.py
+   └── frontend/
+       └── index.ts
+   ```
+
+2. Define your `package.json`:
+   ```json
+   {
+     "name": "@pixsim7/plugin-my-plugin",
+     "pixsim": {
+       "plugin": true,
+       "backend": { "entry": "./backend/manifest.py" },
+       "frontend": { "entry": "./frontend/index.ts" }
+     }
    }
    ```
 
-2. The frontend will automatically:
-   - Fetch the manifest at startup
-   - Convert `configSchema` to form fields
-   - Register the interaction with `interactionRegistry`
-   - Call your API endpoint when executed
+3. Implement `backend/manifest.py`:
+   ```python
+   from fastapi import APIRouter
+   from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
-**See:** `packages/plugins/stealth/README.md` for complete plugin structure
+   manifest = PluginManifest(
+       id="my_plugin",  # Plugin ID
+       name="My Plugin",
+       version="1.0.0",
+       frontend_manifest={
+           "pluginId": "my_plugin",
+           "interactions": [{
+               "id": "my_action",
+               "apiEndpoint": "/my-plugin/action",
+               "configSchema": { ... },
+               "defaultConfig": { ... }
+           }]
+       },
+       # ... other manifest fields
+   )
+
+   router = APIRouter(prefix="/my-plugin")
+
+   @router.post("/action")
+   async def my_action(): ...
+   ```
+
+4. The backend will automatically discover and load the plugin from `packages/plugins/my-plugin/backend/`
+
+5. The frontend will fetch the manifest and register interactions dynamically
+
+**See:** `packages/plugins/stealth/README.md` for a complete working example

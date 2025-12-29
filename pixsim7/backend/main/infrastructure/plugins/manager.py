@@ -2,10 +2,27 @@
 Backend Plugin Manager
 
 Dynamically loads and manages API router plugins.
+
+## Plugin Discovery Paths
+
+The manager searches for plugins in two locations:
+
+1. **Core plugins** (pixsim7/backend/main/plugins/):
+   Traditional plugins where each plugin is a subdirectory with manifest.py
+   Example: pixsim7/backend/main/plugins/game_analytics/manifest.py
+
+2. **External plugins** (packages/plugins/*/backend/):
+   Self-contained plugin packages with frontend/backend/shared structure.
+   The backend/ subdirectory contains manifest.py.
+   Example: packages/plugins/stealth/backend/manifest.py
+
+   For external plugins, the plugin ID is derived from the parent directory
+   name (e.g., 'stealth' from packages/plugins/stealth/).
 """
 
 import importlib
 import importlib.util
+import sys
 from pathlib import Path
 from typing import Any, Optional
 from fastapi import FastAPI, APIRouter
@@ -95,6 +112,307 @@ class PluginManager:
                     logger.debug(f"Discovered plugin: {item.name}")
 
         return discovered
+
+    def discover_external_plugins(self, external_plugins_dir: str | Path) -> list[tuple[str, Path]]:
+        """
+        Discover external plugins in packages/plugins/*/backend/ structure.
+
+        External plugins have a different structure where the plugin lives in
+        a self-contained package with shared types, frontend, and backend code.
+
+        Expected structure:
+        packages/plugins/
+          stealth/
+            backend/
+              manifest.py  # exports: manifest, router
+            frontend/
+              ...
+            shared/
+              types.ts
+          another-plugin/
+            backend/
+              manifest.py
+
+        Returns:
+            List of (plugin_name, manifest_dir_path) tuples
+        """
+        external_plugins_dir = Path(external_plugins_dir)
+        discovered: list[tuple[str, Path]] = []
+
+        if not external_plugins_dir.exists():
+            logger.debug(f"External plugins directory not found: {external_plugins_dir}")
+            return []
+
+        for item in external_plugins_dir.iterdir():
+            if item.is_dir() and not item.name.startswith('_') and not item.name.startswith('.'):
+                # Check if this is an external plugin (has backend/ subdirectory with manifest.py)
+                backend_dir = item / 'backend'
+                manifest_file = backend_dir / 'manifest.py'
+
+                if manifest_file.exists():
+                    # External plugin found - use the parent directory name as plugin name
+                    plugin_name = item.name
+
+                    # Validate plugin name format
+                    if not self._PLUGIN_NAME_PATTERN.match(plugin_name):
+                        logger.warning(
+                            f"Skipping invalid external plugin name "
+                            f"(must be lowercase alphanumeric with _/-): {plugin_name}"
+                        )
+                        continue
+
+                    # Check reserved names
+                    if plugin_name in self._RESERVED_NAMES:
+                        logger.warning(f"Skipping reserved external plugin name: {plugin_name}")
+                        continue
+
+                    discovered.append((plugin_name, backend_dir))
+                    logger.debug(f"Discovered external plugin: {plugin_name} at {backend_dir}")
+
+        return discovered
+
+    def load_external_plugin(self, plugin_name: str, backend_dir: Path) -> bool:
+        """
+        Load an external plugin from packages/plugins/{name}/backend/.
+
+        External plugins have their manifest in backend/manifest.py.
+        The parent directory is added to sys.path to allow relative imports.
+
+        Args:
+            plugin_name: Name of the plugin (from parent directory name)
+            backend_dir: Path to the backend/ directory containing manifest.py
+
+        Returns:
+            True if loaded successfully, False otherwise.
+        """
+        import time
+        start_time = time.perf_counter()
+
+        try:
+            module_path = backend_dir / 'manifest.py'
+
+            if not module_path.exists():
+                logger.error(f"External plugin manifest not found: {module_path}")
+                self.failed_plugins[plugin_name] = {
+                    'error': f"Manifest not found: {module_path}",
+                    'required': False,
+                    'manifest': None
+                }
+                return False
+
+            # Add the backend directory's parent to sys.path for relative imports
+            # This allows manifest.py to import from sibling files (models.py, etc.)
+            parent_dir = str(backend_dir.parent)
+            if parent_dir not in sys.path:
+                sys.path.insert(0, parent_dir)
+
+            # Import module dynamically with namespaced module path
+            # e.g., "pixsim7.plugins.external.stealth"
+            module_name = f"pixsim7.plugins.external.{plugin_name}"
+            spec = importlib.util.spec_from_file_location(
+                module_name,
+                module_path
+            )
+            if not spec or not spec.loader:
+                logger.error(f"Failed to load spec for external plugin {plugin_name}")
+                self.failed_plugins[plugin_name] = {
+                    'error': "Failed to create module spec",
+                    'required': False,
+                    'manifest': None
+                }
+                return False
+
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            # Validate plugin exports (same as regular plugins)
+            if not hasattr(module, 'manifest'):
+                logger.error(f"External plugin {plugin_name} missing 'manifest'")
+                self.failed_plugins[plugin_name] = {
+                    'error': "Module missing 'manifest' export",
+                    'required': False,
+                    'manifest': None
+                }
+                return False
+
+            if not hasattr(module, 'router'):
+                logger.error(f"External plugin {plugin_name} missing 'router'")
+                self.failed_plugins[plugin_name] = {
+                    'error': "Module missing 'router' export",
+                    'required': False,
+                    'manifest': None
+                }
+                return False
+
+            manifest: PluginManifest = module.manifest
+            router: APIRouter = module.router
+
+            # For external plugins, allow manifest ID to differ from directory name
+            # but warn about it for discoverability
+            if manifest.id != plugin_name:
+                logger.info(
+                    f"External plugin directory '{plugin_name}' has manifest ID '{manifest.id}'",
+                    directory=plugin_name,
+                    manifest_id=manifest.id,
+                )
+
+            # Use manifest ID as the canonical plugin ID
+            canonical_id = manifest.id
+
+            # Continue with standard plugin loading (validation, registration, etc.)
+            return self._finalize_plugin_load(
+                canonical_id,
+                plugin_name,
+                manifest,
+                router,
+                module,
+                start_time,
+                is_external=True
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to load external plugin {plugin_name}: {e}", exc_info=True)
+
+            self.failed_plugins[plugin_name] = {
+                'error': error_msg,
+                'required': False,
+                'manifest': None
+            }
+            return False
+
+    def _finalize_plugin_load(
+        self,
+        plugin_id: str,
+        directory_name: str,
+        manifest: PluginManifest,
+        router: APIRouter,
+        module,
+        start_time: float,
+        is_external: bool = False
+    ) -> bool:
+        """
+        Finalize plugin loading after module import (shared between core and external plugins).
+        """
+        import time
+
+        # Validate and expand permissions
+        expanded_permissions = expand_permission_groups(manifest.permissions)
+        validation = validate_permissions(expanded_permissions, allow_unknown=True)
+
+        if not validation.valid:
+            logger.error(
+                f"Plugin {plugin_id} has invalid permissions",
+                unknown=validation.unknown,
+            )
+            self.failed_plugins[directory_name] = {
+                'error': f"Invalid permissions: {validation.unknown}",
+                'required': manifest.required,
+                'manifest': manifest
+            }
+            return False
+
+        # Warn about unknown permissions (possible typos) even when allowed
+        for unknown_perm in validation.unknown:
+            logger.warning(
+                f"Plugin '{plugin_id}' uses unknown permission (possible typo)",
+                plugin_id=plugin_id,
+                permission=unknown_perm,
+            )
+
+        # Log permission warnings
+        for warning in validation.warnings:
+            logger.warning(
+                f"Plugin {plugin_id}: {warning}",
+                plugin_id=plugin_id,
+            )
+
+        # Store validated permissions back in manifest
+        manifest.permissions = validation.granted
+
+        logger.debug(
+            f"Plugin {plugin_id} permissions validated",
+            plugin_id=plugin_id,
+            permissions=validation.granted,
+            warnings=len(validation.warnings),
+        )
+
+        # Compute effective enabled state using manifest and settings
+        effective_enabled = manifest.enabled
+
+        # Apply allowlist: if set, anything not in the list is disabled
+        allowlist = getattr(settings, "plugin_allowlist", None)
+        if allowlist:
+            if plugin_id not in allowlist:
+                effective_enabled = False
+
+        # Apply denylist override
+        denylist = getattr(settings, "plugin_denylist", []) or []
+        if plugin_id in denylist:
+            effective_enabled = False
+
+        # Persist effective state back to manifest so downstream checks see it
+        manifest.enabled = effective_enabled
+
+        # Store plugin
+        self.plugins[plugin_id] = {
+            'manifest': manifest,
+            'router': router,
+            'module': module,
+            'loaded': True,
+            'enabled': effective_enabled,
+            'is_external': is_external,
+        }
+
+        plugin_source = "external" if is_external else "core"
+        logger.info(
+            f"Loaded {plugin_source} plugin: {manifest.name} v{manifest.version}",
+            plugin_id=plugin_id,
+        )
+
+        # Call on_load hook if defined and plugin is enabled
+        if effective_enabled and hasattr(module, 'on_load'):
+            try:
+                module.on_load(self.app)
+                logger.debug(f"Called on_load for {plugin_id}")
+            except Exception as e:
+                logger.error(f"Error in on_load for {plugin_id}: {e}", exc_info=True)
+                # Unload plugin if on_load fails
+                self.plugins.pop(plugin_id, None)
+                self.failed_plugins[directory_name] = {
+                    'error': f"on_load hook failed: {e}",
+                    'required': manifest.required,
+                    'manifest': manifest
+                }
+                if manifest.required:
+                    raise RuntimeError(
+                        f"Required plugin '{plugin_id}' failed on_load: {e}"
+                    )
+                return False
+        elif hasattr(module, 'on_load') and not effective_enabled:
+            logger.debug(
+                f"Skipping on_load for disabled plugin: {plugin_id}"
+            )
+
+        # Allow plugins to register stat packages or other extensions
+        # during load. Handlers receive the plugin ID so they can tag
+        # ownership metadata if needed.
+        plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=plugin_id)
+        plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=plugin_id)
+
+        # Emit event (sync context)
+        plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, plugin_id)
+
+        # Log load time metrics
+        load_duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Plugin load completed",
+            plugin_id=plugin_id,
+            duration_ms=round(load_duration_ms, 2),
+            is_external=is_external,
+        )
+
+        return True
 
     def load_plugin(self, plugin_name: str, plugin_dir: str | Path) -> bool:
         """
@@ -609,33 +927,58 @@ def init_plugin_manager(
     plugin_dir: str | Path,
     plugin_type: str = "feature",
     fail_fast: bool = False,
-    print_health: bool = True
+    print_health: bool = True,
+    external_plugins_dir: str | Path | None = None
 ) -> PluginManager:
     """
     Initialize a plugin manager instance.
 
+    Discovers and loads plugins from two sources:
+    1. Core plugins in plugin_dir (e.g., pixsim7/backend/main/plugins/)
+    2. External plugins in external_plugins_dir/*/backend/ (if provided)
+
     Args:
         app: FastAPI application instance
-        plugin_dir: Directory containing plugin manifests
+        plugin_dir: Directory containing core plugin manifests
         plugin_type: Plugin type for module namespacing ("feature" or "route")
         fail_fast: If True, raise exception if required plugins fail to load (useful for dev/CI)
         print_health: If True, print health table after loading
+        external_plugins_dir: Optional directory containing external plugin packages
+                              (e.g., packages/plugins/). Each subdirectory should have
+                              a backend/ folder with manifest.py.
 
     Usage in main.py:
         from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
 
-        plugin_manager = init_plugin_manager(app, "pixsim7/backend/main/plugins", plugin_type="feature")
+        plugin_manager = init_plugin_manager(
+            app,
+            "pixsim7/backend/main/plugins",
+            plugin_type="feature",
+            external_plugins_dir="packages/plugins"
+        )
         routes_manager = init_plugin_manager(app, "pixsim7/backend/main/routes", plugin_type="route")
     """
     manager = PluginManager(app, plugin_type=plugin_type)
 
-    # Auto-discover plugins
+    # Auto-discover core plugins
     discovered = manager.discover_plugins(plugin_dir)
-    logger.info(f"Discovered {len(discovered)} plugins in {plugin_dir}", plugins=discovered)
+    logger.info(f"Discovered {len(discovered)} core plugins in {plugin_dir}", plugins=discovered)
 
-    # Load all
+    # Load core plugins
     for plugin_name in discovered:
         manager.load_plugin(plugin_name, plugin_dir)
+
+    # Auto-discover and load external plugins (if directory provided)
+    if external_plugins_dir:
+        external_discovered = manager.discover_external_plugins(external_plugins_dir)
+        external_names = [name for name, _ in external_discovered]
+        logger.info(
+            f"Discovered {len(external_discovered)} external plugins in {external_plugins_dir}",
+            plugins=external_names
+        )
+
+        for plugin_name, backend_dir in external_discovered:
+            manager.load_external_plugin(plugin_name, backend_dir)
 
     # Register with FastAPI
     manager.register_all()
