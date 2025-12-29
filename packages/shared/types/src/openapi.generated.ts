@@ -1865,6 +1865,31 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/{asset_id}/siblings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Asset Siblings
+         * @description Find sibling assets - variations generated from the same inputs.
+         *
+         *     Siblings share the same reproducible_hash (same prompt + same input assets).
+         *     Useful for finding all variations of a generation attempt.
+         *
+         *     Returns only assets owned by the current user for privacy.
+         */
+        readonly get: operations["get_asset_siblings_api_v1_assets__asset_id__siblings_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/{asset_id}/sync": {
         readonly parameters: {
             readonly query?: never;
@@ -3893,6 +3918,36 @@ export interface paths {
         readonly get: operations["get_ontology_usage_api_v1_dev_ontology_usage_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dev/pixverse-sync/backfill-synthetic-generations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Backfill Synthetic Generations
+         * @description Backfill synthetic Generation records for existing synced assets.
+         *
+         *     Finds synced assets (sync_status=REMOTE) that don't have a source_generation_id
+         *     and creates synthetic Generation records from their media_metadata.
+         *
+         *     This enables:
+         *     - Full lineage with proper metadata
+         *     - Prompt version linkage
+         *     - Sibling discovery via reproducible_hash
+         *
+         *     Use dry_run=true to preview what would be done before committing.
+         */
+        readonly post: operations["backfill_synthetic_generations_api_v1_dev_pixverse_sync_backfill_synthetic_generations_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -8212,7 +8267,8 @@ export interface paths {
          *
          *     - Creates Asset records for remote items that don't already exist locally.
          *     - Attaches the full Pixverse payload as `media_metadata` for each Asset.
-         *     - Does NOT create lineage in this step (use /assets/lineage/refresh for that).
+         *     - Extracts embedded assets (source images) and creates lineage.
+         *     - Creates synthetic Generation records for full audit trail.
          */
         readonly post: operations["sync_pixverse_assets_api_v1_providers_pixverse_accounts__account_id__sync_assets_post"];
         readonly delete?: never;
@@ -13047,7 +13103,7 @@ export interface components {
          * @description Content generation operation types
          * @enum {string}
          */
-        readonly OperationType: "text_to_image" | "image_to_image" | "text_to_video" | "image_to_video" | "video_extend" | "video_transition" | "fusion";
+        readonly OperationType: "text_to_image" | "image_to_image" | "text_to_video" | "image_to_video" | "video_extend" | "video_transition" | "fusion" | "frame_extraction";
         /** PaginatedWorldsResponse */
         readonly PaginatedWorldsResponse: {
             /** Limit */
@@ -18389,6 +18445,42 @@ export interface operations {
             };
         };
     };
+    readonly get_asset_siblings_api_v1_assets__asset_id__siblings_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Filter by workspace */
+                readonly workspace_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly sync_asset_api_v1_assets__asset_id__sync_post: {
         readonly parameters: {
             readonly query?: never;
@@ -21230,6 +21322,46 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["OntologyUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly backfill_synthetic_generations_api_v1_dev_pixverse_sync_backfill_synthetic_generations_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description If true, only report what would be done */
+                readonly dry_run?: boolean;
+                /** @description Max assets to process */
+                readonly limit?: number;
+                /** @description Pagination offset */
+                readonly offset?: number;
+                /** @description Provider ID to filter assets */
+                readonly provider_id?: string;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
                 };
             };
             /** @description Validation Error */
