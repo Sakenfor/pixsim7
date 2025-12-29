@@ -779,7 +779,7 @@ class GenerationCreationService:
                     "legacy_params_found": found_legacy,
                     "has_source_asset_id": has_asset_id,
                     "has_source_asset_ids": has_asset_ids,
-                    "msg": (
+                    "detail": (
                         "Received both legacy URL params and source_asset_id(s). "
                         "Backend will prefer source_asset_id(s). "
                         "Consider updating frontend to remove legacy params."
@@ -793,7 +793,7 @@ class GenerationCreationService:
                 extra={
                     "operation_type": operation_type.value,
                     "legacy_params_found": found_legacy,
-                    "msg": (
+                    "detail": (
                         "DEPRECATED: Using legacy URL params without source_asset_id(s). "
                         "This pattern is deprecated and will stop working in a future release. "
                         "Please migrate to source_asset_id/source_asset_ids."

@@ -21,7 +21,14 @@ from pydantic import field_validator
 import hashlib
 import json
 
-from pixsim7.backend.main.domain.enums import OperationType, GenerationStatus, BillingState, enum_column, normalize_enum
+from pixsim7.backend.main.domain.enums import (
+    OperationType,
+    GenerationStatus,
+    BillingState,
+    GenerationOrigin,
+    enum_column,
+    normalize_enum,
+)
 
 
 class Generation(SQLModel, table=True):
@@ -170,6 +177,13 @@ class Generation(SQLModel, table=True):
         description="Error message if billing failed"
     )
 
+    # Origin tracking
+    origin: GenerationOrigin = Field(
+        default=GenerationOrigin.LOCAL,
+        sa_column=enum_column(GenerationOrigin, "generation_origin_enum", index=True),
+        description="Origin: local (UI/API), sync (imported), migration (backfill)"
+    )
+
     # Metadata
     name: Optional[str] = Field(default=None, max_length=255)
     description: Optional[str] = None
@@ -197,6 +211,11 @@ class Generation(SQLModel, table=True):
     @classmethod
     def normalize_billing_state(cls, v):
         return normalize_enum(v, BillingState)
+
+    @field_validator("origin", mode="before")
+    @classmethod
+    def normalize_origin(cls, v):
+        return normalize_enum(v, GenerationOrigin)
 
     def __repr__(self) -> str:
         return (

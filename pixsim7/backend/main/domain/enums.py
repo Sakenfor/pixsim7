@@ -85,6 +85,7 @@ class OperationType(str, Enum):
     VIDEO_EXTEND = "video_extend"
     VIDEO_TRANSITION = "video_transition"
     FUSION = "fusion"
+    FRAME_EXTRACTION = "frame_extraction"  # Extract frame from video
 
 
 class AccountStatus(str, Enum):
@@ -122,3 +123,10 @@ class BillingState(str, Enum):
     CHARGED = "charged"    # Credits successfully deducted
     SKIPPED = "skipped"    # No charge (failed/cancelled generation)
     FAILED = "failed"      # Deduction attempted but failed
+
+
+class GenerationOrigin(str, Enum):
+    """Origin of generation record"""
+    LOCAL = "local"          # Created via UI/API
+    SYNC = "sync"            # Imported from provider (synthetic generation)
+    MIGRATION = "migration"  # Backfilled from legacy data
