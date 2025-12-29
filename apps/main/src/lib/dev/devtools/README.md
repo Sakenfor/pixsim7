@@ -162,5 +162,5 @@ hooks/
 ## See Also
 
 - [Task 54: Dev Tools Surface & Debug Workspace](../../../../../claude-tasks/54-dev-tools-surface-and-debug-workspace.md)
-- [APP_MAP.md](../../../../../docs/APP_MAP.md#dev-tools-surface--debug-workspace)
-- [SYSTEM_OVERVIEW.md](../../../../../docs/SYSTEM_OVERVIEW.md#dev-tools-surface--debug-workspace)
+- [repo-map.md](../../../../../docs/repo-map.md) - Repository structure
+- [SYSTEM_OVERVIEW.md](../../../../../docs/game-systems/SYSTEM_OVERVIEW.md)

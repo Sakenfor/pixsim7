@@ -25,4 +25,4 @@ Documentation for initial setup, configuration, and basic usage of PixSim7.
 
 ---
 
-**Next:** See [../APP_MAP.md](../APP_MAP.md) for a comprehensive overview of all systems.
+**Next:** See [../repo-map.md](../repo-map.md) for a comprehensive overview of repository structure.

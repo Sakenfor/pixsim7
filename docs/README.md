@@ -2,7 +2,7 @@
 
 Start here:
 - `docs/getting-started/README.md` (setup + launcher)
-- `docs/APP_MAP.md` (system map)
+- `docs/repo-map.md` (repository structure)
 - `docs/architecture/CURRENT.md` (current architecture snapshot)
 
 ## Key Areas

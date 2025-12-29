@@ -473,7 +473,7 @@ Look here before building new components:
 
 - **`docs/backend/SERVICES.md`** - All backend services
 - **`docs/frontend/COMPONENTS.md`** - All frontend components
-- **`docs/APP_MAP.md`** - Application structure and routes
+- **`docs/repo-map.md`** - Repository structure and code organization
 - **`GAMEPLAY_SYSTEMS.md`** - Game mechanics and session structure
 - **API-specific docs** - Feature-specific implementation details
 
@@ -586,7 +586,7 @@ Is this a pattern AI assistants should know?
 ### Reference Documentation
 - **Backend Services:** `docs/backend/SERVICES.md`
 - **Frontend Components:** `docs/frontend/COMPONENTS.md`
-- **App Structure:** `docs/APP_MAP.md`
+- **App Structure:** `docs/repo-map.md`
 - **Game Systems:** `GAMEPLAY_SYSTEMS.md`
 - **API Docs:** http://localhost:8001/docs (auto-generated Swagger)
 

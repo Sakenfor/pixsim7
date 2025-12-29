@@ -2,16 +2,19 @@
  * World Tool Plugin Registry
  *
  * Central registry for world tools used in Game2D.
- * Import and register your custom tools here.
+ *
+ * NOTE: This module no longer auto-registers tools on import.
+ * Call registerWorldTools() explicitly during app initialization.
+ *
+ * @example
+ * // In main.tsx or app initialization:
+ * import { registerWorldTools } from '@features/worldTools/lib';
+ * registerWorldTools();
  */
 
-import { worldToolRegistry } from './types';
-import { builtInWorldTools } from '../plugins';
-
 // Export the singleton registry
-export { worldToolRegistry };
+export { worldToolRegistry } from './types';
+export type { WorldToolPlugin, WorldToolContext, WorldToolCategory } from './types';
 
-// Register built-in world tools
-builtInWorldTools.forEach(tool => {
-  worldToolRegistry.register(tool);
-});
+// Export registration function
+export { registerWorldTools } from './registerWorldTools';

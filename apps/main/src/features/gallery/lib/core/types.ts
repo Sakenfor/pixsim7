@@ -8,12 +8,13 @@
  * - AI tagging assistants
  * - Custom filters and views
  *
- * Extends BaseRegistry for standard CRUD operations and listener support.
+ * Extends ToolRegistryBase for shared tool registry functionality.
  */
 
 import type { ReactNode } from 'react';
 
-import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
+import type { Identifiable } from '@lib/core/BaseRegistry';
+import { ToolRegistryBase, type ToolPlugin } from '@lib/core/ToolRegistryBase';
 import type { AssetModel } from '@features/assets';
 
 /**
@@ -51,23 +52,21 @@ export interface GalleryToolContext {
 }
 
 /**
- * Gallery tool plugin definition
+ * Gallery tool category
  */
-export interface GalleryToolPlugin extends Identifiable {
-  /** Unique identifier */
-  id: string;
+export type GalleryToolCategory = 'visualization' | 'automation' | 'analysis' | 'utility';
 
-  /** Display name */
-  name: string;
-
-  /** Short description */
+/**
+ * Gallery tool plugin definition
+ *
+ * Extends the base ToolPlugin with gallery-specific properties.
+ */
+export interface GalleryToolPlugin extends ToolPlugin {
+  /** Short description (required for gallery tools) */
   description: string;
 
-  /** Icon (emoji or icon name) */
-  icon?: string;
-
   /** Category for grouping tools */
-  category?: 'visualization' | 'automation' | 'analysis' | 'utility';
+  category?: GalleryToolCategory;
 
   /**
    * Gallery surfaces this tool supports
@@ -97,51 +96,17 @@ export interface GalleryToolPlugin extends Identifiable {
 /**
  * Gallery tool registry
  *
- * Extends BaseRegistry with gallery-specific functionality:
+ * Extends ToolRegistryBase with gallery-specific functionality:
+ * - Surface-based filtering
+ * - Combined surface + visibility filtering
+ *
+ * Inherits from ToolRegistryBase:
  * - Tool validation on register
- * - Category and surface filtering
+ * - Category filtering
  * - Visibility predicates with error isolation
  */
-export class GalleryToolRegistry extends BaseRegistry<GalleryToolPlugin> {
-  /**
-   * Register a gallery tool plugin
-   */
-  register(tool: GalleryToolPlugin): boolean {
-    // Validate required fields
-    if (!tool.id || !tool.name || !tool.render) {
-      throw new Error('Gallery tool must have id, name, and render properties');
-    }
-
-    if (this.has(tool.id)) {
-      console.warn(`Gallery tool "${tool.id}" is already registered. Overwriting.`);
-    }
-
-    this.forceRegister(tool);
-    console.log(`✓ Registered gallery tool: ${tool.id}`);
-    return true;
-  }
-
-  /**
-   * Get tools by category
-   */
-  getByCategory(category: GalleryToolPlugin['category']): GalleryToolPlugin[] {
-    return this.getAll().filter(tool => tool.category === category);
-  }
-
-  /**
-   * Get visible tools for current context
-   */
-  getVisible(context: GalleryToolContext): GalleryToolPlugin[] {
-    return this.getAll().filter(tool => {
-      if (!tool.whenVisible) return true;
-      try {
-        return tool.whenVisible(context);
-      } catch (e) {
-        console.error(`Error checking visibility for tool ${tool.id}:`, e);
-        return false;
-      }
-    });
-  }
+export class GalleryToolRegistry extends ToolRegistryBase<GalleryToolPlugin, GalleryToolContext> {
+  protected readonly toolTypeName = 'Gallery';
 
   /**
    * Get tools that support a specific surface

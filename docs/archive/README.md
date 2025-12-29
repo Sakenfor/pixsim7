@@ -24,25 +24,10 @@ Since these documents were written, several architectural changes have occurred:
 
 ## What's in Here
 
-- `actions/` - Action system development history
-- `architecture/` - Superseded architecture documents
-- `completed/` - Completed phase and feature implementation docs
-- `completed-refactoring/` - Documentation of completed refactoring efforts
-- `generation/` - Generation system evolution docs
-- `launcher/` - Launcher architecture evolution docs
-- `meta/` - Documentation about documentation
-- `old-status/` - Status documents from various development phases
-- `plugins/` - Plugin system development history
+- `completed/` - Completed feature implementation docs (key ones only)
+- `completed-refactoring/` - Schema and migration docs with ongoing value
+- `meta/` - Documentation about documentation (cleanup plans, changelogs)
 - `task-summaries/` - Completed task implementation summaries
-
-## Recently Archived (2025-12-10)
-
-| File | Location | Reason |
-|------|----------|--------|
-| MULTI_UI_LAUNCHER_COMPLETE.md | launcher/ | Historical achievement doc - launcher refactor completed |
-| PHASE_6_LOG_INGESTION.md | completed/ | Implementation complete |
-| LOG_FILTERING_APPLIED.md | completed/ | Implementation notes for completed feature |
-| PHASE_3_INSPECTOR_TESTING.md | completed/ | Testing guide for completed phase |
 
 ## Using These Documents
 
@@ -55,7 +40,9 @@ When referencing code paths in these documents:
 ## Current Documentation
 
 For up-to-date architecture and development guides, see:
-- `/ARCHITECTURE.md` - Current system architecture
-- `/docs/APP_MAP.md` - Application structure map
+- `/docs/repo-map.md` - Repository structure and code organization
+- `/docs/architecture/README.md` - Current system architecture
 - `/DEVELOPMENT_GUIDE.md` - Development setup and workflows
-- `/docs/EXTENSION_ARCHITECTURE.md` - Plugin/extension system
+- `/AI_README.md` - AI assistant guide
+
+For live, interactive architecture exploration, use the **App Map panel** in the dev tools.

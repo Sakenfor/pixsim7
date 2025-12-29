@@ -7,9 +7,12 @@
  * - Review: Simplified view for reviewing/curating assets
  * - Curator: Advanced curation and organization tools
  * - Debug: Developer tools and diagnostics
+ *
+ * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 
 import type { ComponentType } from 'react';
+import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
 import type { MediaCardBadgeConfig } from '../../components/media/MediaCard';
 
 /**
@@ -42,7 +45,7 @@ export type MediaType = 'image' | 'video' | 'audio' | '3d_model';
  *
  * Defines a gallery view/mode with its own UI and capabilities.
  */
-export interface GallerySurfaceDefinition {
+export interface GallerySurfaceDefinition extends Identifiable {
   /** Unique identifier */
   id: GallerySurfaceId;
 
@@ -89,47 +92,34 @@ export interface GallerySurfaceDefinition {
 /**
  * Gallery Surface Registry
  *
- * Manages registration and retrieval of gallery surfaces.
+ * Extends BaseRegistry with gallery surface-specific functionality:
+ * - Validation on registration (requires id, label, component)
+ * - Category and media type filtering
+ * - Default surface retrieval
+ *
+ * Inherits from BaseRegistry:
+ * - CRUD operations (register, unregister, get, getAll, has, clear)
+ * - Listener support (subscribe, notifyListeners)
  */
-export class GallerySurfaceRegistry {
-  private surfaces = new Map<GallerySurfaceId, GallerySurfaceDefinition>();
-
+export class GallerySurfaceRegistry extends BaseRegistry<GallerySurfaceDefinition> {
   /**
    * Register a gallery surface
+   *
+   * Validates required fields and logs registration.
    */
-  register(surface: GallerySurfaceDefinition): void {
-    if (this.surfaces.has(surface.id)) {
-      console.warn(`Gallery surface "${surface.id}" is already registered. Overwriting.`);
-    }
-
+  register(surface: GallerySurfaceDefinition): boolean {
     // Validate required fields
     if (!surface.id || !surface.label || !surface.component) {
       throw new Error('Gallery surface must have id, label, and component properties');
     }
 
-    this.surfaces.set(surface.id, surface);
+    if (this.has(surface.id)) {
+      console.warn(`Gallery surface "${surface.id}" is already registered. Overwriting.`);
+    }
+
+    this.forceRegister(surface);
     console.log(`✓ Registered gallery surface: ${surface.id} (${surface.label})`);
-  }
-
-  /**
-   * Unregister a surface
-   */
-  unregister(id: GallerySurfaceId): boolean {
-    return this.surfaces.delete(id);
-  }
-
-  /**
-   * Get a specific surface by ID
-   */
-  get(id: GallerySurfaceId): GallerySurfaceDefinition | undefined {
-    return this.surfaces.get(id);
-  }
-
-  /**
-   * Get all registered surfaces
-   */
-  getAll(): GallerySurfaceDefinition[] {
-    return Array.from(this.surfaces.values());
+    return true;
   }
 
   /**
@@ -159,17 +149,10 @@ export class GallerySurfaceRegistry {
   }
 
   /**
-   * Clear all surfaces (useful for testing)
-   */
-  clear(): void {
-    this.surfaces.clear();
-  }
-
-  /**
    * Get count of registered surfaces
    */
   get count(): number {
-    return this.surfaces.size;
+    return this.size;
   }
 }
 

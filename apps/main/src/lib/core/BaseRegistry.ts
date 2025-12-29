@@ -12,18 +12,26 @@
  *   1. A documented justification in the file header
  *   2. Code review approval from architecture owner
  *
+ * ### Registry Hierarchy
+ *
+ * BaseRegistry (this class)
+ *   └── ToolRegistryBase (for tool plugins - see ToolRegistryBase.ts)
+ *         ├── GalleryToolRegistry
+ *         ├── BrainToolRegistry
+ *         └── WorldToolRegistry
+ *   └── GizmoSurfaceRegistry
+ *   └── GallerySurfaceRegistry
+ *   └── SettingsRegistry
+ *   └── GatingRegistry
+ *
  * ### Existing Non-Compliant Registries (tracked for migration)
  *
  * | Registry | Status | Justification |
  * |----------|--------|---------------|
- * | SettingsRegistry | Migrated | Extends BaseRegistry |
- * | GatingRegistry | Migrated | Extends BaseRegistry |
- * | GalleryToolRegistry | Migrated | Extends BaseRegistry |
- * | BrainToolRegistry | Migrated | Extends BaseRegistry |
- * | WorldToolRegistry | Migrated | Extends BaseRegistry |
  * | NodeTypeRegistry | Justified | Needs LRU cache + lazy loading |
  * | CapabilityRegistry | Justified | Factory pattern for multi-provider |
  *
+ * @see ToolRegistryBase.ts - Shared base class for tool registries
  * @see docs/guides/registry-patterns.md - Frontend registry checklist
  */
 
