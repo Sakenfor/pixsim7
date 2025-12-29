@@ -131,14 +131,26 @@ export interface ManifestToolDefinition {
 }
 
 /**
- * Frontend plugin manifest with tools
+ * Tool pack containing grouped tools
+ */
+export interface ManifestToolPack {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  tools: ManifestToolDefinition[];
+}
+
+/**
+ * Frontend plugin manifest with tools (supports both flat tools and toolPacks)
  */
 interface FrontendPluginManifestWithTools {
   pluginId: string;
   pluginName: string;
   version: string;
   interactions?: unknown[];
-  tools?: ManifestToolDefinition[];
+  tools?: ManifestToolDefinition[];       // Flat tool list (legacy)
+  toolPacks?: ManifestToolPack[];          // Grouped tool packs (new)
 }
 
 /**
@@ -237,16 +249,62 @@ export function manifestToolToInteractiveTool(
 /** Track which plugin tools have been loaded */
 const loadedToolPlugins = new Set<string>();
 
-/** Store tool metadata (unlock levels, descriptions) */
+/** Store tool pack metadata */
+const toolPackMetadata = new Map<
+  string,
+  { name: string; description?: string; icon?: string; pluginId: string }
+>();
+
+/** Store tool metadata (unlock levels, descriptions, pack info) */
 const toolMetadata = new Map<
   string,
-  { name?: string; description?: string; unlockLevel?: number; pluginId: string }
+  {
+    name?: string;
+    description?: string;
+    unlockLevel?: number;
+    pluginId: string;
+    packId?: string;
+  }
 >();
+
+/**
+ * Register a single tool from a manifest
+ */
+function registerManifestTool(
+  manifestTool: ManifestToolDefinition,
+  pluginId: string,
+  packId?: string
+): boolean {
+  // Check if already registered
+  if (getTool(manifestTool.id)) {
+    console.debug(`[dynamicToolLoader] Tool already registered: ${manifestTool.id}`);
+    return false;
+  }
+
+  // Convert and register
+  const tool = manifestToolToInteractiveTool(manifestTool);
+  registerTool(tool);
+
+  // Store metadata
+  toolMetadata.set(manifestTool.id, {
+    name: manifestTool.name,
+    description: manifestTool.description,
+    unlockLevel: manifestTool.unlockLevel,
+    pluginId,
+    packId,
+  });
+
+  console.info(
+    `[dynamicToolLoader] Registered tool: ${manifestTool.id} from ${pluginId}${packId ? ` (pack: ${packId})` : ''}`
+  );
+  return true;
+}
 
 /**
  * Load all plugin tools from the backend
  *
  * Fetches frontend manifests and registers tools from each plugin.
+ * Supports both flat `tools` array and grouped `toolPacks`.
  *
  * @returns Promise resolving to number of newly loaded tools
  */
@@ -269,43 +327,51 @@ export async function loadPluginTools(): Promise<number> {
         continue;
       }
 
-      // Skip if no tools defined
-      if (!manifest.tools || manifest.tools.length === 0) {
-        continue;
-      }
-
       // Skip if already loaded
       if (loadedToolPlugins.has(pluginId)) {
         console.debug(`[dynamicToolLoader] Plugin tools already loaded: ${pluginId}`);
         continue;
       }
 
-      // Register each tool from the manifest
-      for (const manifestTool of manifest.tools) {
-        // Check if already registered
-        if (getTool(manifestTool.id)) {
-          console.debug(
-            `[dynamicToolLoader] Tool already registered: ${manifestTool.id}`
+      const hasTools = manifest.tools && manifest.tools.length > 0;
+      const hasToolPacks = manifest.toolPacks && manifest.toolPacks.length > 0;
+
+      // Skip if no tools defined
+      if (!hasTools && !hasToolPacks) {
+        continue;
+      }
+
+      // Process tool packs (new structure)
+      if (hasToolPacks) {
+        for (const pack of manifest.toolPacks!) {
+          // Store pack metadata
+          toolPackMetadata.set(pack.id, {
+            name: pack.name,
+            description: pack.description,
+            icon: pack.icon,
+            pluginId,
+          });
+
+          console.info(
+            `[dynamicToolLoader] Loading tool pack: ${pack.name} (${pack.tools.length} tools)`
           );
-          continue;
+
+          // Register each tool in the pack
+          for (const manifestTool of pack.tools) {
+            if (registerManifestTool(manifestTool, pluginId, pack.id)) {
+              loadedCount++;
+            }
+          }
         }
+      }
 
-        // Convert and register
-        const tool = manifestToolToInteractiveTool(manifestTool);
-        registerTool(tool);
-
-        // Store metadata
-        toolMetadata.set(manifestTool.id, {
-          name: manifestTool.name,
-          description: manifestTool.description,
-          unlockLevel: manifestTool.unlockLevel,
-          pluginId,
-        });
-
-        loadedCount++;
-        console.info(
-          `[dynamicToolLoader] Registered tool: ${manifestTool.id} from ${pluginId}`
-        );
+      // Process flat tools array (legacy/simple structure)
+      if (hasTools) {
+        for (const manifestTool of manifest.tools!) {
+          if (registerManifestTool(manifestTool, pluginId)) {
+            loadedCount++;
+          }
+        }
       }
 
       loadedToolPlugins.add(pluginId);
@@ -354,9 +420,61 @@ export function getUnlockedPluginTools(affinity: number): InteractiveTool[] {
 }
 
 /**
+ * Get all tools from a specific pack
+ */
+export function getToolsByPack(packId: string): InteractiveTool[] {
+  const allTools = getAllTools();
+  return allTools.filter((tool) => {
+    const meta = toolMetadata.get(tool.id);
+    return meta?.packId === packId;
+  });
+}
+
+/**
+ * Get pack metadata by ID
+ */
+export function getToolPackMetadata(packId: string) {
+  return toolPackMetadata.get(packId);
+}
+
+/**
+ * Get all tool packs from a plugin
+ */
+export function getToolPacksByPlugin(pluginId: string): Array<{
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  tools: InteractiveTool[];
+}> {
+  const packs: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    icon?: string;
+    tools: InteractiveTool[];
+  }> = [];
+
+  for (const [packId, meta] of toolPackMetadata.entries()) {
+    if (meta.pluginId === pluginId) {
+      packs.push({
+        id: packId,
+        name: meta.name,
+        description: meta.description,
+        icon: meta.icon,
+        tools: getToolsByPack(packId),
+      });
+    }
+  }
+
+  return packs;
+}
+
+/**
  * Clear the loaded plugins cache (for testing)
  */
 export function clearLoadedToolPluginsCache(): void {
   loadedToolPlugins.clear();
   toolMetadata.clear();
+  toolPackMetadata.clear();
 }

@@ -50,103 +50,269 @@ manifest = PluginManifest(
         "pluginName": "Romance & Sensual Touch",
         "version": "4.0.0",
 
-        # Dynamically loaded gizmo tools
-        "tools": [
+        # Dynamically loaded gizmo tool packs
+        "toolPacks": [
             {
-                "id": "caress",
-                "type": "caress",
-                "name": "Caress",
-                "description": "Gentle, sensual stroking",
-                "unlockLevel": 10,
-                "visual": {
-                    "model": "hand",
-                    "baseColor": "rgba(255, 180, 200, 0.6)",
-                    "activeColor": "rgba(255, 100, 150, 0.9)",
-                    "glow": True,
-                    "trail": True,
-                    "particles": {
-                        "type": "hearts",
-                        "density": 0.7,
-                        "color": "#FF69B4",
-                        "size": 12,
-                        "lifetime": 2000,
-                        "velocity": {"x": 0, "y": -2, "z": 0}
-                    }
-                },
-                "physics": {
-                    "pressure": 0.4,
-                    "speed": 0.3,
-                    "pattern": "circular"
-                },
-                "feedback": {
-                    "haptic": {
-                        "type": "wave",
-                        "intensity": 0.4,
-                        "duration": 150,
-                        "frequency": 2
+                "id": "touch-tools",
+                "name": "Touch Tools",
+                "description": "Direct touch variants - hands-on interaction tools",
+                "icon": "✋",
+                "tools": [
+                    {
+                        "id": "hand-3d",
+                        "type": "touch",
+                        "name": "3D Hand",
+                        "description": "Realistic hand for natural touch interaction",
+                        "unlockLevel": 0,
+                        "visual": {
+                            "model": "hand",
+                            "baseColor": "rgba(255, 220, 190, 0.9)",
+                            "activeColor": "rgba(255, 150, 180, 1.0)",
+                            "glow": True,
+                            "trail": True,
+                            "particles": {
+                                "type": "hearts",
+                                "density": 0.5,
+                                "color": "#FFB6C1",
+                                "size": 10,
+                                "lifetime": 1500
+                            }
+                        },
+                        "physics": {
+                            "pressure": 0.5,
+                            "speed": 0.5,
+                            "pattern": "circular",
+                            "elasticity": 0.7
+                        },
+                        "feedback": {
+                            "haptic": {
+                                "type": "pulse",
+                                "intensity": 0.5,
+                                "duration": 120
+                            },
+                            "npcReaction": {
+                                "expression": "pleasure",
+                                "vocalization": "sigh",
+                                "intensity": 0.6
+                            },
+                            "impact": {
+                                "type": "squish",
+                                "intensity": 0.3,
+                                "ripples": True
+                            }
+                        }
                     },
-                    "npcReaction": {
-                        "expression": "pleasure",
-                        "vocalization": "sigh",
-                        "intensity": 0.6
+                    {
+                        "id": "caress",
+                        "type": "caress",
+                        "name": "Caress",
+                        "description": "Gentle, sensual stroking",
+                        "unlockLevel": 10,
+                        "visual": {
+                            "model": "hand",
+                            "baseColor": "rgba(255, 180, 200, 0.6)",
+                            "activeColor": "rgba(255, 100, 150, 0.9)",
+                            "glow": True,
+                            "trail": True,
+                            "particles": {
+                                "type": "hearts",
+                                "density": 0.7,
+                                "color": "#FF69B4",
+                                "size": 12,
+                                "lifetime": 2000,
+                                "velocity": {"x": 0, "y": -2, "z": 0}
+                            }
+                        },
+                        "physics": {
+                            "pressure": 0.4,
+                            "speed": 0.3,
+                            "pattern": "circular"
+                        },
+                        "feedback": {
+                            "haptic": {
+                                "type": "wave",
+                                "intensity": 0.4,
+                                "duration": 150,
+                                "frequency": 2
+                            },
+                            "npcReaction": {
+                                "expression": "pleasure",
+                                "vocalization": "sigh",
+                                "intensity": 0.6
+                            },
+                            "trail": {
+                                "type": "sparkle",
+                                "color": "rgba(255, 150, 200, 0.5)",
+                                "width": 15,
+                                "lifetime": 2500
+                            }
+                        }
                     },
-                    "trail": {
-                        "type": "sparkle",
-                        "color": "rgba(255, 150, 200, 0.5)",
-                        "width": 15,
-                        "lifetime": 2500
+                    {
+                        "id": "silk",
+                        "type": "caress",
+                        "name": "Silk",
+                        "description": "Smooth, luxurious touch with silk fabric",
+                        "unlockLevel": 40,
+                        "visual": {
+                            "model": "silk",
+                            "baseColor": "rgba(200, 150, 255, 0.7)",
+                            "activeColor": "rgba(255, 100, 255, 0.9)",
+                            "glow": True,
+                            "trail": True,
+                            "particles": {
+                                "type": "petals",
+                                "density": 0.6,
+                                "color": "#DDA0DD",
+                                "size": 10,
+                                "lifetime": 2500
+                            },
+                            "distortion": False
+                        },
+                        "physics": {
+                            "pressure": 0.35,
+                            "speed": 0.4,
+                            "pattern": "linear",
+                            "viscosity": 0.3
+                        },
+                        "feedback": {
+                            "haptic": {
+                                "type": "wave",
+                                "intensity": 0.5,
+                                "duration": 200,
+                                "frequency": 1.5
+                            },
+                            "npcReaction": {
+                                "expression": "satisfaction",
+                                "vocalization": "sigh",
+                                "intensity": 0.7
+                            },
+                            "trail": {
+                                "type": "fade",
+                                "color": "rgba(200, 150, 255, 0.6)",
+                                "width": 20,
+                                "lifetime": 3000
+                            }
+                        }
                     }
-                }
+                ]
             },
             {
-                "id": "feather",
-                "type": "tease",
-                "name": "Feather",
-                "description": "Teasing, ticklish touch",
-                "unlockLevel": 20,
-                "visual": {
-                    "model": "feather",
-                    "baseColor": "rgba(255, 255, 255, 0.8)",
-                    "activeColor": "rgba(200, 150, 255, 0.9)",
-                    "glow": False,
-                    "trail": True,
-                    "particles": {
-                        "type": "petals",
-                        "density": 0.5,
-                        "color": "#FFE4E1",
-                        "size": 8,
-                        "lifetime": 1800,
-                        "velocity": {"x": 0, "y": -1, "z": 0}
-                    }
-                },
-                "physics": {
-                    "pressure": 0.2,
-                    "speed": 0.6,
-                    "pattern": "zigzag"
-                },
-                "feedback": {
-                    "haptic": {
-                        "type": "tickle",
-                        "intensity": 0.3,
-                        "duration": 80,
-                        "frequency": 5
+                "id": "sensation-tools",
+                "name": "Sensation Tools",
+                "description": "Indirect and heightened sensation tools",
+                "icon": "🪶",
+                "tools": [
+                    {
+                        "id": "feather",
+                        "type": "tease",
+                        "name": "Feather",
+                        "description": "Teasing, ticklish touch",
+                        "unlockLevel": 20,
+                        "visual": {
+                            "model": "feather",
+                            "baseColor": "rgba(255, 255, 255, 0.8)",
+                            "activeColor": "rgba(200, 150, 255, 0.9)",
+                            "glow": False,
+                            "trail": True,
+                            "particles": {
+                                "type": "petals",
+                                "density": 0.5,
+                                "color": "#FFE4E1",
+                                "size": 8,
+                                "lifetime": 1800,
+                                "velocity": {"x": 0, "y": -1, "z": 0}
+                            }
+                        },
+                        "physics": {
+                            "pressure": 0.2,
+                            "speed": 0.6,
+                            "pattern": "zigzag"
+                        },
+                        "feedback": {
+                            "haptic": {
+                                "type": "tickle",
+                                "intensity": 0.3,
+                                "duration": 80,
+                                "frequency": 5
+                            },
+                            "npcReaction": {
+                                "expression": "delight",
+                                "vocalization": "giggle",
+                                "intensity": 0.5
+                            },
+                            "trail": {
+                                "type": "fade",
+                                "color": "rgba(255, 255, 255, 0.4)",
+                                "width": 10,
+                                "lifetime": 1500
+                            }
+                        },
+                        "constraints": {
+                            "minPressure": 0.1,
+                            "maxSpeed": 0.8
+                        }
                     },
-                    "npcReaction": {
-                        "expression": "delight",
-                        "vocalization": "giggle",
-                        "intensity": 0.5
-                    },
-                    "trail": {
-                        "type": "fade",
-                        "color": "rgba(255, 255, 255, 0.4)",
-                        "width": 10,
-                        "lifetime": 1500
+                    {
+                        "id": "pleasure",
+                        "type": "pleasure",
+                        "name": "Pleasure",
+                        "description": "Advanced, intense stimulation",
+                        "unlockLevel": 80,
+                        "visual": {
+                            "model": "electric",
+                            "baseColor": "rgba(255, 50, 150, 0.7)",
+                            "activeColor": "rgba(255, 0, 150, 1.0)",
+                            "glow": True,
+                            "trail": True,
+                            "particles": {
+                                "type": "hearts",
+                                "density": 1.0,
+                                "color": "#FF1493",
+                                "size": 15,
+                                "lifetime": 1500,
+                                "velocity": {"x": 0, "y": -3, "z": 0}
+                            },
+                            "distortion": True
+                        },
+                        "physics": {
+                            "pressure": 0.7,
+                            "speed": 0.6,
+                            "vibration": 0.8,
+                            "pattern": "pulse"
+                        },
+                        "feedback": {
+                            "haptic": {
+                                "type": "vibrate",
+                                "intensity": 0.8,
+                                "duration": 250,
+                                "frequency": 10
+                            },
+                            "audio": {
+                                "sound": "pleasure_hum",
+                                "volume": 0.4,
+                                "pitch": 1.0,
+                                "loop": True
+                            },
+                            "npcReaction": {
+                                "expression": "pleasure",
+                                "vocalization": "moan",
+                                "intensity": 0.9
+                            },
+                            "trail": {
+                                "type": "sparkle",
+                                "color": "rgba(255, 0, 150, 0.7)",
+                                "width": 25,
+                                "lifetime": 2000
+                            }
+                        },
+                        "constraints": {
+                            "minPressure": 0.5,
+                            "maxSpeed": 1.0,
+                            "cooldown": 2000
+                        }
                     }
-                },
-                "constraints": {
-                    "minPressure": 0.1,
-                    "maxSpeed": 0.8
-                }
+                ]
             }
         ],
 
