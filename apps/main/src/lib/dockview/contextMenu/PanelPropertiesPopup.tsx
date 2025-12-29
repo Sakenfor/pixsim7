@@ -26,6 +26,14 @@ interface PropertiesPayload {
   instanceId?: string;
   /** Panel title (for local registries that aren't in global panelRegistry) */
   panelTitle?: string;
+  /** Panel definition from local registry (includes settingScopes, tags, category) */
+  panelDefinition?: {
+    title?: string;
+    settingScopes?: string[];
+    scopes?: string[];
+    tags?: string[];
+    category?: string;
+  };
   /** ContextHub hostId for consumption tracking */
   hostId?: string;
   /** Item-specific data */
@@ -85,21 +93,39 @@ function PanelProperties({
   panelId,
   instanceId,
   panelTitle,
+  panelDefinition: passedDefinition,
 }: {
   panelId?: string;
   instanceId?: string;
   /** Title override for local registries */
   panelTitle?: string;
+  /** Panel definition from local registry */
+  panelDefinition?: PropertiesPayload['panelDefinition'];
 }) {
   const [scopeDefinitions, setScopeDefinitions] = useState(() =>
     panelSettingsScopeRegistry.getAll(),
   );
   const emptyScopes = useMemo(() => ({} as Record<string, PanelSettingsScopeMode>), []);
 
+  // Use passed definition (from local registry) or fall back to global registry
   const panelDefinition = useMemo(() => {
+    if (passedDefinition) return passedDefinition;
     if (!panelId) return undefined;
     return panelRegistry.get(panelId);
-  }, [panelId]);
+  }, [passedDefinition, panelId]);
+
+  // Filter scopes to only those that apply to this panel
+  const applicableScopes = useMemo(() => {
+    if (!panelId || !instanceId) return [];
+    const context = {
+      panelId,
+      instanceId,
+      declaredScopes: panelDefinition?.settingScopes ?? panelDefinition?.scopes,
+      tags: panelDefinition?.tags,
+      category: panelDefinition?.category,
+    };
+    return scopeDefinitions.filter((scope) => scope.shouldApply?.(context));
+  }, [scopeDefinitions, panelId, instanceId, panelDefinition]);
 
   const instanceScopes = usePanelInstanceSettingsStore((state) => {
     if (!instanceId) return emptyScopes;
@@ -114,7 +140,7 @@ function PanelProperties({
   }, []);
 
   const hasInstance = !!instanceId;
-  const scopesAvailable = scopeDefinitions.length > 0;
+  const scopesAvailable = applicableScopes.length > 0;
 
   // Use panelTitle from props (for local registries) or fall back to global registry
   const displayTitle = panelTitle ?? panelDefinition?.title ?? panelId ?? 'Unknown';
@@ -134,7 +160,7 @@ function PanelProperties({
           <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
             Scope Settings
           </div>
-          {scopeDefinitions.map((scope) => {
+          {applicableScopes.map((scope) => {
             const mode = getScopeMode(instanceScopes, scope);
             return (
               <div
@@ -405,7 +431,7 @@ export function PropertiesPopup() {
 
   if (!isOpen || !payload) return null;
 
-  const { contextType, panelId, instanceId, panelTitle, hostId, data, capabilities } = payload;
+  const { contextType, panelId, instanceId, panelTitle, panelDefinition, hostId, data, capabilities } = payload;
   const isPanelContext = contextType === 'tab' || contextType === 'panel-content';
   const title = getContextTitle(contextType);
   const itemName = data?.title ?? data?.name ?? data?.id ?? panelTitle ?? panelId ?? contextType;
@@ -436,7 +462,7 @@ export function PropertiesPopup() {
 
         {isPanelContext ? (
           <>
-            <PanelProperties panelId={panelId} instanceId={instanceId} panelTitle={panelTitle} />
+            <PanelProperties panelId={panelId} instanceId={instanceId} panelTitle={panelTitle} panelDefinition={panelDefinition} />
             <ConsumesSection hostId={hostId} />
             <CapabilitiesSection capabilities={capabilities} />
           </>

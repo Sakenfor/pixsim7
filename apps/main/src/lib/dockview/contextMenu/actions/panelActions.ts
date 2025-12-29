@@ -202,11 +202,10 @@ export const propertiesAction: MenuAction = {
 
     const panelDefinitionId = resolvePanelDefinitionId(ctx);
 
-    // Try to get panel title from local registry (for feature dockviews)
-    let panelTitle: string | undefined;
+    // Try to get panel definition from local registry (for feature dockviews)
+    let panelDef: { title?: string; settingScopes?: string[]; scopes?: string[]; tags?: string[]; category?: string } | undefined;
     if (panelDefinitionId && ctx.panelRegistry) {
-      const panelDef = ctx.panelRegistry.getAll().find(p => p.id === panelDefinitionId);
-      panelTitle = panelDef?.title;
+      panelDef = ctx.panelRegistry.getAll().find(p => p.id === panelDefinitionId);
     }
 
     // For panel contexts, use the panel's instanceId as hostId (matches per-panel ContextHubHost)
@@ -221,7 +220,8 @@ export const propertiesAction: MenuAction = {
       contextType: ctx.contextType,
       panelId: panelDefinitionId,
       instanceId: ctx.instanceId ?? ctx.panelId,
-      panelTitle,
+      panelTitle: panelDef?.title,
+      panelDefinition: panelDef,
       hostId: effectiveHostId,
       data: ctx.data as Record<string, unknown> | undefined,
       capabilities: ctx.capabilities,

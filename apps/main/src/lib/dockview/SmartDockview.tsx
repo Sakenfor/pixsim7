@@ -193,10 +193,19 @@ interface SmartDockviewComponentsProps<TContext = any> extends SmartDockviewBase
   defaultLayout?: never;
 }
 
-/** Union type for both modes */
+/** Panels mode props - uses global panel registry with explicit panel list or dockId filter */
+interface SmartDockviewPanelsProps<TContext = any> extends SmartDockviewBaseProps<TContext> {
+  /** Not used in panels mode */
+  registry?: never;
+  /** Not used in panels mode */
+  components?: never;
+}
+
+/** Union type for all modes */
 export type SmartDockviewProps<TContext = any, TPanelId extends string = string> =
   | SmartDockviewRegistryProps<TContext, TPanelId>
-  | SmartDockviewComponentsProps<TContext>;
+  | SmartDockviewComponentsProps<TContext>
+  | SmartDockviewPanelsProps<TContext>;
 
 /** Type guard for registry mode */
 function isRegistryMode<TContext, TPanelId extends string>(
@@ -537,6 +546,15 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
           const handleContextMenu = (event: React.MouseEvent) => {
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
+
+            // Skip if event target is inside a nested SmartDockview (let the nested one handle it)
+            const target = event.target as HTMLElement;
+            const nestedDockview = target.closest('[data-smart-dockview]');
+            const thisDockview = (event.currentTarget as HTMLElement).closest('[data-smart-dockview]');
+            if (nestedDockview && nestedDockview !== thisDockview) {
+              return;
+            }
+
             event.preventDefault();
             event.stopPropagation();
 
@@ -621,6 +639,15 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
           const handleContextMenu = (event: React.MouseEvent) => {
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
+
+            // Skip if event target is inside a nested SmartDockview (let the nested one handle it)
+            const target = event.target as HTMLElement;
+            const nestedDockview = target.closest('[data-smart-dockview]');
+            const thisDockview = (event.currentTarget as HTMLElement).closest('[data-smart-dockview]');
+            if (nestedDockview && nestedDockview !== thisDockview) {
+              return;
+            }
+
             event.preventDefault();
             event.stopPropagation();
 
@@ -703,6 +730,15 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
           const handleContextMenu = (event: React.MouseEvent) => {
             if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
+
+            // Skip if event target is inside a nested SmartDockview (let the nested one handle it)
+            const target = event.target as HTMLElement;
+            const nestedDockview = target.closest('[data-smart-dockview]');
+            const thisDockview = (event.currentTarget as HTMLElement).closest('[data-smart-dockview]');
+            if (nestedDockview && nestedDockview !== thisDockview) {
+              return;
+            }
+
             event.preventDefault();
             event.stopPropagation();
 
@@ -916,6 +952,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       <div
         className={clsx(styles.smartDockview, className)}
         onContextMenu={contextMenuActive ? handleBackgroundContextMenu : undefined}
+        data-smart-dockview={contextMenuDockviewId}
       >
         <ContextHubHost hostId={dockviewHostId}>
           <DockviewReact
