@@ -37,9 +37,15 @@ const DEFAULT_STATE: Omit<
   generating: false,
 };
 
-export type GenerationSessionStoreHook = <T>(
+export type GenerationSessionStoreHook = (<T>(
   selector: (state: GenerationSessionState) => T
-) => T;
+) => T) & {
+  getState: () => GenerationSessionState;
+  setState: (
+    partial: GenerationSessionState | Partial<GenerationSessionState> | ((state: GenerationSessionState) => GenerationSessionState | Partial<GenerationSessionState>),
+    replace?: boolean,
+  ) => void;
+};
 
 export function createGenerationSessionStore(storageKey: string): GenerationSessionStoreHook {
   return create<GenerationSessionState>()(

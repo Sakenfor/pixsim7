@@ -33,7 +33,6 @@ import {
   getScopeMode,
   panelSettingsScopeRegistry,
   resolveScopeInstanceId,
-  ScopeInstanceProvider,
   usePanelInstanceSettingsStore,
   type PanelSettingsScopeMode,
 } from '@features/panels';
@@ -55,7 +54,7 @@ const OPERATION_CONFIG = {
 const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
 const GENERATION_SCOPE_ID = 'generation';
-const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'dock' } as const;
+const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
 
 type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
 
@@ -130,25 +129,19 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
       });
     }
 
-    if (scopeMode === 'global') return 'global';
-    if (scopeMode === 'dock') {
-      return dockviewId ? `dock:${dockviewId}:${GENERATION_SCOPE_ID}` : panelInstanceId;
-    }
-    return panelInstanceId;
+    return scopeMode === 'global' ? 'global' : panelInstanceId;
   }, [generationScopeDefinition, scopeMode, panelInstanceId, resolvedPanelId, dockviewId]);
 
   const scopeLabel = generationScopeDefinition.label ?? 'Generation Settings';
 
   return (
-    <ScopeInstanceProvider scopeId={GENERATION_SCOPE_ID} instanceId={scopeInstanceId}>
-      <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
-        <QuickGenerateModuleInner
-          scopeMode={scopeMode}
-          onScopeChange={handleScopeChange}
-          scopeLabel={scopeLabel}
-        />
-      </GenerationScopeProvider>
-    </ScopeInstanceProvider>
+    <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
+      <QuickGenerateModuleInner
+        scopeMode={scopeMode}
+        onScopeChange={handleScopeChange}
+        scopeLabel={scopeLabel}
+      />
+    </GenerationScopeProvider>
   );
 }
 

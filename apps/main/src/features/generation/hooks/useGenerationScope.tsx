@@ -1,11 +1,4 @@
-import { useMemo } from "react";
-import {
-  CAP_GENERATION_SCOPE,
-  type GenerationScopeContext,
-  useCapability,
-  useProvideCapability,
-} from "@features/contextHub";
-import { useScopeInstanceId } from "@features/panels";
+import { createContext, useContext, useMemo } from "react";
 import { useControlCenterStore } from "@features/controlCenter/stores/controlCenterStore";
 import { useGenerationSettingsStore } from "../stores/generationSettingsStore";
 import { useGenerationQueueStore } from "../stores/generationQueueStore";
@@ -18,7 +11,9 @@ import {
   type GenerationSettingsStoreHook,
 } from "../stores/generationScopeStores";
 
-export interface GenerationScopeStores extends GenerationScopeContext {
+export interface GenerationScopeStores {
+  id: string;
+  label: string;
   useSessionStore: GenerationSessionStoreHook;
   useSettingsStore: GenerationSettingsStoreHook;
   useQueueStore: GenerationQueueStoreHook;
@@ -32,36 +27,19 @@ const GLOBAL_SCOPE: GenerationScopeStores = {
   useQueueStore: useGenerationQueueStore as unknown as GenerationQueueStoreHook,
 };
 
+/**
+ * React context for generation scope stores.
+ * Replaces the capability system with a simpler direct context approach.
+ */
+const GenerationScopeContext = createContext<GenerationScopeStores | null>(null);
+
+/**
+ * Hook to access generation scope stores.
+ * Returns scoped stores if inside a GenerationScopeProvider, otherwise global stores.
+ */
 export function useGenerationScopeStores(): GenerationScopeStores {
-  const { value, provider } = useCapability<GenerationScopeContext>(CAP_GENERATION_SCOPE);
-  const scopeInstanceId = useScopeInstanceId("generation");
-
-  // If no capability yet but we know the scope instance ID, synthesize scoped stores.
-  // This prevents falling back to global during the first render in scoped panels.
-  const fallbackScoped = useMemo<GenerationScopeStores | null>(() => {
-    if (!scopeInstanceId || scopeInstanceId === "global") return null;
-    return {
-      id: scopeInstanceId,
-      label: "Generation Settings",
-      useSessionStore: getGenerationSessionStore(scopeInstanceId),
-      useSettingsStore: getGenerationSettingsStore(scopeInstanceId),
-      useQueueStore: getGenerationQueueStore(scopeInstanceId),
-    };
-  }, [scopeInstanceId]);
-
-  const result = (value as GenerationScopeStores) ?? fallbackScoped ?? GLOBAL_SCOPE;
-
-  // Debug logging in development
-  if (process.env.NODE_ENV === "development") {
-    const isScoped = result.id !== "global";
-    if (isScoped) {
-      console.debug(
-        `[GenerationScope] Using scoped stores: ${result.id} (provider: ${provider?.id})`
-      );
-    }
-  }
-
-  return result;
+  const context = useContext(GenerationScopeContext);
+  return context ?? GLOBAL_SCOPE;
 }
 
 interface GenerationScopeProviderProps {
@@ -70,21 +48,25 @@ interface GenerationScopeProviderProps {
   children: React.ReactNode;
 }
 
+/**
+ * Provider that creates isolated generation stores for a specific scope.
+ * Wrap panels that need their own generation state with this provider.
+ */
 export function GenerationScopeProvider({
   scopeId,
   label,
   children,
 }: GenerationScopeProviderProps) {
-  // Check if parent scope already set an instanceId - use that to preserve outer scope
-  // This prevents nested dockviews from overriding the outer scope
-  const parentScopeId = useScopeInstanceId("generation");
-  const effectiveScopeId = parentScopeId ?? scopeId;
+  // Check if already inside a scope - preserve parent scope to prevent nested overrides
+  const parentScope = useContext(GenerationScopeContext);
 
   const scopeStores = useMemo<GenerationScopeStores>(() => {
-    if (process.env.NODE_ENV === "development") {
-      console.debug(`[GenerationScopeProvider] Creating scoped stores for: ${effectiveScopeId}${parentScopeId ? ` (preserved from parent, prop was: ${scopeId})` : ""}`);
+    // If parent scope exists, preserve it (prevents nested dockviews from overriding)
+    if (parentScope) {
+      return parentScope;
     }
-    if (effectiveScopeId === "global") {
+
+    if (scopeId === "global") {
       return {
         ...GLOBAL_SCOPE,
         label: label ?? GLOBAL_SCOPE.label,
@@ -92,26 +74,17 @@ export function GenerationScopeProvider({
     }
 
     return {
-      id: effectiveScopeId,
+      id: scopeId,
       label: label ?? "Local Generation",
-      useSessionStore: getGenerationSessionStore(effectiveScopeId),
-      useSettingsStore: getGenerationSettingsStore(effectiveScopeId),
-      useQueueStore: getGenerationQueueStore(effectiveScopeId),
+      useSessionStore: getGenerationSessionStore(scopeId),
+      useSettingsStore: getGenerationSettingsStore(scopeId),
+      useQueueStore: getGenerationQueueStore(scopeId),
     };
-  }, [effectiveScopeId, label]);
+  }, [scopeId, label, parentScope]);
 
-  useProvideCapability<GenerationScopeContext>(
-    CAP_GENERATION_SCOPE,
-    {
-      id: `generation-scope:${effectiveScopeId}`,
-      label: label ?? "Generation Scope",
-      priority: 70,
-      exposeToContextMenu: true,
-      getValue: () => scopeStores,
-    },
-    [scopeStores],
-    { scope: "root" },
+  return (
+    <GenerationScopeContext.Provider value={scopeStores}>
+      {children}
+    </GenerationScopeContext.Provider>
   );
-
-  return <>{children}</>;
 }

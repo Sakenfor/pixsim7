@@ -342,10 +342,29 @@ export const usePanelInstanceSettingsStore = create<
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         instances: state.instances,
       }),
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as { instances: Record<string, PanelInstanceSettings> };
+
+        // v1 -> v2: Migrate "dock" scope mode to "local"
+        if (version < 2 && state.instances) {
+          for (const instanceId of Object.keys(state.instances)) {
+            const scopes = state.instances[instanceId]?.scopes;
+            if (scopes) {
+              for (const scopeId of Object.keys(scopes)) {
+                if (scopes[scopeId] === 'dock') {
+                  scopes[scopeId] = 'local' as PanelSettingsScopeMode;
+                }
+              }
+            }
+          }
+        }
+
+        return state;
+      },
     },
   ),
 );

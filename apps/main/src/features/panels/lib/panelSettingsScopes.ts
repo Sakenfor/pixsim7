@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { BaseRegistry } from "@lib/core/BaseRegistry";
 import type { CapabilityScope } from "@features/contextHub";
 
-export type PanelSettingsScopeMode = "global" | "dock" | "local";
+export type PanelSettingsScopeMode = "global" | "local";
 
 export interface ScopeMatchContext {
   panelId: string;
@@ -74,24 +74,17 @@ export function resolveScopeInstanceId(
   }
 
   if (mode === "local") return context.instanceId;
-  if (mode === "dock") {
-    return context.dockviewId
-      ? `dock:${context.dockviewId}:${scope.id}`
-      : context.instanceId;
-  }
-  return `global:${scope.id}`;
+  return "global";
 }
 
 /**
  * Map a resolved scope instance ID to a capability scope.
- * Assumes resolveScopeInstanceId uses "global" and "dock:*" conventions.
  */
 export function resolveCapabilityScopeFromScopeInstanceId(
   scopeInstanceId: string | undefined,
   fallback: CapabilityScope = "parent",
 ): CapabilityScope {
   if (!scopeInstanceId) return fallback;
-  if (scopeInstanceId === "global" || scopeInstanceId.startsWith("global:")) return "root";
-  if (scopeInstanceId.startsWith("dock:")) return "parent";
+  if (scopeInstanceId === "global") return "root";
   return "local";
 }

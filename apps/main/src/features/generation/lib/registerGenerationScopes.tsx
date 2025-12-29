@@ -10,30 +10,24 @@ let registered = false;
 /**
  * Register generation scope providers.
  *
- * This sets up two things:
- * 1. panelSettingsScopeRegistry: UI toggle for Local/Global mode in panel properties
- * 2. panelSettingsScopeRegistry: Automatic wrapping for panels that declare scopes: ["generation"]
+ * Panels declaring `settingScopes: ["generation"]` will be automatically
+ * wrapped with GenerationScopeProvider, giving them isolated generation stores.
  *
- * The automatic wrapping ensures that any panel declaring the "generation" scope
- * gets wrapped with GenerationScopeProvider, giving it isolated generation stores.
- * ScopeInstanceProvider exposes the instanceId to children for settings resolution.
+ * Scope modes:
+ * - "global": All panels share the same generation stores
+ * - "local": Each panel instance has its own isolated stores
  */
 export function registerGenerationScopes() {
   if (registered) return;
   registered = true;
 
-  // Register UI toggle for Local/Global mode (existing behavior)
   panelSettingsScopeRegistry.register({
     id: "generation",
     label: "Generation Settings",
     description: "Provider, prompt, model, and parameter defaults for this panel instance.",
-    defaultMode: "dock",
-    resolveScopeId: ({ mode, instanceId, dockviewId, scopeId }) => {
-      if (mode === "global") return "global";
-      if (mode === "dock") {
-        return dockviewId ? `dock:${dockviewId}:${scopeId}` : instanceId;
-      }
-      return instanceId;
+    defaultMode: "local",
+    resolveScopeId: ({ mode, instanceId }) => {
+      return mode === "global" ? "global" : instanceId;
     },
     renderProvider: (resolvedScopeId, children) => (
       <ScopeInstanceProvider scopeId="generation" instanceId={resolvedScopeId}>
@@ -45,8 +39,4 @@ export function registerGenerationScopes() {
     shouldApply: createScopeMatcher("generation"),
     priority: 100,
   });
-
-  if (process.env.NODE_ENV === "development") {
-    console.debug("[registerGenerationScopes] Registered generation scope providers");
-  }
 }

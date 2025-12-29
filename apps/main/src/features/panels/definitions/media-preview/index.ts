@@ -12,4 +12,5 @@ export default definePanel({
   availableIn: ['asset-viewer'],
   supportsCompactMode: false,
   supportsMultipleInstances: true,
+  settingScopes: ['preview'],
 });

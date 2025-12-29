@@ -3,7 +3,6 @@ import type { PanelSettingsScopeMode } from "../../lib/panelSettingsScopes";
 
 const DEFAULT_LABELS: Record<PanelSettingsScopeMode, string> = {
   global: "App",
-  dock: "Dock",
   local: "Local",
 };
 
@@ -41,7 +40,6 @@ export function ScopeModeSelect({
       )}
     >
       <option value="global">{resolvedLabels.global}</option>
-      <option value="dock">{resolvedLabels.dock}</option>
       <option value="local">{resolvedLabels.local}</option>
     </select>
   );
