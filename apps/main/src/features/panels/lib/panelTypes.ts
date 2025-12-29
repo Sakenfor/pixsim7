@@ -9,6 +9,60 @@ import type { ComponentType } from "react";
 
 export type PanelInstancePolicy = "single" | "multiple" | { max: number };
 
+/**
+ * Entity ref type for capability scoping.
+ * Matches the entity ref types from @pixsim7/shared.types.
+ * Extensible via (string & {}) pattern.
+ */
+export type CapabilityRefType =
+  | "asset"
+  | "generation"
+  | "scene"
+  | "location"
+  | "npc"
+  | "world"
+  | "session"
+  | (string & {});
+
+/**
+ * Structured capability declaration with optional ref type.
+ */
+export interface CapabilityDeclarationObject {
+  /** Capability key (e.g., "asset:selection", "generation:context") */
+  key: string;
+  /** Entity ref type this capability is scoped to */
+  refType?: CapabilityRefType;
+  /** Optional description for tooling */
+  description?: string;
+}
+
+/**
+ * Capability declaration - either a simple string key or a structured object.
+ * String form is shorthand for { key: string }.
+ */
+export type CapabilityDeclaration = string | CapabilityDeclarationObject;
+
+/**
+ * Normalize a capability declaration to its object form.
+ */
+export function normalizeCapabilityDeclaration(
+  decl: CapabilityDeclaration
+): CapabilityDeclarationObject {
+  return typeof decl === "string" ? { key: decl } : decl;
+}
+
+/**
+ * Extract capability keys from an array of declarations.
+ */
+export function getCapabilityKeys(
+  declarations: CapabilityDeclaration[] | undefined
+): string[] {
+  if (!declarations) return [];
+  return declarations.map((d) =>
+    typeof d === "string" ? d : d.key
+  );
+}
+
 export interface PanelAvailabilityPolicy {
   /** Dockview scopes where this panel is available (e.g., "workspace", "control-center") */
   docks?: string[];
@@ -65,15 +119,23 @@ export interface BasePanelDefinition<TParams = any> {
    * Optional declarative hint for capabilities this panel consumes.
    * Used by UI tooling (e.g., "Connect" context menu) when runtime
    * consumption has not been recorded yet.
+   *
+   * Supports both string keys and structured declarations with ref types:
+   * @example consumesCapabilities: ["asset:selection"]
+   * @example consumesCapabilities: [{ key: "asset:selection", refType: "asset" }]
    */
-  consumesCapabilities?: string[];
+  consumesCapabilities?: CapabilityDeclaration[];
 
   /**
    * Optional declarative hint for capabilities this panel provides.
    * Used by UI tooling to show what a panel offers and for
    * dependency validation (ensuring required capabilities have providers).
+   *
+   * Supports both string keys and structured declarations with ref types:
+   * @example providesCapabilities: ["generation:context"]
+   * @example providesCapabilities: [{ key: "generation:context", refType: "generation" }]
    */
-  providesCapabilities?: string[];
+  providesCapabilities?: CapabilityDeclaration[];
 
   /**
    * Dockview scope IDs where this panel can appear.

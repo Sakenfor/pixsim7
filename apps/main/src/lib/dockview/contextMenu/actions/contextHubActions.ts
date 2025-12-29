@@ -13,6 +13,7 @@ import { useContextHubOverridesStore } from "@features/contextHub";
 import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
 import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 import { panelRegistry } from "@features/panels";
+import { getCapabilityKeys } from "@features/panels/lib/panelTypes";
 import {
   getRegistryChain,
   getAllProviders,
@@ -77,7 +78,7 @@ function getDeclaredCapabilities(ctx: MenuActionContext): CapabilityKey[] {
   const panelId = resolvePanelDefinitionId(ctx);
   if (!panelId) return [];
   const definition = panelRegistry.get(panelId);
-  return definition?.consumesCapabilities ?? [];
+  return getCapabilityKeys(definition?.consumesCapabilities);
 }
 
 function getPanelCapabilityUsage(ctx: MenuActionContext): CapabilityUsage[] {

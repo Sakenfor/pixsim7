@@ -34,7 +34,7 @@ import type {
   WorkspaceContext,
 } from './panelRegistry';
 import type { PanelOrchestrationMetadata } from './panelRegistry';
-import type { PanelAvailabilityPolicy, PanelInstancePolicy } from './panelTypes';
+import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from './panelTypes';
 import type { z } from 'zod';
 
 /**
@@ -72,8 +72,8 @@ export interface DefinePanelOptions<TSettings = any> {
   supportsMultipleInstances?: boolean;
   instances?: PanelInstancePolicy;
   maxInstances?: number;
-  consumesCapabilities?: string[];
-  providesCapabilities?: string[];
+  consumesCapabilities?: CapabilityDeclaration[];
+  providesCapabilities?: CapabilityDeclaration[];
   settingScopes?: string[];
   scopes?: string[];
 
