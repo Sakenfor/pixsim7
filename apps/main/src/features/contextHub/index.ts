@@ -34,13 +34,21 @@ export type {
   GenerationSourceMode,
   GenerationSourceContext,
 } from "./capabilities";
-export type { CapabilityDescriptor, CapabilityDescriptorKind } from "./descriptorRegistry";
+export type { CapabilityDescriptor, CapabilityDescriptorKind, CapabilityDescriptorSource } from "./descriptorRegistry";
 export {
   getCapabilityDescriptor,
   getCapabilityDescriptors,
+  getCapabilityDescriptorKeys,
+  hasCapabilityDescriptor,
   registerCapabilityDescriptor,
   unregisterCapabilityDescriptor,
+  clearCapabilityDescriptors,
+  setDescriptorWarnOnOverwrite,
 } from "./descriptorRegistry";
+export {
+  setConsumptionThrottle,
+  getConsumptionThrottle,
+} from "./registry";
 export type {
   CapabilityContract,
   CapabilityCompatibilityResult,

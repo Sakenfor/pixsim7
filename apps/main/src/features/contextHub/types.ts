@@ -16,7 +16,14 @@ export interface CapabilityProvider<T = unknown> {
   getValue: () => T;
 }
 
-export type CapabilityScope = "local" | "parent" | "root";
+/**
+ * Scope for capability provision.
+ * - "local": Only available within the current ContextHubHost
+ * - "parent": Registered on the parent ContextHubHost
+ * - "root": Registered on the root ContextHubHost
+ * - Custom string: For extensibility (plugins can define their own scopes)
+ */
+export type CapabilityScope = "local" | "parent" | "root" | (string & {});
 
 export interface CapabilitySnapshot<T = unknown> {
   value: T | null;

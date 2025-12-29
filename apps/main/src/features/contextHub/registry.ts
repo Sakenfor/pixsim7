@@ -11,8 +11,27 @@ type ProviderEntry = {
   key: CapabilityKey;
 };
 
-// Throttle interval for consumption recording (ms)
-const CONSUMPTION_THROTTLE_MS = 500;
+// ============================================================================
+// Consumption Throttle Configuration
+// ============================================================================
+
+/** Default throttle interval for consumption recording (ms) */
+let consumptionThrottleMs = 500;
+
+/**
+ * Set the consumption throttle interval.
+ * @param ms - Throttle interval in milliseconds (0 to disable throttling)
+ */
+export function setConsumptionThrottle(ms: number): void {
+  consumptionThrottleMs = Math.max(0, ms);
+}
+
+/**
+ * Get the current consumption throttle interval.
+ */
+export function getConsumptionThrottle(): number {
+  return consumptionThrottleMs;
+}
 
 export function createCapabilityRegistry(): CapabilityRegistry {
   const providers = new Map<CapabilityKey, ProviderEntry[]>();
@@ -124,8 +143,8 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     }
 
     const existing = keyMap.get(consumerHostId);
-    // Throttle: only update if >CONSUMPTION_THROTTLE_MS since last
-    if (existing && now - existing.lastSeenAt < CONSUMPTION_THROTTLE_MS) {
+    // Throttle: only update if past the configured interval since last
+    if (existing && consumptionThrottleMs > 0 && now - existing.lastSeenAt < consumptionThrottleMs) {
       return;
     }
 

@@ -9,12 +9,7 @@
  */
 
 import type { MenuAction, MenuActionContext } from "../types";
-import {
-  CAP_ASSET_INPUT,
-  CAP_GENERATE_ACTION,
-  CAP_PROMPT_BOX,
-  useContextHubOverridesStore,
-} from "@features/contextHub";
+import { useContextHubOverridesStore } from "@features/contextHub";
 import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
 import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 import { panelRegistry } from "@features/panels";
@@ -26,11 +21,15 @@ import {
   type ProviderEntry,
 } from "../capabilityHelpers";
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  [CAP_PROMPT_BOX]: "Prompt Box",
-  [CAP_ASSET_INPUT]: "Asset Input",
-  [CAP_GENERATE_ACTION]: "Generate Action",
-};
+/**
+ * Get a human-readable label for a capability key.
+ * Resolution order:
+ * 1. Descriptor registry label (preferred - registered at capability definition)
+ * 2. Auto-formatted from key (fallback for unregistered capabilities)
+ */
+function getCapabilityLabel(key: CapabilityKey): string {
+  return getCapabilityDescriptor(key)?.label ?? formatCapabilityLabel(key);
+}
 
 function formatCapabilityLabel(key: string): string {
   return key
@@ -255,10 +254,7 @@ function buildCapabilityListActions(ctx: MenuActionContext): MenuAction[] {
 
     return {
       id: `capabilities:${key}`,
-      label:
-        getCapabilityDescriptor(key)?.label ??
-        CAPABILITY_LABELS[key] ??
-        formatCapabilityLabel(key),
+      label: getCapabilityLabel(key),
       availableIn: ["panel-content", "tab"],
       children,
       execute: () => {},
@@ -292,10 +288,7 @@ export const contextHubActions: MenuAction[] = [
       usage.forEach(({ key, source }) => {
         actions.push({
           id: `connect:${key}`,
-          label:
-            getCapabilityDescriptor(key)?.label ??
-            CAPABILITY_LABELS[key] ??
-            formatCapabilityLabel(key),
+          label: getCapabilityLabel(key),
           availableIn: ["panel-content", "tab"],
           children: buildProviderActions(ctx, key, source),
           execute: () => {},
