@@ -13,6 +13,74 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.infrastructure.plugins.dependencies import get_plugin_context
 from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
 
+# ===== FRONTEND MANIFEST =====
+# Defines interactions for frontend dynamic registration
+
+PICKPOCKET_CONFIG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "baseSuccessChance": {
+            "type": "number",
+            "description": "Base probability of successful pickpocket",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.4,
+        },
+        "detectionChance": {
+            "type": "number",
+            "description": "Probability of being caught",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.3,
+        },
+        "onSuccessFlags": {
+            "type": "array",
+            "description": "Flags to set when pickpocket succeeds",
+            "items": {"type": "string"},
+            "default": [],
+        },
+        "onFailFlags": {
+            "type": "array",
+            "description": "Flags to set when pickpocket fails",
+            "items": {"type": "string"},
+            "default": [],
+        },
+    },
+    "required": ["baseSuccessChance", "detectionChance"],
+}
+
+FRONTEND_MANIFEST = {
+    "pluginId": "game_stealth",
+    "pluginName": "Game Stealth & Pickpocket",
+    "version": "3.0.0",
+    "interactions": [
+        {
+            "id": "pickpocket",
+            "name": "Pickpocket",
+            "description": "Attempt to steal from the NPC",
+            "icon": "\U0001F90F",  # pinching hand emoji
+            "category": "stealth",
+            "version": "1.0.0",
+            "tags": ["stealth", "theft", "risky"],
+            "apiEndpoint": "/game/stealth/pickpocket",
+            "configSchema": PICKPOCKET_CONFIG_SCHEMA,
+            "defaultConfig": {
+                "baseSuccessChance": 0.4,
+                "detectionChance": 0.3,
+                "onSuccessFlags": [],
+                "onFailFlags": [],
+            },
+            "uiMode": "notification",
+            "capabilities": {
+                "modifiesInventory": True,
+                "affectsRelationship": True,
+                "hasRisk": True,
+                "canBeDetected": True,
+            },
+        }
+    ],
+}
+
 # ===== PLUGIN MANIFEST =====
 
 manifest = PluginManifest(
@@ -29,7 +97,10 @@ manifest = PluginManifest(
     requires_redis=False,
     enabled=True,
 
-    # NEW: Declare permissions for capability access
+    # Frontend manifest for dynamic interaction registration
+    frontend_manifest=FRONTEND_MANIFEST,
+
+    # Declare permissions for capability access
     permissions=[
         "session:read",   # Read session state
         "session:write",  # Modify session flags and relationships

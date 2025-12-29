@@ -1,10 +1,9 @@
 /**
  * Interaction Plugin Registry
  *
- * Import and register all available interaction plugins here.
- * Adding a new interaction type is as simple as:
- * 1. Create a new plugin file (e.g., giveItem.ts)
- * 2. Import and register it here
+ * Bundled interactions are registered here. Plugin-provided interactions
+ * (like pickpocket from game_stealth) are loaded dynamically at runtime
+ * via loadPluginInteractions().
  *
  * NOTE: For canonical registry imports, use:
  * import { interactionRegistry } from '@lib/registries';
@@ -12,17 +11,36 @@
 
 import { interactionRegistry } from './types';
 import { talkPlugin } from './talk';
-import { pickpocketPlugin } from './pickpocket';
 import { giveItemInteraction } from './giveItem';
 import { persuadePlugin } from './persuade';
 import { sensualizePlugin } from './sensualize';
+import { loadPluginInteractions } from './dynamicLoader';
 
-// Register all built-in interactions
+// Register bundled interactions (always available)
 interactionRegistry.register(talkPlugin);
-interactionRegistry.register(pickpocketPlugin);
 interactionRegistry.register(giveItemInteraction);
 interactionRegistry.register(persuadePlugin);
 interactionRegistry.register(sensualizePlugin);
+// Plugin interactions (pickpocket, etc.) are loaded via initializeInteractions()
+
+/**
+ * Initialize interactions including dynamic plugin loading
+ *
+ * Call this at app startup to load plugin-provided interactions
+ * from the backend. Returns the number of dynamically loaded interactions.
+ *
+ * This is safe to call multiple times - already loaded plugins are skipped.
+ */
+export async function initializeInteractions(): Promise<number> {
+  try {
+    const loadedCount = await loadPluginInteractions();
+    console.info(`[interactions] Initialized with ${loadedCount} dynamic interactions`);
+    return loadedCount;
+  } catch (error) {
+    console.warn('[interactions] Dynamic loading failed, using bundled interactions only:', error);
+    return 0;
+  }
+}
 
 // Export registry and types for use in components
 // DEPRECATED: Import from @/lib/registries instead for consistency
@@ -38,11 +56,20 @@ export type {
 } from './types';
 
 // Export specific configs for type safety
+// Note: PickpocketConfig is in @pixsim7/plugin-stealth/types
 export type { TalkConfig } from './talk';
-export type { PickpocketConfig } from './pickpocket';
 export type { GiveItemConfig } from './giveItem';
 export type { PersuadeConfig } from './persuade';
 export type { SensualizeConfig } from './sensualize';
+
+// Export dynamic loader utilities
+export {
+  loadPluginInteractions,
+  createGenericInteraction,
+  jsonSchemaToConfigFields,
+  isDynamicLoadingAvailable,
+  clearLoadedPluginsCache,
+} from './dynamicLoader';
 
 // Export the config form component
 export { InteractionConfigForm } from './InteractionConfigForm';

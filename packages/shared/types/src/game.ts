@@ -464,23 +464,17 @@ export interface NpcTalkConfig {
   preferredSceneId?: number | null;
 }
 
-/** [frontend-only] Pickpocket interaction configuration (not the API request) */
-export interface PickpocketConfig {
-  baseSuccessChance: number;
-  detectionChance: number;
-  onSuccessFlags?: string[];
-  onFailFlags?: string[];
-}
-
 /**
  * [frontend-only] NPC slot interactions using plugin-based format
  * Each key is an interaction plugin ID (e.g., 'talk', 'pickpocket', 'persuade')
  * Each value is the plugin's config with an 'enabled' flag
+ *
+ * Note: Plugin-specific types (like PickpocketConfig) are defined in their
+ * respective plugin packages (e.g., @pixsim7/plugin-stealth/types).
  */
 export interface NpcSlotInteractions {
   talk?: { enabled: boolean; preferredSceneId?: number | null } & Partial<NpcTalkConfig>;
-  pickpocket?: { enabled: boolean } & Partial<PickpocketConfig>;
-  [interactionId: string]: { enabled: boolean; [key: string]: any } | undefined;
+  [interactionId: string]: { enabled: boolean; [key: string]: unknown } | undefined;
 }
 
 /** [frontend-only] 2D NPC slot for location editor */

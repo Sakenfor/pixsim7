@@ -1,0 +1,56 @@
+{
+  "name": "@pixsim7/plugin-stealth",
+  "version": "1.0.0",
+  "description": "Stealth plugin for PixSim7 - provides pickpocket and stealth mechanics",
+  "private": true,
+  "main": "frontend/index.ts",
+  "module": "frontend/index.ts",
+  "types": "shared/types.ts",
+  "exports": {
+    ".": {
+      "import": "./frontend/index.ts",
+      "require": "./frontend/index.ts",
+      "types": "./frontend/index.ts"
+    },
+    "./frontend": {
+      "import": "./frontend/index.ts",
+      "require": "./frontend/index.ts",
+      "types": "./frontend/index.ts"
+    },
+    "./types": {
+      "import": "./shared/types.ts",
+      "require": "./shared/types.ts",
+      "types": "./shared/types.ts"
+    },
+    "./shared/types": {
+      "import": "./shared/types.ts",
+      "require": "./shared/types.ts",
+      "types": "./shared/types.ts"
+    }
+  },
+  "pixsim": {
+    "plugin": true,
+    "backend": {
+      "entry": "./backend/manifest.py",
+      "enabled": true
+    },
+    "frontend": {
+      "entry": "./frontend/plugin.ts"
+    }
+  },
+  "files": [
+    "shared",
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@pixsim7/shared.types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

@@ -246,3 +246,97 @@ async def reset_plugin_metrics(plugin_id: Optional[str] = None):
         return {"status": "ok", "message": f"Metrics reset for plugin '{plugin_id}'"}
     else:
         return {"status": "ok", "message": "All plugin metrics reset"}
+
+
+# ===== FRONTEND MANIFEST ENDPOINTS =====
+# These endpoints are used by the frontend to dynamically load interaction plugins
+
+
+@router.get("/{plugin_id}/frontend")
+async def get_plugin_frontend_manifest(plugin_id: str):
+    """
+    Get the frontend manifest for a specific plugin.
+
+    This endpoint returns the frontend manifest that describes interactions
+    the plugin provides, including config schemas and default values.
+
+    The frontend uses this to dynamically register interactions.
+
+    Args:
+        plugin_id: Plugin ID
+
+    Returns:
+        Frontend manifest with interactions list, or 404 if not found/no manifest
+    """
+    if not _plugin_manager:
+        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+
+    # Try feature plugins first
+    plugin_info = _plugin_manager.get_plugin(plugin_id)
+
+    # Try route plugins if not found
+    if not plugin_info and _routes_manager:
+        plugin_info = _routes_manager.get_plugin(plugin_id)
+
+    if not plugin_info:
+        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
+
+    manifest = plugin_info["manifest"]
+
+    # Check if plugin has a frontend manifest
+    if not manifest.frontend_manifest:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plugin '{plugin_id}' does not have a frontend manifest"
+        )
+
+    return manifest.frontend_manifest
+
+
+@router.get("/frontend/all")
+async def list_all_frontend_manifests():
+    """
+    Get all frontend manifests from all enabled plugins.
+
+    This endpoint returns a list of all plugins that have frontend manifests,
+    which the frontend can use to dynamically register all available interactions.
+
+    Returns:
+        List of frontend manifests from all plugins that have them
+    """
+    if not _plugin_manager:
+        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+
+    manifests = []
+
+    # Collect from feature plugins
+    for plugin_id, plugin_info in _plugin_manager.plugins.items():
+        if not plugin_info.get("enabled", False):
+            continue
+
+        manifest = plugin_info["manifest"]
+        if manifest.frontend_manifest:
+            manifests.append({
+                "pluginId": plugin_id,
+                "enabled": plugin_info.get("enabled", False),
+                "manifest": manifest.frontend_manifest,
+            })
+
+    # Collect from route plugins if available
+    if _routes_manager:
+        for plugin_id, plugin_info in _routes_manager.plugins.items():
+            if not plugin_info.get("enabled", False):
+                continue
+
+            manifest = plugin_info["manifest"]
+            if manifest.frontend_manifest:
+                manifests.append({
+                    "pluginId": plugin_id,
+                    "enabled": plugin_info.get("enabled", False),
+                    "manifest": manifest.frontend_manifest,
+                })
+
+    return {
+        "manifests": manifests,
+        "total": len(manifests),
+    }

@@ -35,6 +35,10 @@ class PluginManifest(BaseModel):
     enabled: bool = True             # Is plugin enabled?
     required: bool = False           # Is plugin required? (fail-fast if load fails in dev/CI)
 
+    # Frontend manifest for dynamic interaction registration
+    # See packages/plugins/stealth/shared/types.ts for FrontendPluginManifest type
+    frontend_manifest: Optional[dict] = None
+
     # Permissions - see pixsim7/backend/main/infrastructure/plugins/permissions.py
     # for canonical permission definitions
     permissions: list[str] = []

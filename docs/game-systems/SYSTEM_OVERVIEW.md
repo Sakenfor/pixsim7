@@ -400,3 +400,82 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 1. Create `NPCSchedule` rows via `/api/v1/game/npcs/schedules`
 2. Query presence via `/api/v1/game/npcs/presence?world_time=...&location_id=...`
 3. Use results to show/hide NPCs in 2D/3D views
+
+---
+
+## Plugin Interaction System
+
+### Dynamic Interaction Loading
+
+Backend plugins (like `game_stealth`) can expose frontend manifests that describe interactions. The frontend dynamically loads and registers these at startup.
+
+**Architecture:**
+
+```
+Backend Plugin (pixsim7/backend/main/plugins/game_stealth/)
+    │
+    ├── manifest.py
+    │   ├── PluginManifest (id, name, version, permissions)
+    │   └── frontend_manifest: {
+    │         interactions: [{
+    │           id: "pickpocket",
+    │           configSchema: { ... },
+    │           apiEndpoint: "/game/stealth/pickpocket"
+    │         }]
+    │       }
+    │
+    └── router (FastAPI routes)
+
+Frontend Dynamic Loader (apps/main/src/lib/game/interactions/dynamicLoader.ts)
+    │
+    ├── loadPluginInteractions()
+    │   └── Fetches: GET /api/v1/admin/plugins/frontend/all
+    │
+    ├── createGenericInteraction(manifest)
+    │   └── Creates InteractionPlugin from manifest
+    │
+    └── jsonSchemaToConfigFields(schema)
+        └── Converts JSON Schema to UI form fields
+```
+
+**Self-Contained Plugin Package:**
+
+Stealth plugin lives in `packages/plugins/stealth/`:
+- `shared/types.ts` – Canonical types (single source of truth)
+- `backend/manifest.py` – Python Pydantic models aligned with TS types
+- `frontend/plugin.ts` – InteractionPlugin built from manifest
+
+**Key endpoints:**
+- `GET /api/v1/admin/plugins/frontend/all` – Get all frontend manifests
+- `GET /api/v1/admin/plugins/{plugin_id}/frontend` – Get specific plugin manifest
+
+**Adding a new interaction via plugin:**
+
+1. Add interaction manifest to your plugin's `frontend_manifest`:
+   ```python
+   # In manifest.py
+   frontend_manifest = {
+       "interactions": [{
+           "id": "my_interaction",
+           "name": "My Interaction",
+           "icon": "✨",
+           "category": "custom",
+           "apiEndpoint": "/my/endpoint",
+           "configSchema": {
+               "type": "object",
+               "properties": {
+                   "chance": {"type": "number", "minimum": 0, "maximum": 1}
+               }
+           },
+           "defaultConfig": {"chance": 0.5}
+       }]
+   }
+   ```
+
+2. The frontend will automatically:
+   - Fetch the manifest at startup
+   - Convert `configSchema` to form fields
+   - Register the interaction with `interactionRegistry`
+   - Call your API endpoint when executed
+
+**See:** `packages/plugins/stealth/README.md` for complete plugin structure
