@@ -6,6 +6,7 @@
 import {
   registerGizmo,
   registerTool,
+  getTool,
   type GizmoDefinition,
   type InteractiveTool,
 } from '@pixsim7/scene.gizmos';
@@ -383,13 +384,25 @@ export const bodyMapGizmo: GizmoDefinition = {
 // Auto-register all romance tools and gizmos
 // ============================================================================
 
+/**
+ * Register a tool if not already registered (e.g., by dynamic plugin loader)
+ * This allows plugin-defined tools to take precedence over static fallbacks.
+ */
+function registerToolIfNotExists(tool: InteractiveTool): void {
+  if (!getTool(tool.id)) {
+    registerTool(tool);
+  }
+}
+
 registerGizmo(bodyMapGizmo);
 
-registerTool(caressTool);
-registerTool(featherTool);
-registerTool(silkTool);
-registerTool(pleasureTool);
-registerTool(handTool3D);
+// Note: caress and feather may be loaded dynamically from the romance plugin.
+// These static definitions serve as fallbacks when running without backend.
+registerToolIfNotExists(caressTool);
+registerToolIfNotExists(featherTool);
+registerToolIfNotExists(silkTool);
+registerToolIfNotExists(pleasureTool);
+registerToolIfNotExists(handTool3D);
 
 // ============================================================================
 // Helper exports

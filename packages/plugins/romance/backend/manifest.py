@@ -44,11 +44,113 @@ manifest = PluginManifest(
         "log:emit",
     ],
 
-    # Frontend manifest for dynamic interaction loading
+    # Frontend manifest for dynamic interaction and tool loading
     frontend_manifest={
         "pluginId": "romance",
         "pluginName": "Romance & Sensual Touch",
         "version": "4.0.0",
+
+        # Dynamically loaded gizmo tools
+        "tools": [
+            {
+                "id": "caress",
+                "type": "caress",
+                "name": "Caress",
+                "description": "Gentle, sensual stroking",
+                "unlockLevel": 10,
+                "visual": {
+                    "model": "hand",
+                    "baseColor": "rgba(255, 180, 200, 0.6)",
+                    "activeColor": "rgba(255, 100, 150, 0.9)",
+                    "glow": True,
+                    "trail": True,
+                    "particles": {
+                        "type": "hearts",
+                        "density": 0.7,
+                        "color": "#FF69B4",
+                        "size": 12,
+                        "lifetime": 2000,
+                        "velocity": {"x": 0, "y": -2, "z": 0}
+                    }
+                },
+                "physics": {
+                    "pressure": 0.4,
+                    "speed": 0.3,
+                    "pattern": "circular"
+                },
+                "feedback": {
+                    "haptic": {
+                        "type": "wave",
+                        "intensity": 0.4,
+                        "duration": 150,
+                        "frequency": 2
+                    },
+                    "npcReaction": {
+                        "expression": "pleasure",
+                        "vocalization": "sigh",
+                        "intensity": 0.6
+                    },
+                    "trail": {
+                        "type": "sparkle",
+                        "color": "rgba(255, 150, 200, 0.5)",
+                        "width": 15,
+                        "lifetime": 2500
+                    }
+                }
+            },
+            {
+                "id": "feather",
+                "type": "tease",
+                "name": "Feather",
+                "description": "Teasing, ticklish touch",
+                "unlockLevel": 20,
+                "visual": {
+                    "model": "feather",
+                    "baseColor": "rgba(255, 255, 255, 0.8)",
+                    "activeColor": "rgba(200, 150, 255, 0.9)",
+                    "glow": False,
+                    "trail": True,
+                    "particles": {
+                        "type": "petals",
+                        "density": 0.5,
+                        "color": "#FFE4E1",
+                        "size": 8,
+                        "lifetime": 1800,
+                        "velocity": {"x": 0, "y": -1, "z": 0}
+                    }
+                },
+                "physics": {
+                    "pressure": 0.2,
+                    "speed": 0.6,
+                    "pattern": "zigzag"
+                },
+                "feedback": {
+                    "haptic": {
+                        "type": "tickle",
+                        "intensity": 0.3,
+                        "duration": 80,
+                        "frequency": 5
+                    },
+                    "npcReaction": {
+                        "expression": "delight",
+                        "vocalization": "giggle",
+                        "intensity": 0.5
+                    },
+                    "trail": {
+                        "type": "fade",
+                        "color": "rgba(255, 255, 255, 0.4)",
+                        "width": 10,
+                        "lifetime": 1500
+                    }
+                },
+                "constraints": {
+                    "minPressure": 0.1,
+                    "maxSpeed": 0.8
+                }
+            }
+        ],
+
+        # Dynamically loaded interactions
         "interactions": [
             {
                 "id": "sensual-touch",
