@@ -35,6 +35,7 @@ from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with
 from pixsim7.backend.main.api.v1 import assets_maintenance
 from pixsim7.backend.main.api.v1 import assets_bulk
 from pixsim7.backend.main.api.v1 import assets_tags
+from pixsim7.backend.main.api.v1 import assets_versions
 
 router = APIRouter()
 logger = get_logger()
@@ -43,6 +44,7 @@ logger = get_logger()
 router.include_router(assets_maintenance.router)
 router.include_router(assets_bulk.router)
 router.include_router(assets_tags.router)
+router.include_router(assets_versions.router)
 
 
 # ===== LIST ASSETS =====

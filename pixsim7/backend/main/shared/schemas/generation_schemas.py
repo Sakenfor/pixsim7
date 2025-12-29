@@ -218,6 +218,22 @@ class CreateGenerationRequest(BaseModel):
     # Deduplication control
     force_new: bool = Field(False, description="Skip dedup and cache, always create new generation")
 
+    # Asset versioning
+    version_intent: str = Field(
+        "new",
+        pattern="^(new|version)$",
+        description=(
+            "How to handle output asset versioning. "
+            "'new' = create standalone asset (default). "
+            "'version' = create new version of input asset (requires exactly one input)."
+        )
+    )
+    version_message: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="What changed in this version (for version_intent='version'). E.g., 'Fixed hand anatomy'"
+    )
+
     # Prompt analysis settings (validated against analyzer registry)
     analyzer_id: Optional[str] = Field(
         None,

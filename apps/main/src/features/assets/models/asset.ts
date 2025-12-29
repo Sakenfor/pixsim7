@@ -56,6 +56,16 @@ export interface AssetModel {
   thumbnailUrl?: string | null;
   userId: number;
   width?: number | null;
+
+  // Versioning fields
+  /** UUID of version family (null = standalone asset, not versioned) */
+  versionFamilyId?: string | null;
+  /** Sequential version number within family (1, 2, 3...) */
+  versionNumber?: number | null;
+  /** Direct parent asset ID for version chain navigation */
+  parentAssetId?: number | null;
+  /** What changed in this version (e.g., "Fixed hand anatomy") */
+  versionMessage?: string | null;
 }
 
 /**
@@ -100,6 +110,12 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     thumbnailUrl: response.thumbnail_url,
     userId: response.user_id,
     width: response.width,
+
+    // Versioning fields
+    versionFamilyId: (response as any).version_family_id ?? null,
+    versionNumber: (response as any).version_number ?? null,
+    parentAssetId: (response as any).parent_asset_id ?? null,
+    versionMessage: (response as any).version_message ?? null,
   };
 }
 

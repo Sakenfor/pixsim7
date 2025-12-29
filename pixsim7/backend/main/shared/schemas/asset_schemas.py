@@ -76,6 +76,12 @@ class AssetResponse(BaseModel):
     # Upload history (Task 104 - derived from media_metadata)
     last_upload_status_by_provider: Optional[Dict[str, Literal['success', 'error']]] = None
 
+    # Versioning (git-like iteration tracking)
+    version_family_id: Optional[str] = None
+    version_number: Optional[int] = None
+    parent_asset_id: Optional[int] = None
+    version_message: Optional[str] = None
+
     # Timestamps
     created_at: datetime
 

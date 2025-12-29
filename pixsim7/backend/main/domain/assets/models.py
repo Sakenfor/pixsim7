@@ -257,6 +257,29 @@ class Asset(SQLModel, table=True):
         description="ID of source generation (no DB FK to allow cross-domain separation)"
     )
 
+    # ===== VERSIONING =====
+    # Git-like versioning for asset iterations (fix anatomy, improve lighting, etc.)
+    # See AssetVersionFamily for the family grouping model.
+    version_family_id: Optional[str] = Field(
+        default=None,
+        index=True,
+        description="UUID of version family (NULL = standalone asset, not versioned)"
+    )
+    version_number: Optional[int] = Field(
+        default=None,
+        description="Sequential version within family (1, 2, 3...). NOT NULL when family_id set."
+    )
+    parent_asset_id: Optional[int] = Field(
+        default=None,
+        index=True,
+        description="Direct parent version for chain navigation (ON DELETE SET NULL)"
+    )
+    version_message: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="What changed: 'Fixed hand anatomy', 'Improved lighting'"
+    )
+
     # ===== TIMESTAMPS =====
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
