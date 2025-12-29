@@ -73,6 +73,7 @@ export interface DefinePanelOptions<TSettings = any> {
   instances?: PanelInstancePolicy;
   maxInstances?: number;
   consumesCapabilities?: string[];
+  providesCapabilities?: string[];
   settingScopes?: string[];
   scopes?: string[];
 
@@ -140,6 +141,7 @@ export function definePanel<TSettings = any>(
     instances,
     maxInstances,
     consumesCapabilities,
+    providesCapabilities,
     settingScopes,
     scopes,
     defaultSettings,
@@ -194,6 +196,7 @@ export function definePanel<TSettings = any>(
     maxInstances: resolvedInstances.maxInstances,
     instances,
     consumesCapabilities,
+    providesCapabilities,
     settingScopes: resolvedSettingScopes,
     scopes,
     defaultSettings,

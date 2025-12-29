@@ -69,6 +69,13 @@ export interface BasePanelDefinition<TParams = any> {
   consumesCapabilities?: string[];
 
   /**
+   * Optional declarative hint for capabilities this panel provides.
+   * Used by UI tooling to show what a panel offers and for
+   * dependency validation (ensuring required capabilities have providers).
+   */
+  providesCapabilities?: string[];
+
+  /**
    * Dockview scope IDs where this panel can appear.
    * Used by SmartDockview's `scope` prop to filter available panels.
    *
