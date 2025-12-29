@@ -117,6 +117,20 @@ class Settings(BaseSettings):
     api_title: str = "PixSim7 API"
     api_version: str = "0.1.0"
 
+    # ===== SERVER IDENTITY =====
+    server_id: str = Field(
+        default="local",
+        description="Unique identifier for this server instance (e.g., 'official', 'local', 'friend-alice')"
+    )
+    server_name: str = Field(
+        default="Local Server",
+        description="Human-readable name for this server"
+    )
+    server_description: str = Field(
+        default="",
+        description="Optional description of this server"
+    )
+
     # ===== GENERATION =====
     auto_retry_enabled: bool = Field(
         default=True,
