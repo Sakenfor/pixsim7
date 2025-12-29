@@ -1,25 +1,54 @@
-﻿# PixSim7 Documentation
+# PixSim7 Documentation
 
-Start here:
-- `docs/getting-started/README.md` (setup + launcher)
-- `docs/repo-map.md` (repository structure)
-- `docs/architecture/CURRENT.md` (current architecture snapshot)
+## Quick Start
+- [Getting Started](./getting-started/README.md) - Setup, launcher, ports
+- [Architecture Overview](./architecture/README.md) - System design
+- [Repository Map](./repo-map.md) - Codebase structure
 
-## Key Areas
-- Backend patterns: `docs/backend/SERVICES.md`
-- Generation system: `docs/systems/generation/README.md`
-- Game systems: `docs/game-systems/README.md`
-- Plugins: `docs/plugins-and-extensibility/README.md`
-- Frontend: `docs/frontend/README.md`
-- Authentication: `docs/authentication/README.md` (storage abstraction, desktop support)
-- Ops/runbook: `docs/infrastructure/README.md` and `docs/database-and-logging/README.md`
+## Core Systems
+
+### Backend
+- [Infrastructure](./infrastructure/README.md) - Backend startup, services, middleware
+- [Database & Logging](./database-and-logging/README.md) - PostgreSQL, TimescaleDB, structured logs
+
+### Frontend
+- [Frontend Guide](./frontend/README.md) - Components, patterns, UI tasks
+- [UI Systems](./ui/README.md) - Overlays, HUD, positioning
+
+### Game
+- [Game Systems](./game-systems/README.md) - Core game mechanics
+- [Narrative Engine](./narrative/README.md) - Story runtime, interactions
+- [Stats & Systems](./stats-and-systems/README.md) - Relationship, social metrics
+
+## Features & Extensibility
+- [Plugins](./plugins-and-extensibility/README.md) - Plugin architecture, registry
+- [Features](./features/README.md) - Simulation, intimacy, automation
+- [Actions](./actions/README.md) - Action blocks, prompt engine
+- [Prompts](./prompts/README.md) - LLM prompt system, versioning
+
+## Security & Auth
+- [Authentication](./authentication/README.md) - Auth flows, storage abstraction, desktop support
+
+## Reference
+- [Controls](./controls/README.md) - Input handling
+- [Behavior System](./behavior_system/README.md) - AI behaviors
+- [Comedy Panels](./comedy-panels/README.md) - Comic panel system
+- [Decisions](./decisions/README.md) - Architecture decision records
+- [Walkthroughs](./walkthroughs/README.md) - Step-by-step guides
+
+## Analysis & Archives
+- [Audits](./audits-and-analysis/README.md) - Code audits, cleanup reports
+- [Archive](./archive/README.md) - Historical docs, task summaries
+
+---
 
 ## Conventions
-- Put new docs under the appropriate subfolder (avoid adding new top-level files in `docs/`).
-- Prefer `README.md` as the entry point for a folder.
-- Use `kebab-case.md` for new docs; avoid ALL_CAPS for new files.
-- If a doc is temporary working notes, place it in `docs/implementation/` or `docs/archive/`.
+- Place new docs in appropriate subfolder (avoid top-level files in `docs/`)
+- Use `README.md` as folder entry point
+- Use `kebab-case.md` for new files
+- Temporary notes go in `docs/implementation/` or `docs/archive/`
 
-## Searching
-- Fast keyword search: `rg "<term>" docs`
-
+## Search
+```bash
+rg "<term>" docs/
+```

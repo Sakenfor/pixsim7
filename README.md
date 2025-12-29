@@ -151,34 +151,17 @@ cd admin && npm install && npm run dev
 
 ## Documentation
 
-### Getting Started
-- **[Architecture Overview](./docs/architecture/README.md)** - System design and component overview **← Start here!**
-- **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Setup, workflows, and contribution guide
-- **[Setup](./docs/getting-started/SETUP.md)** - Detailed installation and configuration
-- **[AI_README.md](./AI_README.md)** - Guide for AI assistants working with the codebase
+### Quick Links
+- **[Full Documentation Index](./docs/README.md)** - Complete docs navigation
+- **[Architecture Overview](./docs/architecture/README.md)** - System design **← Start here!**
+- **[Getting Started](./docs/getting-started/README.md)** - Setup, launcher, ports
+- **[AI_README.md](./AI_README.md)** - Guide for AI assistants
+- **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Contribution guide
 
-### Backend
-- **[Backend README](./pixsim7/backend/main/README.md)** - Backend architecture
-- **[Services Documentation](./docs/backend/SERVICES.md)** - Service layer reference
-- **[Provider Account Strategy](./docs/PROVIDER_ACCOUNT_STRATEGY.md)** - Multi-account pooling
-- **[Redis & Workers](./pixsim7/backend/main/REDIS_AND_WORKERS_SETUP.md)** - Job queue setup
-
-### Frontend & Extensions
-- **[Admin Panel Guide](./docs/getting-started/ADMIN_PANEL.md)** - Web UI features
-- **[Chrome Extension](./chrome-extension/README.md)** - Browser integration
-- **[Android App](./apps/pixsim7-android/README.md)** - Native Android automation agent
-- **[Frontend Architecture](./frontend/README.md)** - Component library and design
-- **[Game Integration](./docs/NODE_EDITOR_DEVELOPMENT.md)** - Scene editor development
-
-### Security & Authentication
+### Key References
+- **[Backend](./pixsim7/backend/main/README.md)** | **[Frontend](./docs/frontend/README.md)** | **[Plugins](./docs/plugins-and-extensibility/README.md)**
+- **[Chrome Extension](./chrome-extension/README.md)** | **[Android App](./apps/pixsim7-android/README.md)**
 - **[Authentication](./docs/authentication/README.md)** - Auth flows, storage abstraction, desktop support
-
-### Operations
-- **[Launcher Documentation](./docs/getting-started/LAUNCHER.md)** - Single-click launcher
-- **[Port Configuration](./docs/getting-started/PORT_CONFIGURATION.md)** - Network and port reference
-- **[Logging Structure](./LOGGING_STRUCTURE.md)** - Structured logging specification
-
-Full documentation index in the original README section.
 
 ---
 
