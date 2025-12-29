@@ -11,6 +11,7 @@ Start here:
 - Game systems: `docs/game-systems/README.md`
 - Plugins: `docs/plugins-and-extensibility/README.md`
 - Frontend: `docs/frontend/README.md`
+- Authentication: `docs/authentication/README.md` (storage abstraction, desktop support)
 - Ops/runbook: `docs/infrastructure/README.md` and `docs/database-and-logging/README.md`
 
 ## Conventions

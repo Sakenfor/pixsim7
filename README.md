@@ -170,6 +170,9 @@ cd admin && npm install && npm run dev
 - **[Frontend Architecture](./frontend/README.md)** - Component library and design
 - **[Game Integration](./docs/NODE_EDITOR_DEVELOPMENT.md)** - Scene editor development
 
+### Security & Authentication
+- **[Authentication](./docs/authentication/README.md)** - Auth flows, storage abstraction, desktop support
+
 ### Operations
 - **[Launcher Documentation](./docs/getting-started/LAUNCHER.md)** - Single-click launcher
 - **[Port Configuration](./docs/getting-started/PORT_CONFIGURATION.md)** - Network and port reference
