@@ -36,9 +36,8 @@
 - [Decisions](./decisions/README.md) - Architecture decision records
 - [Walkthroughs](./walkthroughs/README.md) - Step-by-step guides
 
-## Analysis & Archives
+## Analysis
 - [Audits](./audits-and-analysis/README.md) - Code audits, cleanup reports
-- [Archive](./archive/README.md) - Historical docs, task summaries
 
 ---
 
