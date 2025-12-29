@@ -14,6 +14,96 @@ from pixsim7.backend.main.domain.providers import LlmProviderInstance
 logger = logging.getLogger(__name__)
 
 
+class InstanceConfigError(Exception):
+    """Raised when instance config validation fails."""
+    def __init__(self, provider_id: str, message: str):
+        self.provider_id = provider_id
+        self.message = message
+        super().__init__(f"[{provider_id}] {message}")
+
+
+def validate_instance_config(provider_id: str, config: dict) -> None:
+    """
+    Validate instance config for a specific provider type.
+
+    Args:
+        provider_id: The provider type (e.g., "cmd-llm", "openai-llm")
+        config: The configuration dict to validate
+
+    Raises:
+        InstanceConfigError: If validation fails
+    """
+    if not isinstance(config, dict):
+        raise InstanceConfigError(provider_id, "Config must be a dictionary")
+
+    if provider_id == "cmd-llm":
+        # cmd-llm requires 'command' field
+        if not config.get("command"):
+            raise InstanceConfigError(
+                provider_id,
+                "Config must include 'command' field with the CLI command to execute"
+            )
+        command = config["command"]
+        if not isinstance(command, str) or not command.strip():
+            raise InstanceConfigError(
+                provider_id,
+                "'command' must be a non-empty string"
+            )
+
+        # Validate optional 'args' field
+        if "args" in config:
+            args = config["args"]
+            if not isinstance(args, (str, list)):
+                raise InstanceConfigError(
+                    provider_id,
+                    "'args' must be a string or list of strings"
+                )
+            if isinstance(args, list) and not all(isinstance(a, str) for a in args):
+                raise InstanceConfigError(
+                    provider_id,
+                    "'args' list must contain only strings"
+                )
+
+        # Validate optional 'timeout' field
+        if "timeout" in config:
+            timeout = config["timeout"]
+            if not isinstance(timeout, (int, float)) or timeout <= 0:
+                raise InstanceConfigError(
+                    provider_id,
+                    "'timeout' must be a positive number (seconds)"
+                )
+
+    elif provider_id == "openai-llm":
+        # openai-llm: optional api_key and base_url
+        if "api_key" in config:
+            api_key = config["api_key"]
+            if not isinstance(api_key, str):
+                raise InstanceConfigError(
+                    provider_id,
+                    "'api_key' must be a string"
+                )
+        if "base_url" in config:
+            base_url = config["base_url"]
+            if not isinstance(base_url, str):
+                raise InstanceConfigError(
+                    provider_id,
+                    "'base_url' must be a string"
+                )
+
+    elif provider_id == "anthropic-llm":
+        # anthropic-llm: optional api_key
+        if "api_key" in config:
+            api_key = config["api_key"]
+            if not isinstance(api_key, str):
+                raise InstanceConfigError(
+                    provider_id,
+                    "'api_key' must be a string"
+                )
+
+    # Other providers: no specific validation (extensible)
+    # Add new provider validations here as needed
+
+
 class LlmInstanceService:
     """
     Service for managing LLM provider instances.
@@ -51,7 +141,13 @@ class LlmInstanceService:
 
         Returns:
             Created instance
+
+        Raises:
+            InstanceConfigError: If config validation fails
         """
+        # Validate config for this provider type
+        validate_instance_config(provider_id, config)
+
         instance = LlmProviderInstance(
             provider_id=provider_id,
             label=label,
@@ -127,10 +223,17 @@ class LlmInstanceService:
 
         Returns:
             Updated instance or None if not found
+
+        Raises:
+            InstanceConfigError: If config validation fails
         """
         instance = await self.get_instance(instance_id)
         if not instance:
             return None
+
+        # Validate config if it's being updated
+        if "config" in updates:
+            validate_instance_config(instance.provider_id, updates["config"])
 
         allowed_fields = {"label", "config", "description", "enabled", "priority"}
         for key, value in updates.items():

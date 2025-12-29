@@ -47,6 +47,10 @@ class PromptEditRequest(BaseModel):
         None,
         description="Optional generation ID to link this interaction to"
     )
+    instance_id: Optional[int] = Field(
+        None,
+        description="Optional LLM instance ID for provider-specific configuration (e.g., cmd-llm instances)"
+    )
 
 
 class PromptEditResponse(BaseModel):
@@ -152,7 +156,8 @@ async def edit_prompt(
             model_id=request.model_id,
             prompt_before=request.prompt_before,
             context=request.context,
-            generation_id=request.generation_id
+            generation_id=request.generation_id,
+            instance_id=request.instance_id,
         )
 
         return PromptEditResponse(**result)

@@ -3,10 +3,13 @@ LLM Provider Registry - manages available LLM providers for AI Hub
 
 Similar to the video provider registry but specialized for LLM operations.
 """
-from typing import Dict, Protocol
+from typing import TYPE_CHECKING, Dict, Optional, Protocol
 import logging
 
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError
+
+if TYPE_CHECKING:
+    from pixsim7.backend.main.domain.providers import ProviderAccount
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ class LlmProvider(Protocol):
         model_id: str,
         prompt_before: str,
         context: dict | None = None,
+        account: Optional["ProviderAccount"] = None,
         instance_config: dict | None = None,
     ) -> str:
         """
@@ -39,6 +43,7 @@ class LlmProvider(Protocol):
             model_id: Model to use (e.g., "gpt-4", "claude-sonnet-4")
             prompt_before: Original prompt to edit
             context: Optional context (generation metadata, user preferences, etc.)
+            account: Optional provider account with credentials
             instance_config: Optional config from LlmProviderInstance for
                 provider-specific settings (command, API key override, etc.)
 

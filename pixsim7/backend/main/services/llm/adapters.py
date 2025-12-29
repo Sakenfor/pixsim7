@@ -149,6 +149,15 @@ class OpenAiLlmProvider:
 
         except openai.AuthenticationError as e:
             raise ProviderAuthenticationError(self.provider_id, str(e))
+        except openai.RateLimitError as e:
+            logger.warning(f"OpenAI rate limit hit: {e}")
+            raise ProviderError(self.provider_id, f"Rate limit exceeded: {e}")
+        except openai.APIConnectionError as e:
+            logger.error(f"OpenAI connection error: {e}")
+            raise ProviderError(self.provider_id, f"Connection error: {e}")
+        except openai.APIStatusError as e:
+            logger.error(f"OpenAI API status error: {e.status_code} - {e}")
+            raise ProviderError(self.provider_id, f"API error ({e.status_code}): {e}")
         except Exception as e:
             logger.error(f"OpenAI prompt edit error: {e}")
             raise ProviderError(self.provider_id, str(e))
@@ -206,14 +215,15 @@ class AnthropicLlmProvider:
             )
 
         try:
-            client = anthropic.Anthropic(api_key=api_key)
+            # Use async client to avoid blocking event loop
+            client = anthropic.AsyncAnthropic(api_key=api_key)
 
             # Use shared prompt template helpers for consistency
             system_prompt = build_edit_prompt_system()
             user_message = build_edit_prompt_user(prompt_before, context)
 
-            # Call Claude API
-            response = client.messages.create(
+            # Call Claude API (async)
+            response = await client.messages.create(
                 model=model_id,
                 max_tokens=500,
                 temperature=0.7,
@@ -230,6 +240,15 @@ class AnthropicLlmProvider:
 
         except anthropic.AuthenticationError as e:
             raise ProviderAuthenticationError(self.provider_id, str(e))
+        except anthropic.RateLimitError as e:
+            logger.warning(f"Anthropic rate limit hit: {e}")
+            raise ProviderError(self.provider_id, f"Rate limit exceeded: {e}")
+        except anthropic.APIConnectionError as e:
+            logger.error(f"Anthropic connection error: {e}")
+            raise ProviderError(self.provider_id, f"Connection error: {e}")
+        except anthropic.APIStatusError as e:
+            logger.error(f"Anthropic API status error: {e.status_code} - {e}")
+            raise ProviderError(self.provider_id, f"API error ({e.status_code}): {e}")
         except Exception as e:
             logger.error(f"Anthropic prompt edit error: {e}")
             raise ProviderError(self.provider_id, str(e))

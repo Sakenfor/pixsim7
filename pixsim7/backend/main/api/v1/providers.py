@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import json
 from pathlib import Path
 
-from pixsim7.backend.main.api.dependencies import CurrentUser
+from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 # Import registry from providers domain (canonical location)
 from pixsim7.backend.main.domain.providers.registry import registry
 from pixsim7.backend.main.services.provider.base import Provider
@@ -584,18 +584,15 @@ class AIProviderSettings(BaseModel):
     llm_default_model: Optional[str] = Field(None, description="Default model to use")
 
 
-@router.get("/ai-providers/settings", response_model=AIProviderSettings)
-async def get_ai_provider_settings(user: CurrentUser):
+@router.get("/providers/ai-providers/settings", response_model=AIProviderSettings)
+async def get_ai_provider_settings(user: CurrentUser, db: DatabaseSession):
     """
     Get AI provider (LLM) settings for current user
 
     Returns user-specific API keys and default provider configuration for prompt editing and AI features.
     """
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
     from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
     from sqlalchemy import select
-
-    db = DatabaseSession()
 
     # Get user settings from database
     result = await db.execute(
@@ -626,10 +623,11 @@ async def get_ai_provider_settings(user: CurrentUser):
         )
 
 
-@router.patch("/ai-providers/settings", response_model=AIProviderSettings)
+@router.patch("/providers/ai-providers/settings", response_model=AIProviderSettings)
 async def update_ai_provider_settings(
     updates: AIProviderSettings,
     user: CurrentUser,
+    db: DatabaseSession,
 ):
     """
     Update AI provider settings for current user
@@ -637,11 +635,8 @@ async def update_ai_provider_settings(
     Updates user-specific API keys and default provider configuration.
     Settings are stored per-user in the database.
     """
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
     from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
     from sqlalchemy import select
-
-    db = DatabaseSession()
 
     # Get or create user settings
     result = await db.execute(
@@ -736,9 +731,10 @@ class LlmInstanceListResponse(BaseModel):
     instances: list[LlmInstanceResponse]
 
 
-@router.get("/llm-instances", response_model=LlmInstanceListResponse)
+@router.get("/providers/llm-instances", response_model=LlmInstanceListResponse)
 async def list_llm_instances(
     user: CurrentUser,
+    db: DatabaseSession,
     provider_id: Optional[str] = None,
     include_disabled: bool = False,
 ):
@@ -747,10 +743,8 @@ async def list_llm_instances(
 
     Returns all configured LLM provider instances, optionally filtered by provider.
     """
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
     from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
 
-    db = DatabaseSession()
     service = LlmInstanceService(db)
 
     instances = await service.list_instances(
@@ -776,34 +770,41 @@ async def list_llm_instances(
     )
 
 
-@router.post("/llm-instances", response_model=LlmInstanceResponse, status_code=201)
+@router.post("/providers/llm-instances", response_model=LlmInstanceResponse, status_code=201)
 async def create_llm_instance(
     data: LlmInstanceCreate,
     user: CurrentUser,
+    db: DatabaseSession,
 ):
     """
     Create a new LLM provider instance
 
     Admin only. Creates a new configuration instance for an LLM provider.
     """
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
-    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+    from pixsim7.backend.main.services.llm.instance_service import (
+        LlmInstanceService,
+        InstanceConfigError,
+    )
 
-    # TODO: Add admin check when roles are implemented
-    # if not user.is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
+    if not user.is_admin():
+        raise HTTPException(status_code=403, detail="Admin access required")
 
-    db = DatabaseSession()
     service = LlmInstanceService(db)
 
-    instance = await service.create_instance(
-        provider_id=data.provider_id,
-        label=data.label,
-        config=data.config,
-        description=data.description,
-        enabled=data.enabled,
-        priority=data.priority,
-    )
+    try:
+        instance = await service.create_instance(
+            provider_id=data.provider_id,
+            label=data.label,
+            config=data.config,
+            description=data.description,
+            enabled=data.enabled,
+            priority=data.priority,
+        )
+    except InstanceConfigError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid instance config: {e.message}"
+        )
 
     await db.commit()
 
@@ -820,16 +821,15 @@ async def create_llm_instance(
     )
 
 
-@router.get("/llm-instances/{instance_id}", response_model=LlmInstanceResponse)
+@router.get("/providers/llm-instances/{instance_id}", response_model=LlmInstanceResponse)
 async def get_llm_instance(
     instance_id: int,
     user: CurrentUser,
+    db: DatabaseSession,
 ):
     """Get a specific LLM provider instance"""
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
     from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
 
-    db = DatabaseSession()
     service = LlmInstanceService(db)
 
     instance = await service.get_instance(instance_id)
@@ -849,27 +849,37 @@ async def get_llm_instance(
     )
 
 
-@router.patch("/llm-instances/{instance_id}", response_model=LlmInstanceResponse)
+@router.patch("/providers/llm-instances/{instance_id}", response_model=LlmInstanceResponse)
 async def update_llm_instance(
     instance_id: int,
     data: LlmInstanceUpdate,
     user: CurrentUser,
+    db: DatabaseSession,
 ):
     """
     Update an LLM provider instance
 
     Admin only. Updates configuration for an existing instance.
     """
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
-    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+    from pixsim7.backend.main.services.llm.instance_service import (
+        LlmInstanceService,
+        InstanceConfigError,
+    )
 
-    # TODO: Add admin check when roles are implemented
+    if not user.is_admin():
+        raise HTTPException(status_code=403, detail="Admin access required")
 
-    db = DatabaseSession()
     service = LlmInstanceService(db)
 
     updates = data.model_dump(exclude_unset=True)
-    instance = await service.update_instance(instance_id, **updates)
+
+    try:
+        instance = await service.update_instance(instance_id, **updates)
+    except InstanceConfigError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid instance config: {e.message}"
+        )
 
     if not instance:
         raise HTTPException(status_code=404, detail="Instance not found")
@@ -889,22 +899,22 @@ async def update_llm_instance(
     )
 
 
-@router.delete("/llm-instances/{instance_id}", status_code=204)
+@router.delete("/providers/llm-instances/{instance_id}", status_code=204)
 async def delete_llm_instance(
     instance_id: int,
     user: CurrentUser,
+    db: DatabaseSession,
 ):
     """
     Delete an LLM provider instance
 
     Admin only. Permanently removes an instance configuration.
     """
-    from pixsim7.backend.main.api.dependencies import DatabaseSession
     from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
 
-    # TODO: Add admin check when roles are implemented
+    if not user.is_admin():
+        raise HTTPException(status_code=403, detail="Admin access required")
 
-    db = DatabaseSession()
     service = LlmInstanceService(db)
 
     deleted = await service.delete_instance(instance_id)

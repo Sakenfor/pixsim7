@@ -45,6 +45,7 @@ class AiHubService:
         prompt_before: str,
         context: dict | None = None,
         generation_id: int | None = None,
+        instance_id: int | None = None,
     ) -> dict:
         """
         Edit/refine a prompt using an LLM
@@ -56,6 +57,7 @@ class AiHubService:
             prompt_before: Original prompt to edit
             context: Optional context (generation metadata, user preferences)
             generation_id: Optional generation ID to link interaction to
+            instance_id: Optional LLM instance ID for provider-specific config
 
         Returns:
             Dict with:
@@ -133,13 +135,19 @@ class AiHubService:
         # Later, users can configure LLM accounts in the database
         account = await self._get_llm_account(user, provider_id)
 
+        # Get instance config if instance_id is provided
+        instance_config = None
+        if instance_id:
+            instance_config = await self._get_instance_config(instance_id, provider_id)
+
         # Call LLM provider to edit prompt
         try:
             prompt_after = await llm_provider.edit_prompt(
                 model_id=model_id,
                 prompt_before=prompt_before,
                 context=context,
-                account=account
+                account=account,
+                instance_config=instance_config,
             )
         except Exception as e:
             logger.error(f"LLM provider edit failed: {e}")
@@ -475,6 +483,44 @@ Return your suggestions as a JSON object following the specified schema."""
         # No account configured - will use environment API keys
         logger.debug(f"No account for {provider_id}, using environment API keys")
         return None
+
+    async def _get_instance_config(
+        self,
+        instance_id: int,
+        provider_id: str,
+    ) -> Optional[dict]:
+        """
+        Get instance config for a specific LLM instance.
+
+        Args:
+            instance_id: LLM instance ID
+            provider_id: Expected provider ID (for validation)
+
+        Returns:
+            Instance config dict if found and enabled, None otherwise
+        """
+        from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+
+        service = LlmInstanceService(self.db)
+        instance = await service.get_instance(instance_id)
+
+        if not instance:
+            logger.warning(f"LLM instance {instance_id} not found")
+            return None
+
+        if not instance.enabled:
+            logger.warning(f"LLM instance {instance_id} is disabled")
+            return None
+
+        if instance.provider_id != provider_id:
+            logger.warning(
+                f"LLM instance {instance_id} provider mismatch: "
+                f"expected {provider_id}, got {instance.provider_id}"
+            )
+            return None
+
+        logger.debug(f"Using LLM instance {instance_id} config for {provider_id}")
+        return instance.config
 
     def get_available_providers(self) -> list[dict]:
         """
