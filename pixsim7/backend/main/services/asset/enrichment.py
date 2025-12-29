@@ -14,7 +14,9 @@ from pixsim7.backend.main.domain import (
     Asset,
     User,
     MediaType,
+    SyncStatus,
 )
+from pixsim7.backend.main.domain.enums import OperationType
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
@@ -63,6 +65,9 @@ class AssetEnrichmentService:
         """
         Use provider hook to extract embedded assets (images/prompts) and
         register them as provider-agnostic Asset rows (REMOTE).
+
+        Uses create_lineage_links_with_metadata to preserve sequence_order,
+        time ranges, and frame metadata.
         """
         from pixsim7.backend.main.domain.providers.registry import registry
         from pixsim_logging import get_logger
@@ -75,7 +80,7 @@ class AssetEnrichmentService:
                 asset.provider_asset_id,
                 asset.media_metadata or None,
             )
-        except AttributeError as e:
+        except AttributeError:
             # Provider doesn't implement extract_embedded_assets method
             logger.debug(
                 "embedded_extraction_not_supported",
@@ -100,13 +105,29 @@ class AssetEnrichmentService:
         if not embedded:
             return
 
-        # Insert child assets for media types (skip pure prompts for now)
         from pixsim7.backend.main.services.asset.asset_factory import (
             add_asset,
-            create_lineage_links,
+            create_lineage_links_with_metadata,
         )
-        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE, DERIVATION, TRANSITION_INPUT
-        from pixsim7.backend.main.domain.enums import OperationType
+        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE, DERIVATION
+
+        # Extract create_mode ONCE at the start for stable operation_type
+        meta = asset.media_metadata or {}
+        customer_paths = meta.get("customer_paths", {})
+        create_mode = customer_paths.get("create_mode") or meta.get("create_mode", "i2v")
+
+        # Determine operation_type ONCE based on create_mode
+        CREATE_MODE_TO_OPERATION = {
+            "i2v": OperationType.IMAGE_TO_VIDEO,
+            "t2v": OperationType.TEXT_TO_VIDEO,
+            "extend": OperationType.VIDEO_EXTEND,
+            "transition": OperationType.VIDEO_TRANSITION,
+            "fusion": OperationType.FUSION,
+        }
+        operation_type = CREATE_MODE_TO_OPERATION.get(create_mode, OperationType.IMAGE_TO_VIDEO)
+
+        # Collect all inputs for batch lineage creation
+        parent_inputs = []
 
         for idx, item in enumerate(embedded):
             if item.get("type") not in {"image", "video"}:
@@ -117,14 +138,10 @@ class AssetEnrichmentService:
                 continue
 
             provider_asset_id = item.get("provider_asset_id") or f"{asset.provider_asset_id}_emb_{idx}"
-
             media_type = MediaType.IMAGE if item.get("media_type") == "image" else MediaType.VIDEO
+            item_metadata = item.get("media_metadata")
 
-            media_metadata = item.get("media_metadata")
-
-            # Canonical direction: video (child) generated from images (parents).
-            # Here we're creating the parent image assets AFTER the video exists, so we
-            # attach lineage with child=video, parent=image using the shared helper.
+            # Create parent asset
             newly_created = await add_asset(
                 self.db,
                 user_id=user.id,
@@ -138,33 +155,110 @@ class AssetEnrichmentService:
                 duration_sec=None,
                 sync_status=SyncStatus.REMOTE,
                 source_generation_id=None,
-                media_metadata=media_metadata,
+                media_metadata=item_metadata,
             )
 
-            # Relation type: allow explicit override from item metadata first.
-            relation_type = item.get("relation_type")
-            if not relation_type:
-                if media_type == MediaType.IMAGE:
-                    relation_type = SOURCE_IMAGE
-                else:
-                    relation_type = DERIVATION
+            # Get role from item or infer from create_mode
+            role = self._get_role_from_item(item, create_mode, media_type)
 
-            # Operation type: default to IMAGE_TO_VIDEO but allow item override.
-            op_type = OperationType.IMAGE_TO_VIDEO
-            op_hint = item.get("operation_type")
-            if isinstance(op_hint, str):
-                try:
-                    op_type = OperationType(op_hint)
-                except ValueError:
-                    pass
+            # Extract sequence_order from item metadata
+            sequence_order = self._extract_sequence_order(item, idx)
 
-            await create_lineage_links(
+            # Build input entry with full metadata
+            input_entry = {
+                "role": role,
+                "asset": f"asset:{newly_created.id}",
+                "sequence_order": sequence_order,
+            }
+
+            # Extract time metadata from durations if present (for transitions)
+            item_meta = item_metadata or {}
+            transition_meta = item_meta.get("pixverse_transition", {})
+            durations = transition_meta.get("durations", [])
+            if durations and idx < len(durations):
+                input_entry["time"] = {
+                    "start": sum(durations[:idx]),
+                    "end": sum(durations[:idx + 1]),
+                }
+
+            parent_inputs.append(input_entry)
+
+        # Create lineage with full metadata in one call
+        if parent_inputs:
+            await create_lineage_links_with_metadata(
                 self.db,
                 child_asset_id=asset.id,
-                parent_asset_ids=[newly_created.id],
-                relation_type=relation_type,
-                operation_type=op_type,
+                parent_inputs=parent_inputs,
+                operation_type=operation_type,
             )
+
+    def _get_role_from_item(
+        self,
+        item: dict,
+        create_mode: str,
+        media_type: MediaType,
+    ) -> str:
+        """
+        Extract role from item or infer from create_mode.
+
+        Priority:
+        1. Explicit relation_type in item
+        2. Infer from create_mode
+        3. Default based on media_type
+        """
+        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE
+
+        # Map relation_type to role
+        RELATION_TO_ROLE = {
+            "SOURCE_IMAGE": "source_image",
+            "SOURCE_VIDEO": "source_video",
+            "TRANSITION_INPUT": "transition_input",
+            "COMPOSITION_MAIN_CHARACTER": "main_character",
+            "COMPOSITION_COMPANION": "companion",
+            "COMPOSITION_ENVIRONMENT": "environment",
+            "COMPOSITION_STYLE_REFERENCE": "style_reference",
+        }
+
+        # Check explicit relation_type from extractor
+        relation_type = item.get("relation_type")
+        if relation_type and relation_type in RELATION_TO_ROLE:
+            return RELATION_TO_ROLE[relation_type]
+
+        # Infer from create_mode
+        CREATE_MODE_TO_ROLE = {
+            "i2v": "source_image",
+            "extend": "source_video",
+            "transition": "transition_input",
+            "fusion": "composition_reference",
+        }
+        if create_mode in CREATE_MODE_TO_ROLE:
+            return CREATE_MODE_TO_ROLE[create_mode]
+
+        # Default based on media type
+        if media_type == MediaType.IMAGE:
+            return "source_image"
+        return "source"
+
+    def _extract_sequence_order(self, item: dict, default_idx: int) -> int:
+        """
+        Extract sequence_order from item metadata.
+
+        Looks in pixverse_transition.image_index, pixverse_fusion.image_index,
+        or falls back to the default index.
+        """
+        item_meta = item.get("media_metadata") or {}
+
+        # Try transition metadata
+        transition_meta = item_meta.get("pixverse_transition", {})
+        if "image_index" in transition_meta:
+            return transition_meta["image_index"]
+
+        # Try fusion metadata
+        fusion_meta = item_meta.get("pixverse_fusion", {})
+        if "image_index" in fusion_meta:
+            return fusion_meta["image_index"]
+
+        return default_idx
 
     async def create_asset_from_paused_frame(
         self,
@@ -211,7 +305,6 @@ class AssetEnrichmentService:
         from pixsim7.backend.main.services.asset.frame_extractor import extract_frame_with_metadata
         from pixsim7.backend.main.services.asset.asset_factory import create_lineage_links
         from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME
-        from pixsim7.backend.main.domain.enums import OperationType
 
         # Get video asset with authorization
         video_asset = await self.get_asset_for_user(video_asset_id, user)
@@ -304,7 +397,7 @@ class AssetEnrichmentService:
                 child_asset_id=asset.id,
                 parent_asset_ids=[video_asset.id],
                 relation_type=PAUSED_FRAME,
-                operation_type=OperationType.IMAGE_TO_VIDEO,  # Reverse direction for UI
+                operation_type=OperationType.FRAME_EXTRACTION,  # Frame extracted from video
             )
 
             # Update user storage

@@ -49,6 +49,7 @@ class LineageRefreshService:
         provider_id: Optional[str] = None,
         clear_existing: bool = True,
         include_generation_inputs: bool = True,
+        create_synthetic_generation: bool = False,
     ) -> Dict[str, Any]:
         """
         Refresh lineage for a single asset.
@@ -56,6 +57,7 @@ class LineageRefreshService:
         Attempts to rebuild lineage from multiple sources:
         1. Provider metadata (embedded assets)
         2. Generation.inputs (if asset has source_generation_id)
+        3. Create synthetic Generation (if asset has no source_generation_id)
 
         Args:
             asset_id: ID of the child asset whose lineage should be rebuilt.
@@ -65,6 +67,9 @@ class LineageRefreshService:
                 child are deleted before rebuild to avoid duplicates.
             include_generation_inputs: When True, also build lineage from
                 Generation.inputs if asset has source_generation_id.
+            create_synthetic_generation: When True and asset has no
+                source_generation_id, create a synthetic Generation record
+                from the asset's media_metadata.
 
         Returns:
             Summary dict with counts and basic identifiers.
@@ -112,6 +117,28 @@ class LineageRefreshService:
                 asset.source_generation_id,
             )
 
+        # Strategy 3: Create synthetic Generation if asset has no source_generation_id
+        synthetic_generation_id = None
+        if create_synthetic_generation and not asset.source_generation_id:
+            from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
+
+            synthetic_service = SyntheticGenerationService(self.db)
+            try:
+                generation = await synthetic_service.create_for_asset(asset, user)
+                if generation:
+                    synthetic_generation_id = generation.id
+                    logger.info(
+                        "lineage_refresh_synthetic_generation_created",
+                        asset_id=asset.id,
+                        generation_id=generation.id,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "lineage_refresh_synthetic_generation_failed",
+                    asset_id=asset.id,
+                    error=str(e),
+                )
+
         # Count new edges for reporting.
         stmt_count = select(AssetLineage).where(AssetLineage.child_asset_id == asset.id)
         result_edges = await self.db.execute(stmt_count)
@@ -124,9 +151,10 @@ class LineageRefreshService:
             removed_edges=removed_edges,
             new_edges=len(edges),
             from_generation_inputs=generation_lineage_count,
+            synthetic_generation_id=synthetic_generation_id,
         )
 
-        return {
+        result = {
             "asset_id": asset.id,
             "provider_id": asset.provider_id,
             "removed_edges": removed_edges,
@@ -134,6 +162,11 @@ class LineageRefreshService:
             "from_generation_inputs": generation_lineage_count,
             "status": "ok",
         }
+
+        if synthetic_generation_id:
+            result["synthetic_generation_id"] = synthetic_generation_id
+
+        return result
 
     async def _build_lineage_from_generation(
         self,
@@ -234,6 +267,7 @@ class LineageRefreshService:
         provider_id: Optional[str] = None,
         clear_existing: bool = True,
         include_generation_inputs: bool = True,
+        create_synthetic_generation: bool = False,
     ) -> Dict[str, Any]:
         """
         Refresh lineage for multiple assets by ID list.
@@ -243,6 +277,8 @@ class LineageRefreshService:
             provider_id: Optional provider filter, see refresh_asset_lineage.
             clear_existing: Whether to clear existing edges before rebuild.
             include_generation_inputs: Whether to include lineage from Generation.inputs.
+            create_synthetic_generation: Whether to create synthetic Generation
+                records for assets without source_generation_id.
 
         Returns:
             Aggregate summary with per-asset results.
@@ -254,6 +290,7 @@ class LineageRefreshService:
                 provider_id=provider_id,
                 clear_existing=clear_existing,
                 include_generation_inputs=include_generation_inputs,
+                create_synthetic_generation=create_synthetic_generation,
             )
             results.append(res)
 
