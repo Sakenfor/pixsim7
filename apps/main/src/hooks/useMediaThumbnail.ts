@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BACKEND_BASE } from '../lib/api/client';
 import { useMediaSettingsStore } from '../stores/mediaSettingsStore';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
+import { authService } from '@lib/auth/authService';
 
 export interface UseMediaThumbnailOptions {
   /**
@@ -196,7 +197,7 @@ export function useMediaThumbnailFull(
       ? `${BACKEND_BASE}${selectedUrl}`
       : `${BACKEND_BASE}/${selectedUrl}`;
 
-    const token = localStorage.getItem('access_token');
+    const token = authService.getStoredToken();
 
     // If no token, fall back to using the URL directly
     if (!token) {

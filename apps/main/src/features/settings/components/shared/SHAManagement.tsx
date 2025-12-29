@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
+import { authService } from '@lib/auth/authService';
 
 interface SHAStats {
   total_assets: number;
@@ -36,7 +37,7 @@ export function SHAManagement() {
     setError(null);
     try {
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-      const token = localStorage.getItem('access_token');
+      const token = authService.getStoredToken();
 
       const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/sha-stats`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
@@ -61,7 +62,7 @@ export function SHAManagement() {
     setResult(null);
     try {
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-      const token = localStorage.getItem('access_token');
+      const token = authService.getStoredToken();
 
       const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/backfill-sha?limit=100`, {
         method: 'POST',

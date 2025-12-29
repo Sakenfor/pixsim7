@@ -18,6 +18,7 @@ import { computeFileSha256 } from '@/lib/utils';
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
+import { authService } from '@lib/auth/authService';
 
 const LOCAL_SOURCE: SourceInfo = {
   id: 'local-fs',
@@ -227,7 +228,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         // Call batch API to check which hashes exist
         if (hashesWithKeys.length > 0) {
           const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-          const token = localStorage.getItem('access_token');
+          const token = authService.getStoredToken();
           const headers: HeadersInit = { 'Content-Type': 'application/json' };
           if (token) {
             headers['Authorization'] = `Bearer ${token}`;
@@ -437,8 +438,8 @@ export function useLocalFoldersController(): LocalFoldersController {
       }
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
-      // Get auth token from localStorage
-      const token = localStorage.getItem('access_token');
+      // Get auth token
+      const token = authService.getStoredToken();
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;

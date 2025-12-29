@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
+import { authService } from '@lib/auth/authService';
 
 interface StorageSyncStats {
   total_assets: number;
@@ -35,7 +36,7 @@ export function StorageSync() {
     setError(null);
     try {
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-      const token = localStorage.getItem('access_token');
+      const token = authService.getStoredToken();
 
       const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/storage-sync-stats`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
@@ -60,7 +61,7 @@ export function StorageSync() {
     setResult(null);
     try {
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-      const token = localStorage.getItem('access_token');
+      const token = authService.getStoredToken();
 
       const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/bulk-sync-storage?limit=50`, {
         method: 'POST',

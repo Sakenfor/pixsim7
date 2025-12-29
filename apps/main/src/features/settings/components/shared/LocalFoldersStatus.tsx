@@ -10,6 +10,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useLocalFolders, type LocalAsset } from '@/features/assets/stores/localFoldersStore';
 import { useAuthStore } from '@/stores/authStore';
 import { computeFileSha256 } from '@/lib/utils';
+import { authService } from '@lib/auth/authService';
 
 export function LocalFoldersStatus() {
   const supported = useLocalFolders((s) => s.supported);
@@ -84,7 +85,7 @@ export function LocalFoldersStatus() {
     if (computedHashes.length > 0) {
       try {
         const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-        const token = localStorage.getItem('access_token');
+        const token = authService.getStoredToken();
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;

@@ -7,6 +7,7 @@ import { getAccounts } from '@features/providers';
 import type { ProviderAccount } from '@features/providers';
 import { automationService } from '@features/automation';
 import { API_BASE_URL } from '@lib/api/client';
+import { authService } from '@lib/auth/authService';
 
 interface PresetFormProps {
   preset?: AppActionPreset;
@@ -198,7 +199,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
         return;
       }
 
-      const token = localStorage.getItem('access_token');
+      const token = authService.getStoredToken();
       const response = await fetch(`${API_BASE_URL}/automation/devices/${device.id}/ui-dump`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });

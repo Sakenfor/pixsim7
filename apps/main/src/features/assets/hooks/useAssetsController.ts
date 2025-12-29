@@ -13,6 +13,7 @@ import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
 import { createAssetActions } from '../lib/assetCardActions';
 import { useAssetSettingsStore } from '@/stores/assetSettingsStore';
+import { authService } from '@lib/auth/authService';
 
 const SESSION_KEY = 'assets_filters';
 
@@ -187,7 +188,7 @@ export function useAssetsController() {
         ? `${BACKEND_BASE}${candidate}`
         : `${BACKEND_BASE}/${candidate}`;
 
-      const token = localStorage.getItem('access_token');
+      const token = authService.getStoredToken();
       if (!token) {
         setViewerSrc(fullUrl);
         return;

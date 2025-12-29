@@ -16,6 +16,7 @@
  */
 
 import { useServerManagerStore } from '@/stores/serverManagerStore';
+import { authService } from '@lib/auth/authService';
 
 // =============================================================================
 // Types
@@ -166,9 +167,9 @@ export function migrateExistingAuth() {
     return;
   }
 
-  // Check for legacy token
-  const legacyToken = localStorage.getItem('access_token');
-  const legacyUser = localStorage.getItem('user');
+  // Check for legacy token (use authService for abstracted access)
+  const legacyToken = authService.getStoredToken();
+  const legacyUser = authService.getStoredUser();
 
   if (legacyToken) {
     // Migrate to server-specific token
@@ -177,17 +178,12 @@ export function migrateExistingAuth() {
   }
 
   if (legacyUser) {
-    try {
-      const user = JSON.parse(legacyUser);
-      store.updateServerAccount(activeServerId, {
-        serverId: activeServerId,
-        userId: user.id,
-        username: user.username,
-        email: user.email,
-      });
-      console.log('[multiServerClient] Migrated user to server:', activeServerId);
-    } catch {
-      // Ignore parse errors
-    }
+    store.updateServerAccount(activeServerId, {
+      serverId: activeServerId,
+      userId: legacyUser.id,
+      username: legacyUser.username,
+      email: legacyUser.email,
+    });
+    console.log('[multiServerClient] Migrated user to server:', activeServerId);
   }
 }
