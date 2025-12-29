@@ -1,125 +1,23 @@
 /**
  * Romance Gizmo Pack - Romance and sensual touch tools
  * Registers romance-specific interactive tools and gizmos for sensual touch gameplay
+ *
+ * Note: caress and feather tools are loaded dynamically from the romance plugin.
+ * Only tools not yet migrated to plugin manifests are defined here.
  */
 
 import {
   registerGizmo,
   registerTool,
-  getTool,
   type GizmoDefinition,
   type InteractiveTool,
 } from '@pixsim7/scene.gizmos';
+import { getUnlockedPluginTools } from '@/lib/game/gizmos';
 import { BodyMapGizmo } from './components/BodyMapGizmo';
 
 // ============================================================================
-// Romance Interactive Tools
+// Romance Interactive Tools (static definitions for tools not yet in plugins)
 // ============================================================================
-
-/**
- * Caress Tool - Gentle, sensual stroking
- */
-export const caressTool: InteractiveTool = {
-  id: 'caress',
-  type: 'caress',
-
-  visual: {
-    model: 'hand',
-    baseColor: 'rgba(255, 180, 200, 0.6)',
-    activeColor: 'rgba(255, 100, 150, 0.9)',
-    glow: true,
-    trail: true,
-    particles: {
-      type: 'hearts',
-      density: 0.7,
-      color: '#FF69B4',
-      size: 12,
-      lifetime: 2000,
-      velocity: { x: 0, y: -2, z: 0 },
-    },
-  },
-
-  physics: {
-    pressure: 0.4,  // Light touch
-    speed: 0.3,     // Slow movement
-    pattern: 'circular',
-  },
-
-  feedback: {
-    haptic: {
-      type: 'wave',
-      intensity: 0.4,
-      duration: 150,
-      frequency: 2,
-    },
-    npcReaction: {
-      expression: 'pleasure',
-      vocalization: 'sigh',
-      intensity: 0.6,
-    },
-    trail: {
-      type: 'sparkle',
-      color: 'rgba(255, 150, 200, 0.5)',
-      width: 15,
-      lifetime: 2500,
-    },
-  },
-};
-
-/**
- * Feather Tool - Teasing, ticklish touch
- */
-export const featherTool: InteractiveTool = {
-  id: 'feather',
-  type: 'tease',
-
-  visual: {
-    model: 'feather',
-    baseColor: 'rgba(255, 255, 255, 0.8)',
-    activeColor: 'rgba(200, 150, 255, 0.9)',
-    glow: false,
-    trail: true,
-    particles: {
-      type: 'petals',
-      density: 0.5,
-      color: '#FFE4E1',
-      size: 8,
-      lifetime: 1800,
-      velocity: { x: 0, y: -1, z: 0 },
-    },
-  },
-
-  physics: {
-    pressure: 0.2,  // Very light
-    speed: 0.6,     // Medium-fast
-    pattern: 'zigzag',
-  },
-
-  feedback: {
-    haptic: {
-      type: 'tickle',
-      intensity: 0.3,
-      duration: 80,
-      frequency: 5,
-    },
-    npcReaction: {
-      expression: 'delight',
-      vocalization: 'giggle',
-      intensity: 0.5,
-    },
-    trail: {
-      type: 'fade',
-      color: 'rgba(255, 255, 255, 0.4)',
-      width: 10,
-      lifetime: 1500,
-    },
-  },
-
-  constraints: {
-    minPressure: 0.1,
-    maxSpeed: 0.8,
-  },
-};
 
 /**
  * Silk Tool - Smooth, luxurious touch
@@ -384,33 +282,20 @@ export const bodyMapGizmo: GizmoDefinition = {
 // Auto-register all romance tools and gizmos
 // ============================================================================
 
-/**
- * Register a tool if not already registered (e.g., by dynamic plugin loader)
- * This allows plugin-defined tools to take precedence over static fallbacks.
- */
-function registerToolIfNotExists(tool: InteractiveTool): void {
-  if (!getTool(tool.id)) {
-    registerTool(tool);
-  }
-}
-
 registerGizmo(bodyMapGizmo);
 
-// Note: caress and feather may be loaded dynamically from the romance plugin.
-// These static definitions serve as fallbacks when running without backend.
-registerToolIfNotExists(caressTool);
-registerToolIfNotExists(featherTool);
-registerToolIfNotExists(silkTool);
-registerToolIfNotExists(pleasureTool);
-registerToolIfNotExists(handTool3D);
+// Register static tool definitions (tools not yet migrated to plugin manifests)
+// Note: caress and feather are loaded dynamically from the romance plugin
+registerTool(silkTool);
+registerTool(pleasureTool);
+registerTool(handTool3D);
 
 // ============================================================================
 // Helper exports
 // ============================================================================
 
+// Static tools only - caress and feather come from plugin
 export const romanceTools = [
-  caressTool,
-  featherTool,
   silkTool,
   pleasureTool,
   handTool3D,
@@ -418,11 +303,10 @@ export const romanceTools = [
 
 /**
  * Get tools unlocked at specific relationship levels
+ * Note: Plugin tools (caress, feather) have unlock levels in their manifest metadata
  */
 export const toolUnlockLevels = {
   touch: 0,        // Always available (from base registry)
-  caress: 10,      // Unlocked at level 10
-  feather: 20,     // Unlocked at level 20
   silk: 40,        // Unlocked at level 40
   temperature: 60, // Unlocked at level 60 (from base registry)
   pleasure: 80,    // Unlocked at level 80
@@ -431,15 +315,23 @@ export const toolUnlockLevels = {
 
 /**
  * Get tools available at given relationship level
+ * Combines static tools with dynamically loaded plugin tools
  */
 export function getAvailableTools(relationshipLevel: number): InteractiveTool[] {
-  const allTools = [
-    ...romanceTools,
-    // Base tools are already registered, no need to import
-  ];
-
-  return allTools.filter(tool => {
+  // Filter static tools by unlock level
+  const staticTools = romanceTools.filter(tool => {
     const unlockLevel = toolUnlockLevels[tool.id as keyof typeof toolUnlockLevels] || 0;
     return relationshipLevel >= unlockLevel;
   });
+
+  // Get plugin tools (caress, feather, etc.) filtered by their manifest unlock levels
+  const pluginTools = getUnlockedPluginTools(relationshipLevel);
+
+  // Combine and deduplicate by tool ID
+  const toolMap = new Map<string, InteractiveTool>();
+  for (const tool of [...staticTools, ...pluginTools]) {
+    toolMap.set(tool.id, tool);
+  }
+
+  return Array.from(toolMap.values());
 }
