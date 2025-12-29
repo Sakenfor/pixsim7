@@ -106,13 +106,25 @@ export {
   createInventoryEffect,
   createEventEffect,
   parseNpcKey,
+  parseNpcPairKey,
+  isNpcPairKey,
+  parsePlayerKey,
+  isPlayerKey,
+  parseNetworkKey,
+  isNetworkKey,
+  getStatsKeyType,
   parseArcKey,
   parseQuestKey,
   formatEffect,
   validateEffect,
 } from './relationships/effects';
 
-export type { EdgeEffect } from './relationships/effects';
+export type {
+  EdgeEffect,
+  ParsedNpcPair,
+  ParsedNetworkPath,
+  StatsKeyType,
+} from './relationships/effects';
 
 // ===== Generation =====
 export {

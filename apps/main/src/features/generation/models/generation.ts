@@ -22,13 +22,13 @@ export type { OperationType };
 export type GenerationStatus = ApiGenerationStatus | 'queued';
 
 /**
- * API relationship reference (id + optional metadata).
- * Used for embedded relationships in API responses like account, asset, user, workspace.
+ * Embedded entity reference in API responses.
+ * Used for linked entities like account, asset, user, workspace in API payloads.
  *
  * Note: This is distinct from EntityRef in @pixsim7/shared.types which is a
  * canonical string format (e.g., "asset:123", "npc:456") for inter-system references.
  */
-export interface RelationshipRef {
+export interface EmbeddedRef {
   id: number;
   type?: string;
   meta?: Record<string, unknown> | null;
@@ -74,14 +74,14 @@ export interface GenerationModel {
   inputs: readonly Record<string, unknown>[];
   reproducibleHash: string | null;
 
-  // Relationships (API refs)
-  account: RelationshipRef | null;
+  // Embedded entity references from API
+  account: EmbeddedRef | null;
   accountEmail: string | null;
-  asset: RelationshipRef | null;
+  asset: EmbeddedRef | null;
   assetId: number | null;
-  user: RelationshipRef | null;
-  workspace: RelationshipRef | null;
-  parentGeneration: RelationshipRef | null;
+  user: EmbeddedRef | null;
+  workspace: EmbeddedRef | null;
+  parentGeneration: EmbeddedRef | null;
 }
 
 // ============================================================================

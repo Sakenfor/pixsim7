@@ -223,6 +223,99 @@ export function parseNpcKey(key: string): NpcId | null {
 }
 
 /**
+ * Parsed NPC pair info
+ */
+export interface ParsedNpcPair {
+  npc1: NpcId;
+  npc2: NpcId;
+}
+
+/**
+ * Parse an npcPair key to extract both NPC IDs
+ * Format: "npcPair:1:2" (IDs are sorted, so npc1 < npc2)
+ */
+export function parseNpcPairKey(key: string): ParsedNpcPair | null {
+  const match = key.match(/^npcPair:(\d+):(\d+)$/);
+  if (!match) return null;
+
+  const id1 = parseInt(match[1], 10);
+  const id2 = parseInt(match[2], 10);
+
+  if (!Number.isFinite(id1) || !Number.isFinite(id2)) return null;
+  if (id1 < 0 || id2 < 0) return null;
+
+  return { npc1: id1 as NpcId, npc2: id2 as NpcId };
+}
+
+/**
+ * Check if a key is an npcPair key
+ */
+export function isNpcPairKey(key: string): boolean {
+  return /^npcPair:\d+:\d+$/.test(key);
+}
+
+/**
+ * Parse a player key to extract player ID
+ * Format: "player:alice"
+ */
+export function parsePlayerKey(key: string): string | null {
+  const match = key.match(/^player:(.+)$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Check if a key is a player key
+ */
+export function isPlayerKey(key: string): boolean {
+  return key.startsWith('player:') && key.length > 7;
+}
+
+/**
+ * Parsed network path info
+ */
+export interface ParsedNetworkPath {
+  fromNpcId: NpcId;
+  toNpcId: NpcId;
+}
+
+/**
+ * Parse a network path key to extract both NPC IDs
+ * Format: "network.npc:1.npc:2"
+ */
+export function parseNetworkKey(key: string): ParsedNetworkPath | null {
+  const match = key.match(/^network\.npc:(\d+)\.npc:(\d+)$/);
+  if (!match) return null;
+
+  const id1 = parseInt(match[1], 10);
+  const id2 = parseInt(match[2], 10);
+
+  if (!Number.isFinite(id1) || !Number.isFinite(id2)) return null;
+  if (id1 < 0 || id2 < 0) return null;
+
+  return { fromNpcId: id1 as NpcId, toNpcId: id2 as NpcId };
+}
+
+/**
+ * Check if a key is a network path key
+ */
+export function isNetworkKey(key: string): boolean {
+  return /^network\.npc:\d+\.npc:\d+$/.test(key);
+}
+
+/**
+ * Determine the type of stats key
+ */
+export type StatsKeyType = 'npc' | 'npcPair' | 'player' | 'network' | 'unknown';
+
+export function getStatsKeyType(key: string): StatsKeyType {
+  if (key.startsWith('npc:') && /^npc:\d+$/.test(key)) return 'npc';
+  if (isNpcPairKey(key)) return 'npcPair';
+  if (isPlayerKey(key)) return 'player';
+  if (isNetworkKey(key)) return 'network';
+  return 'unknown';
+}
+
+/**
  * Parse an arc key to extract arc ID
  */
 export function parseArcKey(key: string): string | null {
