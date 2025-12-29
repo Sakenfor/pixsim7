@@ -1,12 +1,35 @@
 /**
  * Game DTO types for PixSim7 game systems
  * Shared between frontend and game-core
+ *
+ * ## Type Sources
+ *
+ * This file contains two categories of types:
+ *
+ * 1. **API DTOs (aliased from OpenAPI)**: Types that match backend Pydantic models.
+ *    These are aliased from `openapi.generated.ts` to avoid duplication.
+ *    Look for: `export type Foo = ApiComponents['schemas']['Foo']`
+ *
+ * 2. **Frontend-only types**: Types used only in frontend/game-core that have no
+ *    backend equivalent. These are defined directly here.
+ *    Look for: `// [frontend-only]` comments
+ *
+ * ## Avoiding Drift
+ *
+ * When adding new types, check if they exist in OpenAPI first:
+ *   grep "readonly YourTypeName:" packages/shared/types/src/openapi.generated.ts
+ *
+ * If they do, alias them instead of duplicating.
+ *
+ * TODO: Add a lint rule or test to detect when a manually-defined interface
+ * shares a name with an OpenAPI schema (drift detection).
  */
 
 import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
+import type { components as ApiComponents } from './openapi.generated';
 
 // ===================
-// Spatial Model Types
+// Spatial Model Types [frontend-only]
 // ===================
 
 /**
@@ -157,7 +180,7 @@ export interface SpatialObject {
 }
 
 // ===================
-// Generic GameObject Types
+// Generic GameObject Types [frontend-only]
 // ===================
 
 /**
@@ -426,29 +449,22 @@ export function isTriggerObject(obj: GameObject): obj is TriggerObject {
 }
 
 // ===================
-// Location Types
+// Location Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export interface GameLocationSummary {
-  id: LocationId;
-  name: string;
-  asset_id?: number | null;
-  default_spawn?: string | null;
-}
+export type GameLocationSummary = ApiComponents['schemas']['GameLocationSummary'];
+export type GameLocationDetail = ApiComponents['schemas']['GameLocationDetail'];
+export type GameHotspotDTO = ApiComponents['schemas']['GameHotspotDTO'];
 
-export interface GameHotspotDTO {
-  id?: number;
-  object_name: string;
-  hotspot_id: string;
-  linked_scene_id?: number | null;
-  meta?: Record<string, unknown> | null;
-}
+// ----- Frontend-only interaction config types -----
 
+/** [frontend-only] NPC talk interaction configuration */
 export interface NpcTalkConfig {
   npcId?: number | null; // Optional override; else use assigned NPC
   preferredSceneId?: number | null;
 }
 
+/** [frontend-only] Pickpocket interaction configuration (not the API request) */
 export interface PickpocketConfig {
   baseSuccessChance: number;
   detectionChance: number;
@@ -457,7 +473,7 @@ export interface PickpocketConfig {
 }
 
 /**
- * NPC slot interactions using plugin-based format
+ * [frontend-only] NPC slot interactions using plugin-based format
  * Each key is an interaction plugin ID (e.g., 'talk', 'pickpocket', 'persuade')
  * Each value is the plugin's config with an 'enabled' flag
  */
@@ -467,6 +483,7 @@ export interface NpcSlotInteractions {
   [interactionId: string]: { enabled: boolean; [key: string]: any } | undefined;
 }
 
+/** [frontend-only] 2D NPC slot for location editor */
 export interface NpcSlot2d {
   id: string;
   x: number; // Normalized 0-1 position
@@ -476,37 +493,18 @@ export interface NpcSlot2d {
   interactions?: NpcSlotInteractions;
 }
 
-export interface GameLocationDetail {
-  id: LocationId;
-  name: string;
-  asset_id?: number | null;
-  default_spawn?: string | null;
-  meta?: Record<string, unknown> | null;
-  hotspots: GameHotspotDTO[];
-}
-
 // ===================
-// NPC Types
+// NPC Types (API DTOs aliased from OpenAPI)
 // ===================
 
-/**
- * NPC summary for list views
- *
- * Note: This is the legacy DTO format from the backend.
- * For the unified actor system, see NpcActor which extends Actor.
- * These types will be aligned in a future refactor.
- */
-export interface GameNpcSummary {
-  id: NpcId;
-  name: string;
-}
+// Aliased from OpenAPI - matches backend NpcSummary
+export type GameNpcSummary = ApiComponents['schemas']['NpcSummary'];
 
 /**
- * NPC detail for single NPC views
+ * [frontend-only] NPC detail for single NPC views
  *
- * Note: This is the legacy DTO format from the backend.
+ * Note: This extends GameNpcSummary with additional frontend fields.
  * For the unified actor system, see NpcActor which extends Actor.
- * These types will be aligned in a future refactor.
  */
 export interface GameNpcDetail extends GameNpcSummary {
   /** NPC metadata including preferences, traits, etc. */
@@ -517,53 +515,20 @@ export interface GameNpcDetail extends GameNpcSummary {
   relationshipLevel?: number;
 }
 
-export interface NpcExpressionDTO {
-  id?: number;
-  state: string;
-  asset_id: number;
-  crop?: Record<string, unknown> | null;
-  meta?: Record<string, unknown> | null;
-}
-
-export interface NpcPresenceDTO {
-  npc_id: NpcId;
-  location_id: LocationId;
-  state: Record<string, unknown>;
-  /** Optional spatial transform (position, rotation, scale within location) */
-  transform?: Transform;
-}
-
-/**
- * NPC Surface Package - defines available expression surface types
- * (portrait, dialogue, closeup, mood, etc.)
- */
-export interface NpcSurfacePackage {
-  id: string;
-  label: string;
-  description?: string | null;
-  category?: string | null;
-  surface_types: Record<string, Record<string, unknown>>;
-  source_plugin_id?: string | null;
-}
+// Aliased from OpenAPI
+export type NpcExpressionDTO = ApiComponents['schemas']['NpcExpressionDTO'];
+export type NpcPresenceDTO = ApiComponents['schemas']['NpcPresenceDTO'];
+export type NpcSurfacePackage = ApiComponents['schemas']['NpcSurfacePackageDTO'];
 
 // ===================
-// World Types
+// World Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export interface GameWorldSummary {
-  id: WorldId;
-  name: string;
-}
-
-export interface GameWorldDetail {
-  id: WorldId;
-  name: string;
-  meta?: Record<string, unknown> | null;
-  world_time: number;
-}
+export type GameWorldSummary = ApiComponents['schemas']['GameWorldSummary'];
+export type GameWorldDetail = ApiComponents['schemas']['GameWorldDetail'];
 
 // ===================
-// Relationship Tier / Intimacy ID Types
+// Relationship Tier / Intimacy ID Types [frontend-only]
 // ===================
 
 export type DefaultRelationshipTier =
@@ -779,7 +744,7 @@ export interface WorldGenerationConfig {
 }
 
 // ===================
-// GameProfile Types (Task 23)
+// GameProfile Types [frontend-only]
 // ===================
 
 /**
@@ -886,7 +851,7 @@ export interface GameProfile {
 }
 
 // ===================
-// Actor System Types
+// Actor System Types [frontend-only]
 // ===================
 
 /**
@@ -1136,9 +1101,17 @@ export interface ActorPresence {
 // Session Types
 // ===================
 
+// Aliased from OpenAPI (named GameSessionResponse in backend)
+export type GameSessionDTO = ApiComponents['schemas']['GameSessionResponse'];
+
+// ----- Frontend-only session flag types -----
+
+/** [frontend-only] */
 export type SessionKind = 'world' | 'scene';
+/** [frontend-only] */
 export type WorldMode = 'turn_based' | 'real_time';
 
+/** [frontend-only] */
 export interface TurnRecord {
   /** Turn number */
   turnNumber: number;
@@ -1150,6 +1123,7 @@ export interface TurnRecord {
   locationId?: number;
 }
 
+/** [frontend-only] */
 export interface WorldSessionFlags {
   /** Unique identifier for the conceptual world */
   id?: string;
@@ -1165,6 +1139,7 @@ export interface WorldSessionFlags {
   turnHistory?: TurnRecord[];
 }
 
+/** [frontend-only] */
 export interface SessionFlags {
   /** Type of session: world (life-sim) or scene (story-based) */
   sessionKind?: SessionKind;
@@ -1176,36 +1151,8 @@ export interface SessionFlags {
   [key: string]: unknown;
 }
 
-export interface GameSessionDTO {
-  id: SessionId;
-  user_id: number;
-  scene_id: SceneId;
-  current_node_id: number;
-  flags: Record<string, unknown>;
-
-  /**
-   * Generic stats storage using the abstract stat system.
-   * Structure: { [statDefId: string]: { [entityKey: string]: statValues } }
-   *
-   * Example:
-   *   stats: {
-   *     "relationships": {
-   *       "npc:1": { affinity: 75, trust: 60, ... },
-   *       "npc:2": { affinity: 40, ... }
-   *     },
-   *     "skills": {
-   *       "player": { strength: 50, dexterity: 60, ... }
-   *     }
-   *   }
-   */
-  stats: Record<string, Record<string, unknown>>;
-
-  world_time: number;
-  version: number; // Optimistic locking version, incremented on each update
-}
-
 /**
- * Type-safe session update payload - only includes mutable fields
+ * [frontend-only] Type-safe session update payload - only includes mutable fields
  * Prevents accidentally updating readonly fields like id, user_id, etc.
  */
 export interface SessionUpdatePayload {
@@ -1222,82 +1169,29 @@ export interface SessionUpdatePayload {
 }
 
 // ===================
-// Stealth/Interaction Types
+// Stealth/Interaction Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export interface PickpocketRequest {
-  npc_id: NpcId;
-  slot_id: string;
-  base_success_chance: number;
-  detection_chance: number;
-  world_id?: WorldId | null;
-  session_id: SessionId;
-}
-
-export interface PickpocketResponse {
-  success: boolean;
-  detected: boolean;
-  updated_flags: Record<string, unknown>;
-  message: string;
-}
-
-// Romance/Sensual Touch Types
-export interface SensualTouchRequest {
-  npc_id: NpcId;
-  slot_id: string;
-  tool_id: string; // 'touch', 'caress', 'feather', 'silk', etc.
-  pattern: string; // 'circular', 'linear', 'spiral', 'wave', 'pulse'
-  base_intensity: number; // 0-1
-  duration: number; // seconds
-  world_id?: WorldId | null;
-  session_id: SessionId;
-}
-
-export interface SensualTouchResponse {
-  success: boolean;
-  pleasure_score: number; // 0-1, how much NPC enjoyed it
-  arousal_change: number; // Change in arousal level
-  affinity_change: number; // Change in relationship score
-  tool_unlocked: string | null; // New tool unlocked, if any
-  updated_flags: Record<string, unknown>;
-  message: string;
-}
+export type PickpocketRequest = ApiComponents['schemas']['PickpocketRequest'];
+export type PickpocketResponse = ApiComponents['schemas']['PickpocketResponse'];
+export type SensualTouchRequest = ApiComponents['schemas']['SensualTouchRequest'];
+export type SensualTouchResponse = ApiComponents['schemas']['SensualTouchResponse'];
 
 // ===================
-// Quest Types
+// Quest Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export interface QuestObjectiveDTO {
-  id: string;
-  description: string;
-  completed: boolean;
-  progress: number;
-  target: number;
-  optional: boolean;
-}
-
-export interface QuestDTO {
-  id: string;
-  title: string;
-  description: string;
-  status: string; // 'active' | 'completed' | 'failed' | 'hidden'
-  objectives: QuestObjectiveDTO[];
-  metadata: Record<string, unknown>;
-}
+export type QuestObjectiveDTO = ApiComponents['schemas']['QuestObjective'];
+export type QuestDTO = ApiComponents['schemas']['Quest'];
 
 // ===================
-// Inventory Types
+// Inventory Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export interface InventoryItemDTO {
-  id: string;
-  name: string;
-  quantity: number;
-  metadata: Record<string, unknown>;
-}
+export type InventoryItemDTO = ApiComponents['schemas']['InventoryItem'];
 
 // ===================
-// Relationship Preview Types
+// Relationship Preview Types [frontend-only]
 // ===================
 
 /**
@@ -1345,7 +1239,7 @@ export interface RelationshipIntimacyPreviewResponse {
 }
 
 // ===================
-// Generic Metric System Types
+// Generic Metric System Types [frontend-only]
 // ===================
 
 /**
@@ -1379,7 +1273,7 @@ export interface MetricPreviewResponse<M extends MetricId = MetricId> {
 }
 
 // ===================
-// NPC Mood Metric Types
+// NPC Mood Metric Types [frontend-only]
 // ===================
 
 /**
@@ -1445,7 +1339,7 @@ export interface NpcMoodPreviewResponse {
 }
 
 // ===================
-// Unified Mood Types
+// Unified Mood Types [frontend-only]
 // ===================
 
 export type MoodDomain = 'general' | 'intimate' | 'social';
@@ -1479,7 +1373,7 @@ export interface UnifiedMoodState {
 }
 
 // ===================
-// Reputation Metric Types
+// Reputation Metric Types [frontend-only]
 // ===================
 
 /**
@@ -1532,7 +1426,7 @@ export interface ReputationBandPreviewResponse {
 }
 
 // ===================
-// NPC Behavior System Types (Task 13)
+// NPC Behavior System Types [frontend-only]
 // ===================
 
 /**
@@ -1590,15 +1484,8 @@ export interface ActivityCategoryConfig {
   meta?: Record<string, unknown>;
 }
 
-/**
- * Relationship delta for activity effects
- */
-export interface RelationshipDelta {
-  affinity?: number;
-  trust?: number;
-  chemistry?: number;
-  tension?: number;
-}
+/** Relationship delta for activity effects (aliased from OpenAPI) */
+export type RelationshipDelta = ApiComponents['schemas']['RelationshipDelta'];
 
 /**
  * Custom effect for extensibility
@@ -1941,7 +1828,7 @@ export interface SessionNpcData {
 }
 
 // ===================
-// ECS Component Types (Task 19)
+// ECS Component Types [frontend-only]
 // ===================
 
 /**
@@ -2163,7 +2050,7 @@ export interface MetricRegistry {
 }
 
 // ===================
-// Game Mode & View State Types (Task 22)
+// Game Mode & View State Types [frontend-only]
 // ===================
 
 /**
