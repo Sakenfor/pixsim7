@@ -138,3 +138,4 @@ apps/pixsim7-android/*.keystore
 apps/pixsim7-android/captures/
 apps/pixsim7-android/.cxx/
 apps/pixsim7-android/.externalNativeBuild/
+docs/plans/
