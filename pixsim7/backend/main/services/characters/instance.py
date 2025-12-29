@@ -16,6 +16,7 @@ from sqlalchemy import select, and_, or_
 from pixsim7.backend.main.domain.game.entities import Character
 from pixsim7.backend.main.domain.game.entities import CharacterInstance
 from pixsim7.backend.main.services.characters.character import CharacterService
+from pixsim7.backend.main.services.links.integrity import delete_links_for_entity
 
 
 class CharacterInstanceService:
@@ -314,6 +315,10 @@ class CharacterInstanceService:
 
         Returns:
             Success
+
+        Note:
+            Hard delete also removes associated ObjectLinks to prevent orphaned references.
+            Soft delete keeps links intact but marks the instance as inactive.
         """
         instance = await self.get_instance(instance_id)
         if not instance:
@@ -324,6 +329,14 @@ class CharacterInstanceService:
             instance.updated_at = datetime.utcnow()
             await self.db.commit()
         else:
+            # Clean up associated ObjectLinks before deleting instance
+            # This prevents orphaned links pointing to non-existent entities
+            await delete_links_for_entity(
+                self.db,
+                entity_kind='characterInstance',
+                entity_id=instance_id,
+                side='template'
+            )
             await self.db.delete(instance)
             await self.db.commit()
 

@@ -12,10 +12,11 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import DbSession
+from pixsim7.backend.main.api.dependencies import DbSession, CurrentUser
 from pixsim7.backend.main.services.links.template_resolver import (
     resolve_template_to_runtime,
 )
+from pixsim7.backend.main.services.links.integrity import LinkIntegrityService
 
 router = APIRouter()
 
@@ -268,4 +269,135 @@ async def list_mappings() -> Dict[str, Any]:
     return {
         "mappings": list(mappings.keys()),
         "template_to_runtime": TEMPLATE_TO_RUNTIME_KIND,
+    }
+
+
+# =============================================================================
+# Integrity & Maintenance Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/integrity/report",
+    summary="Get link integrity report",
+    description="""
+Get a comprehensive report on link system integrity.
+
+Returns statistics on:
+- Total links and their states
+- Links by mapping type
+- Orphaned links (links to deleted entities)
+- Any integrity issues found
+
+This is useful for monitoring link health and planning maintenance.
+""",
+)
+async def get_integrity_report(
+    db: DbSession,
+    user: CurrentUser,
+) -> Dict[str, Any]:
+    """Get link integrity report."""
+    service = LinkIntegrityService(db)
+    return await service.get_integrity_report()
+
+
+class CleanupRequest(BaseModel):
+    """Request for orphaned link cleanup."""
+
+    dry_run: bool = Field(
+        default=True,
+        description="If True, only report what would be deleted without deleting",
+    )
+    include_soft_deleted: bool = Field(
+        default=False,
+        description="If True, also remove links to soft-deleted entities",
+    )
+    template_kind: Optional[str] = Field(
+        None,
+        description="Filter by template kind (e.g., 'characterInstance')",
+    )
+    runtime_kind: Optional[str] = Field(
+        None,
+        description="Filter by runtime kind (e.g., 'npc')",
+    )
+
+
+@router.post(
+    "/integrity/cleanup",
+    summary="Cleanup orphaned links",
+    description="""
+Find and optionally remove orphaned links (links pointing to deleted entities).
+
+Use dry_run=True first to see what would be deleted without making changes.
+Set dry_run=False to actually perform the cleanup.
+
+Options:
+- include_soft_deleted: Also remove links to soft-deleted entities
+- template_kind/runtime_kind: Filter cleanup to specific link types
+
+Returns a report of findings and actions taken.
+""",
+)
+async def cleanup_orphaned_links(
+    request: CleanupRequest,
+    db: DbSession,
+    user: CurrentUser,
+) -> Dict[str, Any]:
+    """Cleanup orphaned links."""
+    service = LinkIntegrityService(db)
+    return await service.cleanup_orphaned_links(
+        dry_run=request.dry_run,
+        template_kind=request.template_kind,
+        runtime_kind=request.runtime_kind,
+        include_soft_deleted=request.include_soft_deleted,
+    )
+
+
+@router.get(
+    "/integrity/validate/{link_id}",
+    summary="Validate a specific link",
+    description="Check if a specific link is valid (both entities exist).",
+)
+async def validate_link(
+    link_id: str,
+    db: DbSession,
+    user: CurrentUser,
+) -> Dict[str, Any]:
+    """Validate a specific link."""
+    from uuid import UUID
+
+    try:
+        uuid = UUID(link_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid link ID format")
+
+    service = LinkIntegrityService(db)
+    return await service.validate_link(uuid)
+
+
+@router.get(
+    "/integrity/entity/{entity_kind}/{entity_id}",
+    summary="Get links for an entity",
+    description="Get all links involving a specific entity (on template or runtime side).",
+)
+async def get_links_for_entity(
+    entity_kind: str,
+    entity_id: str,
+    db: DbSession,
+    user: CurrentUser,
+    side: str = "both",
+) -> Dict[str, Any]:
+    """Get links for a specific entity."""
+    service = LinkIntegrityService(db)
+    links = await service.get_links_for_entity(
+        entity_kind=entity_kind,
+        entity_id=entity_id,
+        side=side,
+    )
+    return {
+        "entity_kind": entity_kind,
+        "entity_id": entity_id,
+        "side": side,
+        "links": links,
+        "count": len(links),
     }

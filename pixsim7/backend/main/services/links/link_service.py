@@ -202,6 +202,9 @@ class LinkService:
         Filters links by sync_enabled, activation conditions (if context provided),
         then returns the one with the highest priority.
 
+        Note: sync_enabled filtering is done at the SQL level to prevent race
+        conditions where a link could be disabled between query and filter.
+
         Args:
             runtime_kind: Runtime entity kind
             runtime_id: Runtime entity ID
@@ -210,25 +213,31 @@ class LinkService:
         Returns:
             Highest-priority active link, or None if no active links
         """
-        # Get all links for runtime entity
-        links = await self.get_links_for_runtime(runtime_kind, runtime_id)
+        # Query only sync-enabled links at SQL level to prevent race conditions
+        # where sync_enabled could change between query and in-memory filter
+        result = await self.db.execute(
+            select(ObjectLink)
+            .where(
+                and_(
+                    ObjectLink.runtime_kind == runtime_kind,
+                    ObjectLink.runtime_id == runtime_id,
+                    ObjectLink.sync_enabled == True  # Filter at SQL level
+                )
+            )
+            .order_by(ObjectLink.priority.desc())
+        )
+        links = list(result.scalars().all())
 
         if not links:
             return None
 
-        # Filter to sync-enabled links only
-        links = [link for link in links if link.sync_enabled]
-
-        if not links:
-            return None
-
-        # If no context provided, return highest priority link
+        # If no context provided, return highest priority link without activation conditions
         if context is None:
             # Filter out links with activation conditions (inactive without context)
             links = [link for link in links if not link.activation_conditions]
             return links[0] if links else None
 
-        # Get highest priority active link
+        # Get highest priority active link using context-based activation
         return get_highest_priority_active_link(links, context)
 
     async def get_active_link_for_template(
@@ -242,6 +251,9 @@ class LinkService:
         Filters links by sync_enabled, activation conditions (if context provided),
         then returns the one with the highest priority.
 
+        Note: sync_enabled filtering is done at the SQL level to prevent race
+        conditions where a link could be disabled between query and filter.
+
         Args:
             template_kind: Template entity kind (e.g., 'characterInstance')
             template_id: Template entity ID
@@ -250,14 +262,19 @@ class LinkService:
         Returns:
             Highest-priority active link, or None if no active links
         """
-        # Get all links for template entity
-        links = await self.get_links_for_template(template_kind, template_id)
-
-        if not links:
-            return None
-
-        # Filter to sync-enabled links only
-        links = [link for link in links if link.sync_enabled]
+        # Query only sync-enabled links at SQL level to prevent race conditions
+        result = await self.db.execute(
+            select(ObjectLink)
+            .where(
+                and_(
+                    ObjectLink.template_kind == template_kind,
+                    ObjectLink.template_id == template_id,
+                    ObjectLink.sync_enabled == True  # Filter at SQL level
+                )
+            )
+            .order_by(ObjectLink.priority.desc())
+        )
+        links = list(result.scalars().all())
 
         if not links:
             return None
@@ -265,11 +282,7 @@ class LinkService:
         # If no context provided, filter out links with activation conditions
         if context is None:
             links = [link for link in links if not link.activation_conditions]
-            if not links:
-                return None
-            # Sort by priority and return highest
-            links.sort(key=lambda l: l.priority or 0, reverse=True)
-            return links[0]
+            return links[0] if links else None
 
         # Get highest priority active link using activation filter
         return get_highest_priority_active_link(links, context)
