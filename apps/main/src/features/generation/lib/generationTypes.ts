@@ -47,7 +47,14 @@ export interface GenerationSocialContext {
   }
 }
 
-export interface SceneRef {
+/**
+ * Scene context snapshot for generation requests.
+ * Contains scene summary information for content generation.
+ *
+ * Note: This is distinct from SceneIdRef in @pixsim7/shared.types which is a
+ * canonical string format (e.g., "scene:game:123") for inter-system references.
+ */
+export interface SceneSnapshot {
   id: string
   mood?: string
   summary?: string
@@ -119,8 +126,8 @@ export interface GenerationHealthStatus {
 
 export interface GenerationNode {
   id: string
-  fromScene?: SceneRef
-  toScene?: SceneRef
+  fromScene?: SceneSnapshot
+  toScene?: SceneSnapshot
   config: GenerationNodeConfig
   cacheKey?: string // computed from config + strategy + version
   health?: GenerationHealthStatus
@@ -135,8 +142,8 @@ export interface GenerationEdgeMeta {
 // Backend Request & Response Contracts
 export interface GenerateContentRequest {
   type: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response'
-  from_scene?: SceneRef
-  to_scene?: SceneRef
+  from_scene?: SceneSnapshot
+  to_scene?: SceneSnapshot
   style?: StyleRules
   duration?: DurationRule
   constraints?: ConstraintSet

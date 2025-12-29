@@ -6,15 +6,21 @@
  * with bidirectional sync, field-level authority, and activation conditions.
  */
 
-// Branded ID types for type safety
-export type NpcId = number & { readonly __brand: 'NpcId' };
-export type ItemId = number & { readonly __brand: 'ItemId' };
-export type PropId = number & { readonly __brand: 'PropId' };
-export type RuntimeId = NpcId | ItemId | PropId | number;
+// Re-export NpcId from canonical ids module
+import type { NpcId as CanonicalNpcId } from './ids';
+export type { NpcId } from './ids';
 
-export type CharacterInstanceId = string & { readonly __brand: 'CharacterInstanceId' };
-export type ItemTemplateId = string & { readonly __brand: 'ItemTemplateId' };
-export type PropTemplateId = string & { readonly __brand: 'PropTemplateId' };
+// Additional branded ID types for links (not in ids.ts)
+declare const __brand: unique symbol;
+type Brand<T, B extends string> = T & { readonly [__brand]: B };
+
+export type ItemId = Brand<number, 'ItemId'>;
+export type PropId = Brand<number, 'PropId'>;
+export type RuntimeId = CanonicalNpcId | ItemId | PropId | number;
+
+export type CharacterInstanceId = Brand<string, 'CharacterInstanceId'>;
+export type ItemTemplateId = Brand<string, 'ItemTemplateId'>;
+export type PropTemplateId = Brand<string, 'PropTemplateId'>;
 export type TemplateId = CharacterInstanceId | ItemTemplateId | PropTemplateId | string;
 
 /**

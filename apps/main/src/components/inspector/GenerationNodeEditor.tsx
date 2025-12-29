@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
 import type { DraftSceneNode } from '@domain/sceneBuilder';
-import type { SceneRef } from '@lib/registries';
 import { useToast } from '@pixsim7/shared.ui';
 import { useGraphStore } from '@features/graph';
 import { getValidationSummary } from '@pixsim7/game.engine';
-import { createGeneration } from '@lib/api/generations';
+import { createGeneration, type SceneRef } from '@lib/api/generations';
 import { fromGenerationResponse, type GenerationModel } from '@features/generation';
 import { useGenerationNodeForm } from './useGenerationNodeForm';
 

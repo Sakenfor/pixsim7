@@ -12,6 +12,7 @@ import type {
   NarrativeProgramId,
   NodeId,
 } from '@pixsim7/shared.types';
+import { Ref } from '@pixsim7/shared.types';
 
 /**
  * Session flags structure (subset needed for narrative)
@@ -43,7 +44,7 @@ function ensureNpcComponents(session: GameSession, npcId: number): Record<string
     session.flags.npcs = {};
   }
 
-  const npcKey = `npc:${npcId}`;
+  const npcKey = Ref.npc(npcId);
   if (!session.flags.npcs[npcKey]) {
     session.flags.npcs[npcKey] = { components: {} };
   }

@@ -139,6 +139,12 @@ export type PromptRef = `prompt:${string}`;
 /** Action block reference: `action:{uuid}` */
 export type ActionRef = `action:${string}`;
 
+/** World reference: `world:123` */
+export type WorldRef = `world:${number}`;
+
+/** Session reference: `session:123` */
+export type SessionRef = `session:${number}`;
+
 /**
  * Union of all entity reference types.
  *
@@ -155,7 +161,9 @@ export type EntityRef =
   | AssetRef
   | GenerationRef
   | PromptRef
-  | ActionRef;
+  | ActionRef
+  | WorldRef
+  | SessionRef;
 
 // ============================================================================
 // ID CONSTRUCTORS (Safe Creation)
@@ -263,6 +271,12 @@ export const Ref = {
 
   /** Build action block reference: `action:{uuid}` */
   action: (id: ActionBlockId | string): ActionRef => `action:${id}` as ActionRef,
+
+  /** Build world reference: `world:123` */
+  world: (id: WorldId | number): WorldRef => `world:${id}` as WorldRef,
+
+  /** Build session reference: `session:123` */
+  session: (id: SessionId | number): SessionRef => `session:${id}` as SessionRef,
 } as const;
 
 // ============================================================================
@@ -310,7 +324,9 @@ export type ParsedRef =
   | { type: 'asset'; id: AssetId }
   | { type: 'generation'; id: GenerationId }
   | { type: 'prompt'; id: PromptVersionId }
-  | { type: 'action'; id: ActionBlockId };
+  | { type: 'action'; id: ActionBlockId }
+  | { type: 'world'; id: WorldId }
+  | { type: 'session'; id: SessionId };
 
 /**
  * Parse an entity reference string into a typed structure.
@@ -409,8 +425,199 @@ export function parseRef(ref: string): ParsedRef | null {
       return { type: 'action', id: ActionBlockId(value) };
     }
 
+    case 'world': {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 0) return null;
+      return { type: 'world', id: WorldId(n) };
+    }
+
+    case 'session': {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 0) return null;
+      return { type: 'session', id: SessionId(n) };
+    }
+
     default:
       return null;
+  }
+}
+
+// ============================================================================
+// PARSE REF WITH ERROR CONTEXT
+// ============================================================================
+
+/**
+ * Error reasons for ref parsing failures.
+ */
+export type RefParseErrorReason =
+  | 'empty_string'
+  | 'missing_colon'
+  | 'unknown_type'
+  | 'invalid_number'
+  | 'negative_number'
+  | 'invalid_uuid'
+  | 'missing_scene_type'
+  | 'invalid_scene_type'
+  | 'missing_role_name';
+
+/**
+ * Result of parsing a ref with error context.
+ */
+export type RefParseResult =
+  | { success: true; parsed: ParsedRef }
+  | { success: false; reason: RefParseErrorReason; message: string };
+
+/**
+ * Parse an entity reference string with detailed error context.
+ *
+ * Use this when you need to provide user feedback about why a ref is invalid.
+ * For simple validation where you only care about success/failure, use parseRef().
+ *
+ * @param ref - Reference string to parse
+ * @returns Result object with either parsed ref or error details
+ *
+ * @example
+ * ```ts
+ * const result = tryParseRef(userInput);
+ * if (result.success) {
+ *   handleRef(result.parsed);
+ * } else {
+ *   showError(result.message);  // "Invalid UUID format for character reference"
+ * }
+ * ```
+ */
+export function tryParseRef(ref: string): RefParseResult {
+  if (!ref) {
+    return { success: false, reason: 'empty_string', message: 'Reference string is empty' };
+  }
+
+  if (!ref.includes(':')) {
+    return { success: false, reason: 'missing_colon', message: 'Reference must contain a colon separator' };
+  }
+
+  const colonIndex = ref.indexOf(':');
+  const prefix = ref.slice(0, colonIndex);
+  const value = ref.slice(colonIndex + 1);
+
+  // Helper for numeric ID validation
+  const validateNumericId = (val: string): { valid: true; n: number } | { valid: false; reason: RefParseErrorReason; message: string } => {
+    const n = Number(val);
+    if (!Number.isFinite(n)) {
+      return { valid: false, reason: 'invalid_number', message: `Invalid number: "${val}"` };
+    }
+    if (!Number.isInteger(n)) {
+      return { valid: false, reason: 'invalid_number', message: `ID must be an integer, got: ${val}` };
+    }
+    if (n < 0) {
+      return { valid: false, reason: 'negative_number', message: `ID cannot be negative: ${n}` };
+    }
+    return { valid: true, n };
+  };
+
+  switch (prefix) {
+    case 'npc': {
+      const result = validateNumericId(value);
+      if (!result.valid) return { success: false, ...result };
+      return { success: true, parsed: { type: 'npc', id: NpcId(result.n) } };
+    }
+
+    case 'character': {
+      if (!isUUID(value)) {
+        return { success: false, reason: 'invalid_uuid', message: `Invalid UUID format for character: "${value}"` };
+      }
+      return { success: true, parsed: { type: 'character', id: CharacterId(value) } };
+    }
+
+    case 'instance': {
+      if (!isUUID(value)) {
+        return { success: false, reason: 'invalid_uuid', message: `Invalid UUID format for instance: "${value}"` };
+      }
+      return { success: true, parsed: { type: 'instance', id: InstanceId(value) } };
+    }
+
+    case 'location': {
+      const result = validateNumericId(value);
+      if (!result.valid) return { success: false, ...result };
+      return { success: true, parsed: { type: 'location', id: LocationId(result.n) } };
+    }
+
+    case 'scene': {
+      const secondColonIndex = value.indexOf(':');
+      if (secondColonIndex === -1) {
+        return { success: false, reason: 'missing_scene_type', message: 'Scene ref must have format scene:type:id (e.g., scene:game:123)' };
+      }
+
+      const sceneType = value.slice(0, secondColonIndex);
+      if (sceneType !== 'game' && sceneType !== 'content') {
+        return { success: false, reason: 'invalid_scene_type', message: `Scene type must be "game" or "content", got: "${sceneType}"` };
+      }
+
+      const idStr = value.slice(secondColonIndex + 1);
+      const result = validateNumericId(idStr);
+      if (!result.valid) return { success: false, ...result };
+
+      return { success: true, parsed: { type: 'scene', id: SceneId(result.n), sceneType } };
+    }
+
+    case 'role': {
+      const secondColonIndex = value.indexOf(':');
+      if (secondColonIndex === -1) {
+        return { success: false, reason: 'missing_role_name', message: 'Role ref must have format role:sceneId:roleName (e.g., role:123:protagonist)' };
+      }
+
+      const sceneIdStr = value.slice(0, secondColonIndex);
+      const roleName = value.slice(secondColonIndex + 1);
+
+      const result = validateNumericId(sceneIdStr);
+      if (!result.valid) return { success: false, ...result };
+
+      if (!roleName) {
+        return { success: false, reason: 'missing_role_name', message: 'Role name cannot be empty' };
+      }
+
+      return { success: true, parsed: { type: 'role', sceneId: SceneId(result.n), roleName } };
+    }
+
+    case 'asset': {
+      const result = validateNumericId(value);
+      if (!result.valid) return { success: false, ...result };
+      return { success: true, parsed: { type: 'asset', id: AssetId(result.n) } };
+    }
+
+    case 'generation': {
+      const result = validateNumericId(value);
+      if (!result.valid) return { success: false, ...result };
+      return { success: true, parsed: { type: 'generation', id: GenerationId(result.n) } };
+    }
+
+    case 'prompt': {
+      if (!isUUID(value)) {
+        return { success: false, reason: 'invalid_uuid', message: `Invalid UUID format for prompt: "${value}"` };
+      }
+      return { success: true, parsed: { type: 'prompt', id: PromptVersionId(value) } };
+    }
+
+    case 'action': {
+      if (!isUUID(value)) {
+        return { success: false, reason: 'invalid_uuid', message: `Invalid UUID format for action: "${value}"` };
+      }
+      return { success: true, parsed: { type: 'action', id: ActionBlockId(value) } };
+    }
+
+    case 'world': {
+      const result = validateNumericId(value);
+      if (!result.valid) return { success: false, ...result };
+      return { success: true, parsed: { type: 'world', id: WorldId(result.n) } };
+    }
+
+    case 'session': {
+      const result = validateNumericId(value);
+      if (!result.valid) return { success: false, ...result };
+      return { success: true, parsed: { type: 'session', id: SessionId(result.n) } };
+    }
+
+    default:
+      return { success: false, reason: 'unknown_type', message: `Unknown ref type: "${prefix}"` };
   }
 }
 
@@ -463,6 +670,14 @@ export const isPromptRef = (ref: string): ref is PromptRef =>
 export const isActionRef = (ref: string): ref is ActionRef =>
   /^action:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
 
+/** Check if string is a valid world reference */
+export const isWorldRef = (ref: string): ref is WorldRef =>
+  /^world:\d+$/.test(ref);
+
+/** Check if string is a valid session reference */
+export const isSessionRef = (ref: string): ref is SessionRef =>
+  /^session:\d+$/.test(ref);
+
 /** Check if string is any valid entity reference */
 export const isEntityRef = (ref: string): ref is EntityRef =>
   isNpcRef(ref) ||
@@ -474,7 +689,9 @@ export const isEntityRef = (ref: string): ref is EntityRef =>
   isAssetRef(ref) ||
   isGenerationRef(ref) ||
   isPromptRef(ref) ||
-  isActionRef(ref);
+  isActionRef(ref) ||
+  isWorldRef(ref) ||
+  isSessionRef(ref);
 
 // ============================================================================
 // CONVENIENCE EXTRACTORS
@@ -528,4 +745,61 @@ export function extractLocationId(ref: string): LocationId | null {
 export function extractSceneId(ref: string): SceneId | null {
   const parsed = parseRef(ref);
   return parsed?.type === 'scene' ? parsed.id : null;
+}
+
+/**
+ * Extract asset ID from a reference string.
+ */
+export function extractAssetId(ref: string): AssetId | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'asset' ? parsed.id : null;
+}
+
+/**
+ * Extract generation ID from a reference string.
+ */
+export function extractGenerationId(ref: string): GenerationId | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'generation' ? parsed.id : null;
+}
+
+/**
+ * Extract prompt version ID from a reference string.
+ */
+export function extractPromptId(ref: string): PromptVersionId | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'prompt' ? parsed.id : null;
+}
+
+/**
+ * Extract action block ID from a reference string.
+ */
+export function extractActionId(ref: string): ActionBlockId | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'action' ? parsed.id : null;
+}
+
+/**
+ * Extract role info from a reference string.
+ * Returns both scene ID and role name since roles are scene-scoped.
+ */
+export function extractRoleInfo(ref: string): { sceneId: SceneId; roleName: string } | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'role' ? { sceneId: parsed.sceneId, roleName: parsed.roleName } : null;
+}
+
+/**
+ * Extract world ID from a reference string.
+ */
+export function extractWorldId(ref: string): WorldId | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'world' ? parsed.id : null;
+}
+
+/**
+ * Extract session ID from a reference string.
+ */
+export function extractSessionId(ref: string): SessionId | null {
+  const parsed = parseRef(ref);
+  return parsed?.type === 'session' ? parsed.id : null;
 }
