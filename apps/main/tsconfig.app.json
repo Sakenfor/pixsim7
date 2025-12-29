@@ -65,6 +65,8 @@
       "@features/plugins": ["./src/features/plugins/index.ts"],
       "@features/assets/*": ["./src/features/assets/*"],
       "@features/assets": ["./src/features/assets/index.ts"],
+      "@features/preview/*": ["./src/features/preview/*"],
+      "@features/preview": ["./src/features/preview/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

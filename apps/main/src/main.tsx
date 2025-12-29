@@ -14,6 +14,7 @@ import { registerGizmoSurfaces } from './features/gizmos'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
 import { registerPromptCompanion } from './plugins/ui/prompt-companion'
 import { registerGenerationScopes } from '@features/generation'
+import { registerPreviewScopes } from '@features/preview'
 import { registerQuickGenerateComponentSettings } from '@features/controlCenter/lib/registerQuickGenerateComponentSettings'
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
 import './lib/utils/debugFlags' // Debug flags system for toggleable logging
@@ -40,8 +41,9 @@ registerGizmoSurfaces()
 // Register prompt companion plugin
 registerPromptCompanion()
 
-// Register generation scope definitions
+// Register scope definitions
 registerGenerationScopes()
+registerPreviewScopes()
 
 // Register Quick Generate component settings
 registerQuickGenerateComponentSettings()
