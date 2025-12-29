@@ -16,6 +16,10 @@ import { worldToolRegistry } from '@features/worldTools/lib/types';
 import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
 import { gizmoSurfaceRegistry } from '@features/gizmos/lib/core/surfaceRegistry';
 
+// Interaction registry (dynamically loaded plugin interactions)
+import { interactionRegistry } from '@lib/game/interactions/types';
+import type { InteractionPlugin, BaseInteractionConfig } from '@lib/game/interactions/types';
+
 // Types
 import type { GalleryToolPlugin } from '@features/gallery/lib/core/types';
 import type { BrainToolPlugin } from '@features/brainTools/lib/types';
@@ -32,7 +36,7 @@ interface RegistryInfo {
   name: string;
   description: string;
   icon: string;
-  category: 'tools' | 'surfaces' | 'other';
+  category: 'tools' | 'surfaces' | 'interactions' | 'other';
   getItems: () => Identifiable[];
   subscribe: (cb: () => void) => () => void;
   renderItem: (item: Identifiable) => React.ReactNode;
@@ -92,6 +96,19 @@ const REGISTRIES: RegistryInfo[] = [
     subscribe: (cb) => gizmoSurfaceRegistry.subscribe(cb),
     renderItem: (item) => <GizmoSurfaceItem surface={item as GizmoSurfaceDefinition} />,
   },
+  {
+    id: 'interactions',
+    name: 'Interactions',
+    description: 'Game interactions from plugins (pickpocket, stealth, etc.)',
+    icon: '🎮',
+    category: 'interactions',
+    getItems: () => interactionRegistry.getAll().map((p) => ({ id: p.id, ...p })),
+    // Note: InteractionRegistry doesn't have subscribe yet - items won't auto-update
+    subscribe: () => () => {},
+    renderItem: (item) => (
+      <InteractionPluginItem plugin={item as unknown as InteractionPlugin<BaseInteractionConfig>} />
+    ),
+  },
 ];
 
 export function RegistriesView() {
@@ -99,7 +116,7 @@ export function RegistriesView() {
     REGISTRIES[0]?.id ?? null
   );
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'tools' | 'surfaces'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'tools' | 'surfaces' | 'interactions'>('all');
 
   const filteredRegistries = useMemo(() => {
     if (categoryFilter === 'all') return REGISTRIES;
@@ -115,7 +132,7 @@ export function RegistriesView() {
         {/* Category Filter */}
         <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex gap-2">
-            {(['all', 'tools', 'surfaces'] as const).map((cat) => (
+            {(['all', 'tools', 'surfaces', 'interactions'] as const).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(cat)}
@@ -559,6 +576,104 @@ function GizmoSurfaceItem({ surface }: { surface: GizmoSurfaceDefinition }) {
               <span className="text-purple-600 dark:text-purple-400">HUD</span>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InteractionPluginItem({ plugin }: { plugin: InteractionPlugin<BaseInteractionConfig> }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          {plugin.icon && <span className="text-lg">{plugin.icon}</span>}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-neutral-900 dark:text-neutral-100">
+              {plugin.name}
+            </div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              {plugin.id}
+            </div>
+          </div>
+          {plugin.category && (
+            <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs rounded">
+              {plugin.category}
+            </span>
+          )}
+          {plugin.version && (
+            <span className="text-xs text-neutral-400 dark:text-neutral-500">
+              v{plugin.version}
+            </span>
+          )}
+          <span className="text-neutral-400">{expanded ? '▼' : '▶'}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700 text-sm space-y-2">
+          {plugin.description && (
+            <div className="text-neutral-700 dark:text-neutral-300">
+              {plugin.description}
+            </div>
+          )}
+          {plugin.uiMode && (
+            <div>
+              <span className="text-neutral-500 dark:text-neutral-400">UI Mode: </span>
+              {plugin.uiMode}
+            </div>
+          )}
+          {plugin.capabilities && (
+            <div className="flex gap-2 flex-wrap">
+              {plugin.capabilities.opensDialogue && (
+                <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded">
+                  Dialogue
+                </span>
+              )}
+              {plugin.capabilities.modifiesInventory && (
+                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs rounded">
+                  Inventory
+                </span>
+              )}
+              {plugin.capabilities.affectsRelationship && (
+                <span className="px-2 py-0.5 bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300 text-xs rounded">
+                  Relationship
+                </span>
+              )}
+              {plugin.capabilities.hasRisk && (
+                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs rounded">
+                  Risk
+                </span>
+              )}
+              {plugin.capabilities.canBeDetected && (
+                <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 text-xs rounded">
+                  Detectable
+                </span>
+              )}
+            </div>
+          )}
+          {plugin.tags && plugin.tags.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {plugin.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-xs rounded"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          {plugin.configFields && plugin.configFields.length > 0 && (
+            <div>
+              <span className="text-neutral-500 dark:text-neutral-400">Config fields: </span>
+              {plugin.configFields.map((f) => f.key).join(', ')}
+            </div>
+          )}
         </div>
       )}
     </div>

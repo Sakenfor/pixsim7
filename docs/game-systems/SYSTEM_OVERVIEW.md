@@ -5,7 +5,7 @@
 This document provides a high-level map of how PixSim7's game systems fit together. For implementation details, follow the links to specialized documentation below.
 
 > **For Agents**
-> - Start from `docs/APP_MAP.md`, then read this file before touching game/world/session code.
+> - Use the App Map panel (Dev Tools > App Map) for live architecture exploration, then read this file before touching game/world/session code.
 > - Treat this doc and the referenced files as the **spec**, and the database models/services as the **authority**.
 > - When editing game systems, keep scenes world‑agnostic and use session `flags` / `relationships` instead of new schema fields where possible.
 > - Related tasks (roadmap/status only):  
