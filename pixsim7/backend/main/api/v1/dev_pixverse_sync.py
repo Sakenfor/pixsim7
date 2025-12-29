@@ -138,3 +138,116 @@ async def pixverse_sync_dry_run(
         "videos": items,
     }
 
+
+@router.post("/backfill-synthetic-generations")
+async def backfill_synthetic_generations(
+    provider_id: str = Query("pixverse", description="Provider ID to filter assets"),
+    limit: int = Query(100, ge=1, le=1000, description="Max assets to process"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    dry_run: bool = Query(True, description="If true, only report what would be done"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_database),
+):
+    """
+    Backfill synthetic Generation records for existing synced assets.
+
+    Finds synced assets (sync_status=REMOTE) that don't have a source_generation_id
+    and creates synthetic Generation records from their media_metadata.
+
+    This enables:
+    - Full lineage with proper metadata
+    - Prompt version linkage
+    - Sibling discovery via reproducible_hash
+
+    Use dry_run=true to preview what would be done before committing.
+    """
+    from pixsim7.backend.main.domain.enums import SyncStatus
+    from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
+    from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
+
+    # Find synced assets without source_generation_id
+    stmt = (
+        select(Asset)
+        .where(Asset.user_id == current_user.id)
+        .where(Asset.provider_id == provider_id)
+        .where(Asset.sync_status == SyncStatus.REMOTE)
+        .where(Asset.source_generation_id.is_(None))
+        .where(Asset.media_metadata.isnot(None))
+        .order_by(Asset.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    assets = result.scalars().all()
+
+    if dry_run:
+        # Just report what would be done
+        return {
+            "dry_run": True,
+            "provider_id": provider_id,
+            "assets_found": len(assets),
+            "assets": [
+                {
+                    "id": a.id,
+                    "provider_asset_id": a.provider_asset_id,
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                    "has_metadata": bool(a.media_metadata),
+                }
+                for a in assets
+            ],
+        }
+
+    # Process each asset
+    synthetic_service = SyntheticGenerationService(db)
+    enrichment_service = AssetEnrichmentService(db)
+
+    results = []
+    for asset in assets:
+        try:
+            # First, ensure lineage is created from embedded assets
+            await enrichment_service._extract_and_register_embedded(asset, current_user)
+
+            # Then create synthetic generation
+            generation = await synthetic_service.create_for_asset(
+                asset,
+                current_user,
+                asset.media_metadata,
+            )
+
+            results.append({
+                "asset_id": asset.id,
+                "status": "created" if generation else "skipped",
+                "generation_id": generation.id if generation else None,
+            })
+        except Exception as e:
+            logger.warning(
+                "backfill_synthetic_generation_failed",
+                asset_id=asset.id,
+                error=str(e),
+            )
+            results.append({
+                "asset_id": asset.id,
+                "status": "failed",
+                "error": str(e),
+            })
+
+    created_count = sum(1 for r in results if r["status"] == "created")
+    failed_count = sum(1 for r in results if r["status"] == "failed")
+
+    logger.info(
+        "backfill_synthetic_generations_completed",
+        provider_id=provider_id,
+        total_processed=len(results),
+        created=created_count,
+        failed=failed_count,
+    )
+
+    return {
+        "dry_run": False,
+        "provider_id": provider_id,
+        "total_processed": len(results),
+        "created": created_count,
+        "failed": failed_count,
+        "results": results,
+    }
+

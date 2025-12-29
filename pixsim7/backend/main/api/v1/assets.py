@@ -597,6 +597,60 @@ async def serve_asset_file(
         raise HTTPException(status_code=500, detail=f"Failed to serve file: {str(e)}")
 
 
+# ===== ASSET SIBLINGS (Same Input Variations) =====
+
+@router.get("/assets/{asset_id}/siblings")
+async def get_asset_siblings(
+    asset_id: int,
+    user: CurrentUser,
+    db: DatabaseSession,
+    workspace_id: Optional[int] = Query(None, description="Filter by workspace"),
+):
+    """
+    Find sibling assets - variations generated from the same inputs.
+
+    Siblings share the same reproducible_hash (same prompt + same input assets).
+    Useful for finding all variations of a generation attempt.
+
+    Returns only assets owned by the current user for privacy.
+    """
+    from pixsim7.backend.main.services.generation.synthetic import find_sibling_assets
+
+    try:
+        siblings = await find_sibling_assets(
+            db,
+            asset_id=asset_id,
+            user_id=user.id,
+            workspace_id=workspace_id,
+        )
+
+        return {
+            "asset_id": asset_id,
+            "sibling_count": len(siblings),
+            "siblings": [
+                {
+                    "id": s.id,
+                    "provider_id": s.provider_id,
+                    "provider_asset_id": s.provider_asset_id,
+                    "media_type": s.media_type.value if s.media_type else None,
+                    "thumbnail_url": s.thumbnail_url,
+                    "remote_url": s.remote_url,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                }
+                for s in siblings
+            ],
+        }
+    except Exception as e:
+        logger.error(
+            "get_asset_siblings_failed",
+            asset_id=asset_id,
+            user_id=user.id,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to find siblings: {str(e)}")
+
+
 # ===== UPLOAD MEDIA (Provider-hosted) =====
 
 class UploadAssetResponse(BaseModel):

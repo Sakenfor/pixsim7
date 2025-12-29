@@ -250,10 +250,18 @@ async def sync_pixverse_assets(
 
     - Creates Asset records for remote items that don't already exist locally.
     - Attaches the full Pixverse payload as `media_metadata` for each Asset.
-    - Does NOT create lineage in this step (use /assets/lineage/refresh for that).
+    - Extracts embedded assets (source images) and creates lineage.
+    - Creates synthetic Generation records for full audit trail.
     """
+    from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
+    from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
+
     account = await _get_pixverse_account(account_id, current_user, db)
     provider, client = _get_pixverse_provider_and_client(account)
+
+    # Initialize services
+    enrichment_service = AssetEnrichmentService(db)
+    synthetic_service = SyntheticGenerationService(db)
 
     include_videos = body.mode in ("videos", "both")
     include_images = body.mode in ("images", "both")
@@ -300,7 +308,7 @@ async def sync_pixverse_assets(
                 )
                 continue
 
-            await add_asset(
+            asset = await add_asset(
                 db,
                 user_id=current_user.id,
                 media_type=MediaType.VIDEO,
@@ -311,11 +319,35 @@ async def sync_pixverse_assets(
                 sync_status=SyncStatus.REMOTE,
                 media_metadata=v,  # Full Pixverse payload
             )
+
+            # Extract embedded assets (source images) and create lineage
+            try:
+                await enrichment_service._extract_and_register_embedded(asset, current_user)
+            except Exception as e:
+                logger.warning(
+                    "pixverse_video_enrichment_failed",
+                    video_id=vid,
+                    asset_id=asset.id,
+                    error=str(e),
+                )
+
+            # Create synthetic generation for full audit trail
+            try:
+                await synthetic_service.create_for_asset(asset, current_user, v)
+            except Exception as e:
+                logger.warning(
+                    "pixverse_video_synthetic_gen_failed",
+                    video_id=vid,
+                    asset_id=asset.id,
+                    error=str(e),
+                )
+
             video_stats["created"] += 1
             logger.debug(
                 "pixverse_video_imported",
                 video_id=vid,
                 account_id=account_id,
+                asset_id=asset.id,
             )
 
     # Sync images
