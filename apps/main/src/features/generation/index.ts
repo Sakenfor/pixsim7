@@ -24,6 +24,8 @@ export { GenerationSourceToggle } from './components/GenerationSourceToggle';
 export type { GenerationSourceToggleProps } from './components/GenerationSourceToggle';
 export { ViewerAssetInputProvider } from './components/ViewerAssetInputProvider';
 export type { ViewerAssetInputProviderProps } from './components/ViewerAssetInputProvider';
+export { QuickGenPanelHost, QUICKGEN_PANEL_IDS, QUICKGEN_PRESETS } from './components/QuickGenPanelHost';
+export type { QuickGenPanelHostProps } from './components/QuickGenPanelHost';
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';

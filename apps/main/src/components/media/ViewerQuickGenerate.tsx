@@ -9,19 +9,20 @@
  * - "user": Uses current user settings from Control Center (global scope)
  * - "asset": Uses original generation settings from the asset (isolated scope)
  *
- * Uses portable quickgen panels from global registry, wrapped with GenerationScopeProvider.
+ * Uses QuickGenPanelHost for portable panel layout, wrapped with GenerationScopeProvider.
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { SmartDockview } from '@lib/dockview';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
 import {
   GenerationScopeProvider,
   GenerationSourceToggle,
   ViewerAssetInputProvider,
+  QuickGenPanelHost,
+  QUICKGEN_PRESETS,
 } from '@features/generation';
 import type { ViewerAsset } from '@features/assets';
 import type { OperationType } from '@/types/operations';
@@ -35,10 +36,7 @@ import {
   type GenerationSourceContext,
 } from '@features/contextHub';
 import { Ref } from '@pixsim7/shared.types';
-import type { DockviewApi } from 'dockview-core';
 
-// Panel IDs from global registry
-const VIEWER_QUICKGEN_PANELS = ['quickgen-prompt', 'quickgen-settings'] as const;
 const VIEWER_SCOPE_ID = 'viewerQuickGenerate';
 
 interface ViewerQuickGenerateProps {
@@ -48,8 +46,7 @@ interface ViewerQuickGenerateProps {
 }
 
 /**
- * Inner component that has access to the GenerationSourceToggle's capability.
- * Provides CAP_GENERATION_CONTEXT based on the current source mode.
+ * Inner component that provides CAP_GENERATION_CONTEXT based on source mode.
  */
 function ViewerGenerationContextProvider({
   asset,
@@ -64,9 +61,7 @@ function ViewerGenerationContextProvider({
 
   const generationContextValue = useMemo<GenerationContextSummary>(() => {
     const generationId =
-      mode === 'asset'
-        ? (sourceGeneration?.id ?? asset.sourceGenerationId)
-        : null;
+      mode === 'asset' ? (sourceGeneration?.id ?? asset.sourceGenerationId) : null;
     const ref =
       generationId != null && Number.isFinite(Number(generationId))
         ? Ref.generation(Number(generationId))
@@ -93,9 +88,12 @@ function ViewerGenerationContextProvider({
     [controlCenterOpen, generationContextValue]
   );
 
-  useProvideCapability(CAP_GENERATION_CONTEXT, generationContextProvider, [generationContextValue, controlCenterOpen], {
-    scope: 'root',
-  });
+  useProvideCapability(
+    CAP_GENERATION_CONTEXT,
+    generationContextProvider,
+    [generationContextValue, controlCenterOpen],
+    { scope: 'root' }
+  );
 
   return null;
 }
@@ -117,8 +115,6 @@ function ViewerQuickGenerateContent({
   controlCenterOpen: boolean;
   onModeChange: (mode: GenerationSourceMode) => void;
 }) {
-  const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
-
   // Read source context for loading/info display
   const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
   const mode = sourceContext?.mode ?? 'user';
@@ -144,35 +140,6 @@ function ViewerQuickGenerateContent({
       return { ...rest, source_asset_id: asset.id };
     });
   }, [asset.id, asset.type, controller]);
-
-  const ensureViewerPanels = useCallback((api: DockviewApi) => {
-    const hasPrompt = !!api.getPanel('quickgen-prompt');
-    if (!hasPrompt) {
-      api.addPanel({ id: 'quickgen-prompt', component: 'quickgen-prompt', title: 'Prompt' });
-    }
-
-    if (!api.getPanel('quickgen-settings')) {
-      api.addPanel({
-        id: 'quickgen-settings',
-        component: 'quickgen-settings',
-        title: 'Settings',
-        position: { direction: 'right', referencePanel: 'quickgen-prompt' },
-      });
-    }
-  }, []);
-
-  const handleDockviewReady = useCallback(
-    (api: DockviewApi) => {
-      setDockviewApi(api);
-      ensureViewerPanels(api);
-    },
-    [ensureViewerPanels]
-  );
-
-  useEffect(() => {
-    if (!dockviewApi) return;
-    requestAnimationFrame(() => ensureViewerPanels(dockviewApi));
-  }, [dockviewApi, ensureViewerPanels]);
 
   return (
     <div className="space-y-2">
@@ -219,17 +186,11 @@ function ViewerQuickGenerateContent({
         <ViewerAssetInputProvider asset={asset} />
         <ViewerGenerationContextProvider asset={asset} controlCenterOpen={controlCenterOpen} />
 
-        {/* Panels: consume capabilities */}
-        <SmartDockview
-          panels={[...VIEWER_QUICKGEN_PANELS]}
-          storageKey="viewer-quickgen-layout-v2"
-          defaultPanelScopes={['generation']}
+        {/* Panels via shared host */}
+        <QuickGenPanelHost
+          panels={QUICKGEN_PRESETS.promptSettings}
+          storageKey="viewer-quickgen-layout-v3"
           panelManagerId="viewerQuickGenerate"
-          defaultLayout={createViewerQuickGenLayout}
-          minPanelsForTabs={1}
-          deprecatedPanels={DEPRECATED_PANELS}
-          onReady={handleDockviewReady}
-          enableContextMenu
         />
       </div>
     </div>
@@ -275,7 +236,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     );
   }
 
-  // Expanded state - show dockview layout with GenerationScopeProvider
+  // Expanded state - show panel host with GenerationScopeProvider
   return (
     <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
       <ViewerQuickGenerateContent
@@ -287,27 +248,4 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       />
     </GenerationScopeProvider>
   );
-}
-
-// Static config - stable reference to prevent unnecessary re-renders
-// Old panel IDs included for migration from previous layouts
-const DEPRECATED_PANELS: string[] = [
-  'info',
-  'prompt',
-  'settings',
-  'viewer-quickgen-prompt',
-  'viewer-quickgen-settings',
-];
-
-/**
- * Create the default layout for the viewer quick generate dockview.
- */
-function createViewerQuickGenLayout(api: DockviewApi) {
-  api.addPanel({ id: 'quickgen-prompt', component: 'quickgen-prompt', title: 'Prompt' });
-  api.addPanel({
-    id: 'quickgen-settings',
-    component: 'quickgen-settings',
-    title: 'Settings',
-    position: { direction: 'right', referencePanel: 'quickgen-prompt' },
-  });
 }
