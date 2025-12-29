@@ -1,18 +1,20 @@
 /**
- * Brain Tool Registry with Auto-Registration
+ * Brain Tool Registry
  *
- * This module re-exports the brain tool registry and automatically
- * registers all built-in brain tools when imported.
+ * Central registry for brain tools used in NpcBrainLab.
+ *
+ * NOTE: This module no longer auto-registers tools on import.
+ * Call registerBrainTools() explicitly during app initialization.
+ *
+ * @example
+ * // In main.tsx or app initialization:
+ * import { registerBrainTools } from '@features/brainTools/lib';
+ * registerBrainTools();
  */
 
-import { brainToolRegistry } from './types';
-import { builtInBrainTools } from '../plugins';
-
-// Auto-register all built-in brain tools
-builtInBrainTools.forEach(tool => {
-  brainToolRegistry.register(tool);
-});
-
 // Re-export registry and types
-export { brainToolRegistry };
+export { brainToolRegistry } from './types';
 export type { BrainToolPlugin, BrainToolContext, BrainToolCategory } from './types';
+
+// Export registration function
+export { registerBrainTools } from './registerBrainTools';

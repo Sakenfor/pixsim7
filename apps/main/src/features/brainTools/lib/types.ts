@@ -11,12 +11,12 @@
  *
  * Uses data-driven BrainState that adapts to whatever stat packages a world uses.
  *
- * Extends BaseRegistry for standard CRUD operations and listener support.
+ * Extends ToolRegistryBase for shared tool registry functionality.
  */
 
 import type { ReactNode } from 'react';
 
-import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
+import { ToolRegistryBase, type ToolPlugin } from '@lib/core/ToolRegistryBase';
 import type { BrainState } from '@lib/core/types';
 import type { GameSessionDTO } from '../api/game';
 
@@ -50,20 +50,10 @@ export type BrainToolCategory =
 
 /**
  * Brain tool plugin definition
+ *
+ * Extends the base ToolPlugin with brain-specific properties.
  */
-export interface BrainToolPlugin extends Identifiable {
-  /** Unique identifier */
-  id: string;
-
-  /** Display name */
-  name: string;
-
-  /** Short description */
-  description?: string;
-
-  /** Icon (emoji or icon name) */
-  icon?: string;
-
+export interface BrainToolPlugin extends ToolPlugin {
   /** Category for grouping tools */
   category?: BrainToolCategory;
 
@@ -89,51 +79,15 @@ export interface BrainToolPlugin extends Identifiable {
 /**
  * Brain tool registry
  *
- * Extends BaseRegistry with brain-specific functionality:
+ * Extends ToolRegistryBase with brain-specific functionality.
+ *
+ * Inherits from ToolRegistryBase:
  * - Tool validation on register
  * - Category filtering
  * - Visibility predicates with error isolation
  */
-export class BrainToolRegistry extends BaseRegistry<BrainToolPlugin> {
-  /**
-   * Register a brain tool plugin
-   */
-  register(tool: BrainToolPlugin): boolean {
-    // Validate required fields
-    if (!tool.id || !tool.name || !tool.render) {
-      throw new Error('Brain tool must have id, name, and render properties');
-    }
-
-    if (this.has(tool.id)) {
-      console.warn(`Brain tool "${tool.id}" is already registered. Overwriting.`);
-    }
-
-    this.forceRegister(tool);
-    console.log(`✓ Registered brain tool: ${tool.id}`);
-    return true;
-  }
-
-  /**
-   * Get tools by category
-   */
-  getByCategory(category: BrainToolPlugin['category']): BrainToolPlugin[] {
-    return this.getAll().filter(tool => tool.category === category);
-  }
-
-  /**
-   * Get visible tools for current context
-   */
-  getVisible(context: BrainToolContext): BrainToolPlugin[] {
-    return this.getAll().filter(tool => {
-      if (!tool.whenVisible) return true;
-      try {
-        return tool.whenVisible(context);
-      } catch (e) {
-        console.error(`Error checking visibility for tool ${tool.id}:`, e);
-        return false;
-      }
-    });
-  }
+export class BrainToolRegistry extends ToolRegistryBase<BrainToolPlugin, BrainToolContext> {
+  protected readonly toolTypeName = 'Brain';
 }
 
 /**

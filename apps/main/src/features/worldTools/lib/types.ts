@@ -10,12 +10,12 @@
  * - Custom world state analyzers
  * - Character sheets and stats
  *
- * Extends BaseRegistry for standard CRUD operations and listener support.
+ * Extends ToolRegistryBase for shared tool registry functionality.
  */
 
 import type { ReactNode } from 'react';
 
-import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
+import { ToolRegistryBase, type ToolPlugin } from '@lib/core/ToolRegistryBase';
 import { debugFlags } from '@lib/utils/debugFlags';
 import type {
   GameSessionDTO,
@@ -34,23 +34,21 @@ import type { WorldToolContext } from './context';
 export type { WorldTime, WorldToolContext } from './context';
 
 /**
- * World tool plugin definition
+ * World tool category
  */
-export interface WorldToolPlugin extends Identifiable {
-  /** Unique identifier */
-  id: string;
+export type WorldToolCategory = 'character' | 'world' | 'quest' | 'inventory' | 'debug' | 'utility';
 
-  /** Display name */
-  name: string;
-
-  /** Short description */
+/**
+ * World tool plugin definition
+ *
+ * Extends the base ToolPlugin with world-specific properties.
+ */
+export interface WorldToolPlugin extends ToolPlugin {
+  /** Short description (required for world tools) */
   description: string;
 
-  /** Icon (emoji or icon name) */
-  icon?: string;
-
   /** Category for grouping tools */
-  category?: 'character' | 'world' | 'quest' | 'inventory' | 'debug' | 'utility';
+  category?: WorldToolCategory;
 
   /**
    * Predicate to determine when this tool should be visible
@@ -74,50 +72,34 @@ export interface WorldToolPlugin extends Identifiable {
 /**
  * World tool registry
  *
- * Extends BaseRegistry with world-specific functionality:
+ * Extends ToolRegistryBase with world-specific functionality.
+ * Uses debugFlags for conditional logging.
+ *
+ * Inherits from ToolRegistryBase:
  * - Tool validation on register
  * - Category filtering
  * - Visibility predicates with error isolation
  */
-export class WorldToolRegistry extends BaseRegistry<WorldToolPlugin> {
+export class WorldToolRegistry extends ToolRegistryBase<WorldToolPlugin, WorldToolContext> {
+  protected readonly toolTypeName = 'World';
+
   /**
    * Register a world tool plugin
+   * Overrides base to use debugFlags for conditional logging.
    */
   register(tool: WorldToolPlugin): boolean {
     // Validate required fields
     if (!tool.id || !tool.name || !tool.render) {
-      throw new Error('World tool must have id, name, and render properties');
+      throw new Error(`${this.toolTypeName} tool must have id, name, and render properties`);
     }
 
     if (this.has(tool.id)) {
-      console.warn(`World tool "${tool.id}" is already registered. Overwriting.`);
+      console.warn(`${this.toolTypeName} tool "${tool.id}" is already registered. Overwriting.`);
     }
 
     this.forceRegister(tool);
     debugFlags.log('registry', `✓ Registered world tool: ${tool.id}`);
     return true;
-  }
-
-  /**
-   * Get tools by category
-   */
-  getByCategory(category: WorldToolPlugin['category']): WorldToolPlugin[] {
-    return this.getAll().filter(tool => tool.category === category);
-  }
-
-  /**
-   * Get visible tools for current context
-   */
-  getVisible(context: WorldToolContext): WorldToolPlugin[] {
-    return this.getAll().filter(tool => {
-      if (!tool.whenVisible) return true;
-      try {
-        return tool.whenVisible(context);
-      } catch (e) {
-        console.error(`Error checking visibility for tool ${tool.id}:`, e);
-        return false;
-      }
-    });
   }
 }
 

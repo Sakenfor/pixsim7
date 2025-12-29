@@ -10,6 +10,8 @@ import '@lib/dockview/contextMenu/autoContextPresets' // Register auto-context m
 import { registerDevTools } from './lib/dev/devtools/registerDevTools'
 import { registerGallerySurfaces } from './features/gallery/lib/core/registerGallerySurfaces'
 import { registerGalleryTools } from './features/gallery/lib/core/registerGalleryTools'
+import { registerBrainTools } from './features/brainTools/lib/registerBrainTools'
+import { registerWorldTools } from './features/worldTools/lib/registerWorldTools'
 import { registerGizmoSurfaces } from './features/gizmos'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
 import { registerPromptCompanion } from './plugins/ui/prompt-companion'
@@ -33,6 +35,10 @@ registerDevTools()
 // Register gallery surfaces and tools
 registerGallerySurfaces()
 registerGalleryTools()
+
+// Register brain and world tools
+registerBrainTools()
+registerWorldTools()
 
 // Register gizmo surfaces
 registerGizmoSurfaces()
