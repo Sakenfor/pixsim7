@@ -9,13 +9,13 @@ import {
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
   CAP_GENERATION_CONTEXT,
-  CAP_GENERATION_SCOPE,
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
+  CAP_GENERATION_SOURCE,
 } from "./capabilityKeys";
 
 export {
@@ -23,13 +23,13 @@ export {
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
   CAP_GENERATION_CONTEXT,
-  CAP_GENERATION_SCOPE,
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
+  CAP_GENERATION_SOURCE,
 };
 
 registerCapabilityDescriptor({
@@ -57,13 +57,6 @@ registerCapabilityDescriptor({
   key: CAP_GENERATION_CONTEXT,
   label: "Generation Context",
   description: "Active generation context and mode.",
-  kind: "context",
-  source: "contextHub",
-});
-registerCapabilityDescriptor({
-  key: CAP_GENERATION_SCOPE,
-  label: "Generation Scope",
-  description: "Generation scope stores for this panel instance.",
   kind: "context",
   source: "contextHub",
 });
@@ -109,6 +102,13 @@ registerCapabilityDescriptor({
   kind: "action",
   source: "contextHub",
 });
+registerCapabilityDescriptor({
+  key: CAP_GENERATION_SOURCE,
+  label: "Generation Source",
+  description: "Controls whether generation uses user settings or asset's original settings.",
+  kind: "context",
+  source: "contextHub",
+});
 
 registerCapabilityContract(assetInputContract);
 
@@ -135,17 +135,6 @@ export type GenerationContextSummary = EntityScopedCapability<{
   mode?: string;
   supportsMultiAsset?: boolean;
 }, GenerationRef>;
-
-export type GenerationStoreHook<TState = any> = <T>(
-  selector: (state: TState) => T
-) => T;
-
-export interface GenerationScopeContext {
-  id: string;
-  label?: string;
-  useSessionStore: GenerationStoreHook;
-  useSettingsStore: GenerationStoreHook;
-}
 
 export interface PromptBoxContext {
   prompt: string;
@@ -243,4 +232,34 @@ export interface GenerationWidgetContext {
   setOperationInputMode: (operationType: string, mode: 'single' | 'multi') => void;
   /** Unique identifier for this widget instance */
   widgetId: string;
+}
+
+/** Mode for generation source - 'user' uses current user settings, 'asset' uses original generation settings */
+export type GenerationSourceMode = 'user' | 'asset';
+
+/**
+ * Generation source capability - controls whether generation uses user settings or asset's original settings.
+ * Provided by widget chrome (e.g., GenerationSourceToggle) to allow panels to adapt behavior.
+ */
+export interface GenerationSourceContext {
+  /** Current mode */
+  mode: GenerationSourceMode;
+  /** Change the mode */
+  setMode: (mode: GenerationSourceMode) => void;
+  /** Whether asset mode is available (single asset with sourceGenerationId) */
+  available: boolean;
+  /** Whether currently fetching source generation data */
+  loading: boolean;
+  /** Error message if fetch failed */
+  error: string | null;
+  /** Fetched generation data when in asset mode */
+  sourceGeneration: {
+    id: number;
+    prompt: string;
+    operationType: string;
+    providerId: string;
+    params: Record<string, unknown>;
+  } | null;
+  /** Reset to user mode, clearing fetched data */
+  resetToUser: () => void;
 }

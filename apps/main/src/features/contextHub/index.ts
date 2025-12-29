@@ -6,13 +6,13 @@ export {
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
   CAP_GENERATION_CONTEXT,
-  CAP_GENERATION_SCOPE,
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   CAP_EDITOR_CONTEXT,
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
+  CAP_GENERATION_SOURCE,
 } from "./capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -25,13 +25,14 @@ export type {
   SceneContextSummary,
   WorldContextSummary,
   GenerationContextSummary,
-  GenerationScopeContext,
   PromptBoxContext,
   AssetInputContext,
   GenerateActionContext,
   EditorContextSnapshot,
   PanelContextCapability,
   GenerationWidgetContext,
+  GenerationSourceMode,
+  GenerationSourceContext,
 } from "./capabilities";
 export type { CapabilityDescriptor, CapabilityDescriptorKind } from "./descriptorRegistry";
 export {

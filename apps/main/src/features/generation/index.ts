@@ -20,6 +20,10 @@ export { GenerationsPanel } from './components/GenerationsPanel';
 export type { GenerationsPanelProps } from './components/GenerationsPanel';
 export { GenerationSettingsPanel } from './components/GenerationSettingsPanel';
 export type { GenerationSettingsPanelProps } from './components/GenerationSettingsPanel';
+export { GenerationSourceToggle } from './components/GenerationSourceToggle';
+export type { GenerationSourceToggleProps } from './components/GenerationSourceToggle';
+export { ViewerAssetInputProvider } from './components/ViewerAssetInputProvider';
+export type { ViewerAssetInputProviderProps } from './components/ViewerAssetInputProvider';
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';
@@ -36,6 +40,7 @@ export { useGenerationQueueStore, getQueueForOperation } from './stores/generati
 export type { GenerationQueueState, QueuedAsset, EnqueueOptions, InputMode } from './stores/generationQueueStore';
 export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
 export { createGenerationSessionStore } from './stores/generationSessionStore';
+export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationQueueStore } from './stores/generationScopeStores';
 export {
   useGenerationsStore,
   generationsSelectors,

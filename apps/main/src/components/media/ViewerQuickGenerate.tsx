@@ -5,36 +5,41 @@
  * Shows when control center is closed, providing full generation settings
  * for the currently viewed asset without needing to open Control Center.
  *
- * Supports two modes:
- * - "asset": Shows the original prompt/settings from the asset's source generation
- * - "controlCenter": Shows the main Control Center settings (default behavior)
+ * Supports two modes via GenerationSourceToggle:
+ * - "user": Uses current user settings from Control Center (global scope)
+ * - "asset": Uses original generation settings from the asset (isolated scope)
+ *
+ * Uses portable quickgen panels from global registry, wrapped with GenerationScopeProvider.
+ * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { SmartDockview, createLocalPanelRegistry } from '@lib/dockview';
+import { SmartDockview } from '@lib/dockview';
 import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
-import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
-import { useGenerationWorkbench, fromGenerationResponse, type GenerationModel } from '@features/generation';
-import { getGeneration } from '@lib/api/generations';
+import {
+  GenerationScopeProvider,
+  GenerationSourceToggle,
+  ViewerAssetInputProvider,
+} from '@features/generation';
 import type { ViewerAsset } from '@features/assets';
 import type { OperationType } from '@/types/operations';
 import {
   CAP_GENERATION_CONTEXT,
   useProvideCapability,
+  useCapability,
+  CAP_GENERATION_SOURCE,
   type GenerationContextSummary,
+  type GenerationSourceMode,
+  type GenerationSourceContext,
 } from '@features/contextHub';
 import { Ref } from '@pixsim7/shared.types';
-import {
-  ViewerQuickGenPromptPanel,
-  ViewerQuickGenSettingsPanel,
-  type ViewerQuickGenContext,
-  type ViewerQuickGenSettingsMode,
-} from './viewer/ViewerQuickGeneratePanels';
 import type { DockviewApi } from 'dockview-core';
 
-type SettingsMode = 'asset' | 'controlCenter';
+// Panel IDs from global registry
+const VIEWER_QUICKGEN_PANELS = ['quickgen-prompt', 'quickgen-settings'] as const;
+const VIEWER_SCOPE_ID = 'viewerQuickGenerate';
 
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
@@ -42,136 +47,39 @@ interface ViewerQuickGenerateProps {
   alwaysExpanded?: boolean;
 }
 
-export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQuickGenerateProps) {
-  const controlCenterOpen = useControlCenterStore((s) => s.open);
-  const [isExpanded, setIsExpanded] = useState(alwaysExpanded);
-  const [settingsMode, setSettingsMode] = useState<SettingsMode>('controlCenter');
+/**
+ * Inner component that has access to the GenerationSourceToggle's capability.
+ * Provides CAP_GENERATION_CONTEXT based on the current source mode.
+ */
+function ViewerGenerationContextProvider({
+  asset,
+  controlCenterOpen,
+}: {
+  asset: ViewerAsset;
+  controlCenterOpen: boolean;
+}) {
+  const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
+  const mode = sourceContext?.mode ?? 'user';
+  const sourceGeneration = sourceContext?.sourceGeneration;
 
-  // Asset settings state (local, ephemeral)
-  const [assetGeneration, setAssetGeneration] = useState<GenerationModel | null>(null);
-  const [assetPrompt, setAssetPrompt] = useState('');
-  const [assetLoading, setAssetLoading] = useState(false);
-  const [assetError, setAssetError] = useState<string | null>(null);
-  const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
+  const generationContextValue = useMemo<GenerationContextSummary>(() => {
+    const generationId =
+      mode === 'asset'
+        ? (sourceGeneration?.id ?? asset.sourceGenerationId)
+        : null;
+    const ref =
+      generationId != null && Number.isFinite(Number(generationId))
+        ? Ref.generation(Number(generationId))
+        : null;
 
-  // Control Center controller
-  const {
-    generating,
-    generate: ccGenerate,
-    operationType: ccOperationType,
-    setOperationType: ccSetOperationType,
-    prompt: ccPrompt,
-    setPrompt: ccSetPrompt,
-    error: ccError,
-    providerId: ccProviderId,
-    dynamicParams,
-    setDynamicParams,
-    setProvider: ccSetProvider,
-    setPresetParams: ccSetPresetParams,
-  } = useQuickGenerateController();
-
-  // Get paramSpecs for per-model prompt limits
-  const workbench = useGenerationWorkbench({ operationType: ccOperationType });
-
-  const hasSourceGeneration = !!asset.sourceGenerationId;
-
-  // Fetch generation data when switching to asset mode or when asset changes
-  const fetchAssetGeneration = useCallback(async () => {
-    if (!asset.sourceGenerationId) return;
-
-    setAssetLoading(true);
-    setAssetError(null);
-
-    try {
-      const response = await getGeneration(asset.sourceGenerationId);
-      const generation = fromGenerationResponse(response);
-      setAssetGeneration(generation);
-      setAssetPrompt(generation.finalPrompt || '');
-    } catch (err) {
-      console.error('Failed to fetch generation:', err);
-      setAssetError('Failed to load generation settings');
-      setAssetGeneration(null);
-    } finally {
-      setAssetLoading(false);
-    }
-  }, [asset.sourceGenerationId]);
-
-  // Fetch generation when entering asset mode
-  useEffect(() => {
-    if (settingsMode === 'asset' && hasSourceGeneration && !assetGeneration) {
-      fetchAssetGeneration();
-    }
-  }, [settingsMode, hasSourceGeneration, assetGeneration, fetchAssetGeneration]);
-
-  // Reset asset state when asset changes
-  useEffect(() => {
-    setAssetGeneration(null);
-    setAssetPrompt('');
-    setAssetError(null);
-    // If we were in asset mode but new asset has no generation, switch to control center
-    if (settingsMode === 'asset' && !asset.sourceGenerationId) {
-      setSettingsMode('controlCenter');
-    }
-  }, [asset.id, asset.sourceGenerationId, settingsMode]);
-
-  // Determine which prompt/provider to use based on mode
-  const activePrompt = settingsMode === 'asset' ? assetPrompt : ccPrompt;
-  const setActivePrompt = settingsMode === 'asset' ? setAssetPrompt : ccSetPrompt;
-  const activeProviderId = settingsMode === 'asset' ? assetGeneration?.providerId : ccProviderId;
-  const activeError = settingsMode === 'asset' ? assetError : ccError;
-
-  const maxChars = resolvePromptLimitForModel(
-    activeProviderId || ccProviderId,
-    workbench.dynamicParams?.model as string | undefined,
-    workbench.paramSpecs
-  );
-
-  // Auto-set operation type based on asset type (only for control center mode)
-  useEffect(() => {
-    if (settingsMode === 'controlCenter') {
-      const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
-      ccSetOperationType(targetOp);
-    }
-  }, [asset.type, ccSetOperationType, settingsMode]);
-
-  // Auto-set dynamic params from viewed asset
-  useEffect(() => {
-    if (!asset.id) return;
-
-    if (asset.type === 'video') {
-      setDynamicParams((prev: Record<string, any>) => {
-        const { video_url, ...rest } = prev;
-        return { ...rest, source_asset_id: asset.id };
-      });
-    } else if (asset.type === 'image') {
-      setDynamicParams((prev: Record<string, any>) => {
-        const { image_url, ...rest } = prev;
-        return { ...rest, source_asset_id: asset.id };
-      });
-    }
-  }, [asset.id, asset.type, setDynamicParams]);
-
-  const generationContextValue = useMemo<GenerationContextSummary>(
-    () => {
-      const generationId =
-        settingsMode === 'asset'
-          ? (asset.sourceGenerationId ?? assetGeneration?.id)
-          : null;
-      const ref =
-        generationId != null && Number.isFinite(Number(generationId))
-          ? Ref.generation(Number(generationId))
-          : null;
-
-      return {
-        id: 'assetViewer',
-        label: 'Asset Viewer',
-        mode: settingsMode === 'asset' ? 'asset' : 'controlCenter',
-        supportsMultiAsset: false,
-        ref,
-      };
-    },
-    [settingsMode, asset.sourceGenerationId, assetGeneration?.id],
-  );
+    return {
+      id: 'assetViewer',
+      label: 'Asset Viewer',
+      mode: mode === 'asset' ? 'asset' : 'controlCenter',
+      supportsMultiAsset: false,
+      ref,
+    };
+  }, [mode, sourceGeneration?.id, asset.sourceGenerationId]);
 
   const generationContextProvider = useMemo(
     () => ({
@@ -182,99 +90,172 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       isAvailable: () => !controlCenterOpen,
       getValue: () => generationContextValue,
     }),
-    [controlCenterOpen, generationContextValue],
+    [controlCenterOpen, generationContextValue]
   );
 
   useProvideCapability(CAP_GENERATION_CONTEXT, generationContextProvider, [generationContextValue, controlCenterOpen], {
     scope: 'root',
   });
 
-  const shouldHide = controlCenterOpen && !alwaysExpanded;
+  return null;
+}
 
-  const handleGenerate = async () => {
-    if (!activePrompt.trim() || generating) return;
+/**
+ * Inner component for the expanded quick generate content.
+ * Rendered inside GenerationScopeProvider to access scoped stores.
+ */
+function ViewerQuickGenerateContent({
+  asset,
+  alwaysExpanded,
+  onCollapse,
+  controlCenterOpen,
+  onModeChange,
+}: {
+  asset: ViewerAsset;
+  alwaysExpanded: boolean;
+  onCollapse: () => void;
+  controlCenterOpen: boolean;
+  onModeChange: (mode: GenerationSourceMode) => void;
+}) {
+  const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
 
-    if (settingsMode === 'asset' && assetGeneration) {
-      // In asset mode: load settings to control center, then generate
-      // This ensures the generation uses the tweaked settings
-      if (assetGeneration.operationType) {
-        ccSetOperationType(assetGeneration.operationType as OperationType);
-      }
-      if (assetGeneration.providerId) {
-        ccSetProvider(assetGeneration.providerId);
-      }
-      ccSetPrompt(assetPrompt);
-      const params = assetGeneration.canonicalParams || assetGeneration.rawParams;
-      if (params) {
-        ccSetPresetParams(params);
-      }
+  // Read source context for loading/info display
+  const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
+  const mode = sourceContext?.mode ?? 'user';
+  const loading = sourceContext?.loading ?? false;
+  const sourceGeneration = sourceContext?.sourceGeneration;
+
+  // Control Center controller (reads from current scope)
+  const controller = useQuickGenerateController();
+
+  // Auto-set operation type based on asset type (when in user mode)
+  useEffect(() => {
+    if (mode === 'user') {
+      const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
+      controller.setOperationType(targetOp);
     }
+  }, [asset.type, controller, mode]);
 
-    // Trigger generation
-    await ccGenerate();
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleGenerate();
-    }
-    if (e.key === 'Escape') {
-      setIsExpanded(false);
-    }
-  };
-
-  const handleModeChange = (mode: SettingsMode) => {
-    if (mode === 'asset' && !hasSourceGeneration) return;
-    setSettingsMode(mode);
-  };
+  // Auto-set dynamic params from viewed asset
+  useEffect(() => {
+    if (!asset.id) return;
+    controller.setDynamicParams((prev: Record<string, unknown>) => {
+      const { video_url, image_url, ...rest } = prev;
+      return { ...rest, source_asset_id: asset.id };
+    });
+  }, [asset.id, asset.type, controller]);
 
   const ensureViewerPanels = useCallback((api: DockviewApi) => {
-    const hasPrompt = !!api.getPanel('prompt');
+    const hasPrompt = !!api.getPanel('quickgen-prompt');
     if (!hasPrompt) {
-      api.addPanel({ id: 'prompt', component: 'prompt', title: 'Prompt' });
+      api.addPanel({ id: 'quickgen-prompt', component: 'quickgen-prompt', title: 'Prompt' });
     }
 
-    if (!api.getPanel('settings')) {
+    if (!api.getPanel('quickgen-settings')) {
       api.addPanel({
-        id: 'settings',
-        component: 'settings',
+        id: 'quickgen-settings',
+        component: 'quickgen-settings',
         title: 'Settings',
-        position: { direction: 'right', referencePanel: 'prompt' },
+        position: { direction: 'right', referencePanel: 'quickgen-prompt' },
       });
     }
   }, []);
 
-  const canGenerate = !!activePrompt.trim();
-
-  const quickGenContext: ViewerQuickGenContext = {
-    asset,
-    activePrompt,
-    setActivePrompt,
-    maxChars,
-    generating,
-    activeError: activeError || null,
-    assetLoading,
-    settingsMode: settingsMode as ViewerQuickGenSettingsMode,
-    setSettingsMode: handleModeChange,
-    hasSourceGeneration,
-    assetGeneration,
-    handleGenerate,
-    handleKeyDown,
-    canGenerate,
-  };
-
-  // Memoize onReady to prevent SmartDockview re-renders
-  const handleDockviewReady = useCallback((api: DockviewApi) => {
-    setDockviewApi(api);
-    ensureViewerPanels(api);
-  }, [ensureViewerPanels]);
+  const handleDockviewReady = useCallback(
+    (api: DockviewApi) => {
+      setDockviewApi(api);
+      ensureViewerPanels(api);
+    },
+    [ensureViewerPanels]
+  );
 
   useEffect(() => {
     if (!dockviewApi) return;
-    // Ensure all default panels exist even if a stale layout is loaded.
     requestAnimationFrame(() => ensureViewerPanels(dockviewApi));
   }, [dockviewApi, ensureViewerPanels]);
+
+  return (
+    <div className="space-y-2">
+      {/* Header with mode toggle and close button */}
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+          Quick Generate
+        </span>
+        <div className="flex items-center gap-2">
+          {/* Mode toggle - provides CAP_GENERATION_SOURCE */}
+          <GenerationSourceToggle
+            sourceGenerationId={asset.sourceGenerationId}
+            onModeChange={onModeChange}
+          />
+          {!alwaysExpanded && (
+            <button
+              onClick={onCollapse}
+              className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
+              title="Close"
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Loading indicator for asset mode */}
+      {mode === 'asset' && loading && (
+        <div className="flex items-center justify-center py-2 text-neutral-500">
+          <Icon name="loader" size={14} className="animate-spin mr-2" />
+          <span className="text-xs">Loading generation settings...</span>
+        </div>
+      )}
+
+      {/* Asset generation info */}
+      {mode === 'asset' && sourceGeneration && !loading && (
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 px-1">
+          Original: {sourceGeneration.providerId} x {sourceGeneration.operationType}
+        </div>
+      )}
+
+      <div className="h-[360px] min-h-[280px]">
+        {/* Chrome: capability providers */}
+        <ViewerAssetInputProvider asset={asset} />
+        <ViewerGenerationContextProvider asset={asset} controlCenterOpen={controlCenterOpen} />
+
+        {/* Panels: consume capabilities */}
+        <SmartDockview
+          panels={[...VIEWER_QUICKGEN_PANELS]}
+          storageKey="viewer-quickgen-layout-v2"
+          defaultPanelScopes={['generation']}
+          panelManagerId="viewerQuickGenerate"
+          defaultLayout={createViewerQuickGenLayout}
+          minPanelsForTabs={1}
+          deprecatedPanels={DEPRECATED_PANELS}
+          onReady={handleDockviewReady}
+          enableContextMenu
+        />
+      </div>
+    </div>
+  );
+}
+
+export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQuickGenerateProps) {
+  const controlCenterOpen = useControlCenterStore((s) => s.open);
+  const [isExpanded, setIsExpanded] = useState(alwaysExpanded);
+  // Mode is managed at top level to determine scope before rendering the toggle
+  const [mode, setMode] = useState<GenerationSourceMode>('user');
+
+  // Reset mode when asset changes
+  useEffect(() => {
+    // If switching to an asset without source generation while in asset mode, reset to user
+    if (mode === 'asset' && !asset.sourceGenerationId) {
+      setMode('user');
+    }
+  }, [asset.id, asset.sourceGenerationId, mode]);
+
+  // Determine scope based on mode:
+  // - asset mode: use isolated viewer scope (populated with asset's generation data)
+  // - user mode: use global scope (shared with Control Center)
+  const scopeId = mode === 'asset' ? VIEWER_SCOPE_ID : 'global';
+
+  const shouldHide = controlCenterOpen && !alwaysExpanded;
 
   // Don't show if control center is open (unless forced via alwaysExpanded)
   if (shouldHide) {
@@ -294,78 +275,39 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     );
   }
 
-  // Expanded state - show dockview layout
+  // Expanded state - show dockview layout with GenerationScopeProvider
   return (
-    <div className="space-y-2">
-      {/* Header with mode toggle and close button */}
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-          Quick Generate
-        </span>
-        <div className="flex items-center gap-1">
-          {!alwaysExpanded && (
-            <button
-              onClick={() => setIsExpanded(false)}
-              className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
-              title="Close"
-            >
-              <Icon name="x" size={12} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="h-[360px] min-h-[280px]">
-        <SmartDockview
-          registry={viewerQuickGenRegistry}
-          storageKey="viewer-quickgen-layout"
-          context={quickGenContext}
-          defaultPanelScopes={['generation']}
-          panelManagerId="viewerQuickGenerate"
-          defaultLayout={createViewerQuickGenLayout}
-          minPanelsForTabs={1}
-          deprecatedPanels={DEPRECATED_PANELS}
-          onReady={handleDockviewReady}
-        />
-      </div>
-    </div>
+    <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
+      <ViewerQuickGenerateContent
+        asset={asset}
+        alwaysExpanded={alwaysExpanded}
+        onCollapse={() => setIsExpanded(false)}
+        controlCenterOpen={controlCenterOpen}
+        onModeChange={setMode}
+      />
+    </GenerationScopeProvider>
   );
 }
 
-// Local registry for viewer quick generate panels
-// Uses local registry since this is a small embedded dockview that mounts
-// independently of the main workspace (before initializePanels runs)
-type ViewerQuickGenPanelId = 'prompt' | 'settings';
-
-const viewerQuickGenRegistry = createLocalPanelRegistry<ViewerQuickGenPanelId>();
-
-viewerQuickGenRegistry.registerAll([
-  {
-    id: 'prompt',
-    title: 'Prompt',
-    component: ViewerQuickGenPromptPanel,
-    size: { minHeight: 140 },
-  },
-  {
-    id: 'settings',
-    title: 'Settings',
-    component: ViewerQuickGenSettingsPanel,
-    size: { minHeight: 160 },
-  },
-]);
-
 // Static config - stable reference to prevent unnecessary re-renders
-const DEPRECATED_PANELS = ['info'] as const;
+// Old panel IDs included for migration from previous layouts
+const DEPRECATED_PANELS: string[] = [
+  'info',
+  'prompt',
+  'settings',
+  'viewer-quickgen-prompt',
+  'viewer-quickgen-settings',
+];
 
 /**
  * Create the default layout for the viewer quick generate dockview.
  */
 function createViewerQuickGenLayout(api: DockviewApi) {
-  api.addPanel({ id: 'prompt', component: 'prompt', title: 'Prompt' });
+  api.addPanel({ id: 'quickgen-prompt', component: 'quickgen-prompt', title: 'Prompt' });
   api.addPanel({
-    id: 'settings',
-    component: 'settings',
+    id: 'quickgen-settings',
+    component: 'quickgen-settings',
     title: 'Settings',
-    position: { direction: 'right', referencePanel: 'prompt' },
+    position: { direction: 'right', referencePanel: 'quickgen-prompt' },
   });
 }
