@@ -107,17 +107,18 @@ function ViewerQuickGenerateContent({
   alwaysExpanded,
   onCollapse,
   controlCenterOpen,
+  mode,
   onModeChange,
 }: {
   asset: ViewerAsset;
   alwaysExpanded: boolean;
   onCollapse: () => void;
   controlCenterOpen: boolean;
+  mode: GenerationSourceMode;
   onModeChange: (mode: GenerationSourceMode) => void;
 }) {
-  // Read source context for loading/info display
+  // Read source context for loading/info display (mode comes from prop, not capability)
   const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
-  const mode = sourceContext?.mode ?? 'user';
   const loading = sourceContext?.loading ?? false;
   const sourceGeneration = sourceContext?.sourceGeneration;
 
@@ -151,6 +152,7 @@ function ViewerQuickGenerateContent({
         <div className="flex items-center gap-2">
           {/* Mode toggle - provides CAP_GENERATION_SOURCE */}
           <GenerationSourceToggle
+            mode={mode}
             sourceGenerationId={asset.sourceGenerationId}
             onModeChange={onModeChange}
           />
@@ -244,6 +246,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
         alwaysExpanded={alwaysExpanded}
         onCollapse={() => setIsExpanded(false)}
         controlCenterOpen={controlCenterOpen}
+        mode={mode}
         onModeChange={setMode}
       />
     </GenerationScopeProvider>

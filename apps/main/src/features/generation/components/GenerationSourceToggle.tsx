@@ -4,6 +4,8 @@
  * Widget chrome component (NOT a panel) that provides CAP_GENERATION_SOURCE capability.
  * Allows switching between user settings and asset's original generation settings.
  *
+ * This is a CONTROLLED component - mode is passed in, not managed internally.
+ *
  * Usage: Render in widget header/chrome, inside a GenerationScopeProvider.
  */
 
@@ -21,41 +23,59 @@ import {
 import type { OperationType } from '@/types/operations';
 
 export interface GenerationSourceToggleProps {
+  /** Current mode (controlled) */
+  mode: GenerationSourceMode;
+  /** Callback when user changes mode */
+  onModeChange: (mode: GenerationSourceMode) => void;
   /** Source generation ID to fetch when in asset mode */
   sourceGenerationId?: number | null;
-  /** Callback when mode changes */
-  onModeChange?: (mode: GenerationSourceMode) => void;
-  /** Whether to auto-switch to asset mode when sourceGenerationId is available */
-  autoSwitchToAsset?: boolean;
 }
 
 export function GenerationSourceToggle({
-  sourceGenerationId,
+  mode,
   onModeChange,
-  autoSwitchToAsset = false,
+  sourceGenerationId,
 }: GenerationSourceToggleProps) {
-  const [mode, setMode] = useState<GenerationSourceMode>('user');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourceGeneration, setSourceGeneration] = useState<GenerationModel | null>(null);
+  // Track which generation ID we've fetched to avoid refetching same data
+  const [fetchedGenerationId, setFetchedGenerationId] = useState<number | null>(null);
 
   const { useSessionStore, id: scopeId } = useGenerationScopeStores();
 
   const available = typeof sourceGenerationId === 'number' && Number.isFinite(sourceGenerationId);
 
-  // Fetch generation when switching to asset mode
+  // Fetch generation when in asset mode and we have a new sourceGenerationId
   useEffect(() => {
-    if (mode !== 'asset' || !available || !sourceGenerationId) return;
+    if (mode !== 'asset' || !available || !sourceGenerationId) {
+      return;
+    }
+
+    // Already fetched this generation
+    if (fetchedGenerationId === sourceGenerationId && sourceGeneration) {
+      return;
+    }
 
     let cancelled = false;
+    const currentScopeId = scopeId; // Capture for stale check
+
     setLoading(true);
     setError(null);
 
     getGeneration(sourceGenerationId)
       .then((response) => {
         if (cancelled) return;
+
+        // Check if scope changed during fetch
+        const nowScopeId = useSessionStore.getState ? scopeId : currentScopeId;
+        if (nowScopeId !== currentScopeId) {
+          return; // Scope changed, discard result
+        }
+
         const gen = fromGenerationResponse(response);
         setSourceGeneration(gen);
+        setFetchedGenerationId(sourceGenerationId);
 
         // Populate scoped stores (single source of truth for asset mode)
         const state = useSessionStore.getState();
@@ -78,7 +98,8 @@ export function GenerationSourceToggle({
         } else {
           setError('Failed to load original settings');
         }
-        setMode('user'); // Fall back to user mode
+        // Fall back to user mode on error
+        onModeChange('user');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -87,35 +108,37 @@ export function GenerationSourceToggle({
     return () => {
       cancelled = true;
     };
-  }, [mode, available, sourceGenerationId, useSessionStore]);
+  }, [mode, available, sourceGenerationId, useSessionStore, scopeId, fetchedGenerationId, sourceGeneration, onModeChange]);
 
-  // Reset when sourceGenerationId changes
+  // Reset fetched data when sourceGenerationId changes
   useEffect(() => {
-    setSourceGeneration(null);
-    setError(null);
+    if (sourceGenerationId !== fetchedGenerationId) {
+      setSourceGeneration(null);
+      setFetchedGenerationId(null);
+      setError(null);
+    }
+  }, [sourceGenerationId, fetchedGenerationId]);
+
+  // Reset to user mode if asset becomes unavailable while in asset mode
+  useEffect(() => {
     if (!available && mode === 'asset') {
-      setMode('user');
+      onModeChange('user');
     }
-    // Auto-switch to asset mode if requested and available
-    if (autoSwitchToAsset && available && mode === 'user') {
-      setMode('asset');
-    }
-  }, [sourceGenerationId, available, autoSwitchToAsset]);
+  }, [available, mode, onModeChange]);
 
   const handleModeChange = useCallback(
     (newMode: GenerationSourceMode) => {
       if (newMode === 'asset' && !available) return;
-      setMode(newMode);
-      onModeChange?.(newMode);
+      onModeChange(newMode);
     },
     [available, onModeChange]
   );
 
   const resetToUser = useCallback(() => {
-    setMode('user');
     setSourceGeneration(null);
+    setFetchedGenerationId(null);
     setError(null);
-    onModeChange?.('user');
+    onModeChange('user');
   }, [onModeChange]);
 
   // Build capability value
