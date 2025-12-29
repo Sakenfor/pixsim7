@@ -112,6 +112,22 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
   ),
 }
 
+# =============================================================================
+# LINEAGE-ONLY OPERATIONS
+# =============================================================================
+# These operations are NOT provider generations. They're used purely for
+# AssetLineage.operation_type to track how assets are related.
+#
+# Examples:
+# - FRAME_EXTRACTION: Image extracted from video locally (ffmpeg)
+# - Future: CROP, RESIZE, etc.
+#
+# These are excluded from OPERATION_REGISTRY since they don't participate
+# in the generation flow (no provider routing, no generation_type alias).
+LINEAGE_ONLY_OPERATIONS: Set[OperationType] = {
+  OperationType.FRAME_EXTRACTION,
+}
+
 
 def get_image_operations() -> Set[OperationType]:
   """Return set of operations that produce images."""
@@ -167,6 +183,7 @@ GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
   "video_extend": OperationType.VIDEO_EXTEND,    # Video extension
   "transition": OperationType.VIDEO_TRANSITION,  # Scene transitions
   "fusion": OperationType.FUSION,                # Character-consistent video
+  # NOTE: frame_extraction is NOT here - it's a lineage-only operation, not a generation type
 
   # -------------------------------------------------------------------------
   # SEMANTIC ALIASES (plugin-owned game/domain concepts)
@@ -260,6 +277,7 @@ def list_generation_operation_metadata() -> List[dict]:
   """
 
   # Define canonical aliases (directly correspond to OperationType)
+  # NOTE: frame_extraction is excluded - it's lineage-only, not a generation type
   canonical_aliases = {
     "text_to_image", "image_edit", "video_extend", "transition", "fusion"
   }
@@ -302,9 +320,11 @@ def validate_operation_coverage() -> Dict[str, Any]:
   warnings: List[str] = []
 
   # Check 1: All OperationType values should be in OPERATION_REGISTRY
+  # (except LINEAGE_ONLY_OPERATIONS which are not provider generations)
   registered_ops = set(OPERATION_REGISTRY.keys())
   all_ops = set(OperationType)
-  missing_from_registry = all_ops - registered_ops
+  generation_ops = all_ops - LINEAGE_ONLY_OPERATIONS
+  missing_from_registry = generation_ops - registered_ops
   if missing_from_registry:
     errors.append(
       "OperationType values missing from OPERATION_REGISTRY: "
