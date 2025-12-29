@@ -10,8 +10,8 @@
  */
 
 import type { MenuAction, MenuActionContext } from '../types';
-import type { LayoutPreset, PresetScope } from '@features/workspace/stores/workspaceStore';
-import { resolvePresetScope } from '@features/panels';
+import type { LayoutPreset } from '@features/workspace/stores/workspaceStore';
+import { resolvePresetScope, type PresetScope } from '../../widgetRegistry';
 
 // Re-export types for convenience
 export type { LayoutPreset, PresetScope };

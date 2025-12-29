@@ -1,108 +1,83 @@
 /**
- * Dock Widget Registry
+ * Dock Widget Registry (Feature Facade)
  *
- * Defines dockview-based widgets (panel containers) such as Workspace,
- * Control Center, and Asset Viewer. These widgets provide stable IDs
- * for layout presets, panel scopes, and future shareable UI presets.
+ * Re-exports from @lib/dockview/widgetRegistry with panel-specific extensions.
+ * This provides backward compatibility and adds scope-based panel filtering
+ * which requires access to the panel registry.
+ *
+ * For new code, prefer importing directly from @lib/dockview when possible.
  */
 
-import { BaseRegistry } from "@lib/core/BaseRegistry";
-import type { PresetScope } from "@features/workspace/stores/workspaceStore";
 import { getPanelsForScope } from "./panelRegistry";
 
-export interface DockWidgetDefinition {
-  /** Stable widget ID (used for presets and settings) */
-  id: string;
-  /** Human-friendly label */
-  label: string;
-  /** Dockview ID (panelManagerId / currentDockviewId) */
-  dockviewId: string;
-  /** Preset scope to use for layout presets */
-  presetScope: PresetScope;
-  /** Panel scope for auto-filtering panels (panelRegistry.availableIn) */
-  panelScope?: string;
-  /** Optional explicit allowlist of panels */
-  allowedPanels?: string[];
-  /** Optional default panels for initial layouts */
-  defaultPanels?: string[];
-  /** Optional storage key for layout persistence */
-  storageKey?: string;
-  /** Optional description */
-  description?: string;
-}
+// Re-export everything from the lib
+export {
+  dockviewWidgetRegistry,
+  registerDockviewWidget as registerDockWidget,
+  unregisterDockviewWidget as unregisterDockWidget,
+  getDockviewWidget as getDockWidget,
+  getDockviewWidgetByDockviewId as getDockWidgetByDockviewId,
+  resolvePresetScope,
+  setDefaultPresetScope,
+  getDefaultPresetScope,
+  getDockviewWidgetPanelIds,
+  registerDefaultDockviewWidgets,
+  areDefaultWidgetsRegistered,
+  DEFAULT_DOCKVIEW_WIDGETS,
+} from "@lib/dockview/widgetRegistry";
 
-export class DockWidgetRegistry extends BaseRegistry<DockWidgetDefinition> {}
+// Re-export types with backward-compatible names
+export type {
+  DockviewWidgetDefinition as DockWidgetDefinition,
+  PresetScope,
+} from "@lib/dockview/widgetRegistry";
 
-export const dockWidgetRegistry = new DockWidgetRegistry();
+// For backward compatibility, also export DockWidgetRegistry class
+// Note: This is deprecated - use dockviewWidgetRegistry directly
+export { dockviewWidgetRegistry as dockWidgetRegistry } from "@lib/dockview/widgetRegistry";
 
-export function registerDockWidget(definition: DockWidgetDefinition): void {
-  dockWidgetRegistry.register(definition);
-}
+/**
+ * Get panel IDs for a dockview with scope-based filtering.
+ *
+ * This extends the lib's getDockviewWidgetPanelIds by adding
+ * support for panelScope-based filtering using the panel registry.
+ *
+ * @param dockviewId - The dockview ID to get panels for
+ * @returns Array of panel IDs
+ */
+import {
+  getDockviewWidgetByDockviewId,
+  getDockviewWidgetPanelIds as libGetPanelIds,
+} from "@lib/dockview/widgetRegistry";
 
-export function getDockWidget(id: string): DockWidgetDefinition | undefined {
-  return dockWidgetRegistry.get(id);
-}
-
-export function getDockWidgetByDockviewId(
-  dockviewId: string | undefined,
-): DockWidgetDefinition | undefined {
-  if (!dockviewId) return undefined;
-  return dockWidgetRegistry.getAll().find((def) => def.dockviewId === dockviewId);
-}
-
-export function resolvePresetScope(dockviewId: string | undefined): PresetScope {
-  const widget = getDockWidgetByDockviewId(dockviewId);
-  if (widget?.presetScope) {
-    return widget.presetScope;
-  }
-  return "workspace";
-}
-
-export function getDockWidgetPanelIds(
-  dockviewId: string | undefined,
-): string[] {
-  const widget = getDockWidgetByDockviewId(dockviewId);
+export function getDockWidgetPanelIds(dockviewId: string | undefined): string[] {
+  const widget = getDockviewWidgetByDockviewId(dockviewId);
   if (!widget) return [];
 
+  // First try allowedPanels (explicit allowlist)
   if (widget.allowedPanels && widget.allowedPanels.length > 0) {
     return widget.allowedPanels;
   }
 
+  // Then try scope-based filtering (requires panel registry)
   if (widget.panelScope) {
     return getPanelsForScope(widget.panelScope).map((panel) => panel.id);
   }
 
-  return [];
+  // Fall back to lib implementation
+  return libGetPanelIds(dockviewId);
 }
 
-const DEFAULT_DOCK_WIDGETS: DockWidgetDefinition[] = [
-  {
-    id: "workspace",
-    label: "Workspace",
-    dockviewId: "workspace",
-    presetScope: "workspace",
-    panelScope: "workspace",
-    storageKey: "dockview:workspace:v4",
-    description: "Primary workspace dockview container.",
-  },
-  {
-    id: "control-center",
-    label: "Control Center",
-    dockviewId: "controlCenter",
-    presetScope: "control-center",
-    panelScope: "control-center",
-    storageKey: "dockview:control-center:v5",
-    description: "Bottom dockview container for quick tools and generation.",
-  },
-  {
-    id: "asset-viewer",
-    label: "Asset Viewer",
-    dockviewId: "assetViewer",
-    presetScope: "asset-viewer",
-    panelScope: "asset-viewer",
-    storageKey: "dockview:asset-viewer:v5",
-    description: "Side dockview container for the media viewer.",
-  },
-];
+// ============================================================================
+// Backward Compatibility: Auto-register defaults
+// ============================================================================
 
-DEFAULT_DOCK_WIDGETS.forEach((def) => registerDockWidget(def));
+import { registerDefaultDockviewWidgets } from "@lib/dockview/widgetRegistry";
+
+/**
+ * Auto-register defaults for backward compatibility.
+ * New code should call registerDefaultDockviewWidgets() explicitly.
+ *
+ * @deprecated Import and call registerDefaultDockviewWidgets() explicitly
+ */
+registerDefaultDockviewWidgets();

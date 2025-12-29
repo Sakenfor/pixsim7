@@ -54,13 +54,15 @@ export type ContextDataResolver = (id: string) => Record<string, unknown> | null
 
 /**
  * Resolution precedence:
- * 1. Type-specific resolver (if registered) - for store-backed lookups
- * 2. Component cache fallback (if no resolver) - for component-registered data
+ * 1. Type-specific resolver (if registered and returns non-null)
+ * 2. Component cache fallback (always checked as fallback)
  *
  * This means:
- * - If a feature registers a resolver, it owns that type's data
- * - If no resolver exists, component-level cache is used
- * - Components should use useRegisterContextData for types without resolvers
+ * - Resolvers and cache can complement each other
+ * - Resolver handles store-backed lookups (e.g., global stores)
+ * - Cache handles component-level or ephemeral data
+ * - If resolver returns null, cache is still checked
+ * - Components can override resolver data by registering in cache
  */
 class ContextDataRegistry {
   private resolvers = new Map<string, ContextDataResolver>();
@@ -100,8 +102,13 @@ class ContextDataRegistry {
    * Resolve data for a context type and ID.
    *
    * Precedence:
-   * 1. Type-specific resolver (if registered)
-   * 2. Component cache fallback (if no resolver for this type)
+   * 1. Type-specific resolver (if registered and returns non-null)
+   * 2. Component cache fallback (always checked if resolver returns null)
+   *
+   * This allows resolvers and component-level cache to complement each other:
+   * - Resolver can handle store-backed lookups
+   * - Cache provides component-level overrides or ephemeral data
+   * - If both exist, resolver is tried first, cache is fallback
    *
    * Returns null if neither source has data.
    */
@@ -110,14 +117,20 @@ class ContextDataRegistry {
     const resolver = this.resolvers.get(type);
     if (resolver) {
       try {
-        return resolver(id);
+        const result = resolver(id);
+        // Only use resolver result if non-null
+        // This allows component cache to supplement resolvers
+        if (result !== null) {
+          return result;
+        }
       } catch (error) {
         console.error(`[ContextDataRegistry] Error resolving ${type}:${id}:`, error);
-        return null;
+        // Fall through to cache on error
       }
     }
 
-    // 2. Fall back to component cache if no resolver for this type
+    // 2. Fall back to component cache
+    // This runs even if a resolver exists but returned null
     if (this.cache) {
       return this.cache.get(type, id) ?? null;
     }

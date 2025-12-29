@@ -38,6 +38,22 @@ export {
 } from './hostRegistry';
 export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
 
+export {
+  dockviewWidgetRegistry,
+  registerDockviewWidget,
+  unregisterDockviewWidget,
+  getDockviewWidget,
+  getDockviewWidgetByDockviewId,
+  resolvePresetScope,
+  setDefaultPresetScope,
+  getDefaultPresetScope,
+  getDockviewWidgetPanelIds,
+  registerDefaultDockviewWidgets,
+  areDefaultWidgetsRegistered,
+  DEFAULT_DOCKVIEW_WIDGETS,
+} from './widgetRegistry';
+export type { DockviewWidgetDefinition, PresetScope } from './widgetRegistry';
+
 export type {
   LocalPanelDefinition,
   PanelPosition,
