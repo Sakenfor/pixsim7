@@ -63,6 +63,11 @@
         console.log('[PixSim7] batch_upload_media response:', responseObj);
         fakeXHRResponse(xhr, 200, JSON.stringify(responseObj), responseObj);
         console.log('[PixSim7] batch_upload_media response sent');
+
+        // Signal completion so content script knows it's safe to proceed with next image
+        window.dispatchEvent(new CustomEvent('__pxs7UploadComplete', {
+          detail: { url: urlToReturn, success: true }
+        }));
       }, 50);
       return;
     }
