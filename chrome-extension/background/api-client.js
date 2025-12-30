@@ -49,6 +49,24 @@ async function backendRequest(endpoint, options = {}) {
 
   if (!response.ok) {
     const error = await response.text();
+
+    // Handle 401 Unauthorized - token expired or revoked
+    if (response.status === 401) {
+      console.warn('[API Client] 401 Unauthorized - clearing auth state');
+
+      // Clear invalid token and user from storage
+      await chrome.storage.local.remove(['pixsim7Token', 'currentUser']);
+
+      // Notify popup/UI that user was logged out
+      try {
+        chrome.runtime.sendMessage({ action: 'forceLogout', reason: 'session_expired' });
+      } catch (e) {
+        // Popup might not be open - that's fine
+      }
+
+      throw new Error('Session expired. Please log in again.');
+    }
+
     throw new Error(`Backend error: ${response.status} - ${error}`);
   }
 

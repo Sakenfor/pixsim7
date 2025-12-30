@@ -196,6 +196,13 @@ function setupEventListeners() {
       } else {
         showToast('error', 'Browser session not authenticated yet; you may need to log in manually');
       }
+    } else if (message.action === 'forceLogout') {
+      // Backend returned 401 - token expired or revoked
+      console.warn('[Popup] Force logout - session expired');
+      currentUser = null;
+      currentProvider = null;
+      showLogin();
+      showToast('error', 'Session expired. Please log in again.');
     }
   });
 
