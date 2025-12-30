@@ -1169,7 +1169,6 @@ window.PXS7 = window.PXS7 || {};
           return true;
         }
         // Proxy returned error - trigger onerror so fallback can be attempted
-        console.warn('[pxs7] Image proxy failed:', response?.error || 'unknown error', url);
         if (img.onerror) img.dispatchEvent(new Event('error'));
         return false;
       } catch (e) {
@@ -1213,7 +1212,6 @@ window.PXS7 = window.PXS7 || {};
         img.onerror = () => {
           if (!img.dataset.fallbackAttempted) {
             img.dataset.fallbackAttempted = 'true';
-            console.log('[pxs7] Thumbnail failed, using fallback:', fallbackUrl);
             loadImageSrc(img, fallbackUrl);
           }
         };

@@ -82,6 +82,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Save page state before login/account switch (preserves prompt, image, URL)
   if (message.action === 'savePageStateBeforeLogin') {
+    console.log('[PixSim7] Received savePageStateBeforeLogin message');
     (async () => {
       try {
         // Use the image picker's saveInputState to capture current state
@@ -94,6 +95,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           url: window.location.href,
           path: window.location.pathname,
         };
+
+        const textareas = document.querySelectorAll('textarea');
+        console.log('[PixSim7] Found', textareas.length, 'textareas on page');
 
         // Capture prompt text from textareas
         const prompts = {};
@@ -186,6 +190,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (window.PXS7?.storage?.savePendingPageState) {
           await window.PXS7.storage.savePendingPageState(pageState);
           console.log('[PixSim7] Saved page state before login:', pageState);
+        } else {
+          console.warn('[PixSim7] Storage module not available, saving directly');
+          // Fallback: save directly to chrome.storage
+          await chrome.storage.local.set({
+            pxs7_pendingPageState: { ...pageState, savedAt: Date.now() }
+          });
+          console.log('[PixSim7] Saved page state directly:', pageState);
         }
 
         sendResponse({ success: true });

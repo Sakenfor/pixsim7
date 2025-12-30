@@ -1036,55 +1036,100 @@
     // Also check for pending page state from account switch (chrome.storage)
     setTimeout(async () => {
       try {
-        const pendingState = await storage.loadAndClearPendingPageState();
+        let pendingState = await storage.loadAndClearPendingPageState();
+
+        // Fallback: check direct storage key if module didn't find it
+        if (!pendingState) {
+          const stored = await chrome.storage.local.get('pxs7_pendingPageState');
+          if (stored.pxs7_pendingPageState) {
+            const age = Date.now() - (stored.pxs7_pendingPageState.savedAt || 0);
+            if (age < 120000) { // 2 minute expiry
+              pendingState = stored.pxs7_pendingPageState;
+              console.log('[PixSim7] Found pending state via fallback key');
+            }
+            await chrome.storage.local.remove('pxs7_pendingPageState');
+          }
+        }
+
         if (pendingState) {
           console.log('[PixSim7] Found pending page state to restore:', pendingState);
 
           // Restore prompts to textareas (with retry for slow-loading pages)
           if (pendingState.prompts && Object.keys(pendingState.prompts).length > 0) {
+            let promptsRestored = false;
+
             const restorePrompts = () => {
+              if (promptsRestored) return true; // Already done
+
               const textareas = document.querySelectorAll('textarea');
               if (textareas.length === 0) return false;
 
               let restored = 0;
               const promptKeys = Object.keys(pendingState.prompts);
 
+              const usedKeys = new Set();
+
               textareas.forEach((el, i) => {
+                // Skip if already has content (don't overwrite user input)
+                if (el.value && el.value.trim()) return;
+
                 const key = el.id || el.name || el.placeholder || `textarea_${i}`;
 
                 // Try exact key match first
-                if (pendingState.prompts[key]) {
+                if (pendingState.prompts[key] && !usedKeys.has(key)) {
                   el.value = pendingState.prompts[key];
                   el.dispatchEvent(new Event('input', { bubbles: true }));
-                  console.log('[PixSim7] Restored prompt by key:', key.substring(0, 30) + '...');
+                  usedKeys.add(key);
                   restored++;
                   return;
                 }
 
                 // Try position-based fallback (textarea_N)
                 const posKey = `textarea_${i}`;
-                if (pendingState.prompts[posKey]) {
+                if (pendingState.prompts[posKey] && !usedKeys.has(posKey)) {
                   el.value = pendingState.prompts[posKey];
                   el.dispatchEvent(new Event('input', { bubbles: true }));
-                  console.log('[PixSim7] Restored prompt by position:', posKey);
+                  usedKeys.add(posKey);
                   restored++;
                   return;
                 }
 
                 // Try partial placeholder match (first 30 chars)
-                const elPlaceholder = (el.placeholder || '').substring(0, 30);
+                const elPlaceholder = (el.placeholder || '').substring(0, 30).toLowerCase();
                 for (const savedKey of promptKeys) {
-                  if (savedKey.substring(0, 30) === elPlaceholder && pendingState.prompts[savedKey]) {
+                  if (usedKeys.has(savedKey)) continue;
+                  const savedKeyStart = savedKey.substring(0, 30).toLowerCase();
+                  if (elPlaceholder && savedKeyStart === elPlaceholder) {
                     el.value = pendingState.prompts[savedKey];
                     el.dispatchEvent(new Event('input', { bubbles: true }));
-                    console.log('[PixSim7] Restored prompt by partial match:', elPlaceholder + '...');
+                    usedKeys.add(savedKey);
                     restored++;
                     return;
                   }
                 }
+
+                // Try finding any long saved prompt (likely the main prompt)
+                // if this textarea looks like a main prompt area (has placeholder with "describe")
+                const isMainPromptArea = (el.placeholder || '').toLowerCase().includes('describe');
+                if (isMainPromptArea) {
+                  for (const savedKey of promptKeys) {
+                    if (usedKeys.has(savedKey)) continue;
+                    // Skip position-based keys, look for placeholder-based keys with substantial content
+                    if (!savedKey.startsWith('textarea_') && pendingState.prompts[savedKey].length > 20) {
+                      el.value = pendingState.prompts[savedKey];
+                      el.dispatchEvent(new Event('input', { bubbles: true }));
+                      usedKeys.add(savedKey);
+                      restored++;
+                      return;
+                    }
+                  }
+                }
               });
 
-              console.log('[PixSim7] Restored', restored, 'of', promptKeys.length, 'prompts');
+              if (restored > 0) {
+                console.log('[PixSim7] Restored', restored, 'prompt(s)');
+                promptsRestored = true;
+              }
               return restored > 0;
             };
 
