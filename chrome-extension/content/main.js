@@ -107,24 +107,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           pageState.prompts = prompts;
         }
 
-        // Capture images from upload containers
+        // Capture images from upload containers with container ID for precise restoration
         const images = [];
-        document.querySelectorAll('.ant-upload-drag-container img, [style*="media.pixverse.ai"]').forEach(el => {
-          let src = el.src || '';
-          if (!src) {
-            const style = el.getAttribute('style') || '';
-            const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
-            if (match) src = match[1];
+        const seenUrls = new Set();
+
+        // Find all upload inputs to map images to their containers
+        const uploadInputs = Array.from(document.querySelectorAll('input[type="file"]'))
+          .filter(input => {
+            const accept = input.getAttribute('accept') || '';
+            return accept.includes('image') || input.closest('.ant-upload');
+          });
+
+        // For each upload input, find any associated image
+        uploadInputs.forEach((input, slotIndex) => {
+          const container = input.closest('.ant-upload-wrapper') ||
+                           input.closest('.ant-upload') ||
+                           input.parentElement?.parentElement;
+          if (!container) return;
+
+          // Get the container ID for precise matching on restore
+          const parentWithId = input.closest('[id]');
+          const containerId = parentWithId?.id || '';
+
+          // Skip video containers
+          if (containerId.includes('video')) return;
+
+          // Look for images in this container
+          let imageUrl = null;
+
+          // Check img tags
+          const img = container.querySelector('img[src*="media.pixverse.ai"], img[src*="aliyun"]');
+          if (img?.src) {
+            imageUrl = img.src.split('?')[0];
           }
-          if (src && src.includes('media.pixverse.ai')) {
-            const cleanUrl = src.split('?')[0];
-            if (!images.includes(cleanUrl)) {
-              images.push(cleanUrl);
+
+          // Check background-image styles
+          if (!imageUrl) {
+            const bgEl = container.querySelector('[style*="media.pixverse.ai"]');
+            if (bgEl) {
+              const style = bgEl.getAttribute('style') || '';
+              const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
+              if (match) imageUrl = match[1].split('?')[0];
             }
           }
+
+          if (imageUrl && !seenUrls.has(imageUrl)) {
+            seenUrls.add(imageUrl);
+            images.push({
+              url: imageUrl,
+              slot: slotIndex,
+              containerId: containerId, // e.g., "create_image-customer_img_paths"
+            });
+          }
         });
+
+        // Only save images that are actually in upload containers
+        // (removed the fallback that grabbed ALL pixverse images on page)
         if (images.length > 0) {
           pageState.images = images;
+          console.log('[PixSim7] Captured images from upload slots:', images);
+        }
+
+        // Count image upload slots (for restoring slot count after reload)
+        const imageSlotCount = uploadInputs.filter(input => {
+          const parentWithId = input.closest('[id]');
+          const containerId = parentWithId?.id || '';
+          // Only count image slots, not video slots
+          return containerId.includes('customer_img') && !containerId.includes('video');
+        }).length;
+        if (imageSlotCount > 0) {
+          pageState.imageSlotCount = imageSlotCount;
+          console.log('[PixSim7] Captured image slot count:', imageSlotCount);
         }
 
         // Save to chrome.storage via the storage module
