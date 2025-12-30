@@ -137,6 +137,78 @@ class ScoringFactorMetadata:
     """JSON Schema (Draft 7) for scoring factor parameters (optional, rarely used)"""
 
 
+@dataclass
+class TagEffectMetadata:
+    """
+    Metadata for a registered tag effect.
+
+    Tag effects define how semantic tags (like 'phobia', 'passion', 'addiction')
+    affect activity scoring. Plugins can register custom tags with custom
+    effect calculations.
+    """
+    tag_id: str
+    """Tag ID (e.g., 'uncomfortable', 'phobia', 'plugin:romance:intimate')"""
+
+    plugin_id: str
+    """Plugin that registered this tag effect ('core' for built-ins)"""
+
+    evaluator: Callable
+    """Effect function: (activity, archetype, context) -> float (multiplier)"""
+
+    default_multiplier: float = 1.0
+    """Default multiplier if evaluator not needed (simple constant effect)"""
+
+    description: Optional[str] = None
+    """Human-readable description"""
+
+    priority: int = 100
+    """Priority for tag matching (lower = checked first, higher priority)"""
+
+
+@dataclass
+class BehaviorProfileMetadata:
+    """
+    Metadata for a registered behavior profile.
+
+    Behavior profiles are contextual behavior modifications that activate
+    when certain conditions are met. They stack with archetype modifiers
+    following a deterministic layering order.
+    """
+    profile_id: str
+    """Unique profile ID (e.g., 'plugin:romance:romantic_evening')"""
+
+    plugin_id: str
+    """Plugin that registered this profile"""
+
+    name: str
+    """Display name"""
+
+    conditions: List[Dict[str, Any]]
+    """List of condition dicts that must ALL be met for activation"""
+
+    modifiers: Dict[str, Any]
+    """Modifiers to apply when active (activity_weights, category_weights, etc.)"""
+
+    condition_evaluator: Optional[Callable] = None
+    """Optional custom condition evaluator: (context) -> bool"""
+
+    priority: int = 100
+    """Priority for layering (higher = applied later, can override)"""
+
+    exclusivity_group: Optional[str] = None
+    """Only one profile per group can be active (highest priority wins)"""
+
+    description: Optional[str] = None
+    """Human-readable description"""
+
+    tags: List[str] = None
+    """Tags for categorization"""
+
+    def __post_init__(self):
+        if self.tags is None:
+            self.tags = []
+
+
 # ===== GLOBAL REGISTRIES =====
 
 class BehaviorExtensionRegistry:
@@ -155,6 +227,9 @@ class BehaviorExtensionRegistry:
         self._simulation_configs: Dict[str, SimulationConfigProvider] = {}
         self._component_schemas: Dict[str, ComponentSchemaMetadata] = {}
         self._scoring_factors: Dict[str, ScoringFactorMetadata] = {}
+        self._tag_effects: Dict[str, TagEffectMetadata] = {}
+        self._behavior_profiles: Dict[str, BehaviorProfileMetadata] = {}
+        self._trait_effect_mappings: Dict[str, Dict[str, List[Dict]]] = {}  # Phase 4
         self._locked = False  # Lock registry after initialization
 
     # ===== CONDITION REGISTRATION =====
@@ -571,6 +646,656 @@ class BehaviorExtensionRegistry:
 
         return factors
 
+    # ===== TAG EFFECT REGISTRATION =====
+
+    def register_tag_effect(
+        self,
+        tag_id: str,
+        plugin_id: str,
+        evaluator: Optional[Callable] = None,
+        default_multiplier: float = 1.0,
+        description: Optional[str] = None,
+        priority: int = 100,
+    ) -> bool:
+        """
+        Register a tag effect for activity scoring.
+
+        Tag effects define how semantic tags (e.g., 'phobia', 'passion')
+        affect activity scoring. Archetypes can use these tags in their
+        uncomfortableWith/comfortableWith lists, or define custom tagEffects.
+
+        Args:
+            tag_id: Unique tag identifier (e.g., 'uncomfortable', 'plugin:romance:intimate')
+            plugin_id: Plugin registering this tag ('core' for built-ins)
+            evaluator: Optional function(activity, archetype, context) -> float
+                       If None, default_multiplier is used as a constant.
+            default_multiplier: Default multiplier when evaluator is None
+            description: Human-readable description
+            priority: Priority for tag matching (lower = checked first)
+
+        Returns:
+            True if registered, False if already exists or locked
+
+        Example:
+            # Simple constant effect
+            register_tag_effect("phobia", "core", default_multiplier=0.05,
+                               description="Strong aversion (95% penalty)")
+
+            # Dynamic effect based on context
+            def passion_effect(activity, archetype, context):
+                # Boost increases with relationship level
+                rel = context.get("relationship_level", 0)
+                return 1.5 + (rel * 0.5)  # 1.5x to 2.0x
+
+            register_tag_effect("passion", "core", evaluator=passion_effect,
+                               description="Strong preference (dynamic boost)")
+        """
+        if self._locked:
+            logger.warning(
+                "Cannot register tag effect - registry is locked",
+                tag_id=tag_id,
+                plugin_id=plugin_id,
+            )
+            return False
+
+        if tag_id in self._tag_effects:
+            logger.warning(
+                "Tag effect already registered",
+                tag_id=tag_id,
+                existing_plugin=self._tag_effects[tag_id].plugin_id,
+                new_plugin=plugin_id,
+            )
+            return False
+
+        # If no evaluator, create a simple constant function
+        if evaluator is None:
+            mult = default_multiplier
+            evaluator = lambda activity, archetype, context: mult
+
+        self._tag_effects[tag_id] = TagEffectMetadata(
+            tag_id=tag_id,
+            plugin_id=plugin_id,
+            evaluator=evaluator,
+            default_multiplier=default_multiplier,
+            description=description,
+            priority=priority,
+        )
+
+        logger.info(
+            "Registered tag effect",
+            tag_id=tag_id,
+            plugin_id=plugin_id,
+            default_multiplier=default_multiplier,
+            priority=priority,
+        )
+
+        return True
+
+    def get_tag_effect(self, tag_id: str) -> Optional[TagEffectMetadata]:
+        """Get tag effect metadata by ID"""
+        return self._tag_effects.get(tag_id)
+
+    def list_tag_effects(self, plugin_id: Optional[str] = None) -> List[TagEffectMetadata]:
+        """
+        List all registered tag effects, sorted by priority.
+
+        Args:
+            plugin_id: Optional filter by plugin ID
+
+        Returns:
+            List of tag effect metadata (sorted by priority, lower first)
+        """
+        effects = list(self._tag_effects.values())
+
+        if plugin_id:
+            effects = [e for e in effects if e.plugin_id == plugin_id]
+
+        # Sort by priority (lower = higher priority)
+        effects.sort(key=lambda e: e.priority)
+
+        return effects
+
+    def evaluate_tag_effect(
+        self,
+        tag_id: str,
+        activity: Dict[str, Any],
+        archetype: Optional[Dict[str, Any]],
+        context: Dict[str, Any],
+    ) -> float:
+        """
+        Evaluate a tag effect and return the multiplier.
+
+        Checks in order:
+        1. Archetype's custom tagEffects (per-archetype override)
+        2. Registered tag effect (plugin/core)
+        3. Default 1.0 (no effect)
+
+        Args:
+            tag_id: Tag to evaluate
+            activity: Activity being scored
+            archetype: NPC's archetype (may have custom tagEffects)
+            context: Scoring context
+
+        Returns:
+            Multiplier (0.0 to 10.0 typically)
+        """
+        # 1. Check archetype's custom tagEffects (highest priority)
+        if archetype:
+            behavior_mods = archetype.get("behaviorModifiers", {})
+            tag_effects = behavior_mods.get("tagEffects", {})
+            if tag_id in tag_effects:
+                effect = tag_effects[tag_id]
+                if isinstance(effect, dict):
+                    return effect.get("multiplier", 1.0)
+                elif isinstance(effect, (int, float)):
+                    return float(effect)
+
+        # 2. Check registered tag effect
+        metadata = self._tag_effects.get(tag_id)
+        if metadata:
+            try:
+                return metadata.evaluator(activity, archetype, context)
+            except Exception as e:
+                logger.error(
+                    "Tag effect evaluation failed",
+                    tag_id=tag_id,
+                    plugin_id=metadata.plugin_id,
+                    error=str(e),
+                )
+                return metadata.default_multiplier
+
+        # 3. No effect registered - return neutral
+        return 1.0
+
+    # ===== BEHAVIOR PROFILE REGISTRATION =====
+
+    def register_behavior_profile(
+        self,
+        profile_id: str,
+        plugin_id: str,
+        name: str,
+        conditions: List[Dict[str, Any]],
+        modifiers: Dict[str, Any],
+        condition_evaluator: Optional[Callable] = None,
+        priority: int = 100,
+        exclusivity_group: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> bool:
+        """
+        Register a behavior profile for contextual behavior modification.
+
+        Behavior profiles activate when their conditions are met and apply
+        modifiers on top of archetype settings. They follow a deterministic
+        layering order based on priority.
+
+        Args:
+            profile_id: Unique ID (e.g., 'plugin:romance:romantic_evening')
+                        Must be namespaced with plugin_id for plugin profiles.
+            plugin_id: Plugin registering this profile ('core' for built-ins)
+            name: Display name
+            conditions: List of condition dicts (ALL must be met)
+                        Each dict has 'type' and type-specific fields.
+            modifiers: Modifier dict with keys like:
+                       - activityWeights: {activity_id: multiplier}
+                       - categoryWeights: {category: multiplier}
+                       - tagEffects: {tag: multiplier}
+                       - moodAdjustments: {mood_axis: delta}
+            condition_evaluator: Optional custom evaluator (context) -> bool
+                                 If provided, used instead of condition list.
+            priority: Layering priority (higher = applied later, can override)
+            exclusivity_group: Only one profile per group active (highest wins)
+            description: Human-readable description
+            tags: Tags for categorization
+
+        Returns:
+            True if registered, False if already exists or locked
+
+        Example:
+            register_behavior_profile(
+                profile_id="plugin:romance:romantic_evening",
+                plugin_id="romance",
+                name="Romantic Evening",
+                conditions=[
+                    {"type": "time_window", "windows": ["evening", "night"]},
+                    {"type": "relationship_tier", "min_tier": "lover"},
+                ],
+                modifiers={
+                    "activityWeights": {"intimate_conversation": 2.0, "dining": 1.5},
+                    "categoryWeights": {"romantic": 1.5},
+                    "moodAdjustments": {"romantic": 20},
+                },
+                priority=150,
+                exclusivity_group="time_of_day_mood",
+                description="Boosts romantic activities during evening with lover",
+            )
+        """
+        if self._locked:
+            logger.warning(
+                "Cannot register behavior profile - registry is locked",
+                profile_id=profile_id,
+                plugin_id=plugin_id,
+            )
+            return False
+
+        if profile_id in self._behavior_profiles:
+            logger.warning(
+                "Behavior profile already registered",
+                profile_id=profile_id,
+                existing_plugin=self._behavior_profiles[profile_id].plugin_id,
+                new_plugin=plugin_id,
+            )
+            return False
+
+        # Validate namespacing for plugin profiles
+        if plugin_id != "core" and not profile_id.startswith(f"plugin:{plugin_id}:"):
+            logger.warning(
+                "Plugin profile ID should be namespaced",
+                profile_id=profile_id,
+                expected_prefix=f"plugin:{plugin_id}:",
+            )
+            # Allow but warn - don't block registration
+
+        self._behavior_profiles[profile_id] = BehaviorProfileMetadata(
+            profile_id=profile_id,
+            plugin_id=plugin_id,
+            name=name,
+            conditions=conditions,
+            modifiers=modifiers,
+            condition_evaluator=condition_evaluator,
+            priority=priority,
+            exclusivity_group=exclusivity_group,
+            description=description,
+            tags=tags or [],
+        )
+
+        logger.info(
+            "Registered behavior profile",
+            profile_id=profile_id,
+            plugin_id=plugin_id,
+            priority=priority,
+            exclusivity_group=exclusivity_group,
+            condition_count=len(conditions),
+        )
+
+        return True
+
+    def get_behavior_profile(self, profile_id: str) -> Optional[BehaviorProfileMetadata]:
+        """Get behavior profile metadata by ID"""
+        return self._behavior_profiles.get(profile_id)
+
+    def list_behavior_profiles(
+        self,
+        plugin_id: Optional[str] = None,
+        tag: Optional[str] = None,
+    ) -> List[BehaviorProfileMetadata]:
+        """
+        List all registered behavior profiles, sorted by priority.
+
+        Args:
+            plugin_id: Optional filter by plugin ID
+            tag: Optional filter by tag
+
+        Returns:
+            List of profile metadata (sorted by priority ascending)
+        """
+        profiles = list(self._behavior_profiles.values())
+
+        if plugin_id:
+            profiles = [p for p in profiles if p.plugin_id == plugin_id]
+
+        if tag:
+            profiles = [p for p in profiles if tag in p.tags]
+
+        # Sort by priority (ascending - lower priority first)
+        profiles.sort(key=lambda p: p.priority)
+
+        return profiles
+
+    def get_active_profiles(
+        self,
+        context: Dict[str, Any],
+        enabled_plugins: Optional[List[str]] = None,
+    ) -> List[BehaviorProfileMetadata]:
+        """
+        Get all currently active behavior profiles for a context.
+
+        Evaluates conditions for all profiles and returns those that
+        are active, respecting exclusivity groups.
+
+        Args:
+            context: Evaluation context (npc, world, session, etc.)
+            enabled_plugins: List of enabled plugin IDs (None = all enabled)
+
+        Returns:
+            List of active profiles, sorted by priority (lower first)
+        """
+        active_profiles = []
+        exclusivity_winners: Dict[str, BehaviorProfileMetadata] = {}
+
+        for profile in self._behavior_profiles.values():
+            # Check if plugin is enabled
+            if enabled_plugins is not None:
+                if profile.plugin_id not in enabled_plugins and profile.plugin_id != "core":
+                    continue
+
+            # Evaluate conditions
+            is_active = self._evaluate_profile_conditions(profile, context)
+
+            if is_active:
+                # Handle exclusivity groups
+                if profile.exclusivity_group:
+                    existing = exclusivity_winners.get(profile.exclusivity_group)
+                    if existing is None or profile.priority > existing.priority:
+                        exclusivity_winners[profile.exclusivity_group] = profile
+                else:
+                    active_profiles.append(profile)
+
+        # Add exclusivity winners
+        active_profiles.extend(exclusivity_winners.values())
+
+        # Sort by priority (ascending - lower priority applied first)
+        active_profiles.sort(key=lambda p: p.priority)
+
+        return active_profiles
+
+    def _evaluate_profile_conditions(
+        self,
+        profile: BehaviorProfileMetadata,
+        context: Dict[str, Any],
+    ) -> bool:
+        """
+        Evaluate whether a profile's conditions are met.
+
+        Args:
+            profile: Profile to evaluate
+            context: Evaluation context
+
+        Returns:
+            True if ALL conditions are met
+        """
+        # Use custom evaluator if provided
+        if profile.condition_evaluator:
+            try:
+                return bool(profile.condition_evaluator(context))
+            except Exception as e:
+                logger.error(
+                    "Profile condition evaluator failed",
+                    profile_id=profile.profile_id,
+                    error=str(e),
+                )
+                return False
+
+        # Evaluate standard conditions (ALL must be true)
+        for condition in profile.conditions:
+            if not self._evaluate_single_condition(condition, context):
+                return False
+
+        return True
+
+    def _evaluate_single_condition(
+        self,
+        condition: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> bool:
+        """
+        Evaluate a single profile condition.
+
+        Args:
+            condition: Condition dict with 'type' and type-specific fields
+            context: Evaluation context
+
+        Returns:
+            True if condition is met
+        """
+        condition_type = condition.get("type", "")
+
+        if condition_type == "time_window":
+            return self._eval_time_window_condition(condition, context)
+        elif condition_type == "relationship_tier":
+            return self._eval_relationship_tier_condition(condition, context)
+        elif condition_type == "flag":
+            return self._eval_flag_condition(condition, context)
+        elif condition_type == "location":
+            return self._eval_location_condition(condition, context)
+        elif condition_type == "mood":
+            return self._eval_mood_condition(condition, context)
+        elif condition_type == "energy":
+            return self._eval_energy_condition(condition, context)
+        elif condition_type == "expression":
+            return self._eval_expression_condition(condition, context)
+        else:
+            logger.warning(
+                "Unknown profile condition type",
+                condition_type=condition_type,
+            )
+            return False
+
+    def _eval_time_window_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate time_window condition."""
+        windows = condition.get("windows", [])
+        if not windows:
+            return True
+
+        world_time = context.get("world_time", 0)
+
+        # Convert world_time (seconds since Monday 00:00) to hour
+        hour = (world_time // 3600) % 24
+
+        # Map hour to window
+        if 5 <= hour < 12:
+            current_window = "morning"
+        elif 12 <= hour < 17:
+            current_window = "afternoon"
+        elif 17 <= hour < 21:
+            current_window = "evening"
+        else:
+            current_window = "night"
+
+        return current_window in windows
+
+    def _eval_relationship_tier_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate relationship_tier condition."""
+        min_tier = condition.get("min_tier")
+        max_tier = condition.get("max_tier")
+
+        # Get current relationship tier from context
+        npc_state = context.get("npc_state", {})
+        current_tier = npc_state.get("relationship_tier", "stranger")
+
+        # Define tier order
+        tier_order = ["stranger", "acquaintance", "friend", "close_friend", "lover", "partner"]
+
+        try:
+            current_idx = tier_order.index(current_tier)
+        except ValueError:
+            current_idx = 0
+
+        if min_tier:
+            try:
+                min_idx = tier_order.index(min_tier)
+                if current_idx < min_idx:
+                    return False
+            except ValueError:
+                pass
+
+        if max_tier:
+            try:
+                max_idx = tier_order.index(max_tier)
+                if current_idx > max_idx:
+                    return False
+            except ValueError:
+                pass
+
+        return True
+
+    def _eval_flag_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate flag condition."""
+        flag_name = condition.get("flag")
+        expected_value = condition.get("flag_value")
+
+        if not flag_name:
+            return True
+
+        flags = context.get("flags", {})
+        actual_value = flags.get(flag_name)
+
+        if expected_value is None:
+            # Just check existence
+            return actual_value is not None
+        else:
+            return actual_value == expected_value
+
+    def _eval_location_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate location condition."""
+        location_type = condition.get("location_type")
+        location_tags = condition.get("location_tags", [])
+
+        npc_state = context.get("npc_state", {})
+        current_location = npc_state.get("location", {})
+
+        if location_type:
+            if current_location.get("type") != location_type:
+                return False
+
+        if location_tags:
+            current_tags = current_location.get("tags", [])
+            if not all(tag in current_tags for tag in location_tags):
+                return False
+
+        return True
+
+    def _eval_mood_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate mood condition."""
+        mood_tags = condition.get("mood_tags", [])
+        min_valence = condition.get("min_valence")
+        max_valence = condition.get("max_valence")
+
+        npc_state = context.get("npc_state", {})
+        mood_state = npc_state.get("moodState", {})
+
+        if mood_tags:
+            current_tags = mood_state.get("tags", [])
+            if not any(tag in current_tags for tag in mood_tags):
+                return False
+
+        valence = mood_state.get("valence", 0)
+
+        if min_valence is not None and valence < min_valence:
+            return False
+
+        if max_valence is not None and valence > max_valence:
+            return False
+
+        return True
+
+    def _eval_energy_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate energy condition."""
+        min_energy = condition.get("min_energy")
+        max_energy = condition.get("max_energy")
+
+        npc_state = context.get("npc_state", {})
+        energy = npc_state.get("energy", 50)
+
+        if min_energy is not None and energy < min_energy:
+            return False
+
+        if max_energy is not None and energy > max_energy:
+            return False
+
+        return True
+
+    def _eval_expression_condition(self, condition: Dict, context: Dict) -> bool:
+        """Evaluate expression condition (simple eval for now)."""
+        expression = condition.get("expression")
+        if not expression:
+            return True
+
+        # For safety, only allow simple comparisons
+        # A more robust implementation would use a safe expression evaluator
+        logger.warning(
+            "Expression conditions not fully implemented",
+            expression=expression,
+        )
+        return True
+
+    # ===== TRAIT EFFECT MAPPING REGISTRATION (Phase 4) =====
+
+    def register_trait_effect_mapping(
+        self,
+        trait_id: str,
+        plugin_id: str,
+        mappings: Dict[str, List[Dict[str, Any]]],
+        description: Optional[str] = None,
+    ) -> bool:
+        """
+        Register trait effect mappings for a trait.
+
+        Mappings define what behavioral effects are produced when a trait
+        is at a specific level (very_low, low, medium, high, very_high).
+
+        Args:
+            trait_id: Trait identifier (e.g., 'introversion', 'neuroticism')
+            plugin_id: Plugin registering this mapping ('core' for built-ins)
+            mappings: Dict of level -> list of effects
+                      e.g., {"high": [{"type": "activity_preference", ...}]}
+            description: Human-readable description
+
+        Returns:
+            True if registered, False if already exists or locked
+
+        Example:
+            register_trait_effect_mapping(
+                trait_id="introversion",
+                plugin_id="core",
+                mappings={
+                    "high": [
+                        {"type": "activity_preference", "tags": ["solitary"], "modifier": "preferred"},
+                        {"type": "category_weight", "categories": {"social": "low"}},
+                    ],
+                    "low": [
+                        {"type": "activity_preference", "tags": ["parties"], "modifier": "preferred"},
+                        {"type": "category_weight", "categories": {"social": "high"}},
+                    ],
+                },
+                description="How introversion affects activity preferences",
+            )
+        """
+        if self._locked:
+            logger.warning(
+                "Cannot register trait effect mapping - registry is locked",
+                trait_id=trait_id,
+                plugin_id=plugin_id,
+            )
+            return False
+
+        if trait_id in self._trait_effect_mappings:
+            logger.warning(
+                "Trait effect mapping already registered",
+                trait_id=trait_id,
+                new_plugin=plugin_id,
+            )
+            return False
+
+        self._trait_effect_mappings[trait_id] = mappings
+
+        logger.info(
+            "Registered trait effect mapping",
+            trait_id=trait_id,
+            plugin_id=plugin_id,
+            levels=list(mappings.keys()),
+        )
+
+        return True
+
+    def get_trait_effect_mapping(self, trait_id: str) -> Optional[Dict[str, List[Dict]]]:
+        """Get trait effect mapping by trait ID."""
+        return self._trait_effect_mappings.get(trait_id)
+
+    def list_trait_effect_mappings(self) -> Dict[str, Dict[str, List[Dict]]]:
+        """Get all registered trait effect mappings."""
+        return dict(self._trait_effect_mappings)
+
     def get_all_metrics(self) -> Dict[str, Dict[str, Any]]:
         """
         Get all registered metrics from all component schemas.
@@ -621,6 +1346,9 @@ class BehaviorExtensionRegistry:
             effects=len(self._effects),
             simulation_configs=len(self._simulation_configs),
             component_schemas=len(self._component_schemas),
+            scoring_factors=len(self._scoring_factors),
+            tag_effects=len(self._tag_effects),
+            behavior_profiles=len(self._behavior_profiles),
         )
 
     def unlock(self):
@@ -634,6 +1362,10 @@ class BehaviorExtensionRegistry:
         self._effects.clear()
         self._simulation_configs.clear()
         self._component_schemas.clear()
+        self._scoring_factors.clear()
+        self._tag_effects.clear()
+        self._behavior_profiles.clear()
+        self._trait_effect_mappings.clear()
         logger.info("Behavior extension registry cleared")
 
     # ===== STATISTICS =====
@@ -658,6 +1390,22 @@ class BehaviorExtensionRegistry:
                 "total": len(self._component_schemas),
                 "by_plugin": self._count_by_plugin(self._component_schemas.values()),
                 "total_metrics": sum(len(s.metrics) for s in self._component_schemas.values()),
+            },
+            "scoring_factors": {
+                "total": len(self._scoring_factors),
+                "by_plugin": self._count_by_plugin(self._scoring_factors.values()),
+            },
+            "tag_effects": {
+                "total": len(self._tag_effects),
+                "by_plugin": self._count_by_plugin(self._tag_effects.values()),
+            },
+            "behavior_profiles": {
+                "total": len(self._behavior_profiles),
+                "by_plugin": self._count_by_plugin(self._behavior_profiles.values()),
+            },
+            "trait_effect_mappings": {
+                "total": len(self._trait_effect_mappings),
+                "traits": list(self._trait_effect_mappings.keys()),
             },
         }
 

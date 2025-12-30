@@ -31,6 +31,17 @@ from .relationship import (
 # Behavior, activity, routine schemas
 from .behavior import (
     CURRENT_BEHAVIOR_VERSION,
+    FEATURE_FLAGS,
+    TRAIT_LEVEL_VALUES,
+    TraitLevel,
+    # Personality archetypes (Phase 1)
+    ArchetypeBehaviorModifiersSchema,
+    PersonalityArchetypeSchema,
+    NpcPersonalitySchema,
+    NpcConfigSchema,
+    get_trait_value,
+    get_archetype_activity_multiplier,
+    # Core behavior schemas
     ConditionSchema,
     ActivityCategoryConfigSchema,
     RelationshipDeltaSchema,
@@ -104,6 +115,17 @@ __all__ = [
 
     # Behavior schemas
     "CURRENT_BEHAVIOR_VERSION",
+    "FEATURE_FLAGS",
+    "TRAIT_LEVEL_VALUES",
+    "TraitLevel",
+    # Personality archetypes
+    "ArchetypeBehaviorModifiersSchema",
+    "PersonalityArchetypeSchema",
+    "NpcPersonalitySchema",
+    "NpcConfigSchema",
+    "get_trait_value",
+    "get_archetype_activity_multiplier",
+    # Core behavior
     "ConditionSchema",
     "ActivityCategoryConfigSchema",
     "RelationshipDeltaSchema",

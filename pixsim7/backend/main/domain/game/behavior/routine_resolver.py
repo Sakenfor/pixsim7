@@ -188,8 +188,27 @@ def choose_npc_activity(
         session_prefs,
     )
 
-    # Build evaluation context
-    context = _build_context(npc, world, session, npc_state)
+    # Phase 1: Resolve NPC personality and archetype for scoring
+    npc_personality = npc_meta.get("personality", {})
+    archetype = _resolve_npc_archetype(npc_personality, behavior_config)
+    world_feature_flags = _get_world_feature_flags(behavior_config)
+
+    # Phase 3: Resolve active behavior profiles
+    # Profiles are precomputed once per activity selection, not per scoring call
+    active_profiles = _get_active_behavior_profiles(npc_state, world_feature_flags)
+
+    # Phase 4: Derive trait effects from archetype traits
+    derived_trait_effects = _derive_trait_effects(archetype, behavior_config)
+
+    # Build evaluation context with archetype, profiles, and trait effects
+    context = _build_context(
+        npc, world, session, npc_state,
+        archetype=archetype,
+        npc_personality=npc_personality,
+        world_feature_flags=world_feature_flags,
+        active_profiles=active_profiles,
+        derived_trait_effects=derived_trait_effects,
+    )
 
     # Find active routine node
     active_node = find_active_routine_node(routine, world_time, npc_state, context)
@@ -348,6 +367,195 @@ def _set_npc_state(session: Any, npc: Any, state: Dict[str, Any]) -> None:
     flags["npcs"][npc_id]["state"] = state
 
 
+def _resolve_npc_archetype(
+    npc_personality: Dict[str, Any],
+    behavior_config: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """
+    Resolve the NPC's personality archetype from world config.
+
+    This is precomputed once per activity selection, not per scoring factor call.
+
+    Args:
+        npc_personality: NPC's personality config from npc.meta.personality
+        behavior_config: World's behavior config
+
+    Returns:
+        Archetype dict if found, None otherwise
+    """
+    archetype_id = npc_personality.get("archetypeId")
+
+    if not archetype_id:
+        # Try default archetype from world config
+        npc_config = behavior_config.get("npcConfig", {})
+        archetype_id = npc_config.get("defaultArchetypeId")
+
+    if not archetype_id:
+        return None
+
+    # Look up archetype in world config
+    npc_config = behavior_config.get("npcConfig", {})
+    archetypes = npc_config.get("archetypes", {})
+    archetype = archetypes.get(archetype_id)
+
+    if not archetype:
+        logger.debug(f"Archetype '{archetype_id}' not found in world config")
+        return None
+
+    return archetype
+
+
+def _get_world_feature_flags(behavior_config: Dict[str, Any]) -> Dict[str, bool]:
+    """
+    Get world-level feature flag overrides.
+
+    Args:
+        behavior_config: World's behavior config
+
+    Returns:
+        Feature flags dict (empty if none configured)
+    """
+    npc_config = behavior_config.get("npcConfig", {})
+    return npc_config.get("featureFlags", {})
+
+
+def _derive_trait_effects(
+    archetype: Optional[Dict[str, Any]],
+    behavior_config: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    Derive behavioral effects from NPC's personality traits.
+
+    Uses the archetype's traits and world-level trait effect mappings
+    to produce a list of effects that influence activity scoring.
+
+    This is precomputed once per activity selection.
+
+    Args:
+        archetype: NPC's resolved archetype (contains traits dict)
+        behavior_config: World's behavior config (contains traitEffects)
+
+    Returns:
+        List of effect dicts to apply during scoring
+    """
+    from pixsim7.backend.main.domain.game.schemas.behavior import FEATURE_FLAGS
+
+    # Check feature flag
+    if not FEATURE_FLAGS.get("trait_effects", False):
+        return []
+
+    if not archetype:
+        return []
+
+    # Get archetype traits
+    traits = archetype.get("traits", {})
+    if not traits:
+        return []
+
+    # Get world-level trait effect config
+    trait_effect_config = behavior_config.get("traitEffects", {})
+    if not trait_effect_config:
+        # No world-level config, try built-in mappings from registry
+        return _get_builtin_trait_effects(traits)
+
+    mappings = trait_effect_config.get("mappings", {})
+    if not mappings:
+        return _get_builtin_trait_effects(traits)
+
+    derived_effects = []
+
+    # For each trait, look up its mapping and get effects for current level
+    for trait_id, level in traits.items():
+        mapping = mappings.get(trait_id)
+        if not mapping:
+            continue
+
+        # Get effects for this level
+        level_key = level.replace("-", "_")  # e.g., "very_high"
+        level_data = mapping.get(level_key) or mapping.get(level)
+        if not level_data:
+            continue
+
+        effects = level_data.get("effects", [])
+        derived_effects.extend(effects)
+
+    # Also add default effects if any
+    default_effects = trait_effect_config.get("defaultEffects", [])
+    if default_effects:
+        derived_effects.extend(default_effects)
+
+    return derived_effects
+
+
+def _get_builtin_trait_effects(traits: Dict[str, str]) -> List[Dict[str, Any]]:
+    """
+    Get built-in trait effects from registry.
+
+    Falls back to registry-based trait mappings when world config
+    doesn't define trait effects.
+    """
+    from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
+
+    # Check if registry has trait mappings
+    trait_mappings = getattr(behavior_registry, '_trait_effect_mappings', {})
+    if not trait_mappings:
+        return []
+
+    derived_effects = []
+
+    for trait_id, level in traits.items():
+        mapping = trait_mappings.get(trait_id)
+        if not mapping:
+            continue
+
+        level_effects = mapping.get(level, [])
+        derived_effects.extend(level_effects)
+
+    return derived_effects
+
+
+def _get_active_behavior_profiles(
+    npc_state: Dict[str, Any],
+    world_feature_flags: Dict[str, bool],
+) -> List[Any]:
+    """
+    Get active behavior profiles for the current context.
+
+    This is precomputed once per activity selection, not per scoring call.
+
+    Args:
+        npc_state: NPC's current state (includes world_time, mood, energy, etc.)
+        world_feature_flags: World-level feature flags
+
+    Returns:
+        List of active BehaviorProfileMetadata, sorted by priority
+    """
+    from pixsim7.backend.main.domain.game.schemas.behavior import FEATURE_FLAGS
+
+    # Check feature flag
+    if not FEATURE_FLAGS.get("behavior_profiles", False):
+        return []
+
+    # Also check world-level override
+    if world_feature_flags.get("behavior_profiles") is False:
+        return []
+
+    # Import registry and get active profiles
+    from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
+
+    # Build minimal context for profile condition evaluation
+    context = {
+        "npc_state": npc_state,
+        "world_time": npc_state.get("world_time", 0),
+        "flags": npc_state.get("flags", {}),
+    }
+
+    # Get active profiles (registry handles condition evaluation and exclusivity)
+    active_profiles = behavior_registry.get_active_profiles(context)
+
+    return active_profiles
+
+
 def _get_session_npc_preferences(session: Any, npc: Any) -> Optional[Dict[str, Any]]:
     """Get session-specific NPC preference overrides."""
     flags = getattr(session, "flags", {})
@@ -362,8 +570,26 @@ def _build_context(
     world: Any,
     session: Any,
     npc_state: Dict[str, Any],
+    archetype: Optional[Dict[str, Any]] = None,
+    npc_personality: Optional[Dict[str, Any]] = None,
+    world_feature_flags: Optional[Dict[str, bool]] = None,
+    active_profiles: Optional[List[Any]] = None,
+    derived_trait_effects: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Build evaluation context for condition/scoring evaluation."""
+    """
+    Build evaluation context for condition/scoring evaluation.
+
+    Args:
+        npc: NPC object
+        world: World object
+        session: Game session
+        npc_state: NPC's current state
+        archetype: Precomputed personality archetype (for scoring)
+        npc_personality: NPC's personality config (for per-NPC overrides)
+        world_feature_flags: World-level feature flag overrides
+        active_profiles: Precomputed active behavior profiles (Phase 3)
+        derived_trait_effects: Precomputed trait-derived effects (Phase 4)
+    """
     return {
         "npc": npc,
         "world": world,
@@ -372,6 +598,14 @@ def _build_context(
         "relationships": getattr(session, "relationships", {}),
         "world_time": getattr(world, "world_time", 0),
         "npc_state": npc_state,
+        # Phase 1: Archetype scoring support
+        "archetype": archetype,
+        "npc_personality": npc_personality,
+        "world_feature_flags": world_feature_flags or {},
+        # Phase 3: Behavior profile support
+        "active_profiles": active_profiles or [],
+        # Phase 4: Trait effect support
+        "derived_trait_effects": derived_trait_effects or [],
     }
 
 

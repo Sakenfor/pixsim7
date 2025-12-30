@@ -43,6 +43,12 @@ DEFAULT_SCORING_WEIGHTS = {
     "relationshipBonus": 0.5,
     "urgency": 1.2,
     "inertia": 0.3,
+    # Phase 1: Archetype scoring
+    "archetypeModifier": 1.0,
+    # Phase 3: Behavior profile scoring
+    "behaviorProfileModifier": 1.0,
+    # Phase 4: Trait effect scoring
+    "traitEffectModifier": 0.8,
 }
 
 
@@ -569,6 +575,262 @@ def _factor_inertia(
         return 1 + weight
     else:
         return 1.0
+
+
+def _factor_archetype_modifier(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """
+    Archetype-based activity preference scoring factor.
+
+    Applies personality archetype modifiers to activity scoring.
+    Uses the deterministic layering order:
+    1. Base (1.0)
+    2. Archetype modifiers (from world config)
+    3. NPC overrides (from npc.meta.personality)
+
+    The archetype and NPC personality are passed via context:
+    - context['archetype']: PersonalityArchetypeSchema (precomputed)
+    - context['npc_personality']: NpcPersonalitySchema (from npc.meta)
+    """
+    from pixsim7.backend.main.domain.game.schemas.behavior import (
+        FEATURE_FLAGS,
+        get_archetype_activity_multiplier,
+        PersonalityArchetypeSchema,
+    )
+
+    # Check feature flag
+    if not FEATURE_FLAGS.get("archetype_scoring", False):
+        return 1.0
+
+    # Also check world-level feature flag override
+    world_feature_flags = context.get("world_feature_flags", {})
+    if world_feature_flags.get("archetype_scoring") is False:
+        return 1.0
+
+    activity_id = activity.get("id", "")
+    category = activity.get("category", "")
+
+    # Get precomputed archetype from context
+    archetype_data = context.get("archetype")
+    if not archetype_data:
+        return 1.0
+
+    # Import tag effect registry
+    from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
+
+    # Extract behavior modifiers
+    behavior_modifiers = archetype_data.get("behaviorModifiers", {}) if isinstance(archetype_data, dict) else {}
+
+    archetype_mult = 1.0
+
+    # Priority 1: Check activity-specific weight
+    activity_weights = behavior_modifiers.get("activityWeights", {})
+    if activity_id in activity_weights:
+        archetype_mult = activity_weights[activity_id]
+
+    # Priority 2: Check category weight
+    elif category in (behavior_modifiers.get("categoryWeights") or {}):
+        archetype_mult = behavior_modifiers["categoryWeights"][category]
+
+    else:
+        # Priority 3: Check semantic tags (using tag effect registry)
+        uncomfortable_tags = behavior_modifiers.get("uncomfortableWith") or []
+        comfortable_tags = behavior_modifiers.get("comfortableWith") or []
+
+        # Check if activity/category matches any uncomfortable tags
+        for tag in uncomfortable_tags:
+            if activity_id == tag or category == tag:
+                # Use registry to get the tag effect (allows per-archetype overrides)
+                archetype_mult = behavior_registry.evaluate_tag_effect(
+                    "uncomfortable", activity, archetype_data, context
+                )
+                break
+
+        # Check comfortable tags (only if not already uncomfortable)
+        if archetype_mult == 1.0:
+            for tag in comfortable_tags:
+                if activity_id == tag or category == tag:
+                    archetype_mult = behavior_registry.evaluate_tag_effect(
+                        "comfortable", activity, archetype_data, context
+                    )
+                    break
+
+        # Check for custom tags in activity meta
+        activity_tags = activity.get("meta", {}).get("tags", [])
+        if archetype_mult == 1.0 and activity_tags:
+            for tag in activity_tags:
+                # Check if this tag has an effect for this archetype
+                effect = behavior_registry.evaluate_tag_effect(
+                    tag, activity, archetype_data, context
+                )
+                if effect != 1.0:
+                    archetype_mult *= effect
+
+    # Apply NPC-level overrides (highest priority)
+    npc_personality = context.get("npc_personality", {})
+    behavior_overrides = npc_personality.get("behaviorOverrides", {})
+
+    if behavior_overrides:
+        # Check for activity-specific override
+        override_activity_weights = behavior_overrides.get("activityWeights", {})
+        if activity_id in override_activity_weights:
+            archetype_mult *= override_activity_weights[activity_id]
+
+        # Check for category override
+        override_category_weights = behavior_overrides.get("categoryWeights", {})
+        if category in override_category_weights:
+            archetype_mult *= override_category_weights[category]
+
+    # Apply weight factor
+    if archetype_mult == 1.0:
+        return 1.0
+
+    # Interpolate between 1.0 and archetype_mult based on weight
+    return 1.0 + (archetype_mult - 1.0) * weight
+
+
+def _factor_trait_effect_modifier(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """
+    Trait-based activity preference scoring factor (Phase 4).
+
+    Applies effects derived from NPC personality traits. Traits are defined
+    semantically (e.g., introversion: high) and mapped to behavioral effects
+    (e.g., social activities: penalty, solitary activities: bonus).
+
+    The trait effects are passed via context:
+    - context['derived_trait_effects']: List of TraitEffectDefinitionSchema
+    """
+    from pixsim7.backend.main.domain.game.schemas.behavior import (
+        FEATURE_FLAGS,
+        TRAIT_EFFECT_VALUE_MULTIPLIERS,
+    )
+
+    # Check feature flag
+    if not FEATURE_FLAGS.get("trait_effects", False):
+        return 1.0
+
+    # Check world-level override
+    world_feature_flags = context.get("world_feature_flags", {})
+    if world_feature_flags.get("trait_effects") is False:
+        return 1.0
+
+    activity_id = activity.get("id", "")
+    category = activity.get("category", "")
+    activity_tags = activity.get("meta", {}).get("tags", [])
+
+    # Get derived trait effects from context
+    derived_effects = context.get("derived_trait_effects", [])
+    if not derived_effects:
+        return 1.0
+
+    combined_mult = 1.0
+
+    for effect in derived_effects:
+        effect_type = effect.get("type", "") if isinstance(effect, dict) else getattr(effect, "type", "")
+
+        if effect_type == "activity_preference":
+            # Check if activity matches any of the effect's tags
+            effect_tags = effect.get("tags", []) if isinstance(effect, dict) else getattr(effect, "tags", []) or []
+            modifier = effect.get("modifier", "neutral") if isinstance(effect, dict) else getattr(effect, "modifier", "neutral")
+
+            for tag in effect_tags:
+                if tag == activity_id or tag == category or tag in activity_tags:
+                    mult = TRAIT_EFFECT_VALUE_MULTIPLIERS.get(modifier, 1.0)
+                    combined_mult *= mult
+                    break
+
+        elif effect_type == "category_weight":
+            # Apply category-specific weight
+            categories = effect.get("categories", {}) if isinstance(effect, dict) else getattr(effect, "categories", {}) or {}
+            if category in categories:
+                semantic_weight = categories[category]
+                mult = TRAIT_EFFECT_VALUE_MULTIPLIERS.get(semantic_weight, 1.0)
+                combined_mult *= mult
+
+    # Apply weight factor
+    if combined_mult == 1.0:
+        return 1.0
+
+    return 1.0 + (combined_mult - 1.0) * weight
+
+
+def _factor_behavior_profile_modifier(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """
+    Behavior profile-based activity preference scoring factor.
+
+    Applies modifiers from active behavior profiles. Profiles are evaluated
+    and cached per tick, then their modifiers are applied in priority order.
+
+    Weight Layering Order (layer 5):
+    1. Base activity weights
+    2. World defaults
+    3. Archetype modifiers
+    4. NPC overrides
+    5. Active behavior profiles (THIS FACTOR) <--
+    6. Transient mood/context
+
+    The active profiles are passed via context:
+    - context['active_profiles']: List[BehaviorProfileMetadata] (precomputed)
+    """
+    from pixsim7.backend.main.domain.game.schemas.behavior import FEATURE_FLAGS
+
+    # Check feature flag
+    if not FEATURE_FLAGS.get("behavior_profiles", False):
+        return 1.0
+
+    # Also check world-level feature flag override
+    world_feature_flags = context.get("world_feature_flags", {})
+    if world_feature_flags.get("behavior_profiles") is False:
+        return 1.0
+
+    activity_id = activity.get("id", "")
+    category = activity.get("category", "")
+
+    # Get precomputed active profiles from context
+    active_profiles = context.get("active_profiles", [])
+    if not active_profiles:
+        return 1.0
+
+    # Apply modifiers from each active profile in priority order
+    # Profiles are already sorted by priority (lower first)
+    combined_mult = 1.0
+
+    for profile in active_profiles:
+        modifiers = profile.modifiers if hasattr(profile, 'modifiers') else profile.get("modifiers", {})
+
+        # Check activity-specific weight
+        activity_weights = modifiers.get("activityWeights", {})
+        if activity_id in activity_weights:
+            combined_mult *= activity_weights[activity_id]
+            continue  # Don't also apply category for same profile
+
+        # Check category weight
+        category_weights = modifiers.get("categoryWeights", {})
+        if category in category_weights:
+            combined_mult *= category_weights[category]
+
+    # Apply weight factor
+    if combined_mult == 1.0:
+        return 1.0
+
+    return 1.0 + (combined_mult - 1.0) * weight
 
 
 # ==================
