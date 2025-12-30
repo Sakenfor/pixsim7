@@ -57,25 +57,36 @@
 
   async function loadAccounts() {
     try {
+      // Use longer timeout - backend API can take time
       const res = await sendMessageWithTimeout({
         action: 'getAccounts',
         providerId: 'pixverse'
-      });
+      }, 10000); // 10 second timeout
+
       if (res?.success && Array.isArray(res.data)) {
+        // Keep all accounts - only filter out explicitly disabled/suspended
+        // (Don't filter by credits - accounts may not have synced yet)
         accountsCache = res.data.filter(a =>
-          a.status === 'active' || (a.total_credits && a.total_credits > 0)
+          a.status !== 'disabled' && a.status !== 'suspended'
         );
         // Sorting done at display time via getSortedAccounts()
 
         // Fetch ad status for selected account only (manual refresh for all via extension popup)
         fetchSelectedAccountStatus();
 
+        console.log('[PixSim7] Loaded', accountsCache.length, 'accounts');
         return accountsCache;
+      } else {
+        console.warn('[PixSim7] loadAccounts failed:', res?.error || 'unknown error');
       }
     } catch (e) {
-      // Timeout or error - continue with empty cache
+      console.warn('[PixSim7] loadAccounts error:', e.message);
+      // Show toast on error so user knows something went wrong
+      if (showToast && accountsCache.length === 0) {
+        showToast('Failed to load accounts', false);
+      }
     }
-    return [];
+    return accountsCache; // Return existing cache on error (don't clear it)
   }
 
   // Fetch ad status for selected account only (background, no await)
@@ -96,6 +107,50 @@
         updateAllAccountButtons();
       }
     }).catch(() => {});
+  }
+
+  // Update ad status in any open menu items
+  function updateOpenMenuAdStatus(accountId) {
+    const menuItem = document.querySelector(`.${MENU_CLASS}__account[data-account-id="${accountId}"]`);
+    if (!menuItem) return;
+
+    const adsPill = menuItem.querySelector(`.${MENU_CLASS}__account-ads`);
+    if (!adsPill) return;
+
+    const cached = adStatusCache.get(accountId);
+    if (cached?.data) {
+      renderAdsPill(adsPill, cached.data);
+      adsPill.style.display = ''; // Show the pill
+    }
+  }
+
+  // Prefetch ad status for multiple accounts (used when menu opens)
+  function prefetchAdStatusForAccounts(accounts, limit = 5) {
+    // Only fetch for accounts without recent cache, limited to avoid overload
+    const toFetch = accounts
+      .filter(a => {
+        const cached = adStatusCache.get(a.id);
+        return !cached || (Date.now() - cached.time) > 60000;
+      })
+      .slice(0, limit);
+
+    toFetch.forEach(account => {
+      sendMessageWithTimeout({
+        action: 'getPixverseStatus',
+        accountId: account.id
+      }, 5000).then(res => {
+        if (res?.success && res.data) {
+          adStatusCache.set(account.id, { data: res.data, time: Date.now() });
+          // Update open menu item immediately
+          updateOpenMenuAdStatus(account.id);
+        }
+      }).catch(() => {});
+    });
+
+    // Also update page buttons after a delay
+    if (toFetch.length > 0) {
+      setTimeout(updateAllAccountButtons, 2000);
+    }
   }
 
   // Refresh ad status for a single account (force refresh, ignores cache TTL)
@@ -133,7 +188,20 @@
     return [];
   }
 
-  async function loadAssets(forceRefresh = false, append = false) {
+  // Track current search query for pagination
+  let assetsCurrentQuery = '';
+
+  async function loadAssets(forceRefresh = false, append = false, options = {}) {
+    const { q } = options;
+
+    // If query changed, treat as fresh load
+    const queryChanged = q !== undefined && q !== assetsCurrentQuery;
+    if (queryChanged) {
+      forceRefresh = true;
+      append = false;
+      assetsCurrentQuery = q || '';
+    }
+
     if (assetsCache.length > 0 && !forceRefresh && !append) {
       return assetsCache;
     }
@@ -152,6 +220,11 @@
       } else if (!append) {
         // Fresh load - start from beginning
         params.offset = 0;
+      }
+
+      // Include search query if set
+      if (assetsCurrentQuery) {
+        params.q = assetsCurrentQuery;
       }
 
       const res = await sendMessageWithTimeout(params);
@@ -327,6 +400,9 @@
       }
     }).catch(() => {});
 
+    // Prefetch ad status for accounts that will be shown in dropdown
+    prefetchAdStatusForAccounts(accountsCache, 8);
+
     const menu = document.createElement('div');
     menu.className = MENU_CLASS;
 
@@ -440,6 +516,7 @@
   function createAccountMenuItem(account, { isCurrent, isSelected }) {
     const item = document.createElement('button');
     item.className = `${MENU_CLASS}__item ${MENU_CLASS}__account`;
+    item.dataset.accountId = account.id; // For live updates
     if (isSelected) item.classList.add('selected');
     if (isCurrent) item.classList.add('current');
 
@@ -466,20 +543,23 @@
       meta.appendChild(emailSpan);
     }
 
-    // Ads pill - show from cache only
+    // Ads pill - always create (may be populated later via live update)
+    const adsPill = document.createElement('span');
+    adsPill.className = `${MENU_CLASS}__account-ads`;
+    adsPill.style.cssText = `
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(0,0,0,0.2);
+      color: ${COLORS.textMuted};
+    `;
     const cached = adStatusCache.get(account.id);
     if (cached?.data) {
-      const adsPill = document.createElement('span');
-      adsPill.style.cssText = `
-        font-size: 9px;
-        padding: 1px 4px;
-        border-radius: 3px;
-        background: rgba(0,0,0,0.2);
-        color: ${COLORS.textMuted};
-      `;
       renderAdsPill(adsPill, cached.data);
-      meta.appendChild(adsPill);
+    } else {
+      adsPill.style.display = 'none'; // Hide until data arrives
     }
+    meta.appendChild(adsPill);
 
     info.appendChild(meta);
 
@@ -789,11 +869,11 @@
 
       // Show unified picker - default to Assets tab, but Recent if there are recent images
       const recentImages = imagePicker.getRecentImages();
-      const defaultTab = recentImages.length > 0 ? 'recent' : 'assets';
+      const defaultTab = recentImages.length > 0 ? 'page' : 'assets';
 
       // Pass loadAssets wrapper that syncs after loading
-      const loadAssetsWrapper = async (forceRefresh = false, append = false) => {
-        await loadAssets(forceRefresh, append);
+      const loadAssetsWrapper = async (forceRefresh = false, append = false, options = {}) => {
+        await loadAssets(forceRefresh, append, options);
         syncModuleCaches();
       };
 
@@ -931,8 +1011,8 @@
 
     // Create and store loadAssets wrapper early so it's available for image picker
     // even if opened via restore panel before Assets button is clicked
-    const loadAssetsWrapper = async (forceRefresh = false, append = false) => {
-      await loadAssets(forceRefresh, append);
+    const loadAssetsWrapper = async (forceRefresh = false, append = false, options = {}) => {
+      await loadAssets(forceRefresh, append, options);
       syncModuleCaches();
     };
     imagePicker.setLoadAssetsFunction(loadAssetsWrapper);
@@ -972,9 +1052,137 @@
             });
           }
 
-          // Show image restore panel if there are images
+          // Restore image slot count by clicking the + button
+          if (pendingState.imageSlotCount && pendingState.imageSlotCount > 0) {
+            const targetSlots = pendingState.imageSlotCount;
+            const currentSlots = document.querySelectorAll('[id*="customer_img"] input[type="file"]').length;
+            const slotsToAdd = targetSlots - currentSlots;
+
+            if (slotsToAdd > 0) {
+              console.log('[PixSim7] Restoring slot count:', currentSlots, '->', targetSlots);
+
+              // Find the + button by its SVG path
+              const plusPath = "M8 2v6m0 0v6m0-6h6M8 8H2";
+              const plusSvg = document.querySelector(`svg path[d="${plusPath}"]`);
+              const plusBtn = plusSvg?.closest('div[class*="opacity"]') || plusSvg?.parentElement?.parentElement;
+
+              if (plusBtn) {
+                for (let i = 0; i < slotsToAdd; i++) {
+                  plusBtn.click();
+                  await new Promise(r => setTimeout(r, 100)); // Small delay between clicks
+                }
+                console.log('[PixSim7] Added', slotsToAdd, 'image slot(s)');
+                // Wait for DOM to update
+                await new Promise(r => setTimeout(r, 300));
+              } else {
+                console.warn('[PixSim7] Could not find + button to restore slots');
+              }
+            }
+          }
+
+          // Auto-restore images to their original containers
           if (pendingState.images && pendingState.images.length > 0) {
-            showImageRestorePanel(pendingState.images);
+            const { injectImageToUpload } = imagePicker;
+            const uploadInputs = imagePicker.findUploadInputs ? imagePicker.findUploadInputs() : [];
+
+            // Normalize images to array of {url, slot, containerId} objects (handle old format)
+            const imagesToRestore = pendingState.images.map(img =>
+              typeof img === 'string' ? { url: img, slot: -1, containerId: '' } : img
+            );
+
+            console.log('[PixSim7] Auto-restoring', imagesToRestore.length, 'images');
+            console.log('[PixSim7] Available upload slots:', uploadInputs.map(u => ({
+              containerId: u.containerId,
+              hasImage: u.hasImage,
+              priority: u.priority
+            })));
+
+            let restored = 0;
+            let failed = [];
+
+            for (const imgData of imagesToRestore) {
+              const { url, slot, containerId } = imgData;
+              let targetInput = null;
+              let matchType = 'none';
+
+              // Priority 1: Match by exact containerId (most reliable)
+              if (containerId) {
+                const exactMatch = uploadInputs.find(u =>
+                  u.containerId === containerId && !u.hasImage
+                );
+                if (exactMatch) {
+                  targetInput = exactMatch.input;
+                  matchType = 'containerId';
+                }
+              }
+
+              // Priority 2: Match by containerId prefix (e.g., "create_image-customer_img" matches any customer_img slot)
+              if (!targetInput && containerId) {
+                // Extract the base type (e.g., "customer_img" from "create_image-customer_img_paths")
+                const baseType = containerId.replace(/^(create_image|image_text|transition|fusion)-/, '');
+                const prefixMatch = uploadInputs.find(u =>
+                  u.containerId?.includes(baseType) && !u.hasImage
+                );
+                if (prefixMatch) {
+                  targetInput = prefixMatch.input;
+                  matchType = 'prefix';
+                }
+              }
+
+              // Priority 3: Fall back to slot index if on same page type
+              if (!targetInput && slot >= 0 && slot < uploadInputs.length) {
+                const slotMatch = uploadInputs[slot];
+                if (slotMatch && !slotMatch.hasImage) {
+                  // Only use slot if it's a high-priority (page-relevant) slot
+                  if (slotMatch.priority >= 10) {
+                    targetInput = slotMatch.input;
+                    matchType = 'slot';
+                  }
+                }
+              }
+
+              // Priority 4: First empty high-priority slot
+              if (!targetInput) {
+                const emptySlot = uploadInputs.find(u => !u.hasImage && u.priority >= 10);
+                if (emptySlot) {
+                  targetInput = emptySlot.input;
+                  matchType = 'firstEmpty';
+                }
+              }
+
+              if (targetInput) {
+                console.log(`[PixSim7] Restoring image to ${matchType} match:`, containerId || `slot ${slot}`);
+                try {
+                  const success = await injectImageToUpload(url, targetInput);
+                  if (success) {
+                    restored++;
+                    // Mark slot as used
+                    const slotInfo = uploadInputs.find(u => u.input === targetInput);
+                    if (slotInfo) slotInfo.hasImage = true;
+                  } else {
+                    failed.push(url);
+                  }
+                } catch (e) {
+                  console.warn('[PixSim7] Failed to restore image to slot:', e);
+                  failed.push(url);
+                }
+                // Small delay between injections
+                await new Promise(r => setTimeout(r, 600));
+              } else {
+                console.log('[PixSim7] No matching slot found for:', containerId || `slot ${slot}`);
+                failed.push(url);
+              }
+            }
+
+            if (restored > 0) {
+              showToast(`Restored ${restored} image(s)`, true);
+            }
+
+            // If some failed, show the picker panel with remaining images
+            if (failed.length > 0) {
+              console.log('[PixSim7] Some images failed to auto-restore, showing picker:', failed);
+              showImageRestorePanel(failed);
+            }
           }
         }
       } catch (e) {
