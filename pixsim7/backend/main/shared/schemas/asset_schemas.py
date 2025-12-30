@@ -4,7 +4,7 @@ Asset management request/response schemas
 from datetime import datetime
 from typing import Optional, List, Literal, Dict
 from pydantic import BaseModel, Field, model_validator
-from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
+from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain, OperationType
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 
@@ -12,14 +12,43 @@ from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 # ===== REQUEST SCHEMAS =====
 
 class AssetFilterRequest(BaseModel):
-    """Filter assets request (offset-based, legacy)"""
+    """Filter assets request with advanced search capabilities."""
+    # Existing filters
     media_type: Optional[MediaType] = None
     sync_status: Optional[SyncStatus] = None
     provider_id: Optional[str] = None
     tag: Optional[str] = None
-    q: Optional[str] = None
+    q: Optional[str] = Field(None, description="Full-text search over description and tags")
     limit: int = Field(50, ge=1, le=100)
     offset: int = Field(0, ge=0)
+
+    # Date range filters
+    created_from: Optional[datetime] = Field(None, description="Filter by created_at >= value")
+    created_to: Optional[datetime] = Field(None, description="Filter by created_at <= value")
+
+    # Dimension filters (use `is not None` checks so 0 works as valid value)
+    min_width: Optional[int] = Field(None, ge=0, description="Minimum width")
+    max_width: Optional[int] = Field(None, ge=0, description="Maximum width")
+    min_height: Optional[int] = Field(None, ge=0, description="Minimum height")
+    max_height: Optional[int] = Field(None, ge=0, description="Maximum height")
+
+    # Content filters
+    content_domain: Optional[ContentDomain] = Field(None, description="Filter by content domain")
+    content_category: Optional[str] = Field(None, description="Filter by content category")
+    content_rating: Optional[str] = Field(None, description="Filter by content rating (general/mature/adult/explicit)")
+
+    # Visibility filters
+    searchable: Optional[bool] = Field(True, description="Filter by searchable flag (default: true)")
+
+    # Lineage filters (via EXISTS subqueries, not JOINs)
+    source_generation_id: Optional[int] = Field(None, description="Filter by source generation ID")
+    operation_type: Optional[OperationType] = Field(None, description="Filter by lineage operation type")
+    has_parent: Optional[bool] = Field(None, description="Filter assets with/without lineage parent")
+    has_children: Optional[bool] = Field(None, description="Filter assets with/without lineage children")
+
+    # Sort options
+    sort_by: Optional[str] = Field(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field")
+    sort_dir: Optional[str] = Field("desc", pattern=r"^(asc|desc)$", description="Sort direction")
 
 
 # ===== RESPONSE SCHEMAS =====

@@ -357,9 +357,26 @@ class AssetCoreService:
         cursor: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        # New search filters
+        created_from: Optional[datetime] = None,
+        created_to: Optional[datetime] = None,
+        min_width: Optional[int] = None,
+        max_width: Optional[int] = None,
+        min_height: Optional[int] = None,
+        max_height: Optional[int] = None,
+        content_domain = None,  # ContentDomain enum
+        content_category: Optional[str] = None,
+        content_rating: Optional[str] = None,
+        searchable: Optional[bool] = True,  # Default True to hide non-searchable
+        source_generation_id: Optional[int] = None,
+        operation_type = None,  # OperationType enum
+        has_parent: Optional[bool] = None,
+        has_children: Optional[bool] = None,
+        sort_by: Optional[str] = None,
+        sort_dir: Optional[str] = "desc",
     ) -> list[Asset]:
         """
-        List assets for user
+        List assets for user with advanced search and filtering.
 
         Args:
             user: User (or admin)
@@ -370,13 +387,30 @@ class AssetCoreService:
             include_archived: If False (default), exclude archived assets
             limit: Max results
             offset: Pagination offset
+            created_from: Filter by created_at >= value
+            created_to: Filter by created_at <= value
+            min_width: Minimum width filter
+            max_width: Maximum width filter
+            min_height: Minimum height filter
+            max_height: Maximum height filter
+            content_domain: Filter by content domain
+            content_category: Filter by content category
+            content_rating: Filter by content rating
+            searchable: Filter by searchable flag (default True)
+            source_generation_id: Filter by source generation ID
+            operation_type: Filter by lineage operation type
+            has_parent: Filter assets with/without lineage parent
+            has_children: Filter assets with/without lineage children
+            sort_by: Sort field (created_at, file_size_bytes)
+            sort_dir: Sort direction (asc, desc)
 
         Returns:
             List of assets
         """
         # Base query
-        from sqlalchemy import and_, or_, case, literal
+        from sqlalchemy import and_, or_, case, literal, exists
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
+        from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
         query = select(Asset)
         tag_joined = False
@@ -388,6 +422,10 @@ class AssetCoreService:
         # Exclude archived by default
         if not include_archived:
             query = query.where(Asset.is_archived == False)
+
+        # Searchable filter (default True to hide non-searchable assets)
+        if searchable is not None:
+            query = query.where(Asset.searchable == searchable)
 
         # Apply filters
         if media_type:
@@ -419,6 +457,65 @@ class AssetCoreService:
                 query = query.where(literal(False))
             else:
                 query = query.where(provider_status_expr == provider_status)
+
+        # Date range filters
+        if created_from is not None:
+            query = query.where(Asset.created_at >= created_from)
+        if created_to is not None:
+            query = query.where(Asset.created_at <= created_to)
+
+        # Dimension filters - use `is not None` so 0 works as valid filter value
+        if min_width is not None:
+            query = query.where(Asset.width >= min_width)
+        if max_width is not None:
+            query = query.where(Asset.width <= max_width)
+        if min_height is not None:
+            query = query.where(Asset.height >= min_height)
+        if max_height is not None:
+            query = query.where(Asset.height <= max_height)
+
+        # Content filters
+        if content_domain is not None:
+            query = query.where(Asset.content_domain == content_domain)
+        if content_category is not None:
+            query = query.where(Asset.content_category == content_category)
+        if content_rating is not None:
+            query = query.where(Asset.content_rating == content_rating)
+
+        # Source generation filter
+        if source_generation_id is not None:
+            query = query.where(Asset.source_generation_id == source_generation_id)
+
+        # Lineage filters - use EXISTS subqueries to avoid row duplication
+        if operation_type is not None:
+            query = query.where(
+                exists(
+                    select(AssetLineage.id).where(
+                        AssetLineage.child_asset_id == Asset.id,
+                        AssetLineage.operation_type == operation_type
+                    )
+                )
+            )
+
+        if has_parent is True:
+            query = query.where(
+                exists(select(AssetLineage.id).where(AssetLineage.child_asset_id == Asset.id))
+            )
+        elif has_parent is False:
+            query = query.where(
+                ~exists(select(AssetLineage.id).where(AssetLineage.child_asset_id == Asset.id))
+            )
+
+        if has_children is True:
+            query = query.where(
+                exists(select(AssetLineage.id).where(AssetLineage.parent_asset_id == Asset.id))
+            )
+        elif has_children is False:
+            query = query.where(
+                ~exists(select(AssetLineage.id).where(AssetLineage.parent_asset_id == Asset.id))
+            )
+
+        # Tag filter
         if tag:
             query = (
                 query.join(AssetTag, AssetTag.asset_id == Asset.id)
@@ -433,7 +530,7 @@ class AssetCoreService:
             )
             tag_joined = True
         if q:
-            # Search across multiple text fields (including tags)
+            # Search across multiple text fields (including tags and prompt)
             like = f"%{q}%"
             if not tag_joined:
                 query = (
@@ -441,22 +538,50 @@ class AssetCoreService:
                     .outerjoin(Tag, Tag.id == AssetTag.tag_id)
                 )
                 tag_joined = True
-            query = query.where(
-                or_(
-                    Asset.description.ilike(like),
-                    Asset.local_path.ilike(like),
-                    Asset.original_source_url.ilike(like),
-                    Tag.slug.ilike(like),
-                    Tag.display_name.ilike(like),
-                    Tag.name.ilike(like),
-                )
+
+            # Join to Generation for prompt search (via source_generation_id)
+            from pixsim7.backend.main.domain.generation.models import Generation
+            query = query.outerjoin(
+                Generation,
+                Asset.source_generation_id == Generation.id
             )
+
+            # Build search conditions
+            search_conditions = [
+                Asset.description.ilike(like),
+                Asset.local_path.ilike(like),
+                Asset.original_source_url.ilike(like),
+                Tag.slug.ilike(like),
+                Tag.display_name.ilike(like),
+                Tag.name.ilike(like),
+            ]
+
+            # Add prompt search via JSON extraction (prompt_analysis->>'prompt')
+            # This extracts the 'prompt' key from the JSON as text for ILIKE search
+            search_conditions.append(
+                Asset.prompt_analysis['prompt'].astext.ilike(like)
+            )
+
+            # Also search Generation.final_prompt for assets with source_generation_id
+            search_conditions.append(
+                Generation.final_prompt.ilike(like)
+            )
+
+            query = query.where(or_(*search_conditions))
 
         if tag_joined:
             query = query.distinct()
 
-        # Order by creation time desc and id desc for stable pagination
-        query = query.order_by(Asset.created_at.desc(), Asset.id.desc())
+        # Sorting - validate sort_by before using
+        if sort_by and sort_by in ('created_at', 'file_size_bytes'):
+            sort_col = getattr(Asset, sort_by)
+            if sort_dir == "asc":
+                query = query.order_by(sort_col.asc(), Asset.id.asc())
+            else:
+                query = query.order_by(sort_col.desc(), Asset.id.desc())
+        else:
+            # Default: created_at DESC
+            query = query.order_by(Asset.created_at.desc(), Asset.id.desc())
 
         # Cursor pagination (created_at|id)
         if cursor:

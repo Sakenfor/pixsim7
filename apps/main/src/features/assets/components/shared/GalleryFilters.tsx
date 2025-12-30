@@ -29,6 +29,12 @@ export interface GalleryFiltersProps {
   showProviderStatus?: boolean;
   /** Show sort filter (default: true) */
   showSort?: boolean;
+  /** Show date range filter (default: false) */
+  showDateRange?: boolean;
+  /** Show dimension filters (default: false) */
+  showDimensions?: boolean;
+  /** Show lineage filter (default: false) */
+  showLineage?: boolean;
 
   // Dynamic options
   /** Available providers for dropdown */
@@ -57,6 +63,9 @@ export function GalleryFilters({
   showProvider = false,
   showProviderStatus = false,
   showSort = true,
+  showDateRange = false,
+  showDimensions = false,
+  showLineage = false,
   providers = [],
   extraSortOptions = [],
   layout = 'horizontal',
@@ -145,11 +154,86 @@ export function GalleryFilters({
         >
           <option value="new">Newest First</option>
           <option value="old">Oldest First</option>
+          <option value="size">Largest First</option>
           {extraSortOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
           ))}
+        </select>
+      )}
+
+      {/* Date Range (gated) */}
+      {showDateRange && (
+        <div className="flex gap-1 items-center">
+          <input
+            type="date"
+            className={inputClasses}
+            value={filters.created_from || ''}
+            onChange={(e) => onFiltersChange({ created_from: e.target.value || undefined })}
+          />
+          <span className="text-xs text-neutral-500">to</span>
+          <input
+            type="date"
+            className={inputClasses}
+            value={filters.created_to || ''}
+            onChange={(e) => onFiltersChange({ created_to: e.target.value || undefined })}
+          />
+        </div>
+      )}
+
+      {/* Dimensions (gated) */}
+      {showDimensions && (
+        <div className="flex gap-1 items-center">
+          <input
+            type="number"
+            placeholder="Min W"
+            className={`${inputClasses} w-16`}
+            min={0}
+            value={filters.min_width ?? ''}
+            onChange={(e) =>
+              onFiltersChange({ min_width: e.target.value ? Number(e.target.value) : undefined })
+            }
+          />
+          <span className="text-xs">x</span>
+          <input
+            type="number"
+            placeholder="Min H"
+            className={`${inputClasses} w-16`}
+            min={0}
+            value={filters.min_height ?? ''}
+            onChange={(e) =>
+              onFiltersChange({ min_height: e.target.value ? Number(e.target.value) : undefined })
+            }
+          />
+        </div>
+      )}
+
+      {/* Lineage (gated) */}
+      {showLineage && (
+        <select
+          className={selectClasses}
+          value={
+            filters.has_parent === true
+              ? 'has_parent'
+              : filters.has_parent === false
+                ? 'no_parent'
+                : filters.has_children === true
+                  ? 'has_children'
+                  : ''
+          }
+          onChange={(e) => {
+            const v = e.target.value;
+            onFiltersChange({
+              has_parent: v === 'has_parent' ? true : v === 'no_parent' ? false : undefined,
+              has_children: v === 'has_children' ? true : undefined,
+            });
+          }}
+        >
+          <option value="">Any Lineage</option>
+          <option value="has_parent">Has Parent</option>
+          <option value="has_children">Has Children</option>
+          <option value="no_parent">Original (No Parent)</option>
         </select>
       )}
     </div>

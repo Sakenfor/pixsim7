@@ -18,7 +18,7 @@ from pixsim7.backend.main.shared.schemas.asset_schemas import (
 )
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary, AssignTagsRequest
 from pixsim7.backend.main.services.tag_service import TagService
-from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
+from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, ContentDomain
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
@@ -54,6 +54,7 @@ async def list_assets(
     user: CurrentUser,
     asset_service: AssetSvc,
     db: DatabaseSession,
+    # Basic filters
     media_type: MediaType | None = Query(None, description="Filter by media type"),
     sync_status: SyncStatus | None = Query(None, description="Filter by sync status"),
     provider_id: str | None = Query(None, description="Filter by provider"),
@@ -61,6 +62,28 @@ async def list_assets(
     tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
     q: str | None = Query(None, description="Full-text search over description/tags"),
     include_archived: bool = Query(False, description="Include archived assets (default: false)"),
+    # Date range filters
+    created_from: datetime | None = Query(None, description="Filter by created_at >= value"),
+    created_to: datetime | None = Query(None, description="Filter by created_at <= value"),
+    # Dimension filters
+    min_width: int | None = Query(None, ge=0, description="Minimum width"),
+    max_width: int | None = Query(None, ge=0, description="Maximum width"),
+    min_height: int | None = Query(None, ge=0, description="Minimum height"),
+    max_height: int | None = Query(None, ge=0, description="Maximum height"),
+    # Content filters
+    content_domain: ContentDomain | None = Query(None, description="Filter by content domain"),
+    content_category: str | None = Query(None, description="Filter by content category"),
+    content_rating: str | None = Query(None, description="Filter by content rating"),
+    searchable: bool | None = Query(True, description="Filter by searchable flag (default: true)"),
+    # Lineage filters
+    source_generation_id: int | None = Query(None, description="Filter by source generation ID"),
+    operation_type: OperationType | None = Query(None, description="Filter by lineage operation type"),
+    has_parent: bool | None = Query(None, description="Has lineage parent"),
+    has_children: bool | None = Query(None, description="Has lineage children"),
+    # Sorting
+    sort_by: str | None = Query(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field"),
+    sort_dir: str | None = Query("desc", pattern=r"^(asc|desc)$", description="Sort direction"),
+    # Pagination
     limit: int = Query(50, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset (legacy)"),
     cursor: str | None = Query(None, description="Opaque cursor for pagination"),
@@ -68,9 +91,11 @@ async def list_assets(
     """List assets for current user with optional filters.
 
     Supports either offset or cursor pagination (cursor takes precedence if provided).
-    Assets returned newest first (created_at DESC, id DESC for tie-break).
+    Assets returned newest first by default (created_at DESC, id DESC for tie-break).
 
-    By default, archived assets are excluded. Set include_archived=true to show them.
+    By default:
+    - Archived assets are excluded. Set include_archived=true to show them.
+    - Only searchable assets are shown. Set searchable=false to include hidden assets.
     """
     try:
         assets = await asset_service.list_assets(
@@ -85,6 +110,23 @@ async def list_assets(
             limit=limit,
             offset=offset if cursor is None else 0,
             cursor=cursor,
+            # New search filters
+            created_from=created_from,
+            created_to=created_to,
+            min_width=min_width,
+            max_width=max_width,
+            min_height=min_height,
+            max_height=max_height,
+            content_domain=content_domain,
+            content_category=content_category,
+            content_rating=content_rating,
+            searchable=searchable,
+            source_generation_id=source_generation_id,
+            operation_type=operation_type,
+            has_parent=has_parent,
+            has_children=has_children,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
 
         # Simple total (future: separate COUNT query)
@@ -225,6 +267,77 @@ async def get_filter_metadata(
     except Exception as e:
         logger.error("filter_metadata_failed", error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get filter metadata: {str(e)}")
+
+
+# ===== AUTOCOMPLETE =====
+
+class AutocompleteResponse(BaseModel):
+    """Response containing autocomplete suggestions."""
+    suggestions: List[str] = Field(description="List of autocomplete suggestions")
+
+
+@router.get("/assets/autocomplete", response_model=AutocompleteResponse)
+async def autocomplete_assets(
+    user: CurrentUser,
+    db: DatabaseSession,
+    query: str = Query(..., min_length=2, max_length=100, description="Search query"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of suggestions"),
+):
+    """
+    Lightweight autocomplete for asset descriptions and tags.
+
+    Returns matching suggestions from:
+    - Asset descriptions
+    - Tag display names
+
+    Use this for search input autocomplete.
+    """
+    from sqlalchemy import union_all, distinct
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
+
+    like = f"%{query}%"
+
+    try:
+        # Search descriptions (distinct values containing query)
+        desc_query = (
+            select(Asset.description.label('suggestion'))
+            .where(
+                Asset.user_id == user.id,
+                Asset.description.isnot(None),
+                Asset.description.ilike(like),
+                Asset.is_archived == False,
+            )
+            .distinct()
+            .limit(limit)
+        )
+
+        # Search tags (distinct display names containing query)
+        tag_query = (
+            select(Tag.display_name.label('suggestion'))
+            .select_from(Tag)
+            .join(AssetTag, Tag.id == AssetTag.tag_id)
+            .join(Asset, Asset.id == AssetTag.asset_id)
+            .where(
+                Asset.user_id == user.id,
+                Tag.display_name.isnot(None),
+                Tag.display_name.ilike(like),
+                Asset.is_archived == False,
+            )
+            .distinct()
+            .limit(limit)
+        )
+
+        # Combine and limit total results
+        combined = union_all(desc_query, tag_query).limit(limit)
+        result = await db.execute(combined)
+
+        suggestions = [r.suggestion for r in result.all() if r.suggestion]
+        return AutocompleteResponse(suggestions=suggestions[:limit])
+
+    except Exception as e:
+        logger.error("autocomplete_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get autocomplete suggestions: {str(e)}")
 
 
 # ===== GET ASSET =====
@@ -1516,4 +1629,122 @@ async def extract_frame(
             status_code=500,
             detail=f"Failed to extract frame: {str(e)}"
         )
+
+
+# ===== ASSET ENRICHMENT (SYNC METADATA FROM PROVIDER) =====
+
+class EnrichAssetResponse(BaseModel):
+    """Response from asset enrichment"""
+    asset_id: int
+    enriched: bool
+    generation_id: Optional[int] = None
+    message: str
+
+
+@router.post("/{asset_id}/enrich", response_model=EnrichAssetResponse)
+async def enrich_asset(
+    asset_id: int,
+    user: CurrentUser,
+    db: DatabaseSession,
+    asset_service: AssetSvc,
+):
+    """
+    Enrich an asset by fetching metadata from the provider and running synthetic generation.
+
+    This will:
+    1. Fetch full metadata from the provider API (e.g., prompt, settings, source images)
+    2. Extract embedded assets and create lineage links
+    3. Create a synthetic Generation record with prompt/params
+
+    Useful for assets synced without full metadata (e.g., from extension badge click).
+    """
+    from pixsim7.backend.main.domain import Asset
+    from pixsim7.backend.main.domain.providers import ProviderAccount
+    from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
+    from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+    from sqlalchemy import select
+
+    # Get the asset
+    asset = await asset_service.get_asset(asset_id, user)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Only supported for pixverse currently
+    if asset.provider_id != "pixverse":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Enrichment not supported for provider: {asset.provider_id}"
+        )
+
+    # Already has generation? Skip
+    if asset.source_generation_id:
+        return EnrichAssetResponse(
+            asset_id=asset.id,
+            enriched=False,
+            generation_id=asset.source_generation_id,
+            message="Asset already has generation record"
+        )
+
+    # Need provider_account_id to fetch metadata
+    if not asset.provider_account_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Asset has no linked provider account. Cannot fetch metadata."
+        )
+
+    # Get the account
+    account_stmt = select(ProviderAccount).where(
+        ProviderAccount.id == asset.provider_account_id,
+        ProviderAccount.user_id == user.id,
+    )
+    result = await db.execute(account_stmt)
+    account = result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(
+            status_code=400,
+            detail="Provider account not found or not accessible"
+        )
+
+    # Fetch metadata from provider
+    try:
+        provider = PixverseProvider()
+        client = provider._create_client(account)
+
+        if asset.media_type.value == "VIDEO":
+            provider_metadata = await client.get_video(asset.provider_asset_id)
+        else:
+            provider_metadata = await client.get_image(asset.provider_asset_id)
+    except Exception as e:
+        logger.warning(
+            "enrich_asset_fetch_failed",
+            asset_id=asset.id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch metadata from provider: {str(e)}"
+        )
+
+    if not provider_metadata:
+        return EnrichAssetResponse(
+            asset_id=asset.id,
+            enriched=False,
+            message="No metadata returned from provider"
+        )
+
+    # Update asset's media_metadata
+    asset.media_metadata = provider_metadata
+    await db.commit()
+
+    # Run enrichment pipeline
+    enrichment_service = AssetEnrichmentService(db)
+    generation = await enrichment_service.enrich_synced_asset(asset, user, provider_metadata)
+
+    return EnrichAssetResponse(
+        asset_id=asset.id,
+        enriched=True,
+        generation_id=generation.id if generation else None,
+        message="Asset enriched successfully" if generation else "Enriched but no generation created"
+    )
 

@@ -10,13 +10,40 @@ export type { AssetModel } from '../models/asset';
 export type { AssetResponse } from '@lib/api/assets';
 
 export type AssetFilters = {
+  // Existing filters
   q?: string;
   tag?: string;
   provider_id?: string | null;
-  sort?: 'new' | 'old' | 'alpha';
+  sort?: 'new' | 'old' | 'size';  // Removed 'alpha' - Asset has no name field
   media_type?: 'video' | 'image' | 'audio' | '3d_model';
   provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   include_archived?: boolean;
+
+  // Date range filters
+  created_from?: string;  // ISO date string
+  created_to?: string;
+
+  // Dimension filters
+  min_width?: number;
+  max_width?: number;
+  min_height?: number;
+  max_height?: number;
+
+  // Content filters
+  content_domain?: string;
+  content_category?: string;
+  content_rating?: string;
+  searchable?: boolean;  // Default true on backend
+
+  // Lineage filters
+  source_generation_id?: number;
+  operation_type?: string;
+  has_parent?: boolean;
+  has_children?: boolean;
+
+  // Sort options (backend fields)
+  sort_by?: 'created_at' | 'file_size_bytes';
+  sort_dir?: 'asc' | 'desc';
 };
 
 export function useAssets(options?: { limit?: number; filters?: AssetFilters }) {
@@ -34,14 +61,47 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   const requestIdRef = useRef(0);
 
   const filterParams = useMemo(() => ({
+    // Existing filters
     q: filters.q?.trim() || undefined,
     tag: filters.tag || undefined,
     provider_id: filters.provider_id || undefined,
-    sort: filters.sort || undefined,
     media_type: filters.media_type || undefined,
     provider_status: filters.provider_status || undefined,
     include_archived: filters.include_archived || undefined,
-  }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type, filters.provider_status, filters.include_archived]);
+
+    // Map friendly sort names to backend fields
+    sort_by: filters.sort === 'size' ? 'file_size_bytes' : (filters.sort ? 'created_at' : undefined),
+    sort_dir: filters.sort === 'old' ? 'asc' : 'desc',
+
+    // Date range filters
+    created_from: filters.created_from || undefined,
+    created_to: filters.created_to || undefined,
+
+    // Dimension filters - don't filter out 0
+    min_width: filters.min_width,
+    max_width: filters.max_width,
+    min_height: filters.min_height,
+    max_height: filters.max_height,
+
+    // Content filters
+    content_domain: filters.content_domain || undefined,
+    content_category: filters.content_category || undefined,
+    content_rating: filters.content_rating || undefined,
+    searchable: filters.searchable,  // Let backend default to true
+
+    // Lineage filters
+    source_generation_id: filters.source_generation_id,
+    operation_type: filters.operation_type || undefined,
+    has_parent: filters.has_parent,
+    has_children: filters.has_children,
+  }), [
+    filters.q, filters.tag, filters.provider_id, filters.sort,
+    filters.media_type, filters.provider_status, filters.include_archived,
+    filters.created_from, filters.created_to,
+    filters.min_width, filters.max_width, filters.min_height, filters.max_height,
+    filters.content_domain, filters.content_category, filters.content_rating, filters.searchable,
+    filters.source_generation_id, filters.operation_type, filters.has_parent, filters.has_children,
+  ]);
 
   // Use ref to always access current filterParams in loadMore without stale closures
   const filterParamsRef = useRef(filterParams);
@@ -67,14 +127,34 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       const queryParams: Record<string, any> = {
         limit,
         cursor: currentCursor || undefined,
+        // Basic filters
         q: currentFilters.q || undefined,
         tag: currentFilters.tag || undefined,
         provider_id: currentFilters.provider_id || undefined,
         provider_status: currentFilters.provider_status || undefined,
         media_type: currentFilters.media_type || undefined,
         include_archived: currentFilters.include_archived || undefined,
-        // TODO: Add sort support to backend, for now it's always newest first
-        // sort: currentFilters.sort || undefined,
+        // Date range filters
+        created_from: currentFilters.created_from || undefined,
+        created_to: currentFilters.created_to || undefined,
+        // Dimension filters
+        min_width: currentFilters.min_width,
+        max_width: currentFilters.max_width,
+        min_height: currentFilters.min_height,
+        max_height: currentFilters.max_height,
+        // Content filters
+        content_domain: currentFilters.content_domain || undefined,
+        content_category: currentFilters.content_category || undefined,
+        content_rating: currentFilters.content_rating || undefined,
+        searchable: currentFilters.searchable,
+        // Lineage filters
+        source_generation_id: currentFilters.source_generation_id,
+        operation_type: currentFilters.operation_type || undefined,
+        has_parent: currentFilters.has_parent,
+        has_children: currentFilters.has_children,
+        // Sort options
+        sort_by: currentFilters.sort_by || undefined,
+        sort_dir: currentFilters.sort_dir || undefined,
       };
 
       const data: AssetListResponse = await listAssets(queryParams);
@@ -192,7 +272,16 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   // Reset when filters change
   useEffect(() => {
     reset();
-  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, filterParams.include_archived, limit, reset]);
+  }, [
+    filterParams.q, filterParams.tag, filterParams.provider_id,
+    filterParams.media_type, filterParams.provider_status, filterParams.include_archived,
+    filterParams.created_from, filterParams.created_to,
+    filterParams.min_width, filterParams.max_width, filterParams.min_height, filterParams.max_height,
+    filterParams.content_domain, filterParams.content_category, filterParams.content_rating, filterParams.searchable,
+    filterParams.source_generation_id, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
+    filterParams.sort_by, filterParams.sort_dir,
+    limit, reset,
+  ]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
   useEffect(() => {
