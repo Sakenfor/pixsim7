@@ -741,13 +741,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getAssets') {
     (async () => {
       try {
-        const { providerId, limit, offset, cursor } = message;
+        const { providerId, limit, offset, cursor, q, mediaType } = message;
         let endpoint = '/api/v1/assets?';
         const params = [];
         if (providerId) params.push(`provider_id=${encodeURIComponent(providerId)}`);
         if (limit) params.push(`limit=${limit}`);
         if (cursor) params.push(`cursor=${encodeURIComponent(cursor)}`);
         else if (offset != null) params.push(`offset=${offset}`);
+        // Server-side search query
+        if (q && q.trim()) params.push(`q=${encodeURIComponent(q.trim())}`);
+        // Media type filter
+        if (mediaType) params.push(`media_type=${encodeURIComponent(mediaType)}`);
         endpoint += params.join('&');
 
         const data = await backendRequest(endpoint);
