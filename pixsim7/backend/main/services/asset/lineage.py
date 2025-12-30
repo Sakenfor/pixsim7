@@ -189,6 +189,74 @@ def build_lineage_from_edit_prompt(
     return lineage_rows
 
 
+def build_lineage_from_composition_metadata(
+    child_asset_id: int,
+    composition_metadata: List[Dict[str, Any]],
+    operation_type: OperationType = OperationType.IMAGE_EDIT,
+) -> List[AssetLineage]:
+    """
+    Build AssetLineage rows from trimmed composition metadata dicts.
+
+    This is the preferred function for new code - it works with the
+    lightweight metadata format stored in canonical_params.composition_metadata.
+
+    Args:
+        child_asset_id: The output asset ID
+        composition_metadata: List of dicts with:
+            - asset: "asset:123" or int
+            - sequence_order: int
+            - role, intent, influence_type, influence_region (optional)
+        operation_type: Operation type (default IMAGE_EDIT)
+
+    Returns:
+        List of AssetLineage objects (not yet persisted)
+    """
+    lineage_rows: List[AssetLineage] = []
+    n_inputs = len(composition_metadata)
+    default_weight = 1.0 / n_inputs if n_inputs > 0 else 1.0
+
+    # Mapping from role to default influence type
+    role_to_influence: Dict[str, str] = {
+        "main_character": "content",
+        "companion": "content",
+        "environment": "content",
+        "prop": "content",
+        "style_reference": "style",
+        "effect": "blend",
+        "composition_reference": "content",
+    }
+
+    for entry in composition_metadata:
+        parent_id = _resolve_asset_id(entry.get("asset"))
+        if parent_id is None:
+            continue
+
+        # Get influence type - explicit > derived from role > default
+        influence_type = entry.get("influence_type")
+        if not influence_type:
+            role = entry.get("role")
+            if role:
+                influence_type = role_to_influence.get(role, "content")
+            else:
+                influence_type = "content"
+
+        lineage_rows.append(
+            AssetLineage(
+                child_asset_id=child_asset_id,
+                parent_asset_id=parent_id,
+                relation_type="source",
+                operation_type=operation_type,
+                sequence_order=entry.get("sequence_order", 0),
+                influence_type=influence_type,
+                influence_weight=default_weight,
+                influence_region=entry.get("influence_region") or "full",
+                prompt_ref_name=entry.get("ref_name"),
+            )
+        )
+
+    return lineage_rows
+
+
 def build_lineage_from_composition_assets(
     child_asset_id: int,
     composition_assets: List[CompositionAsset],

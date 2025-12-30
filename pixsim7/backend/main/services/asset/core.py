@@ -124,10 +124,26 @@ class AssetCoreService:
         height = response.get("height") or metadata.get("height")
         duration_sec = response.get("duration_sec") or metadata.get("duration_sec")
 
-        # Analyze prompt if available (for block extraction and tagging)
+        # Get prompt analysis - prefer existing analysis from PromptVersion to avoid re-analyzing
         prompt_analysis_result = None
         prompt_text = self._extract_prompt_from_generation(generation, submission)
-        if prompt_text:
+
+        # First, try to reuse existing analysis from PromptVersion
+        if hasattr(generation, 'prompt_version_id') and generation.prompt_version_id:
+            try:
+                from pixsim7.backend.main.domain.prompt import PromptVersion
+                result = await self.db.execute(
+                    select(PromptVersion).where(PromptVersion.id == generation.prompt_version_id)
+                )
+                prompt_version = result.scalar_one_or_none()
+                if prompt_version and prompt_version.prompt_analysis:
+                    prompt_analysis_result = prompt_version.prompt_analysis
+                    logger.debug(f"Reusing existing prompt_analysis from PromptVersion {generation.prompt_version_id}")
+            except Exception as e:
+                logger.debug(f"Could not load PromptVersion {generation.prompt_version_id}: {e}")
+
+        # Fallback: analyze if we have text but no existing analysis
+        if prompt_analysis_result is None and prompt_text:
             try:
                 prompt_analysis_result = await analyze_prompt(prompt_text)
             except Exception as e:
@@ -811,19 +827,52 @@ class AssetCoreService:
         """
         Create lineage edges from generation inputs to the output asset.
 
-        Reads generation.inputs (populated by _extract_inputs) and creates
-        AssetLineage rows linking parent assets to the child asset.
-
-        Only creates lineage for inputs that have resolvable asset references
-        (in "asset:123" format).
+        Prefers structured composition_metadata when available (preserves
+        influence_type/region from original request). Falls back to
+        Generation.inputs for legacy generations.
 
         Args:
             asset: The newly created child asset
             generation: The generation that created this asset
         """
         from pixsim7.backend.main.services.asset.asset_factory import create_lineage_links_with_metadata
+        from pixsim7.backend.main.services.asset.lineage import build_lineage_from_composition_metadata
+        from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
-        # Check if generation has inputs
+        # Get operation_type from generation
+        operation_type = generation.operation_type
+
+        # Prefer structured composition_metadata when available
+        # This preserves influence_type/region from the original request
+        canonical_params = getattr(generation, 'canonical_params', None) or {}
+        composition_metadata = canonical_params.get("composition_metadata")
+
+        if composition_metadata and isinstance(composition_metadata, list):
+            try:
+                lineage_rows = build_lineage_from_composition_metadata(
+                    child_asset_id=asset.id,
+                    composition_metadata=composition_metadata,
+                    operation_type=operation_type,
+                )
+
+                if lineage_rows:
+                    for row in lineage_rows:
+                        self.db.add(row)
+                    await self.db.flush()
+
+                    logger.info(
+                        f"Created {len(lineage_rows)} lineage edge(s) for asset {asset.id} "
+                        f"from composition_metadata ({operation_type.value})"
+                    )
+                    return  # Success - don't fall back to inputs-based lineage
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create lineage from composition_metadata for asset {asset.id}: {e}, "
+                    f"falling back to inputs-based lineage"
+                )
+
+        # Fallback: use Generation.inputs (legacy path)
         if not hasattr(generation, 'inputs') or not generation.inputs:
             return
 
@@ -842,9 +891,6 @@ class AssetCoreService:
                 f"No asset inputs found for generation {generation.id}, skipping lineage creation"
             )
             return
-
-        # Get operation_type from generation
-        operation_type = generation.operation_type
 
         try:
             created_count = await create_lineage_links_with_metadata(

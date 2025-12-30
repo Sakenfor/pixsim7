@@ -142,6 +142,73 @@ def get_relation_type_for_role(role: str) -> str:
     return ROLE_TO_RELATION_TYPE.get(role, relation_types.DERIVATION)
 
 
+def _extract_composition_metadata(
+    composition_assets: List[Any],
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Extract lineage-relevant metadata from composition assets.
+
+    Trims to only the fields needed for structured lineage building:
+    - asset reference (for parent resolution)
+    - role, intent (for relation_type mapping)
+    - influence_type, influence_region (for lineage enrichment)
+    - ref_name (for prompt binding correlation)
+    - sequence_order (implicit from list position)
+
+    Does NOT include large fields like tags, ontology IDs, or geometry.
+
+    Args:
+        composition_assets: Raw composition asset list from request
+
+    Returns:
+        Trimmed list of dicts for lineage building, or None if empty
+    """
+    if not composition_assets:
+        return None
+
+    metadata: List[Dict[str, Any]] = []
+    lineage_fields = [
+        "role",
+        "intent",
+        "influence_type",
+        "influence_region",
+        "ref_name",
+        "priority",
+        "layer",
+    ]
+
+    for i, item in enumerate(composition_assets):
+        if hasattr(item, "model_dump"):
+            item = item.model_dump()
+
+        if not isinstance(item, dict):
+            continue
+
+        # Extract asset reference
+        asset_value = (
+            item.get("asset")
+            or item.get("asset_id")
+            or item.get("assetId")
+            or item.get("url")
+        )
+        if not asset_value:
+            continue
+
+        entry: Dict[str, Any] = {
+            "asset": _extract_asset_ref(asset_value) or asset_value,
+            "sequence_order": i,
+        }
+
+        # Extract lineage-relevant fields only
+        for key in lineage_fields:
+            if item.get(key) is not None:
+                entry[key] = item[key]
+
+        metadata.append(entry)
+
+    return metadata if metadata else None
+
+
 class GenerationCreationService:
     """
     Generation creation service
@@ -164,6 +231,7 @@ class GenerationCreationService:
         prompt_text: str,
         author: Optional[str] = None,
         analyzer_id: Optional[str] = None,
+        precomputed_analysis: Optional[Dict[str, Any]] = None,
     ) -> Tuple[PromptVersion, bool]:
         """
         Find existing PromptVersion by hash or create new one with analysis.
@@ -173,7 +241,10 @@ class GenerationCreationService:
         Args:
             prompt_text: The prompt text to find or create
             author: Optional author identifier
-            analyzer_id: Analyzer ID (default: prompt:simple)
+            analyzer_id: Analyzer ID (default: prompt:simple). Set to None
+                when providing precomputed_analysis.
+            precomputed_analysis: Pre-computed analysis from block composition.
+                If provided, skips analyzer call. Must match analyzer output shape.
 
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
@@ -185,6 +256,7 @@ class GenerationCreationService:
             text=prompt_text,
             analyzer_id=analyzer_id,
             author=author,
+            precomputed_analysis=precomputed_analysis,
         )
 
     async def create_generation(
@@ -433,17 +505,24 @@ class GenerationCreationService:
             # No version provided - find or create from prompt text
             prompt_text = canonical_params.get("prompt")
             if prompt_text and isinstance(prompt_text, str) and prompt_text.strip():
+                # Check if we have precomputed analysis from block composition
+                # This avoids re-analyzing prompts that were built from blocks
+                precomputed_analysis = canonical_params.get("derived_analysis")
+
                 # Find or create PromptVersion by hash
+                # If precomputed_analysis is present, skip analyzer
                 prompt_version, created = await self.find_or_create_prompt_version(
                     prompt_text=prompt_text,
                     author=f"user:{user.id}",
-                    analyzer_id=analyzer_id,
+                    analyzer_id=None if precomputed_analysis else analyzer_id,
+                    precomputed_analysis=precomputed_analysis,
                 )
                 prompt_version_id = prompt_version.id
                 final_prompt = prompt_version.prompt_text
 
                 if created:
-                    debug.generation(f"Created new PromptVersion {prompt_version_id}")
+                    source = "composition" if precomputed_analysis else "analyzer"
+                    debug.generation(f"Created new PromptVersion {prompt_version_id} (source={source})")
                 else:
                     debug.generation(f"Reusing existing PromptVersion {prompt_version_id}")
 
@@ -640,6 +719,12 @@ class GenerationCreationService:
             if composition_assets:
                 canonical["composition_assets"] = composition_assets
 
+                # Extract trimmed metadata for structured lineage building
+                # This preserves influence_type/region without storing the full composition_assets
+                composition_metadata = _extract_composition_metadata(composition_assets)
+                if composition_metadata:
+                    canonical["composition_metadata"] = composition_metadata
+
                 # If all assets are explicit IDs, also expose source_asset_ids for provider resolution
                 asset_ids: List[int] = []
                 asset_refs: List[str] = []
@@ -710,6 +795,11 @@ class GenerationCreationService:
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
             if composition_assets:
                 canonical["composition_assets"] = composition_assets
+
+                # Extract trimmed metadata for structured lineage building
+                composition_metadata = _extract_composition_metadata(composition_assets)
+                if composition_metadata:
+                    canonical["composition_metadata"] = composition_metadata
 
         # Preserve scene_context and other structured fields if present
         for context_key in ["scene_context", "player_context", "social_context"]:
@@ -890,6 +980,10 @@ class GenerationCreationService:
                             "priority",
                             "layer",
                             "ref_name",
+                            # Influence hints for lineage tracking
+                            "influence_type",
+                            "influence_region",
+                            # Ontology-aligned hints
                             "character_id",
                             "location_id",
                             "pose_id",
@@ -984,6 +1078,10 @@ class GenerationCreationService:
                             "priority",
                             "layer",
                             "ref_name",
+                            # Influence hints for lineage tracking
+                            "influence_type",
+                            "influence_region",
+                            # Ontology-aligned hints
                             "character_id",
                             "location_id",
                             "pose_id",
