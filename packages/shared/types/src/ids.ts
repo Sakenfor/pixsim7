@@ -351,10 +351,18 @@ export function parseRef(ref: string): ParsedRef | null {
   const prefix = ref.slice(0, colonIndex);
   const value = ref.slice(colonIndex + 1);
 
+  const parseNonNegativeInt = (val: string): number | null => {
+    const normalized = val.trim();
+    if (normalized === '') return null;
+    const n = Number(normalized);
+    if (!Number.isInteger(n) || n < 0) return null;
+    return n;
+  };
+
   switch (prefix) {
     case 'npc': {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(value);
+      if (n === null) return null;
       return { type: 'npc', id: NpcId(n) };
     }
 
@@ -369,8 +377,8 @@ export function parseRef(ref: string): ParsedRef | null {
     }
 
     case 'location': {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(value);
+      if (n === null) return null;
       return { type: 'location', id: LocationId(n) };
     }
 
@@ -383,8 +391,8 @@ export function parseRef(ref: string): ParsedRef | null {
       if (sceneType !== 'game' && sceneType !== 'content') return null;
 
       const idStr = value.slice(secondColonIndex + 1);
-      const n = Number(idStr);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(idStr);
+      if (n === null) return null;
 
       return { type: 'scene', id: SceneId(n), sceneType };
     }
@@ -397,21 +405,21 @@ export function parseRef(ref: string): ParsedRef | null {
       const sceneIdStr = value.slice(0, secondColonIndex);
       const roleName = value.slice(secondColonIndex + 1);
 
-      const sceneId = Number(sceneIdStr);
-      if (!Number.isInteger(sceneId) || sceneId < 0 || !roleName) return null;
+      const sceneId = parseNonNegativeInt(sceneIdStr);
+      if (sceneId === null || !roleName) return null;
 
       return { type: 'role', sceneId: SceneId(sceneId), roleName };
     }
 
     case 'asset': {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(value);
+      if (n === null) return null;
       return { type: 'asset', id: AssetId(n) };
     }
 
     case 'generation': {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(value);
+      if (n === null) return null;
       return { type: 'generation', id: GenerationId(n) };
     }
 
@@ -426,14 +434,14 @@ export function parseRef(ref: string): ParsedRef | null {
     }
 
     case 'world': {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(value);
+      if (n === null) return null;
       return { type: 'world', id: WorldId(n) };
     }
 
     case 'session': {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) return null;
+      const n = parseNonNegativeInt(value);
+      if (n === null) return null;
       return { type: 'session', id: SessionId(n) };
     }
 
@@ -501,7 +509,11 @@ export function tryParseRef(ref: string): RefParseResult {
 
   // Helper for numeric ID validation
   const validateNumericId = (val: string): { valid: true; n: number } | { valid: false; reason: RefParseErrorReason; message: string } => {
-    const n = Number(val);
+    const normalized = val.trim();
+    if (normalized === '') {
+      return { valid: false, reason: 'invalid_number', message: 'ID is required' };
+    }
+    const n = Number(normalized);
     if (!Number.isFinite(n)) {
       return { valid: false, reason: 'invalid_number', message: `Invalid number: "${val}"` };
     }
