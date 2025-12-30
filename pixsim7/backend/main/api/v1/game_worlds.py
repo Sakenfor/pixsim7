@@ -911,3 +911,71 @@ async def resume_simulation(
     )
 
     return {"status": "resumed", "world_id": str(world_id)}
+
+
+class TickWorldRequest(BaseModel):
+    """Request to manually tick a world."""
+    delta_seconds: float = 1.0  # Real-time seconds to simulate
+
+
+class TickWorldResponse(BaseModel):
+    """Response from manual tick."""
+    world_id: int
+    world_time_before: float
+    world_time_after: float
+    delta_game_seconds: float
+    npcs_simulated: int
+    tick_duration_ms: float
+
+
+@router.post("/{world_id}/scheduler/tick", response_model=TickWorldResponse)
+async def tick_world_manually(
+    world_id: int,
+    req: TickWorldRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> TickWorldResponse:
+    """
+    Manually trigger a simulation tick for a world.
+
+    This is primarily for development and testing. It runs one tick
+    of the simulation scheduler, advancing world time and simulating
+    NPCs according to their behavior routines.
+
+    Args:
+        world_id: World ID to tick
+        delta_seconds: Real-time seconds to simulate (default: 1.0)
+
+    Returns:
+        Tick results including NPCs simulated and time advanced
+    """
+    from pixsim7.backend.simulation import WorldScheduler
+
+    world = await _get_owned_world(world_id, user, game_world_service)
+
+    # Get current world state
+    world_state = await game_world_service.get_world_state(world_id)
+    world_time_before = world_state.world_time if world_state else 0.0
+
+    # Create scheduler and run one tick
+    scheduler = WorldScheduler(game_world_service.db)
+    await scheduler.register_world(world_id)
+    await scheduler.tick_world(world_id, req.delta_seconds)
+
+    # Get updated world state
+    world_state = await game_world_service.get_world_state(world_id)
+    world_time_after = world_state.world_time if world_state else 0.0
+
+    # Get tick stats
+    context = scheduler.get_context(world_id)
+    npcs_simulated = context.npcs_simulated_this_tick if context else 0
+    tick_duration_ms = context.last_tick_duration_ms if context else 0.0
+
+    return TickWorldResponse(
+        world_id=world_id,
+        world_time_before=world_time_before,
+        world_time_after=world_time_after,
+        delta_game_seconds=world_time_after - world_time_before,
+        npcs_simulated=npcs_simulated,
+        tick_duration_ms=tick_duration_ms,
+    )

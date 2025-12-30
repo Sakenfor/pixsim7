@@ -25,6 +25,7 @@ from pixsim7.backend.main.workers.automation import process_automation, run_auto
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
+from pixsim7.backend.main.workers.world_simulation import tick_active_worlds, SIMULATION_ENABLED
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging
@@ -112,6 +113,10 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
     logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
+    if SIMULATION_ENABLED:
+        logger.info("worker_component_registered", component="tick_active_worlds", schedule="*/5s")
+    else:
+        logger.info("worker_simulation_disabled", msg="World simulation disabled (set SIMULATION_ENABLED=true to enable)")
 
     # Reconcile account counters on startup (fixes counter drift from crashes)
     try:
@@ -171,6 +176,7 @@ class WorkerSettings:
         queue_pending_executions,
         requeue_pending_generations,
         requeue_pending_analyses,
+        tick_active_worlds,
     ]
 
     # Cron jobs (periodic tasks)
@@ -217,6 +223,13 @@ class WorkerSettings:
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
             second={5},
             run_at_startup=False,
+        ),
+        # Tick active worlds every 5 seconds (if SIMULATION_ENABLED=true)
+        # This runs NPC behavior simulation, activity selection, and effects
+        cron(
+            tick_active_worlds,
+            second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},  # Every 5 seconds
+            run_at_startup=False,  # Wait for first interval before starting
         ),
     ]
 

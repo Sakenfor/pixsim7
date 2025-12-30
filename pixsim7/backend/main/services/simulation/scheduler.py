@@ -29,9 +29,14 @@ from pixsim7.backend.game import (
     get_npc_component,
     update_npc_component,
 )
-from pixsim7.backend.simulation import (
+# Import behavior system functions directly to avoid circular import
+# (pixsim7.backend.simulation re-exports these but also imports this module)
+from pixsim7.backend.main.domain.game.behavior import (
     get_npcs_to_simulate,
     determine_simulation_tier,
+    choose_npc_activity,
+    apply_activity_to_npc,
+    finish_activity,
 )
 from pixsim7.backend.main.services.simulation.context import WorldSimulationContext
 
@@ -176,7 +181,13 @@ class WorldScheduler:
                     break
 
                 # Simulate NPC
-                await self._simulate_npc(npc_data["npc"], npc_data["session"], tier, context)
+                await self._simulate_npc(
+                    npc_data["npc"],
+                    npc_data["session"],
+                    npc_data["world"],
+                    tier,
+                    context
+                )
                 context.record_npc_simulated(tier)
 
         # 4. Enqueue generation jobs (with backpressure)
@@ -240,6 +251,7 @@ class WorldScheduler:
             Dict mapping tier ID to list of NPC data dicts with keys:
             - "npc": GameNPC instance
             - "session": GameSession instance
+            - "world": GameWorld instance
             - "tier": tier ID string
         """
         # Get all sessions for this world
@@ -308,6 +320,7 @@ class WorldScheduler:
                     npcs_by_tier[tier].append({
                         "npc": npc,
                         "session": session,
+                        "world": world,
                         "tier": tier,
                     })
                     total_selected += 1
@@ -323,58 +336,84 @@ class WorldScheduler:
         self,
         npc: GameNPC,
         session: GameSession,
+        world: GameWorld,
         tier: str,
         context: WorldSimulationContext
     ) -> None:
         """
         Simulate one NPC tick using behavior system and ECS.
 
-        This is a simplified simulation that updates NPC behavior state.
-        Full behavior system integration (activity selection, effects) will
-        be added in a future iteration.
+        Uses the full behavior system to:
+        1. Check if current activity is finished
+        2. Choose new activity based on routine graphs and scoring
+        3. Apply activity effects (stats, mood, relationships)
 
         Args:
             npc: NPC to simulate
             session: Game session
+            world: Game world (contains behavior config)
             tier: Simulation tier
             context: Simulation context
         """
+        world_time = context.current_world_time
+
         # Get behavior component
         behavior_comp = get_npc_component(session, npc.id, "behavior", default={})
 
         # Check if it's time for a new decision
         next_decision_at = behavior_comp.get("nextDecisionAt", 0)
-        current_activity = behavior_comp.get("currentActivity")
+        current_activity_id = behavior_comp.get("currentActivityId")
 
-        if context.current_world_time >= next_decision_at:
-            # Time for new decision
-            # In full implementation, this would:
-            # 1. Use behavior system to choose new activity
-            # 2. Apply activity effects (energy, mood, relationships)
-            # 3. Update location/state based on activity
+        if world_time >= next_decision_at:
+            # Time for a new activity decision
 
-            # For now, just log and update decision time
-            logger.debug(
-                f"NPC {npc.id} ({npc.name}) ready for decision "
-                f"(tier: {tier}, activity: {current_activity})"
-            )
+            # If there was a previous activity, finish it
+            if current_activity_id:
+                finish_activity(npc, session, world_time)
+                logger.debug(
+                    f"NPC {npc.id} ({npc.name}) finished activity '{current_activity_id}'"
+                )
 
-            # Simple placeholder: schedule next decision based on tier
-            # Detailed tier gets decisions more frequently
-            decision_interval_map = {
-                "detailed": 60,      # 1 minute
-                "active": 300,       # 5 minutes
-                "ambient": 1800,     # 30 minutes
-                "dormant": 7200,     # 2 hours
-            }
-            interval = decision_interval_map.get(tier, 300)
+            # Choose a new activity using the behavior system
+            # This uses routine graphs, preferences, conditions, and scoring
+            activity = choose_npc_activity(npc, world, session, world_time)
 
-            # Update behavior component
-            update_npc_component(session, npc.id, "behavior", {
-                "nextDecisionAt": context.current_world_time + interval,
-                "simulationTier": tier,
-                "lastSimulatedAt": context.current_world_time,
-            })
+            if activity:
+                # Apply the activity - updates NPC state and applies effects
+                apply_activity_to_npc(npc, session, activity, world_time)
+
+                activity_id = activity.get("id", "unknown")
+                logger.debug(
+                    f"NPC {npc.id} ({npc.name}) started activity '{activity_id}' "
+                    f"(tier: {tier})"
+                )
+
+                # Update behavior component with simulation metadata
+                update_npc_component(session, npc.id, "behavior", {
+                    "simulationTier": tier,
+                    "lastSimulatedAt": world_time,
+                })
+            else:
+                # No activity chosen (no routine, or no valid activities)
+                # Schedule next decision based on tier
+                decision_interval_map = {
+                    "detailed": 60,      # 1 minute
+                    "active": 300,       # 5 minutes
+                    "ambient": 1800,     # 30 minutes
+                    "dormant": 7200,     # 2 hours
+                }
+                interval = decision_interval_map.get(tier, 300)
+
+                update_npc_component(session, npc.id, "behavior", {
+                    "nextDecisionAt": world_time + interval,
+                    "simulationTier": tier,
+                    "lastSimulatedAt": world_time,
+                })
+
+                logger.debug(
+                    f"NPC {npc.id} ({npc.name}) has no activity, "
+                    f"next decision in {interval}s (tier: {tier})"
+                )
 
             # Mark session as modified (will trigger DB update)
             session.flags = session.flags  # Trigger SQLAlchemy dirty tracking
@@ -382,7 +421,7 @@ class WorldScheduler:
         else:
             # Not time for decision yet, just update last simulated time
             update_npc_component(session, npc.id, "behavior", {
-                "lastSimulatedAt": context.current_world_time,
+                "lastSimulatedAt": world_time,
                 "simulationTier": tier,
             })
             session.flags = session.flags
