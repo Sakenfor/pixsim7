@@ -13,13 +13,7 @@ This plugin lives in packages/plugins/personality/ with:
 Uses the behavior_registry for registration.
 """
 
-from fastapi import APIRouter
-
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
-
-# ===== ROUTER (required by plugin system) =====
-# This plugin has no API endpoints, but the plugin manager requires a router export
-router = APIRouter(tags=["personality"])
 
 # ===== PLUGIN MANIFEST =====
 
@@ -29,7 +23,8 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Personality-driven NPC behavior with Big Five traits, tag effects, and behavior profiles",
     author="PixSim Team",
-    kind="feature",
+    kind="behavior",  # Behavior extension plugin
+    provides=["behavior_profiles", "behavior_traits", "tag_effects"],
     prefix="/api/v1",
     tags=["personality", "behavior", "npc"],
     dependencies=[],

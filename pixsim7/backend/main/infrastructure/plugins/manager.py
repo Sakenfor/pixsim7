@@ -237,9 +237,9 @@ class PluginManager:
 
             manifest: PluginManifest = module.manifest
 
-            # Router is optional for 'tools' plugins (frontend-only)
+            # Router requirement depends on plugin kind
             if not hasattr(module, 'router'):
-                if manifest.kind != "tools":
+                if manifest.router_required:
                     logger.error(f"External plugin {plugin_name} missing 'router'")
                     self.failed_plugins[plugin_name] = {
                         'error': "Module missing 'router' export",
@@ -247,10 +247,15 @@ class PluginManager:
                         'manifest': None
                     }
                     return False
-                # Create empty router for tools plugins
+                # Create empty router for plugins that don't require one
                 router: APIRouter = APIRouter(tags=[manifest.id])
             else:
                 router: APIRouter = module.router
+
+            # Validate provides against kind expectations
+            validation_warnings = manifest.validate_provides()
+            for warning in validation_warnings:
+                logger.warning(warning)
 
             # For external plugins, allow manifest ID to differ from directory name
             # but warn about it for discoverability

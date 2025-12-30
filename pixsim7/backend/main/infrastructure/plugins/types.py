@@ -3,34 +3,174 @@ Backend Plugin System - Type Definitions
 
 Enables dynamic loading of API routers as plugins.
 Future-proof for sandboxed community plugins.
+
+Plugin Architecture:
+    kind (coarse shape) + provides (fine-grained hooks)
+
+    Load order: stats → behavior → content → feature → route → tools
+    (explicit depends_on can override)
+
+    See PLUGIN_KIND_CONFIG for kind → defaults mapping.
 """
 
 import inspect
 from typing import Protocol, Callable, Any, Optional, Literal
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
+
+# =============================================================================
+# Plugin Kind System
+# =============================================================================
+
+PluginKind = Literal[
+    "route",        # Core API routes (always loaded)
+    "feature",      # Gameplay features (API + frontend)
+    "tools",        # Frontend-only tools (no backend routes)
+    "behavior",     # Behavior extensions (conditions, effects, scoring, profiles)
+    "stats",        # Stat package definitions
+    "content",      # Data-only content (archetypes, activities, items)
+    "integration",  # External service integrations (AI providers, analytics)
+]
+
+PluginProvides = Literal[
+    "api_routes",           # Exposes API endpoints
+    "frontend_tools",       # Provides frontend gizmo tools
+    "frontend_interactions",  # Provides frontend interactions
+    "behavior_conditions",  # Registers behavior conditions
+    "behavior_effects",     # Registers behavior effects
+    "behavior_scoring",     # Registers scoring factors
+    "behavior_profiles",    # Registers behavior profiles
+    "behavior_traits",      # Registers trait effect mappings
+    "tag_effects",          # Registers tag effects
+    "stat_packages",        # Registers stat packages
+    "component_schemas",    # Registers NPC component schemas
+    "npc_surfaces",         # Registers NPC body surfaces
+    "content_packs",        # Provides content data (archetypes, activities)
+    "external_services",    # Integrates external services
+]
+
+# Load order priority (lower = earlier)
+PLUGIN_KIND_LOAD_ORDER: dict[str, int] = {
+    "stats": 10,
+    "behavior": 20,
+    "content": 30,
+    "feature": 40,
+    "route": 50,
+    "integration": 60,
+    "tools": 70,  # Tools can be last (frontend-only)
+}
+
+# Kind → default configuration
+PLUGIN_KIND_CONFIG: dict[str, dict] = {
+    "route": {
+        "router_required": True,
+        "default_provides": ["api_routes"],
+        "expected_provides": ["api_routes"],
+        "forbidden_provides": [],
+    },
+    "feature": {
+        "router_required": True,
+        "default_provides": ["api_routes", "frontend_interactions"],
+        "expected_provides": ["api_routes", "frontend_interactions", "component_schemas"],
+        "forbidden_provides": [],
+    },
+    "tools": {
+        "router_required": False,
+        "default_provides": ["frontend_tools"],
+        "expected_provides": ["frontend_tools"],
+        "forbidden_provides": ["api_routes"],  # Warn if tools plugin has routes
+    },
+    "behavior": {
+        "router_required": False,
+        "default_provides": ["behavior_conditions", "behavior_effects", "behavior_scoring"],
+        "expected_provides": [
+            "behavior_conditions", "behavior_effects", "behavior_scoring",
+            "behavior_profiles", "behavior_traits", "tag_effects",
+        ],
+        "forbidden_provides": ["frontend_tools", "frontend_interactions"],
+    },
+    "stats": {
+        "router_required": False,
+        "default_provides": ["stat_packages"],
+        "expected_provides": ["stat_packages"],
+        "forbidden_provides": ["api_routes", "frontend_tools"],
+    },
+    "content": {
+        "router_required": False,
+        "default_provides": ["content_packs"],
+        "expected_provides": ["content_packs"],
+        "forbidden_provides": ["api_routes"],  # Content should be data-only
+    },
+    "integration": {
+        "router_required": True,  # Integrations usually expose endpoints
+        "default_provides": ["external_services", "api_routes"],
+        "expected_provides": ["external_services", "api_routes"],
+        "forbidden_provides": [],
+    },
+}
+
+
+def get_kind_config(kind: str) -> dict:
+    """Get configuration for a plugin kind."""
+    return PLUGIN_KIND_CONFIG.get(kind, PLUGIN_KIND_CONFIG["feature"])
+
+
+def get_load_order(kind: str) -> int:
+    """Get load order priority for a plugin kind."""
+    return PLUGIN_KIND_LOAD_ORDER.get(kind, 50)
+
+
+# =============================================================================
+# Plugin Manifest
+# =============================================================================
 
 class PluginManifest(BaseModel):
-    """Plugin metadata"""
+    """
+    Plugin metadata and configuration.
+
+    Architecture:
+        - kind: Coarse plugin shape (drives defaults, validation, load order)
+        - provides: Fine-grained hooks this plugin registers
+        - depends_on: Explicit load-order dependencies (supplements kind order)
+
+    Example:
+        # Simple tools plugin
+        manifest = PluginManifest(
+            id="my-tools",
+            name="My Tools",
+            kind="tools",
+            # provides defaults to ["frontend_tools"]
+        )
+
+        # Behavior extension plugin
+        manifest = PluginManifest(
+            id="personality",
+            name="Personality System",
+            kind="behavior",
+            provides=["behavior_profiles", "behavior_traits", "tag_effects"],
+        )
+    """
     id: str                          # Unique identifier (e.g., "game-stealth")
     name: str                        # Display name
     version: str                     # Semver (e.g., "1.0.0")
     description: str                 # Short description
     author: str = "PixSim Team"      # Plugin author
 
-    # Plugin type
-    kind: Literal["route", "feature", "tools"] = "feature"
-    # "route" = core API routes
-    # "feature" = optional gameplay feature (may have routes)
-    # "tools" = frontend-only tools (no backend routes required)
+    # Plugin type (coarse shape)
+    kind: PluginKind = "feature"
+
+    # Fine-grained capabilities this plugin provides
+    # If not specified, defaults based on kind (see PLUGIN_KIND_CONFIG)
+    provides: list[str] = []
 
     # API configuration
     prefix: str = "/api/v1"          # URL prefix
     tags: list[str] = []             # OpenAPI tags
 
     # Dependencies
-    dependencies: list[str] = []     # Other plugin IDs this depends on
+    dependencies: list[str] = []     # Other plugin IDs this depends on (legacy)
+    depends_on: list[str] = []       # Explicit load-order dependencies
     requires_db: bool = True         # Needs database
     requires_redis: bool = False     # Needs Redis
 
@@ -84,6 +224,46 @@ class PluginManifest(BaseModel):
         # Event handler
         permissions=["event:subscribe", "log:emit"]
     """
+
+    @model_validator(mode="after")
+    def _apply_kind_defaults(self) -> "PluginManifest":
+        """Apply default provides based on kind if not specified."""
+        if not self.provides:
+            config = get_kind_config(self.kind)
+            object.__setattr__(self, "provides", config.get("default_provides", []))
+        # Merge dependencies and depends_on for backwards compatibility
+        if self.dependencies and not self.depends_on:
+            object.__setattr__(self, "depends_on", self.dependencies)
+        return self
+
+    @property
+    def router_required(self) -> bool:
+        """Whether this plugin kind requires a router export."""
+        return get_kind_config(self.kind).get("router_required", True)
+
+    @property
+    def load_order(self) -> int:
+        """Load order priority (lower = earlier)."""
+        return get_load_order(self.kind)
+
+    def validate_provides(self) -> list[str]:
+        """
+        Validate provides against kind expectations.
+        Returns list of warnings (empty if valid).
+        """
+        warnings = []
+        config = get_kind_config(self.kind)
+
+        # Check for forbidden provides
+        forbidden = config.get("forbidden_provides", [])
+        for p in self.provides:
+            if p in forbidden:
+                warnings.append(
+                    f"Plugin '{self.id}' (kind={self.kind}) declares '{p}' "
+                    f"which is unexpected for this kind"
+                )
+
+        return warnings
 
 
 class BackendPlugin(Protocol):
