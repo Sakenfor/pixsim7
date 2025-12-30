@@ -285,14 +285,19 @@
 
     // Skip if image is part of PixSim7 UI (check parent elements for markers)
     let el = img;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       if (!el) break;
-      // Check for common PixSim7 UI markers
-      if (el.classList && (
-          el.classList.contains('pixsim7-') ||
+      // Check for common PixSim7 UI markers (both full and short prefixes)
+      const classes = el.className || '';
+      const classStr = typeof classes === 'string' ? classes : (classes.baseVal || '');
+      if (
+          classStr.includes('pixsim7') ||
+          classStr.includes('pxs7-') ||
+          classStr.includes('pxs7_') ||
           el.hasAttribute('data-pixsim7') ||
-          el.id && el.id.includes('pixsim7')
-      )) {
+          el.hasAttribute('data-pxs7') ||
+          (el.id && (el.id.includes('pixsim7') || el.id.includes('pxs7')))
+      ) {
         return true;
       }
       el = el.parentElement;
