@@ -436,6 +436,7 @@ class SyncSingleAssetRequest(BaseModel):
     )
     is_video: bool = Field(False, description="Whether this is a video asset")
     source_url: Optional[str] = Field(None, description="Page URL where asset was found")
+    account_id: Optional[int] = Field(None, description="PixVerse account ID from browser session")
 
 
 class SyncSingleAssetResponse(BaseModel):
@@ -513,6 +514,7 @@ async def sync_single_pixverse_asset(
         media_type=media_type,
         provider_id="pixverse",
         provider_asset_id=asset_id,
+        provider_account_id=body.account_id,  # Link to browser session account
         remote_url=clean_url,
         sync_status=SyncStatus.REMOTE,
         media_metadata=media_metadata,

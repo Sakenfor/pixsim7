@@ -509,7 +509,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'syncPixverseAsset') {
     (async () => {
       try {
-        const { mediaUrl, pixverseAssetId, pixverseMediaType, isVideo } = message;
+        const { mediaUrl, pixverseAssetId, pixverseMediaType, isVideo, accountId } = message;
         const settings = await getSettings();
         if (!settings.pixsim7Token) throw new Error('Not logged in');
 
@@ -529,6 +529,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             pixverse_media_type: pixverseMediaType,
             is_video: isVideo || false,
             source_url: sourceUrl,
+            account_id: accountId || null,
           }),
         });
         if (!resp.ok) {

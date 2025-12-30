@@ -151,6 +151,19 @@
   }
 
   /**
+   * Get current PixVerse session account ID from storage
+   */
+  async function getPixverseSessionAccountId() {
+    try {
+      const stored = await chrome.storage.local.get('pixsim7ProviderSessions');
+      const sessions = stored.pixsim7ProviderSessions || {};
+      return sessions.pixverse?.accountId || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Sync a PixVerse asset to PixSim7 (no re-upload, just register by ID)
    */
   async function syncPixverseAsset(mediaUrl, assetInfo, isVideo = false) {
@@ -158,12 +171,16 @@
       const settings = await getSettings();
       if (!settings.pixsim7Token) { showToast('Login to PixSim7 first', false); return; }
 
+      // Get current PixVerse session account if available
+      const accountId = await getPixverseSessionAccountId();
+
       const res = await chrome.runtime.sendMessage({
         action: 'syncPixverseAsset',
         mediaUrl,
         pixverseAssetId: assetInfo.uuid,
         pixverseMediaType: assetInfo.mediaType,
         isVideo,
+        accountId,
       });
 
       if (res && res.success) {
