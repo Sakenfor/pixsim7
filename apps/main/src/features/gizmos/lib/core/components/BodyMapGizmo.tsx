@@ -1,13 +1,11 @@
 /**
  * Body Map Gizmo - Interactive body zones for romance/sensual interactions
  *
- * Now with dynamic stats system - tools contribute to different stats
- * (pleasure, tickle, arousal, etc.) based on tool type and zone properties.
- *
- * Visual improvements TODO [OPUS]:
- * 1. Create elegant body silhouette (SVG or 3D model)
- * 2. Implement animated zone highlights
- * 3. Add particle effects for each zone
+ * Features:
+ * - ~20 anatomical zones including intimate areas
+ * - Dynamic stats system (pleasure, tickle, arousal, etc.)
+ * - Movement speed tracking for speed-based effects
+ * - Soft anatomical SVG silhouette
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
@@ -29,7 +27,11 @@ import {
   getActiveStats,
   getDominantStat,
 } from '@/gizmos/interactionStats';
+import { getFullAnatomicalZones } from '../../bodyMap/zones';
 import './BodyMapGizmo.css';
+
+/** Cached anatomical zones (computed once) */
+const ANATOMICAL_ZONES = getFullAnatomicalZones();
 
 /** Extended props for BodyMapGizmo with tool and feedback support */
 interface BodyMapGizmoProps extends GizmoComponentProps {
@@ -50,99 +52,6 @@ interface BodyMapGizmoProps extends GizmoComponentProps {
   maxDisplayedStats?: number;
 }
 
-/** Default zones if none provided in config */
-const DEFAULT_ZONES: NpcBodyZone[] = [
-  {
-    id: 'head',
-    label: 'Head',
-    shape: 'circle',
-    coords: { type: 'circle', cx: 50, cy: 12, radius: 10 },
-    sensitivity: 0.6,
-    ticklishness: 0.3,
-    highlightColor: '#FF69B4',
-  },
-  {
-    id: 'neck',
-    label: 'Neck',
-    shape: 'rect',
-    coords: { type: 'rect', x: 42, y: 20, width: 16, height: 8 },
-    sensitivity: 0.8,
-    ticklishness: 0.6,
-    pleasure: 0.7,
-    highlightColor: '#FF6B9D',
-  },
-  {
-    id: 'shoulders',
-    label: 'Shoulders',
-    shape: 'rect',
-    coords: { type: 'rect', x: 25, y: 26, width: 50, height: 10 },
-    sensitivity: 0.5,
-    highlightColor: '#4DABF7',
-  },
-  {
-    id: 'chest',
-    label: 'Chest',
-    shape: 'rect',
-    coords: { type: 'rect', x: 35, y: 36, width: 30, height: 18 },
-    sensitivity: 0.7,
-    pleasure: 0.6,
-    highlightColor: '#FF8787',
-  },
-  {
-    id: 'stomach',
-    label: 'Stomach',
-    shape: 'rect',
-    coords: { type: 'rect', x: 38, y: 54, width: 24, height: 14 },
-    sensitivity: 0.6,
-    ticklishness: 0.8,
-    highlightColor: '#FFD43B',
-  },
-  {
-    id: 'hips',
-    label: 'Hips',
-    shape: 'rect',
-    coords: { type: 'rect', x: 32, y: 68, width: 36, height: 10 },
-    sensitivity: 0.8,
-    pleasure: 0.7,
-    highlightColor: '#FF6B6B',
-  },
-  {
-    id: 'left_arm',
-    label: 'Left Arm',
-    shape: 'rect',
-    coords: { type: 'rect', x: 15, y: 30, width: 12, height: 35 },
-    sensitivity: 0.4,
-    ticklishness: 0.5,
-    highlightColor: '#69DB7C',
-  },
-  {
-    id: 'right_arm',
-    label: 'Right Arm',
-    shape: 'rect',
-    coords: { type: 'rect', x: 73, y: 30, width: 12, height: 35 },
-    sensitivity: 0.4,
-    ticklishness: 0.5,
-    highlightColor: '#69DB7C',
-  },
-  {
-    id: 'left_leg',
-    label: 'Left Leg',
-    shape: 'rect',
-    coords: { type: 'rect', x: 35, y: 78, width: 12, height: 20 },
-    sensitivity: 0.5,
-    ticklishness: 0.4,
-    highlightColor: '#748FFC',
-  },
-  {
-    id: 'right_leg',
-    label: 'Right Leg',
-    shape: 'rect',
-    coords: { type: 'rect', x: 53, y: 78, width: 12, height: 20 },
-    sensitivity: 0.5,
-    ticklishness: 0.4,
-    highlightColor: '#748FFC',
-  },
-];
 
 export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   config,
@@ -161,7 +70,9 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [touchIntensity, setTouchIntensity] = useState(0);
   const [effectiveIntensity, setEffectiveIntensity] = useState(0);
+  const [movementSpeed, setMovementSpeed] = useState(0);
   const lastUpdateRef = useRef<number>(Date.now());
+  const lastPointerRef = useRef({ x: 0, y: 0, time: 0 });
 
   // Dynamic stats from store
   const stats = useInteractionStatsStore((s) => s.stats);
@@ -181,7 +92,7 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   // Get dominant stat for particle color
   const dominantStat = useMemo(() => getDominantStat(stats), [stats]);
 
-  // Get zones from config or use defaults
+  // Get zones from config or use anatomical defaults
   const zones = useMemo<NpcBodyZone[]>(() => {
     if (config.zones && Array.isArray(config.zones) && config.zones.length > 0) {
       return config.zones.map((zone: any) => {
@@ -204,18 +115,34 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
         };
       });
     }
-    return DEFAULT_ZONES;
+    return ANATOMICAL_ZONES;
   }, [config.zones]);
 
-  // Handle mouse/touch movement
+  // Handle mouse/touch movement with speed tracking
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!canvasRef.current) return;
 
+    const now = Date.now();
     const rect = canvasRef.current.getBoundingClientRect();
+    // Scale to 0-100 for x, 0-120 for y (matching viewBox aspect ratio)
     const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 120;
 
-    setCursorPosition({ x, y });
+    // Calculate movement speed (normalized 0-1)
+    const dx = x - lastPointerRef.current.x;
+    const dy = y - lastPointerRef.current.y;
+    const dt = (now - lastPointerRef.current.time) / 1000;
+
+    if (dt > 0 && lastPointerRef.current.time > 0) {
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      // Normalize: ~50 units/sec = 0.5 speed, ~100+ = 1.0
+      const speed = Math.min(1, distance / dt / 100);
+      // Smooth the speed value to avoid jitter
+      setMovementSpeed(prev => prev * 0.7 + speed * 0.3);
+    }
+
+    lastPointerRef.current = { x, y, time: now };
+    setCursorPosition({ x, y: y / 1.2 }); // Convert back to 0-100 for display
 
     const foundZone = findZoneAtPoint(x, y, zones);
     setHoveredZone(foundZone);
@@ -300,7 +227,7 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
           toolId: activeToolId,
           zone: activeZone,
           pressure: touchIntensity,
-          speed: 0.5, // TODO: track actual movement speed
+          speed: movementSpeed,
           deltaTime,
           customToolStats: toolStats.length > 0 ? toolStats : undefined,
         });
@@ -333,7 +260,7 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
 
       return () => clearInterval(interval);
     }
-  }, [effectiveIntensity, activeZone, activeToolId, touchIntensity, stats, updateStats, getToolStats, onNpcFeedback]);
+  }, [effectiveIntensity, activeZone, activeToolId, touchIntensity, movementSpeed, stats, updateStats, getToolStats, onNpcFeedback]);
 
   // Render zone overlay
   const renderZoneOverlay = (zone: NpcBodyZone) => {
@@ -394,16 +321,104 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
         {zones.map(renderZoneOverlay)}
       </div>
 
-      {/* Body silhouette */}
+      {/* Body silhouette - soft anatomical style */}
       <div className="body-silhouette">
-        <svg viewBox="0 0 100 100" className="body-outline" preserveAspectRatio="xMidYMid meet">
-          <ellipse cx="50" cy="12" rx="8" ry="10" className="body-part head" />
-          <rect x="46" y="20" width="8" height="6" rx="2" className="body-part neck" />
-          <ellipse cx="50" cy="42" rx="18" ry="20" className="body-part torso" />
-          <rect x="25" y="28" width="8" height="30" rx="3" className="body-part arm left" />
-          <rect x="67" y="28" width="8" height="30" rx="3" className="body-part arm right" />
-          <rect x="38" y="62" width="10" height="35" rx="4" className="body-part leg left" />
-          <rect x="52" y="62" width="10" height="35" rx="4" className="body-part leg right" />
+        <svg viewBox="0 0 100 120" className="body-outline" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="bodyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="rgba(255,180,210,0.25)" />
+              <stop offset="100%" stopColor="rgba(180,140,200,0.15)" />
+            </linearGradient>
+            <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="1.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          <g className="body-group" filter="url(#softGlow)">
+            {/* Head */}
+            <ellipse cx="50" cy="8" rx="7" ry="8" className="body-part head" />
+
+            {/* Neck */}
+            <path
+              d="M46,15 Q50,17 54,15 L53,22 L47,22 Z"
+              className="body-part neck"
+            />
+
+            {/* Torso - curved feminine/neutral form */}
+            <path
+              d="M38,22
+                 C32,26 30,35 31,48
+                 Q33,58 38,65
+                 L40,68 L60,68 L62,65
+                 Q67,58 69,48
+                 C70,35 68,26 62,22
+                 Z"
+              className="body-part torso"
+            />
+
+            {/* Left arm */}
+            <path
+              d="M32,24
+                 C26,28 22,38 20,52
+                 Q18,60 20,65
+                 Q22,68 24,66
+                 Q26,62 25,52
+                 C27,40 29,30 34,26"
+              className="body-part arm"
+            />
+
+            {/* Right arm */}
+            <path
+              d="M68,24
+                 C74,28 78,38 80,52
+                 Q82,60 80,65
+                 Q78,68 76,66
+                 Q74,62 75,52
+                 C73,40 71,30 66,26"
+              className="body-part arm"
+            />
+
+            {/* Hips & pelvis */}
+            <path
+              d="M40,68
+                 Q35,70 33,75
+                 Q32,78 35,80
+                 L45,80 L50,82 L55,80 L65,80
+                 Q68,78 67,75
+                 Q65,70 60,68"
+              className="body-part hips"
+            />
+
+            {/* Left leg */}
+            <path
+              d="M35,80
+                 L34,95
+                 Q33,105 35,110
+                 Q36,114 40,114
+                 L44,114
+                 Q46,112 45,108
+                 L44,95
+                 L45,80"
+              className="body-part leg"
+            />
+
+            {/* Right leg */}
+            <path
+              d="M65,80
+                 L66,95
+                 Q67,105 65,110
+                 Q64,114 60,114
+                 L56,114
+                 Q54,112 55,108
+                 L56,95
+                 L55,80"
+              className="body-part leg"
+            />
+          </g>
         </svg>
       </div>
 
@@ -454,8 +469,14 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
               <div className="zone-effective">
                 Effective: {Math.round(effectiveIntensity * 100)}%
               </div>
+              <div className="zone-speed">
+                Speed: {Math.round(movementSpeed * 100)}%
+              </div>
               {activeZone.ticklishness && activeZone.ticklishness > 0.5 && (
                 <div className="zone-ticklish">Ticklish!</div>
+              )}
+              {activeZone.pleasure && activeZone.pleasure > 0.7 && (
+                <div className="zone-sensitive">Sensitive</div>
               )}
             </>
           )}

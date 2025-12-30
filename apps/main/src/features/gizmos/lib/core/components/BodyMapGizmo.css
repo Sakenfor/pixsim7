@@ -1,12 +1,8 @@
 /**
  * Body Map Gizmo Styles
  *
- * Now integrated with zoneUtils for proper zone rendering.
- *
- * Visual improvements TODO [OPUS]:
- * 1. Elegant body silhouette SVG/3D
- * 2. Advanced particle effects
- * 3. Ambient atmospheric effects
+ * Soft anatomical silhouette with ~20 interactive zones.
+ * Uses percentage-based coordinates (0-100 x, 0-120 y).
  */
 
 .body-map-gizmo {
@@ -65,7 +61,7 @@
 }
 
 /* ============================================================================
-   Body Silhouette
+   Body Silhouette - Soft Anatomical Style
    ============================================================================ */
 
 .body-silhouette {
@@ -73,11 +69,11 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 60%;
-  max-width: 300px;
-  height: 90%;
-  max-height: 500px;
-  opacity: 0.6;
+  width: 70%;
+  max-width: 320px;
+  height: 92%;
+  max-height: 550px;
+  opacity: 0.7;
   z-index: 5;
   pointer-events: none;
 }
@@ -85,14 +81,53 @@
 .body-outline {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 0 10px rgba(255, 100, 150, 0.3));
+  overflow: visible;
+}
+
+.body-group {
+  transition: opacity 0.3s ease;
 }
 
 .body-part {
-  fill: rgba(255, 180, 200, 0.15);
-  stroke: rgba(255, 150, 200, 0.4);
-  stroke-width: 1;
+  fill: url(#bodyGradient);
+  stroke: rgba(255, 160, 200, 0.5);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
   transition: all 0.3s ease;
+}
+
+.body-part.head {
+  fill: rgba(255, 190, 220, 0.2);
+}
+
+.body-part.torso {
+  fill: rgba(255, 180, 210, 0.18);
+}
+
+.body-part.arm,
+.body-part.leg {
+  fill: rgba(255, 170, 200, 0.15);
+  stroke-width: 0.6;
+}
+
+.body-part.hips {
+  fill: rgba(255, 160, 190, 0.2);
+}
+
+/* Subtle breathing animation */
+@keyframes body-breathe {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.008);
+  }
+}
+
+.body-group {
+  transform-origin: 50% 50%;
+  animation: body-breathe 4s ease-in-out infinite;
 }
 
 /* ============================================================================
@@ -214,12 +249,29 @@
   color: rgba(255, 200, 100, 0.9);
 }
 
+.zone-speed {
+  font-size: 12px;
+  color: rgba(150, 200, 255, 0.9);
+  margin-bottom: 2px;
+}
+
 .zone-ticklish {
   font-size: 11px;
   color: #FFD43B;
   margin-top: 6px;
   padding: 2px 6px;
   background: rgba(255, 212, 59, 0.2);
+  border-radius: 4px;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.zone-sensitive {
+  font-size: 11px;
+  color: #F472B6;
+  margin-top: 6px;
+  padding: 2px 6px;
+  background: rgba(244, 114, 182, 0.2);
   border-radius: 4px;
   display: inline-block;
 }
@@ -453,8 +505,8 @@
 
 @media (max-width: 768px) {
   .body-silhouette {
-    width: 50%;
-    max-width: 200px;
+    width: 60%;
+    max-width: 220px;
   }
 
   .pleasure-meter-container {
