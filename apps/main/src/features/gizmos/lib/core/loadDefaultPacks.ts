@@ -9,19 +9,21 @@
  * - Gizmo Lab and other dev tools
  * - Editor contexts that need gizmo/tool selection
  *
- * Packs are loaded in dependency order:
+ * Packs loaded:
  * 1. Base pack (orb, constellation, touch, temperature, energy)
- * 2. Enhanced pack (adds feather)
- * 3. Water & Banana pack (adds water, banana)
- * 4. Rings pack (adds rings gizmo)
- * 5. Romance pack (adds caress, feather, silk, pleasure, hand-3d)
+ * 2. Water & Banana pack (water, banana tools)
+ * 3. Rings pack (rings gizmo)
+ * 4. Romance pack (body-map gizmo - tools come from plugins)
+ *
+ * Note: Romance tools (feather, caress, etc.) now come from plugins:
+ * - touch-tools plugin
+ * - sensation-tools plugin
  */
 
-import './registry';                  // Base pack
-import './registry-enhanced';         // Enhanced pack
+import './registry';                  // Base pack (core gizmos + tools)
 import './registry-water-banana';     // Water & Banana pack
 import './registry-rings';            // Rings pack
-import './registry-romance';          // Romance pack
+import './registry-romance';          // Romance pack (body-map gizmo only)
 import './console';                   // Console integration (self-registers)
 
 // Re-export registry functions for convenience

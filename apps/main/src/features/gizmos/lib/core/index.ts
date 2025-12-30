@@ -31,7 +31,6 @@ export { useGizmoSurfaceStore } from './gizmoSurfaceStore';
 
 // Existing gizmo pack registries
 export * from './registry';
-export * from './registry-enhanced';
 export * from './registry-rings';
 export * from './registry-romance';
 export * from './registry-water-banana';
