@@ -5,18 +5,24 @@
  *
  * NOTE: This file uses the SNAPSHOT pattern (ctx.capabilities) for simple
  * value access. See types.ts for capability access pattern documentation.
+ *
+ * Actions leverage capabilities for context-aware behavior:
+ * - generationContext: Active generation mode/widget
+ * - assetSelection: Currently selected assets
+ * - sceneContext: Active scene for "add to scene" actions
  */
 
-import type { MenuAction } from '../types';
+import type { MenuAction, MenuActionContext } from '../types';
 import type { AssetModel } from '@features/assets';
 import { toViewerAsset, toSelectedAsset } from '@features/assets';
 import { resolveAssetMediaType } from '@features/assets/lib/assetMediaType';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
+import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
-import type { GenerationContextSummary } from '@features/contextHub';
+import type { GenerationContextSummary, AssetSelection } from '@features/contextHub';
 import { getCapability } from '../capabilityHelpers';
 
 type AssetActionInput = {
@@ -181,7 +187,233 @@ const sendToActiveGeneratorAction: MenuAction = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Generation Actions - Context-aware operation shortcuts
+// ─────────────────────────────────────────────────────────────────────────────
+
+function createGenerationAction(
+  id: string,
+  label: string,
+  icon: string,
+  operationType: OperationType,
+  mediaTypeFilter?: 'image' | 'video',
+): MenuAction {
+  return {
+    id,
+    label,
+    icon,
+    category: 'generation',
+    availableIn: ['asset', 'asset-card'],
+    visible: (ctx) => {
+      const assets = resolveAssets(ctx);
+      if (!assets.length) return false;
+      if (mediaTypeFilter) {
+        return assets.every((a) => a.mediaType === mediaTypeFilter);
+      }
+      return true;
+    },
+    execute: (ctx) => {
+      const assets = resolveAssets(ctx);
+      if (!assets.length) return;
+
+      const queueStore = useGenerationQueueStore.getState();
+      const controlCenterStore = useControlCenterStore.getState();
+      const forceMulti = assets.length > 1;
+
+      assets.forEach((asset) => {
+        queueStore.enqueueAsset({ asset, operationType, forceMulti });
+      });
+
+      controlCenterStore.setOperationType(operationType);
+      controlCenterStore.setActiveModule('quickGenerate');
+      controlCenterStore.setOpen(true);
+    },
+  };
+}
+
+const imageToVideoAction = createGenerationAction(
+  'asset:image-to-video',
+  'Image → Video',
+  'video',
+  'image_to_video',
+  'image',
+);
+
+const videoExtendAction = createGenerationAction(
+  'asset:video-extend',
+  'Extend Video',
+  'fast-forward',
+  'video_extend',
+  'video',
+);
+
+const addToTransitionAction = createGenerationAction(
+  'asset:add-to-transition',
+  'Add to Transition',
+  'git-merge',
+  'video_transition',
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Queue Management Actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const removeFromQueueAction: MenuAction = {
+  id: 'asset:remove-from-queue',
+  label: 'Remove from Queue',
+  icon: 'x-circle',
+  iconColor: 'text-orange-500',
+  category: 'queue',
+  availableIn: ['asset', 'asset-card'],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return false;
+    const queueStore = useGenerationQueueStore.getState();
+    // Check if any asset is in either queue
+    return assets.some(
+      (a) =>
+        queueStore.mainQueue.some((q) => q.asset.id === a.id) ||
+        queueStore.multiAssetQueue.some((q) => q.asset.id === a.id),
+    );
+  },
+  execute: (ctx) => {
+    const assets = resolveAssets(ctx);
+    const queueStore = useGenerationQueueStore.getState();
+    assets.forEach((asset) => {
+      queueStore.removeFromQueue(asset.id, 'main');
+      queueStore.removeFromQueue(asset.id, 'multi');
+    });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Selection Actions - Multi-asset workflows
+// ─────────────────────────────────────────────────────────────────────────────
+
+const selectAssetAction: MenuAction = {
+  id: 'asset:select',
+  label: 'Select Asset',
+  icon: 'check-square',
+  category: 'selection',
+  availableIn: ['asset', 'asset-card'],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (assets.length !== 1) return false;
+    const selectionStore = useAssetSelectionStore.getState();
+    return selectionStore.selectedAsset?.id !== assets[0].id;
+  },
+  execute: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    const selectionStore = useAssetSelectionStore.getState();
+    selectionStore.selectAsset(toSelectedAsset(assets[0], 'gallery'));
+  },
+};
+
+const compareWithSelectedAction: MenuAction = {
+  id: 'asset:compare-with-selected',
+  label: 'Compare with Selected',
+  icon: 'columns',
+  category: 'view',
+  availableIn: ['asset', 'asset-card'],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (assets.length !== 1) return false;
+    // Check if there's a different asset currently selected
+    const assetSelection = getCapability<AssetSelection>(ctx, 'assetSelection');
+    if (!assetSelection?.asset) return false;
+    return assetSelection.asset.id !== assets[0].id;
+  },
+  execute: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    const assetSelection = getCapability<AssetSelection>(ctx, 'assetSelection');
+    if (!assetSelection?.asset) return;
+
+    // Open both in viewer for comparison
+    const viewerAsset = toViewerAsset(assets[0]);
+    const selectedAsset = toViewerAsset(assetSelection.asset as AssetModel);
+    useAssetViewerStore.getState().openViewer(viewerAsset, [selectedAsset, viewerAsset]);
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clipboard Actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const copyAssetUrlAction: MenuAction = {
+  id: 'asset:copy-url',
+  label: 'Copy URL',
+  icon: 'link',
+  category: 'clipboard',
+  availableIn: ['asset', 'asset-card'],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    return assets.length === 1 && !!(assets[0].remoteUrl || assets[0].fileUrl);
+  },
+  execute: async (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    const url = assets[0].remoteUrl || assets[0].fileUrl;
+    if (url) {
+      await navigator.clipboard.writeText(url);
+    }
+  },
+};
+
+const copyAssetIdAction: MenuAction = {
+  id: 'asset:copy-id',
+  label: 'Copy Asset ID',
+  icon: 'hash',
+  category: 'clipboard',
+  availableIn: ['asset', 'asset-card'],
+  visible: (ctx) => resolveAssets(ctx).length === 1,
+  execute: async (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    await navigator.clipboard.writeText(String(assets[0].id));
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Info Actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const viewAssetDetailsAction: MenuAction = {
+  id: 'asset:view-details',
+  label: 'View Details',
+  icon: 'info',
+  category: 'info',
+  availableIn: ['asset', 'asset-card'],
+  visible: (ctx) => resolveAssets(ctx).length === 1,
+  execute: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    // Use the asset detail modal via store
+    useAssetDetailStore.getState().setDetailAssetId(assets[0].id);
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export All Actions
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const assetActions: MenuAction[] = [
+  // Primary actions
   openAssetInViewerAction,
   sendToActiveGeneratorAction,
+  // Generation shortcuts
+  imageToVideoAction,
+  videoExtendAction,
+  addToTransitionAction,
+  // Queue management
+  removeFromQueueAction,
+  // Selection & comparison
+  selectAssetAction,
+  compareWithSelectedAction,
+  // Info
+  viewAssetDetailsAction,
+  // Clipboard
+  copyAssetUrlAction,
+  copyAssetIdAction,
 ];
