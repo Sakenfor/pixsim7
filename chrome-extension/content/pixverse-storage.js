@@ -189,9 +189,9 @@ window.PXS7 = window.PXS7 || {};
 
       if (!pageState) return null;
 
-      // Check if state is expired (30 second window)
+      // Check if state is expired (2 minute window - login can take time)
       const age = Date.now() - (pageState.savedAt || 0);
-      if (age > 30000) {
+      if (age > 120000) {
         console.log('[PXS7 Storage] Pending page state expired, ignoring');
         return null;
       }

@@ -1040,16 +1040,62 @@
         if (pendingState) {
           console.log('[PixSim7] Found pending page state to restore:', pendingState);
 
-          // Restore prompts to textareas
-          if (pendingState.prompts) {
-            document.querySelectorAll('textarea').forEach((el, i) => {
-              const key = el.id || el.name || el.placeholder || `textarea_${i}`;
-              if (pendingState.prompts[key]) {
-                el.value = pendingState.prompts[key];
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log('[PixSim7] Restored prompt:', key);
-              }
-            });
+          // Restore prompts to textareas (with retry for slow-loading pages)
+          if (pendingState.prompts && Object.keys(pendingState.prompts).length > 0) {
+            const restorePrompts = () => {
+              const textareas = document.querySelectorAll('textarea');
+              if (textareas.length === 0) return false;
+
+              let restored = 0;
+              const promptKeys = Object.keys(pendingState.prompts);
+
+              textareas.forEach((el, i) => {
+                const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+
+                // Try exact key match first
+                if (pendingState.prompts[key]) {
+                  el.value = pendingState.prompts[key];
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  console.log('[PixSim7] Restored prompt by key:', key.substring(0, 30) + '...');
+                  restored++;
+                  return;
+                }
+
+                // Try position-based fallback (textarea_N)
+                const posKey = `textarea_${i}`;
+                if (pendingState.prompts[posKey]) {
+                  el.value = pendingState.prompts[posKey];
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  console.log('[PixSim7] Restored prompt by position:', posKey);
+                  restored++;
+                  return;
+                }
+
+                // Try partial placeholder match (first 30 chars)
+                const elPlaceholder = (el.placeholder || '').substring(0, 30);
+                for (const savedKey of promptKeys) {
+                  if (savedKey.substring(0, 30) === elPlaceholder && pendingState.prompts[savedKey]) {
+                    el.value = pendingState.prompts[savedKey];
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    console.log('[PixSim7] Restored prompt by partial match:', elPlaceholder + '...');
+                    restored++;
+                    return;
+                  }
+                }
+              });
+
+              console.log('[PixSim7] Restored', restored, 'of', promptKeys.length, 'prompts');
+              return restored > 0;
+            };
+
+            // Try immediately, then retry after delays if needed
+            if (!restorePrompts()) {
+              setTimeout(() => {
+                if (!restorePrompts()) {
+                  setTimeout(restorePrompts, 1500);
+                }
+              }, 500);
+            }
           }
 
           // Restore image slot count by clicking the + button
@@ -1166,8 +1212,8 @@
                   console.warn('[PixSim7] Failed to restore image to slot:', e);
                   failed.push(url);
                 }
-                // Small delay between injections
-                await new Promise(r => setTimeout(r, 600));
+                // Small delay for DOM stability (main waiting is done in injectImageToUpload)
+                await new Promise(r => setTimeout(r, 200));
               } else {
                 console.log('[PixSim7] No matching slot found for:', containerId || `slot ${slot}`);
                 failed.push(url);

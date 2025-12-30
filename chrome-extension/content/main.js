@@ -101,10 +101,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (el.value && el.value.trim()) {
             const key = el.id || el.name || el.placeholder || `textarea_${i}`;
             prompts[key] = el.value;
+            console.log('[PixSim7] Captured prompt:', key.substring(0, 40) + '...', '=', el.value.substring(0, 30) + '...');
           }
         });
         if (Object.keys(prompts).length > 0) {
           pageState.prompts = prompts;
+          console.log('[PixSim7] Total prompts captured:', Object.keys(prompts).length);
         }
 
         // Capture images from upload containers with container ID for precise restoration
