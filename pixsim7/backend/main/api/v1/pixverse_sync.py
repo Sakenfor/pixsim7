@@ -254,14 +254,12 @@ async def sync_pixverse_assets(
     - Creates synthetic Generation records for full audit trail.
     """
     from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
-    from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
 
     account = await _get_pixverse_account(account_id, current_user, db)
     provider, client = _get_pixverse_provider_and_client(account)
 
     # Initialize services
     enrichment_service = AssetEnrichmentService(db)
-    synthetic_service = SyntheticGenerationService(db)
 
     include_videos = body.mode in ("videos", "both")
     include_images = body.mode in ("images", "both")
@@ -320,27 +318,8 @@ async def sync_pixverse_assets(
                 media_metadata=v,  # Full Pixverse payload
             )
 
-            # Extract embedded assets (source images) and create lineage
-            try:
-                await enrichment_service._extract_and_register_embedded(asset, current_user)
-            except Exception as e:
-                logger.warning(
-                    "pixverse_video_enrichment_failed",
-                    video_id=vid,
-                    asset_id=asset.id,
-                    error=str(e),
-                )
-
-            # Create synthetic generation for full audit trail
-            try:
-                await synthetic_service.create_for_asset(asset, current_user, v)
-            except Exception as e:
-                logger.warning(
-                    "pixverse_video_synthetic_gen_failed",
-                    video_id=vid,
-                    asset_id=asset.id,
-                    error=str(e),
-                )
+            # Enrich: extract embedded assets + create synthetic generation
+            await enrichment_service.enrich_synced_asset(asset, current_user, v)
 
             video_stats["created"] += 1
             logger.debug(
@@ -462,11 +441,12 @@ async def sync_single_pixverse_asset(
     Sync a single PixVerse asset to PixSim7 by its known ID.
 
     Used by the Chrome extension badge when clicking on images on pixverse.ai.
-    This does NOT call the PixVerse API - it just registers the asset with
-    the known URL and ID extracted from the media URL.
+    Fetches full metadata from PixVerse API and creates synthetic generation.
 
     If the asset already exists (same provider_asset_id), returns the existing one.
     """
+    from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
+
     asset_id = body.pixverse_asset_id
     media_url = body.media_url
 
@@ -499,13 +479,60 @@ async def sync_single_pixverse_asset(
     # Determine media type
     media_type = MediaType.VIDEO if body.is_video else MediaType.IMAGE
 
-    # Build metadata
-    media_metadata = {
-        "source": "extension_badge",
-        "pixverse_media_type": body.pixverse_media_type,
-    }
-    if body.source_url:
-        media_metadata["source_url"] = body.source_url
+    # Try to fetch full metadata from PixVerse if we have an account
+    pixverse_metadata: Optional[Dict[str, Any]] = None
+    if body.account_id:
+        try:
+            # Get the account
+            account_stmt = select(ProviderAccount).where(
+                ProviderAccount.id == body.account_id,
+                ProviderAccount.user_id == current_user.id,
+                ProviderAccount.provider_id == "pixverse",
+            )
+            account_result = await db.execute(account_stmt)
+            account = account_result.scalar_one_or_none()
+
+            if account:
+                provider = PixverseProvider()
+                client = provider._create_client(account)
+
+                # Fetch asset details from PixVerse
+                if media_type == MediaType.VIDEO:
+                    pixverse_metadata = await client.get_video(asset_id)
+                else:
+                    pixverse_metadata = await client.get_image(asset_id)
+
+                logger.info(
+                    "pixverse_single_sync_metadata_fetched",
+                    asset_id=asset_id,
+                    has_metadata=pixverse_metadata is not None,
+                )
+        except Exception as e:
+            logger.warning(
+                "pixverse_single_sync_metadata_failed",
+                asset_id=asset_id,
+                error=str(e),
+            )
+
+    # Build metadata - use fetched metadata or fallback to basic info
+    if pixverse_metadata:
+        media_metadata = pixverse_metadata
+        # Also extract better URL if available
+        if media_type == MediaType.VIDEO:
+            better_url = _extract_video_url(pixverse_metadata)
+            if better_url:
+                clean_url = better_url
+        else:
+            better_url = _extract_image_url(pixverse_metadata)
+            if better_url:
+                clean_url = better_url
+    else:
+        media_metadata = {
+            "source": "extension_badge",
+            "pixverse_media_type": body.pixverse_media_type,
+        }
+        if body.source_url:
+            media_metadata["source_url"] = body.source_url
 
     # Create new asset
     asset = await add_asset(
@@ -514,17 +541,24 @@ async def sync_single_pixverse_asset(
         media_type=media_type,
         provider_id="pixverse",
         provider_asset_id=asset_id,
-        provider_account_id=body.account_id,  # Link to browser session account
+        provider_account_id=body.account_id,
         remote_url=clean_url,
         sync_status=SyncStatus.REMOTE,
         media_metadata=media_metadata,
     )
+
+    # If we have full metadata, run enrichment pipeline
+    if pixverse_metadata:
+        enrichment_service = AssetEnrichmentService(db)
+        await enrichment_service.enrich_synced_asset(asset, current_user, pixverse_metadata)
 
     logger.info(
         "pixverse_single_sync_created",
         pixverse_asset_id=asset_id,
         local_asset_id=asset.id,
         media_type=media_type.value,
+        provider_account_id=body.account_id,
+        has_full_metadata=pixverse_metadata is not None,
     )
 
     return SyncSingleAssetResponse(

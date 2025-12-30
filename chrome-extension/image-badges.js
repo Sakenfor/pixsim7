@@ -157,8 +157,11 @@
     try {
       const stored = await chrome.storage.local.get('pixsim7ProviderSessions');
       const sessions = stored.pixsim7ProviderSessions || {};
-      return sessions.pixverse?.accountId || null;
+      const accountId = sessions.pixverse?.accountId || null;
+      console.log('[pxs7 badge] Session lookup:', { sessions, accountId });
+      return accountId;
     } catch (e) {
+      console.warn('[pxs7 badge] Session lookup error:', e);
       return null;
     }
   }

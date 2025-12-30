@@ -886,13 +886,29 @@ window.PXS7 = window.PXS7 || {};
   // Hover preview element (shared across grid)
   let hoverPreview = null;
   let hoverPreviewImg = null;
+  let hoverPreviewVideo = null;
   let hoverTimeout = null;
   let activePickerPanel = null;
   let lastPreviewUrl = null;
+  let lastPreviewIsVideo = false;
+
+  // Check if URL is a video (by URL pattern or explicit media type)
+  function isVideoUrl(url, mediaType = null) {
+    // Check explicit media type first
+    if (mediaType === 'VIDEO' || mediaType === 'video') return true;
+    if (mediaType === 'IMAGE' || mediaType === 'image') return false;
+    // Fall back to URL pattern detection
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return lower.includes('.mp4') || lower.includes('.webm') || lower.includes('.mov') ||
+           lower.includes('/video/') || lower.includes('video_url');
+  }
 
   // Convert URL to medium-size preview (Pixverse OSS supports image processing)
-  function getPreviewSizeUrl(url) {
+  function getPreviewSizeUrl(url, mediaType = null) {
     if (!url) return url;
+    // Don't resize videos
+    if (isVideoUrl(url, mediaType)) return url.split('?')[0];
     // If it's a Pixverse CDN URL, request a medium-sized version
     if (url.includes('pixverse') || url.includes('aliyuncs.com')) {
       // Remove any existing processing params and add medium size
@@ -902,11 +918,11 @@ window.PXS7 = window.PXS7 || {};
     return url;
   }
 
-  function showHoverPreview(imgUrl, anchorEl) {
+  function showHoverPreview(mediaUrl, anchorEl, mediaType = null) {
     clearTimeout(hoverTimeout);
     hoverTimeout = setTimeout(() => {
-      // Use medium-size preview URL to avoid loading full resolution
-      const previewUrl = getPreviewSizeUrl(imgUrl);
+      const isVideo = isVideoUrl(mediaUrl, mediaType);
+      const previewUrl = getPreviewSizeUrl(mediaUrl, mediaType);
 
       // Skip if anchor is no longer in DOM (user scrolled/moved away)
       if (!anchorEl.isConnected) return;
@@ -924,7 +940,9 @@ window.PXS7 = window.PXS7 || {};
           pointer-events: none;
           max-width: 280px;
           max-height: 280px;
+          overflow: hidden;
         `;
+        // Create both img and video elements, show one at a time
         hoverPreviewImg = document.createElement('img');
         hoverPreviewImg.style.cssText = `
           max-width: 100%;
@@ -932,14 +950,37 @@ window.PXS7 = window.PXS7 || {};
           border-radius: 4px;
           display: block;
         `;
+        hoverPreviewVideo = document.createElement('video');
+        hoverPreviewVideo.style.cssText = `
+          max-width: 100%;
+          max-height: 260px;
+          border-radius: 4px;
+          display: none;
+        `;
+        hoverPreviewVideo.muted = true;
+        hoverPreviewVideo.loop = true;
+        hoverPreviewVideo.playsInline = true;
         hoverPreview.appendChild(hoverPreviewImg);
+        hoverPreview.appendChild(hoverPreviewVideo);
         document.body.appendChild(hoverPreview);
       }
 
-      // Only update src if URL changed (avoid reloading same image)
-      if (lastPreviewUrl !== previewUrl) {
-        loadImageSrc(hoverPreviewImg, previewUrl);
+      // Only update src if URL changed (avoid reloading)
+      if (lastPreviewUrl !== previewUrl || lastPreviewIsVideo !== isVideo) {
+        if (isVideo) {
+          hoverPreviewImg.style.display = 'none';
+          hoverPreviewVideo.style.display = 'block';
+          hoverPreviewVideo.src = previewUrl;
+          hoverPreviewVideo.play().catch(() => {}); // Ignore autoplay errors
+        } else {
+          hoverPreviewVideo.style.display = 'none';
+          hoverPreviewVideo.pause();
+          hoverPreviewVideo.src = '';
+          hoverPreviewImg.style.display = 'block';
+          loadImageSrc(hoverPreviewImg, previewUrl);
+        }
         lastPreviewUrl = previewUrl;
+        lastPreviewIsVideo = isVideo;
       }
 
       const rect = anchorEl.getBoundingClientRect();
@@ -958,7 +999,13 @@ window.PXS7 = window.PXS7 || {};
 
   function hideHoverPreview() {
     clearTimeout(hoverTimeout);
-    if (hoverPreview) hoverPreview.style.display = 'none';
+    if (hoverPreview) {
+      hoverPreview.style.display = 'none';
+      // Pause video when hiding to save resources
+      if (hoverPreviewVideo) {
+        hoverPreviewVideo.pause();
+      }
+    }
   }
 
   // Inject grid styles once
@@ -1015,7 +1062,7 @@ window.PXS7 = window.PXS7 || {};
     return true;
   }
 
-  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null, getFallbackUrl = null) {
+  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null, getFallbackUrl = null, getMediaType = null) {
     injectGridStyles();
 
     const grid = document.createElement('div');
@@ -1029,6 +1076,7 @@ window.PXS7 = window.PXS7 || {};
       const fullUrl = getFullUrl ? getFullUrl(item) : (typeof item === 'string' ? item : item);
       const name = getName ? getName(item) : null;
       const fallbackUrl = getFallbackUrl ? getFallbackUrl(item) : null;
+      const mediaType = getMediaType ? getMediaType(item) : null;
 
       const thumb = document.createElement('div');
       thumb.className = 'pxs7-thumb';
@@ -1053,7 +1101,7 @@ window.PXS7 = window.PXS7 || {};
       loadImageSrc(img, thumbUrl); // Proxies HTTP URLs through background script
       thumb.appendChild(img);
 
-      itemDataMap.set(index, { thumbUrl, fullUrl, name, element: thumb });
+      itemDataMap.set(index, { thumbUrl, fullUrl, name, mediaType, element: thumb });
       grid.appendChild(thumb);
     });
 
@@ -1067,7 +1115,7 @@ window.PXS7 = window.PXS7 || {};
       if (isNaN(idx) || currentHoverIdx === idx) return;
       currentHoverIdx = idx;
       const data = itemDataMap.get(idx);
-      if (data) showHoverPreview(data.fullUrl || data.thumbUrl, thumb);
+      if (data) showHoverPreview(data.fullUrl || data.thumbUrl, thumb, data.mediaType);
     }, true);
 
     grid.addEventListener('mouseleave', (e) => {
@@ -1188,7 +1236,8 @@ window.PXS7 = window.PXS7 || {};
       // Fallback for thumbnail if backend thumbnail 404s (use remote/CDN URL)
       fallback: a.remote_url || a.external_url || a.file_url || a.url || a.src,
       name: a.name || a.original_filename || a.filename || a.title || '',
-      createdAt: a.created_at || a.createdAt || ''
+      createdAt: a.created_at || a.createdAt || '',
+      mediaType: a.media_type || a.mediaType || null,
     })).filter(u => u.thumb);
 
     // Sort assets based on current sort preference
@@ -1249,7 +1298,7 @@ window.PXS7 = window.PXS7 || {};
           </div>
         `;
       } else {
-        const grid = createImageGrid(filteredUrls, (item) => item.thumb, (item) => item.full, (item) => item.name, (item) => item.fallback);
+        const grid = createImageGrid(filteredUrls, (item) => item.thumb, (item) => item.full, (item) => item.name, (item) => item.fallback, (item) => item.mediaType);
         gridContainer.appendChild(grid);
       }
 

@@ -162,7 +162,6 @@ async def backfill_synthetic_generations(
     Use dry_run=true to preview what would be done before committing.
     """
     from pixsim7.backend.main.domain.enums import SyncStatus
-    from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
     from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
 
     # Find synced assets without source_generation_id
@@ -198,17 +197,12 @@ async def backfill_synthetic_generations(
         }
 
     # Process each asset
-    synthetic_service = SyntheticGenerationService(db)
     enrichment_service = AssetEnrichmentService(db)
 
     results = []
     for asset in assets:
         try:
-            # First, ensure lineage is created from embedded assets
-            await enrichment_service._extract_and_register_embedded(asset, current_user)
-
-            # Then create synthetic generation
-            generation = await synthetic_service.create_for_asset(
+            generation = await enrichment_service.enrich_synced_asset(
                 asset,
                 current_user,
                 asset.media_metadata,

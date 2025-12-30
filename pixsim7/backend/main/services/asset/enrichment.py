@@ -61,6 +61,63 @@ class AssetEnrichmentService:
         await self.db.refresh(asset)
         return asset
 
+    async def enrich_synced_asset(
+        self,
+        asset: Asset,
+        user: User,
+        provider_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional["Generation"]:
+        """
+        Full enrichment pipeline for synced provider assets.
+
+        Combines:
+        1. Embedded asset extraction (source images) + lineage creation
+        2. Synthetic generation creation (prompt, params, sibling discovery)
+
+        This is the single entry point for enriching synced assets - use this
+        instead of calling _extract_and_register_embedded and create_for_asset
+        separately.
+
+        Args:
+            asset: The synced asset to enrich
+            user: Asset owner
+            provider_metadata: Full provider metadata (e.g., from client.get_video())
+                              Falls back to asset.media_metadata if not provided.
+
+        Returns:
+            Created Generation or None if insufficient metadata
+        """
+        from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
+        from pixsim7.backend.main.domain import Generation
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
+        metadata = provider_metadata or asset.media_metadata
+
+        # Step 1: Extract embedded assets and create lineage
+        try:
+            await self._extract_and_register_embedded(asset, user)
+        except Exception as e:
+            logger.warning(
+                "enrich_synced_asset_embedded_failed",
+                asset_id=asset.id,
+                error=str(e),
+            )
+
+        # Step 2: Create synthetic generation
+        generation = None
+        try:
+            synthetic_service = SyntheticGenerationService(self.db)
+            generation = await synthetic_service.create_for_asset(asset, user, metadata)
+        except Exception as e:
+            logger.warning(
+                "enrich_synced_asset_synthetic_failed",
+                asset_id=asset.id,
+                error=str(e),
+            )
+
+        return generation
+
     async def _extract_and_register_embedded(self, asset: Asset, user: User) -> None:
         """
         Use provider hook to extract embedded assets (images/prompts) and
