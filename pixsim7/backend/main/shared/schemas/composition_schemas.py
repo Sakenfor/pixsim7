@@ -44,6 +44,17 @@ class CompositionAsset(BaseModel):
         description="Optional reference token name for prompt injection",
     )
 
+    # Influence hints (for lineage tracking in multi-image edits)
+    influence_type: Optional[str] = Field(
+        default=None,
+        pattern="^(content|style|structure|mask|blend|replacement|reference)$",
+        description="Expected influence: content, style, structure, mask, blend, replacement, reference",
+    )
+    influence_region: Optional[str] = Field(
+        default=None,
+        description="Target region: full, foreground, background, subject:<id>, mask:<label>",
+    )
+
     # Ontology-aligned hints
     character_id: Optional[str] = None
     location_id: Optional[str] = None

@@ -74,6 +74,33 @@ class AssetLineage(SQLModel, table=True):
         description="Order of this parent in multi-input operations (0=first)"
     )
 
+    # ===== INFLUENCE TRACKING =====
+    # How this parent influenced the output (for multi-image edits)
+    influence_type: Optional[str] = Field(
+        default=None,
+        max_length=32,
+        description="How parent contributed: 'content', 'style', 'structure', 'mask', 'blend', 'replacement', 'reference'"
+    )
+    influence_weight: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Estimated contribution weight 0.0-1.0"
+    )
+    influence_region: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Affected region: 'full', 'foreground', 'background', 'subject:<id>', 'mask:<label>'"
+    )
+
+    # ===== PROMPT REFERENCE BINDING =====
+    # Links back to how this input was referenced in the prompt
+    prompt_ref_name: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Prompt reference token: 'image_1', 'woman_ref', 'animal_source'"
+    )
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     __table_args__ = (
@@ -83,6 +110,8 @@ class AssetLineage(SQLModel, table=True):
         Index("idx_lineage_operation", "operation_type"),
         # Find all lineage for a child
         Index("idx_lineage_child_full", "child_asset_id", "sequence_order"),
+        # Influence queries (find all inputs by influence type)
+        Index("idx_lineage_influence", "child_asset_id", "influence_type"),
     )
 
 

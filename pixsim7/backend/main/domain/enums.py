@@ -86,6 +86,19 @@ class OperationType(str, Enum):
     VIDEO_TRANSITION = "video_transition"
     FUSION = "fusion"
     FRAME_EXTRACTION = "frame_extraction"  # Extract frame from video
+    IMAGE_EDIT = "image_edit"              # Multi-image edit/combine
+    IMAGE_COMPOSITE = "image_composite"    # Layer-based composition
+
+
+class InfluenceType(str, Enum):
+    """How a parent asset influenced the output in multi-image operations."""
+    CONTENT = "content"           # Provides subject/objects
+    STYLE = "style"               # Provides aesthetic/style
+    STRUCTURE = "structure"       # Provides composition/pose/layout
+    MASK = "mask"                 # Affects specific masked region
+    BLEND = "blend"               # Blended/mixed into result
+    REPLACEMENT = "replacement"   # Replaces element from another input
+    REFERENCE = "reference"       # Visual reference only (not directly used)
 
 
 class AccountStatus(str, Enum):
