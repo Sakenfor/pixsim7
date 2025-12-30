@@ -524,8 +524,8 @@ window.PXS7 = window.PXS7 || {};
       })));
       console.log('[PixSim7] Target slot:', { hasImage: targetUpload.hasImage, containerId: targetUpload.containerId });
 
-      const fileInput = targetUpload.input;
-      const container = targetUpload.container;
+      let fileInput = targetUpload.input;
+      let container = targetUpload.container;
 
       if (!fileInput) {
         if (showToast) showToast('Upload area not found', false);
@@ -534,16 +534,23 @@ window.PXS7 = window.PXS7 || {};
 
       if (targetUpload.hasImage) {
         if (showToast) showToast('Replacing existing image...', true);
+        // Store containerId before clearing (DOM will change, input reference becomes stale)
+        const targetContainerId = targetUpload.containerId;
         clearUploadContainer(container);
         // Wait longer for React/Ant to process the deletion and re-render
         await new Promise(r => setTimeout(r, 500));
         // Re-fetch uploads in case DOM changed after deletion
         const refreshedUploads = findUploadInputs();
-        const refreshedTarget = targetInput
-          ? refreshedUploads.find(u => u.input === targetInput) || refreshedUploads[0]
-          : refreshedUploads[0];
-        if (refreshedTarget && !refreshedTarget.hasImage) {
-          // Successfully cleared, proceed with new target
+        // Find by containerId (stable) rather than input reference (may be stale after DOM re-render)
+        const refreshedTarget = refreshedUploads.find(u => u.containerId === targetContainerId);
+        if (refreshedTarget) {
+          // Successfully found the same slot after refresh, update references
+          targetUpload = refreshedTarget;
+          fileInput = refreshedTarget.input;
+          container = refreshedTarget.container;
+          console.log('[PixSim7] Re-found target slot after clear:', targetContainerId);
+        } else {
+          console.warn('[PixSim7] Could not find slot after clearing, containerId:', targetContainerId);
         }
       }
 
@@ -704,18 +711,72 @@ window.PXS7 = window.PXS7 || {};
     return success;
   }
 
+  // UUID pattern for valid user content (not UI assets)
+  const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+  // Patterns to exclude (UI assets, not user content)
+  const EXCLUDE_PATTERNS = [
+    /profile-picture/i,
+    /asset\/media\/model/i,
+    /\/model-.*\.png/i,
+    /\/icon/i,
+    /\/logo/i,
+    /\/avatar/i,
+  ];
+
+  function isValidUserImage(url) {
+    if (!url) return false;
+    // Must have UUID pattern (indicates user-generated content)
+    if (!UUID_PATTERN.test(url)) return false;
+    // Must not match exclude patterns
+    for (const pattern of EXCLUDE_PATTERNS) {
+      if (pattern.test(url)) return false;
+    }
+    return true;
+  }
+
   function scanPageForImages() {
     const images = new Set();
 
+    // Scan all pixverse images on page, but filter to valid user content
     document.querySelectorAll('img[src*="media.pixverse.ai"]').forEach(img => {
       const src = img.src.split('?')[0];
-      if (src) images.add(src);
+      if (isValidUserImage(src)) {
+        images.add(src);
+      }
     });
 
+    // Also check background-image styles
     document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
       const style = el.getAttribute('style') || '';
       const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
-      if (match) images.add(match[1].split('?')[0]);
+      if (match) {
+        const src = match[1].split('?')[0];
+        if (isValidUserImage(src)) {
+          images.add(src);
+        }
+      }
+    });
+
+    return Array.from(images);
+  }
+
+  // Scan only images in upload containers (for state preservation)
+  function scanUploadContainerImages() {
+    const images = new Set();
+    const uploadContainers = document.querySelectorAll('.ant-upload-wrapper, .ant-upload, [class*="ant-upload"]');
+
+    uploadContainers.forEach(container => {
+      container.querySelectorAll('img[src*="media.pixverse.ai"], img[src*="aliyun"]').forEach(img => {
+        const src = img.src.split('?')[0];
+        if (src && src.length > 50) images.add(src);
+      });
+
+      container.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
+        const style = el.getAttribute('style') || '';
+        const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
+        if (match) images.add(match[1].split('?')[0]);
+      });
     });
 
     return Array.from(images);
@@ -723,7 +784,7 @@ window.PXS7 = window.PXS7 || {};
 
   function showImageRestorePanel(images) {
     recentSiteImages = images;
-    showUnifiedImagePicker('recent');
+    showUnifiedImagePicker('page');
   }
 
   // ===== Unified Image Picker UI =====
@@ -1107,8 +1168,11 @@ window.PXS7 = window.PXS7 || {};
 
     // Event delegation - single set of listeners on grid
     let currentHoverIdx = null;
+    let isScrolling = false;
+    let scrollTimeout = null;
 
     grid.addEventListener('mouseenter', (e) => {
+      if (isScrolling) return; // Don't show preview while scrolling
       const thumb = e.target.closest('.pxs7-thumb');
       if (!thumb) return;
       const idx = parseInt(thumb.dataset.idx, 10);
@@ -1124,6 +1188,25 @@ window.PXS7 = window.PXS7 || {};
       currentHoverIdx = null;
       hideHoverPreview();
     }, true);
+
+    // Hide preview during scroll to prevent jank
+    const handleScroll = () => {
+      isScrolling = true;
+      hideHoverPreview();
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        isScrolling = false;
+      }, 150); // Resume hover after scrolling stops
+    };
+
+    // Listen on scroll container
+    const scrollContainer = grid.closest('[style*="overflow"]') || grid.parentElement;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    }
+
+    // Also listen on wheel events on grid itself (catches all scroll attempts)
+    grid.addEventListener('wheel', handleScroll, { passive: true });
 
     grid.addEventListener('click', async (e) => {
       const thumb = e.target.closest('.pxs7-thumb');
@@ -1167,14 +1250,15 @@ window.PXS7 = window.PXS7 || {};
     return grid;
   }
 
-  function renderRecentTab(container, panel) {
+  // Page tab - shows valid user images found on current page (with UUID)
+  function renderPageTab(container, panel) {
     if (recentSiteImages.length === 0) {
       container.innerHTML = `
         <div style="text-align: center; padding: 30px 10px; color: ${COLORS.textMuted};">
           <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">📷</div>
-          <div style="font-size: 11px;">No recent images</div>
+          <div style="font-size: 11px;">No images on page</div>
           <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">
-            Images on this page will appear here
+            User images (with UUID) will appear here
           </div>
         </div>
       `;
@@ -1199,7 +1283,7 @@ window.PXS7 = window.PXS7 || {};
     });
 
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = '📋 Copy URLs';
+    copyBtn.textContent = '📋 Copy';
     copyBtn.style.cssText = `
       padding: 6px 10px; font-size: 10px;
       background: transparent; border: 1px solid ${COLORS.border};
@@ -1216,6 +1300,46 @@ window.PXS7 = window.PXS7 || {};
     container.appendChild(actionsRow);
 
     const grid = createImageGrid(recentSiteImages, (url) => url + '?x-oss-process=style/cover-webp-small');
+    container.appendChild(grid);
+  }
+
+  // Recents tab - shows recently used/injected images
+  function renderRecentsTab(container, panel) {
+    if (recentlyUsedAssets.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 30px 10px; color: ${COLORS.textMuted};">
+          <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">🕐</div>
+          <div style="font-size: 11px;">No recent activity</div>
+          <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">
+            Images you inject will appear here
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = '✕ Clear';
+    clearBtn.style.cssText = `
+      padding: 4px 8px; font-size: 9px; margin-bottom: 8px;
+      background: transparent; border: 1px solid ${COLORS.border};
+      border-radius: 3px; color: ${COLORS.textMuted}; cursor: pointer;
+    `;
+    clearBtn.addEventListener('click', () => {
+      recentlyUsedAssets = [];
+      recentlyUsedMap = null;
+      saveRecentlyUsed();
+      renderRecentsTab(container, panel);
+    });
+    container.appendChild(clearBtn);
+
+    const urls = recentlyUsedAssets.map(a => ({
+      thumb: a.url + '?x-oss-process=style/cover-webp-small',
+      full: a.url,
+      name: a.name || ''
+    }));
+
+    const grid = createImageGrid(urls, (item) => item.thumb, (item) => item.full, (item) => item.name);
     container.appendChild(grid);
   }
 
@@ -1265,7 +1389,7 @@ window.PXS7 = window.PXS7 || {};
     searchRow.style.cssText = 'margin-bottom: 8px;';
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
-    searchInput.placeholder = 'Search assets...';
+    searchInput.placeholder = 'Search description, tags...';
     searchInput.value = assetsSearchQuery;
     searchInput.style.cssText = `
       width: 100%; padding: 6px 10px; font-size: 11px;
@@ -1278,50 +1402,90 @@ window.PXS7 = window.PXS7 || {};
     const gridContainer = document.createElement('div');
     gridContainer.id = 'pxs7-assets-grid-container';
 
-    const updateGrid = () => {
-      let filteredUrls = urls;
-      if (assetsSearchQuery && assetsSearchQuery.trim().length > 0) {
-        const query = assetsSearchQuery.toLowerCase().trim();
-        filteredUrls = urls.filter(u => {
-          const name = (u.name || '').toLowerCase();
-          const url = (u.full || u.thumb || '').toLowerCase();
-          const urlFilename = url.split('/').pop()?.split('?')[0] || '';
-          return name.includes(query) || urlFilename.includes(query);
-        });
-      }
-
+    // Render the grid with current urls
+    const renderGrid = (displayUrls) => {
       gridContainer.innerHTML = '';
-      if (filteredUrls.length === 0) {
+      if (displayUrls.length === 0) {
         gridContainer.innerHTML = `
           <div style="text-align: center; padding: 20px 10px; color: ${COLORS.textMuted};">
-            <div style="font-size: 11px;">No matches for "${assetsSearchQuery}"</div>
+            <div style="font-size: 11px;">${assetsSearchQuery ? `No results for "${assetsSearchQuery}"` : 'No assets'}</div>
           </div>
         `;
       } else {
-        const grid = createImageGrid(filteredUrls, (item) => item.thumb, (item) => item.full, (item) => item.name, (item) => item.fallback, (item) => item.mediaType);
+        const grid = createImageGrid(displayUrls, (item) => item.thumb, (item) => item.full, (item) => item.name, (item) => item.fallback, (item) => item.mediaType);
         gridContainer.appendChild(grid);
       }
 
       // Update count
       const countEl = container.querySelector('.pxs7-assets-count');
       if (countEl) {
-        const filterText = assetsSearchQuery.trim() ? ` (filtered)` : '';
-        countEl.textContent = `${filteredUrls.length}${moreAvailable ? '+' : ''}${filterText}`;
+        const moreAvailable = assetsTotalCount > assetsLoadedCount;
+        const searchText = assetsSearchQuery.trim() ? ' (search)' : '';
+        countEl.textContent = `${displayUrls.length}${moreAvailable ? '+' : ''}${searchText}`;
       }
     };
 
+    // Server-side search handler
     let searchDebounce = null;
+    let isSearching = false;
+
+    const performSearch = async (query) => {
+      if (isSearching) return;
+      isSearching = true;
+
+      // Show loading state
+      gridContainer.innerHTML = `
+        <div style="text-align: center; padding: 20px 10px; color: ${COLORS.textMuted};">
+          <div style="font-size: 11px;">Searching...</div>
+        </div>
+      `;
+
+      try {
+        if (loadAssets) {
+          // Call loadAssets with search query - this triggers server-side search
+          await loadAssets(true, false, { q: query });
+        }
+        // Re-render with updated cache (urls reference will be stale, need fresh)
+        const freshUrls = assetsCache.map(a => ({
+          thumb: a.thumbnail_url || a.file_url,
+          full: a.file_url || a.external_url || a.remote_url || a.url,
+          name: a.description || a.file_name || a.name || '',
+          fallback: a.external_url || a.remote_url || a.url,
+          mediaType: a.media_type
+        })).filter(u => u.thumb || u.full);
+
+        renderGrid(freshUrls);
+      } catch (e) {
+        console.warn('[PixSim7] Search failed:', e);
+        gridContainer.innerHTML = `
+          <div style="text-align: center; padding: 20px 10px; color: ${COLORS.textMuted};">
+            <div style="font-size: 11px;">Search failed</div>
+          </div>
+        `;
+      } finally {
+        isSearching = false;
+      }
+    };
+
     searchInput.addEventListener('input', (e) => {
       assetsSearchQuery = e.target.value;
       clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(updateGrid, 100);
+      // Debounce server search (longer delay for network)
+      searchDebounce = setTimeout(() => {
+        performSearch(assetsSearchQuery);
+      }, 400);
     });
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         assetsSearchQuery = '';
         searchInput.value = '';
-        updateGrid();
+        clearTimeout(searchDebounce);
+        performSearch(''); // Clear search, reload all
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(searchDebounce);
+        performSearch(assetsSearchQuery);
       }
     });
     searchRow.appendChild(searchInput);
@@ -1396,8 +1560,8 @@ window.PXS7 = window.PXS7 || {};
         </div>
       `;
     } else {
-      // Initial grid render (unfiltered)
-      updateGrid();
+      // Initial grid render
+      renderGrid(urls);
     }
 
     // Show Load More button if there are more assets to load
@@ -1425,8 +1589,10 @@ window.PXS7 = window.PXS7 || {};
 
   function renderTabContent(tabId, container, panel, loadAssets) {
     container.innerHTML = '';
-    if (tabId === 'recent') {
-      renderRecentTab(container, panel);
+    if (tabId === 'page') {
+      renderPageTab(container, panel);
+    } else if (tabId === 'recents') {
+      renderRecentsTab(container, panel);
     } else {
       renderAssetsTab(container, panel, loadAssets);
     }
@@ -1571,7 +1737,8 @@ window.PXS7 = window.PXS7 || {};
     tabBar.style.cssText = `display: flex; border-bottom: 1px solid ${COLORS.border}; margin: 8px 12px 0;`;
 
     const tabs = [
-      { id: 'recent', label: 'Page', count: recentSiteImages.length },
+      { id: 'page', label: 'Page', count: recentSiteImages.length },
+      { id: 'recents', label: 'Recents', count: recentlyUsedAssets.length },
       { id: 'assets', label: 'Assets', count: assetsCache.length }
     ];
 
@@ -1621,6 +1788,7 @@ window.PXS7 = window.PXS7 || {};
     saveInputState,
     restoreInputState,
     setupUploadInterceptor,
+    findUploadInputs,
     injectImageToUpload,
     scanPageForImages,
     showImageRestorePanel,
