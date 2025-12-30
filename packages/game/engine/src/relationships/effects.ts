@@ -22,8 +22,8 @@ export const relationshipKeys = {
 
   /** NPC ↔ NPC pair relationship key */
   npcPair: (npc1: NpcId | number, npc2: NpcId | number): string => {
-    // Normalize order to ensure consistent keys
-    const [a, b] = [npc1, npc2].sort();
+    // Normalize order to ensure consistent keys (numeric sort, preserves zero)
+    const [a, b] = [npc1, npc2].map(Number).sort((x, y) => x - y);
     return `npcPair:${a}:${b}`;
   },
 
