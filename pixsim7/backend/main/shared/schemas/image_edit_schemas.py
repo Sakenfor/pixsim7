@@ -10,10 +10,110 @@ These schemas enable:
 - Tracking influence per input
 - Round-trip lineage from prompt to generation to asset
 """
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
+
+
+# ============================================================================
+# Edit Summary - Structured transformation record for lineage
+# ============================================================================
+
+class EditSummary(BaseModel):
+    """
+    Structured summary of an edit operation for lineage tracking.
+
+    Links edits to domain entities using existing EntityRef formats.
+    Stored on AssetLineage only - not mirrored to Asset or canonical_params.
+
+    Examples:
+        - Rotate image 90°:
+          action="rotate", params={"degrees": 90}
+
+        - Change NPC expression:
+          action="change_expression", target_ref="npc:123", target_type="npc",
+          attribute="expression_id", attribute_value="smile"
+
+        - Replace character pose:
+          action="replace", target_ref="character:abc-uuid", target_type="character",
+          attribute="pose_id", attribute_value="sitting", region="full"
+
+        - Equip item on character:
+          action="state_change", target_ref="character:abc-uuid", target_type="character",
+          attribute="equipped", attribute_value="item:hat_01"
+    """
+
+    action: Literal[
+        "rotate",
+        "scale",
+        "crop",
+        "flip",
+        "replace",
+        "incorporate",
+        "blend",
+        "remove",
+        "add",
+        "transfer",
+        "change_expression",
+        "change_pose",
+        "color_adjust",
+        "mask",
+        "state_change",
+    ] = Field(..., description="Edit action type")
+
+    # Domain entity linkage (using existing EntityRef formats)
+    target_ref: Optional[str] = Field(
+        default=None,
+        description="Canonical EntityRef string: npc:123, character:uuid, item:456, asset:789",
+    )
+    target_type: Optional[Literal[
+        "npc",
+        "character",
+        "item",
+        "scene",
+        "location",
+        "asset",
+        "prop",
+    ]] = Field(
+        default=None,
+        description="Entity type being edited",
+    )
+
+    # Domain attribute being changed
+    attribute: Optional[str] = Field(
+        default=None,
+        description="Domain attribute: expression_id, emotion, pose_id, equipped, color, etc.",
+    )
+    attribute_value: Optional[str] = Field(
+        default=None,
+        description="New value: smile, happy, sitting, item:hat_01, #ff0000",
+    )
+
+    # Spatial targeting
+    region: Optional[str] = Field(
+        default=None,
+        pattern=r"^(full|foreground|background|subject:\d+|mask:[a-zA-Z0-9_]+)$",
+        description="Affected region: full, foreground, background, subject:0, mask:face",
+    )
+
+    # Extensible params for action-specific details
+    params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Extra structured details: {degrees: 90}, {scale: 1.5}, {color: #ff0000}",
+    )
+
+    # Metadata
+    confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for heuristic/provider-inferred edits",
+    )
+    source: Optional[Literal["request", "provider", "heuristic"]] = Field(
+        default=None,
+        description="Where this summary came from: user request, provider response, or inference",
+    )
 
 
 class InputBinding(BaseModel):

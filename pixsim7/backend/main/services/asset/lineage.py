@@ -1,7 +1,7 @@
 """Lineage query helpers for simplified asset_lineage table."""
 from __future__ import annotations
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,6 +13,7 @@ from pixsim7.backend.main.shared.schemas.image_edit_schemas import (
     MultiImageEditPrompt,
     InputBinding,
     InfluenceEdge,
+    EditSummary,
 )
 from pixsim7.backend.main.shared.schemas.composition_schemas import CompositionAsset
 
@@ -67,10 +68,36 @@ def _resolve_asset_id(asset_ref) -> Optional[int]:
     return None
 
 
+def _extract_edit_summaries_from_instructions(
+    prompt: MultiImageEditPrompt,
+    ref_name: str,
+) -> Optional[List[Dict[str, Any]]]:
+    """Extract EditSummary dicts from structured instructions for a given ref_name."""
+    if not prompt.instructions:
+        return None
+
+    summaries: List[Dict[str, Any]] = []
+    for instr in prompt.instructions:
+        # Check if this instruction involves the ref_name
+        if instr.source_ref == ref_name or instr.target_ref == ref_name:
+            summary: Dict[str, Any] = {
+                "action": instr.action,
+                "source": "request",
+            }
+            if instr.target_aspect:
+                summary["attribute"] = instr.target_aspect
+            if instr.region:
+                summary["region"] = instr.region
+            summaries.append(summary)
+
+    return summaries if summaries else None
+
+
 def build_lineage_from_edit_prompt(
     child_asset_id: int,
     prompt: MultiImageEditPrompt,
     operation_type: OperationType = OperationType.IMAGE_EDIT,
+    edit_summaries: Optional[List[EditSummary]] = None,
 ) -> List[AssetLineage]:
     """
     Build AssetLineage rows from a MultiImageEditPrompt.
@@ -82,6 +109,7 @@ def build_lineage_from_edit_prompt(
         child_asset_id: The output asset ID
         prompt: The multi-image edit prompt configuration
         operation_type: Operation type (default IMAGE_EDIT)
+        edit_summaries: Optional EditSummary list applied to all rows (overrides extraction)
 
     Returns:
         List of AssetLineage objects (not yet persisted)
@@ -89,6 +117,9 @@ def build_lineage_from_edit_prompt(
     lineage_rows: List[AssetLineage] = []
     binding_map = {b.ref_name: b for b in prompt.input_bindings}
     n_inputs = len(prompt.input_bindings)
+
+    # Convert EditSummary objects to dicts for storage
+    summaries_dicts = [s.model_dump(exclude_none=True) for s in edit_summaries] if edit_summaries else None
 
     if prompt.influence_edges:
         # Use explicit influence edges
@@ -101,6 +132,9 @@ def build_lineage_from_edit_prompt(
             if parent_id is None:
                 continue
 
+            # Use provided summaries or extract from instructions
+            row_summaries = summaries_dicts or _extract_edit_summaries_from_instructions(prompt, edge.parent_ref)
+
             lineage_rows.append(
                 AssetLineage(
                     child_asset_id=child_asset_id,
@@ -112,6 +146,7 @@ def build_lineage_from_edit_prompt(
                     influence_weight=edge.influence_weight,
                     influence_region=edge.influence_region,
                     prompt_ref_name=edge.parent_ref,
+                    edit_summaries=row_summaries,
                 )
             )
     else:
@@ -133,6 +168,9 @@ def build_lineage_from_edit_prompt(
             elif prompt.output_style_ref and binding.ref_name == prompt.output_style_ref:
                 influence_type = binding.influence_type or "style"
 
+            # Use provided summaries or extract from instructions
+            row_summaries = summaries_dicts or _extract_edit_summaries_from_instructions(prompt, binding.ref_name)
+
             lineage_rows.append(
                 AssetLineage(
                     child_asset_id=child_asset_id,
@@ -144,6 +182,7 @@ def build_lineage_from_edit_prompt(
                     influence_weight=default_weight,
                     influence_region=influence_region,
                     prompt_ref_name=binding.ref_name,
+                    edit_summaries=row_summaries,
                 )
             )
 
@@ -154,6 +193,7 @@ def build_lineage_from_composition_assets(
     child_asset_id: int,
     composition_assets: List[CompositionAsset],
     operation_type: OperationType = OperationType.IMAGE_EDIT,
+    edit_summaries: Optional[List[EditSummary]] = None,
 ) -> List[AssetLineage]:
     """
     Build AssetLineage rows from CompositionAsset list.
@@ -164,6 +204,7 @@ def build_lineage_from_composition_assets(
         child_asset_id: The output asset ID
         composition_assets: List of composition assets
         operation_type: Operation type (default IMAGE_EDIT)
+        edit_summaries: Optional EditSummary list applied to all lineage rows
 
     Returns:
         List of AssetLineage objects (not yet persisted)
@@ -171,6 +212,9 @@ def build_lineage_from_composition_assets(
     lineage_rows: List[AssetLineage] = []
     n_inputs = len(composition_assets)
     default_weight = 1.0 / n_inputs if n_inputs > 0 else 1.0
+
+    # Convert EditSummary objects to dicts for storage
+    summaries_dicts = [s.model_dump(exclude_none=True) for s in edit_summaries] if edit_summaries else None
 
     for seq_order, comp_asset in enumerate(composition_assets):
         parent_id = _resolve_asset_id(comp_asset.asset)
@@ -201,6 +245,7 @@ def build_lineage_from_composition_assets(
                 influence_weight=default_weight,
                 influence_region=comp_asset.influence_region or "full",
                 prompt_ref_name=comp_asset.ref_name,
+                edit_summaries=summaries_dicts,
             )
         )
 

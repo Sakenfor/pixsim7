@@ -71,6 +71,17 @@ def upgrade() -> None:
         ),
     )
 
+    # Structured edit summaries with domain entity refs
+    op.add_column(
+        "asset_lineage",
+        sa.Column(
+            "edit_summaries",
+            sa.JSON(),
+            nullable=True,
+            comment="Structured edit summaries: [{action, target_ref, attribute, ...}]",
+        ),
+    )
+
     # Index for influence queries
     op.create_index(
         "idx_lineage_influence",
@@ -87,6 +98,7 @@ def downgrade() -> None:
         return
 
     op.drop_index("idx_lineage_influence", table_name="asset_lineage")
+    op.drop_column("asset_lineage", "edit_summaries")
     op.drop_column("asset_lineage", "prompt_ref_name")
     op.drop_column("asset_lineage", "influence_region")
     op.drop_column("asset_lineage", "influence_weight")

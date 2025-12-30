@@ -6,7 +6,7 @@ Tracks asset derivation and branching for:
 - Branching: multiple variants from same source point
 - Game integration: efficient branch point queries
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
@@ -99,6 +99,15 @@ class AssetLineage(SQLModel, table=True):
         default=None,
         max_length=64,
         description="Prompt reference token: 'image_1', 'woman_ref', 'animal_source'"
+    )
+
+    # ===== EDIT SUMMARIES =====
+    # Structured edit records linking to domain entities (avoids prompt parsing)
+    # Uses EditSummary schema from image_edit_schemas.py
+    edit_summaries: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Structured edit summaries with domain refs: [{action, target_ref, attribute, ...}]"
     )
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
