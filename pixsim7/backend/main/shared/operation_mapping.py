@@ -120,12 +120,15 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
 #
 # Examples:
 # - FRAME_EXTRACTION: Image extracted from video locally (ffmpeg)
-# - Future: CROP, RESIZE, etc.
+# - IMAGE_EDIT: Multi-image edit/combine operation (lineage tracking)
+# - IMAGE_COMPOSITE: Layer-based composition (lineage tracking)
 #
 # These are excluded from OPERATION_REGISTRY since they don't participate
 # in the generation flow (no provider routing, no generation_type alias).
 LINEAGE_ONLY_OPERATIONS: Set[OperationType] = {
   OperationType.FRAME_EXTRACTION,
+  OperationType.IMAGE_EDIT,
+  OperationType.IMAGE_COMPOSITE,
 }
 
 

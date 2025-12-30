@@ -1,0 +1,27 @@
+{
+  "name": "@pixsim7/plugin-personality",
+  "version": "1.0.0",
+  "description": "Personality-driven NPC behavior with Big Five traits, tag effects, and behavior profiles",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "pixsim7",
+    "plugin",
+    "personality",
+    "big-five",
+    "npc-behavior"
+  ],
+  "author": "PixSim Team",
+  "license": "UNLICENSED",
+  "peerDependencies": {
+    "@pixsim7/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
