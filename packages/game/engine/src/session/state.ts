@@ -58,14 +58,15 @@ export function getNpcRelationshipState(
   npcId: number
 ): NpcRelationshipState | null {
   const npcKey = `npc:${npcId}`;
-  const raw = session.stats?.relationships?.[npcKey] as Record<string, any> | undefined;
+  const relationships = session.stats?.relationships as Record<string, Record<string, any>> | undefined;
+  const raw = relationships?.[npcKey];
 
   if (!raw) {
     return null;
   }
 
   const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(
-    session.stats.relationships || {},
+    (session.stats?.relationships || {}) as Record<string, Record<string, any>>,
     npcId
   );
 
@@ -119,13 +120,14 @@ export function setNpcRelationshipState(
 ): GameSessionDTO {
   const newSession = cloneSession(session);
 
-  // Ensure stats.relationships exists
+  // Ensure stats.relationships exists (cast to mutable)
+  const relationships = (newSession.stats.relationships || {}) as Record<string, Record<string, any>>;
   if (!newSession.stats.relationships) {
-    newSession.stats.relationships = {};
+    newSession.stats.relationships = relationships;
   }
 
   const npcKey = `npc:${npcId}`;
-  const current = (newSession.stats.relationships[npcKey] as Record<string, any>) || {};
+  const current = relationships[npcKey] || {};
 
   // Apply patches
   if (patch.affinity !== undefined) current.affinity = patch.affinity;
@@ -137,7 +139,7 @@ export function setNpcRelationshipState(
   // Note: Don't set tierId/intimacyLevelId here - backend is authoritative
   // They will be recomputed by backend on next session update
 
-  newSession.stats.relationships[npcKey] = current;
+  relationships[npcKey] = current;
   return newSession;
 }
 

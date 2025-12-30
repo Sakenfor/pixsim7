@@ -150,7 +150,7 @@ export function getDefaultNextEdge(args: {
   scene: Scene;
   state: SceneRuntimeState;
   autoAdvance: boolean;
-  node?: SceneNode;
+  node?: SceneContentNode;
 }): SceneEdge | undefined {
   const { scene, state, autoAdvance, node } = args;
 

@@ -4,7 +4,21 @@ import type {
   IntimacyLevelId,
   BrainState,
 } from '@pixsim7/shared.types';
-import type { NpcPersona } from '../npcs/brain';
+
+/**
+ * NPC persona type for personality and brain state integration.
+ * This is the data structure fetched via NpcPersonaProvider.
+ */
+export interface NpcPersona {
+  /** Personality trait modifiers (0-100 scale) */
+  traits?: Record<string, number>;
+  /** Base mood/disposition */
+  baseMood?: string;
+  /** Communication style preferences */
+  communicationStyle?: Record<string, any>;
+  /** Additional persona metadata */
+  meta?: Record<string, any>;
+}
 
 /**
  * Core event map for the PixSim7Core event bus

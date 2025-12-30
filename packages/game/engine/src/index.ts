@@ -374,7 +374,7 @@ export {
 } from './user/contentPreferences';
 
 // ===== NPCs =====
-export type { NpcPersona } from './npcs/brain';
+export type { NpcPersona } from './core/types';
 
 // ===== Scene Runtime =====
 export {

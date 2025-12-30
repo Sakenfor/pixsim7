@@ -3,7 +3,7 @@
  * Task 22 - Game Mode & ViewState Model
  */
 
-import { GameContext, GameMode } from '@pixsim7/shared.types';
+import { GameContext, GameMode, WorldId, SessionId, LocationId, SceneId, NpcId } from '@pixsim7/shared.types';
 
 /**
  * Check if the current game mode is 'conversation'
@@ -85,7 +85,7 @@ export function createGameContext(
   worldId: number,
   sessionId: number,
   options?: {
-    locationId?: string;
+    locationId?: number;
     sceneId?: number;
     npcId?: number;
     narrativeProgramId?: string;
@@ -93,9 +93,12 @@ export function createGameContext(
 ): GameContext {
   return {
     mode,
-    worldId,
-    sessionId,
-    ...options,
+    worldId: WorldId(worldId),
+    sessionId: SessionId(sessionId),
+    locationId: options?.locationId !== undefined ? LocationId(options.locationId) : undefined,
+    sceneId: options?.sceneId !== undefined ? SceneId(options.sceneId) : undefined,
+    npcId: options?.npcId !== undefined ? NpcId(options.npcId) : undefined,
+    narrativeProgramId: options?.narrativeProgramId,
   };
 }
 

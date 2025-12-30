@@ -1,4 +1,5 @@
 import type { GameSessionDTO, BrainState, BrainStatSnapshot } from '@pixsim7/shared.types';
+import { WorldId, NpcId } from '@pixsim7/shared.types';
 import type {
   PixSim7Core as IPixSim7Core,
   PixSim7CoreConfig,
@@ -339,8 +340,8 @@ export class PixSim7Core implements IPixSim7Core {
     }
 
     return {
-      npcId,
-      worldId: 0, // World ID not stored in session; would need to be passed in
+      npcId: NpcId(npcId),
+      worldId: WorldId(0), // World ID not stored in session; would need to be passed in
       stats,
       derived,
       computedAt: Date.now(),

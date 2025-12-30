@@ -160,7 +160,8 @@ function evaluateCondition(
     case 'relationshipLevel': {
       if (!session || !session.stats?.relationships) return false;
       const npcKey = `npc:${condition.npcId}`;
-      const relationship = session.stats.relationships[npcKey];
+      const relationships = session.stats.relationships as Record<string, Record<string, any>>;
+      const relationship = relationships[npcKey];
       if (!relationship || typeof relationship !== 'object') return false;
       const level = (relationship as any).level || 0;
       return level >= condition.minLevel;

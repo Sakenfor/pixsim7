@@ -123,9 +123,9 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
                 : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
             }`}
           >
-            {validationStatus === 'error' && '❌ Has Errors'}
-            {validationStatus === 'warning' && '⚠️ Has Warnings'}
-            {validationStatus === 'ok' && '✅ Valid'}
+            {validationStatus === 'error' && 'Errors'}
+            {validationStatus === 'warning' && 'Warnings'}
+            {validationStatus === 'ok' && 'Valid'}
           </span>
           <span className="text-xs text-neutral-500">
             {getValidationSummary(validationResult)}
@@ -146,7 +146,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           {validationResult.errors.length > 0 && (
             <div>
               <div className="text-xs font-semibold text-red-700 dark:text-red-300 mb-1.5">
-                ❌ Errors ({validationResult.errors.length})
+                Errors ({validationResult.errors.length})
               </div>
               <ul className="text-xs text-red-600 dark:text-red-400 space-y-1">
                 {validationResult.errors.map((error, i) => (
@@ -163,7 +163,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           {validationResult.warnings.length > 0 && (
             <div>
               <div className="text-xs font-semibold text-yellow-700 dark:text-yellow-300 mb-1.5">
-                ⚠️ Warnings ({validationResult.warnings.length})
+                Warnings ({validationResult.warnings.length})
               </div>
               <ul className="text-xs text-yellow-600 dark:text-yellow-400 space-y-1">
                 {validationResult.warnings.map((warning, i) => (
@@ -180,7 +180,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           {validationResult.suggestions.length > 0 && (
             <div>
               <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">
-                💡 Suggestions ({validationResult.suggestions.length})
+                Suggestions ({validationResult.suggestions.length})
               </div>
               <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
                 {validationResult.suggestions.map((suggestion, i) => (
@@ -198,7 +198,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             validationResult.warnings.length === 0 &&
             validationResult.suggestions.length === 0 && (
               <div className="text-xs text-green-600 dark:text-green-400 text-center py-2">
-                ✅ All validation checks passed
+                All validation checks passed
               </div>
             )}
         </div>

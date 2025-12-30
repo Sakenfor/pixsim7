@@ -17,8 +17,8 @@ export * as IDs from './ids';
 // Named exports (existing imports)
 export * from './sceneGraph';
 
-// Namespace export (new pattern: import { Scene } from '@shared/types')
-export * as Scene from './sceneGraph';
+// Namespace export (new pattern: import { SceneGraph } from '@shared/types')
+export * as SceneGraph from './sceneGraph';
 
 // ===================
 // Game DTOs

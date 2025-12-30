@@ -153,7 +153,6 @@ export {
   type ImagePoolQuery,
   type ImagePoolProvider,
   type FusionAssetRequest,
-  type FusionCharacterRequirements,
   type ResolvedFusionAssets,
   type FusionAssetResolver,
   type FusionGenerationConfig,

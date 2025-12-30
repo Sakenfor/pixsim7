@@ -17,6 +17,7 @@ import type {
   Scene,
   SceneContentNode as SceneMediaNode,
   SceneRuntimeState,
+  SceneEdge,
   NarrativeProgram,
   NarrativeNode,
 } from '@pixsim7/shared.types';
@@ -128,10 +129,9 @@ export class ScenePlaybackController {
 
     // Initialize scene state
     const state: SceneRuntimeState = {
-      currentNodeId: scene.entryNodeId,
+      currentNodeId: scene.startNodeId,
+      currentSceneId: sceneId,
       flags: initialFlags || {},
-      visitedNodeIds: [scene.entryNodeId],
-      history: [],
     };
 
     // Track active playback
@@ -162,7 +162,7 @@ export class ScenePlaybackController {
   /**
    * Get current media for active scene.
    */
-  getCurrentMedia(npcId: number): { url?: string; type?: string } | undefined {
+  getCurrentMedia(npcId: number): { url?: string } | undefined {
     const playback = this.activePlaybacks.get(npcId);
     if (!playback) return undefined;
 
@@ -177,7 +177,6 @@ export class ScenePlaybackController {
 
     return {
       url: segment.url,
-      type: segment.type,
     };
   }
 
@@ -217,7 +216,7 @@ export class ScenePlaybackController {
     const playableEdges = getPlayableEdges(scene, playback.state);
 
     // Select edge
-    let selectedEdge = playableEdges[0];
+    let selectedEdge: SceneEdge | undefined = playableEdges[0];
     if (input?.edgeId) {
       const edge = playableEdges.find((e) => e.id === input.edgeId);
       if (edge) selectedEdge = edge;
@@ -254,20 +253,12 @@ export class ScenePlaybackController {
     playback.state = {
       ...playback.state,
       currentNodeId: selectedEdge.to,
-      visitedNodeIds: [...playback.state.visitedNodeIds, selectedEdge.to],
-      history: [
-        ...playback.state.history,
-        {
-          nodeId: currentNode.id,
-          edgeId: selectedEdge.id,
-          timestamp: Date.now(),
-        },
-      ],
       progressionIndex: undefined, // Reset for new node
     };
 
-    // Check if new node is an exit
-    if (scene.exitNodeIds?.includes(selectedEdge.to)) {
+    // Check if new node is an exit (end type node)
+    const nextNode = scene.nodes.find((n: SceneMediaNode) => n.id === selectedEdge.to);
+    if (nextNode?.type === 'end') {
       const result: ScenePlaybackResult = {
         sceneId: playback.sceneId,
         state: playback.state,

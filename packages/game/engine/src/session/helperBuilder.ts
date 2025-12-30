@@ -31,7 +31,7 @@ export function generateHelper(schema: HelperSchema) {
     const value = args[valueIdx];
 
     // Ensure flags object exists
-    if (!session.flags) session.flags = {};
+    if (!session.flags) (session as { flags: Record<string, any> }).flags = {};
 
     // Apply operation using nested path helpers
     switch (schema.operation) {

@@ -530,6 +530,12 @@ export class NarrativeController implements GameRuntimePlugin {
   ): Promise<boolean> {
     const { npcId, interactionId } = intent;
 
+    // npcId is required for narrative interactions
+    if (npcId === undefined) {
+      this.log(`No npcId for interaction: ${interactionId}`);
+      return true; // Allow regular interaction handling
+    }
+
     // Get current narrative state
     const narrativeState = getNarrativeState(session, npcId);
     const relationship = this.runtime?.getNpcRelationship(npcId) ?? null;
@@ -582,6 +588,12 @@ export class NarrativeController implements GameRuntimePlugin {
     if (!response.success) return;
 
     const { npcId, interactionId } = intent;
+
+    // npcId is required for narrative interactions
+    if (npcId === undefined) {
+      this.log(`No npcId for interaction: ${interactionId}`);
+      return;
+    }
 
     // Get narrative state
     const narrativeState = getNarrativeState(session, npcId);
@@ -678,7 +690,7 @@ export class NarrativeController implements GameRuntimePlugin {
       this.emit('sceneTransition', {
         npcId,
         programId,
-        sceneId: result.sceneTransition.sceneId,
+        sceneId: String(result.sceneTransition.sceneId),
         transition: result.sceneTransition,
       });
     }
@@ -755,7 +767,7 @@ export class NarrativeController implements GameRuntimePlugin {
       this.emit('sceneTransition', {
         npcId,
         programId: active.programId,
-        sceneId: result.sceneTransition.sceneId,
+        sceneId: String(result.sceneTransition.sceneId),
         transition: result.sceneTransition,
       });
     }
@@ -950,19 +962,14 @@ export function buildNarrativeResponse(
   result: ExecutorStepResult,
   baseResponse?: Partial<ExecuteInteractionResponse>
 ): ExecuteInteractionResponse {
+  // Extract text from display data if available
+  const displayText = result.display?.data?.text as string | undefined;
+
   return {
     success: !result.error,
-    message: result.error || (result.display?.text ?? 'Narrative step completed'),
+    message: result.error || displayText || 'Narrative step completed',
     timestamp: Date.now(),
     updatedSession: result.session,
     ...baseResponse,
-    // Include narrative-specific data in response
-    narrativeData: {
-      finished: result.finished,
-      awaitingInput: result.awaitingInput,
-      display: result.display,
-      choices: result.choices,
-      sceneTransition: result.sceneTransition,
-    } as any,
   };
 }
