@@ -1,10 +1,26 @@
 /**
  * Interactive Tools - Diegetic interaction types
  * Types for physical/tactile interactions in scenes
+ *
+ * ## Domain Clarification
+ *
+ * These are **scene gizmos** - physical interaction tools rendered in 3D scenes
+ * (touch, caress, temperature effects, etc.)
+ *
+ * NOT to be confused with:
+ * - `UiToolPlugin` / `WorldUiToolPlugin` / `GalleryUiToolPlugin` - UI panels/widgets
+ * - `RegionDrawer` (viewer/overlay) - drawing tools for image annotation
+ * - `BrushConfig` - brush/stroke configuration for drawing
  */
 
 import type { Vector3D } from './core';
 
+/**
+ * Scene gizmo for physical/tactile interactions
+ *
+ * Defines a tool that can be used in 3D scenes for NPC interactions,
+ * including visual appearance, physics behavior, and feedback effects.
+ */
 export interface InteractiveTool {
   id: string;
   type: 'touch' | 'caress' | 'tease' | 'pleasure' | 'temperature' | 'energy' | 'liquid' | 'object';

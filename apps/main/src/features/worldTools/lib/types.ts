@@ -1,8 +1,16 @@
 /**
- * World Tool Plugin Types
+ * World UI Tool Plugin Types
  *
- * Provides an extension point for new world tools (like RelationshipDashboard, QuestLog, etc.)
+ * Provides an extension point for world UI panels (like RelationshipDashboard, QuestLog, etc.)
  * without modifying core Game2D code.
+ *
+ * ## Domain Clarification
+ *
+ * These are **UI tool plugins** - panels/widgets in the world view interface.
+ * NOT to be confused with:
+ * - `InteractiveTool` (scene gizmos) - physical interaction tools in 3D scenes
+ * - `RegionDrawer` (viewer/overlay) - drawing tools for image annotation
+ *
  * Tools can add features like:
  * - Relationship visualizations
  * - Quest tracking and management
@@ -10,7 +18,9 @@
  * - Custom world state analyzers
  * - Character sheets and stats
  *
- * Extends ToolRegistryBase for shared tool registry functionality.
+ * Extends ToolRegistryBase for shared UI tool registry functionality.
+ *
+ * @alias WorldUiToolPlugin - Preferred name for new code
  */
 
 import type { ReactNode } from 'react';
@@ -39,9 +49,12 @@ export type { WorldTime, WorldToolContext } from './context';
 export type WorldToolCategory = 'character' | 'world' | 'quest' | 'inventory' | 'debug' | 'utility';
 
 /**
- * World tool plugin definition
+ * World UI tool plugin definition
  *
- * Extends the base ToolPlugin with world-specific properties.
+ * Extends the base UiToolPlugin with world-specific properties.
+ * These are UI panels/widgets for the world view (RelationshipDashboard, QuestLog, etc.)
+ *
+ * @alias WorldUiToolPlugin - Preferred name for new code
  */
 export interface WorldToolPlugin extends ToolPlugin {
   /** Short description (required for world tools) */
@@ -225,3 +238,13 @@ export interface PlayerHudPreferences {
   /** Timestamp when preferences were last updated */
   lastUpdated: number;
 }
+
+// ============================================================================
+// Type Aliases (preferred names for new code)
+// ============================================================================
+
+/**
+ * Preferred alias for WorldToolPlugin.
+ * Use this in new code to distinguish from scene gizmos and other "tool" types.
+ */
+export type WorldUiToolPlugin = WorldToolPlugin;

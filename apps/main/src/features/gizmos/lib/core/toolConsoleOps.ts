@@ -1,8 +1,13 @@
 /**
  * Tool Console Operations Extension
  *
- * Allows tools to define their own console operations that get
- * automatically registered when the tool is loaded.
+ * Allows scene gizmo tools (InteractiveTool) to define their own console
+ * operations that get automatically registered when the tool is loaded.
+ *
+ * ## Domain Clarification
+ *
+ * This extends `InteractiveTool` (scene gizmos) with dev console operations.
+ * NOT related to UI tool plugins (UiToolPlugin) or region drawers (RegionDrawer).
  *
  * Example usage in a tool definition:
  * ```ts

@@ -1,5 +1,5 @@
 /**
- * ToolRegistryBase - Abstract base class for tool registries
+ * ToolRegistryBase - Abstract base class for UI tool registries
  *
  * Provides shared functionality for Gallery, Brain, and World tool registries:
  * - Tool validation on registration
@@ -7,6 +7,16 @@
  * - Visibility predicates with error isolation
  *
  * This eliminates code duplication across the three tool registry implementations.
+ *
+ * ## Domain Clarification
+ *
+ * This module defines **UI tool plugins** - panels and widgets that render in the
+ * application UI (e.g., RelationshipDashboard, QuestLog, LineageViewer).
+ *
+ * NOT to be confused with:
+ * - `InteractiveTool` (scene gizmos) - physical interaction tools in 3D scenes
+ * - `RegionDrawer` (viewer/overlay) - drawing tools for image annotation
+ * - `BrushConfig` - brush/stroke configuration for drawing
  *
  * @see BaseRegistry for core registry functionality
  * @see docs/guides/registry-patterns.md
@@ -16,10 +26,13 @@ import type { ReactNode } from 'react';
 import { BaseRegistry, type Identifiable } from './BaseRegistry';
 
 /**
- * Base interface for all tool plugins
+ * Base interface for UI tool plugins
  *
- * Tool-specific registries can extend this with additional properties
- * (e.g., GalleryToolPlugin adds `supportedSurfaces`)
+ * UI tools are panels/widgets that render in the application interface.
+ * Domain-specific registries extend this with additional properties
+ * (e.g., GalleryUiToolPlugin adds `supportedSurfaces`).
+ *
+ * @alias UiToolPlugin - Preferred name for new code
  */
 export interface ToolPlugin extends Identifiable {
   /** Unique identifier */
@@ -141,3 +154,18 @@ export abstract class ToolRegistryBase<
     });
   }
 }
+
+// ============================================================================
+// Type Aliases (preferred names for new code)
+// ============================================================================
+
+/**
+ * Preferred alias for ToolPlugin.
+ * Use this in new code to distinguish from scene gizmos and other "tool" types.
+ */
+export type UiToolPlugin = ToolPlugin;
+
+/**
+ * Preferred alias for ToolRegistryBase.
+ */
+export type UiToolRegistryBase<T extends UiToolPlugin, TContext = any> = ToolRegistryBase<T, TContext>;

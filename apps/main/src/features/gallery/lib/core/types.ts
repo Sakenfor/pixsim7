@@ -1,14 +1,24 @@
 /**
- * Gallery Tool Plugin Types
+ * Gallery UI Tool Plugin Types
  *
- * Provides an extension point for new gallery tools without modifying core gallery code.
+ * Provides an extension point for gallery UI panels without modifying core gallery code.
+ *
+ * ## Domain Clarification
+ *
+ * These are **UI tool plugins** - panels/widgets in the gallery interface.
+ * NOT to be confused with:
+ * - `InteractiveTool` (scene gizmos) - physical interaction tools in 3D scenes
+ * - `RegionDrawer` (viewer/overlay) - drawing tools for image annotation
+ *
  * Tools can add features like:
  * - Lineage visualizations
  * - Bulk operations (tagging, moving, deleting)
  * - AI tagging assistants
  * - Custom filters and views
  *
- * Extends ToolRegistryBase for shared tool registry functionality.
+ * Extends ToolRegistryBase for shared UI tool registry functionality.
+ *
+ * @alias GalleryUiToolPlugin - Preferred name for new code
  */
 
 import type { ReactNode } from 'react';
@@ -57,9 +67,12 @@ export interface GalleryToolContext {
 export type GalleryToolCategory = 'visualization' | 'automation' | 'analysis' | 'utility';
 
 /**
- * Gallery tool plugin definition
+ * Gallery UI tool plugin definition
  *
- * Extends the base ToolPlugin with gallery-specific properties.
+ * Extends the base UiToolPlugin with gallery-specific properties.
+ * These are UI panels/widgets for the gallery view (LineageViewer, BulkOps, etc.)
+ *
+ * @alias GalleryUiToolPlugin - Preferred name for new code
  */
 export interface GalleryToolPlugin extends ToolPlugin {
   /** Short description (required for gallery tools) */
@@ -139,3 +152,13 @@ export class GalleryToolRegistry extends ToolRegistryBase<GalleryToolPlugin, Gal
  * Singleton instance
  */
 export const galleryToolRegistry = new GalleryToolRegistry();
+
+// ============================================================================
+// Type Aliases (preferred names for new code)
+// ============================================================================
+
+/**
+ * Preferred alias for GalleryToolPlugin.
+ * Use this in new code to distinguish from scene gizmos and other "tool" types.
+ */
+export type GalleryUiToolPlugin = GalleryToolPlugin;

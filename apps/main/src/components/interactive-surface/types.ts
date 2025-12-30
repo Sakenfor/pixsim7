@@ -7,6 +7,16 @@
  * - Region tagging with metadata (comments, labels)
  * - Video timestamp annotations
  * - Future extensibility
+ *
+ * ## Domain Clarification
+ *
+ * These are low-level **surface interaction types** for overlay drawing.
+ * The `BrushConfig` type defines brush/stroke settings (not a "tool" type).
+ *
+ * NOT to be confused with:
+ * - `InteractiveTool` (scene gizmos) - physical interaction tools in 3D scenes
+ * - `UiToolPlugin` / `WorldUiToolPlugin` / `GalleryUiToolPlugin` - UI panels/widgets
+ * - `RegionDrawer` (viewer/overlay) - higher-level drawing tools for region annotation
  */
 
 // ============================================================================
@@ -102,9 +112,14 @@ export type InteractionMode =
   | 'custom'; // Custom mode handled by layer
 
 /**
- * Drawing tool configuration
+ * Brush/stroke configuration for drawing operations
+ *
+ * Used by InteractiveImageSurface for freeform drawing (masks, annotations).
+ * This is NOT a "tool" type - it's configuration for the brush/stroke.
+ *
+ * @alias DrawToolConfig - Legacy name, kept for backwards compatibility
  */
-export interface DrawToolConfig {
+export interface BrushConfig {
   /** Brush/tool size in normalized units (relative to image width) */
   size: number;
   /** Opacity (0-1) */
@@ -116,6 +131,11 @@ export interface DrawToolConfig {
   /** Whether to use pressure sensitivity */
   pressureSensitive?: boolean;
 }
+
+/**
+ * @deprecated Use `BrushConfig` instead. Kept for backwards compatibility.
+ */
+export type DrawToolConfig = BrushConfig;
 
 // ============================================================================
 // Layers and Elements
@@ -195,8 +215,8 @@ export interface StrokeElement extends SurfaceElement {
   type: 'stroke';
   /** Points along the stroke with optional pressure */
   points: Array<NormalizedPoint & { pressure?: number }>;
-  /** Tool config used for this stroke */
-  tool: DrawToolConfig;
+  /** Brush config used for this stroke */
+  tool: BrushConfig;
   /** Whether this is an erase stroke */
   isErase?: boolean;
 }
@@ -252,8 +272,8 @@ export interface ViewState {
 export interface SurfaceState {
   /** Current interaction mode */
   mode: InteractionMode;
-  /** Active tool configuration */
-  tool: DrawToolConfig;
+  /** Active brush configuration */
+  tool: BrushConfig;
   /** View/zoom state */
   view: ViewState;
   /** All layers */
