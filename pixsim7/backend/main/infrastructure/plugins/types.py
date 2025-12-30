@@ -20,7 +20,10 @@ class PluginManifest(BaseModel):
     author: str = "PixSim Team"      # Plugin author
 
     # Plugin type
-    kind: Literal["route", "feature"] = "feature"  # "route" = core API, "feature" = optional gameplay
+    kind: Literal["route", "feature", "tools"] = "feature"
+    # "route" = core API routes
+    # "feature" = optional gameplay feature (may have routes)
+    # "tools" = frontend-only tools (no backend routes required)
 
     # API configuration
     prefix: str = "/api/v1"          # URL prefix
