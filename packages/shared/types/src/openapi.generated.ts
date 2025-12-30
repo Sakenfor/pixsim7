@@ -1293,6 +1293,37 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/admin/plugins/{plugin_id}/frontend": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Plugin Frontend Manifest
+         * @description Get the frontend manifest for a specific plugin.
+         *
+         *     This endpoint returns the frontend manifest that describes interactions
+         *     the plugin provides, including config schemas and default values.
+         *
+         *     The frontend uses this to dynamically register interactions.
+         *
+         *     Args:
+         *         plugin_id: Plugin ID
+         *
+         *     Returns:
+         *         Frontend manifest with interactions list, or 404 if not found/no manifest
+         */
+        readonly get: operations["get_plugin_frontend_manifest_api_v1_admin_plugins__plugin_id__frontend_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/admin/plugins/behavior-extensions": {
         readonly parameters: {
             readonly query?: never;
@@ -1308,6 +1339,32 @@ export interface paths {
          *         Behavior extension registry stats
          */
         readonly get: operations["get_behavior_extensions_api_v1_admin_plugins_behavior_extensions_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/admin/plugins/frontend/all": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List All Frontend Manifests
+         * @description Get all frontend manifests from all enabled plugins.
+         *
+         *     This endpoint returns a list of all plugins that have frontend manifests,
+         *     which the frontend can use to dynamically register all available interactions.
+         *
+         *     Returns:
+         *         List of frontend manifests from all plugins that have them
+         */
+        readonly get: operations["list_all_frontend_manifests_api_v1_admin_plugins_frontend_all_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1483,35 +1540,6 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/ai-providers/settings": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Ai Provider Settings
-         * @description Get AI provider (LLM) settings for current user
-         *
-         *     Returns user-specific API keys and default provider configuration for prompt editing and AI features.
-         */
-        readonly get: operations["get_ai_provider_settings_api_v1_ai_providers_settings_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        /**
-         * Update Ai Provider Settings
-         * @description Update AI provider settings for current user
-         *
-         *     Updates user-specific API keys and default provider configuration.
-         *     Settings are stored per-user in the database.
-         */
-        readonly patch: operations["update_ai_provider_settings_api_v1_ai_providers_settings_patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/ai/interactions": {
@@ -2277,6 +2305,32 @@ export interface paths {
         readonly get: operations["get_storage_sync_stats_api_v1_assets_storage_sync_stats_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/sync-pixverse": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Sync Single Pixverse Asset
+         * @description Sync a single PixVerse asset to PixSim7 by its known ID.
+         *
+         *     Used by the Chrome extension badge when clicking on images on pixverse.ai.
+         *     This does NOT call the PixVerse API - it just registers the asset with
+         *     the known URL and ID extracted from the media URL.
+         *
+         *     If the asset already exists (same provider_asset_id), returns the existing one.
+         */
+        readonly post: operations["sync_single_pixverse_asset_api_v1_assets_sync_pixverse_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4916,6 +4970,180 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/links/integrity/cleanup": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Cleanup orphaned links
+         * @description Find and optionally remove orphaned links (links pointing to deleted entities).
+         *
+         *     Use dry_run=True first to see what would be deleted without making changes.
+         *     Set dry_run=False to actually perform the cleanup.
+         *
+         *     Options:
+         *     - include_soft_deleted: Also remove links to soft-deleted entities
+         *     - template_kind/runtime_kind: Filter cleanup to specific link types
+         *
+         *     Returns a report of findings and actions taken.
+         */
+        readonly post: operations["cleanup_orphaned_links_api_v1_game_links_integrity_cleanup_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/links/integrity/entity/{entity_kind}/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get links for an entity
+         * @description Get all links involving a specific entity (on template or runtime side).
+         */
+        readonly get: operations["get_links_for_entity_api_v1_game_links_integrity_entity__entity_kind___entity_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/links/integrity/report": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get link integrity report
+         * @description Get a comprehensive report on link system integrity.
+         *
+         *     Returns statistics on:
+         *     - Total links and their states
+         *     - Links by mapping type
+         *     - Orphaned links (links to deleted entities)
+         *     - Any integrity issues found
+         *
+         *     This is useful for monitoring link health and planning maintenance.
+         */
+        readonly get: operations["get_integrity_report_api_v1_game_links_integrity_report_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/links/integrity/validate/{link_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Validate a specific link
+         * @description Check if a specific link is valid (both entities exist).
+         */
+        readonly get: operations["validate_link_api_v1_game_links_integrity_validate__link_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/links/mappings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List available template-runtime mappings
+         * @description Returns the list of registered template→runtime mapping types.
+         */
+        readonly get: operations["list_mappings_api_v1_game_links_mappings_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/links/resolve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Resolve template to runtime entity
+         * @description Resolve a template entity reference to its linked runtime entity.
+         *
+         *     Uses the ObjectLink system to find the highest-priority active link
+         *     for the given template, considering activation conditions based on
+         *     the provided context (location, time of day, etc.).
+         *
+         *     Example use cases:
+         *     - Resolve a CharacterInstance to an NPC ID for interaction
+         *     - Find which NPC represents a character in a specific location
+         *     - Get the runtime item for an item template
+         */
+        readonly post: operations["resolve_template_api_v1_game_links_resolve_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/links/resolve-batch": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Batch resolve multiple templates
+         * @description Resolve multiple template references in a single request.
+         *
+         *     Useful for:
+         *     - Scene role bindings (resolve all character roles at once)
+         *     - Prefetching NPC IDs for a location
+         *     - Bulk interaction target resolution
+         *
+         *     Each ref can have its own context, or use shared_context for common values.
+         *     Per-ref context is merged with shared_context (per-ref takes precedence).
+         */
+        readonly post: operations["resolve_batch_api_v1_game_links_resolve_batch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/locations/": {
         readonly parameters: {
             readonly query?: never;
@@ -5321,11 +5549,6 @@ export interface paths {
         /**
          * Get Npc Romance Preferences
          * @description Get NPC's romance preferences for debugging/UI hints.
-         *
-         *     TODO: This should be gated by relationship level in production
-         *     (players shouldn't see exact preferences unless they've learned them)
-         *
-         *     Uses PluginContext for logging.
          */
         readonly get: operations["get_npc_romance_preferences_api_v1_game_romance_npc_preferences__npc_id__get"];
         readonly put?: never;
@@ -5349,21 +5572,30 @@ export interface paths {
          * Attempt Sensual Touch
          * @description Attempt a sensual touch interaction with an NPC.
          *
-         *     This launches a gizmo-based minigame where the player uses various
-         *     touch tools on the NPC. Success depends on:
-         *     - NPC preferences (tool, pattern, intensity)
-         *     - Current relationship level
-         *     - Player technique (handled by frontend gizmo)
-         *
-         *     Updates GameSession with:
-         *     - Arousal/pleasure scores
-         *     - Relationship changes
-         *     - Unlocked tools
-         *     - Romance flags
-         *
-         *     Uses PluginContext capability APIs for permission-aware data access.
+         *     Uses gizmo-based minigame where the player uses various touch tools.
+         *     Success depends on NPC preferences, relationship level, and player technique.
          */
         readonly post: operations["attempt_sensual_touch_api_v1_game_romance_sensual_touch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/romance/tool-unlocks": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Tool Unlock Levels
+         * @description Get all tool unlock thresholds.
+         */
+        readonly get: operations["get_tool_unlock_levels_api_v1_game_romance_tool_unlocks_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -5915,6 +6147,37 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/worlds/{world_id}/scheduler/tick": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Tick World Manually
+         * @description Manually trigger a simulation tick for a world.
+         *
+         *     This is primarily for development and testing. It runs one tick
+         *     of the simulation scheduler, advancing world time and simulating
+         *     NPCs according to their behavior routines.
+         *
+         *     Args:
+         *         world_id: World ID to tick
+         *         delta_seconds: Real-time seconds to simulate (default: 1.0)
+         *
+         *     Returns:
+         *         Tick results including NPCs simulated and time advanced
+         */
+        readonly post: operations["tick_world_manually_api_v1_game_worlds__world_id__scheduler_tick_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/worlds/{world_id}/schema-report": {
         readonly parameters: {
             readonly query?: never;
@@ -6386,66 +6649,6 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/llm-instances": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * List Llm Instances
-         * @description List LLM provider instances
-         *
-         *     Returns all configured LLM provider instances, optionally filtered by provider.
-         */
-        readonly get: operations["list_llm_instances_api_v1_llm_instances_get"];
-        readonly put?: never;
-        /**
-         * Create Llm Instance
-         * @description Create a new LLM provider instance
-         *
-         *     Admin only. Creates a new configuration instance for an LLM provider.
-         */
-        readonly post: operations["create_llm_instance_api_v1_llm_instances_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/llm-instances/{instance_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Llm Instance
-         * @description Get a specific LLM provider instance
-         */
-        readonly get: operations["get_llm_instance_api_v1_llm_instances__instance_id__get"];
-        readonly put?: never;
-        readonly post?: never;
-        /**
-         * Delete Llm Instance
-         * @description Delete an LLM provider instance
-         *
-         *     Admin only. Permanently removes an instance configuration.
-         */
-        readonly delete: operations["delete_llm_instance_api_v1_llm_instances__instance_id__delete"];
-        readonly options?: never;
-        readonly head?: never;
-        /**
-         * Update Llm Instance
-         * @description Update an LLM provider instance
-         *
-         *     Admin only. Updates configuration for an existing instance.
-         */
-        readonly patch: operations["update_llm_instance_api_v1_llm_instances__instance_id__patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/llm/cache/clear-stats": {
@@ -8214,6 +8417,35 @@ export interface paths {
         readonly patch: operations["update_provider_settings_api_v1_providers__provider_id__settings_patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/ai-providers/settings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Ai Provider Settings
+         * @description Get AI provider (LLM) settings for current user
+         *
+         *     Returns user-specific API keys and default provider configuration for prompt editing and AI features.
+         */
+        readonly get: operations["get_ai_provider_settings_api_v1_providers_ai_providers_settings_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Ai Provider Settings
+         * @description Update AI provider settings for current user
+         *
+         *     Updates user-specific API keys and default provider configuration.
+         *     Settings are stored per-user in the database.
+         */
+        readonly patch: operations["update_ai_provider_settings_api_v1_providers_ai_providers_settings_patch"];
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/detect": {
         readonly parameters: {
             readonly query?: never;
@@ -8250,6 +8482,66 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/llm-instances": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Llm Instances
+         * @description List LLM provider instances
+         *
+         *     Returns all configured LLM provider instances, optionally filtered by provider.
+         */
+        readonly get: operations["list_llm_instances_api_v1_providers_llm_instances_get"];
+        readonly put?: never;
+        /**
+         * Create Llm Instance
+         * @description Create a new LLM provider instance
+         *
+         *     Admin only. Creates a new configuration instance for an LLM provider.
+         */
+        readonly post: operations["create_llm_instance_api_v1_providers_llm_instances_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/llm-instances/{instance_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Llm Instance
+         * @description Get a specific LLM provider instance
+         */
+        readonly get: operations["get_llm_instance_api_v1_providers_llm_instances__instance_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete Llm Instance
+         * @description Delete an LLM provider instance
+         *
+         *     Admin only. Permanently removes an instance configuration.
+         */
+        readonly delete: operations["delete_llm_instance_api_v1_providers_llm_instances__instance_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Llm Instance
+         * @description Update an LLM provider instance
+         *
+         *     Admin only. Updates configuration for an existing instance.
+         */
+        readonly patch: operations["update_llm_instance_api_v1_providers_llm_instances__instance_id__patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/providers/pixverse/accounts/{account_id}/sync-assets": {
@@ -8447,6 +8739,33 @@ export interface paths {
          *     - Trigger any post-publish workflows
          */
         readonly post: operations["publish_semantic_pack_api_v1_semantic_packs__pack_id__publish_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/server/info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Server Info
+         * @description Get public server identity information.
+         *
+         *     This endpoint is used by clients to:
+         *     - Identify the server they're connected to
+         *     - Display server name in multi-server UI
+         *     - Store server metadata for account linking
+         *
+         *     No authentication required - this is public metadata.
+         */
+        readonly get: operations["get_server_info_api_v1_server_info_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -8782,6 +9101,144 @@ export interface paths {
          *         VersionResponse: API version and build information
          */
         readonly get: operations["get_version_api_v1_version_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/versions/assets/{asset_id}/ancestry": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Asset Ancestry
+         * @description Get all ancestors of an asset (parent, grandparent, etc.).
+         *
+         *     Returns ancestors ordered oldest first.
+         */
+        readonly get: operations["get_asset_ancestry_api_v1_versions_assets__asset_id__ancestry_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/versions/assets/{asset_id}/fork": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Fork Asset
+         * @description Create a new version family starting from this asset.
+         *
+         *     SEMANTICS:
+         *     - Creates a NEW family
+         *     - Source asset is NOT moved - it stays in its original family (if any)
+         *     - The new family starts empty; add versions via generation with version_intent="version"
+         *
+         *     Use this when you want to "branch off" in a new direction from an existing asset.
+         */
+        readonly post: operations["fork_asset_api_v1_versions_assets__asset_id__fork_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/versions/assets/{asset_id}/versions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Asset Versions
+         * @description Get all versions of an asset.
+         *
+         *     If the asset belongs to a version family, returns all versions in that family.
+         *     If the asset is standalone, returns just that asset.
+         */
+        readonly get: operations["get_asset_versions_api_v1_versions_assets__asset_id__versions_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/versions/families/{family_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Version Family
+         * @description Get a version family by ID.
+         *
+         *     Returns family metadata with derived version count and latest version number.
+         */
+        readonly get: operations["get_version_family_api_v1_versions_families__family_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/versions/families/{family_id}/set-head": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Set Family Head
+         * @description Set which asset is the HEAD (current best) version.
+         *
+         *     The specified asset must belong to the family.
+         */
+        readonly post: operations["set_family_head_api_v1_versions_families__family_id__set_head_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/versions/families/{family_id}/timeline": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Family Timeline
+         * @description Get timeline view of all versions in a family.
+         *
+         *     Returns versions ordered by version number with HEAD indicator.
+         */
+        readonly get: operations["get_family_timeline_api_v1_versions_families__family_id__timeline_get"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -9909,6 +10366,8 @@ export interface components {
             readonly media_type: components["schemas"]["MediaType"];
             /** Mime Type */
             readonly mime_type?: string | null;
+            /** Parent Asset Id */
+            readonly parent_asset_id?: number | null;
             /** Preview Key */
             readonly preview_key?: string | null;
             /** Preview Url */
@@ -9938,6 +10397,12 @@ export interface components {
             readonly thumbnail_url?: string | null;
             /** User Id */
             readonly user_id: number;
+            /** Version Family Id */
+            readonly version_family_id?: string | null;
+            /** Version Message */
+            readonly version_message?: string | null;
+            /** Version Number */
+            readonly version_number?: number | null;
             /** Width */
             readonly width?: number | null;
         };
@@ -10659,6 +11124,34 @@ export interface components {
             readonly version_to_pick_id: string;
         };
         /**
+         * CleanupRequest
+         * @description Request for orphaned link cleanup.
+         */
+        readonly CleanupRequest: {
+            /**
+             * Dry Run
+             * @description If True, only report what would be deleted without deleting
+             * @default true
+             */
+            readonly dry_run: boolean;
+            /**
+             * Include Soft Deleted
+             * @description If True, also remove links to soft-deleted entities
+             * @default false
+             */
+            readonly include_soft_deleted: boolean;
+            /**
+             * Runtime Kind
+             * @description Filter by runtime kind (e.g., 'npc')
+             */
+            readonly runtime_kind?: string | null;
+            /**
+             * Template Kind
+             * @description Filter by template kind (e.g., 'characterInstance')
+             */
+            readonly template_kind?: string | null;
+        };
+        /**
          * ClearExecutionsResponse
          * @description Response from clearing automation executions.
          */
@@ -10723,6 +11216,16 @@ export interface components {
             readonly character_id?: string | null;
             /** Expression Id */
             readonly expression_id?: string | null;
+            /**
+             * Influence Region
+             * @description Target region: full, foreground, background, subject:<id>, mask:<label>
+             */
+            readonly influence_region?: string | null;
+            /**
+             * Influence Type
+             * @description Expected influence: content, style, structure, mask, blend, replacement, reference
+             */
+            readonly influence_type?: string | null;
             /**
              * Intent
              * @description How this asset should be used relative to the intent
@@ -11159,6 +11662,17 @@ export interface components {
             /** Template Variables */
             readonly template_variables?: Record<string, unknown> | null;
             readonly to_scene?: components["schemas"]["SceneRefSchema"] | null;
+            /**
+             * Version Intent
+             * @description How to handle output asset versioning. 'new' = create standalone asset (default). 'version' = create new version of input asset (requires exactly one input).
+             * @default new
+             */
+            readonly version_intent: string;
+            /**
+             * Version Message
+             * @description What changed in this version (for version_intent='version'). E.g., 'Fixed hand anatomy'
+             */
+            readonly version_message?: string | null;
             readonly workspace?: (components["schemas"]["EntityRef"] | null) | null;
         };
         /** CreatePromptFamilyRequest */
@@ -11927,6 +12441,17 @@ export interface components {
              * @description Modified prompt text
              */
             readonly modifications?: string | null;
+        };
+        /**
+         * ForkRequest
+         * @description Request to fork an asset to a new family
+         */
+        readonly ForkRequest: {
+            /**
+             * Name
+             * @description Name for the new family
+             */
+            readonly name?: string | null;
         };
         /**
          * GameHotspotDTO
@@ -13103,7 +13628,7 @@ export interface components {
          * @description Content generation operation types
          * @enum {string}
          */
-        readonly OperationType: "text_to_image" | "image_to_image" | "text_to_video" | "image_to_video" | "video_extend" | "video_transition" | "fusion" | "frame_extraction";
+        readonly OperationType: "text_to_image" | "image_to_image" | "text_to_video" | "image_to_video" | "video_extend" | "video_transition" | "fusion" | "frame_extraction" | "image_edit" | "image_composite";
         /** PaginatedWorldsResponse */
         readonly PaginatedWorldsResponse: {
             /** Limit */
@@ -13155,17 +13680,35 @@ export interface components {
          * @description Request to attempt pickpocketing an NPC.
          */
         readonly PickpocketRequest: {
-            /** Base Success Chance */
+            /**
+             * Base Success Chance
+             * @description Base probability of success (0-1)
+             */
             readonly base_success_chance: number;
-            /** Detection Chance */
+            /**
+             * Detection Chance
+             * @description Probability of being detected (0-1)
+             */
             readonly detection_chance: number;
-            /** Npc Id */
+            /**
+             * Npc Id
+             * @description Target NPC ID
+             */
             readonly npc_id: number;
-            /** Session Id */
+            /**
+             * Session Id
+             * @description Session ID
+             */
             readonly session_id: number;
-            /** Slot Id */
+            /**
+             * Slot Id
+             * @description Slot ID where the NPC is assigned
+             */
             readonly slot_id: string;
-            /** World Id */
+            /**
+             * World Id
+             * @description World ID (optional)
+             */
             readonly world_id?: number | null;
         };
         /**
@@ -13173,14 +13716,26 @@ export interface components {
          * @description Response from pickpocket attempt.
          */
         readonly PickpocketResponse: {
-            /** Detected */
+            /**
+             * Detected
+             * @description Whether the player was detected
+             */
             readonly detected: boolean;
-            /** Message */
+            /**
+             * Message
+             * @description Human-readable result message
+             */
             readonly message: string;
-            /** Success */
+            /**
+             * Success
+             * @description Whether the pickpocket attempt succeeded
+             */
             readonly success: boolean;
-            /** Updated Flags */
-            readonly updated_flags: Record<string, unknown>;
+            /**
+             * Updated Flags
+             * @description Updated session flags
+             */
+            readonly updated_flags?: Record<string, unknown>;
         };
         /**
          * LogQueryResponse
@@ -13600,6 +14155,11 @@ export interface components {
              * @description Optional generation ID to link this interaction to
              */
             readonly generation_id?: number | null;
+            /**
+             * Instance Id
+             * @description Optional LLM instance ID for provider-specific configuration (e.g., cmd-llm instances)
+             */
+            readonly instance_id?: number | null;
             /**
              * Model Id
              * @description Model to use (e.g., 'gpt-4', 'claude-sonnet-4')
@@ -14198,6 +14758,115 @@ export interface components {
             /** Variables */
             readonly variables: Record<string, unknown>;
         };
+        /**
+         * ResolveBatchItem
+         * @description Single item in a batch resolution request.
+         */
+        readonly ResolveBatchItem: {
+            /** Context */
+            readonly context?: Record<string, unknown> | null;
+            /** Template Id */
+            readonly template_id: string;
+            /** Template Kind */
+            readonly template_kind: string;
+        };
+        /**
+         * ResolveBatchRequest
+         * @description Request to resolve multiple template references in one call.
+         */
+        readonly ResolveBatchRequest: {
+            /**
+             * Refs
+             * @description List of template references to resolve
+             */
+            readonly refs: readonly components["schemas"]["ResolveBatchItem"][];
+            /**
+             * Shared Context
+             * @description Context applied to all refs (merged with per-ref context)
+             */
+            readonly shared_context?: Record<string, unknown> | null;
+        };
+        /**
+         * ResolveBatchResponse
+         * @description Response from batch resolution.
+         */
+        readonly ResolveBatchResponse: {
+            /**
+             * Resolved Count
+             * @description Number of successfully resolved refs
+             */
+            readonly resolved_count: number;
+            /**
+             * Results
+             * @description Results keyed by 'templateKind:templateId'
+             */
+            readonly results: {
+                readonly [key: string]: components["schemas"]["ResolveTemplateResponse"];
+            };
+            /**
+             * Total Count
+             * @description Total number of refs requested
+             */
+            readonly total_count: number;
+        };
+        /**
+         * ResolveTemplateRequest
+         * @description Request to resolve a template entity to its runtime counterpart.
+         */
+        readonly ResolveTemplateRequest: {
+            /**
+             * Context
+             * @description Runtime context for activation-based resolution (e.g., location, time)
+             * @example {
+             *       "location.zone": "downtown",
+             *       "time.period": "night"
+             *     }
+             */
+            readonly context?: Record<string, unknown> | null;
+            /**
+             * Template Id
+             * @description Template entity ID (usually UUID)
+             * @example abc-123-uuid
+             */
+            readonly template_id: string;
+            /**
+             * Template Kind
+             * @description Template entity kind (e.g., 'characterInstance', 'itemTemplate')
+             * @example characterInstance
+             */
+            readonly template_kind: string;
+        };
+        /**
+         * ResolveTemplateResponse
+         * @description Response from template resolution.
+         */
+        readonly ResolveTemplateResponse: {
+            /**
+             * Resolved
+             * @description Whether resolution succeeded
+             */
+            readonly resolved: boolean;
+            /**
+             * Runtime Id
+             * @description Runtime entity ID
+             */
+            readonly runtime_id?: number | null;
+            /**
+             * Runtime Kind
+             * @description Runtime entity kind (e.g., 'npc', 'item')
+             */
+            readonly runtime_kind?: string | null;
+            /**
+             * Template Id
+             * @description Echo of requested template ID
+             */
+            readonly template_id: string;
+            /**
+             * Template Kind
+             * @description Echo of requested template kind
+             */
+            readonly template_kind: string;
+        };
         /** RollbackRequest */
         readonly RollbackRequest: {
             /** Commit Message */
@@ -14679,6 +15348,22 @@ export interface components {
             /** Updated Flags */
             readonly updated_flags: Record<string, unknown>;
         };
+        /**
+         * ServerInfo
+         * @description Public server identity information.
+         */
+        readonly ServerInfo: {
+            /** Api Version */
+            readonly api_version: string;
+            /** Server Description */
+            readonly server_description: string;
+            /** Server Id */
+            readonly server_id: string;
+            /** Server Name */
+            readonly server_name: string;
+            /** Version */
+            readonly version: string;
+        };
         /** ServiceCommand */
         readonly ServiceCommand: {
             /** Action */
@@ -14878,6 +15563,17 @@ export interface components {
             readonly triggered_by?: string | null;
         };
         /**
+         * SetHeadRequest
+         * @description Request to set the HEAD of a family
+         */
+        readonly SetHeadRequest: {
+            /**
+             * Asset Id
+             * @description Asset ID to set as HEAD
+             */
+            readonly asset_id: number;
+        };
+        /**
          * SHAStatsResponse
          * @description SHA hash coverage statistics
          */
@@ -15074,6 +15770,54 @@ export interface components {
             readonly success: boolean;
         };
         /**
+         * SyncSingleAssetRequest
+         * @description Request to sync a single PixVerse asset by its known ID.
+         */
+        readonly SyncSingleAssetRequest: {
+            /**
+             * Is Video
+             * @description Whether this is a video asset
+             * @default false
+             */
+            readonly is_video: boolean;
+            /**
+             * Media Url
+             * @description The full media.pixverse.ai URL
+             */
+            readonly media_url: string;
+            /**
+             * Pixverse Asset Id
+             * @description The PixVerse UUID from the media URL
+             */
+            readonly pixverse_asset_id: string;
+            /**
+             * Pixverse Media Type
+             * @description Type from URL path (e.g., 'i2i', 't2v')
+             */
+            readonly pixverse_media_type?: string | null;
+            /**
+             * Source Url
+             * @description Page URL where asset was found
+             */
+            readonly source_url?: string | null;
+        };
+        /**
+         * SyncSingleAssetResponse
+         * @description Response from single asset sync.
+         */
+        readonly SyncSingleAssetResponse: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /** Existed */
+            readonly existed: boolean;
+            /** Media Type */
+            readonly media_type: string;
+            /** Provider Asset Id */
+            readonly provider_asset_id: string;
+            /** Remote Url */
+            readonly remote_url: string;
+        };
+        /**
          * SyncStatus
          * @description Asset synchronization status
          * @enum {string}
@@ -15248,6 +15992,35 @@ export interface components {
             readonly test_passed: boolean;
             /** Total Key Phrases */
             readonly total_key_phrases: number;
+        };
+        /**
+         * TickWorldRequest
+         * @description Request to manually tick a world.
+         */
+        readonly TickWorldRequest: {
+            /**
+             * Delta Seconds
+             * @default 1
+             */
+            readonly delta_seconds: number;
+        };
+        /**
+         * TickWorldResponse
+         * @description Response from manual tick.
+         */
+        readonly TickWorldResponse: {
+            /** Delta Game Seconds */
+            readonly delta_game_seconds: number;
+            /** Npcs Simulated */
+            readonly npcs_simulated: number;
+            /** Tick Duration Ms */
+            readonly tick_duration_ms: number;
+            /** World Id */
+            readonly world_id: number;
+            /** World Time After */
+            readonly world_time_after: number;
+            /** World Time Before */
+            readonly world_time_before: number;
         };
         /**
          * TimelineAssetSummary
@@ -15672,6 +16445,38 @@ export interface components {
             readonly warnings: readonly string[];
         };
         /**
+         * VersionFamilyResponse
+         * @description Response for a version family
+         */
+        readonly VersionFamilyResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Description */
+            readonly description: string | null;
+            /** Head Asset Id */
+            readonly head_asset_id: number | null;
+            /** Id */
+            readonly id: string;
+            /** Latest Version Number */
+            readonly latest_version_number: number;
+            /** Name */
+            readonly name: string | null;
+            /** Tags */
+            readonly tags: readonly string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+            /** User Id */
+            readonly user_id: number;
+            /** Version Count */
+            readonly version_count: number;
+        };
+        /**
          * VersionResponse
          * @description API version information for client compatibility checks.
          */
@@ -15702,6 +16507,48 @@ export interface components {
              * @example 2024-01-15T14:25:00Z
              */
             readonly server_time: string;
+        };
+        /**
+         * VersionSummary
+         * @description Summary of an asset's version info
+         */
+        readonly VersionSummary: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /** Is Head */
+            readonly is_head: boolean;
+            /** Is Versioned */
+            readonly is_versioned: boolean;
+            /** Parent Asset Id */
+            readonly parent_asset_id: number | null;
+            /** Version Family Id */
+            readonly version_family_id: string | null;
+            /** Version Message */
+            readonly version_message: string | null;
+            /** Version Number */
+            readonly version_number: number | null;
+        };
+        /**
+         * VersionTimelineEntry
+         * @description A single entry in the version timeline
+         */
+        readonly VersionTimelineEntry: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /** Created At */
+            readonly created_at: string | null;
+            /** Description */
+            readonly description: string | null;
+            /** Is Head */
+            readonly is_head: boolean;
+            /** Parent Asset Id */
+            readonly parent_asset_id: number | null;
+            /** Thumbnail Url */
+            readonly thumbnail_url: string | null;
+            /** Version Message */
+            readonly version_message: string | null;
+            /** Version Number */
+            readonly version_number: number;
         };
         /**
          * WorldSchemaReport
@@ -17678,7 +18525,58 @@ export interface operations {
             };
         };
     };
+    readonly get_plugin_frontend_manifest_api_v1_admin_plugins__plugin_id__frontend_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly plugin_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_behavior_extensions_api_v1_admin_plugins_behavior_extensions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+        };
+    };
+    readonly list_all_frontend_manifests_api_v1_admin_plugins_frontend_all_get: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -17869,72 +18767,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["SystemMetrics"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_ai_provider_settings_api_v1_ai_providers_settings_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AIProviderSettings"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly update_ai_provider_settings_api_v1_ai_providers_settings_patch: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["AIProviderSettings"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AIProviderSettings"];
                 };
             };
             /** @description Validation Error */
@@ -19013,6 +19845,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["StorageSyncStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly sync_single_pixverse_asset_api_v1_assets_sync_pixverse_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SyncSingleAssetRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SyncSingleAssetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22669,6 +23536,227 @@ export interface operations {
             };
         };
     };
+    readonly cleanup_orphaned_links_api_v1_game_links_integrity_cleanup_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CleanupRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_links_for_entity_api_v1_game_links_integrity_entity__entity_kind___entity_id__get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly side?: string;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly entity_kind: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_integrity_report_api_v1_game_links_integrity_report_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly validate_link_api_v1_game_links_integrity_validate__link_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly link_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_mappings_api_v1_game_links_mappings_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+        };
+    };
+    readonly resolve_template_api_v1_game_links_resolve_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResolveTemplateRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResolveTemplateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly resolve_batch_api_v1_game_links_resolve_batch_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResolveBatchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResolveBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_locations_api_v1_game_locations__get: {
         readonly parameters: {
             readonly query?: never;
@@ -23313,6 +24401,28 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_tool_unlock_levels_api_v1_game_romance_tool_unlocks_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly [key: string]: number;
+                    };
                 };
             };
         };
@@ -24313,6 +25423,43 @@ export interface operations {
             };
         };
     };
+    readonly tick_world_manually_api_v1_game_worlds__world_id__scheduler_tick_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly world_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TickWorldRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TickWorldResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_world_schema_report_api_v1_game_worlds__world_id__schema_report_get: {
         readonly parameters: {
             readonly query?: never;
@@ -24917,176 +26064,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
-                };
-            };
-        };
-    };
-    readonly list_llm_instances_api_v1_llm_instances_get: {
-        readonly parameters: {
-            readonly query?: {
-                readonly include_disabled?: boolean;
-                readonly provider_id?: string | null;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LlmInstanceListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly create_llm_instance_api_v1_llm_instances_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["LlmInstanceCreate"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_llm_instance_api_v1_llm_instances__instance_id__get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly instance_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly delete_llm_instance_api_v1_llm_instances__instance_id__delete: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly instance_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly update_llm_instance_api_v1_llm_instances__instance_id__patch: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly instance_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["LlmInstanceUpdate"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -28018,6 +28995,72 @@ export interface operations {
             };
         };
     };
+    readonly get_ai_provider_settings_api_v1_providers_ai_providers_settings_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AIProviderSettings"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_ai_provider_settings_api_v1_providers_ai_providers_settings_patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AIProviderSettings"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AIProviderSettings"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly detect_provider_api_v1_providers_detect_post: {
         readonly parameters: {
             readonly query?: never;
@@ -28040,6 +29083,176 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ProviderDetectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_llm_instances_api_v1_providers_llm_instances_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly include_disabled?: boolean;
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_llm_instance_api_v1_providers_llm_instances_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["LlmInstanceCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_llm_instance_api_v1_providers_llm_instances__instance_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_llm_instance_api_v1_providers_llm_instances__instance_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_llm_instance_api_v1_providers_llm_instances__instance_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["LlmInstanceUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LlmInstanceResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28414,6 +29627,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_server_info_api_v1_server_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ServerInfo"];
                 };
             };
         };
@@ -28868,6 +30101,215 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+        };
+    };
+    readonly get_asset_ancestry_api_v1_versions_assets__asset_id__ancestry_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Maximum ancestors to return */
+                readonly max_depth?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["VersionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly fork_asset_api_v1_versions_assets__asset_id__fork_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ForkRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_asset_versions_api_v1_versions_assets__asset_id__versions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["VersionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_version_family_api_v1_versions_families__family_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly set_family_head_api_v1_versions_families__family_id__set_head_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetHeadRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_family_timeline_api_v1_versions_families__family_id__timeline_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["VersionTimelineEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
