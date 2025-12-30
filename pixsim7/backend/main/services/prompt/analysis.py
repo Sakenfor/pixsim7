@@ -108,6 +108,7 @@ class PromptAnalysisService:
         *,
         pack_ids: Optional[List[str]] = None,
         semantic_context: Optional[PromptSemanticContext] = None,
+        precomputed_analysis: Optional[Dict[str, Any]] = None,
     ) -> Tuple[PromptVersion, bool]:
         """
         Find or create PromptVersion with analysis.
@@ -118,12 +119,16 @@ class PromptAnalysisService:
 
         Args:
             text: Prompt text
-            analyzer_id: Analyzer to use (default: prompt:simple)
+            analyzer_id: Analyzer to use (default: prompt:simple). Set to None
+                if providing precomputed_analysis to skip re-analysis.
             author: Optional author identifier
             family_hint: Optional family UUID (for versioned prompts)
             force_reanalyze: Force re-analysis even if already analyzed
             pack_ids: Optional semantic pack IDs to extend role registry/hints
             semantic_context: Pre-built semantic context (overrides pack_ids)
+            precomputed_analysis: Pre-computed analysis from block composition.
+                If provided, skips analyzer call. Must match analyzer output shape:
+                {"prompt": "...", "blocks": [...], "tags": [...], "source": "composition"}
 
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
@@ -134,11 +139,17 @@ class PromptAnalysisService:
         if not self.db:
             raise RuntimeError("Database session required for analyze_and_attach_version")
 
-        analyzer_id = analyzer_id or "prompt:simple"
+        # Determine effective analyzer ID
+        # If precomputed_analysis provided, use its source; otherwise default to prompt:simple
+        if precomputed_analysis:
+            effective_analyzer = precomputed_analysis.get("source", "composition")
+        else:
+            effective_analyzer = analyzer_id or "prompt:simple"
+
         normalized = text.strip()
         prompt_hash = self._compute_hash(normalized)
 
-        # Try to find existing by hash
+        # Try to find existing by hash (dedup on text only, not analysis)
         result = await self.db.execute(
             select(PromptVersion).where(PromptVersion.prompt_hash == prompt_hash)
         )
@@ -146,20 +157,32 @@ class PromptAnalysisService:
 
         if existing:
             # Check if we need to (re)analyze
+            # Skip if we have precomputed analysis and existing has any analysis
+            if precomputed_analysis and existing.prompt_analysis and not force_reanalyze:
+                # Existing version already has analysis, reuse it
+                return existing, False
+
             needs_analysis = (
                 force_reanalyze
                 or not existing.prompt_analysis
-                or existing.prompt_analysis.get("analyzer_id") != analyzer_id
+                or (
+                    not precomputed_analysis
+                    and existing.prompt_analysis.get("analyzer_id") != effective_analyzer
+                )
             )
 
             if needs_analysis:
-                logger.info(f"Re-analyzing PromptVersion {existing.id} with {analyzer_id}")
-                analysis = await self.analyze(
-                    normalized,
-                    analyzer_id,
-                    pack_ids=pack_ids,
-                    semantic_context=semantic_context,
-                )
+                if precomputed_analysis:
+                    logger.info(f"Attaching precomputed analysis to PromptVersion {existing.id}")
+                    analysis = precomputed_analysis
+                else:
+                    logger.info(f"Re-analyzing PromptVersion {existing.id} with {effective_analyzer}")
+                    analysis = await self.analyze(
+                        normalized,
+                        effective_analyzer,
+                        pack_ids=pack_ids,
+                        semantic_context=semantic_context,
+                    )
                 existing.prompt_analysis = analysis
                 existing.updated_at = datetime.utcnow()
                 await self.db.flush()
@@ -167,14 +190,17 @@ class PromptAnalysisService:
             return existing, False
 
         # Create new PromptVersion with analysis
-        logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (analyzer={analyzer_id})")
-
-        analysis = await self.analyze(
-            normalized,
-            analyzer_id,
-            pack_ids=pack_ids,
-            semantic_context=semantic_context,
-        )
+        if precomputed_analysis:
+            logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (precomputed from {effective_analyzer})")
+            analysis = precomputed_analysis
+        else:
+            logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (analyzer={effective_analyzer})")
+            analysis = await self.analyze(
+                normalized,
+                effective_analyzer,
+                pack_ids=pack_ids,
+                semantic_context=semantic_context,
+            )
 
         new_version = PromptVersion(
             prompt_text=normalized,

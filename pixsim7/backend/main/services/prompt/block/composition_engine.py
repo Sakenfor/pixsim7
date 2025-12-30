@@ -2,14 +2,127 @@
 
 Intelligently combines multiple ActionBlocks into new composite prompts.
 Handles compatibility validation, ordering, and formatting.
+
+When composing from blocks, emits both the assembled prompt text AND a
+structured block trace with derived analysis, allowing downstream consumers
+to skip re-analysis when the prompt originates from the block system.
 """
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.prompt.block.action import ActionBlockService
+
+
+def derive_analysis_from_blocks(
+    blocks: List[PromptBlock],
+    assembled_prompt: str,
+) -> Dict[str, Any]:
+    """
+    Derive prompt_analysis from composed blocks without re-parsing.
+
+    Produces output matching the analyzer schema exactly:
+    {
+        "prompt": "<assembled text>",
+        "blocks": [{"role": "...", "text": "..."}],
+        "tags": ["has:character", ...],
+        "source": "composition"
+    }
+
+    Args:
+        blocks: The PromptBlock records used in composition
+        assembled_prompt: The final assembled prompt string
+
+    Returns:
+        Analysis dict matching analyzer output shape
+    """
+    # Build blocks array from source blocks
+    analysis_blocks: List[Dict[str, Any]] = []
+    for block in blocks:
+        analysis_block = {
+            "role": block.block_metadata.get("role") or _infer_role_from_block(block),
+            "text": block.prompt,
+        }
+        # Include category if available (LLM analyzers add this)
+        category = block.block_metadata.get("category")
+        if category:
+            analysis_block["category"] = category
+        analysis_blocks.append(analysis_block)
+
+    # Derive tags from blocks (matching _derive_tags_from_blocks logic)
+    tags = _derive_tags_from_composition_blocks(blocks)
+
+    return {
+        "prompt": assembled_prompt,
+        "blocks": analysis_blocks,
+        "tags": tags,
+        "source": "composition",  # Flag indicating this came from block composition
+    }
+
+
+def _infer_role_from_block(block: PromptBlock) -> str:
+    """Infer role from block tags/metadata if not explicitly set."""
+    tags = block.tags or {}
+    block_type = block.block_metadata.get("block_type", "")
+
+    # Check tags first
+    if "character" in tags or "character" in str(tags.values()):
+        return "character"
+    if "camera" in tags or "camera" in block_type:
+        return "camera"
+    if "action" in tags or "action" in block_type or "choreography" in block_type:
+        return "action"
+    if "setting" in tags or "location" in tags:
+        return "setting"
+    if "mood" in tags or "style" in block_type:
+        return "mood"
+
+    # Default based on kind
+    if block.kind == "transition":
+        return "action"
+
+    return "other"
+
+
+def _derive_tags_from_composition_blocks(blocks: List[PromptBlock]) -> List[str]:
+    """
+    Derive tags from PromptBlock records.
+
+    Merges block-level tags and adds role presence tags.
+    Matches format from dsl_adapter._derive_tags_from_blocks.
+    """
+    role_tags: Set[str] = set()
+    keyword_tags: Set[str] = set()
+
+    for block in blocks:
+        # Add role presence tag
+        role = block.block_metadata.get("role") or _infer_role_from_block(block)
+        if role and role != "other":
+            role_tags.add(f"has:{role}")
+
+        # Extract keyword-based tags from block text
+        text = (block.prompt or "").lower()
+        if any(word in text for word in ("gentle", "soft", "tender")):
+            keyword_tags.add("tone:soft")
+        if any(word in text for word in ("intense", "harsh", "rough", "violent")):
+            keyword_tags.add("tone:intense")
+        if any(word in text for word in ("pov", "first-person", "viewpoint")):
+            keyword_tags.add("camera:pov")
+        if any(word in text for word in ("close-up", "close up", "tight framing")):
+            keyword_tags.add("camera:closeup")
+
+        # Include existing block tags (convert to flat format)
+        block_tags = block.tags or {}
+        if isinstance(block_tags, dict):
+            for key, value in block_tags.items():
+                if value is True:
+                    keyword_tags.add(key)
+                elif isinstance(value, str):
+                    keyword_tags.add(f"{key}:{value}")
+
+    return sorted(role_tags) + sorted(keyword_tags)
 
 
 class BlockCompositionEngine:
@@ -79,11 +192,16 @@ class BlockCompositionEngine:
             created_by
         )
 
+        # Derive analysis from blocks (skip re-analysis downstream)
+        derived_analysis = derive_analysis_from_blocks(blocks, assembled)
+
         return {
             "success": True,
             "assembled_prompt": assembled,
             "composite_block_id": str(composite_block.id),
             "composite_block_string_id": composite_block.block_id,
+            # Derived analysis from blocks - downstream can use this instead of re-analyzing
+            "derived_analysis": derived_analysis,
             "metadata": {
                 "blocks_used": len(blocks),
                 "char_count": len(assembled),
