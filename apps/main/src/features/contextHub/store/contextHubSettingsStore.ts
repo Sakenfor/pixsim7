@@ -9,7 +9,7 @@ interface ContextHubSettingsState {
 export const useContextHubSettingsStore = create<ContextHubSettingsState>()(
   persist(
     (set) => ({
-      enableMediaCardContextMenu: false,
+      enableMediaCardContextMenu: true,
       setEnableMediaCardContextMenu: (value) =>
         set({ enableMediaCardContextMenu: value }),
     }),

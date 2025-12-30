@@ -191,6 +191,28 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
               await controller.reuploadAsset(a, targetProviderId);
             },
+            onEnrichMetadata: async () => {
+              try {
+                const response = await fetch(`/api/v1/assets/${a.id}/enrich`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                });
+                if (!response.ok) {
+                  const error = await response.json();
+                  alert(`Failed to refresh metadata: ${error.detail || 'Unknown error'}`);
+                  return;
+                }
+                const result = await response.json();
+                if (result.enriched) {
+                  // Refresh the asset list to show updated data
+                  controller.refresh();
+                } else {
+                  alert(result.message || 'No metadata to refresh');
+                }
+              } catch (err) {
+                alert(`Failed to refresh metadata: ${err}`);
+              }
+            },
           };
 
           return (

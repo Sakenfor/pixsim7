@@ -203,7 +203,12 @@ export function ReviewGallerySurface() {
           >
             <MediaCard
               {...mediaCardPropsFromAsset(asset)}
-              actions={controller.getAssetActions(asset)}
+              actions={{
+                ...controller.getAssetActions(asset),
+                onApprove: () => handleAccept(asset.id),
+                onReject: () => handleReject(asset.id),
+              }}
+              overlayPresetId="media-card-review"
               contextMenuAsset={asset}
               contextMenuSelection={controller.selectedAssets}
             />

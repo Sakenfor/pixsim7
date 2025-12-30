@@ -30,6 +30,7 @@ import {
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import type { AssetModel } from '@features/assets';
+import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { Icon } from '@lib/icons';
 import {
   OPERATION_METADATA,
@@ -125,7 +126,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
       : '!bg-white/80 dark:!bg-white/30';
 
   // If we have actions, create a menu widget
-  if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload)) {
+  if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload || actions.onEnrichMetadata)) {
     const menuItems: MenuItem[] = [];
 
     if (actions.onOpenDetails) {
@@ -143,6 +144,15 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         label: 'Upload to provider…',
         icon: 'upload',
         onClick: () => actions.onReupload?.(id),
+      });
+    }
+
+    if (actions.onEnrichMetadata) {
+      menuItems.push({
+        id: 'enrich',
+        label: 'Refresh metadata',
+        icon: 'refresh',
+        onClick: () => actions.onEnrichMetadata?.(id),
       });
     }
 
@@ -507,6 +517,83 @@ function SlotPickerContent({
 export function createQuickAddButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   // Quick add is now integrated into the generation button group
   return null;
+}
+
+/**
+ * Create queue status badge widget (top-right, below status)
+ * Shows when asset is in the generation queue with operation type indicator
+ */
+export function createQueueStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { id } = props;
+
+  return {
+    id: 'queue-status',
+    type: 'custom',
+    position: { anchor: 'top-right', offset: { x: -8, y: 32 } },
+    visibility: { trigger: 'always' },
+    priority: 15,
+    render: () => {
+      // Subscribe to queue state reactively
+      const mainQueue = useGenerationQueueStore((s) => s.mainQueue);
+      const multiQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
+
+      // Check if this asset is in either queue
+      const inMainQueue = mainQueue.find((q) => q.asset.id === id);
+      const inMultiQueue = multiQueue.find((q) => q.asset.id === id);
+      const queueEntry = inMainQueue || inMultiQueue;
+
+      if (!queueEntry) return null;
+
+      // Get operation label
+      const operation = queueEntry.operation;
+      const metadata = operation ? OPERATION_METADATA[operation] : null;
+      const label = metadata?.label || 'Queued';
+      const icon = metadata?.icon || 'clock';
+
+      return (
+        <div
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-500 text-white shadow-sm"
+          title={`Queued for ${label}`}
+        >
+          <Icon name={icon} className="w-3 h-3" />
+          <span className="max-w-[60px] truncate">{label}</span>
+        </div>
+      );
+    },
+  };
+}
+
+/**
+ * Create selection status badge widget (bottom-left corner)
+ * Shows when asset is part of the global selection
+ */
+export function createSelectionStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { id } = props;
+
+  return {
+    id: 'selection-status',
+    type: 'custom',
+    position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
+    visibility: { trigger: 'always' },
+    priority: 12,
+    render: () => {
+      // Subscribe to selection state reactively
+      const isSelected = useAssetSelectionStore((s) => s.isSelected(id));
+      const selectionCount = useAssetSelectionStore((s) => s.selectedAssets.length);
+
+      if (!isSelected) return null;
+
+      return (
+        <div
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-purple-500 text-white shadow-sm"
+          title={`Selected (${selectionCount} total)`}
+        >
+          <Icon name="check" className="w-3 h-3" />
+          {selectionCount > 1 && <span>{selectionCount}</span>}
+        </div>
+      );
+    },
+  };
 }
 
 /**
@@ -922,6 +1009,8 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
   const widgets = [
     createPrimaryIconWidget(props),
     createStatusWidget(props),
+    createQueueStatusWidget(props),
+    createSelectionStatusWidget(props),
     // Note: Generation status widget is opt-in via customWidgets or overlay config
     createDurationWidget(props),
     createProviderWidget(props),

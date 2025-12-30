@@ -44,6 +44,7 @@ export interface MediaCardActions {
   onArchive?: (id: number) => void;
   onDelete?: (id: number) => void;
   onReupload?: (id: number) => void;
+  onEnrichMetadata?: (id: number) => void;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
   onQuickAdd?: (id: number) => void;
