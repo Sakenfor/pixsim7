@@ -11,6 +11,7 @@ import { ThemedIcon } from '@lib/icons';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 import { mediaCardPropsFromAsset } from './shared';
+import { enrichAsset } from '@lib/api/assets';
 
 
 interface RemoteGallerySourceProps {
@@ -193,24 +194,15 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             },
             onEnrichMetadata: async () => {
               try {
-                const response = await fetch(`/api/v1/assets/${a.id}/enrich`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                });
-                if (!response.ok) {
-                  const error = await response.json();
-                  alert(`Failed to refresh metadata: ${error.detail || 'Unknown error'}`);
-                  return;
-                }
-                const result = await response.json();
+                const result = await enrichAsset(a.id);
                 if (result.enriched) {
-                  // Refresh the asset list to show updated data
                   controller.refresh();
                 } else {
                   alert(result.message || 'No metadata to refresh');
                 }
-              } catch (err) {
-                alert(`Failed to refresh metadata: ${err}`);
+              } catch (err: any) {
+                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+                alert(`Failed to refresh metadata: ${detail}`);
               }
             },
           };

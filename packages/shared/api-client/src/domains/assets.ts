@@ -4,7 +4,12 @@ import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
 export type AssetResponse = ApiComponents['schemas']['AssetResponse'];
 export type AssetListResponse = ApiComponents['schemas']['AssetListResponse'];
 export type ExtractFrameRequest = ApiComponents['schemas']['ExtractFrameRequest'];
-export type ReuploadAssetRequest = ApiComponents['schemas']['ReuploadAssetRequest'];
+export type EnrichAssetResponse = ApiComponents['schemas']['EnrichAssetResponse'];
+
+// Manually defined - not in OpenAPI spec
+export interface ReuploadAssetRequest {
+  provider_id: string;
+}
 
 export type ListAssetsQuery =
   ApiOperations['list_assets_api_v1_assets_get']['parameters']['query'];
@@ -72,6 +77,14 @@ export function createAssetsApi(client: PixSimApiClient) {
       return client.get<FilterMetadataResponse>('/assets/filter-metadata', {
         params: includeCounts ? { include_counts: true } : undefined,
       });
+    },
+
+    /**
+     * Enrich an asset by fetching metadata from the provider.
+     * Creates a synthetic Generation record with prompt/params.
+     */
+    async enrichAsset(assetId: number): Promise<EnrichAssetResponse> {
+      return client.post<EnrichAssetResponse>(`/assets/${assetId}/enrich`);
     },
   };
 }

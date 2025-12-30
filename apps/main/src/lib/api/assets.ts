@@ -9,6 +9,7 @@ import { createAssetsApi } from '@pixsim7/api-client/domains';
 import type {
   AssetListResponse,
   AssetResponse,
+  EnrichAssetResponse,
   ExtractFrameRequest,
   FilterDefinition,
   FilterMetadataResponse,
@@ -20,6 +21,7 @@ import type {
 export type {
   AssetListResponse,
   AssetResponse,
+  EnrichAssetResponse,
   ExtractFrameRequest,
   ReuploadAssetRequest,
   ListAssetsQuery,
@@ -52,6 +54,12 @@ export const archiveAsset = assetsApi.archiveAsset;
 export const extractFrame = assetsApi.extractFrame;
 
 export const uploadAssetToProvider = assetsApi.uploadAssetToProvider;
+
+/**
+ * Enrich an asset by fetching metadata from the provider.
+ * Creates a synthetic Generation record with prompt/params.
+ */
+export const enrichAsset = assetsApi.enrichAsset;
 
 /**
  * Download an asset to the user's device.
