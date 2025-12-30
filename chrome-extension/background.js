@@ -505,6 +505,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
+  // Sync PixVerse asset to PixSim7 (register by external ID without re-upload)
+  if (message.action === 'syncPixverseAsset') {
+    (async () => {
+      try {
+        const { mediaUrl, pixverseAssetId, pixverseMediaType, isVideo } = message;
+        const settings = await getSettings();
+        if (!settings.pixsim7Token) throw new Error('Not logged in');
+
+        // Extract source context from sender tab
+        const sourceUrl = sender?.tab?.url;
+
+        const syncUrl = `${settings.backendUrl}/api/v1/assets/sync-pixverse`;
+        const resp = await fetch(syncUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${settings.pixsim7Token}`,
+          },
+          body: JSON.stringify({
+            pixverse_asset_id: pixverseAssetId,
+            media_url: mediaUrl,
+            pixverse_media_type: pixverseMediaType,
+            is_video: isVideo || false,
+            source_url: sourceUrl,
+          }),
+        });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(`Sync failed: ${resp.status} ${txt}`);
+        }
+        const data = await resp.json();
+        sendResponse({ success: true, data, existed: data.existed || false });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Quick generate video from image
   if (message.action === 'quickGenerate') {
     (async () => {

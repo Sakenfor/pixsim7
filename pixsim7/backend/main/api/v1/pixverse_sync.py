@@ -421,3 +421,114 @@ async def sync_pixverse_assets(
         "videos": video_stats,
         "images": image_stats,
     }
+
+
+# ===== SINGLE ASSET SYNC (from extension badge click) =====
+
+
+class SyncSingleAssetRequest(BaseModel):
+    """Request to sync a single PixVerse asset by its known ID."""
+    pixverse_asset_id: str = Field(description="The PixVerse UUID from the media URL")
+    media_url: str = Field(description="The full media.pixverse.ai URL")
+    pixverse_media_type: Optional[str] = Field(
+        None,
+        description="Type from URL path (e.g., 'i2i', 't2v')"
+    )
+    is_video: bool = Field(False, description="Whether this is a video asset")
+    source_url: Optional[str] = Field(None, description="Page URL where asset was found")
+
+
+class SyncSingleAssetResponse(BaseModel):
+    """Response from single asset sync."""
+    asset_id: int
+    existed: bool
+    provider_asset_id: str
+    media_type: str
+    remote_url: str
+
+
+# Create a separate router for the simpler sync endpoint (mounted at /assets level)
+sync_single_router = APIRouter(tags=["assets", "pixverse"])
+
+
+@sync_single_router.post("/assets/sync-pixverse", response_model=SyncSingleAssetResponse)
+async def sync_single_pixverse_asset(
+    body: SyncSingleAssetRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_database),
+):
+    """
+    Sync a single PixVerse asset to PixSim7 by its known ID.
+
+    Used by the Chrome extension badge when clicking on images on pixverse.ai.
+    This does NOT call the PixVerse API - it just registers the asset with
+    the known URL and ID extracted from the media URL.
+
+    If the asset already exists (same provider_asset_id), returns the existing one.
+    """
+    asset_id = body.pixverse_asset_id
+    media_url = body.media_url
+
+    # Clean the URL (remove processing params)
+    clean_url = media_url.split('?')[0] if media_url else media_url
+
+    # Check if already exists
+    stmt = select(Asset).where(
+        Asset.user_id == current_user.id,
+        Asset.provider_id == "pixverse",
+        Asset.provider_asset_id == asset_id,
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        logger.debug(
+            "pixverse_single_sync_exists",
+            asset_id=asset_id,
+            local_asset_id=existing.id,
+        )
+        return SyncSingleAssetResponse(
+            asset_id=existing.id,
+            existed=True,
+            provider_asset_id=asset_id,
+            media_type=existing.media_type.value,
+            remote_url=existing.remote_url or clean_url,
+        )
+
+    # Determine media type
+    media_type = MediaType.VIDEO if body.is_video else MediaType.IMAGE
+
+    # Build metadata
+    media_metadata = {
+        "source": "extension_badge",
+        "pixverse_media_type": body.pixverse_media_type,
+    }
+    if body.source_url:
+        media_metadata["source_url"] = body.source_url
+
+    # Create new asset
+    asset = await add_asset(
+        db,
+        user_id=current_user.id,
+        media_type=media_type,
+        provider_id="pixverse",
+        provider_asset_id=asset_id,
+        remote_url=clean_url,
+        sync_status=SyncStatus.REMOTE,
+        media_metadata=media_metadata,
+    )
+
+    logger.info(
+        "pixverse_single_sync_created",
+        pixverse_asset_id=asset_id,
+        local_asset_id=asset.id,
+        media_type=media_type.value,
+    )
+
+    return SyncSingleAssetResponse(
+        asset_id=asset.id,
+        existed=False,
+        provider_asset_id=asset_id,
+        media_type=media_type.value,
+        remote_url=clean_url,
+    )

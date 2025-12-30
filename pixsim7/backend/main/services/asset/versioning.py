@@ -53,7 +53,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
     def get_entity_model(self) -> type:
         return Asset
 
-    def get_family_id_field(self, entity: Asset) -> Optional[str]:
+    def get_family_id_field(self, entity: Asset) -> Optional[UUID]:
         return entity.version_family_id
 
     def get_parent_id(self, entity: Asset) -> Optional[int]:
@@ -72,7 +72,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         return family.head_asset_id
 
     def build_family_id_filter(self, family_id: UUID):
-        return Asset.version_family_id == str(family_id)
+        return Asset.version_family_id == family_id
 
     def build_entity_id_filter(self, entity_id: int):
         return Asset.id == entity_id
@@ -168,7 +168,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
 
         Uses SELECT FOR UPDATE on family to prevent concurrent version assignment.
         """
-        family_id = UUID(input_asset.version_family_id)
+        family_id = input_asset.version_family_id
         next_version = await self.get_next_version_number(family_id, lock=True)
 
         return VersionContext(
@@ -199,7 +199,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         await self.db.flush()  # Get family.id
 
         # UPGRADE source asset to v1 of this family
-        source_asset.version_family_id = str(family.id)
+        source_asset.version_family_id = family.id
         source_asset.version_number = 1
         source_asset.parent_asset_id = None  # v1 has no parent
         source_asset.version_message = "Initial version"
@@ -229,7 +229,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         result = await self.db.execute(
             select(Asset).where(
                 Asset.id == asset_id,
-                Asset.version_family_id == str(family_id)
+                Asset.version_family_id == family_id
             )
         )
         asset = result.scalar_one_or_none()
@@ -260,7 +260,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         """
         result = await self.db.execute(
             select(Asset.id)
-            .where(Asset.version_family_id == str(family_id))
+            .where(Asset.version_family_id == family_id)
             .order_by(Asset.version_number.desc())
             .limit(1)
         )

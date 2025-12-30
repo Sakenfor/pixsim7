@@ -8,8 +8,10 @@ NO complex business logic (in AssetService)
 """
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import BigInteger, JSON
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from pgvector.sqlalchemy import Vector
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain
@@ -260,9 +262,9 @@ class Asset(SQLModel, table=True):
     # ===== VERSIONING =====
     # Git-like versioning for asset iterations (fix anatomy, improve lighting, etc.)
     # See AssetVersionFamily for the family grouping model.
-    version_family_id: Optional[str] = Field(
+    version_family_id: Optional[UUID] = Field(
         default=None,
-        index=True,
+        sa_column=Column(PG_UUID(as_uuid=True), index=True, nullable=True),
         description="UUID of version family (NULL = standalone asset, not versioned)"
     )
     version_number: Optional[int] = Field(

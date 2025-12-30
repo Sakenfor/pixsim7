@@ -3,6 +3,52 @@
   const MENU_CLASS = 'pixsim7-provider-menu';
   const TOAST_CLASS = 'pixsim7-toast';
 
+  // ===== PixVerse Site Detection & ID Extraction =====
+
+  function isPixverseSite() {
+    return window.location.hostname.includes('pixverse.ai');
+  }
+
+  /**
+   * Extract PixVerse asset UUID from media.pixverse.ai URLs
+   * Example: https://media.pixverse.ai/pixverse%2Fi2i%2Fori%2Fb9c8fa2a-ff80-4fd6-a233-beae0b167b93.jpg
+   * Returns: { uuid: 'b9c8fa2a-ff80-4fd6-a233-beae0b167b93', mediaType: 'i2i', variant: 'ori' } or null
+   */
+  function extractPixverseAssetInfo(url) {
+    if (!url) return null;
+    try {
+      const parsed = new URL(url);
+      if (!parsed.hostname.includes('pixverse.ai')) return null;
+
+      // Decode URL-encoded path: pixverse%2Fi2i%2Fori%2Fuuid.ext -> pixverse/i2i/ori/uuid.ext
+      const decodedPath = decodeURIComponent(parsed.pathname);
+
+      // Match pattern: /pixverse/<type>/<variant>/<uuid>.<ext>
+      // Types seen: i2i (image-to-image), t2v (text-to-video), etc.
+      const match = decodedPath.match(/\/pixverse\/([^\/]+)\/([^\/]+)\/([a-f0-9-]{36})\.[a-z]+$/i);
+      if (match) {
+        return {
+          uuid: match[3],
+          mediaType: match[1], // e.g., 'i2i', 't2v'
+          variant: match[2],   // e.g., 'ori', 'thumb'
+        };
+      }
+
+      // Fallback: just find any UUID in the path
+      const uuidMatch = decodedPath.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+      if (uuidMatch) {
+        return { uuid: uuidMatch[1], mediaType: null, variant: null };
+      }
+    } catch (e) {
+      // Invalid URL
+    }
+    return null;
+  }
+
+  function isPixverseMediaUrl(url) {
+    return url && url.includes('media.pixverse.ai');
+  }
+
   const STYLE = `
     .${BADGE_CLASS} {
       position: fixed; z-index: 2147483646;
@@ -104,6 +150,35 @@
     } catch (e) { showToast(e.message || 'Upload error', false); }
   }
 
+  /**
+   * Sync a PixVerse asset to PixSim7 (no re-upload, just register by ID)
+   */
+  async function syncPixverseAsset(mediaUrl, assetInfo, isVideo = false) {
+    try {
+      const settings = await getSettings();
+      if (!settings.pixsim7Token) { showToast('Login to PixSim7 first', false); return; }
+
+      const res = await chrome.runtime.sendMessage({
+        action: 'syncPixverseAsset',
+        mediaUrl,
+        pixverseAssetId: assetInfo.uuid,
+        pixverseMediaType: assetInfo.mediaType,
+        isVideo,
+      });
+
+      if (res && res.success) {
+        const kindLabel = isVideo ? 'Video' : 'Image';
+        if (res.existed) {
+          showToast(`${kindLabel} already synced`, true);
+        } else {
+          showToast(`${kindLabel} synced to PixSim7`, true);
+        }
+      } else {
+        showToast(res?.error || 'Sync failed', false);
+      }
+    } catch (e) { showToast(e.message || 'Sync error', false); }
+  }
+
   let badgeEl = null;
   let currentImg = null;
   let currentVideo = null;
@@ -117,19 +192,26 @@
     document.documentElement.appendChild(badgeEl);
     badgeEl.style.display = 'none';
 
-    // Click to upload
+    // Click to upload or sync
     badgeEl.addEventListener('click', async (e) => {
       e.preventDefault(); e.stopPropagation();
       const isVideo = currentVideo && currentVideo.src;
       const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
       if (!src) return;
 
-      // Ctrl/Cmd-click => always create asset (even if provider upload fails).
-      // Plain click => only create asset if provider upload succeeds.
-      const forceAsset = !!(e.ctrlKey || e.metaKey);
-      const ensureAsset = forceAsset;
+      // On PixVerse site with identifiable PixVerse media: sync instead of upload
+      const onPixverse = isPixverseSite();
+      const assetInfo = isPixverseMediaUrl(src) ? extractPixverseAssetInfo(src) : null;
 
-      await upload(src, defProvCache, isVideo, { ensureAsset });
+      if (onPixverse && assetInfo) {
+        await syncPixverseAsset(src, assetInfo, isVideo);
+      } else {
+        // Ctrl/Cmd-click => always create asset (even if provider upload fails).
+        // Plain click => only create asset if provider upload succeeds.
+        const forceAsset = !!(e.ctrlKey || e.metaKey);
+        const ensureAsset = forceAsset;
+        await upload(src, defProvCache, isVideo, { ensureAsset });
+      }
     });
     // Right-click provider menu
     badgeEl.addEventListener('contextmenu', async (e) => {
@@ -231,7 +313,7 @@
     currentImg = img;
     currentVideo = null;
     positionBadgeFor(img);
-    updateBadgeLabel(false);
+    updateBadgeLabel(false, img.src);
   }
 
   function onVideoEnter(e) {
@@ -249,7 +331,7 @@
     currentVideo = video;
     currentImg = null;
     positionBadgeFor(video);
-    updateBadgeLabel(true);
+    updateBadgeLabel(true, video.src);
   }
 
   function onImgLeave(e) {
@@ -257,12 +339,23 @@
     scheduleHide();
   }
 
-  function updateBadgeLabel(isVideo) {
+  function updateBadgeLabel(isVideo, mediaSrc = null) {
     if (!badgeEl) return;
-    if (isVideo) {
+    // On PixVerse site with PixVerse media URL: show sync badge
+    const onPixverse = isPixverseSite();
+    const isPixverseMedia = mediaSrc && isPixverseMediaUrl(mediaSrc);
+    const assetInfo = isPixverseMedia ? extractPixverseAssetInfo(mediaSrc) : null;
+
+    if (onPixverse && assetInfo) {
+      // Show sync icon for PixVerse images we can identify
+      badgeEl.innerHTML = '<span style="font-size:12px">🔗</span><span>Sync</span>';
+      badgeEl.title = `Sync to PixSim7 (ID: ${assetInfo.uuid.slice(0, 8)}...)`;
+    } else if (isVideo) {
       badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
+      badgeEl.title = 'Save video to PixSim7';
     } else {
       badgeEl.innerHTML = '<span style="font-size:12px">⬆</span><span>PixSim7</span>';
+      badgeEl.title = 'Save image to PixSim7';
     }
   }
 
