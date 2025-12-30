@@ -1,8 +1,8 @@
 /**
  * Enhanced Gizmo Pack - Extends base pack with additional tools
  *
- * Note: Feather tool has been moved to registry-romance.ts to avoid duplication.
- * Import featherTool from there if needed.
+ * Note: Romance tools (feather, caress, etc.) are now loaded dynamically
+ * from the romance/touch-tools/sensation-tools plugins.
  */
 
 // Re-export base gizmos and tools for convenience
@@ -16,12 +16,5 @@ export {
   defaultTools,
 } from './registry';
 
-// Re-export feather from romance pack (canonical location)
-export { featherTool } from './registry-romance';
-
-// ============================================================================
-// Helper exports
-// ============================================================================
-
-// Enhanced tools are now consolidated in romance pack
-export { romanceTools as enhancedTools } from './registry-romance';
+// Re-export body map gizmo from romance pack
+export { bodyMapGizmo } from './registry-romance';
