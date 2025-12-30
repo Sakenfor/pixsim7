@@ -2,13 +2,21 @@
 Conversation Style derivation plugin.
 
 Derives NPC conversation style from personality, relationships, and/or mood.
-Adapts to whatever stats are available.
+Delegates to the canonical implementation in domain/game/personality/conversation_style.py.
+
+This plugin serves as a brain-engine adapter for the shared conversation style logic.
 """
 
 from typing import List, Optional, Dict, Any
 
 from ..derivation_plugin import BaseDerivationPlugin
 from ..types import DerivationContext, DerivationResult
+
+# Import canonical conversation style logic
+from pixsim7.backend.main.domain.game.personality import (
+    derive_conversation_style,
+    STYLE_THRESHOLDS,
+)
 
 
 class ConversationStyleDerivation(BaseDerivationPlugin):
@@ -28,14 +36,18 @@ class ConversationStyleDerivation(BaseDerivationPlugin):
     Configurable via world meta:
         world.meta.brain_config.plugins.conversation_style = {
             "personality_thresholds": {
-                "enthusiastic": {"extraversion": 70, "agreeableness": 60},
-                "playful": {"extraversion": 60, "openness": 70},
+                "enthusiastic": {"energy_gte": 70, "warmth_gte": 65},
+                "playful": {"energy_gte": 60, "warmth_between": [40, 70]},
             },
             "affinity_thresholds": {
                 "friendly": 40,
                 "affectionate": 80,
             }
         }
+
+    Note: This plugin uses the canonical conversation style logic from
+    domain/game/personality/conversation_style.py. Custom thresholds
+    can override the defaults but the core algorithm is shared.
     """
 
     @property
@@ -63,100 +75,63 @@ class ConversationStyleDerivation(BaseDerivationPlugin):
         return ["mood_from_relationships"]
 
     def compute(self, context: DerivationContext) -> Optional[DerivationResult]:
-        style = "neutral"
-        factors: Dict[str, Any] = {}
-
         plugin_cfg = context.get_plugin_config(self.id)
 
-        # Personality-based style
+        # Extract personality if available
+        personality = None
         if "personality" in context.stats:
-            p = context.stats["personality"].axes
-            extraversion = p.get("extraversion", 50)
-            agreeableness = p.get("agreeableness", 50)
-            openness = p.get("openness", 50)
+            personality = context.stats["personality"].axes
 
-            factors["personality"] = {
-                "extraversion": extraversion,
-                "agreeableness": agreeableness,
-                "openness": openness,
-            }
-
-            # Check custom thresholds or use defaults
-            thresholds = plugin_cfg.get("personality_thresholds", {})
-
-            if thresholds:
-                style = self._match_personality_thresholds(p, thresholds, style)
-            else:
-                # Default personality logic
-                if extraversion >= 70 and agreeableness >= 60:
-                    style = "enthusiastic"
-                elif extraversion >= 60 and openness >= 70:
-                    style = "playful"
-                elif agreeableness >= 70:
-                    style = "warm"
-                elif extraversion <= 30:
-                    style = "reserved"
-                elif agreeableness <= 30:
-                    style = "curt"
-
-        # Relationship modifier
+        # Extract relationship affinity if available
+        affinity = None
         if "relationships" in context.stats:
             rel = context.stats["relationships"].axes
-            affinity = rel.get("affinity", 0)
-            factors["affinity"] = affinity
+            affinity = rel.get("affinity", None)
 
-            affinity_thresholds = plugin_cfg.get("affinity_thresholds", {
-                "distant": 20,
-                "friendly": 40,
-                "affectionate": 80,
-                "flirty": 80,
-            })
-
-            if affinity <= affinity_thresholds.get("distant", 20):
-                style = "distant"
-            elif affinity >= affinity_thresholds.get("affectionate", 80):
-                # High affinity upgrades existing style
-                if style == "warm":
-                    style = "affectionate"
-                elif style == "playful":
-                    style = "flirty"
-                elif style == "neutral":
-                    style = "affectionate"
-            elif affinity >= affinity_thresholds.get("friendly", 40) and style == "neutral":
-                style = "friendly"
-
-        # Mood modifier
+        # Extract mood valence if available
+        mood_valence = None
         mood = self._get_mood(context)
         if mood:
-            valence = mood.get("valence", 50)
-            factors["mood_valence"] = valence
+            mood_valence = mood.get("valence", None)
 
-            mood_threshold = plugin_cfg.get("subdued_mood_threshold", 30)
-            if valence <= mood_threshold and style not in ["distant", "curt"]:
-                style = "subdued"
+        # Build custom thresholds from plugin config
+        custom_thresholds = None
+        if "personality_thresholds" in plugin_cfg:
+            # Merge plugin config with defaults
+            custom_thresholds = {**STYLE_THRESHOLDS, **plugin_cfg["personality_thresholds"]}
+
+        # Use canonical derivation logic
+        result = derive_conversation_style(
+            personality=personality,
+            relationship_affinity=affinity,
+            mood_valence=mood_valence,
+            custom_thresholds=custom_thresholds,
+        )
+
+        # Build factors for metadata (for debugging/tracing)
+        factors: Dict[str, Any] = {}
+        if personality:
+            factors["personality"] = {
+                k: v for k, v in personality.items()
+                if k in ["extraversion", "agreeableness", "openness", "conscientiousness"]
+            }
+        if affinity is not None:
+            factors["affinity"] = affinity
+        if mood_valence is not None:
+            factors["mood_valence"] = mood_valence
 
         return DerivationResult(
             key="conversation_style",
-            value=style,
-            metadata={"factors": factors}
+            value=result["style"],
+            metadata={
+                "factors": factors,
+                "dimensions": {
+                    "warmth": result["warmth"],
+                    "energy": result["energy"],
+                    "formality": result["formality"],
+                },
+            }
         )
-
-    def _match_personality_thresholds(
-        self,
-        personality: Dict[str, float],
-        thresholds: Dict[str, Dict[str, float]],
-        default_style: str,
-    ) -> str:
-        """Match personality against custom threshold configs."""
-        for style_name, requirements in thresholds.items():
-            matches = True
-            for axis, threshold in requirements.items():
-                if personality.get(axis, 50) < threshold:
-                    matches = False
-                    break
-            if matches:
-                return style_name
-        return default_style
 
     def _get_mood(self, context: DerivationContext) -> Optional[Dict[str, Any]]:
         """Get mood from stats or derived values."""

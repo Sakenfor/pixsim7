@@ -6,16 +6,35 @@ Manages personality evolution over time including:
 - Event-triggered personality shifts
 - Gradual personality drift based on experiences
 - Historical tracking of personality changes
+
+Service Responsibilities:
+------------------------
+This service is responsible for TRACKING personality changes and suggesting
+personality evolution based on events. It does NOT directly modify NPC stats.
+
+For actual stat values, use NPCStatService:
+- NPCStatService.get_npc_effective_stats() - Read personality values
+- NPCStatService.update_npc_base_stats() - Update personality values
+
+This service complements NPCStatService by:
+- Recording history of personality changes (PersonalityEvolutionEvent)
+- Computing trait trajectories and trends
+- Suggesting changes based on milestones and emotions
+
+Typical workflow:
+1. Get current personality from NPCStatService
+2. Use this service to record change or get suggestions
+3. Use NPCStatService to apply the actual stat change
+
+Uses canonical trait definitions from domain/game/personality.
 """
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 
-from pixsim7.backend.main.domain.game.entities.npc_memory import (
-    PersonalityEvolutionEvent,
-    PersonalityTrait
-)
+from pixsim7.backend.main.domain.game.entities.npc_memory import PersonalityEvolutionEvent
+from pixsim7.backend.main.domain.game.personality import PersonalityTrait
 
 
 class PersonalityEvolutionService:

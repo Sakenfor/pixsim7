@@ -4,16 +4,22 @@ Personality Plugin - Self-Contained Backend
 Provides personality-driven NPC behavior including:
 - Tag effects (uncomfortable, comfortable, phobia, passion, etc.)
 - Behavior profiles (low_energy, evening_wind_down, seeking_comfort)
-- Big Five trait effect mappings (introversion, openness, etc.)
+- Big Five trait effect mappings (uses canonical traits from domain/game/personality)
 
 This plugin lives in packages/plugins/personality/ with:
 - backend/: Python backend (this directory)
 - shared/types.ts: TypeScript types (if needed)
 
 Uses the behavior_registry for registration.
+Trait definitions come from pixsim7.backend.main.domain.game.personality (single source of truth).
 """
 
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.domain.game.personality import (
+    PersonalityTrait,
+    PERSONALITY_TRAIT_NAMES,
+    TRAIT_ALIASES,
+)
 
 # ===== PLUGIN MANIFEST =====
 
@@ -133,9 +139,26 @@ BEHAVIOR_PROFILES = [
 
 
 # ===== TRAIT EFFECT MAPPINGS (Big Five) =====
+# These mappings connect personality traits to activity preferences.
+# Trait IDs use canonical names from domain/game/personality/traits.py.
+# "introversion" is an alias for "extraversion" (inverse interpretation).
+
+# Validate that all trait keys are canonical or known aliases
+def _validate_trait_id(trait_id: str) -> str:
+    """Validate trait ID is canonical or a known alias."""
+    if trait_id in PERSONALITY_TRAIT_NAMES:
+        return trait_id
+    if trait_id in TRAIT_ALIASES:
+        return trait_id  # Aliases are valid, interpretation handled at runtime
+    raise ValueError(f"Unknown trait ID: {trait_id}. Valid: {PERSONALITY_TRAIT_NAMES}")
+
 
 TRAIT_EFFECT_MAPPINGS = {
+    # Note: "introversion" is treated as inverse of extraversion
+    # High introversion = low extraversion preferences
     "introversion": {
+        "canonical_trait": PersonalityTrait.EXTRAVERSION.value,
+        "inverse": True,  # High introversion = low extraversion
         "description": "How introversion affects social vs solitary activity preferences",
         "mappings": {
             "very_high": [
@@ -156,7 +179,9 @@ TRAIT_EFFECT_MAPPINGS = {
             ],
         },
     },
-    "openness": {
+    PersonalityTrait.OPENNESS.value: {
+        "canonical_trait": PersonalityTrait.OPENNESS.value,
+        "inverse": False,
         "description": "How openness affects creative vs routine activity preferences",
         "mappings": {
             "very_high": [
@@ -177,7 +202,9 @@ TRAIT_EFFECT_MAPPINGS = {
             ],
         },
     },
-    "neuroticism": {
+    PersonalityTrait.NEUROTICISM.value: {
+        "canonical_trait": PersonalityTrait.NEUROTICISM.value,
+        "inverse": False,
         "description": "How neuroticism affects risk-taking and comfort-seeking",
         "mappings": {
             "very_high": [
@@ -198,7 +225,9 @@ TRAIT_EFFECT_MAPPINGS = {
             ],
         },
     },
-    "conscientiousness": {
+    PersonalityTrait.CONSCIENTIOUSNESS.value: {
+        "canonical_trait": PersonalityTrait.CONSCIENTIOUSNESS.value,
+        "inverse": False,
         "description": "How conscientiousness affects work vs leisure preferences",
         "mappings": {
             "very_high": [
@@ -219,7 +248,9 @@ TRAIT_EFFECT_MAPPINGS = {
             ],
         },
     },
-    "agreeableness": {
+    PersonalityTrait.AGREEABLENESS.value: {
+        "canonical_trait": PersonalityTrait.AGREEABLENESS.value,
+        "inverse": False,
         "description": "How agreeableness affects cooperative vs competitive preferences",
         "mappings": {
             "very_high": [

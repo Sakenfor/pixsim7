@@ -344,13 +344,8 @@ class NPCWorldContext(SQLModel, table=True):
     )
 
 
-class PersonalityTrait(str, Enum):
-    """Big Five personality traits"""
-    OPENNESS = "openness"
-    CONSCIENTIOUSNESS = "conscientiousness"
-    EXTRAVERSION = "extraversion"
-    AGREEABLENESS = "agreeableness"
-    NEUROTICISM = "neuroticism"
+# Import canonical PersonalityTrait from shared module
+from pixsim7.backend.main.domain.game.personality import PersonalityTrait
 
 
 class PersonalityEvolutionEvent(SQLModel, table=True):

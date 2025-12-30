@@ -108,6 +108,11 @@ def get_style_label_transform() -> TransformRule:
     - formal: High formality
     - casual: Low formality, moderate warmth
     - neutral: Default
+
+    NOTE: These thresholds should stay in sync with the canonical definitions in
+    domain/game/personality/conversation_style.py (STYLE_THRESHOLDS).
+    The brain derivation plugin uses the shared module directly, but the stats
+    engine uses TransformRule syntax which requires explicit conditions here.
     """
     return TransformRule(
         output_key="style",

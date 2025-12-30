@@ -487,7 +487,7 @@ async def get_trait_trajectory(
     """
     Get trajectory/trend for a specific personality trait
     """
-    from pixsim7.backend.main.domain.game.entities.npc_memory import PersonalityTrait
+    from pixsim7.backend.main.domain.game.personality import PersonalityTrait
 
     # Validate trait
     try:

@@ -6,6 +6,21 @@ Handles:
 - Runtime overrides (from NPCState)
 - Merging and normalization
 - Equipment/buff modifiers
+
+Service Responsibilities:
+------------------------
+This service is responsible for CRUD operations on NPC stats, including
+personality traits. It handles the actual stat values stored in the database.
+
+For personality evolution tracking, use PersonalityEvolutionService:
+- PersonalityEvolutionService.record_personality_change() - Track changes
+- PersonalityEvolutionService.calculate_trait_trajectory() - Get trends
+- PersonalityEvolutionService.suggest_trait_changes_from_milestone() - Get suggestions
+
+This service is the source of truth for stat VALUES, while
+PersonalityEvolutionService is the source of truth for stat HISTORY.
+
+Personality trait definitions come from domain/game/personality.
 """
 
 from __future__ import annotations

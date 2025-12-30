@@ -4,20 +4,21 @@ Built-in Personality Stat Package
 Provides a Big Five personality traits system as a reusable stat package.
 Worlds can opt in by copying or referencing this StatDefinition.
 
-The Big Five model includes:
-- Openness: Creativity, curiosity, preference for novelty
-- Conscientiousness: Organization, dependability, self-discipline
-- Extraversion: Energy, sociability, talkativeness
-- Agreeableness: Cooperation, trust, helpfulness
-- Neuroticism: Emotional instability, anxiety, moodiness
-
-Each axis has tiers for easy categorization (e.g., "very_low", "low", "moderate", "high", "very_high").
+Uses canonical trait definitions from domain/game/personality/traits.py.
+See that module for the single source of truth on trait names, descriptions, etc.
 """
 
 from __future__ import annotations
 
 from .schemas import StatAxis, StatTier, StatDefinition
 from .package_registry import StatPackage, register_stat_package
+
+from ..personality import (
+    PersonalityTrait,
+    PERSONALITY_TRAITS,
+    PERSONALITY_TIER_IDS,
+    get_trait_info,
+)
 
 
 PERSONALITY_PACKAGE_ID = "core.personality"
@@ -43,61 +44,25 @@ def get_default_personality_definition() -> StatDefinition:
             }
         }
     """
-    # Define the Big Five axes with semantic types
-    axes = [
-        StatAxis(
-            name="openness",
-            min_value=0.0,
-            max_value=100.0,
-            default_value=50.0,
-            display_name="Openness",
-            description="Creativity, curiosity, and preference for novelty and variety",
-            semantic_type="openness_trait",
-            semantic_weight=1.0,
-        ),
-        StatAxis(
-            name="conscientiousness",
-            min_value=0.0,
-            max_value=100.0,
-            default_value=50.0,
-            display_name="Conscientiousness",
-            description="Organization, dependability, and self-discipline",
-            semantic_type="conscientiousness_trait",
-            semantic_weight=1.0,
-        ),
-        StatAxis(
-            name="extraversion",
-            min_value=0.0,
-            max_value=100.0,
-            default_value=50.0,
-            display_name="Extraversion",
-            description="Energy, sociability, and tendency to seek stimulation",
-            semantic_type="extraversion_trait",
-            semantic_weight=1.0,
-        ),
-        StatAxis(
-            name="agreeableness",
-            min_value=0.0,
-            max_value=100.0,
-            default_value=50.0,
-            display_name="Agreeableness",
-            description="Cooperation, trust, and consideration for others",
-            semantic_type="agreeableness_trait",
-            semantic_weight=1.0,
-        ),
-        StatAxis(
-            name="neuroticism",
-            min_value=0.0,
-            max_value=100.0,
-            default_value=50.0,
-            display_name="Neuroticism",
-            description="Emotional instability, anxiety, and tendency toward negative emotions",
-            semantic_type="neuroticism_trait",
-            semantic_weight=1.0,
-        ),
-    ]
+    # Build axes from canonical trait definitions
+    axes = []
+    for trait in PERSONALITY_TRAITS:
+        info = get_trait_info(trait)
+        axes.append(
+            StatAxis(
+                name=info.name,
+                min_value=0.0,
+                max_value=100.0,
+                default_value=50.0,
+                display_name=info.display_name,
+                description=info.description,
+                semantic_type=info.semantic_type,
+                semantic_weight=1.0,
+            )
+        )
 
-    # Create tiers for each axis (same tier structure for all)
+    # Create tiers for each axis using canonical tier IDs
+    # Tier ranges: (tier_id, min, max) - max is None for open-ended
     tier_ranges = [
         ("very_low", 0.0, 19.99),
         ("low", 20.0, 39.99),
