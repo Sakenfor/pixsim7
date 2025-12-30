@@ -11,11 +11,25 @@ import { dockWidgetRegistry } from "./dockWidgetRegistry";
 import { panelRegistry } from "./panelRegistry";
 import { autoRegisterPanels } from "./autoDiscovery";
 
+/** Track initialization state */
+let initialized = false;
+let initPromise: Promise<void> | null = null;
+
 /**
  * Initialize built-in panel registries and auto-discovery.
- * Safe to call multiple times - registries handle idempotency.
+ * Safe to call multiple times - only runs once, subsequent calls return cached promise.
  */
 export async function initializePanels(): Promise<void> {
+  // Return cached promise if already initializing or initialized
+  if (initPromise) return initPromise;
+
+  initPromise = doInitializePanels();
+  return initPromise;
+}
+
+async function doInitializePanels(): Promise<void> {
+  if (initialized) return;
+
   try {
     // Register graph editor surfaces
     registerGraphEditors();
@@ -33,7 +47,11 @@ export async function initializePanels(): Promise<void> {
         `[initializePanels] ${result.failed.length} panels failed to auto-register`
       );
     }
+
+    initialized = true;
   } catch (error) {
+    // Reset promise so retry is possible
+    initPromise = null;
     console.error("Failed to initialize panels:", error);
     throw error;
   }
@@ -43,5 +61,5 @@ export async function initializePanels(): Promise<void> {
  * Check if panels have been initialized
  */
 export function arePanelsInitialized(): boolean {
-  return panelRegistry.getAll().length > 0;
+  return initialized;
 }
