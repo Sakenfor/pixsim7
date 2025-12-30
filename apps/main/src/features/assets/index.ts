@@ -108,6 +108,12 @@ export {
 // Note: AssetModel is re-exported via useAssets hook above
 
 // ============================================================================
+// Lib - Asset Media Type
+// ============================================================================
+
+export { resolveAssetMediaType, resolveAssetMediaTypes } from './lib/assetMediaType';
+
+// ============================================================================
 // Lib - Asset Events
 // ============================================================================
 
