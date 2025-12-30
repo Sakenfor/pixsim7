@@ -6,5 +6,7 @@
 
 export * from './panels';
 export * from './types';
+export * from './stores';
+export * from './capabilities';
 export { AssetViewerDockview } from './AssetViewerDockview';
 export type { AssetViewerDockviewProps } from './AssetViewerDockview';

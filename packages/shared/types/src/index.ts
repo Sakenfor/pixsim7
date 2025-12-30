@@ -123,6 +123,18 @@ export * from './assetProvider'
 export * from './asset-core'
 
 // ===================
+// Composition Roles (Generated)
+// ===================
+
+export * from './composition-roles.generated'
+
+// ===================
+// Region Labels (Generated)
+// ===================
+
+export * from './region-labels.generated'
+
+// ===================
 // Backend OpenAPI Contract (Generated)
 // ===================
 //

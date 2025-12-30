@@ -29,6 +29,10 @@ interface MediaControlBarProps {
   // Maximize
   isMaximized: boolean;
   onToggleMaximize: () => void;
+
+  // Annotation mode
+  annotationMode?: boolean;
+  onToggleAnnotation?: () => void;
 }
 
 export function MediaControlBar({
@@ -46,6 +50,8 @@ export function MediaControlBar({
   onFitModeChange,
   isMaximized,
   onToggleMaximize,
+  annotationMode,
+  onToggleAnnotation,
 }: MediaControlBarProps) {
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700">
@@ -100,24 +106,42 @@ export function MediaControlBar({
           </button>
         </div>
 
-        {/* Right: Fit modes and maximize */}
+        {/* Right: Fit modes, annotation, and maximize */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            {(['contain', 'cover', 'actual'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => onFitModeChange(mode)}
-                className={`px-2 py-0.5 text-[10px] rounded ${
-                  fitMode === mode
-                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                }`}
-                title={`Fit: ${mode}`}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
+          {/* Fit modes - hide when annotation mode is active */}
+          {!annotationMode && (
+            <div className="flex items-center gap-1">
+              {(['contain', 'cover', 'actual'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => onFitModeChange(mode)}
+                  className={`px-2 py-0.5 text-[10px] rounded ${
+                    fitMode === mode
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  }`}
+                  title={`Fit: ${mode}`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Annotation toggle button */}
+          {onToggleAnnotation && (
+            <button
+              onClick={onToggleAnnotation}
+              className={`px-2 py-0.5 text-[10px] rounded ${
+                annotationMode
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+              title={annotationMode ? 'Exit annotation mode' : 'Annotate regions (A)'}
+            >
+              {annotationMode ? '✓ Annotate' : '✎ Annotate'}
+            </button>
+          )}
 
           {/* Maximize/Restore button */}
           <button
