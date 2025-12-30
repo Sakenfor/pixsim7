@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import DbSession, CurrentUser
+from pixsim7.backend.main.api.dependencies import DatabaseSession, CurrentUser
 from pixsim7.backend.main.services.links.template_resolver import (
     resolve_template_to_runtime,
 )
@@ -152,7 +152,7 @@ Example use cases:
 )
 async def resolve_template(
     request: ResolveTemplateRequest,
-    db: DbSession,
+    db: DatabaseSession,
 ) -> ResolveTemplateResponse:
     """Resolve a single template reference to runtime entity."""
     try:
@@ -203,7 +203,7 @@ Per-ref context is merged with shared_context (per-ref takes precedence).
 )
 async def resolve_batch(
     request: ResolveBatchRequest,
-    db: DbSession,
+    db: DatabaseSession,
 ) -> ResolveBatchResponse:
     """Resolve multiple template references in batch."""
     results: Dict[str, ResolveTemplateResponse] = {}
@@ -293,7 +293,7 @@ This is useful for monitoring link health and planning maintenance.
 """,
 )
 async def get_integrity_report(
-    db: DbSession,
+    db: DatabaseSession,
     user: CurrentUser,
 ) -> Dict[str, Any]:
     """Get link integrity report."""
@@ -340,7 +340,7 @@ Returns a report of findings and actions taken.
 )
 async def cleanup_orphaned_links(
     request: CleanupRequest,
-    db: DbSession,
+    db: DatabaseSession,
     user: CurrentUser,
 ) -> Dict[str, Any]:
     """Cleanup orphaned links."""
@@ -360,7 +360,7 @@ async def cleanup_orphaned_links(
 )
 async def validate_link(
     link_id: str,
-    db: DbSession,
+    db: DatabaseSession,
     user: CurrentUser,
 ) -> Dict[str, Any]:
     """Validate a specific link."""
@@ -383,7 +383,7 @@ async def validate_link(
 async def get_links_for_entity(
     entity_kind: str,
     entity_id: str,
-    db: DbSession,
+    db: DatabaseSession,
     user: CurrentUser,
     side: str = "both",
 ) -> Dict[str, Any]:
