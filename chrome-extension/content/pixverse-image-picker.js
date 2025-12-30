@@ -258,10 +258,11 @@ window.PXS7 = window.PXS7 || {};
     const results = [];
     const url = window.location.pathname;
     const isImageTextPage = url.includes('image-text') || url.includes('image_text');
-    const isImageGenPage = url.includes('create-image') || url.includes('image-generation');
-    const isTransitionPage = url.includes('transition');
-    const isFusionPage = url.includes('fusion');
-    const isImageEditPage = url.includes('edit') || url.includes('image-edit');
+    const isImageGenPage = url.includes('create-image') || url.includes('image-generation') || url.includes('/create/image');
+    const isTransitionPage = url.includes('/transition');
+    const isFusionPage = url.includes('/fusion');
+    const isExtendPage = url.includes('/extend');
+    const isImageEditPage = url.includes('/edit') && !isExtendPage;
 
     const allFileInputs = document.querySelectorAll('input[type="file"]');
     const inputs = Array.from(allFileInputs).filter(input => {
@@ -289,15 +290,30 @@ window.PXS7 = window.PXS7 || {};
       if (isImageTextPage && containerId.includes('image_text')) {
         priority = 10;
       } else if (isImageGenPage && containerId.includes('create_image')) {
-        // Only match create_image containers on image generation page
         priority = 10;
-      } else if (isTransitionPage && containerId.includes('transition')) {
+      } else if (isTransitionPage && containerId.startsWith('transition')) {
+        // transition-undefined, transition-0, etc.
         priority = 10;
-      } else if (isFusionPage && containerId.includes('fusion')) {
+      } else if (isFusionPage && containerId.startsWith('fusion')) {
+        // fusion-fusion-0, fusion-fusion-1, fusion-fusion-2
+        priority = 10;
+      } else if (isExtendPage && (containerId.startsWith('extend') || containerId.includes('extend'))) {
         priority = 10;
       } else if (isImageEditPage && (containerId.includes('edit') || containerId.includes('image_edit'))) {
         priority = 10;
       }
+
+      // Fallback: if on a specific page type but no matching ID found,
+      // still give priority to image upload inputs (they're likely the right ones)
+      if (priority === 0) {
+        const accept = input.getAttribute('accept') || '';
+        const isImageInput = accept.includes('image');
+        if (isImageInput && (isTransitionPage || isFusionPage || isExtendPage)) {
+          // On these pages, image inputs without video are likely correct
+          priority = 10;
+        }
+      }
+
       // Lower priority for generic customer/main containers (fallback)
       if (priority === 0 && (containerId.includes('customer') || containerId.includes('main'))) {
         priority = 5;
@@ -508,9 +524,8 @@ window.PXS7 = window.PXS7 || {};
         const relevantSlots = uploads.filter(u => u.priority >= 10);
 
         if (relevantSlots.length > 0) {
-          // Among relevant slots, prefer one WITH an image (for replacement)
-          // This handles the case where user wants to replace existing image
-          targetUpload = relevantSlots.find(u => u.hasImage) || relevantSlots[0];
+          // Prefer empty slots first, fall back to first slot (for replacement)
+          targetUpload = relevantSlots.find(u => !u.hasImage) || relevantSlots[0];
         } else {
           // Fall back to first empty slot, or first slot if all have images
           targetUpload = uploads.find(u => !u.hasImage) || uploads[0];
@@ -559,6 +574,25 @@ window.PXS7 = window.PXS7 || {};
         console.log('[PixSim7] Using upload interception for Pixverse URL');
         if (showToast) showToast('Setting image...', true);
 
+        // Create a promise that waits for the interception to complete
+        const completionPromise = new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            console.warn('[PixSim7] Upload completion timeout, proceeding anyway');
+            window.removeEventListener('__pxs7UploadComplete', handler);
+            resolve(false);
+          }, 3000); // 3 second timeout
+
+          const handler = (e) => {
+            if (e.detail?.url === imageUrl) {
+              clearTimeout(timeout);
+              window.removeEventListener('__pxs7UploadComplete', handler);
+              console.log('[PixSim7] Upload interception completed for:', imageUrl);
+              resolve(true);
+            }
+          };
+          window.addEventListener('__pxs7UploadComplete', handler);
+        });
+
         setPendingImageUrl(imageUrl);
 
         const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -575,10 +609,13 @@ window.PXS7 = window.PXS7 || {};
         fileInput.files = dataTransfer.files;
         fileInput.dispatchEvent(new Event('change', { bubbles: true }));
 
+        // Wait for the interception to complete before returning
+        await completionPromise;
+
         // Track as recently used
         addToRecentlyUsed(imageUrl);
 
-        setTimeout(() => { if (showToast) showToast('Image set!', true); }, 300);
+        if (showToast) showToast('Image set!', true);
         return true;
       }
 
@@ -789,8 +826,8 @@ window.PXS7 = window.PXS7 || {};
 
   // ===== Unified Image Picker UI =====
 
-  // Show context menu to select upload slot (1-7)
-  function showUploadSlotMenu(imageUrl, x, y) {
+  // Show context menu to select upload slot for replacement
+  function showUploadSlotMenu(imageUrl, x, y, slotsToShow = null) {
     // Remove existing menu
     document.querySelectorAll('.pxs7-upload-slot-menu').forEach(m => m.remove());
 
@@ -810,11 +847,10 @@ window.PXS7 = window.PXS7 || {};
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     `;
 
-    // Get all upload inputs using smart detection
-    const uploadResults = findUploadInputs();
-    const uploadInputs = uploadResults.map(r => r.input);
+    // Use provided slots (pre-filtered) or get relevant slots only
+    const slots = slotsToShow || findUploadInputs().filter(u => u.priority >= 10);
 
-    if (uploadInputs.length === 0) {
+    if (slots.length === 0) {
       const item = document.createElement('div');
       item.style.cssText = `
         padding: 8px 12px;
@@ -825,43 +861,20 @@ window.PXS7 = window.PXS7 || {};
       item.textContent = 'No upload slots found';
       menu.appendChild(item);
     } else {
-      // Add "Auto" option (default behavior)
-      const autoItem = document.createElement('button');
-      autoItem.style.cssText = `
-        width: 100%;
-        padding: 6px 12px;
-        font-size: 11px;
-        text-align: left;
-        background: transparent;
-        border: none;
-        color: ${COLORS.text};
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+      // Header showing this is a replacement menu
+      const header = document.createElement('div');
+      header.style.cssText = `
+        padding: 6px 12px 4px;
+        font-size: 10px;
+        color: ${COLORS.textMuted};
       `;
-      autoItem.innerHTML = `<span style="opacity:0.6">↑</span><span>Auto (first empty)</span>`;
-      autoItem.addEventListener('mouseenter', () => autoItem.style.background = COLORS.bgHover);
-      autoItem.addEventListener('mouseleave', () => autoItem.style.background = 'transparent');
-      autoItem.addEventListener('click', async () => {
-        menu.remove();
-        await injectImageToUpload(imageUrl);
-      });
-      menu.appendChild(autoItem);
+      header.textContent = 'Replace which slot?';
+      menu.appendChild(header);
 
-      // Divider
-      const divider = document.createElement('div');
-      divider.style.cssText = `height: 1px; background: ${COLORS.border}; margin: 4px 0;`;
-      menu.appendChild(divider);
-
-      // Add numbered slots - only show relevant (priority >= 10) slots first, then others
-      const relevantSlots = uploadResults.filter(u => u.priority >= 10);
-      const otherSlots = uploadResults.filter(u => u.priority < 10);
-      const orderedSlots = [...relevantSlots, ...otherSlots];
-      const slotCount = Math.min(orderedSlots.length, 7);
+      const slotCount = Math.min(slots.length, 7);
 
       for (let i = 0; i < slotCount; i++) {
-        const slotInfo = orderedSlots[i];
+        const slotInfo = slots[i];
         const item = document.createElement('button');
         item.style.cssText = `
           width: 100%;
@@ -877,33 +890,34 @@ window.PXS7 = window.PXS7 || {};
           gap: 8px;
         `;
 
-        // Check if this slot already has an image
-        const hasImage = slotInfo?.hasImage || false;
-        const isRelevant = slotInfo?.priority >= 10;
-
         // Extract a friendly name from containerId
         let slotName = `Slot ${i + 1}`;
         const containerId = slotInfo?.containerId || '';
         if (containerId.includes('image_text')) slotName = 'Image';
-        else if (containerId.includes('create_image')) slotName = 'Image';
-        else if (containerId.includes('transition')) {
-          // Try to extract number from container id
-          const match = containerId.match(/(\d+)/);
-          slotName = match ? `Transition ${match[1]}` : 'Transition';
+        else if (containerId.includes('create_image')) {
+          // For create_image, number the slots
+          const match = containerId.match(/customer_img_paths(\d*)/);
+          slotName = match && match[1] ? `Image ${parseInt(match[1]) + 1}` : 'Image';
         }
-        else if (containerId.includes('fusion')) {
-          const match = containerId.match(/(\d+)/);
-          slotName = match ? `Image ${match[1]}` : 'Fusion';
+        else if (containerId.startsWith('transition')) {
+          // transition-undefined or transition-N
+          slotName = `Image ${i + 1}`;
+        }
+        else if (containerId.startsWith('fusion')) {
+          // fusion-fusion-0, fusion-fusion-1, fusion-fusion-2
+          const match = containerId.match(/fusion-(\d+)/);
+          slotName = match ? `Image ${parseInt(match[1]) + 1}` : `Image ${i + 1}`;
+        }
+        else if (containerId.startsWith('extend') || containerId.includes('extend')) {
+          slotName = 'Extend Image';
         }
         else if (containerId.includes('edit')) slotName = 'Edit';
 
         item.innerHTML = `
           <span style="opacity:0.6">${i + 1}</span>
           <span>${slotName}</span>
-          ${hasImage ? `<span style="font-size:9px;color:${COLORS.warning};margin-left:auto;">●</span>` : ''}
-          ${!isRelevant ? `<span style="font-size:9px;opacity:0.5;margin-left:auto;">⚠</span>` : ''}
         `;
-        item.title = `${slotName}${hasImage ? ' (has image - will replace)' : ' (empty)'}${!isRelevant ? ' - may not match current page' : ''}`;
+        item.title = `Replace ${slotName}`;
 
         item.addEventListener('mouseenter', () => item.style.background = COLORS.bgHover);
         item.addEventListener('mouseleave', () => item.style.background = 'transparent');
@@ -912,6 +926,48 @@ window.PXS7 = window.PXS7 || {};
           await injectImageToUpload(imageUrl, slotInfo.input);
         });
         menu.appendChild(item);
+      }
+
+      // Check if + button exists to add new slot option
+      const plusPath = "M8 2v6m0 0v6m0-6h6M8 8H2";
+      const plusSvg = document.querySelector(`svg path[d="${plusPath}"]`);
+      const plusBtn = plusSvg?.closest('div[class*="opacity"]') || plusSvg?.parentElement?.parentElement;
+
+      if (plusBtn) {
+        // Divider
+        const divider = document.createElement('div');
+        divider.style.cssText = `height: 1px; background: ${COLORS.border}; margin: 4px 0;`;
+        menu.appendChild(divider);
+
+        // Add new slot option
+        const addItem = document.createElement('button');
+        addItem.style.cssText = `
+          width: 100%;
+          padding: 6px 12px;
+          font-size: 11px;
+          text-align: left;
+          background: transparent;
+          border: none;
+          color: ${COLORS.accent};
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        `;
+        addItem.innerHTML = `<span style="opacity:0.8">+</span><span>Add new slot</span>`;
+        addItem.title = 'Add a new image slot and fill it';
+        addItem.addEventListener('mouseenter', () => addItem.style.background = COLORS.bgHover);
+        addItem.addEventListener('mouseleave', () => addItem.style.background = 'transparent');
+        addItem.addEventListener('click', async () => {
+          menu.remove();
+          // Click + to add new slot
+          plusBtn.click();
+          // Wait for DOM to update
+          await new Promise(r => setTimeout(r, 300));
+          // Inject to the new empty slot (auto will find it)
+          await injectImageToUpload(imageUrl);
+        });
+        menu.appendChild(addItem);
       }
     }
 
@@ -1010,6 +1066,7 @@ window.PXS7 = window.PXS7 || {};
           max-height: 260px;
           border-radius: 4px;
           display: block;
+          transition: opacity 0.15s ease-out;
         `;
         hoverPreviewVideo = document.createElement('video');
         hoverPreviewVideo.style.cssText = `
@@ -1037,7 +1094,10 @@ window.PXS7 = window.PXS7 || {};
           hoverPreviewVideo.style.display = 'none';
           hoverPreviewVideo.pause();
           hoverPreviewVideo.src = '';
+          // Hide img until new image loads to prevent flash of old image
+          hoverPreviewImg.style.opacity = '0';
           hoverPreviewImg.style.display = 'block';
+          hoverPreviewImg.onload = () => { hoverPreviewImg.style.opacity = '1'; };
           loadImageSrc(hoverPreviewImg, previewUrl);
         }
         lastPreviewUrl = previewUrl;
@@ -1215,18 +1275,22 @@ window.PXS7 = window.PXS7 || {};
       const data = itemDataMap.get(idx);
       if (!data) return;
 
-      // Check how many relevant upload slots exist
+      // Check relevant upload slots for current page
       const uploads = findUploadInputs();
       const relevantSlots = uploads.filter(u => u.priority >= 10);
+      const emptyRelevantSlots = relevantSlots.filter(u => !u.hasImage);
 
-      // If 2+ relevant slots, show selection menu instead of auto-inject
-      if (relevantSlots.length >= 2) {
+      // Smart click behavior:
+      // - If there's an empty relevant slot → fill it directly
+      // - If all relevant slots are filled → show menu to choose which to replace
+      if (relevantSlots.length >= 2 && emptyRelevantSlots.length === 0) {
+        // All slots filled - show menu to pick which to replace
         const rect = thumb.getBoundingClientRect();
-        showUploadSlotMenu(data.fullUrl, rect.right + 5, rect.top);
+        showUploadSlotMenu(data.fullUrl, rect.right + 5, rect.top, relevantSlots);
         return;
       }
 
-      // Single slot or no relevant slots: auto-inject
+      // Has empty slot or single slot - auto-inject to first empty
       thumb.classList.add('pxs7-loading');
       const success = await injectImageToUpload(data.fullUrl);
       thumb.classList.remove('pxs7-loading');
