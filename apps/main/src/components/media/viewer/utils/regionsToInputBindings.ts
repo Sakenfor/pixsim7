@@ -6,7 +6,7 @@
  */
 
 import type { ExportedRegion } from '../stores/assetRegionStore';
-import { labelToInfluenceRegion } from '@pixsim7/types';
+import { labelToInfluenceRegion } from '@pixsim7/shared.types';
 
 // ============================================================================
 // Types

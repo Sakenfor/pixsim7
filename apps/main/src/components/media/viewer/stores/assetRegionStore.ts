@@ -100,6 +100,9 @@ function normalizeAssetId(id: string | number): string {
   return String(id);
 }
 
+/** Stable empty array to avoid creating new references */
+const EMPTY_REGIONS: AssetRegion[] = [];
+
 // ============================================================================
 // Store
 // ============================================================================
@@ -165,7 +168,7 @@ export const useAssetRegionStore = create<AssetRegionState>((set, get) => ({
 
   getRegions: (assetId) => {
     const key = normalizeAssetId(assetId);
-    return get().regionsByAsset.get(key) || [];
+    return get().regionsByAsset.get(key) ?? EMPTY_REGIONS;
   },
 
   getRegion: (assetId, regionId) => {

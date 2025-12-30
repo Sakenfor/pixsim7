@@ -26,6 +26,9 @@ import {
   type ExportedRegion,
 } from '../stores/assetRegionStore';
 
+/** Stable empty array to avoid infinite re-renders */
+const EMPTY_REGIONS: AssetRegion[] = [];
+
 // ============================================================================
 // Capability Key
 // ============================================================================
@@ -109,7 +112,7 @@ export function useProvideRegionAnnotations({
 }: UseProvideRegionAnnotationsOptions) {
   // Get store state and actions
   const regions = useAssetRegionStore((s) =>
-    assetId ? s.getRegions(assetId) : []
+    assetId ? s.getRegions(assetId) : EMPTY_REGIONS
   );
   const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
   const annotationMode = useAssetRegionStore((s) => s.annotationMode);

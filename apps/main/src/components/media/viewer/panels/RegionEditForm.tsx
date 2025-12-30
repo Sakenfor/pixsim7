@@ -7,15 +7,12 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icon } from '@lib/icons';
-import {
-  useAssetRegionStore,
-  type AssetRegion,
-} from '../stores/assetRegionStore';
+import { useAssetRegionStore } from '../stores/assetRegionStore';
 import {
   ALL_REGION_LABELS,
   LABEL_GROUP_NAMES,
   type LabelSuggestion,
-} from '@pixsim7/types';
+} from '@pixsim7/shared.types';
 
 // ============================================================================
 // Types
@@ -449,7 +446,6 @@ export function RegionList({ assetId }: RegionListProps) {
 
   const handleExport = useCallback(() => {
     const exported = exportRegions(assetId);
-    console.log('[RegionList] Exported regions:', exported);
 
     // Copy to clipboard
     navigator.clipboard.writeText(JSON.stringify(exported, null, 2));

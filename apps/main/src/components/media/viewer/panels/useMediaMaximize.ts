@@ -87,10 +87,6 @@ export function useMediaMaximize({
         // Toggle to opposite state
         const newHeight = currentlyMaximized ? normHeight : maxHeight;
 
-        console.log('[useMediaMaximize] Current height:', currentHeight, 'px');
-        console.log('[useMediaMaximize] Currently maximized?', currentlyMaximized);
-        console.log('[useMediaMaximize] Setting height to:', newHeight, 'px');
-
         mediaGroup.api.setSize({ height: newHeight });
       } else {
         console.warn('[useMediaMaximize] Expected 2+ groups but found', groups.length);
