@@ -69,11 +69,16 @@ def register_game_behavior_builtins() -> dict:
     scoring_factors_count = _register_builtin_scoring_factors()
     logger.info(f"Registered {scoring_factors_count} built-in scoring factors")
 
+    # NOTE: Tag effects, behavior profiles, and trait mappings are now registered
+    # by the personality plugin (packages/plugins/personality).
+    # This keeps the core engine personality-agnostic.
+
     _BUILTINS_REGISTERED = True
 
     logger.info(
         f"Built-in game behaviors registered successfully: "
-        f"conditions={conditions_count}, effects={effects_count}, scoring_factors={scoring_factors_count}"
+        f"conditions={conditions_count}, effects={effects_count}, "
+        f"scoring_factors={scoring_factors_count}"
     )
 
     return {
@@ -265,6 +270,9 @@ def _register_builtin_scoring_factors() -> int:
         _factor_relationship_bonus,
         _factor_urgency,
         _factor_inertia,
+        _factor_archetype_modifier,
+        _factor_behavior_profile_modifier,
+        _factor_trait_effect_modifier,
     )
 
     # Register built-in scoring factors
@@ -304,4 +312,34 @@ def _register_builtin_scoring_factors() -> int:
         DEFAULT_SCORING_WEIGHTS["inertia"]
     )
 
-    return 7  # 7 built-in scoring factors
+    # Phase 1: Archetype-based scoring (feature-flagged)
+    register_scoring_factor(
+        "archetypeModifier",
+        _factor_archetype_modifier,
+        DEFAULT_SCORING_WEIGHTS.get("archetypeModifier", 1.0),
+        description="Personality archetype activity preference modifier"
+    )
+
+    # Phase 3: Behavior profile scoring (feature-flagged)
+    register_scoring_factor(
+        "behaviorProfileModifier",
+        _factor_behavior_profile_modifier,
+        DEFAULT_SCORING_WEIGHTS.get("behaviorProfileModifier", 1.0),
+        description="Active behavior profile modifiers"
+    )
+
+    # Phase 4: Trait effect scoring (feature-flagged)
+    register_scoring_factor(
+        "traitEffectModifier",
+        _factor_trait_effect_modifier,
+        DEFAULT_SCORING_WEIGHTS.get("traitEffectModifier", 0.8),
+        description="Trait-derived activity preference modifiers"
+    )
+
+    return 10  # 10 built-in scoring factors
+
+
+# NOTE: Tag effects, behavior profiles, and trait effect mappings have been
+# moved to the personality plugin (packages/plugins/personality).
+# This keeps the core engine personality-agnostic and allows swapping
+# personality models (Big Five, MBTI, custom, etc.) via plugins.
