@@ -18,6 +18,8 @@ import { DependencyGraphPanel } from '@features/panels/components/dev/Dependency
 import { GenerationHealthView } from '@features/panels/components/dev/GenerationHealthView';
 import { TemplateAnalyticsPanel } from '@features/panels/components/dev/TemplateAnalyticsPanel';
 import { GizmoSurfacesPanel } from '@features/panels/components/dev/GizmoSurfacesPanel';
+import { TypesExplorerPanel } from '@features/panels/components/dev/TypesExplorerPanel';
+import { SqlQueryExplorerPanel } from '@features/panels/components/dev/SqlQueryExplorerPanel';
 
 // ============================================================================
 // Session & World State Tools
@@ -171,4 +173,34 @@ export const blockFitTool: DevToolDefinition = {
   category: 'prompts',
   routePath: '/dev/block-fit',
   tags: ['action-blocks', 'assets', 'fit', 'feedback'],
+};
+
+// ============================================================================
+// Types & Schema Tools
+// ============================================================================
+
+export const typesExplorerTool: DevToolDefinition = {
+  id: 'types-explorer',
+  label: 'Types Explorer',
+  description: 'Browse generated types: composition roles, region labels, OpenAPI',
+  icon: 'fileCode',
+  category: 'debug',
+  panelComponent: TypesExplorerPanel,
+  tags: ['types', 'openapi', 'schema', 'generated', 'composition', 'roles', 'labels'],
+  safeForNonDev: true,
+};
+
+// ============================================================================
+// Database & Diagnostics Tools
+// ============================================================================
+
+export const sqlQueryExplorerTool: DevToolDefinition = {
+  id: 'sql-query-explorer',
+  label: 'SQL Query Explorer',
+  description: 'Run read-only SQL queries for diagnostics and data exploration',
+  icon: 'database',
+  category: 'debug',
+  panelComponent: SqlQueryExplorerPanel,
+  tags: ['sql', 'database', 'diagnostics', 'query', 'admin'],
+  safeForNonDev: false, // Admin only
 };

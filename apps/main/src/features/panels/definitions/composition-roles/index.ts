@@ -7,7 +7,7 @@ export default definePanel({
   id: 'composition-roles',
   title: 'Composition Roles',
   component: CompositionRolesPanel,
-  category: 'tools',
+  category: 'generation',
   tags: ['composition', 'roles', 'tags', 'mappings', 'generation'],
   icon: 'layers',
   description: 'Browse composition role definitions and tag mappings',

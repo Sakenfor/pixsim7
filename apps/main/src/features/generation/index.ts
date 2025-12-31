@@ -41,7 +41,16 @@ export { useGenerationScopeStores, GenerationScopeProvider } from './hooks/useGe
 export { useGenerationQueueStore, getQueueForOperation } from './stores/generationQueueStore';
 export type { GenerationQueueState, QueuedAsset, EnqueueOptions, InputMode } from './stores/generationQueueStore';
 export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
-export { createGenerationSessionStore } from './stores/generationSessionStore';
+export {
+  createGenerationSessionStore,
+  DEFAULT_SESSION_FIELDS,
+} from './stores/generationSessionStore';
+export type {
+  GenerationSessionFields,
+  GenerationSessionActions,
+  GenerationSessionState,
+  GenerationSessionStoreHook,
+} from './stores/generationSessionStore';
 export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationQueueStore } from './stores/generationScopeStores';
 export {
   useGenerationsStore,

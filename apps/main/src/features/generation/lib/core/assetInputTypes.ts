@@ -10,37 +10,15 @@
  * - Supports asset lineage tracking and deduplication
  * - Decouples frontend from provider URL formats
  *
- * MIGRATION STATUS:
+ * USAGE:
  * - Use compositionAssets for multi-image operations (image_to_image, fusion)
  * - Use sourceAssetId/sourceAssetIds for single-asset and transition operations
- * - Legacy params (image_url, video_url, etc.) are deprecated and will be removed
  */
 import type { CompositionAsset } from '@pixsim7/shared.types';
 
 /**
- * Legacy asset input params - DEPRECATED
- *
- * These params are being phased out in favor of sourceAssetId/sourceAssetIds and compositionAssets.
- * Backend still accepts them for backwards compatibility, but new code should
- * not use them.
- *
- * @deprecated Use AssetInput instead. Will be removed in a future release.
- */
-export interface LegacyAssetInput {
-  /** @deprecated Use sourceAssetId instead */
-  image_url?: string;
-  /** @deprecated Use sourceAssetId instead */
-  video_url?: string;
-  /** @deprecated Use sourceAssetIds instead */
-  image_urls?: string[];
-  /** @deprecated Use sourceAssetId instead */
-  original_video_id?: number;
-}
-
-/**
  * Canonical asset input for generation operations.
  *
- * IMPORTANT: Use sourceAssetId/sourceAssetIds or compositionAssets, never legacy URL params.
  * Backend resolves asset IDs to provider-specific URLs via provider_uploads.
  *
  * @example
@@ -88,28 +66,7 @@ export interface AssetInput {
 }
 
 /**
- * Keys that are considered legacy asset params.
- * Used by normalizeAssetParams to clean up params when asset IDs are present.
- */
-export const LEGACY_ASSET_PARAM_KEYS = [
-  'image_url',
-  'video_url',
-  'image_urls',
-  'original_video_id',
-  'fusion_assets',
-] as const;
-
-export type LegacyAssetParamKey = (typeof LEGACY_ASSET_PARAM_KEYS)[number];
-
-/**
- * Check if params contain any legacy asset keys
- */
-export function hasLegacyAssetParams(params: Record<string, any>): boolean {
-  return LEGACY_ASSET_PARAM_KEYS.some((key) => params[key] !== undefined);
-}
-
-/**
- * Check if params contain the new asset input pattern
+ * Check if params contain asset ID references
  */
 export function hasAssetIdParams(params: Record<string, any>): boolean {
   return (
@@ -117,48 +74,6 @@ export function hasAssetIdParams(params: Record<string, any>): boolean {
     (Array.isArray(params.source_asset_ids) && params.source_asset_ids.length > 0) ||
     (Array.isArray(params.composition_assets) && params.composition_assets.length > 0)
   );
-}
-
-/**
- * Normalize asset parameters by removing legacy keys when asset IDs are present.
- *
- * This function ensures clean params are sent to the backend by:
- * 1. Checking if source_asset_id, source_asset_ids, or composition_assets are present
- * 2. If so, removing all legacy URL-based params
- * 3. Logging a warning in development if both patterns are present
- *
- * Call this function once, right before sending params to the API.
- *
- * @example
- * const params = { source_asset_id: 123, image_url: 'https://...' };
- * const clean = normalizeAssetParams(params);
- * // Result: { source_asset_id: 123 }
- */
-export function normalizeAssetParams(params: Record<string, any>): Record<string, any> {
-  const result = { ...params };
-
-  const hasAssetIds = hasAssetIdParams(result);
-  const hasLegacy = hasLegacyAssetParams(result);
-
-  // Log drift warning in development
-  if (hasAssetIds && hasLegacy && process.env.NODE_ENV === 'development') {
-    console.warn(
-      '[ASSET_PARAM_DRIFT] Both asset IDs and legacy URL params present.',
-      'Legacy params will be removed. source_asset_id(s)/composition_assets will be used.',
-      '\nLegacy keys found:',
-      LEGACY_ASSET_PARAM_KEYS.filter((k) => result[k] !== undefined),
-      '\nThis may indicate incomplete migration. Consider updating the source.'
-    );
-  }
-
-  // Remove legacy keys when asset IDs are present
-  if (hasAssetIds) {
-    for (const key of LEGACY_ASSET_PARAM_KEYS) {
-      delete result[key];
-    }
-  }
-
-  return result;
 }
 
 /**

@@ -257,7 +257,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const success = results.every((r) => r.success);
         if (success) {
-          chrome.runtime.sendMessage({ action: 'accountsUpdated' });
+          try {
+            chrome.runtime.sendMessage({ action: 'accountsUpdated' });
+          } catch (e) {
+            // Popup might not be open - that's fine
+          }
         }
         sendResponse({ success, results });
       } catch (error) {

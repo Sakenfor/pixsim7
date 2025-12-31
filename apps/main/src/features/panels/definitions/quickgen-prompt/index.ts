@@ -6,7 +6,7 @@ export default definePanel({
   id: 'quickgen-prompt',
   title: 'QuickGen Prompt',
   component: QuickGenPromptPanel,
-  category: 'tools',
+  category: 'generation',
   tags: ['generation', 'prompt', 'quickgen', 'control-center'],
   icon: 'edit',
   description: 'Prompt editor for quick generation workflows',

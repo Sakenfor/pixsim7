@@ -6,7 +6,7 @@ export default definePanel({
   id: 'quickgen-settings',
   title: 'QuickGen Settings',
   component: QuickGenSettingsPanel,
-  category: 'tools',
+  category: 'generation',
   tags: ['generation', 'settings', 'quickgen', 'control-center'],
   icon: 'settings',
   description: 'Generation settings and Go button for quick workflows',

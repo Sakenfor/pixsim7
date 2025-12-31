@@ -19,6 +19,8 @@ import {
   promptBlockGraphTool,
   actionBlockGraphTool,
   blockFitTool,
+  typesExplorerTool,
+  sqlQueryExplorerTool,
 } from './tools';
 
 // Export all plugins individually
@@ -36,6 +38,8 @@ export {
   promptBlockGraphTool,
   actionBlockGraphTool,
   blockFitTool,
+  typesExplorerTool,
+  sqlQueryExplorerTool,
 };
 
 // Export array of built-in dev tools for bulk registration
@@ -64,4 +68,10 @@ export const builtInDevTools = [
   promptBlockGraphTool,
   actionBlockGraphTool,
   blockFitTool,
+
+  // Types & Schema
+  typesExplorerTool,
+
+  // Database & Diagnostics
+  sqlQueryExplorerTool,
 ];

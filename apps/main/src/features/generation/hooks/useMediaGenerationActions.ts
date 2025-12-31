@@ -9,7 +9,6 @@ import { useGenerationsStore } from '../stores/generationsStore';
 import { createPendingGeneration } from '../models';
 import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 import { generateAsset } from '@features/controlCenter/lib/api';
-import { normalizeAssetParams } from '../lib/core';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import type { OperationType } from '@/types/operations';
 
@@ -152,15 +151,12 @@ export function useMediaGenerationActions() {
           return;
         }
 
-        // Normalize params and call generate API
-        const normalizedParams = normalizeAssetParams(buildResult.params);
-
         const result = await generateAsset({
           prompt: buildResult.finalPrompt,
           providerId,
           presetId,
           operationType,
-          extraParams: normalizedParams,
+          extraParams: buildResult.params,
           presetParams: presetParams || {},
         });
 

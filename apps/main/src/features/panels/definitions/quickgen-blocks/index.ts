@@ -5,7 +5,7 @@ export default definePanel({
   id: 'quickgen-blocks',
   title: 'QuickGen Blocks',
   component: QuickGenBlocksPanel,
-  category: 'tools',
+  category: 'generation',
   tags: ['generation', 'prompt', 'blocks', 'quickgen', 'control-center'],
   icon: 'grid',
   description: 'Prompt companion blocks for quick generation',

@@ -5,7 +5,7 @@ export default definePanel({
   id: 'presets',
   title: 'Generation Presets',
   component: PresetsModule,
-  category: 'tools',
+  category: 'generation',
   tags: ['generation', 'presets', 'config', 'templates'],
   icon: 'sliders',
   description: 'Browse and apply generation presets with operator support',

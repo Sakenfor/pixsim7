@@ -118,16 +118,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     });
   };
 
-  // Helper to strip legacy URL params once asset IDs are present
-  const stripLegacyAssetParams = (params: Record<string, any>) => {
-    if (params.source_asset_id || (Array.isArray(params.source_asset_ids) && params.source_asset_ids.length > 0)) {
-      delete params.image_url;
-      delete params.image_urls;
-      delete params.video_url;
-      delete params.original_video_id;
-    }
-  };
-
   // Operation-specific validation with context-aware messages
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
     return {
@@ -417,9 +407,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     delete params.source_asset_id;
     delete params.source_asset_ids;
   }
-
-  // Drop legacy URL params when asset IDs are present to avoid leaking img_id refs
-  stripLegacyAssetParams(params);
 
   // Add array fields for video_transition
   if (operationType === 'video_transition') {

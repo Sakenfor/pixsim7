@@ -21,6 +21,7 @@ export const PANEL_CATEGORIES = [
   "workspace", // Gallery, Graph, Inspector
   "scene", // Scene Builder, Scene Management, Scene Library
   "game", // Game Theming, Game iframe
+  "generation", // QuickGen, Presets, Composition Roles
   "dev", // Dev Tools panel
   "tools", // Gizmo Lab, NPC Brain Lab, HUD Designer
   "utilities", // Export/Import, Validation, Settings
@@ -49,6 +50,7 @@ export const CATEGORY_LABELS: Record<PanelCategory, string> = {
   workspace: "Workspace",
   scene: "Scene",
   game: "Game",
+  generation: "Generation",
   dev: "Development",
   tools: "Tools",
   utilities: "Utilities",
@@ -68,6 +70,7 @@ export const CATEGORY_ORDER: readonly PanelCategory[] = [
   "workspace",
   "scene",
   "game",
+  "generation",
   "dev",
   "tools",
   "utilities",
@@ -87,6 +90,7 @@ export const CATEGORY_COLORS: Record<PanelCategory, string> = {
   workspace: "blue",
   scene: "purple",
   game: "green",
+  generation: "emerald",
   dev: "orange",
   tools: "cyan",
   utilities: "gray",
@@ -105,6 +109,8 @@ export function getCategoryColorClasses(category: PanelCategory): string {
     scene:
       "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     game: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    generation:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
     dev: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
     tools: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
     utilities:

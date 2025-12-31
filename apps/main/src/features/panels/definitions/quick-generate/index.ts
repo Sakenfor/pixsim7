@@ -5,7 +5,7 @@ export default definePanel({
   id: 'quickGenerate',
   title: 'Quick Generate',
   component: QuickGeneratePanel,
-  category: 'tools',
+  category: 'generation',
   tags: ['generation', 'helper', 'context-aware'],
   icon: 'sparkles',
   description: 'Quick generation panel that adapts to current context (asset or scene)',

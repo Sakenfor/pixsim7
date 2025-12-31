@@ -4,6 +4,8 @@ import { createBackendStorage } from '../lib/backendStorage';
 import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
 import { debugFlags } from '../lib/debugFlags';
 import type { OperationType } from '../types/operations';
+import type { GenerationSessionFields, GenerationSessionActions } from '@features/generation/stores/generationSessionStore';
+import { DEFAULT_SESSION_FIELDS } from '@features/generation/stores/generationSessionStore';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
@@ -31,7 +33,13 @@ export type TimelineAsset = {
   fusionType?: FusionAssetType;    // For fusion operations
 };
 
-export interface ControlCenterState {
+/**
+ * ControlCenterState extends GenerationSessionFields to share the core generation
+ * session state with GenerationSessionStore. This enables unified access via
+ * useGenerationScopeStores() without unsafe type casts.
+ */
+export interface ControlCenterState extends GenerationSessionFields {
+  // UI state specific to ControlCenter
   mode: ControlCenterMode;  // 'dock' or 'cubes' mode
   dockPosition: DockPosition; // where the dock is positioned
   layoutBehavior: LayoutBehavior; // 'overlay' (float over content) or 'push' (resize content)
@@ -43,17 +51,18 @@ export interface ControlCenterState {
   floatingSize: { width: number; height: number }; // size when floating
   activeModule: ControlModule;
   enabledModules: Record<string, boolean>; // module preferences
-  operationType: OperationType;
-  prompt: string;
-  providerId?: string;      // selected provider
-  presetId?: string;        // selected preset
-  presetParams: Record<string, any>; // resolved params from selected preset
   assets: TimelineAsset[];  // assets from operator popup
-  generating: boolean;
   panelLayoutResetTrigger: number; // timestamp to trigger panel layout resets in modules
+  // Note: operationType, prompt, providerId, presetId, presetParams, generating
+  // are inherited from GenerationSessionFields
 }
 
-export interface ControlCenterActions {
+/**
+ * ControlCenterActions extends GenerationSessionActions to share the core generation
+ * session actions. Additional UI-specific actions are defined here.
+ */
+export interface ControlCenterActions extends GenerationSessionActions {
+  // UI actions specific to ControlCenter
   setMode: (mode: ControlCenterMode) => void;
   toggleMode: () => void;
   setDockPosition: (position: DockPosition) => void;
@@ -67,15 +76,10 @@ export interface ControlCenterActions {
   setFloatingSize: (width: number, height: number) => void;
   setActiveModule: (m: ControlModule) => void;
   setModuleEnabled: (moduleId: string, enabled: boolean) => void;
-  setOperationType: (op: ControlCenterState['operationType']) => void;
-  setPrompt: (value: string) => void;
-  setProvider: (id?: string) => void;
-  setPreset: (id?: string) => void;
-  setPresetParams: (params: Record<string, any>) => void;
   setAssets: (assets: TimelineAsset[]) => void;
-  setGenerating: (v: boolean) => void;
   triggerPanelLayoutReset: () => void;
-  reset: () => void;
+  // Note: setOperationType, setPrompt, setProvider, setPreset, setPresetParams,
+  // setGenerating, reset are inherited from GenerationSessionActions
 }
 
 const STORAGE_KEY = 'control_center_v1';
@@ -85,24 +89,21 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
     (set, get) => {
       debugFlags.log('stores', '[ControlCenterStore] Creating store with initial state');
       return {
+        // Spread shared generation session defaults
+        ...DEFAULT_SESSION_FIELDS,
+        // UI-specific defaults
         mode: 'dock',
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
         conformToOtherPanels: false,
         open: false,
         pinned: false,
-        height: 300, // Increased from 180px
+        height: 300,
         floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
-        floatingSize: { width: 700, height: 600 }, // Increased from 600x500
+        floatingSize: { width: 700, height: 600 },
         activeModule: 'quickGenerate',
-        enabledModules: {}, // Empty = all enabled by default
-        operationType: 'text_to_video',
-        prompt: '',
-        providerId: undefined,
-        presetId: undefined,
-        presetParams: {},
+        enabledModules: {},
         assets: [],
-        generating: false,
         panelLayoutResetTrigger: 0,
       setMode: (mode) => {
         if (get().mode === mode) return;
@@ -195,6 +196,9 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       },
       triggerPanelLayoutReset: () => set({ panelLayoutResetTrigger: Date.now() }),
       reset: () => set({
+        // Spread shared generation session defaults
+        ...DEFAULT_SESSION_FIELDS,
+        // UI-specific defaults
         mode: 'dock',
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
@@ -206,13 +210,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         floatingSize: { width: 700, height: 600 },
         activeModule: 'quickGenerate',
         enabledModules: {},
-        operationType: 'text_to_video',
-        prompt: '',
-        providerId: undefined,
-        presetId: undefined,
-        presetParams: {},
         assets: [],
-        generating: false,
       })
     };
   },

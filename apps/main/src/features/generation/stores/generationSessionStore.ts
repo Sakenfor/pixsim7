@@ -2,14 +2,29 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { OperationType } from "@/types/operations";
 
-export interface GenerationSessionState {
+/**
+ * Core generation session fields - shared between GenerationSessionStore and ControlCenterStore.
+ * This interface defines the minimal contract for generation session state.
+ *
+ * Both stores implement this interface:
+ * - GenerationSessionStore: Scoped stores for embedded generation panels
+ * - ControlCenterStore: Global store (extends with UI state like dockPosition, mode, etc.)
+ *
+ * useGenerationScopeStores() provides unified access via this interface.
+ */
+export interface GenerationSessionFields {
   operationType: OperationType;
   prompt: string;
   providerId?: string;
   presetId?: string;
   presetParams: Record<string, any>;
   generating: boolean;
+}
 
+/**
+ * Actions for generation session state.
+ */
+export interface GenerationSessionActions {
   setOperationType: (op: OperationType) => void;
   setPrompt: (value: string) => void;
   setProvider: (id?: string) => void;
@@ -19,16 +34,16 @@ export interface GenerationSessionState {
   reset: () => void;
 }
 
-const DEFAULT_STATE: Omit<
-  GenerationSessionState,
-  | "setOperationType"
-  | "setPrompt"
-  | "setProvider"
-  | "setPreset"
-  | "setPresetParams"
-  | "setGenerating"
-  | "reset"
-> = {
+/**
+ * Full generation session state (fields + actions).
+ */
+export interface GenerationSessionState extends GenerationSessionFields, GenerationSessionActions {}
+
+/**
+ * Default values for generation session fields.
+ * Exported for reuse by ControlCenterStore and other stores that implement GenerationSessionFields.
+ */
+export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
   operationType: "text_to_video",
   prompt: "",
   providerId: undefined,
@@ -51,7 +66,7 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
   return create<GenerationSessionState>()(
     persist(
       (set, get) => ({
-        ...DEFAULT_STATE,
+        ...DEFAULT_SESSION_FIELDS,
         setOperationType: (operationType) => {
           if (get().operationType === operationType) return;
           set({ operationType });
@@ -73,7 +88,7 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
           if (get().generating === value) return;
           set({ generating: value });
         },
-        reset: () => set({ ...DEFAULT_STATE }),
+        reset: () => set({ ...DEFAULT_SESSION_FIELDS }),
       }),
       {
         name: storageKey,
