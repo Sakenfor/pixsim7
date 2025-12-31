@@ -34,6 +34,7 @@ import type {
   PluginCapabilityHints,
 } from './pluginSystem';
 import type { PluginManifest } from './types';
+import { fromPluginSystemMetadata, validateFamilyMetadata } from './types';
 
 // ===== Types =====
 
@@ -317,6 +318,16 @@ function registerBundleMetadata(
   }
 
   pluginCatalog.register(metadata);
+
+  // Validate family-specific metadata and log warnings
+  const descriptor = fromPluginSystemMetadata(metadata);
+  const validation = validateFamilyMetadata(descriptor);
+  if (!validation.valid) {
+    console.error(`[ManifestLoader] Plugin ${manifest.id} has validation errors:`, validation.errors);
+  }
+  if (validation.warnings.length > 0) {
+    console.warn(`[ManifestLoader] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
+  }
 }
 
 /**

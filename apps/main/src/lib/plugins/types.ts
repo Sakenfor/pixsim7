@@ -719,6 +719,11 @@ export function fromPluginSystemMetadata(
     consumesActions: metadata.consumesActions,
     consumesState: metadata.consumesState,
     scope: (metadata as ExtendedPluginMetadata<'node-type'>).scope,
+    experimental: metadata.experimental,
+    deprecated: metadata.deprecated,
+    deprecationMessage: metadata.deprecationMessage,
+    replaces: metadata.replaces,
+    configurable: metadata.configurable,
     canDisable: metadata.canDisable,
     isActive: metadata.activationState === 'active',
     isBuiltin: origin === 'builtin',
@@ -1018,4 +1023,220 @@ export function validateFamilyMetadata(descriptor: UnifiedPluginDescriptor): Fam
     errors,
     warnings,
   };
+}
+
+// ============================================================================
+// Feature Plugin Mapping Helpers
+// ============================================================================
+
+/**
+ * Interaction plugin shape (from game/interactions/types.ts)
+ */
+export interface InteractionPluginLike {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  category?: string;
+  version?: string;
+  tags?: string[];
+  experimental?: boolean;
+  uiMode?: 'dialogue' | 'notification' | 'silent' | 'custom';
+  capabilities?: {
+    opensDialogue?: boolean;
+    modifiesInventory?: boolean;
+    affectsRelationship?: boolean;
+    triggersEvents?: boolean;
+    hasRisk?: boolean;
+    requiresItems?: boolean;
+    consumesItems?: boolean;
+    canBeDetected?: boolean;
+  };
+}
+
+/**
+ * Map InteractionPlugin to UnifiedPluginDescriptor
+ *
+ * Use this to convert interaction plugins (pickpocket, dialogue, etc.)
+ * to the unified descriptor format.
+ */
+export function fromInteractionPlugin(
+  plugin: InteractionPluginLike,
+  options: {
+    origin?: UnifiedPluginOrigin;
+    isActive?: boolean;
+  } = {}
+): UnifiedPluginDescriptor {
+  const origin = options.origin ?? 'builtin';
+
+  return {
+    id: plugin.id,
+    name: plugin.name,
+    description: plugin.description,
+    version: plugin.version,
+    icon: plugin.icon,
+    family: 'interaction',
+    origin,
+    tags: plugin.tags,
+    category: plugin.category,
+    uiMode: plugin.uiMode,
+    experimental: plugin.experimental,
+    capabilities: plugin.capabilities ? {
+      opensDialogue: plugin.capabilities.opensDialogue,
+      modifiesInventory: plugin.capabilities.modifiesInventory,
+      modifiesRelationships: plugin.capabilities.affectsRelationship,
+      triggersEvents: plugin.capabilities.triggersEvents,
+      hasRisk: plugin.capabilities.hasRisk,
+      requiresItems: plugin.capabilities.requiresItems,
+      consumesItems: plugin.capabilities.consumesItems,
+      canBeDetected: plugin.capabilities.canBeDetected,
+    } : undefined,
+    canDisable: origin !== 'builtin',
+    isActive: options.isActive ?? true,
+    isBuiltin: origin === 'builtin',
+  };
+}
+
+/**
+ * Session helper definition shape (from game/engine helperRegistry.ts)
+ */
+export interface HelperDefinitionLike {
+  id?: string;
+  name: string;
+  description?: string;
+  category?: 'relationships' | 'inventory' | 'quests' | 'arcs' | 'events' | 'custom';
+  version?: string;
+  tags?: string[];
+  experimental?: boolean;
+}
+
+/**
+ * Map HelperDefinition to UnifiedPluginDescriptor
+ *
+ * Use this to convert session helpers (relationship modifiers, inventory helpers, etc.)
+ * to the unified descriptor format.
+ */
+export function fromHelperDefinition(
+  helper: HelperDefinitionLike,
+  options: {
+    origin?: UnifiedPluginOrigin;
+    isActive?: boolean;
+  } = {}
+): UnifiedPluginDescriptor {
+  const origin = options.origin ?? 'builtin';
+  const id = helper.id ?? helper.name;
+
+  // Map helper categories to capabilities
+  const capabilities: UnifiedPluginCapabilities = {
+    modifiesSession: true, // All helpers modify session
+  };
+
+  if (helper.category === 'inventory') {
+    capabilities.modifiesInventory = true;
+  } else if (helper.category === 'relationships') {
+    capabilities.modifiesRelationships = true;
+  } else if (helper.category === 'events') {
+    capabilities.triggersEvents = true;
+  }
+
+  return {
+    id,
+    name: helper.name,
+    description: helper.description,
+    version: helper.version,
+    family: 'helper',
+    origin,
+    tags: helper.tags,
+    category: helper.category,
+    experimental: helper.experimental,
+    capabilities,
+    canDisable: origin !== 'builtin',
+    isActive: options.isActive ?? true,
+    isBuiltin: origin === 'builtin',
+  };
+}
+
+/**
+ * Backend feature plugin manifest shape (from infrastructure/plugins/types.py)
+ */
+export interface BackendFeaturePluginLike {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  kind: 'feature' | 'integration' | 'extension';
+  tags?: string[];
+  enabled?: boolean;
+  permissions?: string[];
+  frontend_manifest?: {
+    pluginId: string;
+    pluginName: string;
+    version: string;
+    interactions?: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      icon?: string;
+      category?: string;
+      tags?: string[];
+      capabilities?: Record<string, boolean>;
+    }>;
+  };
+}
+
+/**
+ * Map backend feature plugin to UnifiedPluginDescriptor(s)
+ *
+ * Backend feature plugins (like stealth) may contain multiple interactions.
+ * This returns an array of descriptors - one for the plugin itself,
+ * plus one for each interaction it provides.
+ */
+export function fromBackendFeaturePlugin(
+  plugin: BackendFeaturePluginLike,
+  options: {
+    includeInteractions?: boolean;
+  } = {}
+): UnifiedPluginDescriptor[] {
+  const descriptors: UnifiedPluginDescriptor[] = [];
+
+  // Main plugin descriptor
+  const mainDescriptor: UnifiedPluginDescriptor = {
+    id: plugin.id,
+    name: plugin.name,
+    description: plugin.description,
+    version: plugin.version,
+    author: plugin.author,
+    family: 'ui-plugin', // Feature plugins are a type of ui-plugin
+    origin: 'plugin-dir',
+    tags: plugin.tags,
+    category: plugin.kind,
+    canDisable: true,
+    isActive: plugin.enabled ?? true,
+    isBuiltin: false,
+  };
+
+  descriptors.push(mainDescriptor);
+
+  // Include interaction descriptors if requested
+  if (options.includeInteractions && plugin.frontend_manifest?.interactions) {
+    for (const interaction of plugin.frontend_manifest.interactions) {
+      const interactionDescriptor = fromInteractionPlugin({
+        id: interaction.id,
+        name: interaction.name,
+        description: interaction.description ?? '',
+        icon: interaction.icon,
+        category: interaction.category,
+        tags: interaction.tags,
+        capabilities: interaction.capabilities as InteractionPluginLike['capabilities'],
+      }, {
+        origin: 'plugin-dir',
+        isActive: plugin.enabled ?? true,
+      });
+
+      descriptors.push(interactionDescriptor);
+    }
+  }
+
+  return descriptors;
 }

@@ -117,6 +117,21 @@ export interface PluginMetadata {
 
   /** State IDs this plugin consumes */
   consumesState?: string[];
+
+  /** Mark as experimental/beta */
+  experimental?: boolean;
+
+  /** Mark as deprecated */
+  deprecated?: boolean;
+
+  /** Deprecation message explaining what to use instead */
+  deprecationMessage?: string;
+
+  /** ID of plugin this replaces (for migration/upgrade paths) */
+  replaces?: string;
+
+  /** Whether plugin has configurable settings */
+  configurable?: boolean;
 }
 
 /**
