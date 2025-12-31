@@ -9,7 +9,7 @@ from sqlalchemy import select, cast
 from typing import List, Dict, Any, Optional
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
-from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceAgent, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
+from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceAgent, DeviceStatus, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.automation import ExecutionLoopService
 from pixsim7.backend.main.services.automation.device_sync_service import DeviceSyncService
@@ -68,23 +68,34 @@ class StatusResponse(BaseModel):
 @router.get("/devices", response_model=List[AndroidDevice])
 async def list_devices(
     user: CurrentUser,
+    include_alt: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
     List Android devices.
+
+    Args:
+        include_alt: If False (default), exclude alternate connections to same physical device.
+                     If True, include all device connections.
 
     Visibility rules:
     - Admins see all devices (including server-scanned ones with agent_id=None).
     - Regular users see only devices whose agent belongs to them (DeviceAgent.user_id).
     """
     if user.is_admin():
-        result = await db.execute(select(AndroidDevice))
+        query = select(AndroidDevice)
     else:
-        result = await db.execute(
+        query = (
             select(AndroidDevice)
             .join(DeviceAgent, AndroidDevice.agent_id == DeviceAgent.id)
             .where(DeviceAgent.user_id == user.id)
         )
+
+    # Filter out alternate connections by default
+    if not include_alt:
+        query = query.where(AndroidDevice.primary_device_id.is_(None))
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 
@@ -94,6 +105,40 @@ async def scan_devices(db: AsyncSession = Depends(get_db)) -> DeviceScanResponse
     svc = DeviceSyncService(db)
     stats = await svc.scan_and_sync()
     return DeviceScanResponse(**stats)
+
+
+@router.post("/devices/check-ads")
+async def check_device_ads(db: AsyncSession = Depends(get_db)):
+    """
+    Manually trigger ad detection check on all devices.
+    Returns which primary devices are watching ads or in ad session.
+    """
+    svc = DeviceSyncService(db)
+    stats = await svc.check_device_ads()
+
+    # Get updated device statuses (only primary devices, exclude offline)
+    result = await db.execute(
+        select(AndroidDevice).where(
+            AndroidDevice.status != DeviceStatus.OFFLINE,
+            AndroidDevice.primary_device_id.is_(None),
+        )
+    )
+    devices = result.scalars().all()
+
+    return {
+        **stats,
+        "devices": [
+            {
+                "name": d.name,
+                "adb_id": d.adb_id,
+                "status": d.status.value,
+                "is_watching_ad": d.is_watching_ad,
+                "in_ad_session": d.ad_session_started_at is not None,
+                "current_activity": d.current_activity,
+            }
+            for d in devices
+        ]
+    }
 
 
 @router.get("/loops", response_model=List[ExecutionLoop])

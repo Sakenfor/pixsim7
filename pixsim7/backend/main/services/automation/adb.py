@@ -188,6 +188,107 @@ class ADB:
         code, out, _ = await self.shell(serial, "getprop", property_name)
         return out.strip()
 
+    async def get_android_id(self, serial: str) -> Optional[str]:
+        """
+        Get the unique Android ID for the device.
+        This is stable across reboots and can identify the same device
+        connected via different methods (TCP vs emulator port).
+        """
+        code, out, _ = await self.shell(serial, "settings", "get", "secure", "android_id")
+        android_id = out.strip()
+        return android_id if android_id and android_id != "null" else None
+
+    async def get_focused_activity(self, serial: str) -> Optional[str]:
+        """
+        Get the currently focused activity component name.
+        Returns something like 'com.pixverseai.pixverse/.MainActivity' or None.
+        """
+        import re
+
+        # Use dumpsys window and grep for mFocusedApp
+        code, out, _ = await self.shell(serial, "dumpsys window | grep mFocusedApp")
+
+        # Find all mFocusedApp entries - take the last non-null one
+        # Output like: mFocusedApp=ActivityRecord{e7fc7d8 u0 com.pixverseai.pixverse/com.google.android.gms.ads.AdActivity t173}
+        matches = re.findall(r"mFocusedApp=ActivityRecord\{[^\s]+ u\d+ ([^\s]+)", out)
+        # Filter out null entries and return the last valid one
+        valid_matches = [m for m in matches if m and m != "null"]
+        if valid_matches:
+            return valid_matches[-1]
+
+        return None
+
+    # Known ad SDK activity patterns
+    AD_ACTIVITY_PATTERNS = [
+        "com.google.android.gms.ads",      # Google AdMob
+        "com.unity3d.services.ads",         # Unity Ads
+        "com.unity3d.ads",                  # Unity Ads (alt)
+        "com.applovin",                     # AppLovin
+        "com.ironsource",                   # IronSource
+        "com.vungle",                       # Vungle
+        "com.adcolony",                     # AdColony
+        "com.facebook.ads",                 # Facebook Audience Network
+        "com.mbridge",                      # Mintegral
+        "com.bytedance.sdk.openadsdk",      # Pangle (ByteDance)
+        "com.chartboost",                   # Chartboost
+        "com.inmobi",                       # InMobi
+        "com.tapjoy",                       # Tapjoy
+        "com.fyber",                        # Fyber
+        "com.smaato",                       # Smaato
+    ]
+
+    async def is_ad_playing(self, serial: str) -> Tuple[bool, Optional[str]]:
+        """
+        Check if an ad is currently playing by examining the focused activity.
+
+        Returns:
+            (is_ad, activity_name) - True if ad detected, plus the activity name
+        """
+        activity = await self.get_focused_activity(serial)
+        if not activity:
+            return False, None
+
+        activity_lower = activity.lower()
+        for pattern in self.AD_ACTIVITY_PATTERNS:
+            if pattern.lower() in activity_lower:
+                return True, activity
+
+        return False, activity
+
+    async def check_path_exists(self, serial: str, path: str) -> bool:
+        """Check if a path exists on the device."""
+        code, out, _ = await self.shell(serial, f"ls {path} 2>/dev/null && echo EXISTS")
+        return "EXISTS" in out
+
+    async def detect_emulator_by_paths(self, serial: str) -> Optional[Tuple[str, str]]:
+        """
+        Detect emulator type by checking for emulator-specific paths.
+        Returns (device_name, device_type) or None if not detected.
+
+        This is needed because some emulators (like MuMu) spoof device properties
+        to look like real devices (e.g., Samsung).
+        """
+        # MuMu: has /mnt/shared/MuMuShared folder
+        if await self.check_path_exists(serial, "/mnt/shared/MuMuShared"):
+            return ("MumuPlayer", "mumu")
+
+        # BlueStacks: has specific paths
+        if await self.check_path_exists(serial, "/sdcard/windows/BstSharedFolder"):
+            return ("BlueStacks", "bluestacks")
+
+        # Nox: has specific paths
+        if await self.check_path_exists(serial, "/mnt/shared/Image"):
+            # Double-check it's not MuMu (which also has /mnt/shared)
+            code, out, _ = await self.shell(serial, "ls /mnt/shared/")
+            if "Nox_share" in out or "nox" in out.lower():
+                return ("NoxPlayer", "nox")
+
+        # LDPlayer: check for LD-specific paths
+        if await self.check_path_exists(serial, "/sdcard/Pictures/ldshare"):
+            return ("LDPlayer", "ld")
+
+        return None
+
     async def get_device_info(self, serial: str) -> dict:
         """
         Get device information by querying multiple properties.
@@ -219,6 +320,7 @@ class ADB:
             device_name = None
             device_type = "adb"
 
+            # First try property-based detection
             if "mumu" in manufacturer or "mumu" in model or "mumu" in product:
                 device_name = "MumuPlayer"
                 device_type = "mumu"
@@ -234,10 +336,20 @@ class ADB:
             elif "genymotion" in manufacturer or "genymotion" in model:
                 device_name = "Genymotion"
                 device_type = "genymotion"
-            elif model:
-                device_name = model.upper()
-            elif product:
-                device_name = product
+
+            # If property-based detection didn't identify an emulator, try path-based detection
+            # This handles emulators like MuMu that spoof device properties
+            if device_type == "adb":
+                path_result = await self.detect_emulator_by_paths(serial)
+                if path_result:
+                    device_name, device_type = path_result
+
+            # Fallback to model/product name if still not detected
+            if device_name is None:
+                if model:
+                    device_name = model.upper()
+                elif product:
+                    device_name = product
 
             props["detected_name"] = device_name
             props["detected_type"] = device_type

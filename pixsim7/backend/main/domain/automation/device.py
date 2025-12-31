@@ -69,6 +69,11 @@ class AndroidDevice(SQLModel, table=True):
     last_used_at: Optional[datetime] = Field(default=None)  # Track last execution time for LRU device pool
     error_message: Optional[str] = Field(default=None, sa_column=Column(Text))
 
+    # Activity tracking (for ad detection, etc.)
+    current_activity: Optional[str] = Field(default=None, max_length=255)  # Current focused activity
+    is_watching_ad: bool = Field(default=False)  # True if ad SDK activity detected
+    ad_session_started_at: Optional[datetime] = Field(default=None)  # When ad watching session started
+
     created_at: Optional[datetime] = Field(default=None)
     updated_at: Optional[datetime] = Field(default=None)
 

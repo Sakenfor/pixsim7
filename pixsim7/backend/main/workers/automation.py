@@ -20,6 +20,24 @@ from pixsim7.backend.main.services.automation.action_executor import ActionExecu
 logger = configure_logging("worker")
 
 
+def _preset_uses_pixverse_ad_vars(actions: list) -> bool:
+    """Check if preset actions reference any {pixverse_ad_*} variables.
+
+    Recursively checks nested actions (repeat, if_element_exists, etc.).
+    Used to skip expensive API calls when preset doesn't need ad task data.
+    """
+    import json
+    if not actions:
+        return False
+    # Serialize actions to JSON and check for variable references
+    try:
+        actions_str = json.dumps(actions)
+        return "{pixverse_ad_" in actions_str
+    except (TypeError, ValueError):
+        # Fallback: be conservative and assume it might need them
+        return True
+
+
 async def process_automation(ctx: dict, execution_id: int) -> dict:
     """
     Process a single automation execution (stub implementation).
@@ -152,7 +170,10 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                     # For Pixverse rewards, the daily ad cap (total_counts) can change over time
                     # (e.g., 2 or 3). Fetch the current task status once so presets can loop
                     # the correct number of times.
-                    if account.provider_id == "pixverse":
+                    # Only fetch ad task data if the preset actually uses {pixverse_ad_*} variables
+                    # to avoid unnecessary API calls that could trigger session conflicts.
+                    preset_actions = getattr(preset, 'actions', None) or []
+                    if account.provider_id == "pixverse" and _preset_uses_pixverse_ad_vars(preset_actions):
                         try:
                             from pixsim7.backend.main.services.provider import registry as provider_registry
                             provider = provider_registry.get("pixverse")
