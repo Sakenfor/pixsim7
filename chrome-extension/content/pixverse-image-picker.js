@@ -14,9 +14,16 @@ window.PXS7 = window.PXS7 || {};
 
   // Import from other modules
   const { COLORS } = window.PXS7.styles || {};
-  const showToast = window.PXS7.utils?.showToast;
-  const closeMenus = window.PXS7.utils?.closeMenus;
-  const sendMessageWithTimeout = window.PXS7.utils?.sendMessageWithTimeout;
+  const {
+    showToast,
+    closeMenus,
+    sendMessageWithTimeout,
+    normalizeUrl,
+    extractImageUrl,
+    addHoverEffect,
+    createMenuItem,
+    createDivider,
+  } = window.PXS7.utils || {};
   const storage = window.PXS7.storage;
 
   // Module state
@@ -67,13 +74,13 @@ window.PXS7 = window.PXS7 || {};
   function addToRecentlyUsed(url, name = null) {
     if (!url) return;
     // Normalize URL for comparison (remove query params)
-    const normalizedUrl = url.split('?')[0];
+    const normalizedUrl = normalizeUrl(url);
     // Remove if already exists (to move to front)
-    recentlyUsedAssets = recentlyUsedAssets.filter(a => a.url.split('?')[0] !== normalizedUrl);
+    recentlyUsedAssets = recentlyUsedAssets.filter(a => normalizeUrl(a.url) !== normalizedUrl);
     // Add to front
     recentlyUsedAssets.unshift({
       url,
-      name: name || url.split('/').pop()?.split('?')[0] || 'Image',
+      name: name || normalizeUrl(url.split('/').pop()) || 'Image',
       usedAt: Date.now()
     });
     // Limit size
@@ -91,16 +98,14 @@ window.PXS7 = window.PXS7 || {};
   function buildRecentlyUsedMap() {
     recentlyUsedMap = new Map();
     recentlyUsedAssets.forEach((a, idx) => {
-      const normalizedUrl = a.url.split('?')[0];
-      recentlyUsedMap.set(normalizedUrl, idx);
+      recentlyUsedMap.set(normalizeUrl(a.url), idx);
     });
   }
 
   function getRecentlyUsedIndex(url) {
     if (!url) return -1;
     if (!recentlyUsedMap) buildRecentlyUsedMap();
-    const normalizedUrl = url.split('?')[0];
-    const idx = recentlyUsedMap.get(normalizedUrl);
+    const idx = recentlyUsedMap.get(normalizeUrl(url));
     return idx !== undefined ? idx : -1;
   }
 
@@ -180,7 +185,7 @@ window.PXS7 = window.PXS7 || {};
       document.querySelectorAll('.ant-upload-drag-container img').forEach(img => {
         const src = img.src;
         if (src && src.includes('media.pixverse.ai')) {
-          const cleanUrl = src.split('?')[0];
+          const cleanUrl = normalizeUrl(src);
           if (!state.images.includes(cleanUrl)) {
             state.images.push(cleanUrl);
           }
@@ -189,10 +194,9 @@ window.PXS7 = window.PXS7 || {};
 
       // Also check for background images in upload previews
       document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
-        const style = el.getAttribute('style') || '';
-        const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
-        if (match && !state.images.includes(match[1])) {
-          state.images.push(match[1].split('?')[0]);
+        const url = extractImageUrl(el.getAttribute('style'));
+        if (url && !state.images.includes(url)) {
+          state.images.push(url);
         }
       });
 
@@ -382,6 +386,20 @@ window.PXS7 = window.PXS7 || {};
       return (a.containerId || '').localeCompare(b.containerId || '');
     });
 
+    // Make containerIds unique by appending index for duplicates
+    // This ensures each slot can be uniquely identified even when multiple slots share the same parent element ID
+    const seenIds = {};
+    results.forEach(r => {
+      const baseId = r.containerId || 'unknown';
+      if (seenIds[baseId] === undefined) {
+        seenIds[baseId] = 0;
+      } else {
+        seenIds[baseId]++;
+      }
+      // Append index to make unique (e.g., 'create_image-customer_img_paths#0', '#1')
+      r.containerId = `${baseId}#${seenIds[baseId]}`;
+    });
+
     return results;
   }
 
@@ -493,7 +511,7 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function getMimeTypeFromUrl(url) {
-    const ext = url.split('?')[0].split('.').pop()?.toLowerCase();
+    const ext = normalizeUrl(url).split('.').pop()?.toLowerCase();
     const mimeMap = {
       'png': 'image/png',
       'jpg': 'image/jpeg',
@@ -506,7 +524,7 @@ window.PXS7 = window.PXS7 || {};
 
   // ===== Image Injection =====
 
-  async function injectImageToUpload(imageUrl, targetInput = null) {
+  async function injectImageToUpload(imageUrl, targetInputOrContainerId = null) {
     try {
       const uploads = findUploadInputs();
 
@@ -516,9 +534,20 @@ window.PXS7 = window.PXS7 || {};
       }
 
       // If specific target provided, use it; otherwise use smart selection
+      // targetInputOrContainerId can be either an input element reference OR a containerId string
       let targetUpload;
-      if (targetInput) {
-        targetUpload = uploads.find(u => u.input === targetInput) || uploads[0];
+      if (targetInputOrContainerId) {
+        if (typeof targetInputOrContainerId === 'string') {
+          // It's a containerId - look up by containerId (stable across DOM changes)
+          targetUpload = uploads.find(u => u.containerId === targetInputOrContainerId);
+          if (!targetUpload) {
+            console.warn('[PixSim7] Could not find slot by containerId:', targetInputOrContainerId);
+            targetUpload = uploads[0];
+          }
+        } else {
+          // It's an input element reference - look up by reference, with containerId fallback
+          targetUpload = uploads.find(u => u.input === targetInputOrContainerId) || uploads[0];
+        }
       } else {
         // Filter to only high-priority (page-relevant) slots
         const relevantSlots = uploads.filter(u => u.priority >= 10);
@@ -684,7 +713,7 @@ window.PXS7 = window.PXS7 || {};
         throw new Error('Empty image data received');
       }
 
-      let urlPath = imageUrl.split('/').pop().split('?')[0];
+      let urlPath = normalizeUrl(imageUrl.split('/').pop());
       let filename = decodeURIComponent(urlPath) || '';
 
       if (!filename || !filename.match(/\.(png|jpg|jpeg|webp|gif)$/i)) {
@@ -777,7 +806,7 @@ window.PXS7 = window.PXS7 || {};
 
     // Scan all pixverse images on page, but filter to valid user content
     document.querySelectorAll('img[src*="media.pixverse.ai"]').forEach(img => {
-      const src = img.src.split('?')[0];
+      const src = normalizeUrl(img.src);
       if (isValidUserImage(src)) {
         images.add(src);
       }
@@ -785,13 +814,9 @@ window.PXS7 = window.PXS7 || {};
 
     // Also check background-image styles
     document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
-      const style = el.getAttribute('style') || '';
-      const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
-      if (match) {
-        const src = match[1].split('?')[0];
-        if (isValidUserImage(src)) {
-          images.add(src);
-        }
+      const src = extractImageUrl(el.getAttribute('style'));
+      if (src && isValidUserImage(src)) {
+        images.add(src);
       }
     });
 
@@ -805,14 +830,13 @@ window.PXS7 = window.PXS7 || {};
 
     uploadContainers.forEach(container => {
       container.querySelectorAll('img[src*="media.pixverse.ai"], img[src*="aliyun"]').forEach(img => {
-        const src = img.src.split('?')[0];
+        const src = normalizeUrl(img.src);
         if (src && src.length > 50) images.add(src);
       });
 
       container.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
-        const style = el.getAttribute('style') || '';
-        const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
-        if (match) images.add(match[1].split('?')[0]);
+        const src = extractImageUrl(el.getAttribute('style'));
+        if (src) images.add(src);
       });
     });
 
@@ -919,11 +943,11 @@ window.PXS7 = window.PXS7 || {};
         `;
         item.title = `Replace ${slotName}`;
 
-        item.addEventListener('mouseenter', () => item.style.background = COLORS.bgHover);
-        item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+        addHoverEffect(item);
         item.addEventListener('click', async () => {
           menu.remove();
-          await injectImageToUpload(imageUrl, slotInfo.input);
+          // Pass containerId (stable) instead of input reference (can become stale after DOM changes)
+          await injectImageToUpload(imageUrl, slotInfo.containerId);
         });
         menu.appendChild(item);
       }
@@ -934,38 +958,39 @@ window.PXS7 = window.PXS7 || {};
       const plusBtn = plusSvg?.closest('div[class*="opacity"]') || plusSvg?.parentElement?.parentElement;
 
       if (plusBtn) {
-        // Divider
-        const divider = document.createElement('div');
-        divider.style.cssText = `height: 1px; background: ${COLORS.border}; margin: 4px 0;`;
-        menu.appendChild(divider);
+        menu.appendChild(createDivider());
 
         // Add new slot option
-        const addItem = document.createElement('button');
-        addItem.style.cssText = `
-          width: 100%;
-          padding: 6px 12px;
-          font-size: 11px;
-          text-align: left;
-          background: transparent;
-          border: none;
-          color: ${COLORS.accent};
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        `;
-        addItem.innerHTML = `<span style="opacity:0.8">+</span><span>Add new slot</span>`;
-        addItem.title = 'Add a new image slot and fill it';
-        addItem.addEventListener('mouseenter', () => addItem.style.background = COLORS.bgHover);
-        addItem.addEventListener('mouseleave', () => addItem.style.background = 'transparent');
+        const addItem = createMenuItem({
+          icon: '+',
+          label: 'Add new slot',
+          title: 'Add a new image slot and fill it',
+          color: COLORS.accent,
+        });
         addItem.addEventListener('click', async () => {
           menu.remove();
+          // Get current slots before adding new one
+          const beforeSlots = findUploadInputs().map(u => u.containerId);
           // Click + to add new slot
           plusBtn.click();
           // Wait for DOM to update
-          await new Promise(r => setTimeout(r, 300));
-          // Inject to the new empty slot (auto will find it)
-          await injectImageToUpload(imageUrl);
+          await new Promise(r => setTimeout(r, 400));
+          // Find the new slot that wasn't there before
+          const afterSlots = findUploadInputs();
+          const newSlot = afterSlots.find(u => !beforeSlots.includes(u.containerId) && !u.hasImage);
+          if (newSlot) {
+            // Target the newly added slot specifically
+            await injectImageToUpload(imageUrl, newSlot.containerId);
+          } else {
+            // Fallback: find any empty slot
+            const emptySlot = afterSlots.find(u => !u.hasImage);
+            if (emptySlot) {
+              await injectImageToUpload(imageUrl, emptySlot.containerId);
+            } else {
+              // Last resort: auto-selection
+              await injectImageToUpload(imageUrl);
+            }
+          }
         });
         menu.appendChild(addItem);
       }
@@ -994,11 +1019,12 @@ window.PXS7 = window.PXS7 || {};
     }, 0);
   }
 
-  // Z-index constants - use lower values so site popups can appear above
-  const Z_INDEX_PICKER = 100000;
-  const Z_INDEX_PICKER_INACTIVE = 99990;
-  const Z_INDEX_MENU = 100001;
-  const Z_INDEX_PREVIEW = 100002;
+  // Z-index values - keep reasonable to not block site modals/previews
+  // Pixverse typically uses z-index 1000-2000 for modals
+  const Z_INDEX_PICKER = 9999;
+  const Z_INDEX_PICKER_INACTIVE = 900;  // Much lower when inactive so site popups appear above
+  const Z_INDEX_MENU = 10000;
+  const Z_INDEX_PREVIEW = 10001;
 
   // Hover preview element (shared across grid)
   let hoverPreview = null;
@@ -1025,12 +1051,11 @@ window.PXS7 = window.PXS7 || {};
   function getPreviewSizeUrl(url, mediaType = null) {
     if (!url) return url;
     // Don't resize videos
-    if (isVideoUrl(url, mediaType)) return url.split('?')[0];
+    if (isVideoUrl(url, mediaType)) return normalizeUrl(url);
     // If it's a Pixverse CDN URL, request a medium-sized version
     if (url.includes('pixverse') || url.includes('aliyuncs.com')) {
       // Remove any existing processing params and add medium size
-      const baseUrl = url.split('?')[0];
-      return baseUrl + '?x-oss-process=image/resize,w_400,h_400,m_lfit';
+      return normalizeUrl(url) + '?x-oss-process=image/resize,w_400,h_400,m_lfit';
     }
     return url;
   }

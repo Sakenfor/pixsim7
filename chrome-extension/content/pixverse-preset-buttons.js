@@ -12,7 +12,10 @@
 
   // ===== Module Imports =====
   const { BTN_GROUP_CLASS, BTN_CLASS, MENU_CLASS, COLORS, injectStyle } = window.PXS7.styles;
-  const { showToast, closeMenus, positionMenu, setupOutsideClick, sendMessageWithTimeout } = window.PXS7.utils;
+  const {
+    showToast, closeMenus, positionMenu, setupOutsideClick, sendMessageWithTimeout,
+    normalizeUrl, addHoverEffect, withLoadingState, createMenuItem, createDivider
+  } = window.PXS7.utils;
   const storage = window.PXS7.storage;
   const imagePicker = window.PXS7.imagePicker;
 

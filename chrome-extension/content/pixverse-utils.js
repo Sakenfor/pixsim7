@@ -73,6 +73,173 @@ window.PXS7 = window.PXS7 || {};
     ]);
   }
 
+  // ===== URL Helpers =====
+
+  /**
+   * Normalize URL by removing query parameters
+   * @param {string} url - URL to normalize
+   * @returns {string} URL without query params
+   */
+  function normalizeUrl(url) {
+    if (!url) return '';
+    return url.split('?')[0];
+  }
+
+  /**
+   * Extract image URL from a style attribute string
+   * @param {string} styleString - CSS style string
+   * @param {string} [domain] - Optional domain to match (default: media.pixverse.ai)
+   * @returns {string|null} Extracted URL or null
+   */
+  function extractImageUrl(styleString, domain = 'media.pixverse.ai') {
+    if (!styleString) return null;
+    const regex = new RegExp(`url\\(["']?(https://${domain.replace('.', '\\.')}[^"')\\s]+)`, 'i');
+    const match = styleString.match(regex);
+    return match ? normalizeUrl(match[1]) : null;
+  }
+
+  // ===== DOM Helpers =====
+
+  /**
+   * Add hover effect listeners to an element
+   * @param {HTMLElement} element - Element to add hover to
+   * @param {string} [hoverBg] - Background color on hover (default: COLORS.bgHover)
+   * @param {string} [normalBg] - Background color normally (default: transparent)
+   */
+  function addHoverEffect(element, hoverBg, normalBg = 'transparent') {
+    const COLORS = window.PXS7.styles?.COLORS || {};
+    const hoverColor = hoverBg || COLORS.bgHover || '#374151';
+    element.addEventListener('mouseenter', () => element.style.background = hoverColor);
+    element.addEventListener('mouseleave', () => element.style.background = normalBg);
+  }
+
+  /**
+   * Wrap an async function with loading state on a button
+   * @param {HTMLElement} button - Button element
+   * @param {Function} asyncFn - Async function to execute
+   * @param {string} [loadingText] - Text to show while loading (default: '...')
+   * @returns {Promise} Result of asyncFn
+   */
+  async function withLoadingState(button, asyncFn, loadingText = '...') {
+    button.classList.add('loading');
+    const origContent = button.innerHTML;
+    button.innerHTML = loadingText;
+    try {
+      return await asyncFn();
+    } finally {
+      button.classList.remove('loading');
+      button.innerHTML = origContent;
+    }
+  }
+
+  /**
+   * Create a styled button element
+   * @param {Object} options - Button options
+   * @param {string} [options.text] - Button text
+   * @param {string} [options.html] - Button innerHTML (alternative to text)
+   * @param {string} [options.title] - Button title/tooltip
+   * @param {Object} [options.styles] - CSS styles object
+   * @param {string} [options.className] - CSS class name
+   * @param {Function} [options.onClick] - Click handler
+   * @param {boolean} [options.hover] - Add hover effect (default: true)
+   * @returns {HTMLButtonElement}
+   */
+  function createButton(options = {}) {
+    const COLORS = window.PXS7.styles?.COLORS || {};
+    const btn = document.createElement('button');
+
+    if (options.text) btn.textContent = options.text;
+    if (options.html) btn.innerHTML = options.html;
+    if (options.title) btn.title = options.title;
+    if (options.className) btn.className = options.className;
+
+    // Default styles
+    const defaultStyles = {
+      padding: '6px 12px',
+      fontSize: '11px',
+      background: 'transparent',
+      border: 'none',
+      color: COLORS.text || '#e5e7eb',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+    };
+
+    const mergedStyles = { ...defaultStyles, ...options.styles };
+    Object.assign(btn.style, mergedStyles);
+
+    if (options.onClick) {
+      btn.addEventListener('click', options.onClick);
+    }
+
+    if (options.hover !== false) {
+      addHoverEffect(btn, options.hoverBg);
+    }
+
+    return btn;
+  }
+
+  /**
+   * Create a menu item button
+   * @param {Object} options - Menu item options
+   * @param {string} options.label - Item label
+   * @param {string} [options.icon] - Icon HTML or text
+   * @param {string} [options.title] - Tooltip
+   * @param {Function} [options.onClick] - Click handler
+   * @param {string} [options.color] - Text color
+   * @returns {HTMLButtonElement}
+   */
+  function createMenuItem(options = {}) {
+    const COLORS = window.PXS7.styles?.COLORS || {};
+    return createButton({
+      html: options.icon
+        ? `<span style="opacity:0.6">${options.icon}</span><span>${options.label}</span>`
+        : options.label,
+      title: options.title,
+      onClick: options.onClick,
+      styles: {
+        width: '100%',
+        padding: '6px 12px',
+        fontSize: '11px',
+        textAlign: 'left',
+        color: options.color || COLORS.text || '#e5e7eb',
+      },
+    });
+  }
+
+  /**
+   * Create a menu divider
+   * @param {string} [color] - Divider color
+   * @returns {HTMLDivElement}
+   */
+  function createDivider(color) {
+    const COLORS = window.PXS7.styles?.COLORS || {};
+    const divider = document.createElement('div');
+    divider.style.cssText = `height: 1px; background: ${color || COLORS.border || '#4b5563'}; margin: 4px 0;`;
+    return divider;
+  }
+
+  /**
+   * Ensure element stays within viewport bounds
+   * @param {HTMLElement} element - Element to constrain
+   * @param {number} [padding] - Padding from viewport edge (default: 10)
+   */
+  function ensureInViewport(element, padding = 10) {
+    const rect = element.getBoundingClientRect();
+    let { top, left } = rect;
+
+    if (left + rect.width > window.innerWidth - padding) {
+      left = window.innerWidth - rect.width - padding;
+    }
+    if (top + rect.height > window.innerHeight - padding) {
+      top = window.innerHeight - rect.height - padding;
+    }
+
+    element.style.left = `${Math.max(padding, left)}px`;
+    element.style.top = `${Math.max(padding, top)}px`;
+  }
+
   // Export to global namespace
   window.PXS7.utils = {
     showToast,
@@ -80,6 +247,15 @@ window.PXS7 = window.PXS7 || {};
     positionMenu,
     setupOutsideClick,
     sendMessageWithTimeout,
+    // New helpers
+    normalizeUrl,
+    extractImageUrl,
+    addHoverEffect,
+    withLoadingState,
+    createButton,
+    createMenuItem,
+    createDivider,
+    ensureInViewport,
   };
 
 })();
