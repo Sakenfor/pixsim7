@@ -38,21 +38,37 @@ export {
 } from './hostRegistry';
 export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
 
+// Dock Zone Registry (dockview container definitions)
 export {
+  dockZoneRegistry,
+  registerDockZone,
+  unregisterDockZone,
+  getDockZone,
+  getDockZoneByDockviewId,
+  resolvePresetScope,
+  setDefaultPresetScope,
+  getDefaultPresetScope,
+  getDockZonePanelIds,
+  registerDefaultDockZones,
+  areDefaultZonesRegistered,
+  DEFAULT_DOCK_ZONES,
+  // Backward compatibility aliases
   dockviewWidgetRegistry,
   registerDockviewWidget,
   unregisterDockviewWidget,
   getDockviewWidget,
   getDockviewWidgetByDockviewId,
-  resolvePresetScope,
-  setDefaultPresetScope,
-  getDefaultPresetScope,
   getDockviewWidgetPanelIds,
   registerDefaultDockviewWidgets,
   areDefaultWidgetsRegistered,
   DEFAULT_DOCKVIEW_WIDGETS,
-} from './widgetRegistry';
-export type { DockviewWidgetDefinition, PresetScope } from './widgetRegistry';
+} from './dockZoneRegistry';
+export type {
+  DockZoneDefinition,
+  PresetScope,
+  // Backward compatibility alias
+  DockviewWidgetDefinition,
+} from './dockZoneRegistry';
 
 export type {
   LocalPanelDefinition,

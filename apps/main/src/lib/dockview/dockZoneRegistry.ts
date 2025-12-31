@@ -1,9 +1,11 @@
 /**
- * Dockview Widget Registry
+ * Dock Zone Registry
  *
- * Defines dockview widget metadata (preset scopes, panel scopes, storage keys).
- * This is decoupled from the panels feature to allow context menu and preset
- * actions to work without depending on panel-specific code.
+ * Defines dock zone metadata (preset scopes, panel scopes, storage keys).
+ * A "dock zone" is a dockview container area like workspace, control-center, asset-viewer.
+ *
+ * Previously named "dockview widgets" - renamed to avoid confusion with
+ * the new unified Widget system for header/toolbar action widgets.
  *
  * Design principles:
  * - Lazy registration: defaults are not auto-registered at module load
@@ -19,11 +21,11 @@ import { BaseRegistry } from '@lib/core/BaseRegistry';
 export type PresetScope = string;
 
 /**
- * Widget definition for dockview containers.
+ * Dock zone definition for dockview containers.
  * Describes a dockview's metadata for presets and panel filtering.
  */
-export interface DockviewWidgetDefinition {
-  /** Stable widget ID (used for presets and settings) */
+export interface DockZoneDefinition {
+  /** Stable zone ID (used for presets and settings) */
   id: string;
   /** Human-friendly label */
   label: string;
@@ -44,12 +46,12 @@ export interface DockviewWidgetDefinition {
 }
 
 /**
- * Registry for dockview widget definitions.
+ * Registry for dock zone definitions.
  */
-class DockviewWidgetRegistry extends BaseRegistry<DockviewWidgetDefinition> {
+class DockZoneRegistry extends BaseRegistry<DockZoneDefinition> {
   private dockviewIdIndex = new Map<string, string>();
 
-  override register(item: DockviewWidgetDefinition): void {
+  override register(item: DockZoneDefinition): void {
     super.register(item);
     this.dockviewIdIndex.set(item.dockviewId, item.id);
   }
@@ -63,53 +65,53 @@ class DockviewWidgetRegistry extends BaseRegistry<DockviewWidgetDefinition> {
   }
 
   /**
-   * Get widget definition by dockview ID (O(1) lookup).
+   * Get zone definition by dockview ID (O(1) lookup).
    */
-  getByDockviewId(dockviewId: string): DockviewWidgetDefinition | undefined {
-    const widgetId = this.dockviewIdIndex.get(dockviewId);
-    return widgetId ? this.get(widgetId) : undefined;
+  getByDockviewId(dockviewId: string): DockZoneDefinition | undefined {
+    const zoneId = this.dockviewIdIndex.get(dockviewId);
+    return zoneId ? this.get(zoneId) : undefined;
   }
 }
 
-/** Global widget registry */
-export const dockviewWidgetRegistry = new DockviewWidgetRegistry();
+/** Global dock zone registry */
+export const dockZoneRegistry = new DockZoneRegistry();
 
 /**
- * Register a dockview widget definition.
+ * Register a dock zone definition.
  */
-export function registerDockviewWidget(definition: DockviewWidgetDefinition): void {
-  dockviewWidgetRegistry.register(definition);
+export function registerDockZone(definition: DockZoneDefinition): void {
+  dockZoneRegistry.register(definition);
 }
 
 /**
- * Unregister a dockview widget definition.
+ * Unregister a dock zone definition.
  */
-export function unregisterDockviewWidget(id: string): void {
-  dockviewWidgetRegistry.unregister(id);
+export function unregisterDockZone(id: string): void {
+  dockZoneRegistry.unregister(id);
 }
 
 /**
- * Get a widget definition by ID.
+ * Get a zone definition by ID.
  */
-export function getDockviewWidget(id: string): DockviewWidgetDefinition | undefined {
-  return dockviewWidgetRegistry.get(id);
+export function getDockZone(id: string): DockZoneDefinition | undefined {
+  return dockZoneRegistry.get(id);
 }
 
 /**
- * Get a widget definition by dockview ID.
+ * Get a zone definition by dockview ID.
  */
-export function getDockviewWidgetByDockviewId(
+export function getDockZoneByDockviewId(
   dockviewId: string | undefined,
-): DockviewWidgetDefinition | undefined {
+): DockZoneDefinition | undefined {
   if (!dockviewId) return undefined;
-  return dockviewWidgetRegistry.getByDockviewId(dockviewId);
+  return dockZoneRegistry.getByDockviewId(dockviewId);
 }
 
 // ============================================================================
 // Preset Scope Resolution
 // ============================================================================
 
-/** Default fallback scope when widget is not registered */
+/** Default fallback scope when zone is not registered */
 let defaultPresetScope: PresetScope = 'workspace';
 
 /**
@@ -131,7 +133,7 @@ export function getDefaultPresetScope(): PresetScope {
  * Resolve preset scope for a dockview ID.
  *
  * Resolution order:
- * 1. Registered widget's presetScope
+ * 1. Registered zone's presetScope
  * 2. Configurable default fallback (defaults to 'workspace')
  *
  * @param dockviewId - The dockview ID to resolve scope for
@@ -141,22 +143,22 @@ export function resolvePresetScope(
   dockviewId: string | undefined,
   fallback?: PresetScope,
 ): PresetScope {
-  const widget = getDockviewWidgetByDockviewId(dockviewId);
-  if (widget?.presetScope) {
-    return widget.presetScope;
+  const zone = getDockZoneByDockviewId(dockviewId);
+  if (zone?.presetScope) {
+    return zone.presetScope;
   }
   return fallback ?? defaultPresetScope;
 }
 
 // ============================================================================
-// Default Widget Definitions (Lazy Registration)
+// Default Dock Zone Definitions (Lazy Registration)
 // ============================================================================
 
 /**
- * Default widget definitions.
- * These are NOT auto-registered - call registerDefaultDockviewWidgets() explicitly.
+ * Default dock zone definitions.
+ * These are NOT auto-registered - call registerDefaultDockZones() explicitly.
  */
-export const DEFAULT_DOCKVIEW_WIDGETS: DockviewWidgetDefinition[] = [
+export const DEFAULT_DOCK_ZONES: DockZoneDefinition[] = [
   {
     id: 'workspace',
     label: 'Workspace',
@@ -189,18 +191,18 @@ export const DEFAULT_DOCKVIEW_WIDGETS: DockviewWidgetDefinition[] = [
 let defaultsRegistered = false;
 
 /**
- * Register default dockview widgets.
+ * Register default dock zones.
  * Call this during app initialization. Safe to call multiple times.
  *
  * @param override - If true, re-register even if already registered
  */
-export function registerDefaultDockviewWidgets(override = false): void {
+export function registerDefaultDockZones(override = false): void {
   if (defaultsRegistered && !override) return;
 
-  for (const widget of DEFAULT_DOCKVIEW_WIDGETS) {
+  for (const zone of DEFAULT_DOCK_ZONES) {
     // Only register if not already registered (unless override)
-    if (override || !dockviewWidgetRegistry.has(widget.id)) {
-      registerDockviewWidget(widget);
+    if (override || !dockZoneRegistry.has(zone.id)) {
+      registerDockZone(zone);
     }
   }
 
@@ -210,7 +212,7 @@ export function registerDefaultDockviewWidgets(override = false): void {
 /**
  * Check if defaults have been registered.
  */
-export function areDefaultWidgetsRegistered(): boolean {
+export function areDefaultZonesRegistered(): boolean {
   return defaultsRegistered;
 }
 
@@ -225,17 +227,51 @@ export function areDefaultWidgetsRegistered(): boolean {
  * Note: For scope-based panel filtering, use the panels feature's
  * getPanelsForScope() function which has access to the panel registry.
  */
-export function getDockviewWidgetPanelIds(
+export function getDockZonePanelIds(
   dockviewId: string | undefined,
 ): string[] {
-  const widget = getDockviewWidgetByDockviewId(dockviewId);
-  if (!widget) return [];
+  const zone = getDockZoneByDockviewId(dockviewId);
+  if (!zone) return [];
 
-  if (widget.allowedPanels && widget.allowedPanels.length > 0) {
-    return widget.allowedPanels;
+  if (zone.allowedPanels && zone.allowedPanels.length > 0) {
+    return zone.allowedPanels;
   }
 
   // Scope-based filtering requires panel registry - return empty here
   // Callers needing scope-based filtering should use panels feature
   return [];
 }
+
+// ============================================================================
+// Backward Compatibility Aliases (deprecated)
+// ============================================================================
+
+/** @deprecated Use DockZoneDefinition instead */
+export type DockviewWidgetDefinition = DockZoneDefinition;
+
+/** @deprecated Use dockZoneRegistry instead */
+export const dockviewWidgetRegistry = dockZoneRegistry;
+
+/** @deprecated Use registerDockZone instead */
+export const registerDockviewWidget = registerDockZone;
+
+/** @deprecated Use unregisterDockZone instead */
+export const unregisterDockviewWidget = unregisterDockZone;
+
+/** @deprecated Use getDockZone instead */
+export const getDockviewWidget = getDockZone;
+
+/** @deprecated Use getDockZoneByDockviewId instead */
+export const getDockviewWidgetByDockviewId = getDockZoneByDockviewId;
+
+/** @deprecated Use getDockZonePanelIds instead */
+export const getDockviewWidgetPanelIds = getDockZonePanelIds;
+
+/** @deprecated Use DEFAULT_DOCK_ZONES instead */
+export const DEFAULT_DOCKVIEW_WIDGETS = DEFAULT_DOCK_ZONES;
+
+/** @deprecated Use registerDefaultDockZones instead */
+export const registerDefaultDockviewWidgets = registerDefaultDockZones;
+
+/** @deprecated Use areDefaultZonesRegistered instead */
+export const areDefaultWidgetsRegistered = areDefaultZonesRegistered;
