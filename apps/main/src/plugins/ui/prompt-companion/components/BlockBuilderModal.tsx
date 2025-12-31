@@ -14,19 +14,19 @@ import { Icon } from '@lib/icons';
 // Types
 // ============================================================================
 
-interface PromptSegment {
+interface PromptBlockInput {
   role: string;
   text: string;
-  start_pos: number;
-  end_pos: number;
-  sentence_index: number;
+  start_pos?: number;
+  end_pos?: number;
+  category?: string;
   metadata?: Record<string, unknown>;
 }
 
 interface BlockBuilderModalProps {
   open: boolean;
   onClose: () => void;
-  segments: PromptSegment[];
+  segments: PromptBlockInput[];
   onInsertBlock: (block: string) => void;
 }
 
@@ -68,7 +68,7 @@ export function BlockBuilderModal({
 
   // Group segments by role
   const groupedSegments = useMemo(() => {
-    const groups: Record<string, { segment: PromptSegment; index: number }[]> = {};
+    const groups: Record<string, { segment: PromptBlockInput; index: number }[]> = {};
     segments.forEach((segment, index) => {
       const role = segment.role || 'other';
       if (!groups[role]) {

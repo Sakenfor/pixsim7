@@ -75,12 +75,12 @@ export function usePromptInspection(
           params.set('job_id', String(jobId));
         }
 
-        // Call API - backend returns { prompt, blocks }
+        // Call API - backend returns { prompt, segments }
         const response = await api.get(`/dev/prompt-inspector?${params.toString()}`);
 
         setState({
           prompt: response.prompt,
-          segments: response.blocks || [], // Backend still calls them "blocks"
+          segments: response.segments || [],
           loading: false,
           error: null,
         });

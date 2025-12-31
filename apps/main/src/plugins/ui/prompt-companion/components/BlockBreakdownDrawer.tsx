@@ -2,29 +2,34 @@
  * Block Breakdown Drawer
  *
  * Displays analyzed prompt segments in a slide-out drawer.
+ * Now includes inline prompt highlighting for visual block mapping.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
+import {
+  PromptInlineViewer,
+  type PromptBlock,
+} from '@features/prompts/components/PromptInlineViewer';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface PromptSegment {
+interface PromptSegmentData {
   role: string;
   text: string;
-  start_pos: number;
-  end_pos: number;
-  sentence_index: number;
+  start_pos?: number;
+  end_pos?: number;
+  category?: string;
   metadata?: Record<string, unknown>;
 }
 
 interface PromptAnalysis {
   prompt: string;
-  segments: PromptSegment[];
+  segments: PromptSegmentData[];
   tags: string[];
 }
 
@@ -61,25 +66,47 @@ const roleBadgeColors: Record<string, string> = {
 // Component
 // ============================================================================
 
+type ViewMode = 'inline' | 'grouped';
+
 export function BlockBreakdownDrawer({
   open,
   onClose,
   analysis,
   onInsertBlock,
 }: BlockBreakdownDrawerProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('inline');
+
   // Group segments by role
   const groupedSegments = useMemo(() => {
     if (!analysis?.segments) return {};
 
-    return analysis.segments.reduce((acc, segment) => {
-      const role = segment.role || 'other';
+    return analysis.segments.reduce((acc, seg) => {
+      const role = seg.role || 'other';
       if (!acc[role]) {
         acc[role] = [];
       }
-      acc[role].push(segment);
+      acc[role].push(seg);
       return acc;
-    }, {} as Record<string, PromptSegment[]>);
+    }, {} as Record<string, PromptSegmentData[]>);
   }, [analysis?.segments]);
+
+  // Convert to PromptBlock format for inline viewer
+  const viewerBlocks: PromptBlock[] = useMemo(() => {
+    if (!analysis?.segments) return [];
+    return analysis.segments.map((seg) => ({
+      role: seg.role as PromptBlock['role'],
+      text: seg.text,
+      start_pos: seg.start_pos,
+      end_pos: seg.end_pos,
+      category: seg.category,
+      metadata: seg.metadata,
+    }));
+  }, [analysis?.segments]);
+
+  // Check if we have valid position data for inline view
+  const hasPositionData = viewerBlocks.some(
+    (b) => typeof b.start_pos === 'number' && typeof b.end_pos === 'number'
+  );
 
   const roleOrder = ['character', 'action', 'setting', 'mood', 'romance', 'other'];
   const sortedRoles = Object.keys(groupedSegments).sort(
@@ -115,13 +142,42 @@ export function BlockBreakdownDrawer({
             <Icon name="search" className="h-5 w-5" />
             Block Breakdown
           </h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            aria-label="Close"
-          >
-            <Icon name="x" className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            {hasPositionData && (
+              <div className="flex rounded-md border border-neutral-300 dark:border-neutral-600 overflow-hidden">
+                <button
+                  onClick={() => setViewMode('inline')}
+                  className={clsx(
+                    'px-2 py-1 text-xs font-medium transition-colors',
+                    viewMode === 'inline'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                  )}
+                >
+                  Inline
+                </button>
+                <button
+                  onClick={() => setViewMode('grouped')}
+                  className={clsx(
+                    'px-2 py-1 text-xs font-medium transition-colors border-l border-neutral-300 dark:border-neutral-600',
+                    viewMode === 'grouped'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                  )}
+                >
+                  Grouped
+                </button>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              aria-label="Close"
+            >
+              <Icon name="x" className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -151,48 +207,69 @@ export function BlockBreakdownDrawer({
                 </div>
               )}
 
-              {/* Segments by Role */}
-              {sortedRoles.map((role) => {
-                const segments = groupedSegments[role];
-                if (!segments || segments.length === 0) return null;
-
-                return (
-                  <div key={role} className="space-y-2">
-                    <h3 className="text-sm font-semibold flex items-center gap-2 capitalize">
-                      <span
-                        className={clsx(
-                          'w-2.5 h-2.5 rounded-full',
-                          roleBadgeColors[role] || roleBadgeColors.other
-                        )}
-                      />
-                      {role} ({segments.length})
-                    </h3>
-
-                    <div className="space-y-2 ml-4">
-                      {segments.map((segment, idx) => (
-                        <div
-                          key={idx}
-                          className={clsx(
-                            'p-3 rounded-lg border',
-                            roleColors[role] || roleColors.other
-                          )}
-                        >
-                          <div className="text-sm font-medium">{segment.text}</div>
-
-                          {/* Insert as block button */}
-                          <button
-                            onClick={() => onInsertBlock(segment.text)}
-                            className="mt-2 text-xs opacity-60 hover:opacity-100 flex items-center gap-1"
-                          >
-                            <Icon name="add" className="h-3 w-3" />
-                            Insert as block
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+              {/* Inline View */}
+              {viewMode === 'inline' && hasPositionData && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                    <PromptInlineViewer
+                      prompt={analysis.prompt}
+                      blocks={viewerBlocks}
+                      showLegend
+                      onBlockClick={(block) => onInsertBlock(block.text)}
+                    />
                   </div>
-                );
-              })}
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
+                    Hover over highlighted text to see block details. Click to insert.
+                  </p>
+                </div>
+              )}
+
+              {/* Grouped View (or fallback when no position data) */}
+              {(viewMode === 'grouped' || !hasPositionData) && (
+                <>
+                  {sortedRoles.map((role) => {
+                    const roleSegments = groupedSegments[role];
+                    if (!roleSegments || roleSegments.length === 0) return null;
+
+                    return (
+                      <div key={role} className="space-y-2">
+                        <h3 className="text-sm font-semibold flex items-center gap-2 capitalize">
+                          <span
+                            className={clsx(
+                              'w-2.5 h-2.5 rounded-full',
+                              roleBadgeColors[role] || roleBadgeColors.other
+                            )}
+                          />
+                          {role} ({roleSegments.length})
+                        </h3>
+
+                        <div className="space-y-2 ml-4">
+                          {roleSegments.map((segment, idx) => (
+                            <div
+                              key={idx}
+                              className={clsx(
+                                'p-3 rounded-lg border',
+                                roleColors[role] || roleColors.other
+                              )}
+                            >
+                              <div className="text-sm font-medium">{segment.text}</div>
+
+                              {/* Insert as block button */}
+                              <button
+                                onClick={() => onInsertBlock(segment.text)}
+                                className="mt-2 text-xs opacity-60 hover:opacity-100 flex items-center gap-1"
+                              >
+                                <Icon name="add" className="h-3 w-3" />
+                                Insert as block
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
 
               {/* Summary */}
               <div className="mt-6 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg text-sm">

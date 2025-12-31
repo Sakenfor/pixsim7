@@ -239,6 +239,33 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/{asset_id}/enrich": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Enrich Asset
+         * @description Enrich an asset by fetching metadata from the provider and running synthetic generation.
+         *
+         *     This will:
+         *     1. Fetch full metadata from the provider API (e.g., prompt, settings, source images)
+         *     2. Extract embedded assets and create lineage links
+         *     3. Create a synthetic Generation record with prompt/params
+         *
+         *     Useful for assets synced without full metadata (e.g., from extension badge click).
+         */
+        readonly post: operations["enrich_asset_api_v1__asset_id__enrich_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/accounts": {
         readonly parameters: {
             readonly query?: never;
@@ -1743,9 +1770,11 @@ export interface paths {
          * @description List assets for current user with optional filters.
          *
          *     Supports either offset or cursor pagination (cursor takes precedence if provided).
-         *     Assets returned newest first (created_at DESC, id DESC for tie-break).
+         *     Assets returned newest first by default (created_at DESC, id DESC for tie-break).
          *
-         *     By default, archived assets are excluded. Set include_archived=true to show them.
+         *     By default:
+         *     - Archived assets are excluded. Set include_archived=true to show them.
+         *     - Only searchable assets are shown. Set searchable=false to include hidden assets.
          */
         readonly get: operations["list_assets_api_v1_assets_get"];
         readonly put?: never;
@@ -1957,6 +1986,32 @@ export interface paths {
          *     - Created if they don't exist
          */
         readonly post: operations["assign_tags_to_asset_api_v1_assets__asset_id__tags_assign_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/autocomplete": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Autocomplete Assets
+         * @description Lightweight autocomplete for asset descriptions and tags.
+         *
+         *     Returns matching suggestions from:
+         *     - Asset descriptions
+         *     - Tag display names
+         *
+         *     Use this for search input autocomplete.
+         */
+        readonly get: operations["autocomplete_assets_api_v1_assets_autocomplete_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2325,8 +2380,7 @@ export interface paths {
          * @description Sync a single PixVerse asset to PixSim7 by its known ID.
          *
          *     Used by the Chrome extension badge when clicking on images on pixverse.ai.
-         *     This does NOT call the PixVerse API - it just registers the asset with
-         *     the known URL and ID extracted from the media URL.
+         *     Fetches full metadata from PixVerse API and creates synthetic generation.
          *
          *     If the asset already exists (same provider_asset_id), returns the existing one.
          */
@@ -2742,6 +2796,10 @@ export interface paths {
          * List Devices
          * @description List Android devices.
          *
+         *     Args:
+         *         include_alt: If False (default), exclude alternate connections to same physical device.
+         *                      If True, include all device connections.
+         *
          *     Visibility rules:
          *     - Admins see all devices (including server-scanned ones with agent_id=None).
          *     - Regular users see only devices whose agent belongs to them (DeviceAgent.user_id).
@@ -2774,6 +2832,27 @@ export interface paths {
         readonly get: operations["dump_device_ui_api_v1_automation_devices__device_id__ui_dump_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/automation/devices/check-ads": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Check Device Ads
+         * @description Manually trigger ad detection check on all devices.
+         *     Returns which primary devices are watching ads or in ad session.
+         */
+        readonly post: operations["check_device_ads_api_v1_automation_devices_check_ads_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -3846,6 +3925,34 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/dev/architecture/map": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Architecture Map
+         * @description Get comprehensive backend architecture map.
+         *
+         *     Returns:
+         *         - routes: All FastAPI routes with methods, permissions, and metadata
+         *         - capabilities: Available capability APIs
+         *         - services: Service composition tree
+         *         - permissions: All declared permissions
+         *         - plugins: Backend plugin manifests
+         *         - metrics: Architecture health metrics
+         */
+        readonly get: operations["get_architecture_map_api_v1_dev_architecture_map_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/dev/block-fit/list": {
         readonly parameters: {
             readonly query?: never;
@@ -3923,6 +4030,35 @@ export interface paths {
          *     No data is persisted by this endpoint - use /rate to record feedback.
          */
         readonly post: operations["compute_fit_score_api_v1_dev_block_fit_score_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dev/info": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Service Info
+         * @description Get service metadata for discovery.
+         *
+         *     This endpoint allows the launcher and other services to:
+         *     - Discover this service's capabilities
+         *     - Find available endpoints
+         *     - Understand dependencies
+         *     - Learn what features this service provides
+         *
+         *     Returns:
+         *         Service metadata including ID, name, version, endpoints, and capabilities
+         */
+        readonly get: operations["get_service_info_api_v1_dev_info_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4233,10 +4369,10 @@ export interface paths {
          * Inspect Prompt
          * @description Inspect prompt structure for an asset or generation.
          *
-         *     Returns the original prompt text and parsed blocks showing:
+         *     Returns the original prompt text and parsed segments showing:
          *     - Role (character, action, setting, mood, romance, other)
          *     - Text content
-         *     - Component type (for debugging)
+         *     - Position info (start_pos, end_pos)
          *
          *     Query parameters:
          *     - asset_id: Look up generation that created this asset
@@ -4247,9 +4383,9 @@ export interface paths {
          *     Returns:
          *         {
          *             "prompt": "full original prompt text",
-         *             "blocks": [
-         *                 {"role": "character", "text": "...", "component_type": "..."},
-         *                 {"role": "action", "text": "...", "component_type": "..."},
+         *             "segments": [
+         *                 {"role": "character", "text": "...", "start_pos": 0, "end_pos": 10},
+         *                 {"role": "action", "text": "...", "start_pos": 11, "end_pos": 25},
          *                 ...
          *             ]
          *         }
@@ -4282,7 +4418,7 @@ export interface paths {
          * @description Analyze arbitrary prompt text and return structured breakdown.
          *
          *     Dev-only endpoint for quick prompt analysis without needing an asset/job.
-         *     Returns the original prompt text, parsed blocks, and auto-generated tags.
+         *     Returns the original prompt text, parsed segments, and auto-generated tags.
          *
          *     Request body:
          *         { "prompt_text": "..." }
@@ -4290,9 +4426,9 @@ export interface paths {
          *     Returns:
          *         {
          *             "prompt": "original text",
-         *             "blocks": [
-         *                 {"role": "character", "text": "...", "component_type": "..."},
-         *                 {"role": "action", "text": "...", "component_type": "..."},
+         *             "segments": [
+         *                 {"role": "character", "text": "...", "start_pos": 0, "end_pos": 10},
+         *                 {"role": "action", "text": "...", "start_pos": 11, "end_pos": 25},
          *                 ...
          *             ],
          *             "tags": ["has:character", "tone:soft", "camera:pov", ...]
@@ -4394,6 +4530,80 @@ export interface paths {
         readonly get: operations["get_version_detail_api_v1_dev_prompt_library_versions__version_id__get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dev/sql/presets": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description List available preset queries.
+         *
+         *     Presets are organized by category:
+         *     - overview: General stats and summaries
+         *     - drift: Data consistency and migration checks
+         *     - debug: Debugging and error investigation
+         */
+        readonly get: operations["list_presets_api_v1_dev_sql_presets_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dev/sql/presets/{preset_id}/run": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Run Preset
+         * @description Run a preset query by ID.
+         *
+         *     Convenience endpoint that looks up the preset and executes it.
+         */
+        readonly post: operations["run_preset_api_v1_dev_sql_presets__preset_id__run_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/dev/sql/query": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Execute Query
+         * @description Execute a read-only SQL query.
+         *
+         *     Security:
+         *     - Only SELECT queries allowed
+         *     - Results limited to max_rows (default 100, max 500)
+         *     - Query timeout of 30 seconds
+         *
+         *     Returns columns, rows, and execution metadata.
+         */
+        readonly post: operations["execute_query_api_v1_dev_sql_query_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -9247,63 +9457,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/dev/architecture/map": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Architecture Map
-         * @description Get comprehensive backend architecture map.
-         *
-         *     Returns:
-         *         - routes: All FastAPI routes with methods, permissions, and metadata
-         *         - capabilities: Available capability APIs
-         *         - services: Service composition tree
-         *         - permissions: All declared permissions
-         *         - plugins: Backend plugin manifests
-         *         - metrics: Architecture health metrics
-         */
-        readonly get: operations["get_architecture_map_dev_architecture_map_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/dev/info": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Service Info
-         * @description Get service metadata for discovery.
-         *
-         *     This endpoint allows the launcher and other services to:
-         *     - Discover this service's capabilities
-         *     - Find available endpoints
-         *     - Understand dependencies
-         *     - Learn what features this service provides
-         *
-         *     Returns:
-         *         Service metadata including ID, name, version, endpoints, and capabilities
-         */
-        readonly get: operations["get_service_info_dev_info_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/health": {
         readonly parameters: {
             readonly query?: never;
@@ -10070,6 +10223,8 @@ export interface components {
          * @description Android device in pool (emulator or physical)
          */
         readonly AndroidDevice: {
+            /** Ad Session Started At */
+            readonly ad_session_started_at?: string | null;
             /** Adb Id */
             readonly adb_id: string;
             /** Agent Id */
@@ -10082,6 +10237,8 @@ export interface components {
             readonly connection_method: components["schemas"]["ConnectionMethod"];
             /** Created At */
             readonly created_at?: string | null;
+            /** Current Activity */
+            readonly current_activity?: string | null;
             /** Device Serial */
             readonly device_serial?: string | null;
             readonly device_type: components["schemas"]["DeviceType"];
@@ -10098,6 +10255,11 @@ export interface components {
              * @default true
              */
             readonly is_enabled: boolean;
+            /**
+             * Is Watching Ad
+             * @default false
+             */
+            readonly is_watching_ad: boolean;
             /** Last Seen */
             readonly last_seen?: string | null;
             /** Last Used At */
@@ -10423,6 +10585,17 @@ export interface components {
              * @description Tag slugs to remove
              */
             readonly remove?: readonly string[];
+        };
+        /**
+         * AutocompleteResponse
+         * @description Response containing autocomplete suggestions.
+         */
+        readonly AutocompleteResponse: {
+            /**
+             * Suggestions
+             * @description List of autocomplete suggestions
+             */
+            readonly suggestions: readonly string[];
         };
         /** AutomationExecution */
         readonly AutomationExecution: {
@@ -11336,6 +11509,12 @@ export interface components {
             readonly with_content_id: number;
         };
         /**
+         * ContentDomain
+         * @description Content domain for specialized metadata
+         * @enum {string}
+         */
+        readonly ContentDomain: "general" | "adult" | "medical" | "sports" | "fashion" | "education";
+        /**
          * CookieImportRequest
          * @description Request to import cookies from browser
          */
@@ -11976,6 +12155,20 @@ export interface components {
             readonly emotion: string;
             /** Intensity */
             readonly intensity: number;
+        };
+        /**
+         * EnrichAssetResponse
+         * @description Response from asset enrichment
+         */
+        readonly EnrichAssetResponse: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /** Enriched */
+            readonly enriched: boolean;
+            /** Generation Id */
+            readonly generation_id?: number | null;
+            /** Message */
+            readonly message: string;
         };
         /**
          * EntityRef
@@ -13969,6 +14162,22 @@ export interface components {
          */
         readonly PresetExecutionMode: "SINGLE" | "SHARED_LIST" | "PER_ACCOUNT";
         /**
+         * PresetQuery
+         * @description A preset query definition.
+         */
+        readonly PresetQuery: {
+            /** Category */
+            readonly category: string;
+            /** Description */
+            readonly description: string;
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Sql */
+            readonly sql: string;
+        };
+        /**
          * PreviewEntityStatsRequest
          * @description Request for previewing entity stats (normalized with tiers/levels).
          */
@@ -15617,6 +15826,60 @@ export interface components {
             readonly provider_id: string;
         };
         /**
+         * SqlQueryRequest
+         * @description Request to execute a SQL query.
+         */
+        readonly SqlQueryRequest: {
+            /**
+             * Max Rows
+             * @description Maximum rows to return
+             * @default 100
+             */
+            readonly max_rows: number;
+            /**
+             * Sql
+             * @description SQL query to execute (SELECT only)
+             */
+            readonly sql: string;
+        };
+        /**
+         * SqlQueryResult
+         * @description Result of a SQL query execution.
+         */
+        readonly SqlQueryResult: {
+            /**
+             * Columns
+             * @description Column names
+             */
+            readonly columns: readonly string[];
+            /**
+             * Execution Time Ms
+             * @description Query execution time in ms
+             */
+            readonly execution_time_ms: number;
+            /**
+             * Query
+             * @description The executed query
+             */
+            readonly query: string;
+            /**
+             * Row Count
+             * @description Number of rows returned
+             */
+            readonly row_count: number;
+            /**
+             * Rows
+             * @description Result rows
+             */
+            readonly rows: readonly (readonly unknown[])[];
+            /**
+             * Truncated
+             * @description Whether results were truncated
+             * @default false
+             */
+            readonly truncated: boolean;
+        };
+        /**
          * StorageInfoResponse
          * @description Storage information
          */
@@ -15774,6 +16037,11 @@ export interface components {
          * @description Request to sync a single PixVerse asset by its known ID.
          */
         readonly SyncSingleAssetRequest: {
+            /**
+             * Account Id
+             * @description PixVerse account ID from browser session
+             */
+            readonly account_id?: number | null;
             /**
              * Is Video
              * @description Whether this is a video asset
@@ -16886,6 +17154,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MigrationOperation"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly enrich_asset_api_v1__asset_id__enrich_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EnrichAssetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19014,22 +19315,54 @@ export interface operations {
     readonly list_assets_api_v1_assets_get: {
         readonly parameters: {
             readonly query?: {
+                /** @description Filter by content category */
+                readonly content_category?: string | null;
+                /** @description Filter by content domain */
+                readonly content_domain?: components["schemas"]["ContentDomain"] | null;
+                /** @description Filter by content rating */
+                readonly content_rating?: string | null;
+                /** @description Filter by created_at >= value */
+                readonly created_from?: string | null;
+                /** @description Filter by created_at <= value */
+                readonly created_to?: string | null;
                 /** @description Opaque cursor for pagination */
                 readonly cursor?: string | null;
+                /** @description Has lineage children */
+                readonly has_children?: boolean | null;
+                /** @description Has lineage parent */
+                readonly has_parent?: boolean | null;
                 /** @description Include archived assets (default: false) */
                 readonly include_archived?: boolean;
                 /** @description Results per page */
                 readonly limit?: number;
+                /** @description Maximum height */
+                readonly max_height?: number | null;
+                /** @description Maximum width */
+                readonly max_width?: number | null;
                 /** @description Filter by media type */
                 readonly media_type?: components["schemas"]["MediaType"] | null;
+                /** @description Minimum height */
+                readonly min_height?: number | null;
+                /** @description Minimum width */
+                readonly min_width?: number | null;
                 /** @description Pagination offset (legacy) */
                 readonly offset?: number;
+                /** @description Filter by lineage operation type */
+                readonly operation_type?: components["schemas"]["OperationType"] | null;
                 /** @description Filter by provider */
                 readonly provider_id?: string | null;
                 /** @description Filter by provider status (ok, local_only, flagged, unknown) */
                 readonly provider_status?: string | null;
                 /** @description Full-text search over description/tags */
                 readonly q?: string | null;
+                /** @description Filter by searchable flag (default: true) */
+                readonly searchable?: boolean | null;
+                /** @description Sort field */
+                readonly sort_by?: string | null;
+                /** @description Sort direction */
+                readonly sort_dir?: string | null;
+                /** @description Filter by source generation ID */
+                readonly source_generation_id?: number | null;
                 /** @description Filter by sync status */
                 readonly sync_status?: components["schemas"]["SyncStatus"] | null;
                 /** @description Filter assets containing tag (slug) */
@@ -19370,6 +19703,42 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly autocomplete_assets_api_v1_assets_autocomplete_get: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Maximum number of suggestions */
+                readonly limit?: number;
+                /** @description Search query */
+                readonly query: string;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AutocompleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -20432,7 +20801,9 @@ export interface operations {
     };
     readonly list_devices_api_v1_automation_devices_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly include_alt?: boolean;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -20490,6 +20861,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly check_device_ads_api_v1_automation_devices_check_ads_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
                 };
             };
         };
@@ -22036,6 +22427,37 @@ export interface operations {
             };
         };
     };
+    readonly get_architecture_map_api_v1_dev_architecture_map_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_fit_ratings_api_v1_dev_block_fit_list_get: {
         readonly parameters: {
             readonly query?: {
@@ -22136,6 +22558,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_service_info_api_v1_dev_info_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };
@@ -22619,6 +23061,105 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DevPromptVersionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_presets_api_v1_dev_sql_presets_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PresetQuery"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly run_preset_api_v1_dev_sql_presets__preset_id__run_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly preset_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SqlQueryResult"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly execute_query_api_v1_dev_sql_query_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SqlQueryRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SqlQueryResult"];
                 };
             };
             /** @description Validation Error */
@@ -30310,57 +30851,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_architecture_map_dev_architecture_map_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": Record<string, unknown>;
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_service_info_dev_info_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": Record<string, unknown>;
                 };
             };
         };

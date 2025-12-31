@@ -32,6 +32,14 @@ export {
   type PromptSegmentsViewerProps,
 } from './components/PromptBlocksViewer';
 
+export {
+  PromptInlineViewer,
+  PromptBlockList,
+  type PromptInlineViewerProps,
+  type PromptBlockListProps,
+  type PromptBlock,
+} from './components/PromptInlineViewer';
+
 // ============================================================================
 // Hooks
 // ============================================================================

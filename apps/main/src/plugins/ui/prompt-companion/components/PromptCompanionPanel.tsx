@@ -26,9 +26,9 @@ interface PromptAnalysis {
   segments: Array<{
     role: string;
     text: string;
-    start_pos: number;
-    end_pos: number;
-    sentence_index: number;
+    start_pos?: number;
+    end_pos?: number;
+    category?: string;
     metadata?: Record<string, unknown>;
   }>;
   tags: string[];
