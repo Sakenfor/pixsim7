@@ -43,6 +43,8 @@ export {
   fromInteractionPlugin,
   fromHelperDefinition,
   fromBackendFeaturePlugin,
+  fromSceneViewManifest,
+  fromControlCenterManifest,
   toBackendPluginCreate,
   // Validation
   validateFamilyMetadata,

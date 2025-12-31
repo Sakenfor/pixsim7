@@ -19,7 +19,8 @@ import {
   type ReactionType,
   type TrailEffect,
 } from '@pixsim7/scene.gizmos';
-import { pluginCatalog, type ExtendedPluginMetadata, type PluginOrigin } from '@lib/plugins/pluginSystem';
+import { ensureBackendPluginCatalogEntry } from '@lib/plugins/registryBridge';
+import type { PluginOrigin } from '@lib/plugins/pluginSystem';
 
 // =============================================================================
 // Manifest Types
@@ -403,58 +404,7 @@ export async function loadPluginTools(): Promise<number> {
   }
 }
 
-function ensureBackendPluginCatalogEntry(entry: {
-  pluginId: string;
-  enabled: boolean;
-  manifest: FrontendPluginManifestWithTools;
-  kind?: string;
-  required?: boolean;
-  origin?: PluginOrigin;
-  author?: string;
-  description?: string;
-  version?: string;
-  tags?: string[];
-}): void {
-  if (pluginCatalog.get(entry.pluginId)) {
-    return;
-  }
-
-  const manifest = entry.manifest;
-  const origin = resolveOrigin(entry.origin);
-  const activationState = entry.enabled ? 'active' : 'inactive';
-  const canDisable = origin !== 'builtin' && !entry.required;
-
-  const metadata = {
-    id: entry.pluginId,
-    name: manifest.pluginName || entry.pluginId,
-    family: 'ui-plugin',
-    origin,
-    activationState,
-    canDisable,
-    version: entry.version ?? manifest.version,
-    description: entry.description ?? manifest.description,
-    author: entry.author,
-    tags: entry.tags ?? manifest.tags,
-    category: entry.kind,
-    pluginType: entry.kind === 'tools' ? 'tool' : undefined,
-    bundleFamily: entry.kind === 'tools' ? 'tool' : undefined,
-    icon: manifest.icon,
-  } as ExtendedPluginMetadata<'ui-plugin'>;
-
-  pluginCatalog.register(metadata);
-}
-
-function resolveOrigin(origin?: PluginOrigin): PluginOrigin {
-  switch (origin) {
-    case 'builtin':
-    case 'plugin-dir':
-    case 'ui-bundle':
-    case 'dev-project':
-      return origin;
-    default:
-      return 'plugin-dir';
-  }
-}
+// ensureBackendPluginCatalogEntry and resolvePluginOrigin are now in registryBridge.ts
 
 /**
  * Get tool metadata (name, description, unlock level)

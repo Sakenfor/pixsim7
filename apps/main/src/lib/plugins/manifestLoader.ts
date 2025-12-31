@@ -367,8 +367,8 @@ async function loadSceneViewBundle(bundle: DiscoveredBundle): Promise<void> {
     sceneView: manifest.sceneView,
   };
 
-  sceneViewRegistry.register(fullManifest, plugin);
-  registerBundleMetadata(manifest, 'scene-view', 'ui-bundle');
+  // Register with origin 'ui-bundle' - this also registers to pluginCatalog
+  sceneViewRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
 }
 
 /**
@@ -395,8 +395,8 @@ async function loadControlCenterBundle(bundle: DiscoveredBundle): Promise<void> 
     controlCenter: manifest.controlCenter,
   };
 
-  controlCenterRegistry.register(fullManifest, plugin);
-  registerBundleMetadata(manifest, 'control-center', 'ui-bundle');
+  // Register with origin 'ui-bundle' - this also registers to pluginCatalog
+  controlCenterRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
 }
 
 /**
@@ -698,8 +698,8 @@ export async function loadRemotePluginBundle(
             type: 'ui-overlay',
             sceneView: manifest.sceneView,
           };
-          sceneViewRegistry.register(fullManifest, plugin);
-          registerBundleMetadata(manifest, 'scene-view', 'ui-bundle');
+          // Register with origin 'ui-bundle' - this also registers to pluginCatalog
+          sceneViewRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
         } else {
           throw new Error('Scene plugin missing sceneView descriptor or render function');
         }
@@ -712,8 +712,8 @@ export async function loadRemotePluginBundle(
             type: 'ui-overlay',
             controlCenter: manifest.controlCenter,
           };
-          controlCenterRegistry.register(fullManifest, plugin);
-          registerBundleMetadata(manifest, 'control-center', 'ui-bundle');
+          // Register with origin 'ui-bundle' - this also registers to pluginCatalog
+          controlCenterRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
         } else {
           throw new Error('Control center plugin missing controlCenter descriptor or render function');
         }

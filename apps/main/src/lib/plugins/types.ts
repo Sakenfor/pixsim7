@@ -1274,3 +1274,128 @@ export function fromBackendFeaturePlugin(
 
   return descriptors;
 }
+
+// ============================================================================
+// Scene View & Control Center Mapping Helpers
+// ============================================================================
+
+/**
+ * Scene view manifest shape (from sceneViewPlugin.ts)
+ */
+export interface SceneViewManifestLike {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  icon?: string;
+  tags?: string[];
+  permissions?: PluginPermission[];
+  sceneView: {
+    id: string;
+    displayName: string;
+    description?: string;
+    surfaces?: Array<'overlay' | 'hud' | 'panel' | 'workspace'>;
+    default?: boolean;
+  };
+}
+
+/**
+ * Map SceneViewPluginManifest to UnifiedPluginDescriptor
+ */
+export function fromSceneViewManifest(
+  manifest: SceneViewManifestLike,
+  options: {
+    origin?: UnifiedPluginOrigin;
+    isActive?: boolean;
+  } = {}
+): UnifiedPluginDescriptor {
+  const origin = options.origin ?? 'ui-bundle';
+
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description,
+    version: manifest.version,
+    author: manifest.author,
+    icon: manifest.icon,
+    family: 'scene-view',
+    origin,
+    pluginType: 'ui-overlay',
+    tags: manifest.tags,
+    permissions: manifest.permissions,
+    canDisable: origin !== 'builtin',
+    isActive: options.isActive ?? true,
+    isBuiltin: origin === 'builtin',
+    bundleFamily: 'scene',
+    extensions: {
+      sceneView: {
+        sceneViewId: manifest.sceneView.id,
+        surfaces: manifest.sceneView.surfaces,
+        default: manifest.sceneView.default,
+      },
+    },
+  };
+}
+
+/**
+ * Control center manifest shape (from controlCenterPlugin.ts)
+ */
+export interface ControlCenterManifestLike {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  icon?: string;
+  tags?: string[];
+  permissions?: PluginPermission[];
+  controlCenter: {
+    id: string;
+    displayName: string;
+    description: string;
+    preview?: string;
+    default?: boolean;
+    features?: string[];
+  };
+}
+
+/**
+ * Map ControlCenterPluginManifest to UnifiedPluginDescriptor
+ */
+export function fromControlCenterManifest(
+  manifest: ControlCenterManifestLike,
+  options: {
+    origin?: UnifiedPluginOrigin;
+    isActive?: boolean;
+  } = {}
+): UnifiedPluginDescriptor {
+  const origin = options.origin ?? 'ui-bundle';
+
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description,
+    version: manifest.version,
+    author: manifest.author,
+    icon: manifest.icon,
+    family: 'control-center',
+    origin,
+    pluginType: 'ui-overlay',
+    tags: manifest.tags,
+    permissions: manifest.permissions,
+    canDisable: origin !== 'builtin',
+    isActive: options.isActive ?? true,
+    isBuiltin: origin === 'builtin',
+    bundleFamily: 'control-center',
+    extensions: {
+      controlCenter: {
+        controlCenterId: manifest.controlCenter.id,
+        displayName: manifest.controlCenter.displayName,
+        features: manifest.controlCenter.features,
+        preview: manifest.controlCenter.preview,
+        default: manifest.controlCenter.default,
+      },
+    },
+  };
+}

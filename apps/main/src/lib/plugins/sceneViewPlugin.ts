@@ -1,5 +1,7 @@
 import type React from 'react';
 import type { PluginManifest } from './types';
+import { fromSceneViewManifest, type UnifiedPluginOrigin } from './types';
+import { pluginCatalog, type ExtendedPluginMetadata } from './pluginSystem';
 import type {
   SceneMetaComicPanel,
   ComicPanelSession,
@@ -48,7 +50,11 @@ class SceneViewRegistry {
   private registry = new Map<string, SceneViewRegistryEntry>();
   private defaultId: string | null = null;
 
-  register(manifest: SceneViewPluginManifest, plugin: SceneViewPlugin) {
+  register(
+    manifest: SceneViewPluginManifest,
+    plugin: SceneViewPlugin,
+    options: { origin?: UnifiedPluginOrigin } = {}
+  ) {
     const viewId = manifest.sceneView.id;
     if (!viewId) {
       throw new Error('[SceneViewRegistry] Scene view manifest must include an id');
@@ -60,13 +66,41 @@ class SceneViewRegistry {
       this.defaultId = viewId;
     }
 
+    // Register in unified plugin catalog
+    const descriptor = fromSceneViewManifest(manifest, {
+      origin: options.origin ?? 'builtin',
+      isActive: true,
+    });
+    const metadata: ExtendedPluginMetadata<'scene-view'> = {
+      id: manifest.id,
+      name: manifest.name,
+      family: 'scene-view',
+      origin: options.origin ?? 'builtin',
+      activationState: 'active',
+      canDisable: options.origin !== 'builtin',
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      tags: manifest.tags,
+      sceneViewId: manifest.sceneView.id,
+      surfaces: manifest.sceneView.surfaces,
+      default: manifest.sceneView.default,
+      icon: manifest.icon,
+    };
+    pluginCatalog.register(metadata);
+
     console.info(`[SceneViewRegistry] Registered scene view "${viewId}"`);
   }
 
   unregister(id: string) {
+    const entry = this.registry.get(id);
     if (this.registry.delete(id)) {
       if (this.defaultId === id) {
         this.defaultId = null;
+      }
+      // Also unregister from unified catalog
+      if (entry) {
+        pluginCatalog.unregister(entry.manifest.id);
       }
       console.info(`[SceneViewRegistry] Unregistered scene view "${id}"`);
     }

@@ -6,6 +6,8 @@
  */
 
 import type { PluginManifest } from './types';
+import { type UnifiedPluginOrigin } from './types';
+import { pluginCatalog, type ExtendedPluginMetadata } from './pluginSystem';
 
 /**
  * Extended manifest for control center plugins
@@ -89,12 +91,37 @@ class ControlCenterRegistry {
   /**
    * Register a control center plugin
    */
-  register(manifest: ControlCenterPluginManifest, plugin: ControlCenterPlugin) {
+  register(
+    manifest: ControlCenterPluginManifest,
+    plugin: ControlCenterPlugin,
+    options: { origin?: UnifiedPluginOrigin } = {}
+  ) {
     this.controlCenters.set(manifest.controlCenter.id, { manifest, plugin });
 
     if (manifest.controlCenter.default && !this.defaultId) {
       this.defaultId = manifest.controlCenter.id;
     }
+
+    // Register in unified plugin catalog
+    const metadata: ExtendedPluginMetadata<'control-center'> = {
+      id: manifest.id,
+      name: manifest.name,
+      family: 'control-center',
+      origin: options.origin ?? 'builtin',
+      activationState: 'active',
+      canDisable: options.origin !== 'builtin',
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      tags: manifest.tags,
+      controlCenterId: manifest.controlCenter.id,
+      displayName: manifest.controlCenter.displayName,
+      features: manifest.controlCenter.features,
+      preview: manifest.controlCenter.preview,
+      default: manifest.controlCenter.default,
+      icon: manifest.icon,
+    };
+    pluginCatalog.register(metadata);
 
     console.log(`[ControlCenter] Registered: ${manifest.controlCenter.displayName}`);
     this.notify();
@@ -108,6 +135,9 @@ class ControlCenterRegistry {
     if (entry) {
       entry.plugin.cleanup?.();
       this.controlCenters.delete(id);
+
+      // Also unregister from unified catalog
+      pluginCatalog.unregister(entry.manifest.id);
 
       if (this.activeId === id) {
         this.activeId = this.defaultId;
