@@ -2,12 +2,15 @@
  * Composed Panel Component
  *
  * Renders a panel composition with live data binding.
- * Integrates Task 50.4 (Panel Composer) with Task 51 (Data Binding System)
+ * Uses blocks (building pieces) from the block registry.
+ *
+ * Integrates Panel Composer with Data Binding System.
  */
 
 import React from 'react';
-import type { PanelComposition } from './panelComposer';
-import { widgetRegistry } from './widgetRegistry';
+import type { PanelComposition, BlockInstance } from './panelComposer';
+import { blockWidgets } from '@lib/widgets';
+import { blockRegistry } from './blockRegistry'; // For subscribe pattern (migration: replace with widgetRegistry)
 import { useBindingValues, dataSourceRegistry } from '../../dataBinding';
 
 interface ComposedPanelProps {
@@ -15,7 +18,7 @@ interface ComposedPanelProps {
 }
 
 /**
- * Renders a panel composition with widgets and live data bindings
+ * Renders a panel composition with blocks and live data bindings
  */
 export function ComposedPanel({ composition }: ComposedPanelProps) {
   // Register all data sources from the composition
@@ -54,29 +57,30 @@ export function ComposedPanel({ composition }: ComposedPanelProps) {
         ...styles,
       }}
     >
-      {widgets.map((widget) => (
-        <WidgetRenderer key={widget.id} widget={widget} />
+      {widgets.map((block) => (
+        <BlockRenderer key={block.id} block={block} />
       ))}
     </div>
   );
 }
 
 /**
- * Renders a single widget instance with data binding
+ * Renders a single block instance with data binding
  */
-function WidgetRenderer({ widget }: { widget: any }) {
+function BlockRenderer({ block }: { block: BlockInstance }) {
   // Resolve data bindings
-  const bindingValues = useBindingValues(widget.dataBindings);
+  const bindingValues = useBindingValues(block.dataBindings);
 
-  // Get widget definition
-  const widgetDef = widgetRegistry.get(widget.widgetType);
+  // Get block definition from unified registry (uses widgetType for backward compatibility)
+  // Note: block IDs are prefixed with 'block-' in unified registry
+  const blockDef = blockWidgets.get(`block-${block.widgetType}`) || blockWidgets.get(block.widgetType);
 
-  if (!widgetDef) {
+  if (!blockDef) {
     return (
       <div
         style={{
-          gridColumn: `${widget.position.x + 1} / span ${widget.position.w}`,
-          gridRow: `${widget.position.y + 1} / span ${widget.position.h}`,
+          gridColumn: `${block.position.x + 1} / span ${block.position.w}`,
+          gridRow: `${block.position.y + 1} / span ${block.position.h}`,
           border: '1px dashed red',
           padding: 8,
           display: 'flex',
@@ -84,24 +88,44 @@ function WidgetRenderer({ widget }: { widget: any }) {
           justifyContent: 'center',
         }}
       >
-        <span>Unknown widget: {widget.widgetType}</span>
+        <span>Unknown block: {block.widgetType}</span>
       </div>
     );
   }
 
-  const Component = widgetDef.component;
+  const Component = blockDef.component;
 
-  // Merge static config with resolved binding values
+  if (!Component) {
+    return (
+      <div
+        style={{
+          gridColumn: `${block.position.x + 1} / span ${block.position.w}`,
+          gridRow: `${block.position.y + 1} / span ${block.position.h}`,
+          background: 'rgba(255, 255, 0, 0.1)',
+          border: '1px dashed #999',
+          padding: 8,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <span>No component: {block.widgetType}</span>
+      </div>
+    );
+  }
+
+  // Props for unified widget component (uses settings, not config)
   const props = {
-    config: widget.config,
-    ...bindingValues, // Resolved data from bindings
+    instanceId: block.id,
+    settings: { ...block.config, ...bindingValues },
+    surface: 'panel-composer' as const,
   };
 
   return (
     <div
       style={{
-        gridColumn: `${widget.position.x + 1} / span ${widget.position.w}`,
-        gridRow: `${widget.position.y + 1} / span ${widget.position.h}`,
+        gridColumn: `${block.position.x + 1} / span ${block.position.w}`,
+        gridRow: `${block.position.y + 1} / span ${block.position.h}`,
         overflow: 'auto',
       }}
     >
@@ -111,19 +135,21 @@ function WidgetRenderer({ widget }: { widget: any }) {
 }
 
 /**
- * Hook to get all available widget types for the builder UI
+ * Hook to get all available block types for the builder UI.
+ * Returns unified WidgetDefinitions for panel-composer surface.
  */
-export function useAvailableWidgets() {
-  const [widgets, setWidgets] = React.useState(widgetRegistry.getAll());
+export function useAvailableBlocks() {
+  const [blocks, setBlocks] = React.useState(blockWidgets.getAll());
 
   React.useEffect(() => {
-    const unsubscribe = widgetRegistry.subscribe(() => {
-      setWidgets(widgetRegistry.getAll());
+    // Subscribe to blockRegistry for now (migration: use widgetRegistry.subscribe)
+    const unsubscribe = blockRegistry.subscribe(() => {
+      setBlocks(blockWidgets.getAll());
     });
     return unsubscribe;
   }, []);
 
-  return widgets;
+  return blocks;
 }
 
 /**
@@ -141,3 +167,10 @@ export function useAvailableDataSources() {
 
   return sources;
 }
+
+// ============================================================================
+// Backward Compatibility Aliases (deprecated)
+// ============================================================================
+
+/** @deprecated Use useAvailableBlocks instead */
+export const useAvailableWidgets = useAvailableBlocks;

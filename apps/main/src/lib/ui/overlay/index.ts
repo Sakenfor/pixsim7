@@ -191,5 +191,6 @@ export {
   buildOverlayConfigFromUnified,
 } from './overlayConfig';
 
-// Widget Registry (Task 94.1)
-export { registerOverlayWidgets } from './overlayWidgetRegistry';
+// Widget Registry - Re-export from unified system
+// The actual registrations are now in @lib/widgets/register/overlayWidgets.ts
+export { registerOverlayWidgets } from '@lib/widgets';

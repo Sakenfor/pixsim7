@@ -454,11 +454,11 @@ export function isOverlayConfig(config: UnifiedSurfaceConfig): boolean {
 // Registry-Based Reconstruction (Task 94.1)
 // ============================================================================
 
-import { createWidget, type WidgetRuntimeOptions } from '@lib/editing-core/registry/widgetRegistry';
+import { overlayWidgets, type WidgetFactoryOptions } from '@lib/widgets';
 
 /**
  * Build fully functional OverlayWidget instances from a UnifiedSurfaceConfig
- * using the widget registry. This enables reconstruction of real widgets with
+ * using the unified widget registry. This enables reconstruction of real widgets with
  * render functions, bindings, and click handlers.
  *
  * @param surfaceConfig - The unified surface configuration
@@ -467,13 +467,13 @@ import { createWidget, type WidgetRuntimeOptions } from '@lib/editing-core/regis
  */
 export function buildOverlayConfigFromUnified(
   surfaceConfig: UnifiedSurfaceConfig,
-  runtimeOptions?: Record<string, WidgetRuntimeOptions>
+  runtimeOptions?: Record<string, WidgetFactoryOptions>
 ): OverlayConfiguration {
   const widgets: OverlayWidget[] = [];
 
   for (const widgetConfig of surfaceConfig.widgets) {
     const options = runtimeOptions?.[widgetConfig.id];
-    const widget = createWidget<OverlayWidget>(widgetConfig.type, widgetConfig, options);
+    const widget = overlayWidgets.createWidget<OverlayWidget>(widgetConfig.type, widgetConfig, options);
 
     if (widget) {
       widgets.push(widget);

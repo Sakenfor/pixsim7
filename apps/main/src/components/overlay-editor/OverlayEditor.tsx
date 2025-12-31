@@ -12,7 +12,7 @@ import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
 import { ValidationPanel } from './ValidationPanel';
-import { getWidget, createWidget } from '@lib/editing-core/registry/widgetRegistry';
+import { overlayWidgets } from '@lib/widgets';
 import type { UnifiedWidgetConfig } from '@lib/editing-core';
 import { SurfaceWorkbench } from '../surface-workbench';
 
@@ -84,8 +84,8 @@ export function OverlayEditor({
 
   // Handle widget addition
   const handleAddWidget = (widgetType: string) => {
-    // Try to get default config from widget registry
-    const widgetDef = getWidget(widgetType);
+    // Try to get default config from unified widget registry
+    const widgetDef = overlayWidgets.get(widgetType);
     let defaultWidget: OverlayWidget;
 
     if (widgetDef?.defaultConfig) {
@@ -97,7 +97,7 @@ export function OverlayEditor({
         componentType: 'overlay',
       } as UnifiedWidgetConfig;
 
-      const widget = createWidget<OverlayWidget>(widgetType, unifiedConfig);
+      const widget = overlayWidgets.createWidget<OverlayWidget>(widgetType, unifiedConfig);
       if (widget) {
         defaultWidget = widget;
       } else {

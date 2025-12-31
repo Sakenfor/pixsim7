@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useHudLayoutStore } from '../stores/hudLayoutStore';
 import { ComposedPanel } from '@lib/ui/composer';
-import { initializeWidgets } from '@lib/ui/composer/initializeWidgets';
+import { registerAllWidgets } from '@lib/widgets';
 import type { HudRegionId, WorldHudLayout, HudRegionLayout } from '@features/hud';
 import { DEFAULT_REGION_POSITIONS } from '@features/hud';
 
@@ -95,7 +95,7 @@ export function HudRenderer({ worldId, layoutId, className = '' }: HudRendererPr
 
   // Initialize widgets once on mount
   useEffect(() => {
-    initializeWidgets();
+    registerAllWidgets();
   }, []);
 
   // Load layout: prioritize override layoutId, then default, then first available

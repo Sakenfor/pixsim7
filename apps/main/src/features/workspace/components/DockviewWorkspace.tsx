@@ -2,7 +2,7 @@ import { useRef, useEffect, useMemo } from "react";
 import type { DockviewReadyEvent } from "dockview-core";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { initializePanels, panelRegistry, type PanelDefinition } from "@features/panels";
-import { initializeWidgets } from "@lib/ui/composer";
+import { registerAllWidgets } from "@lib/widgets";
 import { SmartDockview } from "@lib/dockview";
 import { resolvePanelDefinitionId } from "@lib/dockview/panelAdd";
 
@@ -61,7 +61,7 @@ export function DockviewWorkspace() {
   useEffect(() => {
     Promise.all([
       initializePanels(),
-      Promise.resolve(initializeWidgets()),
+      Promise.resolve(registerAllWidgets()),
     ]).catch((error) => {
       console.error("Failed to initialize:", error);
     });

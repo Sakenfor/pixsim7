@@ -3,6 +3,8 @@ export * from './dataBinding';
 export * from './dataBindingResolver';
 export * from './bindingAdapters';
 export * from './hooks/useUndoRedo';
-export * from './registry/widgetRegistry';
 export * from './utils/propertyPath';
+
+// Widget registry moved to @lib/widgets
+// Use: import { widgetRegistry, registerWidget } from '@lib/widgets';
 
