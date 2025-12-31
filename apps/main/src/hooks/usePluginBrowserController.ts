@@ -1,7 +1,7 @@
 /**
  * Plugin Browser Controller Hook
  *
- * Centralizes all plugin browsing logic for both legacy plugins and workspace panels.
+ * Centralizes all plugin browsing logic for both plugins and workspace panels.
  * Provides a single source of truth for:
  * - Plugin loading and filtering
  * - Workspace panel activation/deactivation
@@ -11,8 +11,8 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { listAllPluginsUnified } from '../lib/plugins/catalog';
 import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from '../lib/plugins/types';
+import { fromPluginSystemMetadata } from '../lib/plugins/types';
 import {
   pluginCatalog,
   pluginActivationManager,
@@ -23,7 +23,7 @@ import {
 // Types
 // ============================================================================
 
-export type BrowserTab = 'legacy' | 'workspace-panels';
+export type BrowserTab = 'plugins' | 'workspace-panels';
 
 export type PanelCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
 export type PanelOrigin = 'all' | 'builtin' | 'plugin-dir' | 'ui-bundle';
@@ -36,7 +36,7 @@ export interface PluginBrowserController {
   activeTab: BrowserTab;
   setActiveTab: (tab: BrowserTab) => void;
 
-  // Legacy plugins state
+  // Plugins state
   plugins: UnifiedPluginDescriptor[];
   filteredPlugins: UnifiedPluginDescriptor[];
   searchQuery: string;
@@ -72,13 +72,13 @@ export interface PluginBrowserController {
  * Plugin Browser Controller
  *
  * Manages all state and logic for the Plugin Browser component.
- * Handles both legacy plugins and workspace panels.
+ * Handles both plugin catalog entries and workspace panels.
  */
 export function usePluginBrowserController(): PluginBrowserController {
   // Tab state
-  const [activeTab, setActiveTab] = useState<BrowserTab>('legacy');
+  const [activeTab, setActiveTab] = useState<BrowserTab>('plugins');
 
-  // Legacy plugins state
+  // Plugins state
   const [plugins, setPlugins] = useState<UnifiedPluginDescriptor[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [familyFilter, setFamilyFilter] = useState<UnifiedPluginFamily | 'all'>('all');
@@ -92,13 +92,24 @@ export function usePluginBrowserController(): PluginBrowserController {
   const [panelOriginFilter, setPanelOriginFilter] = useState<PanelOrigin>('all');
 
   // ========================================================================
-  // Legacy Plugins Logic
+  // Plugins Logic
   // ========================================================================
 
-  // Load legacy plugins
+  // Load plugins from unified catalog
   useEffect(() => {
-    const allPlugins = listAllPluginsUnified();
-    setPlugins(allPlugins);
+    const loadPlugins = () => {
+      const catalogPlugins = pluginCatalog
+        .getAll()
+        .filter((plugin) => plugin.family !== 'workspace-panel' && plugin.family !== 'renderer');
+      setPlugins(catalogPlugins.map(fromPluginSystemMetadata));
+    };
+
+    loadPlugins();
+    const unsubscribe = pluginCatalog.subscribe(loadPlugins);
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Get unique categories and features
@@ -106,7 +117,7 @@ export function usePluginBrowserController(): PluginBrowserController {
   const features = useMemo(() => getUniqueFeatures(plugins), [plugins]);
   const families = useMemo(() => getUniqueFamilies(plugins), [plugins]);
 
-  // Apply filters to legacy plugins
+  // Apply filters to plugins
   const filteredPlugins = useMemo(() => {
     let filtered = plugins;
 
@@ -221,7 +232,7 @@ export function usePluginBrowserController(): PluginBrowserController {
     activeTab,
     setActiveTab,
 
-    // Legacy plugins
+    // Plugins
     plugins,
     filteredPlugins,
     searchQuery,

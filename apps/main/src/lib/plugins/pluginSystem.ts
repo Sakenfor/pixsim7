@@ -36,6 +36,7 @@ export type PluginFamily =
   | 'node-type'
   | 'renderer'
   | 'ui-plugin'
+  | 'generation-ui'
   | 'scene-view'
   | 'control-center'
   | 'graph-editor'
@@ -152,6 +153,12 @@ export interface PluginMetadataExtensions {
     pluginType?: 'ui-overlay' | 'theme' | 'tool' | 'enhancement';
     bundleFamily?: 'ui' | 'tool';
     icon?: string;
+  };
+  'generation-ui': {
+    providerId: string;
+    operations?: string[];
+    priority?: number;
+    category?: string;
   };
   'scene-view': {
     sceneViewId: string;

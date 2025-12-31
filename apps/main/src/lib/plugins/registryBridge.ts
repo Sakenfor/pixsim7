@@ -27,6 +27,8 @@ import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
+import { generationUIPluginRegistry } from '@features/providers';
+import type { GenerationUIPlugin } from '@features/providers/lib/core/generationPlugins';
 import { panelRegistry, dockWidgetRegistry, type PanelDefinition, type DockWidgetDefinition } from '@features/panels';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 
@@ -500,6 +502,46 @@ export function registerBuiltinGalleryTool(tool: GalleryToolPlugin): void {
 }
 
 // ============================================================================
+// Generation UI Registry Bridge
+// ============================================================================
+
+/**
+ * Build catalog metadata for a generation UI plugin
+ */
+const buildGenerationUIMetadata: MetadataBuilder<GenerationUIPlugin, 'generation-ui'> = (plugin, options) => {
+  const metadata = extractCommonMetadata({
+    id: plugin.id,
+    name: plugin.metadata?.name ?? plugin.id,
+    description: plugin.metadata?.description,
+    version: plugin.metadata?.version,
+    tags: plugin.operations,
+  });
+
+  const providesFeatures = ['generation-ui'];
+  if (plugin.providerId) {
+    providesFeatures.push(`generation-ui-${plugin.providerId}`);
+  }
+
+  return {
+    ...metadata,
+    id: plugin.id,
+    name: plugin.metadata?.name ?? plugin.id,
+    family: 'generation-ui',
+    origin: options.origin ?? 'builtin',
+    activationState: options.activationState ?? 'active',
+    canDisable: options.canDisable ?? false,
+    providerId: plugin.providerId,
+    operations: plugin.operations,
+    priority: plugin.priority,
+    category: 'generation',
+    capabilities: plugin.providerId ? { providerId: plugin.providerId } : undefined,
+    providesFeatures,
+    consumesFeatures: ['generation'],
+    ...options.metadata,
+  } as ExtendedPluginMetadata<'generation-ui'>;
+};
+
+// ============================================================================
 // Graph Editor Registry Bridge
 // ============================================================================
 
@@ -828,6 +870,17 @@ export function syncCatalogFromRegistries(): void {
     }
   }
 
+  // Sync generation UI plugins
+  for (const pluginId of generationUIPluginRegistry.getPluginIds()) {
+    const plugin = generationUIPluginRegistry.getPlugin(pluginId);
+    if (!plugin) continue;
+    if (!pluginCatalog.get(plugin.id)) {
+      pluginCatalog.register(
+        buildGenerationUIMetadata(plugin, { origin: 'builtin', canDisable: false })
+      );
+    }
+  }
+
   // Sync graph editors
   for (const editor of graphEditorRegistry.getAll()) {
     if (!pluginCatalog.get(editor.id)) {
@@ -875,6 +928,7 @@ export function printRegistryComparison(): void {
   console.log(`Node Types: ${nodeTypeRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('node-type').length} in catalog`);
   console.log(`Renderers: ${nodeRendererRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('renderer').length} in catalog`);
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
+  console.log(`Generation UI: ${generationUIPluginRegistry.getPluginIds().length} in registry, ${pluginCatalog.getByFamily('generation-ui').length} in catalog`);
   console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
   console.log(`Workspace Panels: ${panelRegistry.getPublicPanels().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
   console.log(`Dock Widgets: ${dockWidgetRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('dock-widget').length} in catalog`);

@@ -84,14 +84,14 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
       {/* Tab Navigation */}
       <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-700">
         <button
-          onClick={() => setActiveTab('legacy')}
+          onClick={() => setActiveTab('plugins')}
           className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'legacy'
+            activeTab === 'plugins'
               ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
               : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
           }`}
         >
-          Legacy Plugins
+          Plugins
         </button>
         <button
           onClick={() => setActiveTab('workspace-panels')}
@@ -105,8 +105,8 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
         </button>
       </div>
 
-      {/* Legacy Plugins Tab */}
-      {activeTab === 'legacy' && (
+      {/* Plugins Tab */}
+      {activeTab === 'plugins' && (
         <>
           {/* Control Center Quick Link */}
           {hasControlCenterPlugins && (
