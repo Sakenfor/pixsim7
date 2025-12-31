@@ -26,7 +26,8 @@ from .registry import (
 )
 from .dsl_adapter import (
     analyze_prompt,
-    parse_prompt_to_blocks,
+    parse_prompt_to_segments,
+    parse_prompt_to_blocks,  # Deprecated alias
 )
 
 # Re-export PromptSegmentRole from domain for convenience
@@ -54,5 +55,6 @@ __all__ = [
     "AnalyzerTarget",
     # DSL Adapter
     "analyze_prompt",
-    "parse_prompt_to_blocks",
+    "parse_prompt_to_segments",
+    "parse_prompt_to_blocks",  # Deprecated
 ]

@@ -59,7 +59,7 @@ class PixverseCreditsMixin:
         account: ProviderAccount,
         *,
         include_ad_task: bool = False,
-        retry_on_session_error: bool = False
+        retry_on_session_error: bool = False,
     ) -> dict:
         """Fetch Pixverse credits (web + OpenAPI) with optional ad task status.
 
@@ -86,6 +86,7 @@ class PixverseCreditsMixin:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
         async def _operation(session: PixverseSessionData) -> dict:
+            # JWT is required for pixverse-py SDK get_credits() call
             temp_account = Account(
                 email=account.email,
                 session={
@@ -408,6 +409,7 @@ class PixverseCreditsMixin:
             return None
 
         async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
+            # JWT is required for pixverse-py SDK calls
             temp_account = Account(
                 email=account.email,
                 session={

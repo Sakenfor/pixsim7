@@ -165,7 +165,8 @@ class PluginManifest(BaseModel):
     provides: list[str] = []
 
     # API configuration
-    prefix: str = "/api/v1"          # URL prefix
+    prefix: str = "/api/v1"          # URL prefix (empty string normalizes to /api/v1)
+    prefix_raw: bool = False         # If True, use prefix exactly as-is (no normalization)
     tags: list[str] = []             # OpenAPI tags
 
     # Dependencies

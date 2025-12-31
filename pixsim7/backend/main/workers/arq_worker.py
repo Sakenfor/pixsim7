@@ -24,6 +24,7 @@ from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
+from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim7.backend.main.workers.world_simulation import tick_active_worlds, SIMULATION_ENABLED
 from pixsim7.backend.main.shared.config import settings
@@ -113,6 +114,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
     logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
+    logger.info("worker_component_registered", component="poll_device_ads", schedule="*/5s")
     if SIMULATION_ENABLED:
         logger.info("worker_component_registered", component="tick_active_worlds", schedule="*/5s")
     else:
@@ -177,6 +179,7 @@ class WorkerSettings:
         requeue_pending_generations,
         requeue_pending_analyses,
         tick_active_worlds,
+        poll_device_ads,
     ]
 
     # Cron jobs (periodic tasks)
@@ -230,6 +233,13 @@ class WorkerSettings:
             tick_active_worlds,
             second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},  # Every 5 seconds
             run_at_startup=False,  # Wait for first interval before starting
+        ),
+        # Poll device ad activity every 5 seconds
+        # Detects when ads are playing and marks device as BUSY
+        cron(
+            poll_device_ads,
+            second={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},  # Every 5 seconds (offset)
+            run_at_startup=True,
         ),
     ]
 

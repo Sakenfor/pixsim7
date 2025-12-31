@@ -720,17 +720,27 @@ class PluginManager:
                     logger.info(f"Skipping disabled plugin: {plugin_id}")
                     continue
 
+                # Normalize prefix: empty string → /api/v1 (unless prefix_raw=True)
+                effective_prefix = manifest.prefix
+                if not manifest.prefix_raw and (not effective_prefix or effective_prefix == ""):
+                    effective_prefix = "/api/v1"
+                    logger.debug(
+                        f"Normalized empty prefix to /api/v1 for plugin {plugin_id}",
+                        plugin_id=plugin_id,
+                        original_prefix=manifest.prefix,
+                    )
+
                 # Register router
                 self.app.include_router(
                     plugin['router'],
-                    prefix=manifest.prefix,
+                    prefix=effective_prefix,
                     tags=manifest.tags or [plugin_id],
                 )
 
                 logger.info(
                     f"Registered plugin: {manifest.name}",
                     plugin_id=plugin_id,
-                    prefix=manifest.prefix,
+                    prefix=effective_prefix,
                 )
 
         except ValueError as e:

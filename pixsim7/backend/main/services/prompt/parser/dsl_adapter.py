@@ -21,7 +21,7 @@ from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistr
 from .simple import SimplePromptParser
 
 
-async def parse_prompt_to_blocks(
+async def parse_prompt_to_segments(
     text: str,
     model_id: Optional[str] = None,
     *,
@@ -29,54 +29,61 @@ async def parse_prompt_to_blocks(
     parser_hints: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
     """
-    Parse prompt text into PixSim7 block format.
+    Parse prompt text into segments.
 
-    Pure function: text → {"blocks": [...]}
-    Blocks are PIXSIM7-SHAPED JSON, not parser objects.
+    Pure function: text → {"segments": [...]}
+    Segments are transient parsed pieces (not stored PromptBlock entities).
 
     Args:
         text: Prompt text to parse
-        model_id: Optional parser model ID. Supported values:
-            - "parser:native-simple" (default): Simple native parser
-            - "parser:native-strict": Strict native parser (future)
-            - None: Uses default (simple)
+        model_id: Optional parser model ID (currently unused - simple parser only).
         role_registry: Optional PromptRoleRegistry for dynamic roles.
         parser_hints: Optional parser hints to augment role keywords.
 
     Returns:
-        Dict with "blocks" key containing list of:
+        Dict with "segments" key containing list of:
         {
             "role": "<role_id>",
             "text": "...",
+            "start_pos": int,
+            "end_pos": int,
         }
     """
-    if model_id is None:
-        model_id = "parser:native-simple"
-
-    # Select parser based on model_id
-    if model_id in ("parser:native-simple", "native:simple", "prompt-dsl:simple"):
-        parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)
-    elif model_id in ("parser:native-strict", "prompt-dsl:strict"):
-        parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)  # Future: strict parser
-    else:
-        parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)
+    # Currently only SimplePromptParser is implemented
+    # model_id parameter is accepted for future extensibility but ignored
+    parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)
 
     parsed = await parser.parse(text)
 
-    blocks: List[Dict[str, Any]] = []
-    for segment in parsed.segments:
-        block = {
-            "role": segment.role,
-            "text": segment.text,
-        }
-        blocks.append(block)
+    segments: List[Dict[str, Any]] = []
+    for seg in parsed.segments:
+        segments.append({
+            "role": seg.role,
+            "text": seg.text,
+            "start_pos": seg.start_pos,
+            "end_pos": seg.end_pos,
+        })
 
-    return {"blocks": blocks}
+    return {"segments": segments}
 
 
-def _derive_tags_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
+# Backward-compatibility alias (deprecated, use parse_prompt_to_segments)
+async def parse_prompt_to_blocks(
+    text: str,
+    model_id: Optional[str] = None,
+    *,
+    role_registry: Optional[PromptRoleRegistry] = None,
+    parser_hints: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, Any]:
+    """Deprecated: Use parse_prompt_to_segments instead."""
+    result = await parse_prompt_to_segments(text, model_id, role_registry=role_registry, parser_hints=parser_hints)
+    # Return old format for backward compatibility
+    return {"blocks": result.get("segments", [])}
+
+
+def _derive_tags_from_segments(segments: List[Dict[str, Any]]) -> List[str]:
     """
-    Derive tags from PixSim7-shaped blocks.
+    Derive tags from parsed prompt segments.
 
     - Role tags: "has:character", "has:action", etc.
     - Simple intensity/mood hints based on keywords.
@@ -84,9 +91,9 @@ def _derive_tags_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
     role_tags: Set[str] = set()
     keyword_tags: Set[str] = set()
 
-    for block in blocks:
-        role = block.get("role")
-        text = (block.get("text") or "").lower()
+    for segment in segments:
+        role = segment.get("role")
+        text = (segment.get("text") or "").lower()
 
         if role:
             role_tags.add(f"has:{role}")
@@ -128,7 +135,7 @@ async def analyze_prompt(
     Returns:
         {
           "prompt": "<original text>",
-          "blocks": [...],
+          "segments": [...],
           "tags": ["has:character", "tone:soft", ...]
         }
     """
@@ -155,16 +162,16 @@ async def analyze_prompt(
         )
 
     # Default: use simple parser
-    blocks_result = await parse_prompt_to_blocks(
+    result = await parse_prompt_to_segments(
         text,
         role_registry=role_registry,
         parser_hints=parser_hints,
     )
-    blocks: List[Dict[str, Any]] = blocks_result.get("blocks", [])
-    tags = _derive_tags_from_blocks(blocks)
+    segments: List[Dict[str, Any]] = result.get("segments", [])
+    tags = _derive_tags_from_segments(segments)
 
     return {
         "prompt": text,
-        "blocks": blocks,
+        "segments": segments,
         "tags": tags,
     }
