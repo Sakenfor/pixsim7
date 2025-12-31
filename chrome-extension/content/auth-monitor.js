@@ -10,6 +10,15 @@
  * detect provider (that's handled by url-monitor.js).
  */
 
+// Debug mode - controlled by extension settings
+let DEBUG_AUTH = false;
+if (typeof chrome !== 'undefined' && chrome.storage) {
+  chrome.storage.local.get({ debugAuth: false, debugAll: false }, (result) => {
+    DEBUG_AUTH = result.debugAuth || result.debugAll;
+  });
+}
+const debugLogAuth = (...args) => DEBUG_AUTH && console.log('[PixSim7 Auth Monitor]', ...args);
+
 const authMonitor = {
   currentProvider: null,
   wasLoggedIn: false,
@@ -30,7 +39,7 @@ const authMonitor = {
 
     // Provider changed - reset state
     if (this.currentProvider?.providerId !== provider.providerId) {
-      console.log('[PixSim7 Auth Monitor] Provider changed, resetting state');
+      debugLogAuth('Provider changed, resetting state');
       this.wasLoggedIn = false;
       this.hasImportedThisSession = false;
       this.lastCookieSnapshot = null;
@@ -46,7 +55,7 @@ const authMonitor = {
   start() {
     if (this.pollInterval) return; // Already monitoring
 
-    console.log('[PixSim7 Auth Monitor] Starting auth monitoring for', this.currentProvider.providerId);
+    debugLogAuth('Starting auth monitoring for', this.currentProvider.providerId);
 
     // Initial check
     this.checkAuthState();
@@ -64,7 +73,7 @@ const authMonitor = {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
-      console.log('[PixSim7 Auth Monitor] Stopped monitoring');
+      debugLogAuth('Stopped monitoring');
     }
   },
 
@@ -74,7 +83,7 @@ const authMonitor = {
   scheduleImport(providerId) {
     const now = Date.now();
     if (now - this.lastImportTimestamp < TIMING.IMPORT_DEBOUNCE_MS) {
-      console.log('[PixSim7 Auth Monitor] Import skipped (debounced)');
+      debugLogAuth('Import skipped (debounced)');
       return;
     }
     this.lastImportTimestamp = now;
@@ -133,7 +142,7 @@ const authMonitor = {
         this.pendingLogoutStartedAt = this.pendingLogoutStartedAt || Date.now();
         const elapsed = Date.now() - this.pendingLogoutStartedAt;
         if (elapsed >= TIMING.LOGOUT_DEBOUNCE_MS) {
-          console.log('[PixSim7 Auth Monitor] *** LOGOUT CONFIRMED ***');
+          debugLogAuth('*** LOGOUT CONFIRMED ***');
           this.pendingLogoutStartedAt = null;
           await this.handleProviderLogout(providerId);
           this.wasLoggedIn = false;
@@ -157,7 +166,7 @@ const authMonitor = {
         if (this.lastCookieSnapshot === null) {
           this.lastCookieSnapshot = currentHash;
         } else if (currentHash !== this.lastCookieSnapshot) {
-          console.log('[PixSim7 Auth Monitor] *** COOKIE CHANGE DETECTED - treating as login/update ***');
+          debugLogAuth('*** COOKIE CHANGE DETECTED - treating as login/update ***');
           this.lastCookieSnapshot = currentHash;
           this.hasImportedThisSession = true;
           this.scheduleImport(providerId);
@@ -169,7 +178,7 @@ const authMonitor = {
 
     // Handle initial login
     if (!this.wasLoggedIn && !this.hasImportedThisSession) {
-      console.log('[PixSim7 Auth Monitor] *** LOGIN DETECTED (initial) ***');
+      debugLogAuth('*** LOGIN DETECTED (initial) ***');
       this.hasImportedThisSession = true;
       this.scheduleImport(providerId);
     }

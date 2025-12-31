@@ -26,6 +26,22 @@ window.PXS7 = window.PXS7 || {};
   } = window.PXS7.utils || {};
   const storage = window.PXS7.storage;
 
+  // Debug mode - controlled by extension settings (chrome.storage)
+  // Falls back to localStorage for manual override
+  let DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
+
+  // Load debug setting from chrome.storage (async)
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.local.get({ debugImagePicker: false, debugAll: false }, (result) => {
+      DEBUG_IMAGE_PICKER = result.debugImagePicker || result.debugAll || DEBUG_IMAGE_PICKER;
+      if (DEBUG_IMAGE_PICKER) {
+        console.log('[PixSim7] Image Picker debug mode enabled');
+      }
+    });
+  }
+
+  const debugLog = (...args) => DEBUG_IMAGE_PICKER && console.log('[PixSim7]', ...args);
+
   // Module state
   let recentSiteImages = [];
   let recentlyUsedAssets = [];  // Assets recently injected by user
@@ -40,6 +56,11 @@ window.PXS7 = window.PXS7 || {};
   const MAX_RECENTLY_USED = 50;
   let assetsSortBy = 'recent'; // 'recent', 'name', 'default'
   let assetsSearchQuery = ''; // Search filter for assets
+
+  // Persistent ID tracking for input elements
+  // Using WeakMap so entries are automatically cleaned up when inputs are garbage collected
+  const inputStableIdMap = new WeakMap();
+  const baseIdCounters = {}; // Track next available number for each baseId
 
   function loadRecentlyUsed() {
     try {
@@ -149,7 +170,7 @@ window.PXS7 = window.PXS7 || {};
       const total = data.total_remote ?? 0;
       const existing = data.existing_count ?? 0;
 
-      console.log('[PixSim7] Pixverse dry-run sync result:', data);
+      debugLog('Pixverse dry-run sync result:', data);
       if (showToast) {
         showToast(`Pixverse dry-run: ${existing}/${total} videos already imported`, true);
       }
@@ -202,7 +223,7 @@ window.PXS7 = window.PXS7 || {};
 
       if (Object.keys(state.inputs).length > 0 || state.images.length > 0) {
         sessionStorage.setItem(SESSION_KEY_PRESERVED_INPUT, JSON.stringify(state));
-        console.log('[PixSim7] Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images');
+        debugLog('Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images');
       }
     } catch (e) {
       console.warn('[PixSim7] Failed to save input state:', e);
@@ -246,7 +267,7 @@ window.PXS7 = window.PXS7 || {};
       }
 
       if (restored > 0) {
-        console.log('[PixSim7] Restored', restored, 'input(s)');
+        debugLog('Restored', restored, 'input(s)');
         if (showToast) showToast(`Restored ${restored} input(s)`, true);
       }
 
@@ -260,6 +281,7 @@ window.PXS7 = window.PXS7 || {};
 
   function findUploadInputs() {
     const results = [];
+    const seenInputs = new Set(); // Track unique input elements
     const url = window.location.pathname;
     const isImageTextPage = url.includes('image-text') || url.includes('image_text');
     const isImageGenPage = url.includes('create-image') || url.includes('image-generation') || url.includes('/create/image');
@@ -281,6 +303,12 @@ window.PXS7 = window.PXS7 || {};
     });
 
     inputs.forEach(input => {
+      // Skip duplicate input elements (same element found through multiple paths)
+      if (seenInputs.has(input)) {
+        return;
+      }
+      seenInputs.add(input);
+
       let container = input.closest('.ant-upload') ||
                       input.closest('.ant-upload-btn') ||
                       input.closest('[class*="ant-upload"]') ||
@@ -386,19 +414,47 @@ window.PXS7 = window.PXS7 || {};
       return (a.containerId || '').localeCompare(b.containerId || '');
     });
 
-    // Make containerIds unique by appending index for duplicates
-    // This ensures each slot can be uniquely identified even when multiple slots share the same parent element ID
-    const seenIds = {};
-    results.forEach(r => {
-      const baseId = r.containerId || 'unknown';
-      if (seenIds[baseId] === undefined) {
-        seenIds[baseId] = 0;
-      } else {
-        seenIds[baseId]++;
+    // Assign persistent unique IDs using WeakMap
+    // This ensures the same physical input element always gets the same ID,
+    // even if the DOM order changes between calls (which was causing slot 2 → slot 1 bug)
+    results.forEach((r, idx) => {
+      const input = r.input;
+      if (!input) {
+        r.containerId = (r.containerId || 'unknown') + '#orphan';
+        return;
       }
-      // Append index to make unique (e.g., 'create_image-customer_img_paths#0', '#1')
-      r.containerId = `${baseId}#${seenIds[baseId]}`;
+
+      // Check if this input already has a stable ID assigned
+      let stableId = inputStableIdMap.get(input);
+
+      if (!stableId) {
+        // First time seeing this input - assign a new unique ID
+        const baseId = r.containerId || 'unknown';
+
+        if (baseIdCounters[baseId] === undefined) {
+          baseIdCounters[baseId] = 0;
+        }
+
+        stableId = `${baseId}#${baseIdCounters[baseId]}`;
+        baseIdCounters[baseId]++;
+
+        // Store in WeakMap for future lookups
+        inputStableIdMap.set(input, stableId);
+        debugLog('[Slots] Assigned new stable ID:', stableId, 'to input');
+      }
+
+      r.containerId = stableId;
+
+      // Store on input for debugging
+      input.dataset.pxs7SlotId = stableId;
     });
+
+    // Debug: log if we have duplicate containerIds (shouldn't happen now)
+    const containerIds = results.map(r => r.containerId);
+    const uniqueIds = new Set(containerIds);
+    if (uniqueIds.size !== containerIds.length) {
+      console.error('[PixSim7] DUPLICATE containerIds after assignment!', containerIds);
+    }
 
     return results;
   }
@@ -426,19 +482,38 @@ window.PXS7 = window.PXS7 || {};
 
   // ===== Upload Container Management =====
 
-  function clearUploadContainer(container) {
+  async function clearUploadContainer(container) {
     try {
       // Search in multiple possible wrapper elements
       const wrapper = container?.closest('.ant-upload-wrapper') ||
                       container?.closest('[class*="ant-upload"]')?.parentElement ||
                       container?.parentElement?.parentElement;
       if (!wrapper) {
-        console.warn('[PixSim7] Could not find upload wrapper');
+        debugLog('[Clear] Could not find upload wrapper');
         return false;
       }
 
+      // Trigger hover state FIRST - delete buttons only appear on hover in Pixverse
+      const hoverTargets = [
+        wrapper.querySelector('.ant-upload-list-item'),
+        wrapper.querySelector('[class*="upload-list"]'),
+        wrapper.querySelector('[class*="preview"]'),
+        wrapper,
+      ].filter(Boolean);
+
+      for (const target of hoverTargets) {
+        target.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      }
+      // Wait for hover effects to reveal delete button
+      await new Promise(r => setTimeout(r, 150));
+
+
       // Extended selectors for delete/remove buttons (Ant Design + Pixverse custom)
       const deleteSelectors = [
+        // Pixverse specific - the X button is a div with these Tailwind classes
+        'div.absolute[class*="bg-black"][class*="rounded-full"]',
+        'div[class*="-right-"][class*="-top-"][class*="rounded-full"]',
         // Ant Design icons
         '.anticon-delete',
         '.anticon-close',
@@ -462,35 +537,42 @@ window.PXS7 = window.PXS7 || {};
       ];
 
       let deleteBtn = null;
-      for (const selector of deleteSelectors) {
-        deleteBtn = wrapper.querySelector(selector);
-        if (deleteBtn) break;
+
+      // The delete button is in a sibling element (the preview area) of the wrapper
+      // Look at wrapper's siblings and parent's children
+      const wrapperParent = wrapper.parentElement;
+      const searchAreas = [];
+
+      if (wrapperParent) {
+        // Add all siblings of the wrapper
+        Array.from(wrapperParent.children).forEach(child => {
+          if (child !== wrapper) searchAreas.push(child);
+        });
+        // Also add the parent itself
+        searchAreas.push(wrapperParent);
       }
 
-      // Also check parent elements for the delete button
-      if (!deleteBtn) {
-        const parent = wrapper.parentElement;
-        if (parent) {
-          for (const selector of deleteSelectors) {
-            deleteBtn = parent.querySelector(selector);
-            if (deleteBtn) break;
-          }
+      // Also check the wrapper itself
+      searchAreas.push(wrapper);
+
+      for (const area of searchAreas) {
+        if (deleteBtn) break;
+        for (const selector of deleteSelectors) {
+          deleteBtn = area.querySelector(selector);
+          if (deleteBtn) break;
         }
       }
 
       if (deleteBtn) {
-        // Trigger hover state first (some buttons only appear on hover)
-        wrapper.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-
-        setTimeout(() => {
-          deleteBtn.click();
-          console.log('[PixSim7] Clicked delete button to clear upload');
-        }, 50);
+        debugLog('[Clear] Clicking delete button');
+        deleteBtn.click();
+        // Wait for React to process deletion
+        await new Promise(r => setTimeout(r, 200));
         return true;
       }
 
       // Fallback: manually clear preview
-      console.log('[PixSim7] No delete button found, trying manual clear');
+      debugLog('[Clear] No delete button found, trying manual clear');
 
       const previewDiv = wrapper.querySelector('[style*="background-image"]');
       if (previewDiv) {
@@ -502,7 +584,7 @@ window.PXS7 = window.PXS7 || {};
       const fileInput = wrapper.querySelector('input[type="file"]');
       if (fileInput) fileInput.value = '';
 
-      console.log('[PixSim7] Cleared upload container (manual)');
+      debugLog('Cleared upload container (manual)');
       return true;
     } catch (e) {
       console.warn('[PixSim7] Failed to clear container:', e);
@@ -524,7 +606,7 @@ window.PXS7 = window.PXS7 || {};
 
   // ===== Image Injection =====
 
-  async function injectImageToUpload(imageUrl, targetInputOrContainerId = null) {
+  async function injectImageToUpload(imageUrl, targetInputOrContainerId = null, targetSlotIndex = null, expectedContainerId = null) {
     try {
       const uploads = findUploadInputs();
 
@@ -533,12 +615,40 @@ window.PXS7 = window.PXS7 || {};
         return false;
       }
 
+      // Filter to relevant slots (page-specific)
+      const relevantSlots = uploads.filter(u => u.priority >= 10);
+
+      // Log fresh slots for debugging order issues
+      const freshSlotSnapshot = relevantSlots.map((s, idx) => ({ idx, containerId: s.containerId, hasImage: s.hasImage }));
+      debugLog('[Slots] Fresh slots:', JSON.stringify(freshSlotSnapshot));
+
       // If specific target provided, use it; otherwise use smart selection
       // targetInputOrContainerId can be either an input element reference OR a containerId string
+      // targetSlotIndex is the index within relevant slots (most reliable for replacement)
       let targetUpload;
-      if (targetInputOrContainerId) {
+      if (targetSlotIndex !== null && targetSlotIndex >= 0 && targetSlotIndex < relevantSlots.length) {
+        // Index-based targeting (most reliable for slot replacement)
+        targetUpload = relevantSlots[targetSlotIndex];
+        debugLog('Using slot index', targetSlotIndex, 'containerId:', targetUpload?.containerId);
+
+        // Verify the slot matches expected containerId (if provided)
+        if (expectedContainerId && targetUpload?.containerId !== expectedContainerId) {
+          debugLog('[Slots] ORDER MISMATCH! Expected:', expectedContainerId, 'Got:', targetUpload?.containerId);
+          // Try to find the correct slot by containerId instead
+          const correctSlot = relevantSlots.find(s => s.containerId === expectedContainerId);
+          if (correctSlot) {
+            debugLog('[Slots] Found correct slot by containerId, using that instead');
+            targetUpload = correctSlot;
+          } else {
+            console.warn('[PixSim7] Could not find slot by containerId:', expectedContainerId);
+            debugLog('[Slots] Available containerIds:', relevantSlots.map(s => s.containerId));
+          }
+        } else if (expectedContainerId) {
+          debugLog('[Slots] Verified: index', targetSlotIndex, 'matches', expectedContainerId);
+        }
+      } else if (targetInputOrContainerId) {
         if (typeof targetInputOrContainerId === 'string') {
-          // It's a containerId - look up by containerId (stable across DOM changes)
+          // It's a containerId - look up by containerId (may not survive React re-render)
           targetUpload = uploads.find(u => u.containerId === targetInputOrContainerId);
           if (!targetUpload) {
             console.warn('[PixSim7] Could not find slot by containerId:', targetInputOrContainerId);
@@ -549,9 +659,7 @@ window.PXS7 = window.PXS7 || {};
           targetUpload = uploads.find(u => u.input === targetInputOrContainerId) || uploads[0];
         }
       } else {
-        // Filter to only high-priority (page-relevant) slots
-        const relevantSlots = uploads.filter(u => u.priority >= 10);
-
+        // No specific target - use smart selection from relevant slots
         if (relevantSlots.length > 0) {
           // Prefer empty slots first, fall back to first slot (for replacement)
           targetUpload = relevantSlots.find(u => !u.hasImage) || relevantSlots[0];
@@ -561,12 +669,12 @@ window.PXS7 = window.PXS7 || {};
         }
       }
 
-      console.log('[PixSim7] Upload slots (relevant):', uploads.filter(u => u.priority >= 10).map(u => ({
+      debugLog('Upload slots (relevant):', relevantSlots.map(u => ({
         hasImage: u.hasImage,
         containerId: u.containerId,
         priority: u.priority
       })));
-      console.log('[PixSim7] Target slot:', { hasImage: targetUpload.hasImage, containerId: targetUpload.containerId });
+      debugLog('Target slot:', { hasImage: targetUpload.hasImage, containerId: targetUpload.containerId });
 
       let fileInput = targetUpload.input;
       let container = targetUpload.container;
@@ -578,29 +686,60 @@ window.PXS7 = window.PXS7 || {};
 
       if (targetUpload.hasImage) {
         if (showToast) showToast('Replacing existing image...', true);
-        // Store containerId before clearing (DOM will change, input reference becomes stale)
-        const targetContainerId = targetUpload.containerId;
-        clearUploadContainer(container);
-        // Wait longer for React/Ant to process the deletion and re-render
-        await new Promise(r => setTimeout(r, 500));
-        // Re-fetch uploads in case DOM changed after deletion
-        const refreshedUploads = findUploadInputs();
-        // Find by containerId (stable) rather than input reference (may be stale after DOM re-render)
-        const refreshedTarget = refreshedUploads.find(u => u.containerId === targetContainerId);
+        // Store slot index before clearing - this is the most reliable way to re-find after React re-renders
+        const targetIndex = relevantSlots.indexOf(targetUpload);
+        debugLog('[Slots] Clearing slot at index:', targetIndex, 'containerId:', targetUpload.containerId);
+
+        // Mark the target input with a temporary attribute before clearing
+        // This helps us find it again after React re-renders
+        if (fileInput) {
+          fileInput.dataset.pxs7TargetSlot = 'true';
+        }
+
+        await clearUploadContainer(container);
+        // Wait for React/Ant to process the deletion and re-render
+        await new Promise(r => setTimeout(r, 300));
+
+        // Try to find by the temporary marker first (most reliable if input survived)
+        let refreshedUploads = findUploadInputs();
+        let refreshedRelevant = refreshedUploads.filter(u => u.priority >= 10);
+
+
+        // Look for our marked input first
+        let refreshedTarget = refreshedRelevant.find(u => u.input?.dataset?.pxs7TargetSlot === 'true');
         if (refreshedTarget) {
-          // Successfully found the same slot after refresh, update references
+          // Found by marker - clean up and use it
+          delete refreshedTarget.input.dataset.pxs7TargetSlot;
           targetUpload = refreshedTarget;
           fileInput = refreshedTarget.input;
           container = refreshedTarget.container;
-          console.log('[PixSim7] Re-found target slot after clear:', targetContainerId);
+          debugLog('[Slots] Re-found target by marker, containerId:', refreshedTarget.containerId);
         } else {
-          console.warn('[PixSim7] Could not find slot after clearing, containerId:', targetContainerId);
+          // Marker not found (input was recreated) - fall back to index
+          debugLog('[Slots] Marker not found, falling back to index:', targetIndex);
+          if (targetIndex >= 0 && targetIndex < refreshedRelevant.length) {
+            refreshedTarget = refreshedRelevant[targetIndex];
+            targetUpload = refreshedTarget;
+            fileInput = refreshedTarget.input;
+            container = refreshedTarget.container;
+            debugLog('[Slots] Re-found by index:', targetIndex, 'containerId:', refreshedTarget.containerId);
+          } else {
+            console.warn('[PixSim7] Could not find slot at index', targetIndex, 'after clearing');
+            // Fall back to first empty slot
+            const emptySlot = refreshedRelevant.find(u => !u.hasImage);
+            if (emptySlot) {
+              targetUpload = emptySlot;
+              fileInput = emptySlot.input;
+              container = emptySlot.container;
+              debugLog('[Slots] Falling back to empty slot:', emptySlot.containerId);
+            }
+          }
         }
       }
 
       const isPixverseUrl = imageUrl.includes('media.pixverse.ai');
       if (isPixverseUrl) {
-        console.log('[PixSim7] Using upload interception for Pixverse URL');
+        debugLog('Using upload interception for Pixverse URL');
         if (showToast) showToast('Setting image...', true);
 
         // Create a promise that waits for the interception to complete
@@ -615,7 +754,7 @@ window.PXS7 = window.PXS7 || {};
             if (e.detail?.url === imageUrl) {
               clearTimeout(timeout);
               window.removeEventListener('__pxs7UploadComplete', handler);
-              console.log('[PixSim7] Upload interception completed for:', imageUrl);
+              debugLog('Upload interception completed for:', imageUrl);
               resolve(true);
             }
           };
@@ -635,6 +774,8 @@ window.PXS7 = window.PXS7 || {};
 
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(placeholderFile);
+        const targetSlotId = fileInput?.dataset?.pxs7SlotId || 'unknown';
+        debugLog('[Slots] INJECTING to slot:', targetSlotId, 'hasImage:', targetUpload?.hasImage);
         fileInput.files = dataTransfer.files;
         fileInput.dispatchEvent(new Event('change', { bubbles: true }));
 
@@ -655,7 +796,7 @@ window.PXS7 = window.PXS7 || {};
 
       // HTTP URLs must be proxied through background script (mixed content + PNA restrictions)
       if (imageUrl.startsWith('http://')) {
-        console.log('[PixSim7] Using proxy for HTTP image fetch');
+        debugLog('Using proxy for HTTP image fetch');
         try {
           const proxyResponse = await chrome.runtime.sendMessage({ action: 'proxyImage', url: imageUrl });
           if (!proxyResponse || !proxyResponse.success || !proxyResponse.dataUrl) {
@@ -692,7 +833,7 @@ window.PXS7 = window.PXS7 || {};
           if (fetchErr.name === 'AbortError') {
             throw new Error('Fetch timeout - image took too long');
           }
-          console.log('[PixSim7] CORS fetch failed, trying no-cors...');
+          debugLog('CORS fetch failed, trying no-cors...');
           try {
             response = await fetch(imageUrl, { mode: 'no-cors' });
           } catch (e) {
@@ -873,6 +1014,9 @@ window.PXS7 = window.PXS7 || {};
 
     // Use provided slots (pre-filtered) or get relevant slots only
     const slots = slotsToShow || findUploadInputs().filter(u => u.priority >= 10);
+    // Store slot snapshot for verification
+    const slotSnapshot = slots.map((s, idx) => ({ idx, containerId: s.containerId, hasImage: s.hasImage }));
+    debugLog('[Slots] Menu slots snapshot:', JSON.stringify(slotSnapshot));
 
     if (slots.length === 0) {
       const item = document.createElement('div');
@@ -946,8 +1090,10 @@ window.PXS7 = window.PXS7 || {};
         addHoverEffect(item);
         item.addEventListener('click', async () => {
           menu.remove();
-          // Pass containerId (stable) instead of input reference (can become stale after DOM changes)
-          await injectImageToUpload(imageUrl, slotInfo.containerId);
+          // Pass slot index for reliable targeting (containerId may not survive React re-render)
+          const expectedContainerId = slotInfo.containerId;
+          debugLog('[Slots] Menu click: index=' + i + ', expectedContainerId=' + expectedContainerId);
+          await injectImageToUpload(imageUrl, null, i, expectedContainerId);
         });
         menu.appendChild(item);
       }

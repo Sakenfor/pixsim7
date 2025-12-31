@@ -6,6 +6,15 @@
  * Requires: STORAGE_KEYS (from shared/constants.js)
  */
 
+// Debug mode - controlled by extension settings
+let DEBUG_COOKIES = false;
+if (typeof chrome !== 'undefined' && chrome.storage) {
+  chrome.storage.local.get({ debugCookies: false, debugAll: false }, (result) => {
+    DEBUG_COOKIES = result.debugCookies || result.debugAll;
+  });
+}
+const debugLogCookies = (...args) => DEBUG_COOKIES && console.log('[PixSim7 Cookie Import]', ...args);
+
 /**
  * Provider session storage management
  */
@@ -80,7 +89,7 @@ async function _cookieImport_extractRawData(providerId, config) {
         ai_trace_id: sessionIds.traceId,
         ai_anonymous_id: sessionIds.anonymousId,
       };
-      console.log('[PixSim7 Cookie Import] Captured Pixverse session IDs:', {
+      debugLogCookies('Captured Pixverse session IDs:', {
         hasTraceId: !!sessionIds.traceId,
         hasAnonymousId: !!sessionIds.anonymousId,
       });
@@ -98,26 +107,26 @@ async function _cookieImport_extractRawData(providerId, config) {
  * Import cookies to backend
  */
 async function importCookies(providerId, config = {}) {
-  console.log(`[PixSim7 Cookie Import] Importing raw data for ${providerId}...`);
+  debugLogCookies(`Importing raw data for ${providerId}...`);
 
   try {
     // Get extension settings
     const response = await chrome.runtime.sendMessage({ action: 'getSettings' });
 
     if (!response.pixsim7Token) {
-      console.log('[PixSim7 Cookie Import] Not logged into PixSim7, skipping import');
+      debugLogCookies('Not logged into PixSim7, skipping import');
       return;
     }
 
     if (!response.autoImport) {
-      console.log('[PixSim7 Cookie Import] Auto-import disabled, skipping');
+      debugLogCookies('Auto-import disabled, skipping');
       return;
     }
 
     // Extract RAW data (no parsing, backend will handle it)
     const rawData = await _cookieImport_extractRawData(providerId, config);
 
-    console.log('[PixSim7 Cookie Import] Extracted raw data:', {
+    debugLogCookies('Extracted raw data:', {
       cookies: Object.keys(rawData.cookies).length,
       hasBearerToken: !!rawData.bearer_token
     });
@@ -131,7 +140,7 @@ async function importCookies(providerId, config = {}) {
     });
 
     if (importResponse.success) {
-      console.log(`[PixSim7 Cookie Import] ✓ Cookies imported successfully:`, importResponse.data);
+      debugLogCookies('✓ Cookies imported successfully:', importResponse.data);
 
       const importedAccountId = importResponse.data?.account_id;
       if (importedAccountId) {
