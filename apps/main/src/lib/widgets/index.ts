@@ -117,6 +117,13 @@ export {
   useWidgetInstances,
 } from './widgetPlacementStore';
 
+// Data binding (re-exported for convenience)
+export {
+  useWidgetData,
+  createWidgetBindings,
+  type DataSourceBinding,
+} from '@lib/dataBinding';
+
 // Built-in Chrome Widgets
 export {
   clockWidget,
@@ -127,3 +134,16 @@ export {
 
 // Components
 export { HeaderWidgetArea, HeaderWidgetBar } from './components';
+
+// Storage
+export {
+  type WidgetSurfaceType as StorageSurfaceType,
+  type WidgetBuilderConfig,
+  type WidgetBuilderStorage,
+  type StorageType,
+  LocalStorageWidgetBuilderStorage,
+  IndexedDBWidgetBuilderStorage,
+  APIWidgetBuilderStorage,
+  createWidgetBuilderStorage,
+  widgetBuilderStorage,
+} from './storage';
