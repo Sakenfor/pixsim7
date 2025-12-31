@@ -37,6 +37,7 @@ import {
   getPanelsForScope,
   type PanelDefinition,
 } from '@features/panels/lib';
+import { useUndoRedo } from '@lib/editing-core';
 
 // ============================================================================
 // Types
@@ -193,9 +194,19 @@ interface BlockEditorProps {
   onInstancesChange: (instances: WidgetInstance[]) => void;
 }
 
-function BlockEditor({ instances, onInstancesChange }: BlockEditorProps) {
+function BlockEditor({ instances: initialInstances, onInstancesChange }: BlockEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const availableWidgets = blockWidgets.getAll();
+
+  // Undo/redo support
+  const history = useUndoRedo<WidgetInstance[]>(initialInstances);
+  const instances = history.value;
+
+  // Sync changes to parent
+  const updateInstances = (newInstances: WidgetInstance[]) => {
+    history.set(newInstances);
+    onInstancesChange(newInstances);
+  };
 
   const selectedInstance = instances.find((i) => i.id === selectedId);
 
@@ -207,19 +218,29 @@ function BlockEditor({ instances, onInstancesChange }: BlockEditorProps) {
       placement: { grid: { x: 0, y: instances.length, w: 2, h: 2 } },
       settings: widget.defaultSettings,
     };
-    onInstancesChange([...instances, newInstance]);
+    updateInstances([...instances, newInstance]);
     setSelectedId(newInstance.id);
   };
 
   const handleRemove = (id: string) => {
-    onInstancesChange(instances.filter((i) => i.id !== id));
+    updateInstances(instances.filter((i) => i.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
   const handleUpdatePlacement = (id: string, grid: { x: number; y: number; w: number; h: number }) => {
-    onInstancesChange(
+    updateInstances(
       instances.map((i) => (i.id === id ? { ...i, placement: { ...i.placement, grid } } : i))
     );
+  };
+
+  const handleUndo = () => {
+    history.undo();
+    onInstancesChange(history.value);
+  };
+
+  const handleRedo = () => {
+    history.redo();
+    onInstancesChange(history.value);
   };
 
   const sidebar = (
@@ -396,10 +417,40 @@ function BlockEditor({ instances, onInstancesChange }: BlockEditorProps) {
     </Panel>
   );
 
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleUndo}
+        disabled={!history.canUndo}
+        className={`px-2 py-1 text-sm rounded ${
+          history.canUndo
+            ? 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+        }`}
+        title="Undo (Ctrl+Z)"
+      >
+        ↩ Undo
+      </button>
+      <button
+        onClick={handleRedo}
+        disabled={!history.canRedo}
+        className={`px-2 py-1 text-sm rounded ${
+          history.canRedo
+            ? 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+        }`}
+        title="Redo (Ctrl+Y)"
+      >
+        ↪ Redo
+      </button>
+    </div>
+  );
+
   return (
     <SurfaceWorkbench
-      title=""
-      showHeader={false}
+      title="Block Editor"
+      description={`${instances.length} blocks`}
+      headerActions={headerActions}
       sidebar={sidebar}
       preview={preview}
       inspector={inspector}
@@ -416,9 +467,19 @@ interface ChromeEditorProps {
   onInstancesChange: (instances: WidgetInstance[]) => void;
 }
 
-function ChromeEditor({ instances, onInstancesChange }: ChromeEditorProps) {
+function ChromeEditor({ instances: initialInstances, onInstancesChange }: ChromeEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const availableWidgets = chromeWidgets.getAll();
+
+  // Undo/redo support
+  const history = useUndoRedo<WidgetInstance[]>(initialInstances);
+  const instances = history.value;
+
+  // Sync changes to parent
+  const updateInstances = (newInstances: WidgetInstance[]) => {
+    history.set(newInstances);
+    onInstancesChange(newInstances);
+  };
 
   const selectedInstance = instances.find((i) => i.id === selectedId);
 
@@ -431,19 +492,29 @@ function ChromeEditor({ instances, onInstancesChange }: ChromeEditorProps) {
       placement: { area, order: areaInstances.length },
       settings: widget.defaultSettings,
     };
-    onInstancesChange([...instances, newInstance]);
+    updateInstances([...instances, newInstance]);
     setSelectedId(newInstance.id);
   };
 
   const handleRemove = (id: string) => {
-    onInstancesChange(instances.filter((i) => i.id !== id));
+    updateInstances(instances.filter((i) => i.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
   const handleUpdatePlacement = (id: string, area: string, order: number) => {
-    onInstancesChange(
+    updateInstances(
       instances.map((i) => (i.id === id ? { ...i, placement: { area, order } } : i))
     );
+  };
+
+  const handleUndo = () => {
+    history.undo();
+    onInstancesChange(history.value);
+  };
+
+  const handleRedo = () => {
+    history.redo();
+    onInstancesChange(history.value);
   };
 
   const getInstancesForArea = (area: string) =>
@@ -596,10 +667,40 @@ function ChromeEditor({ instances, onInstancesChange }: ChromeEditorProps) {
     </Panel>
   );
 
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleUndo}
+        disabled={!history.canUndo}
+        className={`px-2 py-1 text-sm rounded ${
+          history.canUndo
+            ? 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+        }`}
+        title="Undo (Ctrl+Z)"
+      >
+        ↩ Undo
+      </button>
+      <button
+        onClick={handleRedo}
+        disabled={!history.canRedo}
+        className={`px-2 py-1 text-sm rounded ${
+          history.canRedo
+            ? 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+        }`}
+        title="Redo (Ctrl+Y)"
+      >
+        ↪ Redo
+      </button>
+    </div>
+  );
+
   return (
     <SurfaceWorkbench
-      title=""
-      showHeader={false}
+      title="Chrome Editor"
+      description={`${instances.length} widgets`}
+      headerActions={headerActions}
       sidebar={sidebar}
       preview={preview}
       inspector={inspector}
