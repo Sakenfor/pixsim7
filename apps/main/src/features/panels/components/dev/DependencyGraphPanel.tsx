@@ -11,11 +11,11 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { type FeatureCapability } from "@lib/capabilities";
-import { type PluginMeta } from "@lib/plugins/catalog";
+import { type UnifiedPluginDescriptor } from "@lib/plugins/types";
 
 interface DependencyGraphPanelProps {
   features: FeatureCapability[];
-  plugins: PluginMeta[];
+  plugins: UnifiedPluginDescriptor[];
 }
 
 /**
@@ -55,7 +55,7 @@ export function DependencyGraphPanel({
 
     // Create plugin nodes
     plugins.forEach((plugin, index) => {
-      const pluginId = `${plugin.kind}-${plugin.id}`;
+      const pluginId = `${plugin.family}-${plugin.id}`;
       nodes.push({
         id: `plugin-${pluginId}`,
         type: "pluginNode",
@@ -64,9 +64,9 @@ export function DependencyGraphPanel({
           y: index * 150,
         },
         data: {
-          label: plugin.label,
+          label: plugin.name,
           pluginId: plugin.id,
-          kind: plugin.kind,
+          family: plugin.family,
           origin: plugin.origin,
           icon: plugin.icon,
         },
@@ -180,7 +180,7 @@ function FeatureNode({ data }: { data: FeatureNodeData }) {
 interface PluginNodeData {
   label: string;
   pluginId: string;
-  kind: string;
+  family: string;
   origin: string;
   icon?: string;
 }
@@ -199,7 +199,7 @@ function PluginNode({ data }: { data: PluginNodeData }) {
       </div>
       <div className="flex gap-1">
         <div className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded">
-          {data.kind}
+          {data.family}
         </div>
         <div className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded">
           {data.origin}

@@ -5,12 +5,25 @@
  */
 
 import type { FeatureCapability, ActionCapability } from '@lib/capabilities';
-import type { getPluginHealth } from '@lib/plugins/catalog';
+
+interface PluginHealthSummary {
+  totalPlugins: number;
+  metadataHealth: {
+    withDescription: number;
+    withCategory: number;
+    withTags: number;
+    withVersion: number;
+  };
+  issues: {
+    experimental: number;
+    deprecated: number;
+  };
+}
 
 interface StatsViewProps {
   pluginCounts: Record<string, number>;
   originCounts: Record<string, number>;
-  pluginHealth: ReturnType<typeof getPluginHealth>;
+  pluginHealth: PluginHealthSummary;
   featureUsageStats: Record<
     string,
     { consumers: number; providers: number; total: number }
@@ -45,25 +58,27 @@ export function StatsView({
         </div>
       </div>
 
-      {/* Plugins by Kind */}
+      {/* Plugins by Family */}
       <div>
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-          Plugins by Kind
+          Plugins by Family
         </h3>
         <div className="space-y-2">
-          {Object.entries(pluginCounts).map(([kind, count]) => (
-            <div
-              key={kind}
-              className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md"
-            >
-              <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                {kind}
-              </span>
-              <span className="text-neutral-600 dark:text-neutral-400">
-                {count}
-              </span>
-            </div>
-          ))}
+          {Object.entries(pluginCounts)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([kind, count]) => (
+              <div
+                key={kind}
+                className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md"
+              >
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {kind}
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {count}
+                </span>
+              </div>
+            ))}
         </div>
       </div>
 

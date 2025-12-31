@@ -12,6 +12,7 @@
 import React, {
   useState,
   useMemo,
+  useEffect,
   Component,
   type ErrorInfo,
   type ReactNode,
@@ -20,21 +21,15 @@ import {
   useFeatures,
   useFeatureRoutes,
   useActions,
-  type FeatureCapability,
   type RouteCapability,
 } from '@lib/capabilities';
 import {
-  listAllPlugins,
-  filterByKind,
-  filterByOrigin,
-  searchPlugins,
-  getPluginCounts,
-  getOriginCounts,
-  getPluginHealth,
-  getFeatureUsageStats,
-  type PluginKind,
-  type PluginOrigin,
-} from '@lib/plugins/catalog';
+  fromPluginSystemMetadata,
+  type UnifiedPluginDescriptor,
+  type UnifiedPluginFamily,
+  type UnifiedPluginOrigin,
+} from '@lib/plugins/types';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
 
 // Split views
 import { FeaturesView } from './appMap/FeaturesView';
@@ -133,10 +128,11 @@ const TABS: TabConfig[] = [
 
 export function AppMapPanel() {
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
-  const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
-  const [originFilter, setOriginFilter] = useState<PluginOrigin | 'all'>('all');
+  const [familyFilter, setFamilyFilter] = useState<UnifiedPluginFamily | 'all'>('all');
+  const [originFilter, setOriginFilter] = useState<UnifiedPluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('features');
+  const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
 
   // Data from capability registry
   const allFeatures = useFeatures();
@@ -155,18 +151,30 @@ export function AppMapPanel() {
   }, [allFeatures]);
 
   // Data from plugin catalog
-  const allPlugins = useMemo(() => listAllPlugins(), []);
+  useEffect(() => {
+    const loadPlugins = () => {
+      const catalogPlugins = pluginCatalog.getAll();
+      setAllPlugins(catalogPlugins.map(fromPluginSystemMetadata));
+    };
+
+    loadPlugins();
+    const unsubscribe = pluginCatalog.subscribe(loadPlugins);
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Filter plugins
   const filteredPlugins = useMemo(() => {
     let plugins = allPlugins;
 
-    if (kindFilter !== 'all') {
-      plugins = filterByKind(kindFilter, plugins);
+    if (familyFilter !== 'all') {
+      plugins = plugins.filter((plugin) => plugin.family === familyFilter);
     }
 
     if (originFilter !== 'all') {
-      plugins = filterByOrigin(originFilter, plugins);
+      plugins = plugins.filter((plugin) => plugin.origin === originFilter);
     }
 
     if (searchQuery.trim()) {
@@ -174,7 +182,7 @@ export function AppMapPanel() {
     }
 
     return plugins;
-  }, [allPlugins, kindFilter, originFilter, searchQuery]);
+  }, [allPlugins, familyFilter, originFilter, searchQuery]);
 
   // Feature-specific actions
   const selectedFeatureActions = useMemo(() => {
@@ -183,13 +191,10 @@ export function AppMapPanel() {
   }, [allActions, selectedFeatureId]);
 
   // Statistics
-  const pluginCounts = useMemo(() => getPluginCounts(), []);
+  const pluginCounts = useMemo(() => getPluginCounts(allPlugins), [allPlugins]);
   const originCounts = useMemo(() => getOriginCounts(allPlugins), [allPlugins]);
   const pluginHealth = useMemo(() => getPluginHealth(allPlugins), [allPlugins]);
-  const featureUsageStats = useMemo(
-    () => getFeatureUsageStats(allPlugins),
-    [allPlugins]
-  );
+  const featureUsageStats = useMemo(() => getFeatureUsageStats(allPlugins), [allPlugins]);
 
   const selectedFeature = allFeatures.find((f) => f.id === selectedFeatureId);
 
@@ -222,18 +227,28 @@ export function AppMapPanel() {
       })),
       plugins: allPlugins.map((p) => ({
         id: p.id,
-        label: p.label,
+        name: p.name,
         description: p.description,
-        kind: p.kind,
+        family: p.family,
         origin: p.origin,
         category: p.category,
         version: p.version,
         author: p.author,
         tags: p.tags,
+        pluginType: p.pluginType,
+        bundleFamily: p.bundleFamily,
+        permissions: p.permissions,
+        capabilities: p.capabilities,
         providesFeatures: p.providesFeatures,
         consumesFeatures: p.consumesFeatures,
+        consumesActions: p.consumesActions,
+        consumesState: p.consumesState,
         experimental: p.experimental,
         deprecated: p.deprecated,
+        isActive: p.isActive,
+        canDisable: p.canDisable,
+        isBuiltin: p.isBuiltin,
+        extensions: p.extensions,
       })),
       stats: {
         featureCount: allFeatures.length,
@@ -320,10 +335,10 @@ export function AppMapPanel() {
             <PluginsView
               allPlugins={allPlugins}
               filteredPlugins={filteredPlugins}
-              kindFilter={kindFilter}
+              familyFilter={familyFilter}
               originFilter={originFilter}
               searchQuery={searchQuery}
-              onKindFilterChange={setKindFilter}
+              onFamilyFilterChange={setFamilyFilter}
               onOriginFilterChange={setOriginFilter}
               onSearchQueryChange={setSearchQuery}
             />
@@ -359,4 +374,118 @@ export function AppMapPanel() {
       </div>
     </AppMapErrorBoundary>
   );
+}
+
+function searchPlugins(
+  query: string,
+  plugins: UnifiedPluginDescriptor[]
+): UnifiedPluginDescriptor[] {
+  const trimmed = query.trim();
+  if (!trimmed) return plugins;
+  const lowerQuery = trimmed.toLowerCase();
+
+  return plugins.filter((plugin) => matchesSearch(plugin, lowerQuery));
+}
+
+function matchesSearch(plugin: UnifiedPluginDescriptor, query: string): boolean {
+  if (plugin.name.toLowerCase().includes(query)) return true;
+  if (plugin.id.toLowerCase().includes(query)) return true;
+  if (plugin.description?.toLowerCase().includes(query)) return true;
+  if (plugin.category?.toLowerCase().includes(query)) return true;
+  if (plugin.author?.toLowerCase().includes(query)) return true;
+  if (plugin.tags?.some((tag) => tag.toLowerCase().includes(query))) return true;
+  return false;
+}
+
+function getPluginCounts(
+  plugins: UnifiedPluginDescriptor[]
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  plugins.forEach((plugin) => {
+    counts[plugin.family] = (counts[plugin.family] || 0) + 1;
+  });
+  return counts;
+}
+
+function getOriginCounts(
+  plugins: UnifiedPluginDescriptor[]
+): Record<UnifiedPluginOrigin, number> {
+  const counts: Record<UnifiedPluginOrigin, number> = {
+    builtin: 0,
+    'plugin-dir': 0,
+    'ui-bundle': 0,
+    'dev-project': 0,
+  };
+
+  plugins.forEach((plugin) => {
+    counts[plugin.origin] = (counts[plugin.origin] ?? 0) + 1;
+  });
+
+  return counts;
+}
+
+function getFeatureUsageStats(
+  plugins: UnifiedPluginDescriptor[]
+): Record<string, { consumers: number; providers: number; total: number }> {
+  const stats: Record<string, { consumers: number; providers: number; total: number }> = {};
+
+  plugins.forEach((plugin) => {
+    plugin.consumesFeatures?.forEach((feature) => {
+      if (!stats[feature]) {
+        stats[feature] = { consumers: 0, providers: 0, total: 0 };
+      }
+      stats[feature].consumers++;
+      stats[feature].total++;
+    });
+
+    plugin.providesFeatures?.forEach((feature) => {
+      if (!stats[feature]) {
+        stats[feature] = { consumers: 0, providers: 0, total: 0 };
+      }
+      stats[feature].providers++;
+      stats[feature].total++;
+    });
+  });
+
+  return stats;
+}
+
+function getPluginHealth(plugins: UnifiedPluginDescriptor[]): {
+  totalPlugins: number;
+  metadataHealth: {
+    withDescription: number;
+    withCategory: number;
+    withTags: number;
+    withVersion: number;
+  };
+  issues: {
+    experimental: number;
+    deprecated: number;
+  };
+} {
+  const metadataHealth = {
+    withDescription: 0,
+    withCategory: 0,
+    withTags: 0,
+    withVersion: 0,
+  };
+  const issues = {
+    experimental: 0,
+    deprecated: 0,
+  };
+
+  plugins.forEach((plugin) => {
+    if (plugin.description) metadataHealth.withDescription++;
+    if (plugin.category) metadataHealth.withCategory++;
+    if (plugin.tags && plugin.tags.length > 0) metadataHealth.withTags++;
+    if (plugin.version) metadataHealth.withVersion++;
+    if (plugin.experimental) issues.experimental++;
+    if (plugin.deprecated) issues.deprecated++;
+  });
+
+  return {
+    totalPlugins: plugins.length,
+    metadataHealth,
+    issues,
+  };
 }

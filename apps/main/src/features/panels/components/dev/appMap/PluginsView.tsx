@@ -1,52 +1,50 @@
 /**
  * PluginsView - Plugin Ecosystem tab for App Map
  *
- * Shows all registered plugins with filtering by kind and origin.
+ * Shows all registered plugins with filtering by family and origin.
  */
 
-import { useState } from 'react';
-import type { PluginMeta, PluginKind, PluginOrigin } from '@lib/plugins/catalog';
+import { useMemo, useState } from 'react';
+import type {
+  UnifiedPluginDescriptor,
+  UnifiedPluginFamily,
+  UnifiedPluginOrigin,
+} from '@lib/plugins/types';
 
 interface PluginsViewProps {
-  allPlugins: PluginMeta[];
-  filteredPlugins: PluginMeta[];
-  kindFilter: PluginKind | 'all';
-  originFilter: PluginOrigin | 'all';
+  allPlugins: UnifiedPluginDescriptor[];
+  filteredPlugins: UnifiedPluginDescriptor[];
+  familyFilter: UnifiedPluginFamily | 'all';
+  originFilter: UnifiedPluginOrigin | 'all';
   searchQuery: string;
-  onKindFilterChange: (kind: PluginKind | 'all') => void;
-  onOriginFilterChange: (origin: PluginOrigin | 'all') => void;
+  onFamilyFilterChange: (family: UnifiedPluginFamily | 'all') => void;
+  onOriginFilterChange: (origin: UnifiedPluginOrigin | 'all') => void;
   onSearchQueryChange: (query: string) => void;
 }
 
-const PLUGIN_KINDS: Array<PluginKind | 'all'> = [
-  'all',
-  'session-helper',
-  'interaction',
-  'node-type',
-  'gallery-tool',
-  'world-tool',
-  'ui-plugin',
-  'generation-ui',
-];
-
-const PLUGIN_ORIGINS: Array<PluginOrigin | 'all'> = [
+const PLUGIN_ORIGINS: Array<UnifiedPluginOrigin | 'all'> = [
   'all',
   'builtin',
-  'plugins-dir',
+  'plugin-dir',
   'ui-bundle',
-  'dev',
+  'dev-project',
 ];
 
 export function PluginsView({
   allPlugins,
   filteredPlugins,
-  kindFilter,
+  familyFilter,
   originFilter,
   searchQuery,
-  onKindFilterChange,
+  onFamilyFilterChange,
   onOriginFilterChange,
   onSearchQueryChange,
 }: PluginsViewProps) {
+  const familyOptions = useMemo(() => {
+    const families = Array.from(new Set(allPlugins.map((plugin) => plugin.family))).sort();
+    return ['all', ...families] as Array<UnifiedPluginFamily | 'all'>;
+  }, [allPlugins]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Filters */}
@@ -60,22 +58,22 @@ export function PluginsView({
           className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
-        {/* Kind Filter */}
+        {/* Family Filter */}
         <div className="flex gap-2 flex-wrap">
           <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 self-center">
-            Kind:
+            Family:
           </span>
-          {PLUGIN_KINDS.map((kind) => (
+          {familyOptions.map((family) => (
             <button
-              key={kind}
-              onClick={() => onKindFilterChange(kind)}
+              key={family}
+              onClick={() => onFamilyFilterChange(family)}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                kindFilter === kind
+                familyFilter === family
                   ? 'bg-blue-500 text-white'
                   : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
             >
-              {kind}
+              {family}
             </button>
           ))}
         </div>
@@ -110,7 +108,7 @@ export function PluginsView({
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-2">
           {filteredPlugins.map((plugin) => (
-            <PluginCard key={`${plugin.kind}-${plugin.id}`} plugin={plugin} />
+            <PluginCard key={`${plugin.family}-${plugin.id}`} plugin={plugin} />
           ))}
         </div>
       </div>
@@ -118,7 +116,7 @@ export function PluginsView({
   );
 }
 
-function PluginCard({ plugin }: { plugin: PluginMeta }) {
+function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -132,10 +130,10 @@ function PluginCard({ plugin }: { plugin: PluginMeta }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                {plugin.label}
+                {plugin.name}
               </span>
               <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded">
-                {plugin.kind}
+                {plugin.family}
               </span>
               <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs rounded">
                 {plugin.origin}
@@ -203,9 +201,29 @@ function PluginCard({ plugin }: { plugin: PluginMeta }) {
                 Enabled:
               </span>
               <span className="ml-2 text-neutral-900 dark:text-neutral-100">
-                {plugin.enabled !== false ? 'Yes' : 'No'}
+                {plugin.isActive ? 'Yes' : 'No'}
               </span>
             </div>
+            {plugin.pluginType && (
+              <div>
+                <span className="text-neutral-500 dark:text-neutral-400">
+                  Plugin Type:
+                </span>
+                <span className="ml-2 text-neutral-900 dark:text-neutral-100">
+                  {plugin.pluginType}
+                </span>
+              </div>
+            )}
+            {plugin.bundleFamily && (
+              <div>
+                <span className="text-neutral-500 dark:text-neutral-400">
+                  Bundle Family:
+                </span>
+                <span className="ml-2 text-neutral-900 dark:text-neutral-100">
+                  {plugin.bundleFamily}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Tags */}
@@ -268,16 +286,24 @@ function PluginCard({ plugin }: { plugin: PluginMeta }) {
             </div>
           )}
 
-          {/* Source */}
-          <div>
-            <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-              Source:
+          {/* Permissions */}
+          {plugin.permissions && plugin.permissions.length > 0 && (
+            <div>
+              <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                Permissions:
+              </div>
+              <div className="flex gap-1 flex-wrap">
+                {plugin.permissions.map((permission) => (
+                  <code
+                    key={permission}
+                    className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs rounded font-mono"
+                  >
+                    {permission}
+                  </code>
+                ))}
+              </div>
             </div>
-            <code className="text-xs font-mono text-neutral-700 dark:text-neutral-300">
-              {plugin.source.registry}
-              {plugin.source.modulePath && ` (${plugin.source.modulePath})`}
-            </code>
-          </div>
+          )}
         </div>
       )}
     </div>
