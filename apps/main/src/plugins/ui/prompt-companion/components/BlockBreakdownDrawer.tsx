@@ -15,7 +15,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
 import {
   PromptInlineViewer,
-  type PromptSegment,
+  type PromptSegmentDisplay,
 } from '@features/prompts/components/PromptInlineViewer';
 
 // ============================================================================
@@ -94,11 +94,11 @@ export function BlockBreakdownDrawer({
     }, {} as Record<string, PromptSegmentData[]>);
   }, [analysis?.segments]);
 
-  // Convert to PromptSegment format for inline viewer
-  const viewerSegments: PromptSegment[] = useMemo(() => {
+  // Convert to PromptSegmentDisplay format for inline viewer
+  const viewerSegments: PromptSegmentDisplay[] = useMemo(() => {
     if (!analysis?.segments) return [];
     return analysis.segments.map((seg) => ({
-      role: seg.role as PromptSegment['role'],
+      role: seg.role as PromptSegmentDisplay['role'],
       text: seg.text,
       start_pos: seg.start_pos,
       end_pos: seg.end_pos,

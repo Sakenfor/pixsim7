@@ -35,7 +35,7 @@
 | Generation/Jobs | Improved | ~~Heavy `any` usage~~, ~~operation type fragmentation~~ - Fixed 2024-12-09 |
 | Analyzers | Improved | ~~Magic string IDs~~ - Consolidated to constants (Phase 4 done) |
 | Panels/Workspace | Improved | ~~4 different category definitions~~ - Consolidated 2024-12-09 |
-| Prompts | Improved | `PromptBlock` consolidated to `types/prompts.ts` (Phase 3 done) |
+| Prompts | Improved | Prompt segment types consolidated to `apps/main/src/features/prompts/types.ts` (Phase 3 done) |
 | API Client | Improved | ~~38~~ ~30 `any` occurrences (reduced in generations.ts) |
 
 ### Statistics (as of initial scan)
@@ -46,7 +46,7 @@
 | `Record<string, any>` total | 69 | ~65 (some converted to `unknown`) |
 | Duplicated `OperationType` definitions | 5+ | 1 (canonical in types/operations.ts) |
 | Duplicated `PanelCategory` definitions | 4 | 1 (canonical in panelConstants.ts) |
-| Duplicated `PromptBlock` definitions | 4 | 1 (canonical in types/prompts.ts) |
+| Duplicated `PromptSegment` definitions | 4 | 1 (canonical in apps/main/src/features/prompts/types.ts) |
 | Files with hardcoded operation string comparisons | 8 | ~6 (Phase 5 pending) |
 
 ### Top 5 High-Leverage Improvements
@@ -55,7 +55,7 @@
 2. ~~**Fix `any` in `lib/api/generations.ts`** - Import existing shared types~~ DONE
 3. ~~**Consolidate `PanelCategory`** - Single source of truth for 4 definitions~~ DONE
 4. **Consolidate `GenerationStatus`** - Already centralized, just export properly
-5. **Create canonical `PromptBlock`** - DONE: Consolidated to `types/prompts.ts`
+5. **Create canonical `PromptSegment`** - DONE: Consolidated to `apps/main/src/features/prompts/types.ts`
 
 ---
 
@@ -69,7 +69,7 @@
 │  Generation    → GenerationResponse, OperationType, Status      │
 │  Analyzers     → AnalyzerInfo, AnalyzerKind, AnalyzerTarget     │
 │  Panels        → PanelId, PanelDefinition, PanelCategory        │
-│  Prompts       → PromptBlock, PromptVersion, PromptAnalysis     │
+│  Prompts       → PromptSegment, PromptVersion, PromptAnalysis   │
 │  Assets        → Asset, MediaType, AssetAnalysis                │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -452,7 +452,7 @@ export type PanelId = typeof PANEL_IDS[keyof typeof PANEL_IDS];
 > - **`PromptSegment`** = Transient parsed output from the analyzer API. Not stored in DB. Used for UI display/analysis.
 > - **`PromptBlock`** = Stored entity in the `prompt_block` table (backend `PromptBlock` model). Used for curated block libraries.
 >
-> The frontend uses `PromptSegment` for analysis results. The deprecated `PromptBlock` type alias exists for backward compatibility but should not be used for new code.
+> The frontend uses `PromptSegment` for analysis results. `PromptInlineViewer` defines a display-only `PromptSegmentDisplay` type and keeps a deprecated `PromptBlock` alias for UI backward compatibility.
 
 ### Canonical Types
 
@@ -462,7 +462,7 @@ export type PanelId = typeof PANEL_IDS[keyof typeof PANEL_IDS];
 |------|---------|
 | `PromptSegment` | Parsed segment from analyzer (transient) |
 | `PromptSegmentRole` | Role enum: character, action, setting, mood, romance, other |
-| `PromptBlock` | **Deprecated alias** - use `PromptSegment` instead |
+| `PromptParseResult` | Full parse result (prompt + segments) |
 
 ### Implementation
 
@@ -488,12 +488,12 @@ export interface PromptSegment {
 
 ### UI Component Types
 
-The `PromptInlineViewer` component uses a local `PromptSegment` type for display:
+The `PromptInlineViewer` component uses a local `PromptSegmentDisplay` type for display:
 
 ```typescript
 // apps/main/src/features/prompts/components/PromptInlineViewer.tsx
 
-export interface PromptSegment {
+export interface PromptSegmentDisplay {
   role: PromptSegmentRole;
   text: string;
   start_pos?: number;  // Optional for composed prompts
@@ -764,13 +764,13 @@ export { GenerationStatus, ACTIVE_STATUSES, TERMINAL_STATUSES };
 import { GenerationStatus } from '@/stores/generationsStore';
 ```
 
-#### 5. ~~Create Canonical PromptBlock~~ DONE
+#### 5. ~~Create Canonical PromptSegment~~ DONE
 
 **Effort:** Medium
 **Impact:** Medium
 **Files changed:** 6
 
-Created `types/prompts.ts` with `ParsedBlock` + `PromptBlock` UI alias. See Phase 3.
+Created `apps/main/src/features/prompts/types.ts` with `PromptSegment`. See Phase 3.
 
 #### 6. Create Analyzer Constants
 
@@ -829,15 +829,14 @@ Add runtime validation for API responses to catch backend schema changes early.
 
 ### Phase 3: Prompt Types - COMPLETED 2024-12-09
 
-- [x] Create `types/prompts.ts` with canonical `ParsedBlock` (mirrors backend)
-- [x] Define `PROMPT_BLOCK_ROLES` constant and `PromptBlockRole` type
-- [x] Add `PromptBlock` as thin UI alias: `Pick<ParsedBlock, 'role' | 'text'> & { component_type?: }`
-- [x] Add `toPromptBlock()` / `toPromptBlocks()` conversion helpers
+- [x] Create `apps/main/src/features/prompts/types.ts` with canonical `PromptSegment` (mirrors backend)
+- [x] Define `PROMPT_SEGMENT_ROLES` constant and `PromptSegmentRole` type
 - [x] Update `PromptBlocksViewer.tsx` to import from types (re-exports for compat)
 - [x] Update `usePromptInspection.ts` import
 - [x] Remove duplicate definition from `PromptLabDev.tsx`
-- [x] Update `types/promptGraphs.ts` to re-export and use `PromptBlockRole`
+- [x] Update `types/promptGraphs.ts` to re-export and use `PromptSegmentRole`
 - [x] Update `promptGraphBuilder.ts` to use typed roles
+- [x] Add `PromptSegmentDisplay` for UI display (keeps deprecated `PromptBlock` alias)
 
 ### Phase 4: Analyzer Constants - COMPLETED 2024-12-09
 

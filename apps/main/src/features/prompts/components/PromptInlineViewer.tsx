@@ -25,7 +25,7 @@ import type { PromptSegmentRole } from '../types';
  * A parsed prompt segment for UI display.
  * This is transient data from the analyzer, NOT a stored PromptBlock entity.
  */
-export interface PromptSegment {
+export interface PromptSegmentDisplay {
   role: PromptSegmentRole;
   text: string;
   start_pos?: number;
@@ -34,20 +34,20 @@ export interface PromptSegment {
   metadata?: Record<string, unknown>;
 }
 
-/** @deprecated Use PromptSegment instead */
-export type PromptBlock = PromptSegment;
+/** @deprecated Use PromptSegmentDisplay instead */
+export type PromptBlock = PromptSegmentDisplay;
 
 export interface PromptInlineViewerProps {
   /** Original prompt text */
   prompt: string;
   /** Parsed segments with position data */
-  blocks: PromptSegment[];
+  blocks: PromptSegmentDisplay[];
   /** Show role legend below text */
   showLegend?: boolean;
   /** Custom class for the container */
   className?: string;
   /** Click handler for segment spans */
-  onBlockClick?: (segment: PromptSegment) => void;
+  onBlockClick?: (segment: PromptSegmentDisplay) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,14 +104,14 @@ interface TextSpan {
   text: string;
   start: number;
   end: number;
-  segment?: PromptSegment;
+  segment?: PromptSegmentDisplay;
 }
 
 /**
  * Build text spans from segments with position data.
  * Fills gaps with unstyled spans for complete coverage.
  */
-function buildSpans(prompt: string, segments: PromptSegment[]): TextSpan[] {
+function buildSpans(prompt: string, segments: PromptSegmentDisplay[]): TextSpan[] {
   // Filter to segments with valid positions
   const positioned = segments.filter(
     (s) => typeof s.start_pos === 'number' && typeof s.end_pos === 'number'
@@ -175,7 +175,7 @@ export function PromptInlineViewer({
   className = '',
   onBlockClick,
 }: PromptInlineViewerProps) {
-  const [hoveredSegment, setHoveredSegment] = useState<PromptSegment | null>(null);
+  const [hoveredSegment, setHoveredSegment] = useState<PromptSegmentDisplay | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   const spans = useMemo(() => buildSpans(prompt, blocks), [prompt, blocks]);
@@ -189,7 +189,7 @@ export function PromptInlineViewer({
     return Array.from(roles);
   }, [blocks]);
 
-  const handleMouseEnter = useCallback((e: React.MouseEvent, segment: PromptSegment) => {
+  const handleMouseEnter = useCallback((e: React.MouseEvent, segment: PromptSegmentDisplay) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     setHoveredSegment(segment);
     setTooltipPos({ x: rect.left, y: rect.bottom + 4 });
@@ -273,8 +273,8 @@ export function PromptInlineViewer({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface PromptSegmentListProps {
-  segments: PromptSegment[];
-  onSegmentClick?: (segment: PromptSegment) => void;
+  segments: PromptSegmentDisplay[];
+  onSegmentClick?: (segment: PromptSegmentDisplay) => void;
 }
 
 /** @deprecated Use PromptSegmentListProps instead */
@@ -287,7 +287,7 @@ export type PromptBlockListProps = PromptSegmentListProps;
 export function PromptBlockList({ segments, onSegmentClick }: PromptSegmentListProps) {
   // Group by role
   const grouped = useMemo(() => {
-    const groups: Partial<Record<PromptSegmentRole, PromptSegment[]>> = {};
+    const groups: Partial<Record<PromptSegmentRole, PromptSegmentDisplay[]>> = {};
     for (const seg of segments) {
       if (!groups[seg.role]) {
         groups[seg.role] = [];
@@ -299,7 +299,7 @@ export function PromptBlockList({ segments, onSegmentClick }: PromptSegmentListP
 
   return (
     <div className="space-y-3">
-      {(Object.entries(grouped) as [PromptSegmentRole, PromptSegment[]][]).map(
+      {(Object.entries(grouped) as [PromptSegmentRole, PromptSegmentDisplay[]][]).map(
         ([role, roleSegments]) => (
           <div key={role}>
             <div className="flex items-center gap-2 mb-1.5">

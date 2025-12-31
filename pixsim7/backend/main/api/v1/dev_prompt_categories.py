@@ -62,7 +62,7 @@ class PromptCategoryDiscoveryRequest(BaseModel):
 class PromptCategoryDiscoveryResponse(BaseModel):
     """Response model with parser analysis and AI suggestions."""
     prompt_text: str
-    parser_roles: List[Dict[str, Any]]      # summary of roles/blocks from SimplePromptParser
+    parser_roles: List[Dict[str, Any]]      # summary of roles/segments from SimplePromptParser
     existing_ontology_ids: List[str]        # union of ontology_ids already found
     suggestions: Dict[str, Any]             # raw AI suggestion payload (for debugging)
     suggested_ontology_ids: List[SuggestedOntologyId]
