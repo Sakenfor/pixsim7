@@ -1,6 +1,7 @@
 import type { Module } from '@app/modules/types';
 import { registerPluginsFeature } from '@lib/capabilities/registerCoreFeatures';
 import { pluginManager } from '@lib/plugins';
+import { syncCatalogFromRegistries } from '@lib/plugins/registryBridge';
 import { PluginsModule as PluginsModuleComponent } from '@features/controlCenter/components/modules/PluginsModule';
 
 /**
@@ -18,6 +19,7 @@ export const pluginsModule: Module = {
     // Plugin manager is already initialized in App.tsx;
     // here we simply ensure the capability is registered.
     void pluginManager; // keep import used
+    syncCatalogFromRegistries();
   },
 
   // Auto-register Control Center panel

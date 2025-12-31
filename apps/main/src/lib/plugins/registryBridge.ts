@@ -54,13 +54,21 @@ export interface RegisterWithMetadataOptions {
 /**
  * Extract common metadata from a plugin object
  */
-function extractCommonMetadata(plugin: { id?: string; name?: string; description?: string; version?: string; author?: string }): Partial<PluginMetadata> {
+function extractCommonMetadata(plugin: {
+  id?: string;
+  name?: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  tags?: string[];
+}): Partial<PluginMetadata> {
   return {
     id: plugin.id,
     name: plugin.name || plugin.id,
     description: plugin.description,
     version: plugin.version,
     author: plugin.author,
+    tags: plugin.tags,
   };
 }
 
@@ -143,6 +151,18 @@ function unregisterFromCatalog<T>(
  */
 const buildHelperMetadata: MetadataBuilder<HelperDefinition, 'helper'> = (helper, options) => {
   const metadata = extractCommonMetadata(helper);
+  const capabilities: PluginMetadata['capabilities'] = {
+    modifiesSession: true,
+  };
+
+  if (helper.category === 'inventory') {
+    capabilities.modifiesInventory = true;
+  } else if (helper.category === 'relationship') {
+    capabilities.modifiesRelationships = true;
+  } else if (helper.category === 'event') {
+    capabilities.triggersEvents = true;
+  }
+
   return {
     ...metadata,
     id: helper.id || helper.name,
@@ -152,6 +172,8 @@ const buildHelperMetadata: MetadataBuilder<HelperDefinition, 'helper'> = (helper
     activationState: options.activationState ?? 'active',
     canDisable: options.canDisable ?? true,
     category: helper.category,
+    capabilities,
+    consumesFeatures: ['game'],
     ...options.metadata,
   } as ExtendedPluginMetadata<'helper'>;
 };
@@ -194,6 +216,19 @@ export function registerBuiltinHelper(helper: HelperDefinition): void {
  */
 const buildInteractionMetadata: MetadataBuilder<InteractionPlugin<BaseInteractionConfig>, 'interaction'> = (interaction, options) => {
   const metadata = extractCommonMetadata(interaction);
+  const capabilities: PluginMetadata['capabilities'] = {
+    modifiesSession: true,
+    opensDialogue:
+      interaction.capabilities?.opensDialogue || interaction.uiMode === 'dialogue',
+    modifiesInventory: interaction.capabilities?.modifiesInventory,
+    modifiesRelationships: interaction.capabilities?.affectsRelationship,
+    triggersEvents: interaction.capabilities?.triggersEvents,
+    hasRisk: interaction.capabilities?.hasRisk,
+    requiresItems: interaction.capabilities?.requiresItems,
+    consumesItems: interaction.capabilities?.consumesItems,
+    canBeDetected: interaction.capabilities?.canBeDetected,
+  };
+
   return {
     ...metadata,
     id: interaction.id,
@@ -204,6 +239,8 @@ const buildInteractionMetadata: MetadataBuilder<InteractionPlugin<BaseInteractio
     canDisable: options.canDisable ?? true,
     category: interaction.category,
     icon: interaction.icon,
+    capabilities,
+    consumesFeatures: ['game'],
     ...options.metadata,
   } as ExtendedPluginMetadata<'interaction'>;
 };
@@ -241,6 +278,24 @@ export function registerBuiltinInteraction(interaction: InteractionPlugin<BaseIn
  */
 const buildNodeTypeMetadata: MetadataBuilder<NodeTypeDefinition, 'node-type'> = (nodeType, options) => {
   const metadata = extractCommonMetadata(nodeType);
+  const capabilities: PluginMetadata['capabilities'] = {
+    addsNodeTypes: true,
+  };
+
+  const consumesFeatures: string[] = [];
+  const providesFeatures: string[] = [];
+
+  if (nodeType.scope === 'world') {
+    consumesFeatures.push('game');
+    providesFeatures.push('world-builder');
+  } else if (nodeType.scope === 'scene') {
+    consumesFeatures.push('workspace');
+    providesFeatures.push('scene-builder');
+  } else if (nodeType.scope === 'arc') {
+    consumesFeatures.push('workspace');
+    providesFeatures.push('arc-builder');
+  }
+
   return {
     ...metadata,
     id: nodeType.id,
@@ -253,6 +308,9 @@ const buildNodeTypeMetadata: MetadataBuilder<NodeTypeDefinition, 'node-type'> = 
     scope: nodeType.scope,
     userCreatable: nodeType.userCreatable,
     preloadPriority: nodeType.preloadPriority,
+    capabilities,
+    consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
+    providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
     ...options.metadata,
   } as ExtendedPluginMetadata<'node-type'>;
 };
@@ -336,6 +394,10 @@ export function registerBuiltinRenderer(renderer: { nodeType: string; preloadPri
  */
 const buildWorldToolMetadata: MetadataBuilder<WorldToolPlugin, 'world-tool'> = (tool, options) => {
   const metadata = extractCommonMetadata(tool);
+  const capabilities: PluginMetadata['capabilities'] = {
+    addsUIOverlay: true,
+  };
+
   return {
     ...metadata,
     id: tool.id,
@@ -346,6 +408,7 @@ const buildWorldToolMetadata: MetadataBuilder<WorldToolPlugin, 'world-tool'> = (
     canDisable: options.canDisable ?? true,
     category: tool.category,
     icon: tool.icon,
+    capabilities,
     ...options.metadata,
   } as ExtendedPluginMetadata<'world-tool'>;
 };
@@ -390,6 +453,21 @@ export function registerGalleryTool(
   // Gallery tools don't have a centralized registry yet
   // For now, just track in catalog
   const metadata = extractCommonMetadata(tool);
+  const capabilities: PluginMetadata['capabilities'] = {
+    addsGalleryTools: true,
+  };
+  const consumesFeatures = ['assets'];
+  const providesFeatures: string[] = [];
+
+  if (tool.category === 'visualization') {
+    providesFeatures.push('gallery-visualization');
+  } else if (tool.category === 'automation') {
+    providesFeatures.push('gallery-automation');
+  } else if (tool.category === 'analysis') {
+    providesFeatures.push('gallery-analysis');
+  } else if (tool.category === 'utility') {
+    providesFeatures.push('gallery-utility');
+  }
 
   pluginCatalog.register({
     ...metadata,
@@ -400,6 +478,9 @@ export function registerGalleryTool(
     activationState: options.activationState ?? 'active',
     canDisable: options.canDisable ?? true,
     category: tool.category,
+    capabilities,
+    consumesFeatures,
+    providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
     ...options.metadata,
   } as ExtendedPluginMetadata<'gallery-tool'>);
 }
@@ -702,22 +783,29 @@ export function registerBuiltinGizmoSurface(surface: GizmoSurfaceDefinition): vo
 export function syncCatalogFromRegistries(): void {
   // Sync helpers
   for (const helper of sessionHelperRegistry.getAll()) {
-    if (!pluginCatalog.get(helper.id)) {
-      registerHelper(helper, { origin: 'builtin' });
+    const helperId = helper.id || helper.name;
+    if (!pluginCatalog.get(helperId)) {
+      pluginCatalog.register(
+        buildHelperMetadata(helper, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync interactions
   for (const interaction of interactionRegistry.getAll()) {
     if (!pluginCatalog.get(interaction.id)) {
-      registerInteraction(interaction, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildInteractionMetadata(interaction, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync node types
   for (const nodeType of nodeTypeRegistry.getAll()) {
     if (!pluginCatalog.get(nodeType.id)) {
-      registerNodeType(nodeType, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildNodeTypeMetadata(nodeType, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
@@ -725,42 +813,54 @@ export function syncCatalogFromRegistries(): void {
   for (const renderer of nodeRendererRegistry.getAll()) {
     const id = `renderer:${renderer.nodeType}`;
     if (!pluginCatalog.get(id)) {
-      registerRenderer(renderer, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildRendererMetadata(renderer, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync world tools
   for (const tool of worldToolRegistry.getAll()) {
     if (!pluginCatalog.get(tool.id)) {
-      registerWorldTool(tool, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildWorldToolMetadata(tool, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync graph editors
   for (const editor of graphEditorRegistry.getAll()) {
     if (!pluginCatalog.get(editor.id)) {
-      registerGraphEditor(editor, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildGraphEditorMetadata(editor, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync workspace panels
   for (const panel of panelRegistry.getPublicPanels()) {
     if (!pluginCatalog.get(panel.id)) {
-      registerPanelWithPlugin(panel, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildPanelMetadata(panel, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync dock widgets
   for (const widget of dockWidgetRegistry.getAll()) {
     if (!pluginCatalog.get(widget.id)) {
-      registerDockWidgetWithPlugin(widget, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildDockWidgetMetadata(widget, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 
   // Sync gizmo surfaces
   for (const surface of gizmoSurfaceRegistry.getAll()) {
     if (!pluginCatalog.get(surface.id)) {
-      registerGizmoSurface(surface, { origin: 'builtin' });
+      pluginCatalog.register(
+        buildGizmoSurfaceMetadata(surface, { origin: 'builtin', canDisable: false })
+      );
     }
   }
 }

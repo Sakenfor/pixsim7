@@ -27,7 +27,12 @@ import type { SceneViewPluginManifest, SceneViewPlugin } from './sceneViewPlugin
 import { controlCenterRegistry } from './controlCenterPlugin';
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from './controlCenterPlugin';
 import { pluginCatalog } from './pluginSystem';
-import type { ExtendedPluginMetadata, PluginFamily, PluginOrigin } from './pluginSystem';
+import type {
+  ExtendedPluginMetadata,
+  PluginFamily,
+  PluginOrigin,
+  PluginCapabilityHints,
+} from './pluginSystem';
 import type { PluginManifest } from './types';
 
 // ===== Types =====
@@ -200,11 +205,59 @@ async function discoverBundlesFromPublic(baseDir: string): Promise<DiscoveredBun
 
 // ===== Loading =====
 
+function buildBundleDependencies(manifest: BundleManifest): {
+  capabilities?: PluginCapabilityHints;
+  providesFeatures?: string[];
+  consumesFeatures?: string[];
+  consumesActions?: string[];
+  consumesState?: string[];
+} {
+  const capabilities: PluginCapabilityHints = {};
+  const providesFeatures: string[] = [];
+  const consumesFeatures: string[] = [];
+  const consumesActions: string[] = [];
+  const consumesState: string[] = [];
+
+  if (manifest.permissions?.includes('ui:overlay')) {
+    capabilities.addsUIOverlay = true;
+    consumesFeatures.push('workspace');
+    providesFeatures.push('ui-overlay');
+  }
+
+  if (manifest.permissions?.includes('read:session')) {
+    consumesState.push('generation.active');
+  }
+
+  if (manifest.controlCenter) {
+    consumesFeatures.push('assets', 'workspace', 'generation');
+    consumesActions.push('workspace.open-panel', 'generation.quick-generate');
+    consumesState.push('workspace.panels');
+    providesFeatures.push('control-center');
+  }
+
+  if (manifest.type === 'theme') {
+    providesFeatures.push('theme');
+  } else if (manifest.type === 'tool') {
+    providesFeatures.push('ui-tool');
+  } else if (manifest.type === 'enhancement') {
+    providesFeatures.push('ui-enhancement');
+  }
+
+  return {
+    capabilities: Object.keys(capabilities).length > 0 ? capabilities : undefined,
+    providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
+    consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
+    consumesActions: consumesActions.length > 0 ? consumesActions : undefined,
+    consumesState: consumesState.length > 0 ? consumesState : undefined,
+  };
+}
+
 function registerBundleMetadata(
   manifest: BundleManifest,
   family: PluginFamily,
   origin: PluginOrigin
 ): void {
+  const dependencies = buildBundleDependencies(manifest);
   const metadata = {
     id: manifest.id,
     name: manifest.name,
@@ -216,6 +269,7 @@ function registerBundleMetadata(
     description: manifest.description,
     author: manifest.author,
     tags: manifest.tags,
+    ...dependencies,
   } as ExtendedPluginMetadata;
 
   switch (family) {

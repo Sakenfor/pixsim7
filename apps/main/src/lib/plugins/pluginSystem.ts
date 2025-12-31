@@ -50,6 +50,25 @@ export type PluginFamily =
 export type ActivationState = 'active' | 'inactive';
 
 /**
+ * Capability hints for feature plugins
+ */
+export interface PluginCapabilityHints {
+  modifiesSession?: boolean;
+  modifiesInventory?: boolean;
+  modifiesRelationships?: boolean;
+  addsUIOverlay?: boolean;
+  addsNodeTypes?: boolean;
+  addsGalleryTools?: boolean;
+  providerId?: string;
+  triggersEvents?: boolean;
+  hasRisk?: boolean;
+  requiresItems?: boolean;
+  consumesItems?: boolean;
+  canBeDetected?: boolean;
+  opensDialogue?: boolean;
+}
+
+/**
  * Core metadata that all plugins should have
  */
 export interface PluginMetadata {
@@ -82,6 +101,21 @@ export interface PluginMetadata {
 
   /** Tags for filtering/searching */
   tags?: string[];
+
+  /** Capability hints for feature plugins */
+  capabilities?: PluginCapabilityHints;
+
+  /** Features this plugin provides */
+  providesFeatures?: string[];
+
+  /** Features this plugin consumes */
+  consumesFeatures?: string[];
+
+  /** Actions this plugin consumes */
+  consumesActions?: string[];
+
+  /** State IDs this plugin consumes */
+  consumesState?: string[];
 }
 
 /**
