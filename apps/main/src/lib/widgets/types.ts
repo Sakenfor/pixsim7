@@ -151,15 +151,19 @@ export type WidgetDomain =
  * Props passed to widget React components.
  * Used for chrome/panel-composer surfaces.
  */
-export interface WidgetComponentProps<TSettings = Record<string, unknown>> {
+export interface WidgetComponentProps<TSettings = Record<string, unknown>, TData = unknown> {
   /** Widget instance ID */
   instanceId: string;
-  /** Widget settings */
+  /** Widget settings (static config) */
   settings: TSettings;
   /** Current surface */
   surface: WidgetSurface;
   /** Update settings callback */
   onSettingsChange?: (settings: Partial<TSettings>) => void;
+  /** Resolved data binding values (for panel-composer blocks) */
+  data?: TData;
+  /** Data change callback (for panel-composer blocks) */
+  onDataChange?: (data: TData) => void;
 }
 
 /**

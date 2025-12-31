@@ -52,23 +52,8 @@ export {
   registerDefaultDockZones,
   areDefaultZonesRegistered,
   DEFAULT_DOCK_ZONES,
-  // Backward compatibility aliases
-  dockviewWidgetRegistry,
-  registerDockviewWidget,
-  unregisterDockviewWidget,
-  getDockviewWidget,
-  getDockviewWidgetByDockviewId,
-  getDockviewWidgetPanelIds,
-  registerDefaultDockviewWidgets,
-  areDefaultWidgetsRegistered,
-  DEFAULT_DOCKVIEW_WIDGETS,
 } from './dockZoneRegistry';
-export type {
-  DockZoneDefinition,
-  PresetScope,
-  // Backward compatibility alias
-  DockviewWidgetDefinition,
-} from './dockZoneRegistry';
+export type { DockZoneDefinition, PresetScope } from './dockZoneRegistry';
 
 export type {
   LocalPanelDefinition,

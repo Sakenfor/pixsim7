@@ -5,14 +5,14 @@
  * Can be used for MediaCard badges, video controls, HUD overlays, etc.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { Panel } from '@pixsim7/shared.ui';
 import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
 import { ValidationPanel } from './ValidationPanel';
-import { overlayWidgets } from '@lib/widgets';
+import { overlayWidgets, registerOverlayWidgets } from '@lib/widgets';
 import type { UnifiedWidgetConfig } from '@lib/editing-core';
 import { SurfaceWorkbench } from '../surface-workbench';
 
@@ -58,6 +58,11 @@ export function OverlayEditor({
   availableWidgetTypes = [],
 }: OverlayEditorProps) {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
+
+  // Ensure overlay widgets are registered
+  useEffect(() => {
+    registerOverlayWidgets();
+  }, []);
 
   // Find selected widget
   const selectedWidget = useMemo(() => {

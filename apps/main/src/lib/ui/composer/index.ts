@@ -1,16 +1,11 @@
-// Block Registry (composable panel building blocks)
-export {
-  BlockRegistry,
-  blockRegistry,
-  type BlockDefinition,
-  type BlockType,
-  type BlockProps,
-  type BlockConfigSchema,
-  // Backward compatibility aliases
-  type WidgetDefinition,
-  WidgetRegistry,
-  widgetRegistry,
-} from './blockRegistry';
+/**
+ * Panel Composer System
+ *
+ * Grid-based panel layouts with composable blocks.
+ *
+ * NOTE: Block definitions have moved to `@lib/widgets`.
+ * Use `registerAllWidgets()` or `registerBlockWidgets()` from `@lib/widgets` instead.
+ */
 
 // Panel Composer (grid-based panel layouts)
 export {
@@ -36,10 +31,23 @@ export {
 // Components
 export { ComposedPanel, useAvailableBlocks, useAvailableDataSources } from './ComposedPanel';
 
-// Built-in blocks
+// @deprecated - Block types moved to @lib/widgets
+export {
+  BlockRegistry,
+  blockRegistry,
+  type BlockDefinition,
+  type BlockType,
+  type BlockProps,
+  type BlockConfigSchema,
+  type WidgetDefinition,
+  WidgetRegistry,
+  widgetRegistry,
+} from './blockRegistry';
+
+// @deprecated - Use registerAllWidgets() from @lib/widgets instead
 export { builtInBlocks, registerBuiltInBlocks, builtInWidgets, registerBuiltInWidgets } from './builtInBlocks';
 
-// Initialization
+// @deprecated - Use registerAllWidgets() from @lib/widgets instead
 export { initializeBlocks, areBlocksInitialized, initializeWidgets, areWidgetsInitialized } from './initializeBlocks';
 
 // Demo compositions

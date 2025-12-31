@@ -1,16 +1,13 @@
 /**
  * Dock Zone Registry (Feature Facade)
  *
- * Re-exports from @lib/dockview/dockZoneRegistry with panel-specific extensions.
- * This provides backward compatibility and adds scope-based panel filtering
- * which requires access to the panel registry.
- *
- * For new code, prefer importing directly from @lib/dockview when possible.
+ * Re-exports from @lib/dockview with panel-specific extensions.
+ * Adds scope-based panel filtering which requires access to the panel registry.
  */
 
 import { getPanelsForScope } from "./panelRegistry";
 
-// Re-export everything from the lib (new names)
+// Re-export from lib
 export {
   dockZoneRegistry,
   registerDockZone,
@@ -24,48 +21,27 @@ export {
   registerDefaultDockZones,
   areDefaultZonesRegistered,
   DEFAULT_DOCK_ZONES,
-} from "@lib/dockview/dockZoneRegistry";
+} from "@lib/dockview";
 
-// Re-export backward compatibility aliases
-export {
-  dockviewWidgetRegistry,
-  registerDockviewWidget as registerDockWidget,
-  unregisterDockviewWidget as unregisterDockWidget,
-  getDockviewWidget as getDockWidget,
-  getDockviewWidgetByDockviewId as getDockWidgetByDockviewId,
-  getDockviewWidgetPanelIds,
-  registerDefaultDockviewWidgets,
-  areDefaultWidgetsRegistered,
-  DEFAULT_DOCKVIEW_WIDGETS,
-} from "@lib/dockview/dockZoneRegistry";
+export type { DockZoneDefinition, PresetScope } from "@lib/dockview";
 
-// Re-export types
-export type {
-  DockZoneDefinition,
-  PresetScope,
-  // Backward compatibility
-  DockviewWidgetDefinition as DockWidgetDefinition,
-} from "@lib/dockview/dockZoneRegistry";
-
-// For backward compatibility, also export with old class name
-export { dockZoneRegistry as dockWidgetRegistry } from "@lib/dockview/dockZoneRegistry";
+// @deprecated - Use dockZoneRegistry instead
+export { dockZoneRegistry as dockWidgetRegistry } from "@lib/dockview";
 
 /**
  * Get panel IDs for a dockview with scope-based filtering.
  *
  * This extends the lib's getDockZonePanelIds by adding
  * support for panelScope-based filtering using the panel registry.
- *
- * @param dockviewId - The dockview ID to get panels for
- * @returns Array of panel IDs
  */
 import {
-  getDockZoneByDockviewId,
+  getDockZoneByDockviewId as libGetZone,
   getDockZonePanelIds as libGetPanelIds,
-} from "@lib/dockview/dockZoneRegistry";
+  registerDefaultDockZones,
+} from "@lib/dockview";
 
 export function getDockWidgetPanelIds(dockviewId: string | undefined): string[] {
-  const zone = getDockZoneByDockviewId(dockviewId);
+  const zone = libGetZone(dockviewId);
   if (!zone) return [];
 
   // First try allowedPanels (explicit allowlist)
@@ -82,16 +58,5 @@ export function getDockWidgetPanelIds(dockviewId: string | undefined): string[] 
   return libGetPanelIds(dockviewId);
 }
 
-// ============================================================================
-// Backward Compatibility: Auto-register defaults
-// ============================================================================
-
-import { registerDefaultDockZones } from "@lib/dockview/dockZoneRegistry";
-
-/**
- * Auto-register defaults for backward compatibility.
- * New code should call registerDefaultDockZones() explicitly.
- *
- * @deprecated Import and call registerDefaultDockZones() explicitly
- */
+// Auto-register defaults on module load
 registerDefaultDockZones();

@@ -25,12 +25,12 @@ function wrapBlockComponent(
     onDataChange?: (data: any) => void;
   }>
 ): React.ComponentType<WidgetComponentProps> {
-  return function WrappedBlock({ settings, instanceId }: WidgetComponentProps) {
+  return function WrappedBlock({ settings, data, onDataChange }: WidgetComponentProps) {
     return (
       <BlockComponent
         config={settings as Record<string, any>}
-        data={undefined}
-        onDataChange={undefined}
+        data={data}
+        onDataChange={onDataChange}
       />
     );
   };

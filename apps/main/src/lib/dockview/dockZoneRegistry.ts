@@ -242,36 +242,4 @@ export function getDockZonePanelIds(
   return [];
 }
 
-// ============================================================================
-// Backward Compatibility Aliases (deprecated)
-// ============================================================================
-
-/** @deprecated Use DockZoneDefinition instead */
-export type DockviewWidgetDefinition = DockZoneDefinition;
-
-/** @deprecated Use dockZoneRegistry instead */
-export const dockviewWidgetRegistry = dockZoneRegistry;
-
-/** @deprecated Use registerDockZone instead */
-export const registerDockviewWidget = registerDockZone;
-
-/** @deprecated Use unregisterDockZone instead */
-export const unregisterDockviewWidget = unregisterDockZone;
-
-/** @deprecated Use getDockZone instead */
-export const getDockviewWidget = getDockZone;
-
-/** @deprecated Use getDockZoneByDockviewId instead */
-export const getDockviewWidgetByDockviewId = getDockZoneByDockviewId;
-
-/** @deprecated Use getDockZonePanelIds instead */
-export const getDockviewWidgetPanelIds = getDockZonePanelIds;
-
-/** @deprecated Use DEFAULT_DOCK_ZONES instead */
-export const DEFAULT_DOCKVIEW_WIDGETS = DEFAULT_DOCK_ZONES;
-
-/** @deprecated Use registerDefaultDockZones instead */
-export const registerDefaultDockviewWidgets = registerDefaultDockZones;
-
-/** @deprecated Use areDefaultZonesRegistered instead */
-export const areDefaultWidgetsRegistered = areDefaultZonesRegistered;
+// Legacy backward compat aliases removed - use the new names directly

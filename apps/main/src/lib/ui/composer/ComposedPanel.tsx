@@ -9,8 +9,7 @@
 
 import React from 'react';
 import type { PanelComposition, BlockInstance } from './panelComposer';
-import { blockWidgets } from '@lib/widgets';
-import { blockRegistry } from './blockRegistry'; // For subscribe pattern (migration: replace with widgetRegistry)
+import { blockWidgets, widgetRegistry } from '@lib/widgets';
 import { useBindingValues, dataSourceRegistry } from '../../dataBinding';
 
 interface ComposedPanelProps {
@@ -114,11 +113,14 @@ function BlockRenderer({ block }: { block: BlockInstance }) {
     );
   }
 
-  // Props for unified widget component (uses settings, not config)
+  // Props for unified widget component
+  // - settings: static config
+  // - data: resolved binding values (for data-driven blocks like ListWidget)
   const props = {
     instanceId: block.id,
-    settings: { ...block.config, ...bindingValues },
+    settings: block.config,
     surface: 'panel-composer' as const,
+    data: bindingValues,
   };
 
   return (
@@ -142,8 +144,7 @@ export function useAvailableBlocks() {
   const [blocks, setBlocks] = React.useState(blockWidgets.getAll());
 
   React.useEffect(() => {
-    // Subscribe to blockRegistry for now (migration: use widgetRegistry.subscribe)
-    const unsubscribe = blockRegistry.subscribe(() => {
+    const unsubscribe = widgetRegistry.subscribe(() => {
       setBlocks(blockWidgets.getAll());
     });
     return unsubscribe;

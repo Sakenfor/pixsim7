@@ -38,7 +38,17 @@ function extractBinding<T>(
   if (binding.kind === 'static') {
     return createBindingFromValue(target, binding.staticValue) as DataBinding<T>;
   } else if (binding.kind === 'path' && binding.path) {
-    return { kind: 'path', path: binding.path } as DataBinding<T>;
+    return { kind: 'path', path: binding.path, target } as DataBinding<T>;
+  } else if (binding.kind === 'fn') {
+    // Function bindings cannot be serialized/reconstructed from config.
+    // They must be provided at runtime via widget factory options.
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(
+        `[extractBinding] Function binding for "${target}" cannot be reconstructed from serialized config. ` +
+        `Provide it via runtimeOptions instead.`
+      );
+    }
+    return undefined;
   }
   return undefined;
 }
