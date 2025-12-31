@@ -73,7 +73,10 @@ export {
   getWidget,
   getWidgetsForSurface,
   getWidgetMenuItems,
+  // Capability-based filtering
   canRenderOnSurface,
+  getWidgetSurfaces,
+  canWidgetRenderOnSurface,
 } from './widgetRegistry';
 
 // Views (preferred - no adapters needed)

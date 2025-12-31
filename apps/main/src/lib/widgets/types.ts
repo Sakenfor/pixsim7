@@ -222,8 +222,20 @@ export interface WidgetDefinition<TSettings = Record<string, unknown>, TWidget =
   tags?: string[];
 
   // ---- Surfaces ----
-  /** Surfaces this widget supports */
-  surfaces: WidgetSurface[];
+  /**
+   * Explicit surface visibility override.
+   * If omitted, surfaces are inferred from renderer capability:
+   * - component present → chrome surfaces (header, statusbar, toolbar, panel-composer)
+   * - factory present → editing-core surfaces (overlay, hud)
+   */
+  surfaces?: WidgetSurface[];
+
+  /**
+   * Surfaces to explicitly exclude, even if renderer supports them.
+   * Use when a widget technically could render but shouldn't appear in palette.
+   */
+  excludeSurfaces?: WidgetSurface[];
+
   /** Per-surface configuration */
   surfaceConfig?: WidgetSurfaceConfig;
 

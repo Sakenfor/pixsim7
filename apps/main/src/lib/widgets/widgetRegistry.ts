@@ -3,6 +3,12 @@
  *
  * Central registry for all widgets in the unified widget system.
  * Widgets can be filtered by surface, category, domain, etc.
+ *
+ * Surface availability is determined by:
+ * 1. Renderer capability (component → chrome, factory → overlay/hud)
+ * 2. Explicit excludeSurfaces opt-out
+ * 3. Optional surfaces override for palette visibility
+ * 4. showWhen context filter
  */
 
 import { BaseRegistry } from '@lib/core/BaseRegistry';
@@ -13,15 +19,99 @@ import type {
   WidgetDomain,
 } from './types';
 
+/** Chrome surfaces that require a React component */
+const CHROME_SURFACES: WidgetSurface[] = ['header', 'statusbar', 'toolbar', 'panel-composer'];
+
+/** Editing-core surfaces that require a factory function */
+const EDITING_CORE_SURFACES: WidgetSurface[] = ['overlay', 'hud'];
+
+/**
+ * Check if a widget can render on a surface based on capability.
+ * This is the core logic for capability-based filtering.
+ */
+export function canRenderOnSurface(
+  widget: WidgetDefinition,
+  surface: WidgetSurface,
+  context?: { domain?: string }
+): boolean {
+  // 1. Check explicit exclusion
+  if (widget.excludeSurfaces?.includes(surface)) {
+    return false;
+  }
+
+  // 2. Check explicit surfaces override (if provided)
+  if (widget.surfaces && widget.surfaces.length > 0) {
+    if (!widget.surfaces.includes(surface)) {
+      return false;
+    }
+  }
+
+  // 3. Check renderer capability
+  const hasComponent = widget.component !== undefined;
+  const hasFactory = widget.factory !== undefined;
+
+  if (CHROME_SURFACES.includes(surface) && !hasComponent) {
+    return false;
+  }
+
+  if (EDITING_CORE_SURFACES.includes(surface) && !hasFactory) {
+    return false;
+  }
+
+  // 4. Check showWhen context filter
+  if (widget.showWhen && !widget.showWhen({ domain: context?.domain, surface })) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Get surfaces a widget can render on (based on capability).
+ */
+export function getWidgetSurfaces(widget: WidgetDefinition): WidgetSurface[] {
+  const surfaces: WidgetSurface[] = [];
+
+  // If explicit surfaces provided, use those (filtered by capability)
+  if (widget.surfaces && widget.surfaces.length > 0) {
+    for (const surface of widget.surfaces) {
+      if (canRenderOnSurface(widget, surface)) {
+        surfaces.push(surface);
+      }
+    }
+    return surfaces;
+  }
+
+  // Otherwise infer from capability
+  if (widget.component) {
+    for (const surface of CHROME_SURFACES) {
+      if (!widget.excludeSurfaces?.includes(surface)) {
+        surfaces.push(surface);
+      }
+    }
+  }
+
+  if (widget.factory) {
+    for (const surface of EDITING_CORE_SURFACES) {
+      if (!widget.excludeSurfaces?.includes(surface)) {
+        surfaces.push(surface);
+      }
+    }
+  }
+
+  return surfaces;
+}
+
 /**
  * Widget Registry - extends BaseRegistry with widget-specific queries
  */
 class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
   /**
-   * Get widgets that support a specific surface
+   * Get widgets that can render on a specific surface.
+   * Uses capability-based filtering (component/factory presence).
    */
-  getBySurface(surface: WidgetSurface): WidgetDefinition[] {
-    return this.getAll().filter((widget) => widget.surfaces.includes(surface));
+  getBySurface(surface: WidgetSurface, context?: { domain?: string }): WidgetDefinition[] {
+    return this.getAll().filter((widget) => canRenderOnSurface(widget, surface, context));
   }
 
   /**
@@ -39,15 +129,17 @@ class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
   }
 
   /**
-   * Get widgets for a specific surface and category
+   * Get widgets for a specific surface and category.
+   * Uses capability-based filtering.
    */
   getBySurfaceAndCategory(
     surface: WidgetSurface,
-    category: WidgetCategory
+    category: WidgetCategory,
+    context?: { domain?: string }
   ): WidgetDefinition[] {
     return this.getAll().filter(
       (widget) =>
-        widget.surfaces.includes(surface) && widget.category === category
+        canRenderOnSurface(widget, surface, context) && widget.category === category
     );
   }
 
@@ -107,20 +199,19 @@ class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
   }
 
   /**
-   * Get registry statistics
+   * Get registry statistics (uses capability-based filtering)
    */
   getStats() {
     const all = this.getAll();
     return {
       total: all.length,
       bySurface: {
-        header: all.filter((w) => w.surfaces.includes('header')).length,
-        statusbar: all.filter((w) => w.surfaces.includes('statusbar')).length,
-        'panel-composer': all.filter((w) =>
-          w.surfaces.includes('panel-composer')
-        ).length,
-        toolbar: all.filter((w) => w.surfaces.includes('toolbar')).length,
-        overlay: all.filter((w) => w.surfaces.includes('overlay')).length,
+        header: this.getBySurface('header').length,
+        statusbar: this.getBySurface('statusbar').length,
+        toolbar: this.getBySurface('toolbar').length,
+        'panel-composer': this.getBySurface('panel-composer').length,
+        overlay: this.getBySurface('overlay').length,
+        hud: this.getBySurface('hud').length,
       },
       byCategory: {
         status: all.filter((w) => w.category === 'status').length,
@@ -130,6 +221,11 @@ class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
         generation: all.filter((w) => w.category === 'generation').length,
         media: all.filter((w) => w.category === 'media').length,
         utilities: all.filter((w) => w.category === 'utilities').length,
+      },
+      byRenderer: {
+        component: all.filter((w) => w.component !== undefined).length,
+        factory: all.filter((w) => w.factory !== undefined).length,
+        both: all.filter((w) => w.component !== undefined && w.factory !== undefined).length,
       },
     };
   }
@@ -144,13 +240,50 @@ export const widgetRegistry = new WidgetRegistryImpl();
  * Register a widget definition
  */
 export function registerWidget(definition: WidgetDefinition): void {
-  // Validate surfaces match surfaceConfig
+  const hasComponent = definition.component !== undefined;
+  const hasFactory = definition.factory !== undefined;
+
+  // Warn if no renderer provided
+  if (!hasComponent && !hasFactory) {
+    console.warn(
+      `Widget "${definition.id}" has no component or factory - it cannot render on any surface`
+    );
+  }
+
+  // Validate explicit surfaces against capability
+  if (definition.surfaces && definition.surfaces.length > 0) {
+    for (const surface of definition.surfaces) {
+      if (CHROME_SURFACES.includes(surface) && !hasComponent) {
+        console.warn(
+          `Widget "${definition.id}" declares surface "${surface}" but has no component`
+        );
+      }
+      if (EDITING_CORE_SURFACES.includes(surface) && !hasFactory) {
+        console.warn(
+          `Widget "${definition.id}" declares surface "${surface}" but has no factory`
+        );
+      }
+    }
+  }
+
+  // Validate excludeSurfaces doesn't conflict with explicit surfaces
+  if (definition.surfaces && definition.excludeSurfaces) {
+    for (const surface of definition.excludeSurfaces) {
+      if (definition.surfaces.includes(surface)) {
+        console.warn(
+          `Widget "${definition.id}" has "${surface}" in both surfaces and excludeSurfaces`
+        );
+      }
+    }
+  }
+
+  // Validate surfaceConfig matches capability
   if (definition.surfaceConfig) {
     for (const configKey of Object.keys(definition.surfaceConfig)) {
       const surface = configKey === 'panelComposer' ? 'panel-composer' : configKey;
-      if (!definition.surfaces.includes(surface as WidgetSurface)) {
+      if (!canRenderOnSurface(definition, surface as WidgetSurface)) {
         console.warn(
-          `Widget "${definition.id}" has surfaceConfig for "${configKey}" but doesn't declare "${surface}" in surfaces array`
+          `Widget "${definition.id}" has surfaceConfig for "${configKey}" but cannot render on "${surface}"`
         );
       }
     }
@@ -190,23 +323,15 @@ export function getWidgetMenuItems(
 }
 
 /**
- * Check if a widget can render on a given surface
+ * Check if a widget can render on a given surface (by ID).
+ * Convenience wrapper around canRenderOnSurface.
  */
-export function canRenderOnSurface(widgetId: string, surface: WidgetSurface): boolean {
+export function canWidgetRenderOnSurface(
+  widgetId: string,
+  surface: WidgetSurface,
+  context?: { domain?: string }
+): boolean {
   const widget = widgetRegistry.get(widgetId);
   if (!widget) return false;
-
-  if (!widget.surfaces.includes(surface)) return false;
-
-  // Chrome surfaces need component
-  if (['header', 'statusbar', 'toolbar', 'panel-composer'].includes(surface)) {
-    return widget.component !== undefined;
-  }
-
-  // Editing-core surfaces need factory
-  if (['overlay', 'hud'].includes(surface)) {
-    return widget.factory !== undefined;
-  }
-
-  return true;
+  return canRenderOnSurface(widget, surface, context);
 }

@@ -15,7 +15,7 @@
  *   - views that filter by surface/domain
  */
 
-import { widgetRegistry } from './widgetRegistry';
+import { widgetRegistry, canRenderOnSurface } from './widgetRegistry';
 import type { WidgetDefinition, WidgetSurface } from './types';
 import type { UnifiedWidgetConfig } from '@lib/editing-core/unifiedConfig';
 
@@ -37,10 +37,11 @@ export const overlayWidgets = {
 
   /**
    * Get widget by ID (editing-core used 'type' as ID).
+   * Uses capability-based filtering.
    */
   get(id: string): WidgetDefinition | undefined {
     const widget = widgetRegistry.get(id);
-    if (widget?.surfaces.includes('overlay')) {
+    if (widget && canRenderOnSurface(widget, 'overlay')) {
       return widget;
     }
     return undefined;
@@ -81,7 +82,7 @@ export const hudWidgets = {
 
   get(id: string): WidgetDefinition | undefined {
     const widget = widgetRegistry.get(id);
-    if (widget?.surfaces.includes('hud')) {
+    if (widget && canRenderOnSurface(widget, 'hud')) {
       return widget;
     }
     return undefined;
@@ -118,10 +119,11 @@ export const blockWidgets = {
 
   /**
    * Get block by ID.
+   * Uses capability-based filtering.
    */
   get(id: string): WidgetDefinition | undefined {
     const widget = widgetRegistry.get(id);
-    if (widget?.surfaces.includes('panel-composer')) {
+    if (widget && canRenderOnSurface(widget, 'panel-composer')) {
       return widget;
     }
     return undefined;
@@ -153,11 +155,14 @@ export const blockWidgets = {
 
 /**
  * View for chrome widgets (header, statusbar, toolbar).
+ * Uses capability-based filtering.
  */
 export const chromeWidgets = {
   getAll(): WidgetDefinition[] {
     return widgetRegistry.getAll().filter(w =>
-      w.surfaces.some(s => ['header', 'statusbar', 'toolbar'].includes(s))
+      canRenderOnSurface(w, 'header') ||
+      canRenderOnSurface(w, 'statusbar') ||
+      canRenderOnSurface(w, 'toolbar')
     );
   },
 
@@ -167,7 +172,11 @@ export const chromeWidgets = {
 
   get(id: string): WidgetDefinition | undefined {
     const widget = widgetRegistry.get(id);
-    if (widget?.surfaces.some(s => ['header', 'statusbar', 'toolbar'].includes(s))) {
+    if (widget && (
+      canRenderOnSurface(widget, 'header') ||
+      canRenderOnSurface(widget, 'statusbar') ||
+      canRenderOnSurface(widget, 'toolbar')
+    )) {
       return widget;
     }
     return undefined;
@@ -180,15 +189,16 @@ export const chromeWidgets = {
 
 /**
  * Create a view for any surface.
+ * Uses capability-based filtering.
  */
-export function createSurfaceView(surface: WidgetSurface) {
+export function createSurfaceView(surface: WidgetSurface, context?: { domain?: string }) {
   return {
-    getAll: () => widgetRegistry.getBySurface(surface),
+    getAll: () => widgetRegistry.getBySurface(surface, context),
     get: (id: string) => {
       const w = widgetRegistry.get(id);
-      return w?.surfaces.includes(surface) ? w : undefined;
+      return w && canRenderOnSurface(w, surface, context) ? w : undefined;
     },
     getByCategory: (category: string) =>
-      widgetRegistry.getBySurfaceAndCategory(surface, category as any),
+      widgetRegistry.getBySurfaceAndCategory(surface, category as any, context),
   };
 }
