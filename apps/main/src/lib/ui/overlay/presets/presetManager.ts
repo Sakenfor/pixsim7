@@ -1,132 +1,44 @@
 /**
- * Preset Manager
+ * Overlay Preset Manager
  *
+ * Extends the generic PresetManager with overlay-specific functionality.
  * Handles saving, loading, and managing overlay presets (both system and user-created)
  */
 
 import type { OverlayPreset, OverlayConfiguration, PresetCategory } from '../types';
 import type { UnifiedSurfaceConfig } from '@lib/editing-core';
+import {
+  PresetManager as GenericPresetManager,
+  LocalStoragePresetStorage,
+} from '@lib/editing-core';
 import { toUnifiedSurfaceConfig, fromUnifiedSurfaceConfig } from '../overlayConfig';
 import { mediaCardPresets } from './mediaCard';
 
 const STORAGE_KEY = 'overlay_user_presets';
 
 /**
- * Preset storage interface
- */
-export interface PresetStorage {
-  save(preset: OverlayPreset): Promise<void>;
-  load(id: string): Promise<OverlayPreset | null>;
-  loadAll(): Promise<OverlayPreset[]>;
-  delete(id: string): Promise<void>;
-  exists(id: string): Promise<boolean>;
-}
-
-/**
- * LocalStorage-based preset storage
- */
-export class LocalStoragePresetStorage implements PresetStorage {
-  async save(preset: OverlayPreset): Promise<void> {
-    const presets = await this.loadAll();
-    const existing = presets.findIndex((p) => p.id === preset.id);
-
-    if (existing !== -1) {
-      presets[existing] = preset;
-    } else {
-      presets.push(preset);
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
-  }
-
-  async load(id: string): Promise<OverlayPreset | null> {
-    const presets = await this.loadAll();
-    return presets.find((p) => p.id === id) ?? null;
-  }
-
-  async loadAll(): Promise<OverlayPreset[]> {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) return [];
-
-    try {
-      return JSON.parse(data);
-    } catch (error) {
-      console.error('Failed to parse user presets:', error);
-      return [];
-    }
-  }
-
-  async delete(id: string): Promise<void> {
-    const presets = await this.loadAll();
-    const filtered = presets.filter((p) => p.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-  }
-
-  async exists(id: string): Promise<boolean> {
-    const preset = await this.load(id);
-    return preset !== null;
-  }
-}
-
-/**
- * Preset Manager
+ * Overlay-specific Preset Manager
  *
- * Central management for all overlay presets (system + user)
+ * Extends generic PresetManager with overlay-specific features:
+ * - UnifiedSurfaceConfig import/export
+ * - Configuration matching
+ * - Context-based suggestions
  */
-export class PresetManager {
-  private storage: PresetStorage;
-  private systemPresets: Map<PresetCategory, OverlayPreset[]>;
-
-  constructor(storage?: PresetStorage) {
-    this.storage = storage ?? new LocalStoragePresetStorage();
-    this.systemPresets = new Map();
+export class OverlayPresetManager extends GenericPresetManager<OverlayPreset, PresetCategory> {
+  constructor() {
+    super({
+      storage: new LocalStoragePresetStorage<OverlayPreset>(STORAGE_KEY),
+    });
 
     // Register system presets
     this.registerSystemPresets('media', mediaCardPresets);
   }
 
   /**
-   * Register system presets for a category
+   * Save a user-created preset from configuration + metadata
+   * (Overlay-specific convenience method)
    */
-  registerSystemPresets(category: PresetCategory, presets: OverlayPreset[]): void {
-    this.systemPresets.set(category, presets);
-  }
-
-  /**
-   * Get all presets for a category (system + user)
-   */
-  async getAllPresets(category?: PresetCategory): Promise<OverlayPreset[]> {
-    const systemPresets = category
-      ? this.systemPresets.get(category) ?? []
-      : Array.from(this.systemPresets.values()).flat();
-
-    const userPresets = await this.storage.loadAll();
-
-    const filteredUserPresets = category
-      ? userPresets.filter((p) => p.category === category)
-      : userPresets;
-
-    return [...systemPresets, ...filteredUserPresets];
-  }
-
-  /**
-   * Get a specific preset by ID
-   */
-  async getPreset(id: string): Promise<OverlayPreset | null> {
-    // Check system presets first
-    for (const presets of this.systemPresets.values()) {
-      const preset = presets.find((p) => p.id === id);
-      if (preset) return preset;
-    }
-
-    // Check user presets
-    return this.storage.load(id);
-  }
-
-  /**
-   * Save a user-created preset
-   */
-  async savePreset(
+  async savePresetFromConfig(
     configuration: OverlayConfiguration,
     metadata: {
       name: string;
@@ -136,7 +48,7 @@ export class PresetManager {
     },
   ): Promise<OverlayPreset> {
     const preset: OverlayPreset = {
-      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: this.generateId(),
       name: metadata.name,
       icon: metadata.icon,
       category: metadata.category,
@@ -145,65 +57,26 @@ export class PresetManager {
       thumbnail: metadata.thumbnail,
     };
 
-    await this.storage.save(preset);
-    return preset;
+    return this.savePreset(preset);
   }
 
   /**
-   * Update an existing user preset
+   * Duplicate a preset with overlay-specific handling
    */
-  async updatePreset(id: string, updates: Partial<OverlayPreset>): Promise<void> {
-    const existing = await this.storage.load(id);
-    if (!existing) {
-      throw new Error(`Preset ${id} not found`);
-    }
-
-    if (!existing.isUserCreated) {
-      throw new Error(`Cannot update system preset ${id}`);
-    }
-
-    const updated: OverlayPreset = {
-      ...existing,
-      ...updates,
-      id, // Preserve ID
-      isUserCreated: true, // Ensure flag is set
-    };
-
-    await this.storage.save(updated);
-  }
-
-  /**
-   * Delete a user preset
-   */
-  async deletePreset(id: string): Promise<void> {
-    const preset = await this.storage.load(id);
-    if (!preset) {
-      throw new Error(`Preset ${id} not found`);
-    }
-
-    if (!preset.isUserCreated) {
-      throw new Error(`Cannot delete system preset ${id}`);
-    }
-
-    await this.storage.delete(id);
-  }
-
-  /**
-   * Duplicate a preset (system or user)
-   */
-  async duplicatePreset(id: string, newName?: string): Promise<OverlayPreset> {
+  override async duplicatePreset(id: string, newName?: string): Promise<OverlayPreset> {
     const source = await this.getPreset(id);
     if (!source) {
       throw new Error(`Preset ${id} not found`);
     }
 
+    // Create a copy of the configuration with new IDs
     const configuration: OverlayConfiguration = {
       ...source.configuration,
       id: `${source.configuration.id}-copy`,
       name: `${source.configuration.name} (Copy)`,
     };
 
-    return this.savePreset(configuration, {
+    return this.savePresetFromConfig(configuration, {
       name: newName ?? `${source.name} (Copy)`,
       icon: source.icon,
       category: source.category,
@@ -212,44 +85,13 @@ export class PresetManager {
   }
 
   /**
-   * Export a preset as JSON
+   * Import a preset with overlay-specific validation
    */
-  async exportPreset(id: string): Promise<string> {
-    const preset = await this.getPreset(id);
-    if (!preset) {
-      throw new Error(`Preset ${id} not found`);
-    }
-
-    return JSON.stringify(preset, null, 2);
-  }
-
-  /**
-   * Import a preset from JSON
-   */
-  async importPreset(json: string): Promise<OverlayPreset> {
-    try {
-      const preset = JSON.parse(json) as OverlayPreset;
-
-      // Validate basic structure
-      if (!preset.id || !preset.name || !preset.configuration) {
-        throw new Error('Invalid preset structure');
-      }
-
-      // Generate new ID if it conflicts
-      const exists = await this.storage.exists(preset.id);
-      if (exists) {
-        preset.id = `${preset.id}-imported-${Date.now()}`;
-        preset.name = `${preset.name} (Imported)`;
-      }
-
-      // Mark as user-created
-      preset.isUserCreated = true;
-
-      await this.storage.save(preset);
-      return preset;
-    } catch (error) {
-      throw new Error(`Failed to import preset: ${error}`);
-    }
+  async importOverlayPreset(json: string): Promise<OverlayPreset> {
+    return this.importPreset(json, (preset) => {
+      // Validate overlay-specific structure
+      return !!(preset.configuration && preset.category);
+    });
   }
 
   /**
@@ -287,16 +129,11 @@ export class PresetManager {
       // Convert to OverlayConfiguration (partial - needs widget render functions)
       const partialConfig = fromUnifiedSurfaceConfig(unified);
 
-      // For now, we can't fully restore render functions from serialized config
-      // This would need to be enhanced with a widget registry lookup
-      // For this initial implementation, we'll store the config as-is
-      // and document that imported configs need manual widget setup
-
       const preset: OverlayPreset = {
         id: `imported-${Date.now()}`,
         name: unified.name || 'Imported Preset',
         category,
-        configuration: partialConfig as OverlayConfiguration, // Note: May need widget registry to complete
+        configuration: partialConfig as OverlayConfiguration,
         isUserCreated: true,
       };
 
@@ -368,7 +205,14 @@ export class PresetManager {
   }
 }
 
+// Re-export types for backwards compatibility
+export type { PresetStorage } from '@lib/editing-core';
+export { LocalStoragePresetStorage } from '@lib/editing-core';
+
+// Backwards compatible alias
+export { OverlayPresetManager as PresetManager };
+
 /**
  * Global preset manager instance
  */
-export const presetManager = new PresetManager();
+export const presetManager = new OverlayPresetManager();
