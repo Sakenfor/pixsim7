@@ -16,6 +16,7 @@ import type {
   InteractionCapabilities,
 } from './types';
 import { interactionRegistry } from './types';
+import { registerInteraction } from '@lib/plugins/registryBridge';
 
 // =============================================================================
 // Types (aligned with packages/plugins/stealth/shared/types.ts)
@@ -378,7 +379,7 @@ export async function loadPluginInteractions(): Promise<number> {
 
         // Create and register the interaction
         const plugin = createGenericInteraction(interactionManifest);
-        interactionRegistry.register(plugin);
+        registerInteraction(plugin, { origin: 'plugin-dir' });
         loadedCount++;
 
         console.info(
