@@ -456,8 +456,23 @@ export function toLegacyOrigin(origin: UnifiedPluginOrigin): LegacyOrigin {
 
 /**
  * Bundle family types (from manifest.json)
+ *
+ * These are the families used in bundle manifests and backend APIs.
+ * Use `bundleFamilyToUnified()` to convert to canonical `UnifiedPluginFamily`.
  */
-type BundleFamily = 'scene' | 'ui' | 'tool' | 'control-center';
+export type BundleFamily = 'scene' | 'ui' | 'tool' | 'control-center';
+
+/**
+ * Valid bundle family values for runtime checking
+ */
+export const BUNDLE_FAMILIES: readonly BundleFamily[] = ['scene', 'ui', 'tool', 'control-center'] as const;
+
+/**
+ * Type guard to check if a string is a valid BundleFamily
+ */
+export function isBundleFamily(value: string): value is BundleFamily {
+  return BUNDLE_FAMILIES.includes(value as BundleFamily);
+}
 
 /**
  * Map bundle family to canonical plugin family

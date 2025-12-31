@@ -34,14 +34,21 @@ import type {
   PluginCapabilityHints,
 } from './pluginSystem';
 import type { PluginManifest } from './types';
-import { fromPluginSystemMetadata, validateFamilyMetadata } from './types';
+import {
+  fromPluginSystemMetadata,
+  validateFamilyMetadata,
+  isBundleFamily,
+  BUNDLE_FAMILIES,
+  type BundleFamily,
+} from './types';
 
 // ===== Types =====
 
 /**
  * Plugin family identifiers for bundle loading
+ * @deprecated Use `BundleFamily` from './types' instead
  */
-export type BundlePluginFamily = 'scene' | 'ui' | 'tool' | 'control-center';
+export type BundlePluginFamily = BundleFamily;
 
 /**
  * Extended manifest with bundle-specific fields
@@ -100,7 +107,7 @@ const DEFAULT_BUNDLE_DIR = '/dist/plugins';
 /**
  * Supported plugin families and their expected manifest extensions
  */
-const PLUGIN_FAMILIES: BundlePluginFamily[] = ['scene', 'ui', 'tool', 'control-center'];
+const PLUGIN_FAMILIES: BundleFamily[] = [...BUNDLE_FAMILIES];
 
 const sceneViewIdsByPluginId = new Map<string, string>();
 const controlCenterIdsByPluginId = new Map<string, string>();
@@ -730,7 +737,7 @@ export async function loadRemotePluginBundle(
         throw new Error(`Unknown plugin family: ${resolvedFamily}`);
     }
 
-    console.log(`[ManifestLoader] ?" Remote plugin ${pluginId} loaded successfully`);
+    console.log(`[ManifestLoader] Remote plugin ${pluginId} loaded successfully`);
 
     return {
       success: true,
@@ -740,7 +747,7 @@ export async function loadRemotePluginBundle(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[ManifestLoader] ?- Failed to load remote plugin ${pluginId}:`, message);
+    console.error(`[ManifestLoader] Failed to load remote plugin ${pluginId}:`, message);
 
     return {
       success: false,

@@ -16,8 +16,8 @@ import {
 import {
   loadRemotePluginBundles,
   unregisterPlugin,
-  type BundlePluginFamily,
 } from '@lib/plugins/manifestLoader';
+import { isBundleFamily, type BundleFamily } from '@lib/plugins/types';
 
 // ===== TYPES =====
 
@@ -193,8 +193,8 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
       console.log('[PluginCatalog] Disabled plugin:', pluginId);
 
       const targetPlugin = get().plugins.find(p => p.plugin_id === pluginId);
-      if (targetPlugin) {
-        unregisterPlugin(pluginId, targetPlugin.family as BundlePluginFamily);
+      if (targetPlugin && isBundleFamily(targetPlugin.family)) {
+        unregisterPlugin(pluginId, targetPlugin.family);
       }
 
       // Remove from pending
@@ -257,40 +257,44 @@ async function loadBundlesForPlugins(plugins: PluginInfo[]) {
   if (!plugins.length) return;
 
   const descriptors = plugins
-    .filter(plugin => !!plugin.bundle_url)
-    .map(plugin => ({
-      pluginId: plugin.plugin_id,
-      bundleUrl: plugin.bundle_url,
-      family: plugin.family as BundlePluginFamily,
-      manifest: {
-        id: plugin.plugin_id,
-        name: plugin.name,
-        version: plugin.version,
-        author: plugin.author ?? 'Unknown',
-        description: plugin.description ?? '',
-        icon: plugin.icon ?? undefined,
-        type: plugin.plugin_type as 'ui-overlay' | 'theme' | 'tool' | 'enhancement',
-        main: 'plugin.js',
-        family: plugin.family as BundlePluginFamily,
-        tags: plugin.tags,
-        permissions: plugin.metadata.permissions as import('@lib/plugins/types').PluginPermission[],
-        // Include scene view metadata if present
-        sceneView: plugin.metadata.scene_view ? {
-          id: plugin.metadata.scene_view.scene_view_id,
-          displayName: plugin.name,
-          surfaces: plugin.metadata.scene_view.surfaces as Array<'overlay' | 'hud' | 'panel' | 'workspace'>,
-          default: plugin.metadata.scene_view.default,
-        } : undefined,
-        // Include control center metadata if present
-        controlCenter: plugin.metadata.control_center ? {
-          id: plugin.metadata.control_center.control_center_id,
-          displayName: plugin.metadata.control_center.display_name ?? plugin.name,
-          features: plugin.metadata.control_center.features,
-          preview: plugin.metadata.control_center.preview ?? undefined,
-          default: plugin.metadata.control_center.default,
-        } : undefined,
-      },
-    }));
+    .filter(plugin => !!plugin.bundle_url && isBundleFamily(plugin.family))
+    .map(plugin => {
+      // Safe cast after filter validates family
+      const family = plugin.family as BundleFamily;
+      return {
+        pluginId: plugin.plugin_id,
+        bundleUrl: plugin.bundle_url,
+        family,
+        manifest: {
+          id: plugin.plugin_id,
+          name: plugin.name,
+          version: plugin.version,
+          author: plugin.author ?? 'Unknown',
+          description: plugin.description ?? '',
+          icon: plugin.icon ?? undefined,
+          type: plugin.plugin_type as 'ui-overlay' | 'theme' | 'tool' | 'enhancement',
+          main: 'plugin.js',
+          family,
+          tags: plugin.tags,
+          permissions: plugin.metadata.permissions as import('@lib/plugins/types').PluginPermission[],
+          // Include scene view metadata if present
+          sceneView: plugin.metadata.scene_view ? {
+            id: plugin.metadata.scene_view.scene_view_id,
+            displayName: plugin.name,
+            surfaces: plugin.metadata.scene_view.surfaces as Array<'overlay' | 'hud' | 'panel' | 'workspace'>,
+            default: plugin.metadata.scene_view.default,
+          } : undefined,
+          // Include control center metadata if present
+          controlCenter: plugin.metadata.control_center ? {
+            id: plugin.metadata.control_center.control_center_id,
+            displayName: plugin.metadata.control_center.display_name ?? plugin.name,
+            features: plugin.metadata.control_center.features,
+            preview: plugin.metadata.control_center.preview ?? undefined,
+            default: plugin.metadata.control_center.default,
+          } : undefined,
+        },
+      };
+    });
 
   if (!descriptors.length) return;
 
