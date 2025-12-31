@@ -9,7 +9,7 @@
  * Consolidates the previous OverlayConfig page with support for all widget surfaces.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { OverlayEditor } from '@/components/overlay-editor';
 import { MediaCard } from '@/components/media/MediaCard';
@@ -28,12 +28,21 @@ import {
   type WidgetInstance,
   type WidgetPlacement,
 } from '@lib/widgets';
+import {
+  dockZoneRegistry,
+  type DockZoneDefinition,
+} from '@lib/dockview';
+import {
+  panelRegistry,
+  getPanelsForScope,
+  type PanelDefinition,
+} from '@features/panels/lib';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-type WidgetSurfaceType = 'overlay' | 'blocks' | 'chrome';
+type WidgetSurfaceType = 'browse' | 'overlay' | 'blocks' | 'chrome';
 type OverlayComponentType = 'mediaCard' | 'videoPlayer' | 'hud';
 type StorageType = 'localStorage' | 'indexedDB' | 'api';
 
@@ -60,6 +69,12 @@ interface OverlayComponentConfig {
 // ============================================================================
 
 const SURFACE_TYPES: Record<WidgetSurfaceType, SurfaceTypeConfig> = {
+  browse: {
+    id: 'browse',
+    name: 'Browse Existing',
+    icon: '🔍',
+    description: 'Explore existing dock zones, panels, and widgets in the app.',
+  },
   overlay: {
     id: 'overlay',
     name: 'Overlay Widgets',
@@ -593,6 +608,271 @@ function ChromeEditor({ instances, onInstancesChange }: ChromeEditorProps) {
 }
 
 // ============================================================================
+// Browse Existing Component
+// ============================================================================
+
+function BrowseExisting() {
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null);
+
+  // Get all dock zones dynamically from registry
+  const dockZones = useMemo(() => dockZoneRegistry.getAll(), []);
+
+  // Get panels for selected zone
+  const panelsForZone = useMemo(() => {
+    if (!selectedZoneId) return [];
+    const zone = dockZoneRegistry.get(selectedZoneId);
+    if (!zone?.panelScope) return [];
+    return getPanelsForScope(zone.panelScope);
+  }, [selectedZoneId]);
+
+  // Get all registered panels
+  const allPanels = useMemo(() => panelRegistry.getAll(), []);
+
+  // Get all registered widgets
+  const allWidgets = useMemo(() => widgetRegistry.getAll(), []);
+
+  // Selected panel details
+  const selectedPanel = useMemo(
+    () => (selectedPanelId ? panelRegistry.get(selectedPanelId) : null),
+    [selectedPanelId]
+  );
+
+  const sidebar = (
+    <div className="space-y-4">
+      {/* Dock Zones */}
+      <Panel className="space-y-3">
+        <h3 className="text-sm font-semibold">Dock Zones ({dockZones.length})</h3>
+        <div className="space-y-1">
+          {dockZones.map((zone) => (
+            <button
+              key={zone.id}
+              onClick={() => {
+                setSelectedZoneId(zone.id);
+                setSelectedPanelId(null);
+              }}
+              className={`w-full px-3 py-2 text-left text-sm rounded transition-colors ${
+                selectedZoneId === zone.id
+                  ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700'
+                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+              }`}
+            >
+              <div className="font-medium">{zone.label}</div>
+              <div className="text-xs text-neutral-500">
+                {zone.dockviewId} • {zone.panelScope || 'no scope'}
+              </div>
+            </button>
+          ))}
+          {dockZones.length === 0 && (
+            <p className="text-sm text-neutral-500 py-2">No dock zones registered</p>
+          )}
+        </div>
+      </Panel>
+
+      {/* Panels for selected zone */}
+      {selectedZoneId && (
+        <Panel className="space-y-3">
+          <h3 className="text-sm font-semibold">
+            Panels in {dockZoneRegistry.get(selectedZoneId)?.label} ({panelsForZone.length})
+          </h3>
+          <div className="space-y-1 max-h-[300px] overflow-y-auto">
+            {panelsForZone.map((panel) => (
+              <button
+                key={panel.id}
+                onClick={() => setSelectedPanelId(panel.id)}
+                className={`w-full px-3 py-2 text-left text-sm rounded transition-colors ${
+                  selectedPanelId === panel.id
+                    ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700'
+                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span>{panel.icon || '📄'}</span>
+                  <span className="font-medium">{panel.title || panel.id}</span>
+                </div>
+                {panel.description && (
+                  <div className="text-xs text-neutral-500 mt-1 truncate">
+                    {panel.description}
+                  </div>
+                )}
+              </button>
+            ))}
+            {panelsForZone.length === 0 && (
+              <p className="text-sm text-neutral-500 py-2">No panels for this zone</p>
+            )}
+          </div>
+        </Panel>
+      )}
+
+      {/* Widget Registry Stats */}
+      <Panel className="space-y-3">
+        <h3 className="text-sm font-semibold">Widget Registry</h3>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded">
+            <div className="text-2xl font-bold">{allWidgets.length}</div>
+            <div className="text-xs text-neutral-500">Total Widgets</div>
+          </div>
+          <div className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded">
+            <div className="text-2xl font-bold">{allPanels.length}</div>
+            <div className="text-xs text-neutral-500">Total Panels</div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+
+  const preview = (
+    <Panel className="h-full">
+      <h3 className="text-sm font-semibold mb-4">Registry Overview</h3>
+
+      {/* Dock Zones Visual */}
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-xs font-medium text-neutral-500 uppercase mb-2">Dock Zones</h4>
+          <div className="flex gap-2 flex-wrap">
+            {dockZones.map((zone) => (
+              <div
+                key={zone.id}
+                onClick={() => {
+                  setSelectedZoneId(zone.id);
+                  setSelectedPanelId(null);
+                }}
+                className={`px-4 py-3 rounded-lg cursor-pointer transition-colors ${
+                  selectedZoneId === zone.id
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                }`}
+              >
+                <div className="font-medium">{zone.label}</div>
+                <div className={`text-xs ${selectedZoneId === zone.id ? 'text-blue-100' : 'text-neutral-500'}`}>
+                  {getPanelsForScope(zone.panelScope || '').length} panels
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Widgets by Surface */}
+        <div>
+          <h4 className="text-xs font-medium text-neutral-500 uppercase mb-2">Widgets by Surface</h4>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded text-center">
+              <div className="text-lg font-bold">{overlayWidgets.getAll().length}</div>
+              <div className="text-xs text-neutral-500">Overlay</div>
+            </div>
+            <div className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded text-center">
+              <div className="text-lg font-bold">{blockWidgets.getAll().length}</div>
+              <div className="text-xs text-neutral-500">Blocks</div>
+            </div>
+            <div className="px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded text-center">
+              <div className="text-lg font-bold">{chromeWidgets.getAll().length}</div>
+              <div className="text-xs text-neutral-500">Chrome</div>
+            </div>
+          </div>
+        </div>
+
+        {/* All Widgets List */}
+        <div>
+          <h4 className="text-xs font-medium text-neutral-500 uppercase mb-2">All Widgets</h4>
+          <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
+            {allWidgets.map((widget) => (
+              <div
+                key={widget.id}
+                className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800/50 rounded text-sm flex items-center gap-2"
+              >
+                <span>{widget.icon || '◻️'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">{widget.title}</div>
+                  <div className="text-xs text-neutral-500 truncate">
+                    {widget.surfaces?.join(', ')}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+
+  const inspector = selectedPanel ? (
+    <Panel className="space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-2xl">{selectedPanel.icon || '📄'}</span>
+        <div>
+          <h3 className="text-sm font-semibold">{selectedPanel.title || selectedPanel.id}</h3>
+          <p className="text-xs text-neutral-500">{selectedPanel.id}</p>
+        </div>
+      </div>
+
+      {selectedPanel.description && (
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          {selectedPanel.description}
+        </p>
+      )}
+
+      <div className="space-y-2">
+        <h4 className="text-xs font-medium text-neutral-500 uppercase">Properties</h4>
+
+        <div className="text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-neutral-500">Category</span>
+            <span>{selectedPanel.category || 'none'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-neutral-500">Available In</span>
+            <span>{selectedPanel.availableIn?.join(', ') || 'all'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-neutral-500">Multiple Instances</span>
+            <span>{selectedPanel.supportsMultipleInstances ? 'Yes' : 'No'}</span>
+          </div>
+          {selectedPanel.tags && selectedPanel.tags.length > 0 && (
+            <div className="flex justify-between">
+              <span className="text-neutral-500">Tags</span>
+              <span>{selectedPanel.tags.join(', ')}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {selectedPanel.settingsComponent && (
+        <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700">
+          <p className="text-xs text-green-600 dark:text-green-400">
+            ✓ Has settings component
+          </p>
+        </div>
+      )}
+
+      {selectedPanel.settingsSchema && (
+        <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700">
+          <p className="text-xs text-green-600 dark:text-green-400">
+            ✓ Has settings schema
+          </p>
+        </div>
+      )}
+    </Panel>
+  ) : (
+    <Panel className="h-full flex items-center justify-center">
+      <div className="text-center text-neutral-500">
+        <p className="text-sm">Select a panel to view details</p>
+        <p className="text-xs mt-1">or select a dock zone first</p>
+      </div>
+    </Panel>
+  );
+
+  return (
+    <SurfaceWorkbench
+      title=""
+      showHeader={false}
+      sidebar={sidebar}
+      preview={preview}
+      inspector={inspector}
+    />
+  );
+}
+
+// ============================================================================
 // Main Widget Builder Page
 // ============================================================================
 
@@ -600,7 +880,7 @@ export function WidgetBuilderRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Surface type selection
-  const surfaceType = (searchParams.get('surface') as WidgetSurfaceType) || 'overlay';
+  const surfaceType = (searchParams.get('surface') as WidgetSurfaceType) || 'browse';
   const surfaceConfig = SURFACE_TYPES[surfaceType];
 
   // Overlay component selection (when surface is overlay)
@@ -858,6 +1138,8 @@ export function WidgetBuilderRoute() {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden p-6">
+        {surfaceType === 'browse' && <BrowseExisting />}
+
         {surfaceType === 'overlay' && (
           overlayConfig.presets.length > 0 ? (
             <OverlayEditor
