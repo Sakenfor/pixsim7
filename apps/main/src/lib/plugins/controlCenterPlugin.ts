@@ -6,8 +6,16 @@
  */
 
 import type { PluginManifest } from './types';
-import { type UnifiedPluginOrigin } from './types';
-import { pluginCatalog, type ExtendedPluginMetadata } from './pluginSystem';
+import {
+  fromPluginSystemMetadata,
+  validateFamilyMetadata,
+  type UnifiedPluginOrigin,
+} from './types';
+import {
+  pluginCatalog,
+  type ExtendedPluginMetadata,
+  type PluginCapabilityHints,
+} from './pluginSystem';
 
 /**
  * Extended manifest for control center plugins
@@ -102,14 +110,25 @@ class ControlCenterRegistry {
       this.defaultId = manifest.controlCenter.id;
     }
 
+    // Resolve origin and compute canDisable
+    const origin = options.origin ?? 'builtin';
+    const canDisable = origin !== 'builtin';
+
+    // Build dependency hints for control centers
+    const capabilities: PluginCapabilityHints = { addsUIOverlay: true };
+    const providesFeatures = ['ui-overlay', 'control-center'];
+    const consumesFeatures = ['assets', 'workspace', 'generation'];
+    const consumesActions = ['workspace.open-panel', 'generation.quick-generate'];
+    const consumesState = ['workspace.panels'];
+
     // Register in unified plugin catalog
     const metadata: ExtendedPluginMetadata<'control-center'> = {
       id: manifest.id,
       name: manifest.name,
       family: 'control-center',
-      origin: options.origin ?? 'builtin',
+      origin,
       activationState: 'active',
-      canDisable: options.origin !== 'builtin',
+      canDisable,
       version: manifest.version,
       description: manifest.description,
       author: manifest.author,
@@ -120,8 +139,23 @@ class ControlCenterRegistry {
       preview: manifest.controlCenter.preview,
       default: manifest.controlCenter.default,
       icon: manifest.icon,
+      capabilities,
+      providesFeatures,
+      consumesFeatures,
+      consumesActions,
+      consumesState,
     };
     pluginCatalog.register(metadata);
+
+    // Validate and log warnings
+    const descriptor = fromPluginSystemMetadata(metadata);
+    const validation = validateFamilyMetadata(descriptor);
+    if (!validation.valid) {
+      console.error(`[ControlCenter] Plugin ${manifest.id} has validation errors:`, validation.errors);
+    }
+    if (validation.warnings.length > 0) {
+      console.warn(`[ControlCenter] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
+    }
 
     console.log(`[ControlCenter] Registered: ${manifest.controlCenter.displayName}`);
     this.notify();

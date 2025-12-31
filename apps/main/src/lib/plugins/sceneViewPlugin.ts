@@ -1,7 +1,15 @@
 import type React from 'react';
 import type { PluginManifest } from './types';
-import { fromSceneViewManifest, type UnifiedPluginOrigin } from './types';
-import { pluginCatalog, type ExtendedPluginMetadata } from './pluginSystem';
+import {
+  fromPluginSystemMetadata,
+  validateFamilyMetadata,
+  type UnifiedPluginOrigin,
+} from './types';
+import {
+  pluginCatalog,
+  type ExtendedPluginMetadata,
+  type PluginCapabilityHints,
+} from './pluginSystem';
 import type {
   SceneMetaComicPanel,
   ComicPanelSession,
@@ -66,18 +74,27 @@ class SceneViewRegistry {
       this.defaultId = viewId;
     }
 
+    // Resolve origin and compute canDisable
+    const origin = options.origin ?? 'builtin';
+    const canDisable = origin !== 'builtin';
+
+    // Build dependency hints based on permissions
+    const capabilities: PluginCapabilityHints = { addsUIOverlay: true };
+    const providesFeatures = ['ui-overlay', 'scene-view'];
+    const consumesFeatures = ['workspace'];
+
+    if (manifest.permissions?.includes('read:session')) {
+      consumesFeatures.push('game');
+    }
+
     // Register in unified plugin catalog
-    const descriptor = fromSceneViewManifest(manifest, {
-      origin: options.origin ?? 'builtin',
-      isActive: true,
-    });
     const metadata: ExtendedPluginMetadata<'scene-view'> = {
       id: manifest.id,
       name: manifest.name,
       family: 'scene-view',
-      origin: options.origin ?? 'builtin',
+      origin,
       activationState: 'active',
-      canDisable: options.origin !== 'builtin',
+      canDisable,
       version: manifest.version,
       description: manifest.description,
       author: manifest.author,
@@ -86,8 +103,21 @@ class SceneViewRegistry {
       surfaces: manifest.sceneView.surfaces,
       default: manifest.sceneView.default,
       icon: manifest.icon,
+      capabilities,
+      providesFeatures,
+      consumesFeatures,
     };
     pluginCatalog.register(metadata);
+
+    // Validate and log warnings
+    const descriptor = fromPluginSystemMetadata(metadata);
+    const validation = validateFamilyMetadata(descriptor);
+    if (!validation.valid) {
+      console.error(`[SceneViewRegistry] Plugin ${manifest.id} has validation errors:`, validation.errors);
+    }
+    if (validation.warnings.length > 0) {
+      console.warn(`[SceneViewRegistry] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
+    }
 
     console.info(`[SceneViewRegistry] Registered scene view "${viewId}"`);
   }
