@@ -2,6 +2,10 @@
 Plugin catalog API schemas
 
 Request/response models for plugin management endpoints.
+
+This module defines the canonical schema for plugin metadata that is shared
+between frontend and backend. The frontend has a corresponding
+`UnifiedPluginDescriptor` type in `apps/main/src/lib/plugins/types.ts`.
 """
 from typing import Optional
 from datetime import datetime
@@ -10,11 +14,41 @@ from pydantic import BaseModel, Field
 
 # ===== RESPONSE MODELS =====
 
+class SceneViewMetadata(BaseModel):
+    """Scene view plugin metadata"""
+    scene_view_id: str = Field(description="Scene view identifier")
+    surfaces: list[str] = Field(default_factory=list, description="Supported surfaces: overlay, hud, panel, workspace")
+    default: bool = Field(default=False, description="Is this the default scene view")
+
+
+class ControlCenterMetadata(BaseModel):
+    """Control center plugin metadata"""
+    control_center_id: str = Field(description="Control center identifier")
+    display_name: Optional[str] = Field(default=None, description="Display name")
+    features: list[str] = Field(default_factory=list, description="Feature list")
+    preview: Optional[str] = Field(default=None, description="Preview image URL")
+    default: bool = Field(default=False, description="Is this the default control center")
+
+
 class PluginMetadata(BaseModel):
-    """Plugin metadata from manifest"""
-    permissions: list[str] = Field(default_factory=list)
-    surfaces: list[str] = Field(default_factory=list)
-    default: bool = False
+    """
+    Extended plugin metadata from manifest
+
+    This schema supports family-specific metadata:
+    - scene: uses scene_view field
+    - control-center: uses control_center field
+    - ui/tool: uses permissions, surfaces
+    """
+    # Common fields
+    permissions: list[str] = Field(default_factory=list, description="Required permissions")
+
+    # Scene view specific (family='scene')
+    surfaces: list[str] = Field(default_factory=list, description="Supported surfaces for scene views")
+    default: bool = Field(default=False, description="Is this the default plugin for its family")
+
+    # Family-specific nested metadata (optional)
+    scene_view: Optional[SceneViewMetadata] = Field(default=None, description="Scene view specific metadata")
+    control_center: Optional[ControlCenterMetadata] = Field(default=None, description="Control center specific metadata")
 
 
 class PluginResponse(BaseModel):

@@ -1,11 +1,46 @@
 import type { PixSimApiClient } from '../client';
 
-export interface PluginMetadata {
-  permissions: string[];
+/**
+ * Scene view specific metadata
+ */
+export interface SceneViewMetadata {
+  scene_view_id: string;
   surfaces: string[];
   default: boolean;
 }
 
+/**
+ * Control center specific metadata
+ */
+export interface ControlCenterMetadata {
+  control_center_id: string;
+  display_name?: string | null;
+  features: string[];
+  preview?: string | null;
+  default: boolean;
+}
+
+/**
+ * Plugin metadata from backend
+ *
+ * Maps to `UnifiedPluginDescriptor.extensions` on frontend:
+ * - scene_view → extensions.sceneView
+ * - control_center → extensions.controlCenter
+ */
+export interface PluginMetadata {
+  permissions: string[];
+  surfaces: string[];
+  default: boolean;
+  scene_view?: SceneViewMetadata | null;
+  control_center?: ControlCenterMetadata | null;
+}
+
+/**
+ * Plugin info from backend catalog
+ *
+ * Use `fromBackendPlugin()` from `@lib/plugins/types` to convert
+ * to the canonical `UnifiedPluginDescriptor` type.
+ */
 export interface PluginInfo {
   plugin_id: string;
   name: string;

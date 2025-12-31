@@ -61,6 +61,11 @@ import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/p
 import { isPluginEnabled } from '../../stores/pluginConfigStore';
 import type { PluginEntry } from './types';
 import {
+  normalizeOrigin,
+  toLegacyOrigin,
+  type UnifiedPluginOrigin,
+} from './types';
+import {
   isValidHelperDefinition,
   isValidInteractionPlugin,
   isValidNodeTypeDefinition,
@@ -97,14 +102,36 @@ export type PluginRegistrySource =
   | 'generationUIPluginRegistry';
 
 /**
- * Plugin origin discriminator
+ * Plugin origin discriminator (legacy format)
  * Tracks where the plugin was loaded from
+ *
+ * @deprecated Use `UnifiedPluginOrigin` from `./types` for new code.
+ * This type uses legacy naming for backward compatibility:
+ * - `plugins-dir` → canonical: `plugin-dir`
+ * - `dev` → canonical: `dev-project`
+ *
+ * Use `normalizeOrigin()` to convert to canonical format,
+ * or `toLegacyOrigin()` to convert from canonical to legacy.
  */
 export type PluginOrigin =
   | 'builtin'        // Built-in plugins shipped with the application
-  | 'plugins-dir'    // Loaded from plugins directory
+  | 'plugins-dir'    // Loaded from plugins directory (canonical: plugin-dir)
   | 'ui-bundle'      // User-installed UI plugin bundle
-  | 'dev';           // Development/local plugin
+  | 'dev';           // Development/local plugin (canonical: dev-project)
+
+/**
+ * Convert legacy origin to unified origin
+ */
+export function toUnifiedOrigin(origin: PluginOrigin): UnifiedPluginOrigin {
+  return normalizeOrigin(origin);
+}
+
+/**
+ * Convert unified origin to legacy origin
+ */
+export function fromUnifiedOrigin(origin: UnifiedPluginOrigin): PluginOrigin {
+  return toLegacyOrigin(origin);
+}
 
 /**
  * Plugin capability hints
