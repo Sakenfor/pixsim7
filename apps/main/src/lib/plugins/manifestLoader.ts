@@ -24,6 +24,10 @@
 
 import { sceneViewRegistry } from './sceneViewPlugin';
 import type { SceneViewPluginManifest, SceneViewPlugin } from './sceneViewPlugin';
+import { controlCenterRegistry } from './controlCenterPlugin';
+import type { ControlCenterPluginManifest, ControlCenterPlugin } from './controlCenterPlugin';
+import { pluginCatalog } from './pluginSystem';
+import type { ExtendedPluginMetadata, PluginFamily, PluginOrigin } from './pluginSystem';
 import type { PluginManifest } from './types';
 
 // ===== Types =====
@@ -42,12 +46,7 @@ export interface BundleManifest extends PluginManifest {
   /** Scene view descriptor (for scene-view plugins) */
   sceneView?: SceneViewPluginManifest['sceneView'];
   /** Control center descriptor (for control-center plugins) */
-  controlCenter?: {
-    id: string;
-    displayName: string;
-    description?: string;
-    default?: boolean;
-  };
+  controlCenter?: ControlCenterPluginManifest['controlCenter'];
 }
 
 /**
@@ -96,6 +95,9 @@ const DEFAULT_BUNDLE_DIR = '/dist/plugins';
  * Supported plugin families and their expected manifest extensions
  */
 const PLUGIN_FAMILIES: BundlePluginFamily[] = ['scene', 'ui', 'tool', 'control-center'];
+
+const sceneViewIdsByPluginId = new Map<string, string>();
+const controlCenterIdsByPluginId = new Map<string, string>();
 
 // ===== Discovery =====
 
@@ -198,6 +200,71 @@ async function discoverBundlesFromPublic(baseDir: string): Promise<DiscoveredBun
 
 // ===== Loading =====
 
+function registerBundleMetadata(
+  manifest: BundleManifest,
+  family: PluginFamily,
+  origin: PluginOrigin
+): void {
+  const metadata = {
+    id: manifest.id,
+    name: manifest.name,
+    family,
+    origin,
+    activationState: 'active',
+    canDisable: origin !== 'builtin',
+    version: manifest.version,
+    description: manifest.description,
+    author: manifest.author,
+    tags: manifest.tags,
+  } as ExtendedPluginMetadata;
+
+  switch (family) {
+    case 'scene-view': {
+      const sceneView = manifest.sceneView;
+      if (!sceneView) {
+        console.warn(`[ManifestLoader] Scene view metadata missing for ${manifest.id}`);
+        return;
+      }
+      const sceneMeta = metadata as ExtendedPluginMetadata<'scene-view'>;
+      sceneMeta.sceneViewId = sceneView.id;
+      sceneMeta.surfaces = sceneView.surfaces;
+      sceneMeta.default = sceneView.default;
+      sceneMeta.icon = manifest.icon;
+      sceneViewIdsByPluginId.set(manifest.id, sceneView.id);
+      break;
+    }
+    case 'control-center': {
+      const controlCenter = manifest.controlCenter;
+      if (!controlCenter) {
+        console.warn(`[ManifestLoader] Control center metadata missing for ${manifest.id}`);
+        return;
+      }
+      const controlMeta = metadata as ExtendedPluginMetadata<'control-center'>;
+      controlMeta.controlCenterId = controlCenter.id;
+      controlMeta.displayName = controlCenter.displayName;
+      controlMeta.description = controlCenter.description ?? manifest.description;
+      controlMeta.default = controlCenter.default;
+      controlMeta.features = controlCenter.features;
+      controlMeta.preview = controlCenter.preview;
+      controlMeta.icon = manifest.icon;
+      controlCenterIdsByPluginId.set(manifest.id, controlCenter.id);
+      break;
+    }
+    case 'ui-plugin': {
+      const uiMeta = metadata as ExtendedPluginMetadata<'ui-plugin'>;
+      uiMeta.pluginType = manifest.type;
+      uiMeta.bundleFamily = manifest.family === 'tool' ? 'tool' : 'ui';
+      uiMeta.hasOverlays = manifest.permissions?.includes('ui:overlay');
+      uiMeta.icon = manifest.icon;
+      break;
+    }
+    default:
+      break;
+  }
+
+  pluginCatalog.register(metadata);
+}
+
 /**
  * Load a scene view plugin bundle
  */
@@ -229,6 +296,35 @@ async function loadSceneViewBundle(bundle: DiscoveredBundle): Promise<void> {
   };
 
   sceneViewRegistry.register(fullManifest, plugin);
+  registerBundleMetadata(manifest, 'scene-view', 'ui-bundle');
+}
+
+/**
+ * Load a control center plugin bundle
+ */
+async function loadControlCenterBundle(bundle: DiscoveredBundle): Promise<void> {
+  const { bundleDir, manifest } = bundle;
+
+  if (!manifest.controlCenter) {
+    throw new Error('Control center plugin missing controlCenter descriptor');
+  }
+
+  const bundlePath = `${bundleDir}/${manifest.main}`;
+  const pluginModule = await import(/* @vite-ignore */ bundlePath);
+  const plugin: ControlCenterPlugin = pluginModule.plugin || pluginModule.default?.plugin;
+
+  if (!plugin || typeof plugin.render !== 'function') {
+    throw new Error('Control center bundle does not export a valid plugin with render function');
+  }
+
+  const fullManifest: ControlCenterPluginManifest = {
+    ...manifest,
+    type: 'ui-overlay',
+    controlCenter: manifest.controlCenter,
+  };
+
+  controlCenterRegistry.register(fullManifest, plugin);
+  registerBundleMetadata(manifest, 'control-center', 'ui-bundle');
 }
 
 /**
@@ -244,13 +340,6 @@ async function loadUIBundle(bundle: DiscoveredBundle): Promise<void> {
   const pluginModule = await import(/* @vite-ignore */ bundlePath);
 
   // Handle different UI plugin types
-  if (manifest.controlCenter) {
-    // Control center plugin - defer to control center registry
-    // Note: This is a placeholder for future control center bundle support
-    console.info(`[ManifestLoader] Control center bundle loading not yet implemented: ${manifest.id}`);
-    return;
-  }
-
   // Generic UI plugin
   const plugin = pluginModule.plugin || pluginModule.default?.plugin;
 
@@ -262,6 +351,8 @@ async function loadUIBundle(bundle: DiscoveredBundle): Promise<void> {
   if (typeof pluginModule.register === 'function') {
     pluginModule.register();
   }
+
+  registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
 }
 
 /**
@@ -282,6 +373,8 @@ async function loadToolBundle(bundle: DiscoveredBundle): Promise<void> {
   } else {
     console.warn(`[ManifestLoader] Tool plugin ${manifest.id} has no register function`);
   }
+
+  registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
 }
 
 /**
@@ -294,6 +387,9 @@ async function loadBundle(bundle: DiscoveredBundle): Promise<BundleLoadResult> {
     switch (family) {
       case 'scene':
         await loadSceneViewBundle(bundle);
+        break;
+      case 'control-center':
+        await loadControlCenterBundle(bundle);
         break;
       case 'ui':
         await loadUIBundle(bundle);
@@ -531,8 +627,23 @@ export async function loadRemotePluginBundle(
             sceneView: manifest.sceneView,
           };
           sceneViewRegistry.register(fullManifest, plugin);
+          registerBundleMetadata(manifest, 'scene-view', 'ui-bundle');
         } else {
           throw new Error('Scene plugin missing sceneView descriptor or render function');
+        }
+        break;
+
+      case 'control-center':
+        if (manifest.controlCenter && plugin && typeof plugin.render === 'function') {
+          const fullManifest: ControlCenterPluginManifest = {
+            ...manifest,
+            type: 'ui-overlay',
+            controlCenter: manifest.controlCenter,
+          };
+          controlCenterRegistry.register(fullManifest, plugin);
+          registerBundleMetadata(manifest, 'control-center', 'ui-bundle');
+        } else {
+          throw new Error('Control center plugin missing controlCenter descriptor or render function');
         }
         break;
 
@@ -540,12 +651,14 @@ export async function loadRemotePluginBundle(
         if (typeof pluginModule.register === 'function') {
           pluginModule.register();
         }
+        registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
         break;
 
       case 'tool':
         if (typeof pluginModule.register === 'function') {
           pluginModule.register();
         }
+        registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
         break;
 
       default:
@@ -620,7 +733,10 @@ function isPluginRegistered(pluginId: string, family: BundlePluginFamily): boole
   switch (family) {
     case 'scene':
       return sceneViewRegistry.getEntry(pluginId) !== null;
-    // Add other registries as needed
+    case 'control-center':
+    case 'ui':
+    case 'tool':
+      return pluginCatalog.get(pluginId) !== undefined;
     default:
       return false;
   }
@@ -662,7 +778,18 @@ function resolveBundleUrl(url: string): string {
 export function unregisterPlugin(pluginId: string, family: BundlePluginFamily): boolean {
   switch (family) {
     case 'scene':
-      sceneViewRegistry.unregister(pluginId);
+      sceneViewRegistry.unregister(sceneViewIdsByPluginId.get(pluginId) ?? pluginId);
+      sceneViewIdsByPluginId.delete(pluginId);
+      pluginCatalog.unregister(pluginId);
+      return true;
+    case 'control-center':
+      controlCenterRegistry.unregister(controlCenterIdsByPluginId.get(pluginId) ?? pluginId);
+      controlCenterIdsByPluginId.delete(pluginId);
+      pluginCatalog.unregister(pluginId);
+      return true;
+    case 'ui':
+    case 'tool':
+      pluginCatalog.unregister(pluginId);
       return true;
     default:
       console.warn(`[ManifestLoader] Cannot unregister plugin family: ${family}`);

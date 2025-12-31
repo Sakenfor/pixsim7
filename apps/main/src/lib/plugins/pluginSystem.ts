@@ -36,6 +36,8 @@ export type PluginFamily =
   | 'node-type'
   | 'renderer'
   | 'ui-plugin'
+  | 'scene-view'
+  | 'control-center'
   | 'graph-editor'
   | 'dev-tool'
   | 'workspace-panel'
@@ -113,6 +115,24 @@ export interface PluginMetadataExtensions {
   'ui-plugin': {
     hasOverlays?: boolean;
     hasMenuItems?: boolean;
+    pluginType?: 'ui-overlay' | 'theme' | 'tool' | 'enhancement';
+    bundleFamily?: 'ui' | 'tool';
+    icon?: string;
+  };
+  'scene-view': {
+    sceneViewId: string;
+    surfaces?: Array<'overlay' | 'hud' | 'panel' | 'workspace'>;
+    default?: boolean;
+    icon?: string;
+  };
+  'control-center': {
+    controlCenterId: string;
+    displayName?: string;
+    description?: string;
+    preview?: string;
+    default?: boolean;
+    features?: string[];
+    icon?: string;
   };
   'graph-editor': {
     storeId?: string;

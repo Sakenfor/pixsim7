@@ -18,6 +18,7 @@ export interface PluginManifest {
   author: string;                // Plugin author
   description: string;           // Short description
   icon?: string;                 // Icon URL or emoji
+  tags?: string[];               // Tags for filtering/searching
   family: 'scene' | 'ui' | 'tool' | 'control-center'; // Plugin family classification
 
   // Compatibility
