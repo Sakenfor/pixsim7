@@ -737,8 +737,11 @@
       wheelProcessing = true;
 
       try {
-        // Reload session from storage first (in case it changed externally)
-        await loadCurrentSessionAccount();
+        // Reload from storage first (in case it changed externally)
+        await Promise.all([
+          loadCurrentSessionAccount(),
+          loadSelectedAccount()
+        ]);
 
         // Load accounts if not loaded
         if (accountsCache.length === 0) {
@@ -772,12 +775,16 @@
 
         if (selectedId) {
           currentIndex = sortedAccounts.findIndex(a => a.id === selectedId);
+          if (currentIndex === -1) {
+            console.warn('[PixSim7] Wheel: selectedId not found in sorted list:', selectedId, 'list has:', sortedAccounts.map(a => a.id));
+          }
         }
         if (currentIndex === -1 && sessionId) {
           currentIndex = sortedAccounts.findIndex(a => a.id === sessionId);
         }
         if (currentIndex === -1) {
           currentIndex = 0;
+          console.warn('[PixSim7] Wheel: falling back to index 0');
         }
 
         // Scroll up = previous, scroll down = next
