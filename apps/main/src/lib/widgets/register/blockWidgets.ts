@@ -26,9 +26,15 @@ function wrapBlockComponent(
   }>
 ): React.ComponentType<WidgetComponentProps> {
   return function WrappedBlock({ settings, data, onDataChange }: WidgetComponentProps) {
+    // Forward resolved binding values both as named props (for components that
+    // expect bound values directly) and as `data` (legacy path).
+    const bindingProps =
+      data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+
     return (
       <BlockComponent
         config={settings as Record<string, any>}
+        {...bindingProps}
         data={data}
         onDataChange={onDataChange}
       />

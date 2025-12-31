@@ -115,7 +115,7 @@ function BlockRenderer({ block }: { block: BlockInstance }) {
 
   // Props for unified widget component
   // - settings: static config
-  // - data: resolved binding values (for data-driven blocks like ListWidget)
+  // - data: resolved binding values (forwarded as named props by wrapper)
   const props = {
     instanceId: block.id,
     settings: block.config,
