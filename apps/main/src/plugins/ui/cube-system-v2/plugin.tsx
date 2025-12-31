@@ -1,7 +1,19 @@
 /**
  * Cube System V2 Plugin
  *
- * 3D cube-based control center implementation.
+ * @deprecated This plugin is deprecated and no longer loaded at startup.
+ *
+ * Reasons for deprecation:
+ * - Full-screen 3D takeover disrupts normal workflow
+ * - Actions were never fully implemented (mostly console.log placeholders)
+ * - Heavy GPU usage for minimal benefit
+ * - Cube Formation V1 provides floating cubes without the drawbacks
+ *
+ * The code is preserved for reference but is not registered.
+ * See: lib/plugins/bootstrapControlCenters.ts
+ *
+ * Original description:
+ * 3D cube-based control center implementation using Three.js/React Three Fiber.
  * Exposed both as a standard plugin (for settings) and as a
  * control center implementation via ControlCenterManager.
  */
@@ -141,5 +153,7 @@ export const controlCenterPlugin: ControlCenterPlugin = {
   },
 };
 
-// Auto-register as a control center option
-controlCenterRegistry.register(manifest, controlCenterPlugin);
+// @deprecated - Auto-registration disabled
+// This plugin is no longer loaded at startup.
+// If you need to test it, uncomment the line below:
+// controlCenterRegistry.register(manifest, controlCenterPlugin);

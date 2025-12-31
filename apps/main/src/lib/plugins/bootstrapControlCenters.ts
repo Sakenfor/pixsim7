@@ -21,13 +21,13 @@ export async function bootstrapControlCenters(): Promise<void> {
     await import('../../plugins/ui/dock-control-center/plugin');
     console.info('✅ Loaded Dock Control Center');
 
-    // 2. Cube Formation V1 (original)
+    // 2. Cube Formation V1 (original floating cubes)
     await import('../../plugins/ui/cube-formation-v1/plugin');
     console.info('✅ Loaded Cube Formation V1');
 
-    // 3. Cube System V2 (new 3D)
-    await import('../../plugins/ui/cube-system-v2/plugin');
-    console.info('✅ Loaded Cube System V2');
+    // NOTE: Cube System V2 (3D WebGL) is deprecated and no longer loaded.
+    // It was an experimental full-screen 3D interface that didn't fit the workflow.
+    // See: plugins/ui/cube-system-v2/plugin.tsx for the deprecated code.
 
     // Load user preference from storage
     controlCenterRegistry.loadPreference();
