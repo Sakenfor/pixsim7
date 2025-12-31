@@ -12,13 +12,37 @@ import { OverlayWidget } from './OverlayWidget';
 import { applyDefaults } from './utils/merge';
 import { validateAndLog } from './utils/validation';
 import { handleCollisions } from './utils/collision';
+import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
 
 export interface OverlayContainerProps {
   /** Overlay configuration */
   configuration: OverlayConfiguration;
 
-  /** Data passed to widget render functions */
+  /**
+   * Data passed to widget render functions.
+   * Can be provided directly or resolved via `bindings`.
+   */
   data?: any;
+
+  /**
+   * Data source bindings (from unified dataSourceRegistry).
+   * When provided, data is resolved reactively from registered sources.
+   * Resolved values are merged with `data` prop (bindings take precedence).
+   *
+   * @example
+   * ```tsx
+   * <OverlayContainer
+   *   configuration={config}
+   *   bindings={[
+   *     { id: 'b1', sourceId: 'asset:current', targetProp: 'asset' },
+   *     { id: 'b2', sourceId: 'upload:progress', targetProp: 'progress' },
+   *   ]}
+   * >
+   *   <img src={...} />
+   * </OverlayContainer>
+   * ```
+   */
+  bindings?: DataSourceBinding[];
 
   /** Custom state for conditional widget rendering */
   customState?: Record<string, any>;
@@ -46,7 +70,8 @@ export interface OverlayContainerProps {
  */
 export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   configuration,
-  data,
+  data: dataProp,
+  bindings,
   customState,
   onWidgetClick,
   children,
@@ -59,6 +84,15 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   const [isFocused, setIsFocused] = useState(false);
   const [adjustedPositions, setAdjustedPositions] = useState<Map<string, WidgetPosition>>(
     new Map()
+  );
+
+  // Resolve data from bindings (unified data source system)
+  const resolvedData = useWidgetData(bindings);
+
+  // Merge resolved data with provided data (resolved takes precedence)
+  const data = useMemo(
+    () => ({ ...dataProp, ...resolvedData }),
+    [dataProp, resolvedData]
   );
 
   // Apply defaults to widgets

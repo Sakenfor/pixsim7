@@ -170,6 +170,81 @@ export function useDataSourceRegistry() {
   };
 }
 
+// ============================================================================
+// Unified Widget Data Hook
+// ============================================================================
+
+/**
+ * Hook to resolve data for widgets from DataSourceBindings.
+ *
+ * This provides a unified way to fetch data for ANY widget surface:
+ * - Panel-composer blocks: pass returned data as `data` prop
+ * - Overlay widgets: pass returned data to `render(data, context)`
+ *
+ * @example
+ * ```tsx
+ * // Define bindings
+ * const bindings = [
+ *   { id: 'b1', sourceId: 'asset:currentAsset', targetProp: 'asset' },
+ *   { id: 'b2', sourceId: 'workspace:selectedCount', targetProp: 'count' },
+ * ];
+ *
+ * // In component
+ * const data = useWidgetData(bindings);
+ * // data = { asset: {...}, count: 5 }
+ *
+ * // Pass to overlay
+ * <OverlayContainer data={data} ... />
+ *
+ * // Or pass to block
+ * <BlockComponent data={data} ... />
+ * ```
+ */
+export function useWidgetData(
+  bindings: DataSourceBinding[] | undefined,
+  context?: DataContext
+): Record<string, unknown> {
+  // Convert array to record keyed by targetProp
+  const bindingsRecord = useMemo(() => {
+    if (!bindings || bindings.length === 0) return undefined;
+    const record: Record<string, DataSourceBinding> = {};
+    for (const binding of bindings) {
+      record[binding.targetProp] = binding;
+    }
+    return record;
+  }, [bindings]);
+
+  // Use existing hook to resolve
+  return useBindingValues(bindingsRecord, context);
+}
+
+/**
+ * Create DataSourceBindings from a simple mapping.
+ *
+ * Convenience function to create bindings without specifying IDs.
+ *
+ * @example
+ * ```tsx
+ * const bindings = createWidgetBindings({
+ *   label: 'workspace:currentAssetName',
+ *   progress: 'upload:progress',
+ * });
+ * ```
+ */
+export function createWidgetBindings(
+  mapping: Record<string, string>
+): DataSourceBinding[] {
+  return Object.entries(mapping).map(([targetProp, sourceId], index) => ({
+    id: `binding-${index}`,
+    sourceId,
+    targetProp,
+  }));
+}
+
+// ============================================================================
+// Internals
+// ============================================================================
+
 /**
  * Helper to determine which stores a data source binding depends on
  */

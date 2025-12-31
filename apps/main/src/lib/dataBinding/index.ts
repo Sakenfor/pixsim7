@@ -67,6 +67,9 @@ export {
   useBindingValue,
   useBindingValues,
   useDataSourceRegistry,
+  // Unified widget data
+  useWidgetData,
+  createWidgetBindings,
 } from './useDataBindings';
 
 // Core data sources & transforms
