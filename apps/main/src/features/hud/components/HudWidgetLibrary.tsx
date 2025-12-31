@@ -3,18 +3,31 @@
  *
  * Part of Task 58 Phase 58.2 - HUD Builder Panel
  *
- * Browse and add widgets from the widget registry to HUD regions.
+ * Browse and add widgets from the unified widget registry to HUD regions.
+ * Uses blockWidgets view which filters for panel-composer capable widgets.
  */
 
 import { useState } from 'react';
 import { useHudLayoutStore } from '../stores/hudLayoutStore';
-import { widgetRegistry } from '@lib/ui/composer/widgetRegistry';
+import { blockWidgets } from '@lib/widgets';
 import { addWidget } from '@lib/ui/composer/panelComposer';
 import type { HudRegionId } from '@features/hud';
+import type { WidgetDefinition } from '@lib/widgets';
 
 export interface HudWidgetLibraryProps {
   layoutId: string;
   selectedRegion: HudRegionId;
+}
+
+/** Get panel-composer specific config for a widget */
+function getPanelComposerConfig(widget: WidgetDefinition) {
+  const config = widget.surfaceConfig?.panelComposer;
+  return {
+    defaultWidth: config?.defaultWidth ?? 2,
+    defaultHeight: config?.defaultHeight ?? 2,
+    minWidth: config?.minWidth ?? 1,
+    minHeight: config?.minHeight ?? 1,
+  };
 }
 
 export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryProps) {
@@ -22,7 +35,7 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const widgets = widgetRegistry.getAll();
+  const widgets = blockWidgets.getAll();
   const filteredWidgets = widgets.filter((widget) => {
     const matchesSearch =
       searchQuery === '' ||
@@ -46,9 +59,10 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
 
     // Find next available position in grid
     const { composition } = regionLayout;
-    const widgetDef = widgetRegistry.get(widgetType);
-    const defaultWidth = widgetDef?.defaultWidth || 2;
-    const defaultHeight = widgetDef?.defaultHeight || 2;
+    const widgetDef = blockWidgets.get(widgetType);
+    const panelConfig = widgetDef ? getPanelComposerConfig(widgetDef) : { defaultWidth: 2, defaultHeight: 2 };
+    const defaultWidth = panelConfig.defaultWidth;
+    const defaultHeight = panelConfig.defaultHeight;
 
     // Simple placement: try to place at next available row
     let x = 0;
@@ -98,7 +112,7 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
       composition,
       widgetType,
       { x, y, w: defaultWidth, h: defaultHeight },
-      widgetDef?.defaultConfig || {}
+      widgetDef?.defaultSettings || {}
     );
 
     store.updateRegion(layoutId, selectedRegion, { composition: updatedComposition });
@@ -175,7 +189,7 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
                 </p>
               )}
               <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                {widget.defaultWidth || 2}×{widget.defaultHeight || 2} grid units
+                {getPanelComposerConfig(widget).defaultWidth}×{getPanelComposerConfig(widget).defaultHeight} grid units
               </div>
             </button>
           ))
