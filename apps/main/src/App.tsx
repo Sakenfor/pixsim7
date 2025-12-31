@@ -25,13 +25,14 @@ import { AppMapDev } from './routes/AppMapDev';
 import { TemplateAnalyticsDev } from './routes/TemplateAnalyticsDev';
 import { InteractionStudio } from './pages/InteractionStudio';
 import { InteractionComponentsDemo } from './pages/InteractionComponentsDemo';
+import { WidgetBuilderRoute } from './routes/WidgetBuilderRoute';
 import { ModulesDev } from './routes/ModulesDev';
 import { PromptInspectorDev } from './routes/PromptInspectorDev';
 import { DevPromptImporter } from './routes/DevPromptImporter';
 import { PromptLabDev } from './routes/PromptLabDev';
 import { ActionBlockGraphDev } from './routes/ActionBlockGraphDev';
 import { BlockFitDev } from './routes/BlockFitDev';
-import { OverlayConfig } from './routes/OverlayConfig';
+// OverlayConfig redirects to /dev/widget-builder?surface=overlay
 import { ControlCenterManager } from '@features/controlCenter';
 import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
 import { PluginOverlays } from './components/PluginOverlays';
@@ -130,7 +131,7 @@ function App() {
             <Route path="/simulation" element={<ProtectedRoute><SimulationPlayground /></ProtectedRoute>} />
             <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
             <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
-            <Route path="/settings/overlays" element={<ProtectedRoute><OverlayConfig /></ProtectedRoute>} />
+            <Route path="/settings/overlays" element={<Navigate to="/dev/widget-builder?surface=overlay" replace />} />
             <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
             <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
             <Route path="/interaction-studio" element={<ProtectedRoute><InteractionStudio /></ProtectedRoute>} />
@@ -141,6 +142,7 @@ function App() {
             <Route path="/dev/prompt-lab" element={<ProtectedRoute><PromptLabDev /></ProtectedRoute>} />
             <Route path="/dev/action-block-graph" element={<ProtectedRoute><ActionBlockGraphDev /></ProtectedRoute>} />
             <Route path="/dev/block-fit" element={<ProtectedRoute><BlockFitDev /></ProtectedRoute>} />
+            <Route path="/dev/widget-builder" element={<ProtectedRoute><WidgetBuilderRoute /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
