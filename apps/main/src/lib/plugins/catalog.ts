@@ -63,7 +63,9 @@ import type { PluginEntry } from './types';
 import {
   normalizeOrigin,
   toLegacyOrigin,
+  fromLegacyPluginMeta,
   type UnifiedPluginOrigin,
+  type UnifiedPluginDescriptor,
 } from './types';
 import {
   isValidHelperDefinition,
@@ -703,6 +705,13 @@ export function listAllPlugins(): PluginMeta[] {
     ...listUIPlugins(),
     ...listGenerationUIPlugins(),
   ];
+}
+
+/**
+ * Map legacy plugins to UnifiedPluginDescriptor for feature plugins
+ */
+export function listAllPluginsUnified(): UnifiedPluginDescriptor[] {
+  return listAllPlugins().map((plugin) => fromLegacyPluginMeta(plugin));
 }
 
 /**

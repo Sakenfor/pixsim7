@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'react';
 import { PluginBrowser } from '../components/plugins/PluginBrowser';
 import { CapabilityBrowser } from '../components/capabilities/CapabilityBrowser';
 import { CapabilityAutocomplete } from '../components/capabilities/CapabilityAutocomplete';
-import type { PluginMeta } from '../lib/plugins/catalog';
+import type { UnifiedPluginDescriptor } from '../lib/plugins/types';
 import {
   loadProjects,
   updateProject,
@@ -102,7 +102,7 @@ const PLUGIN_KIND_CONFIGS: PluginKindConfig[] = [
 
 export function PluginWorkspaceRoute() {
   const [activeTab, setActiveTab] = useState<TabView>('installed');
-  const [selectedPlugin, setSelectedPlugin] = useState<PluginMeta | null>(null);
+  const [selectedPlugin, setSelectedPlugin] = useState<UnifiedPluginDescriptor | null>(null);
 
   // Projects
   const [projects, setProjects] = useState<PluginProject[]>([]);

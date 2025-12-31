@@ -6,6 +6,7 @@
  */
 
 import type { GameSessionDTO, GameLocationDetail, NpcPresenceDTO, GameWorldDetail } from '../api/game';
+import type { ExtendedPluginMetadata } from './pluginSystem';
 
 /**
  * Plugin manifest - metadata about the plugin
@@ -282,6 +283,25 @@ export interface FamilyExtensions {
 }
 
 /**
+ * Capability hints for feature plugins (legacy catalog)
+ */
+export interface UnifiedPluginCapabilities {
+  modifiesSession?: boolean;
+  modifiesInventory?: boolean;
+  modifiesRelationships?: boolean;
+  addsUIOverlay?: boolean;
+  addsNodeTypes?: boolean;
+  addsGalleryTools?: boolean;
+  providerId?: string;
+  triggersEvents?: boolean;
+  hasRisk?: boolean;
+  requiresItems?: boolean;
+  consumesItems?: boolean;
+  canBeDetected?: boolean;
+  opensDialogue?: boolean;
+}
+
+/**
  * Unified Plugin Descriptor
  *
  * Canonical shape for plugin metadata across all systems:
@@ -317,6 +337,42 @@ export interface UnifiedPluginDescriptor {
   pluginType?: 'ui-overlay' | 'theme' | 'tool' | 'enhancement';
   /** Tags for filtering/searching */
   tags?: string[];
+  /** Category for grouping/filtering (legacy catalog) */
+  category?: string;
+
+  // ===== FEATURE METADATA (legacy catalog) =====
+  /** Capability hints for feature plugins */
+  capabilities?: UnifiedPluginCapabilities;
+  /** Features this plugin provides */
+  providesFeatures?: string[];
+  /** Features this plugin consumes */
+  consumesFeatures?: string[];
+  /** Actions this plugin consumes */
+  consumesActions?: string[];
+  /** State IDs this plugin consumes */
+  consumesState?: string[];
+  /** Plugin scope (node types) */
+  scope?: 'scene' | 'arc' | 'world' | 'custom';
+  /** Interaction UI mode */
+  uiMode?: 'dialogue' | 'notification' | 'silent' | 'custom';
+  /** Marked as experimental */
+  experimental?: boolean;
+  /** Marked as deprecated */
+  deprecated?: boolean;
+  /** Deprecation message */
+  deprecationMessage?: string;
+  /** Plugin ID this replaces */
+  replaces?: string;
+  /** Homepage/documentation URL */
+  homepage?: string;
+  /** Source repository URL */
+  repository?: string;
+  /** Plugin dependencies */
+  dependencies?: string[];
+  /** Optional plugin dependencies */
+  optionalDependencies?: string[];
+  /** Whether plugin has configurable settings */
+  configurable?: boolean;
 
   // ===== PERMISSIONS & CAPABILITIES =====
   /** Required permissions */
@@ -329,6 +385,8 @@ export interface UnifiedPluginDescriptor {
   isActive: boolean;
   /** Whether this is a built-in plugin */
   isBuiltin: boolean;
+  /** Timestamp when plugin was loaded (ms since epoch) */
+  loadedAt?: number;
 
   // ===== BUNDLE INFO (for loadable plugins) =====
   /** URL to plugin bundle */
@@ -436,6 +494,235 @@ export function unifiedFamilyToBundleFamily(family: UnifiedPluginFamily): Bundle
 // ============================================================================
 // Mapping Helpers
 // ============================================================================
+
+/**
+ * Legacy plugin kinds from catalog.ts
+ */
+export type LegacyPluginKind =
+  | 'session-helper'
+  | 'interaction'
+  | 'node-type'
+  | 'gallery-tool'
+  | 'world-tool'
+  | 'ui-plugin'
+  | 'generation-ui';
+
+/**
+ * Minimal legacy catalog shape for mapping to UnifiedPluginDescriptor
+ */
+export interface LegacyPluginMetaLike {
+  kind: LegacyPluginKind;
+  origin: string;
+  id: string;
+  label: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  version?: string;
+  icon?: string;
+  author?: string;
+  capabilities?: UnifiedPluginCapabilities;
+  providesFeatures?: string[];
+  consumesFeatures?: string[];
+  consumesActions?: string[];
+  consumesState?: string[];
+  scope?: 'scene' | 'arc' | 'world' | 'custom';
+  uiMode?: 'dialogue' | 'notification' | 'silent' | 'custom';
+  experimental?: boolean;
+  deprecated?: boolean;
+  deprecationMessage?: string;
+  replaces?: string;
+  homepage?: string;
+  repository?: string;
+  dependencies?: string[];
+  optionalDependencies?: string[];
+  configurable?: boolean;
+  enabled?: boolean;
+  loadedAt?: number;
+}
+
+/**
+ * Map legacy catalog kind to canonical family
+ */
+export function legacyKindToUnifiedFamily(kind: LegacyPluginKind): UnifiedPluginFamily {
+  switch (kind) {
+    case 'session-helper':
+      return 'helper';
+    case 'interaction':
+      return 'interaction';
+    case 'node-type':
+      return 'node-type';
+    case 'gallery-tool':
+      return 'gallery-tool';
+    case 'world-tool':
+      return 'world-tool';
+    case 'ui-plugin':
+      return 'ui-plugin';
+    case 'generation-ui':
+      return 'generation-ui';
+  }
+}
+
+function coercePluginType(value?: string): UnifiedPluginDescriptor['pluginType'] | undefined {
+  switch (value) {
+    case 'ui-overlay':
+    case 'theme':
+    case 'tool':
+    case 'enhancement':
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Map legacy PluginMeta to UnifiedPluginDescriptor
+ */
+export function fromLegacyPluginMeta(
+  plugin: LegacyPluginMetaLike,
+  options: {
+    origin?: UnifiedPluginOrigin;
+    isActive?: boolean;
+    canDisable?: boolean;
+  } = {}
+): UnifiedPluginDescriptor {
+  const origin = options.origin ?? normalizeOrigin(plugin.origin);
+  const isActive = options.isActive ?? (plugin.enabled ?? true);
+  const canDisable =
+    options.canDisable ?? (origin === 'plugin-dir' || origin === 'ui-bundle');
+  const pluginType =
+    plugin.kind === 'ui-plugin' ? coercePluginType(plugin.category) : undefined;
+
+  return {
+    id: plugin.id,
+    name: plugin.label,
+    description: plugin.description,
+    version: plugin.version,
+    author: plugin.author,
+    icon: plugin.icon,
+    family: legacyKindToUnifiedFamily(plugin.kind),
+    origin,
+    pluginType,
+    tags: plugin.tags,
+    category: plugin.category,
+    capabilities: plugin.capabilities,
+    providesFeatures: plugin.providesFeatures,
+    consumesFeatures: plugin.consumesFeatures,
+    consumesActions: plugin.consumesActions,
+    consumesState: plugin.consumesState,
+    scope: plugin.scope,
+    uiMode: plugin.uiMode,
+    experimental: plugin.experimental,
+    deprecated: plugin.deprecated,
+    deprecationMessage: plugin.deprecationMessage,
+    replaces: plugin.replaces,
+    homepage: plugin.homepage,
+    repository: plugin.repository,
+    dependencies: plugin.dependencies,
+    optionalDependencies: plugin.optionalDependencies,
+    configurable: plugin.configurable,
+    canDisable,
+    isActive,
+    isBuiltin: origin === 'builtin',
+    loadedAt: plugin.loadedAt,
+  };
+}
+
+/**
+ * Map unified pluginSystem metadata to UnifiedPluginDescriptor
+ */
+export function fromPluginSystemMetadata(
+  metadata: ExtendedPluginMetadata
+): UnifiedPluginDescriptor {
+  const family = metadata.family as UnifiedPluginFamily;
+  const origin = normalizeOrigin(metadata.origin);
+  const icon = (metadata as { icon?: string }).icon;
+  const category = (metadata as { category?: string }).category;
+  const extensions: FamilyExtensions = {};
+
+  switch (family) {
+    case 'scene-view': {
+      const sceneView = metadata as ExtendedPluginMetadata<'scene-view'>;
+      extensions.sceneView = {
+        sceneViewId: sceneView.sceneViewId,
+        surfaces: sceneView.surfaces,
+        default: sceneView.default,
+      };
+      break;
+    }
+    case 'control-center': {
+      const controlCenter = metadata as ExtendedPluginMetadata<'control-center'>;
+      extensions.controlCenter = {
+        controlCenterId: controlCenter.controlCenterId,
+        displayName: controlCenter.displayName,
+        features: controlCenter.features,
+        preview: controlCenter.preview,
+        default: controlCenter.default,
+      };
+      break;
+    }
+    case 'workspace-panel': {
+      const panel = metadata as ExtendedPluginMetadata<'workspace-panel'>;
+      extensions.workspacePanel = {
+        panelId: panel.panelId,
+        category: panel.category,
+        supportsCompactMode: panel.supportsCompactMode,
+        supportsMultipleInstances: panel.supportsMultipleInstances,
+      };
+      break;
+    }
+    case 'dock-widget': {
+      const widget = metadata as ExtendedPluginMetadata<'dock-widget'>;
+      extensions.dockWidget = {
+        widgetId: widget.widgetId,
+        dockviewId: widget.dockviewId,
+        presetScope: widget.presetScope,
+        panelScope: widget.panelScope,
+        storageKey: widget.storageKey,
+        allowedPanels: widget.allowedPanels,
+        defaultPanels: widget.defaultPanels,
+      };
+      break;
+    }
+    case 'gizmo-surface': {
+      const surface = metadata as ExtendedPluginMetadata<'gizmo-surface'>;
+      extensions.gizmoSurface = {
+        gizmoSurfaceId: surface.gizmoSurfaceId,
+        category: surface.category,
+        supportsContexts: surface.supportsContexts,
+      };
+      break;
+    }
+    default:
+      break;
+  }
+
+  const uiPlugin = metadata as ExtendedPluginMetadata<'ui-plugin'>;
+  const pluginType = family === 'ui-plugin' ? uiPlugin.pluginType : undefined;
+  const bundleFamily = family === 'ui-plugin' ? uiPlugin.bundleFamily : undefined;
+
+  const descriptor: UnifiedPluginDescriptor = {
+    id: metadata.id,
+    name: metadata.name,
+    description: metadata.description,
+    version: metadata.version,
+    author: metadata.author,
+    icon,
+    family,
+    origin,
+    pluginType,
+    tags: metadata.tags,
+    category,
+    scope: (metadata as ExtendedPluginMetadata<'node-type'>).scope,
+    canDisable: metadata.canDisable,
+    isActive: metadata.activationState === 'active',
+    isBuiltin: origin === 'builtin',
+    bundleFamily,
+    extensions: Object.keys(extensions).length > 0 ? extensions : undefined,
+  };
+
+  return descriptor;
+}
 
 /**
  * Map PluginManifest (from bundle) to UnifiedPluginDescriptor

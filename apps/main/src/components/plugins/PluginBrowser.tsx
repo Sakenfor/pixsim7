@@ -7,36 +7,52 @@
  * This is a simplified version focused on browsing within the Plugin Workspace.
  */
 
-import { type PluginMeta, type PluginKind } from '@lib/plugins/catalog';
+import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from '@lib/plugins/types';
 import { PluginDependencies } from '../capabilities/PluginDependencies';
 import type { ExtendedPluginMetadata } from '@lib/plugins/pluginSystem';
 import { usePluginBrowserController } from '@/hooks/usePluginBrowserController';
 import type { PanelCategory, PanelOrigin } from '@/hooks/usePluginBrowserController';
 
-// Plugin kind labels
-const PLUGIN_KIND_LABELS: Record<PluginKind, string> = {
-  'session-helper': 'Session Helper',
-  'interaction': 'Interaction',
-  'node-type': 'Node Type',
-  'gallery-tool': 'Gallery Tool',
+// Plugin family labels
+const PLUGIN_FAMILY_LABELS: Record<UnifiedPluginFamily, string> = {
   'world-tool': 'World Tool',
+  'helper': 'Session Helper',
+  'interaction': 'Interaction',
+  'gallery-tool': 'Gallery Tool',
+  'node-type': 'Node Type',
+  'renderer': 'Renderer',
   'ui-plugin': 'UI Plugin',
+  'scene-view': 'Scene View',
+  'control-center': 'Control Center',
+  'graph-editor': 'Graph Editor',
+  'dev-tool': 'Dev Tool',
+  'workspace-panel': 'Workspace Panel',
+  'dock-widget': 'Dock Widget',
+  'gizmo-surface': 'Gizmo Surface',
   'generation-ui': 'Generation UI',
 };
 
-// Plugin kind icons
-const PLUGIN_KIND_ICONS: Record<PluginKind, string> = {
-  'session-helper': '🎮',
-  'interaction': '💬',
-  'node-type': '🔷',
-  'gallery-tool': '🖼️',
+// Plugin family icons
+const PLUGIN_FAMILY_ICONS: Record<UnifiedPluginFamily, string> = {
   'world-tool': '🌍',
+  'helper': '🎮',
+  'interaction': '💬',
+  'gallery-tool': '🖼',
+  'node-type': '🔷',
+  'renderer': '🖥',
   'ui-plugin': '🎨',
+  'scene-view': '🎬',
+  'control-center': '🎛',
+  'graph-editor': '🗺',
+  'dev-tool': '🛠',
+  'workspace-panel': '🧩',
+  'dock-widget': '📌',
+  'gizmo-surface': '🧲',
   'generation-ui': '✨',
 };
 
 interface PluginBrowserProps {
-  onSelectPlugin?: (plugin: PluginMeta) => void;
+  onSelectPlugin?: (plugin: UnifiedPluginDescriptor) => void;
   selectedPluginId?: string;
 }
 
@@ -51,14 +67,15 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
     filteredPlugins,
     searchQuery,
     setSearchQuery,
-    kindFilter,
-    setKindFilter,
+    familyFilter,
+    setFamilyFilter,
     categoryFilter,
     setCategoryFilter,
     featureFilter,
     setFeatureFilter,
     categories,
     features,
+    families,
     hasControlCenterPlugins,
   } = controller;
 
@@ -97,7 +114,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1">
               <div className="text-sm font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2">
-                🎛️ Control Center Plugins
+                {PLUGIN_FAMILY_ICONS['control-center']} Control Center Plugins
               </div>
               <div className="text-xs text-purple-700 dark:text-purple-300 mt-0.5">
                 These plugins provide different control center interfaces
@@ -133,16 +150,16 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           className="flex-1 min-w-[200px] px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
-        {/* Kind filter */}
+        {/* Family filter */}
         <select
-          value={kindFilter}
-          onChange={(e) => setKindFilter(e.target.value as PluginKind | 'all')}
+          value={familyFilter}
+          onChange={(e) => setFamilyFilter(e.target.value as UnifiedPluginFamily | 'all')}
           className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="all">All Kinds</option>
-          {Object.entries(PLUGIN_KIND_LABELS).map(([kind, label]) => (
-            <option key={kind} value={kind}>
-              {label}
+          <option value="all">All Families</option>
+          {families.map((family) => (
+            <option key={family} value={family}>
+              {PLUGIN_FAMILY_ICONS[family]} {PLUGIN_FAMILY_LABELS[family]}
             </option>
           ))}
         </select>
@@ -194,7 +211,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
             ) : (
               filteredPlugins.map((plugin) => (
                 <PluginListItem
-                  key={`${plugin.kind}-${plugin.id}`}
+                  key={`${plugin.family}-${plugin.id}`}
                   plugin={plugin}
                   selected={selectedPluginId === plugin.id}
                   onClick={() => onSelectPlugin?.(plugin)}
@@ -407,10 +424,17 @@ function PluginListItem({
   selected,
   onClick,
 }: {
-  plugin: PluginMeta;
+  plugin: UnifiedPluginDescriptor;
   selected: boolean;
   onClick: () => void;
 }) {
+  const familyLabel = PLUGIN_FAMILY_LABELS[plugin.family];
+  const familyIcon = PLUGIN_FAMILY_ICONS[plugin.family];
+  const displayIcon = plugin.icon ?? familyIcon;
+  const isControlCenter =
+    plugin.family === 'control-center' ||
+    plugin.providesFeatures?.includes('control-center');
+
   return (
     <div
       className={`rounded-lg border transition-colors ${
@@ -426,18 +450,23 @@ function PluginListItem({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              {plugin.icon && <span className="text-lg">{plugin.icon}</span>}
+              {displayIcon && <span className="text-lg">{displayIcon}</span>}
               <h3 className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                {plugin.label}
+                {plugin.name}
               </h3>
               {plugin.experimental && (
                 <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
                   Experimental
                 </span>
               )}
-              {plugin.providesFeatures?.includes('control-center') && (
+              {plugin.deprecated && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+                  Deprecated
+                </span>
+              )}
+              {isControlCenter && (
                 <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 flex items-center gap-1">
-                  🎛️ Control Center
+                  {PLUGIN_FAMILY_ICONS['control-center']} Control Center
                 </span>
               )}
             </div>
@@ -448,7 +477,7 @@ function PluginListItem({
             )}
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
-                {PLUGIN_KIND_ICONS[plugin.kind]} {PLUGIN_KIND_LABELS[plugin.kind]}
+                {familyIcon} {familyLabel}
               </span>
               {plugin.category && (
                 <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
@@ -463,15 +492,18 @@ function PluginListItem({
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {plugin.enabled !== undefined && (
-              <span
-                className={`px-2 py-1 text-xs font-medium rounded ${
-                  plugin.enabled
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                    : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
-                }`}
-              >
-                {plugin.enabled ? 'Enabled' : 'Disabled'}
+            <span
+              className={`px-2 py-1 text-xs font-medium rounded ${
+                plugin.isActive
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                  : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
+              }`}
+            >
+              {plugin.isActive ? 'Active' : 'Inactive'}
+            </span>
+            {plugin.isBuiltin && (
+              <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                Built-in
               </span>
             )}
           </div>

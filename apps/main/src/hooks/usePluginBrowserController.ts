@@ -11,17 +11,8 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import {
-  listAllPlugins,
-  searchPlugins,
-  filterByKind,
-  filterByCategory,
-  filterByFeature,
-  getUniqueCategories,
-  getUniqueFeatures,
-  type PluginMeta,
-  type PluginKind,
-} from '../lib/plugins/catalog';
+import { listAllPluginsUnified } from '../lib/plugins/catalog';
+import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from '../lib/plugins/types';
 import {
   pluginCatalog,
   pluginActivationManager,
@@ -46,18 +37,19 @@ export interface PluginBrowserController {
   setActiveTab: (tab: BrowserTab) => void;
 
   // Legacy plugins state
-  plugins: PluginMeta[];
-  filteredPlugins: PluginMeta[];
+  plugins: UnifiedPluginDescriptor[];
+  filteredPlugins: UnifiedPluginDescriptor[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  kindFilter: PluginKind | 'all';
-  setKindFilter: (kind: PluginKind | 'all') => void;
+  familyFilter: UnifiedPluginFamily | 'all';
+  setFamilyFilter: (family: UnifiedPluginFamily | 'all') => void;
   categoryFilter: string;
   setCategoryFilter: (category: string) => void;
   featureFilter: string;
   setFeatureFilter: (feature: string) => void;
   categories: string[];
   features: string[];
+  families: UnifiedPluginFamily[];
   hasControlCenterPlugins: boolean;
 
   // Workspace panels state
@@ -87,9 +79,9 @@ export function usePluginBrowserController(): PluginBrowserController {
   const [activeTab, setActiveTab] = useState<BrowserTab>('legacy');
 
   // Legacy plugins state
-  const [plugins, setPlugins] = useState<PluginMeta[]>([]);
+  const [plugins, setPlugins] = useState<UnifiedPluginDescriptor[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
+  const [familyFilter, setFamilyFilter] = useState<UnifiedPluginFamily | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [featureFilter, setFeatureFilter] = useState<string>('all');
 
@@ -105,13 +97,14 @@ export function usePluginBrowserController(): PluginBrowserController {
 
   // Load legacy plugins
   useEffect(() => {
-    const allPlugins = listAllPlugins();
+    const allPlugins = listAllPluginsUnified();
     setPlugins(allPlugins);
   }, []);
 
   // Get unique categories and features
   const categories = useMemo(() => getUniqueCategories(plugins), [plugins]);
   const features = useMemo(() => getUniqueFeatures(plugins), [plugins]);
+  const families = useMemo(() => getUniqueFamilies(plugins), [plugins]);
 
   // Apply filters to legacy plugins
   const filteredPlugins = useMemo(() => {
@@ -119,30 +112,39 @@ export function usePluginBrowserController(): PluginBrowserController {
 
     // Search
     if (searchQuery.trim()) {
-      filtered = searchPlugins(searchQuery, filtered);
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((plugin) => matchesSearch(plugin, query));
     }
 
-    // Kind filter
-    if (kindFilter !== 'all') {
-      filtered = filterByKind(kindFilter, filtered);
+    // Family filter
+    if (familyFilter !== 'all') {
+      filtered = filtered.filter((plugin) => plugin.family === familyFilter);
     }
 
     // Category filter
     if (categoryFilter !== 'all') {
-      filtered = filterByCategory(categoryFilter, filtered);
+      filtered = filtered.filter((plugin) => plugin.category === categoryFilter);
     }
 
     // Feature filter
     if (featureFilter !== 'all') {
-      filtered = filterByFeature(featureFilter, filtered);
+      filtered = filtered.filter((plugin) =>
+        plugin.consumesFeatures?.includes(featureFilter) ||
+        plugin.providesFeatures?.includes(featureFilter)
+      );
     }
 
     return filtered;
-  }, [plugins, searchQuery, kindFilter, categoryFilter, featureFilter]);
+  }, [plugins, searchQuery, familyFilter, categoryFilter, featureFilter]);
 
   // Check if there are any control center plugins
   const hasControlCenterPlugins = useMemo(
-    () => filteredPlugins.some((p) => p.providesFeatures?.includes('control-center')),
+    () =>
+      filteredPlugins.some(
+        (p) =>
+          p.family === 'control-center' ||
+          p.providesFeatures?.includes('control-center')
+      ),
     [filteredPlugins]
   );
 
@@ -224,14 +226,15 @@ export function usePluginBrowserController(): PluginBrowserController {
     filteredPlugins,
     searchQuery,
     setSearchQuery,
-    kindFilter,
-    setKindFilter,
+    familyFilter,
+    setFamilyFilter,
     categoryFilter,
     setCategoryFilter,
     featureFilter,
     setFeatureFilter,
     categories,
     features,
+    families,
     hasControlCenterPlugins,
 
     // Workspace panels
@@ -245,4 +248,43 @@ export function usePluginBrowserController(): PluginBrowserController {
     setPanelOriginFilter,
     handleTogglePanelActivation,
   };
+}
+
+// ========================================================================
+// Helpers
+// ========================================================================
+
+function matchesSearch(plugin: UnifiedPluginDescriptor, query: string): boolean {
+  if (plugin.name.toLowerCase().includes(query)) return true;
+  if (plugin.id.toLowerCase().includes(query)) return true;
+  if (plugin.description?.toLowerCase().includes(query)) return true;
+  if (plugin.category?.toLowerCase().includes(query)) return true;
+  if (plugin.author?.toLowerCase().includes(query)) return true;
+  if (plugin.tags?.some((tag) => tag.toLowerCase().includes(query))) return true;
+  return false;
+}
+
+function getUniqueCategories(plugins: UnifiedPluginDescriptor[]): string[] {
+  const categories = new Set<string>();
+  plugins.forEach((plugin) => {
+    if (plugin.category) {
+      categories.add(plugin.category);
+    }
+  });
+  return Array.from(categories).sort();
+}
+
+function getUniqueFeatures(plugins: UnifiedPluginDescriptor[]): string[] {
+  const features = new Set<string>();
+  plugins.forEach((plugin) => {
+    plugin.consumesFeatures?.forEach((feature) => features.add(feature));
+    plugin.providesFeatures?.forEach((feature) => features.add(feature));
+  });
+  return Array.from(features).sort();
+}
+
+function getUniqueFamilies(plugins: UnifiedPluginDescriptor[]): UnifiedPluginFamily[] {
+  const families = new Set<UnifiedPluginFamily>();
+  plugins.forEach((plugin) => families.add(plugin.family));
+  return Array.from(families).sort();
 }

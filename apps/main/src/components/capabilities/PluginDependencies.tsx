@@ -5,11 +5,11 @@
  * Helps developers understand plugin integration points.
  */
 
-import type { PluginMeta } from '@lib/plugins/catalog';
+import type { UnifiedPluginDescriptor } from '@lib/plugins/types';
 import { useFeature, useAction } from '@lib/capabilities';
 
 interface PluginDependenciesProps {
-  plugin: PluginMeta;
+  plugin: UnifiedPluginDescriptor;
 }
 
 export function PluginDependencies({ plugin }: PluginDependenciesProps) {
@@ -115,7 +115,7 @@ function DependencySection({
   return (
     <div className={`p-4 rounded-lg border ${colorClass}`}>
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">{icon}</span>
+        <span className="text-lg">⚠</span>
         <h4 className="font-medium text-neutral-900 dark:text-neutral-100">{title}</h4>
       </div>
       <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-3">{description}</p>
