@@ -19,6 +19,7 @@ import {
   type ReactionType,
   type TrailEffect,
 } from '@pixsim7/scene.gizmos';
+import { pluginCatalog, type ExtendedPluginMetadata, type PluginOrigin } from '@lib/plugins/pluginSystem';
 
 // =============================================================================
 // Manifest Types
@@ -148,6 +149,9 @@ interface FrontendPluginManifestWithTools {
   pluginId: string;
   pluginName: string;
   version: string;
+  description?: string;
+  icon?: string;
+  tags?: string[];
   interactions?: unknown[];
   tools?: ManifestToolDefinition[];       // Flat tool list (legacy)
   toolPacks?: ManifestToolPack[];          // Grouped tool packs (new)
@@ -160,6 +164,14 @@ interface AllFrontendManifestsResponse {
   manifests: Array<{
     pluginId: string;
     enabled: boolean;
+    kind?: string;
+    required?: boolean;
+    origin?: PluginOrigin;
+    author?: string;
+    description?: string;
+    version?: string;
+    tags?: string[];
+    permissions?: string[];
     manifest: FrontendPluginManifestWithTools;
   }>;
   total: number;
@@ -321,11 +333,14 @@ export async function loadPluginTools(): Promise<number> {
 
     let loadedCount = 0;
 
-    for (const { pluginId, enabled, manifest } of data.manifests) {
+    for (const entry of data.manifests) {
+      const { pluginId, enabled, manifest } = entry;
       if (!enabled) {
         console.debug(`[dynamicToolLoader] Skipping disabled plugin: ${pluginId}`);
         continue;
       }
+
+      ensureBackendPluginCatalogEntry(entry);
 
       // Skip if already loaded
       if (loadedToolPlugins.has(pluginId)) {
@@ -385,6 +400,59 @@ export async function loadPluginTools(): Promise<number> {
   } catch (error) {
     console.error('[dynamicToolLoader] Error loading plugin tools:', error);
     return 0;
+  }
+}
+
+function ensureBackendPluginCatalogEntry(entry: {
+  pluginId: string;
+  enabled: boolean;
+  manifest: FrontendPluginManifestWithTools;
+  kind?: string;
+  required?: boolean;
+  origin?: PluginOrigin;
+  author?: string;
+  description?: string;
+  version?: string;
+  tags?: string[];
+}): void {
+  if (pluginCatalog.get(entry.pluginId)) {
+    return;
+  }
+
+  const manifest = entry.manifest;
+  const origin = resolveOrigin(entry.origin);
+  const activationState = entry.enabled ? 'active' : 'inactive';
+  const canDisable = origin !== 'builtin' && !entry.required;
+
+  const metadata = {
+    id: entry.pluginId,
+    name: manifest.pluginName || entry.pluginId,
+    family: 'ui-plugin',
+    origin,
+    activationState,
+    canDisable,
+    version: entry.version ?? manifest.version,
+    description: entry.description ?? manifest.description,
+    author: entry.author,
+    tags: entry.tags ?? manifest.tags,
+    category: entry.kind,
+    pluginType: entry.kind === 'tools' ? 'tool' : undefined,
+    bundleFamily: entry.kind === 'tools' ? 'tool' : undefined,
+    icon: manifest.icon,
+  } as ExtendedPluginMetadata<'ui-plugin'>;
+
+  pluginCatalog.register(metadata);
+}
+
+function resolveOrigin(origin?: PluginOrigin): PluginOrigin {
+  switch (origin) {
+    case 'builtin':
+    case 'plugin-dir':
+    case 'ui-bundle':
+    case 'dev-project':
+      return origin;
+    default:
+      return 'plugin-dir';
   }
 }
 

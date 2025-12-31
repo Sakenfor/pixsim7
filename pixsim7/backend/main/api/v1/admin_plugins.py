@@ -316,9 +316,18 @@ async def list_all_frontend_manifests():
 
         manifest = plugin_info["manifest"]
         if manifest.frontend_manifest:
+            origin = "plugin-dir" if plugin_info.get("is_external", False) else "builtin"
             manifests.append({
                 "pluginId": plugin_id,
                 "enabled": plugin_info.get("enabled", False),
+                "kind": manifest.kind,
+                "required": manifest.required,
+                "origin": origin,
+                "author": manifest.author,
+                "description": manifest.description,
+                "version": manifest.version,
+                "tags": manifest.tags,
+                "permissions": manifest.permissions,
                 "manifest": manifest.frontend_manifest,
             })
 
@@ -330,9 +339,18 @@ async def list_all_frontend_manifests():
 
             manifest = plugin_info["manifest"]
             if manifest.frontend_manifest:
+                origin = "plugin-dir" if plugin_info.get("is_external", False) else "builtin"
                 manifests.append({
                     "pluginId": plugin_id,
                     "enabled": plugin_info.get("enabled", False),
+                    "kind": manifest.kind,
+                    "required": manifest.required,
+                    "origin": origin,
+                    "author": manifest.author,
+                    "description": manifest.description,
+                    "version": manifest.version,
+                    "tags": manifest.tags,
+                    "permissions": manifest.permissions,
                     "manifest": manifest.frontend_manifest,
                 })
 

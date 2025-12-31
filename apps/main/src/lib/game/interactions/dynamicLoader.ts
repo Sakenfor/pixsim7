@@ -17,6 +17,7 @@ import type {
 } from './types';
 import { interactionRegistry } from './types';
 import { registerInteraction } from '@lib/plugins/registryBridge';
+import { pluginCatalog, type ExtendedPluginMetadata, type PluginOrigin } from '@lib/plugins/pluginSystem';
 
 // =============================================================================
 // Types (aligned with packages/plugins/stealth/shared/types.ts)
@@ -83,7 +84,10 @@ interface FrontendPluginManifest {
   pluginId: string;
   pluginName: string;
   version: string;
-  interactions: FrontendInteractionManifest[];
+  description?: string;
+  icon?: string;
+  tags?: string[];
+  interactions?: FrontendInteractionManifest[];
 }
 
 /**
@@ -93,6 +97,14 @@ interface AllFrontendManifestsResponse {
   manifests: Array<{
     pluginId: string;
     enabled: boolean;
+    kind?: string;
+    required?: boolean;
+    origin?: PluginOrigin;
+    author?: string;
+    description?: string;
+    version?: string;
+    tags?: string[];
+    permissions?: string[];
     manifest: FrontendPluginManifest;
   }>;
   total: number;
@@ -351,15 +363,16 @@ export async function loadPluginInteractions(): Promise<number> {
       return 0;
     }
 
-    const data: AllFrontendManifestsResponse = await response.json();
+  const data: AllFrontendManifestsResponse = await response.json();
 
-    let loadedCount = 0;
+  let loadedCount = 0;
 
-    for (const { pluginId, enabled, manifest } of data.manifests) {
-      if (!enabled) {
-        console.debug(`[dynamicLoader] Skipping disabled plugin: ${pluginId}`);
-        continue;
-      }
+  for (const entry of data.manifests) {
+    const { pluginId, enabled, manifest } = entry;
+    if (!enabled) {
+      console.debug(`[dynamicLoader] Skipping disabled plugin: ${pluginId}`);
+      continue;
+    }
 
       // Skip if already loaded
       if (loadedPlugins.has(pluginId)) {
@@ -367,8 +380,12 @@ export async function loadPluginInteractions(): Promise<number> {
         continue;
       }
 
+      ensureBackendPluginCatalogEntry(entry);
+
+      const interactions = manifest.interactions ?? [];
+
       // Register each interaction from the manifest
-      for (const interactionManifest of manifest.interactions) {
+      for (const interactionManifest of interactions) {
         // Check if already registered (by another source)
         if (interactionRegistry.has(interactionManifest.id)) {
           console.debug(
@@ -387,14 +404,67 @@ export async function loadPluginInteractions(): Promise<number> {
         );
       }
 
-      loadedPlugins.add(pluginId);
-    }
+    loadedPlugins.add(pluginId);
+  }
 
     console.info(`[dynamicLoader] Loaded ${loadedCount} new interactions from ${data.total} plugins`);
     return loadedCount;
   } catch (error) {
     console.error('[dynamicLoader] Error loading plugin interactions:', error);
     return 0;
+  }
+}
+
+function ensureBackendPluginCatalogEntry(entry: {
+  pluginId: string;
+  enabled: boolean;
+  manifest: FrontendPluginManifest;
+  kind?: string;
+  required?: boolean;
+  origin?: PluginOrigin;
+  author?: string;
+  description?: string;
+  version?: string;
+  tags?: string[];
+}): void {
+  if (pluginCatalog.get(entry.pluginId)) {
+    return;
+  }
+
+  const manifest = entry.manifest;
+  const origin = resolveOrigin(entry.origin);
+  const activationState = entry.enabled ? 'active' : 'inactive';
+  const canDisable = origin !== 'builtin' && !entry.required;
+
+  const metadata = {
+    id: entry.pluginId,
+    name: manifest.pluginName || entry.pluginId,
+    family: 'ui-plugin',
+    origin,
+    activationState,
+    canDisable,
+    version: entry.version ?? manifest.version,
+    description: entry.description ?? manifest.description,
+    author: entry.author,
+    tags: entry.tags ?? manifest.tags,
+    category: entry.kind,
+    pluginType: entry.kind === 'tools' ? 'tool' : undefined,
+    bundleFamily: entry.kind === 'tools' ? 'tool' : undefined,
+    icon: manifest.icon,
+  } as ExtendedPluginMetadata<'ui-plugin'>;
+
+  pluginCatalog.register(metadata);
+}
+
+function resolveOrigin(origin?: PluginOrigin): PluginOrigin {
+  switch (origin) {
+    case 'builtin':
+    case 'plugin-dir':
+    case 'ui-bundle':
+    case 'dev-project':
+      return origin;
+    default:
+      return 'plugin-dir';
   }
 }
 
