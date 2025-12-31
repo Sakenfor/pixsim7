@@ -1068,6 +1068,17 @@ export function fromInteractionPlugin(
   } = {}
 ): UnifiedPluginDescriptor {
   const origin = options.origin ?? 'builtin';
+  const capabilities: UnifiedPluginCapabilities = {
+    modifiesSession: true,
+    opensDialogue: plugin.capabilities?.opensDialogue || plugin.uiMode === 'dialogue',
+    modifiesInventory: plugin.capabilities?.modifiesInventory,
+    modifiesRelationships: plugin.capabilities?.affectsRelationship,
+    triggersEvents: plugin.capabilities?.triggersEvents,
+    hasRisk: plugin.capabilities?.hasRisk,
+    requiresItems: plugin.capabilities?.requiresItems,
+    consumesItems: plugin.capabilities?.consumesItems,
+    canBeDetected: plugin.capabilities?.canBeDetected,
+  };
 
   return {
     id: plugin.id,
@@ -1081,16 +1092,8 @@ export function fromInteractionPlugin(
     category: plugin.category,
     uiMode: plugin.uiMode,
     experimental: plugin.experimental,
-    capabilities: plugin.capabilities ? {
-      opensDialogue: plugin.capabilities.opensDialogue,
-      modifiesInventory: plugin.capabilities.modifiesInventory,
-      modifiesRelationships: plugin.capabilities.affectsRelationship,
-      triggersEvents: plugin.capabilities.triggersEvents,
-      hasRisk: plugin.capabilities.hasRisk,
-      requiresItems: plugin.capabilities.requiresItems,
-      consumesItems: plugin.capabilities.consumesItems,
-      canBeDetected: plugin.capabilities.canBeDetected,
-    } : undefined,
+    capabilities,
+    consumesFeatures: ['game'],
     canDisable: origin !== 'builtin',
     isActive: options.isActive ?? true,
     isBuiltin: origin === 'builtin',
@@ -1150,6 +1153,7 @@ export function fromHelperDefinition(
     category: helper.category,
     experimental: helper.experimental,
     capabilities,
+    consumesFeatures: ['game'],
     canDisable: origin !== 'builtin',
     isActive: options.isActive ?? true,
     isBuiltin: origin === 'builtin',
@@ -1165,9 +1169,10 @@ export interface BackendFeaturePluginLike {
   version: string;
   description?: string;
   author?: string;
-  kind: 'feature' | 'integration' | 'extension';
+  kind: 'route' | 'feature' | 'tools' | 'behavior' | 'stats' | 'content' | 'integration';
   tags?: string[];
   enabled?: boolean;
+  required?: boolean;
   permissions?: string[];
   frontend_manifest?: {
     pluginId: string;
@@ -1179,7 +1184,9 @@ export interface BackendFeaturePluginLike {
       description?: string;
       icon?: string;
       category?: string;
+      version?: string;
       tags?: string[];
+      uiMode?: 'dialogue' | 'notification' | 'silent' | 'custom';
       capabilities?: Record<string, boolean>;
     }>;
   };
@@ -1196,9 +1203,19 @@ export function fromBackendFeaturePlugin(
   plugin: BackendFeaturePluginLike,
   options: {
     includeInteractions?: boolean;
+    origin?: UnifiedPluginOrigin;
+    isBuiltin?: boolean;
+    isActive?: boolean;
+    canDisable?: boolean;
+    family?: UnifiedPluginFamily;
   } = {}
 ): UnifiedPluginDescriptor[] {
   const descriptors: UnifiedPluginDescriptor[] = [];
+  const origin = options.origin ?? (options.isBuiltin ? 'builtin' : 'plugin-dir');
+  const isBuiltin = options.isBuiltin ?? origin === 'builtin';
+  const isActive = options.isActive ?? (plugin.enabled ?? true);
+  const canDisable = options.canDisable ?? (!isBuiltin && !plugin.required);
+  const family = options.family ?? 'ui-plugin';
 
   // Main plugin descriptor
   const mainDescriptor: UnifiedPluginDescriptor = {
@@ -1207,13 +1224,13 @@ export function fromBackendFeaturePlugin(
     description: plugin.description,
     version: plugin.version,
     author: plugin.author,
-    family: 'ui-plugin', // Feature plugins are a type of ui-plugin
-    origin: 'plugin-dir',
+    family,
+    origin,
     tags: plugin.tags,
     category: plugin.kind,
-    canDisable: true,
-    isActive: plugin.enabled ?? true,
-    isBuiltin: false,
+    canDisable,
+    isActive,
+    isBuiltin,
   };
 
   descriptors.push(mainDescriptor);
@@ -1227,11 +1244,13 @@ export function fromBackendFeaturePlugin(
         description: interaction.description ?? '',
         icon: interaction.icon,
         category: interaction.category,
+        version: interaction.version,
         tags: interaction.tags,
+        uiMode: interaction.uiMode,
         capabilities: interaction.capabilities as InteractionPluginLike['capabilities'],
       }, {
-        origin: 'plugin-dir',
-        isActive: plugin.enabled ?? true,
+        origin,
+        isActive,
       });
 
       descriptors.push(interactionDescriptor);
