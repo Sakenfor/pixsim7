@@ -7,7 +7,9 @@
  */
 
 import { useState, useMemo } from 'react';
-import type { WidgetProps } from '@lib/ui/composer/widgetRegistry';
+import type { BlockProps } from '@lib/ui/composer';
+
+type WidgetProps = BlockProps;
 
 export interface ListWidgetConfig {
   title?: string;

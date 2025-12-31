@@ -10,7 +10,11 @@ import { useGallerySurfaceController } from '@features/gallery';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared';
 import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
-import type { WidgetProps, WidgetDefinition } from '@lib/ui/composer/widgetRegistry';
+import type { BlockProps, BlockDefinition } from '@lib/ui/composer';
+
+// Backward compatibility - these types are aliased
+type WidgetProps = BlockProps;
+type WidgetDefinition = BlockDefinition;
 
 export interface GalleryGridWidgetConfig {
   title?: string;

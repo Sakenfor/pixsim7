@@ -1,8 +1,8 @@
 /**
  * Panel Composer
  *
- * System for composing custom panels from widgets with data binding.
- * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ * System for composing custom panels from blocks with data binding.
+ * Blocks are the building pieces placed in a grid layout.
  *
  * Integrates with Task 51 data binding system for live data.
  */
@@ -16,9 +16,9 @@ export interface GridLayout {
   gap?: number;
 }
 
-export interface WidgetInstance {
+export interface BlockInstance {
   id: string;
-  widgetType: string;
+  widgetType: string; // Keep 'widgetType' for backward compatibility in serialized data
   position: {
     x: number; // Grid column
     y: number; // Grid row
@@ -35,7 +35,7 @@ export interface PanelComposition {
   description?: string;
   icon?: string;
   layout: GridLayout;
-  widgets: WidgetInstance[];
+  widgets: BlockInstance[]; // Keep 'widgets' for backward compatibility in serialized data
   dataSources?: DataSourceDefinition[]; // Using Task 51 DataSourceDefinition
   styles?: React.CSSProperties;
   version?: string; // Schema version
@@ -65,32 +65,32 @@ export function validateComposition(composition: PanelComposition): {
     errors.push('Composition must have a layout');
   }
 
-  // Check for widget overlaps
+  // Check for block overlaps
   const occupied = new Map<string, string>();
-  for (const widget of composition.widgets) {
-    for (let x = widget.position.x; x < widget.position.x + widget.position.w; x++) {
-      for (let y = widget.position.y; y < widget.position.y + widget.position.h; y++) {
+  for (const block of composition.widgets) {
+    for (let x = block.position.x; x < block.position.x + block.position.w; x++) {
+      for (let y = block.position.y; y < block.position.y + block.position.h; y++) {
         const key = `${x},${y}`;
         if (occupied.has(key)) {
           errors.push(
-            `Widget "${widget.id}" overlaps with "${occupied.get(key)}" at position (${x}, ${y})`
+            `Block "${block.id}" overlaps with "${occupied.get(key)}" at position (${x}, ${y})`
           );
         }
-        occupied.set(key, widget.id);
+        occupied.set(key, block.id);
       }
     }
   }
 
-  // Check for widgets outside grid bounds
-  for (const widget of composition.widgets) {
+  // Check for blocks outside grid bounds
+  for (const block of composition.widgets) {
     if (
-      widget.position.x < 0 ||
-      widget.position.y < 0 ||
-      widget.position.x + widget.position.w > composition.layout.columns ||
-      widget.position.y + widget.position.h > composition.layout.rows
+      block.position.x < 0 ||
+      block.position.y < 0 ||
+      block.position.x + block.position.w > composition.layout.columns ||
+      block.position.y + block.position.h > composition.layout.rows
     ) {
       errors.push(
-        `Widget "${widget.id}" is outside grid bounds (${composition.layout.columns}x${composition.layout.rows})`
+        `Block "${block.id}" is outside grid bounds (${composition.layout.columns}x${composition.layout.rows})`
       );
     }
   }
@@ -98,12 +98,12 @@ export function validateComposition(composition: PanelComposition): {
   // Check for valid data bindings
   if (composition.dataSources) {
     const dataSourceIds = new Set(composition.dataSources.map((ds) => ds.id));
-    for (const widget of composition.widgets) {
-      if (widget.dataBindings) {
-        for (const [key, binding] of Object.entries(widget.dataBindings)) {
+    for (const block of composition.widgets) {
+      if (block.dataBindings) {
+        for (const [key, binding] of Object.entries(block.dataBindings)) {
           if (!dataSourceIds.has(binding.sourceId)) {
             errors.push(
-              `Widget "${widget.id}" has invalid data binding "${key}": source "${binding.sourceId}" not found`
+              `Block "${block.id}" has invalid data binding "${key}": source "${binding.sourceId}" not found`
             );
           }
         }
@@ -144,56 +144,56 @@ export function createComposition(
 }
 
 /**
- * Add a widget to a composition
+ * Add a block to a composition
  */
-export function addWidget(
+export function addBlock(
   composition: PanelComposition,
-  widgetType: string,
-  position: WidgetInstance['position'],
+  blockType: string,
+  position: BlockInstance['position'],
   config: Record<string, any> = {}
 ): PanelComposition {
-  const widgetId = `widget-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const blockId = `block-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-  const newWidget: WidgetInstance = {
-    id: widgetId,
-    widgetType,
+  const newBlock: BlockInstance = {
+    id: blockId,
+    widgetType: blockType, // Keep 'widgetType' for backward compatibility
     position,
     config,
   };
 
   return {
     ...composition,
-    widgets: [...composition.widgets, newWidget],
+    widgets: [...composition.widgets, newBlock],
     updatedAt: Date.now(),
   };
 }
 
 /**
- * Remove a widget from a composition
+ * Remove a block from a composition
  */
-export function removeWidget(
+export function removeBlock(
   composition: PanelComposition,
-  widgetId: string
+  blockId: string
 ): PanelComposition {
   return {
     ...composition,
-    widgets: composition.widgets.filter((w) => w.id !== widgetId),
+    widgets: composition.widgets.filter((b) => b.id !== blockId),
     updatedAt: Date.now(),
   };
 }
 
 /**
- * Update a widget in a composition
+ * Update a block in a composition
  */
-export function updateWidget(
+export function updateBlock(
   composition: PanelComposition,
-  widgetId: string,
-  updates: Partial<WidgetInstance>
+  blockId: string,
+  updates: Partial<BlockInstance>
 ): PanelComposition {
   return {
     ...composition,
-    widgets: composition.widgets.map((w) =>
-      w.id === widgetId ? { ...w, ...updates } : w
+    widgets: composition.widgets.map((b) =>
+      b.id === blockId ? { ...b, ...updates } : b
     ),
     updatedAt: Date.now(),
   };
@@ -221,22 +221,22 @@ export function removeDataSource(
   dataSourceId: string
 ): PanelComposition {
   // Also remove any data bindings that reference this data source
-  const updatedWidgets = composition.widgets.map((widget) => {
-    if (widget.dataBindings) {
-      const filteredBindings = Object.entries(widget.dataBindings).filter(
-        ([, binding]) => binding.sourceId !== dataSourceId // Updated to use sourceId from Task 51
+  const updatedBlocks = composition.widgets.map((block) => {
+    if (block.dataBindings) {
+      const filteredBindings = Object.entries(block.dataBindings).filter(
+        ([, binding]) => binding.sourceId !== dataSourceId
       );
       return {
-        ...widget,
+        ...block,
         dataBindings: Object.fromEntries(filteredBindings),
       };
     }
-    return widget;
+    return block;
   });
 
   return {
     ...composition,
-    widgets: updatedWidgets,
+    widgets: updatedBlocks,
     dataSources: (composition.dataSources || []).filter((ds) => ds.id !== dataSourceId),
     updatedAt: Date.now(),
   };
@@ -268,3 +268,19 @@ export function importComposition(json: string): PanelComposition | null {
     return null;
   }
 }
+
+// ============================================================================
+// Backward Compatibility Aliases (deprecated)
+// ============================================================================
+
+/** @deprecated Use BlockInstance instead */
+export type WidgetInstance = BlockInstance;
+
+/** @deprecated Use addBlock instead */
+export const addWidget = addBlock;
+
+/** @deprecated Use removeBlock instead */
+export const removeWidget = removeBlock;
+
+/** @deprecated Use updateBlock instead */
+export const updateWidget = updateBlock;

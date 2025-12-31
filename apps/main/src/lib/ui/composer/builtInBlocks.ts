@@ -1,24 +1,24 @@
 /**
- * Built-in Widgets Plugin
+ * Built-in Blocks
  *
- * Register all built-in composable widgets.
- * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ * Register all built-in composable panel blocks.
+ * Blocks are building pieces for composed panels (grid layouts).
  */
 
 import { TextWidget } from '../../../components/widgets/TextWidget';
 import { MetricWidget } from '../../../components/widgets/MetricWidget';
 import { ListWidget } from '../../../components/widgets/ListWidget';
 import { galleryGridWidgetDefinition } from '../../../components/widgets/GalleryGridWidget';
-import type { WidgetDefinition } from './widgetRegistry';
+import type { BlockDefinition } from './blockRegistry';
 
-export const builtInWidgets: WidgetDefinition[] = [
+export const builtInBlocks: BlockDefinition[] = [
   {
     id: 'text',
     type: 'text',
     title: 'Text',
     component: TextWidget,
     category: 'display',
-    icon: '📝',
+    icon: 'T',
     description: 'Display static or dynamic text content',
     tags: ['text', 'label', 'content'],
     configSchema: {
@@ -78,7 +78,7 @@ export const builtInWidgets: WidgetDefinition[] = [
     title: 'Metric',
     component: MetricWidget,
     category: 'display',
-    icon: '📊',
+    icon: '#',
     description: 'Display a single metric/KPI',
     tags: ['metric', 'kpi', 'number', 'stat'],
     configSchema: {
@@ -141,7 +141,7 @@ export const builtInWidgets: WidgetDefinition[] = [
     title: 'List',
     component: ListWidget,
     category: 'display',
-    icon: '📋',
+    icon: 'L',
     description: 'Display a list of items',
     tags: ['list', 'items', 'collection'],
     configSchema: {
@@ -196,15 +196,25 @@ export const builtInWidgets: WidgetDefinition[] = [
     resizable: true,
     requiresData: true,
   },
-  // Gallery Grid Widget (Task 62)
+  // Gallery Grid Block
   galleryGridWidgetDefinition,
 ];
 
 /**
- * Register all built-in widgets
+ * Register all built-in blocks
  */
-export function registerBuiltInWidgets(registry: any) {
-  builtInWidgets.forEach((widget) => {
-    registry.register(widget);
+export function registerBuiltInBlocks(registry: any) {
+  builtInBlocks.forEach((block) => {
+    registry.register(block);
   });
 }
+
+// ============================================================================
+// Backward Compatibility Aliases (deprecated)
+// ============================================================================
+
+/** @deprecated Use builtInBlocks instead */
+export const builtInWidgets = builtInBlocks;
+
+/** @deprecated Use registerBuiltInBlocks instead */
+export const registerBuiltInWidgets = registerBuiltInBlocks;

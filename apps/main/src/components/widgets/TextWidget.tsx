@@ -6,7 +6,9 @@
  * Integrated with Task 51 data binding system.
  */
 
-import type { WidgetProps } from '@lib/ui/composer/widgetRegistry';
+import type { BlockProps } from '@lib/ui/composer';
+
+type WidgetProps = BlockProps;
 
 export interface TextWidgetConfig {
   content: string; // Static content (used if no data binding)
