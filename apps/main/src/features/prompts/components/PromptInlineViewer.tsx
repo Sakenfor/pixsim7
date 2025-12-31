@@ -6,8 +6,12 @@
  *
  * Features:
  * - Color-coded spans by role (character, action, setting, mood, etc.)
- * - Hover tooltips showing block metadata (role, category)
+ * - Hover tooltips showing segment metadata (role, category)
  * - Fallback to plain text if no position data available
+ *
+ * Naming:
+ * - PromptSegment = transient parsed output from API (not stored in DB)
+ * - PromptBlock = stored entity in database (different from this)
  */
 
 import { useMemo, useState, useCallback } from 'react';
@@ -17,7 +21,11 @@ import type { PromptSegmentRole } from '../types';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface PromptBlock {
+/**
+ * A parsed prompt segment for UI display.
+ * This is transient data from the analyzer, NOT a stored PromptBlock entity.
+ */
+export interface PromptSegment {
   role: PromptSegmentRole;
   text: string;
   start_pos?: number;
@@ -26,17 +34,20 @@ export interface PromptBlock {
   metadata?: Record<string, unknown>;
 }
 
+/** @deprecated Use PromptSegment instead */
+export type PromptBlock = PromptSegment;
+
 export interface PromptInlineViewerProps {
   /** Original prompt text */
   prompt: string;
-  /** Parsed blocks with position data */
-  blocks: PromptBlock[];
+  /** Parsed segments with position data */
+  blocks: PromptSegment[];
   /** Show role legend below text */
   showLegend?: boolean;
   /** Custom class for the container */
   className?: string;
-  /** Click handler for block spans */
-  onBlockClick?: (block: PromptBlock) => void;
+  /** Click handler for segment spans */
+  onBlockClick?: (segment: PromptSegment) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,17 +104,17 @@ interface TextSpan {
   text: string;
   start: number;
   end: number;
-  block?: PromptBlock;
+  segment?: PromptSegment;
 }
 
 /**
- * Build text spans from blocks with position data.
+ * Build text spans from segments with position data.
  * Fills gaps with unstyled spans for complete coverage.
  */
-function buildSpans(prompt: string, blocks: PromptBlock[]): TextSpan[] {
-  // Filter to blocks with valid positions
-  const positioned = blocks.filter(
-    (b) => typeof b.start_pos === 'number' && typeof b.end_pos === 'number'
+function buildSpans(prompt: string, segments: PromptSegment[]): TextSpan[] {
+  // Filter to segments with valid positions
+  const positioned = segments.filter(
+    (s) => typeof s.start_pos === 'number' && typeof s.end_pos === 'number'
   );
 
   if (positioned.length === 0) {
@@ -117,11 +128,11 @@ function buildSpans(prompt: string, blocks: PromptBlock[]): TextSpan[] {
   const spans: TextSpan[] = [];
   let cursor = 0;
 
-  for (const block of sorted) {
-    const start = block.start_pos!;
-    const end = block.end_pos!;
+  for (const seg of sorted) {
+    const start = seg.start_pos!;
+    const end = seg.end_pos!;
 
-    // Add gap span if there's unmatched text before this block
+    // Add gap span if there's unmatched text before this segment
     if (start > cursor) {
       spans.push({
         text: prompt.slice(cursor, start),
@@ -130,12 +141,12 @@ function buildSpans(prompt: string, blocks: PromptBlock[]): TextSpan[] {
       });
     }
 
-    // Add block span
+    // Add segment span
     spans.push({
       text: prompt.slice(start, end),
       start,
       end,
-      block,
+      segment: seg,
     });
 
     cursor = end;
@@ -164,28 +175,28 @@ export function PromptInlineViewer({
   className = '',
   onBlockClick,
 }: PromptInlineViewerProps) {
-  const [hoveredBlock, setHoveredBlock] = useState<PromptBlock | null>(null);
+  const [hoveredSegment, setHoveredSegment] = useState<PromptSegment | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   const spans = useMemo(() => buildSpans(prompt, blocks), [prompt, blocks]);
 
-  // Get unique roles present in blocks
+  // Get unique roles present in segments
   const presentRoles = useMemo(() => {
     const roles = new Set<PromptSegmentRole>();
-    for (const block of blocks) {
-      roles.add(block.role);
+    for (const seg of blocks) {
+      roles.add(seg.role);
     }
     return Array.from(roles);
   }, [blocks]);
 
-  const handleMouseEnter = useCallback((e: React.MouseEvent, block: PromptBlock) => {
+  const handleMouseEnter = useCallback((e: React.MouseEvent, segment: PromptSegment) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
-    setHoveredBlock(block);
+    setHoveredSegment(segment);
     setTooltipPos({ x: rect.left, y: rect.bottom + 4 });
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    setHoveredBlock(null);
+    setHoveredSegment(null);
     setTooltipPos(null);
   }, []);
 
@@ -194,12 +205,12 @@ export function PromptInlineViewer({
       {/* Prompt text with inline highlights */}
       <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
         {spans.map((span, idx) => {
-          if (!span.block) {
+          if (!span.segment) {
             // Gap text - no styling
             return <span key={idx}>{span.text}</span>;
           }
 
-          const style = roleStyles[span.block.role] || roleStyles.other;
+          const style = roleStyles[span.segment.role] || roleStyles.other;
 
           return (
             <span
@@ -208,9 +219,9 @@ export function PromptInlineViewer({
                 inline rounded-sm px-0.5 py-px cursor-pointer transition-colors
                 ${style.bg} ${style.hover}
               `}
-              onMouseEnter={(e) => handleMouseEnter(e, span.block!)}
+              onMouseEnter={(e) => handleMouseEnter(e, span.segment!)}
               onMouseLeave={handleMouseLeave}
-              onClick={() => onBlockClick?.(span.block!)}
+              onClick={() => onBlockClick?.(span.segment!)}
             >
               {span.text}
             </span>
@@ -219,19 +230,19 @@ export function PromptInlineViewer({
       </div>
 
       {/* Tooltip */}
-      {hoveredBlock && tooltipPos && (
+      {hoveredSegment && tooltipPos && (
         <div
           className="fixed z-50 px-2 py-1 text-xs bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded shadow-lg pointer-events-none"
           style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
           <div className="flex items-center gap-2">
             <span
-              className={`w-2 h-2 rounded-full ${roleDotColors[hoveredBlock.role]}`}
+              className={`w-2 h-2 rounded-full ${roleDotColors[hoveredSegment.role]}`}
             />
-            <span className="font-medium capitalize">{hoveredBlock.role}</span>
-            {hoveredBlock.category && (
+            <span className="font-medium capitalize">{hoveredSegment.role}</span>
+            {hoveredSegment.category && (
               <span className="text-neutral-400 dark:text-neutral-500">
-                / {hoveredBlock.category}
+                / {hoveredSegment.category}
               </span>
             )}
           </div>
@@ -258,35 +269,38 @@ export function PromptInlineViewer({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Block List Fallback (when positions unavailable)
+// Segment List Fallback (when positions unavailable)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface PromptBlockListProps {
-  blocks: PromptBlock[];
-  onBlockClick?: (block: PromptBlock) => void;
+export interface PromptSegmentListProps {
+  segments: PromptSegment[];
+  onSegmentClick?: (segment: PromptSegment) => void;
 }
+
+/** @deprecated Use PromptSegmentListProps instead */
+export type PromptBlockListProps = PromptSegmentListProps;
 
 /**
  * Fallback display when position data is unavailable.
- * Shows blocks as a grouped list below the prompt.
+ * Shows segments as a grouped list below the prompt.
  */
-export function PromptBlockList({ blocks, onBlockClick }: PromptBlockListProps) {
+export function PromptBlockList({ segments, onSegmentClick }: PromptSegmentListProps) {
   // Group by role
   const grouped = useMemo(() => {
-    const groups: Partial<Record<PromptSegmentRole, PromptBlock[]>> = {};
-    for (const block of blocks) {
-      if (!groups[block.role]) {
-        groups[block.role] = [];
+    const groups: Partial<Record<PromptSegmentRole, PromptSegment[]>> = {};
+    for (const seg of segments) {
+      if (!groups[seg.role]) {
+        groups[seg.role] = [];
       }
-      groups[block.role]!.push(block);
+      groups[seg.role]!.push(seg);
     }
     return groups;
-  }, [blocks]);
+  }, [segments]);
 
   return (
     <div className="space-y-3">
-      {(Object.entries(grouped) as [PromptSegmentRole, PromptBlock[]][]).map(
-        ([role, roleBlocks]) => (
+      {(Object.entries(grouped) as [PromptSegmentRole, PromptSegment[]][]).map(
+        ([role, roleSegments]) => (
           <div key={role}>
             <div className="flex items-center gap-2 mb-1.5">
               <span className={`w-2.5 h-2.5 rounded-full ${roleDotColors[role]}`} />
@@ -295,17 +309,17 @@ export function PromptBlockList({ blocks, onBlockClick }: PromptBlockListProps) 
               </span>
             </div>
             <div className="space-y-1 ml-4">
-              {roleBlocks.map((block, idx) => (
+              {roleSegments.map((seg, idx) => (
                 <button
                   key={idx}
-                  onClick={() => onBlockClick?.(block)}
+                  onClick={() => onSegmentClick?.(seg)}
                   className={`
                     w-full text-left px-2 py-1 text-sm rounded
                     ${roleStyles[role].bg} ${roleStyles[role].hover}
                     transition-colors cursor-pointer
                   `}
                 >
-                  <span className="line-clamp-2">{block.text}</span>
+                  <span className="line-clamp-2">{seg.text}</span>
                 </button>
               ))}
             </div>

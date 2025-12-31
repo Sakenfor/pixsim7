@@ -121,7 +121,8 @@ async def discover_prompt_categories(
     # Step 1: Analyze prompt with SimplePromptParser
     try:
         analysis = await analyze_prompt(prompt_text)
-        blocks = analysis.get("blocks", [])
+        # Use "segments" (new format), fallback to "blocks" for backward compat
+        segments = analysis.get("segments") or analysis.get("blocks", [])
         tags = analysis.get("tags", [])
     except Exception as e:
         logger.error(
@@ -137,15 +138,15 @@ async def discover_prompt_categories(
             detail=f"Failed to analyze prompt: {str(e)}"
         )
 
-    # Step 2: Extract existing ontology IDs from block metadata
+    # Step 2: Extract existing ontology IDs from segment metadata
     existing_ontology_ids: List[str] = []
     parser_roles: List[Dict[str, Any]] = []
 
-    for block in blocks:
-        role = block.get("role", "other")
-        text = block.get("text", "")
+    for segment in segments:
+        role = segment.get("role", "other")
+        text = segment.get("text", "")
 
-        # Build simplified block summary for response
+        # Build simplified segment summary for response
         parser_roles.append({
             "role": role,
             "text": text,
@@ -157,7 +158,7 @@ async def discover_prompt_categories(
 
     # Step 3: Build context for AI Hub
     analysis_context = {
-        "blocks": blocks,
+        "segments": segments,
         "tags": tags,
         "existing_ontology_ids": existing_ontology_ids,
         "world_id": request.world_id,

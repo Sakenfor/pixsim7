@@ -717,7 +717,7 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
               selectedVersion.prompt_analysis && selectedVersion.prompt_analysis.segments ? (
                 <Panel className="p-0 h-[700px]">
                   <PromptBlockGraphSurface
-                    blocks={selectedVersion.prompt_analysis.segments}
+                    segments={selectedVersion.prompt_analysis.segments}
                     versionId={selectedVersion.version.id}
                     promptTitle={selectedFamily?.title || 'Prompt'}
                     includeRoleGroups={false}

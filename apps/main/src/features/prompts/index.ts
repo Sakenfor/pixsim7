@@ -36,6 +36,9 @@ export {
   PromptInlineViewer,
   PromptBlockList,
   type PromptInlineViewerProps,
+  type PromptSegmentListProps,
+  type PromptSegment,
+  // Deprecated aliases for backward compatibility
   type PromptBlockListProps,
   type PromptBlock,
 } from './components/PromptInlineViewer';

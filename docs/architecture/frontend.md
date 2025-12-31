@@ -448,45 +448,59 @@ export type PanelId = typeof PANEL_IDS[keyof typeof PANEL_IDS];
 
 ## 5. Prompts
 
-> **Important:** `PromptBlock` is a **frontend/analysis type only**. It represents parsed prompt segments for UI display and analysis. Persisted block data lives in `ActionBlockDB` on the backend. Do not confuse this UI type with database models.
+> **Naming Convention:**
+> - **`PromptSegment`** = Transient parsed output from the analyzer API. Not stored in DB. Used for UI display/analysis.
+> - **`PromptBlock`** = Stored entity in the `prompt_block` table (backend `PromptBlock` model). Used for curated block libraries.
+>
+> The frontend uses `PromptSegment` for analysis results. The deprecated `PromptBlock` type alias exists for backward compatibility but should not be used for new code.
 
-### ~~Critical Issue: PromptBlock Defined 4 Times~~ RESOLVED
+### Canonical Types
 
-**Fixed 2024-12-09:** Consolidated to `apps/main/src/types/prompts.ts`
+**Location:** `apps/main/src/features/prompts/types.ts`
 
-| Location | Status |
-|----------|--------|
-| `types/prompts.ts` | **Canonical source** - `ParsedBlock` + `PromptBlock` UI alias |
-| `types/promptGraphs.ts` | Re-exports from `types/prompts.ts` |
-| `components/prompts/PromptBlocksViewer.tsx` | Imports from `types/prompts.ts` |
-| `routes/PromptLabDev.tsx` | Imports from `types/prompts.ts` |
-| `hooks/usePromptInspection.ts` | Imports from `types/prompts.ts` |
+| Type | Purpose |
+|------|---------|
+| `PromptSegment` | Parsed segment from analyzer (transient) |
+| `PromptSegmentRole` | Role enum: character, action, setting, mood, romance, other |
+| `PromptBlock` | **Deprecated alias** - use `PromptSegment` instead |
 
 ### Implementation
 
 ```typescript
-// apps/main/src/types/prompts.ts
+// apps/main/src/features/prompts/types.ts
 
-export const PROMPT_BLOCK_ROLES = [
+export const PROMPT_SEGMENT_ROLES = [
   'character', 'action', 'setting', 'mood', 'romance', 'other',
 ] as const;
 
-export type PromptBlockRole = typeof PROMPT_BLOCK_ROLES[number];
+export type PromptSegmentRole = typeof PROMPT_SEGMENT_ROLES[number];
 
-// Full backend shape (mirrors services/prompt_parser/simple.py)
-export interface ParsedBlock {
-  role: PromptBlockRole;
+// Full segment shape (mirrors backend services/prompt/parser/simple.py)
+export interface PromptSegment {
+  role: PromptSegmentRole;
   text: string;
   start_pos: number;
   end_pos: number;
   sentence_index: number;
   metadata?: Record<string, unknown>;
 }
+```
 
-// Thin UI alias
-export type PromptBlock = Pick<ParsedBlock, 'role' | 'text'> & {
-  component_type?: string;
-};
+### UI Component Types
+
+The `PromptInlineViewer` component uses a local `PromptSegment` type for display:
+
+```typescript
+// apps/main/src/features/prompts/components/PromptInlineViewer.tsx
+
+export interface PromptSegment {
+  role: PromptSegmentRole;
+  text: string;
+  start_pos?: number;  // Optional for composed prompts
+  end_pos?: number;
+  category?: string;   // Fine-grained category from LLM analyzers
+  metadata?: Record<string, unknown>;
+}
 ```
 
 ### PromptVersion Type
@@ -869,9 +883,11 @@ Always import from canonical sources, never redefine:
 |------|-------------------|
 | `OperationType` | `types/operations.ts` |
 | `PanelCategory` | `lib/panels/panelConstants.ts` |
-| `PromptSegment`, `PromptSegmentRole` | `types/prompts.ts` |
+| `PromptSegment`, `PromptSegmentRole` | `features/prompts/types.ts` |
 | `PromptAnalyzerId` | `lib/analyzers/constants.ts` |
 | `GenerationStatus` | `stores/generationsStore.ts` |
+
+> **Note:** `PromptSegment` is the transient parsed output type. `PromptBlock` (backend model) is for stored library entities.
 
 ### Const Arrays Pattern
 
@@ -892,6 +908,8 @@ const OPERATION_TYPES = ['txt2img', ...]; // can get out of sync
 When narrowing `unknown`, use type guards:
 
 ```typescript
+import type { PromptSegment } from '@features/prompts/types';
+
 function isPromptSegment(value: unknown): value is PromptSegment {
   return (
     typeof value === 'object' &&

@@ -2,7 +2,11 @@
  * Block Breakdown Drawer
  *
  * Displays analyzed prompt segments in a slide-out drawer.
- * Now includes inline prompt highlighting for visual block mapping.
+ * Now includes inline prompt highlighting for visual segment mapping.
+ *
+ * Naming:
+ * - PromptSegment = transient parsed output from API (used here)
+ * - PromptBlock = stored entity in database (NOT used here)
  */
 
 import { useMemo, useState } from 'react';
@@ -11,7 +15,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
 import {
   PromptInlineViewer,
-  type PromptBlock,
+  type PromptSegment,
 } from '@features/prompts/components/PromptInlineViewer';
 
 // ============================================================================
@@ -90,11 +94,11 @@ export function BlockBreakdownDrawer({
     }, {} as Record<string, PromptSegmentData[]>);
   }, [analysis?.segments]);
 
-  // Convert to PromptBlock format for inline viewer
-  const viewerBlocks: PromptBlock[] = useMemo(() => {
+  // Convert to PromptSegment format for inline viewer
+  const viewerSegments: PromptSegment[] = useMemo(() => {
     if (!analysis?.segments) return [];
     return analysis.segments.map((seg) => ({
-      role: seg.role as PromptBlock['role'],
+      role: seg.role as PromptSegment['role'],
       text: seg.text,
       start_pos: seg.start_pos,
       end_pos: seg.end_pos,
@@ -104,8 +108,8 @@ export function BlockBreakdownDrawer({
   }, [analysis?.segments]);
 
   // Check if we have valid position data for inline view
-  const hasPositionData = viewerBlocks.some(
-    (b) => typeof b.start_pos === 'number' && typeof b.end_pos === 'number'
+  const hasPositionData = viewerSegments.some(
+    (s) => typeof s.start_pos === 'number' && typeof s.end_pos === 'number'
   );
 
   const roleOrder = ['character', 'action', 'setting', 'mood', 'romance', 'other'];
@@ -213,7 +217,7 @@ export function BlockBreakdownDrawer({
                   <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
                     <PromptInlineViewer
                       prompt={analysis.prompt}
-                      blocks={viewerBlocks}
+                      blocks={viewerSegments}
                       showLegend
                       onBlockClick={(block) => onInsertBlock(block.text)}
                     />
