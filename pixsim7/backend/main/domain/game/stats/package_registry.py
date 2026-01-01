@@ -25,6 +25,7 @@ from typing import Dict, List, Tuple, Optional, Set
 from pydantic import BaseModel, Field
 import logging
 
+from pixsim7.backend.main.lib.registry import merge_by_id
 from .schemas import StatDefinition
 from .derivation_schemas import DerivationCapability
 
@@ -300,7 +301,11 @@ def get_merged_stats_config(world_meta: Optional[Dict] = None) -> "WorldStatsCon
 
 
 def _merge_definition(base: "StatDefinition", override: Dict) -> "StatDefinition":
-    """Merge an override dict into a base definition."""
+    """
+    Merge an override dict into a base definition.
+
+    Uses shared merge_by_id utility for tiers and levels.
+    """
     from .schemas import StatTier, StatLevel
 
     merged = base.model_copy(deep=True)
@@ -311,27 +316,27 @@ def _merge_definition(base: "StatDefinition", override: Dict) -> "StatDefinition
     if "description" in override:
         merged.description = override["description"]
 
-    # Merge tiers (add/replace by ID)
+    # Merge tiers (add/replace by ID) using shared utility
     if "tiers" in override:
-        tier_map = {t.id: t for t in merged.tiers}
-        for tier_data in override["tiers"]:
+        base_tiers = [t.model_dump() for t in merged.tiers]
+        merged_tier_dicts, _, _ = merge_by_id(base_tiers, override["tiers"], id_field="id")
+        merged.tiers = []
+        for tier_data in merged_tier_dicts:
             try:
-                tier = StatTier.model_validate(tier_data)
-                tier_map[tier.id] = tier
+                merged.tiers.append(StatTier.model_validate(tier_data))
             except Exception:
                 pass
-        merged.tiers = list(tier_map.values())
 
-    # Merge levels (add/replace by ID)
+    # Merge levels (add/replace by ID) using shared utility
     if "levels" in override:
-        level_map = {lvl.id: lvl for lvl in merged.levels}
-        for level_data in override["levels"]:
+        base_levels = [lvl.model_dump() for lvl in merged.levels]
+        merged_level_dicts, _, _ = merge_by_id(base_levels, override["levels"], id_field="id")
+        merged.levels = []
+        for level_data in merged_level_dicts:
             try:
-                level = StatLevel.model_validate(level_data)
-                level_map[level.id] = level
+                merged.levels.append(StatLevel.model_validate(level_data))
             except Exception:
                 pass
-        merged.levels = list(level_map.values())
 
     return merged
 
