@@ -30,6 +30,7 @@ from .package_loader import (
 from .core_package import (
     CORE_COMPOSITION_PACKAGE,
     register_core_composition_package,
+    reset_core_composition_registration,
 )
 from .role_resolver import (
     resolve_role,
@@ -54,6 +55,7 @@ __all__ = [
     # Core package
     "CORE_COMPOSITION_PACKAGE",
     "register_core_composition_package",
+    "reset_core_composition_registration",
     # Role resolver
     "resolve_role",
     "resolve_role_from_tags",

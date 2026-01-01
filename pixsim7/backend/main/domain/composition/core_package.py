@@ -97,3 +97,9 @@ def register_core_composition_package() -> None:
 
     register_composition_package(CORE_COMPOSITION_PACKAGE)
     _registered = True
+
+
+def reset_core_composition_registration() -> None:
+    """Reset the registration flag. Used by clear_composition_packages()."""
+    global _registered
+    _registered = False
