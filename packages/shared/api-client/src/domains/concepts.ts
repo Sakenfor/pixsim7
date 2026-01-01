@@ -42,6 +42,8 @@ export interface ConceptKindInfo {
   group_name: string;
   /** Whether this kind supports package filtering */
   supports_packages: boolean;
+  /** Whether to include in label autocomplete suggestions */
+  include_in_labels: boolean;
 }
 
 /**

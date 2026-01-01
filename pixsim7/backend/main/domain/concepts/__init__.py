@@ -17,15 +17,20 @@ Usage:
 
     # List all available kinds
     kinds = get_all_kinds()  # ['role', 'part', 'pose', 'influence_region']
+
+    # List kinds for label autocomplete
+    label_kinds = get_label_kinds()  # Only kinds with include_in_labels=True
 """
 from .registry import (
     get_provider,
     get_registered_providers,
     get_all_kinds,
+    get_label_kinds,
     get_concept_provider,  # backward-compat alias
     get_all_providers,  # backward-compat
     reset_providers,
     ConceptProvider,
+    ConceptProviderError,
 )
 from .providers import concept_provider
 
@@ -34,7 +39,9 @@ __all__ = [
     "get_provider",
     "get_registered_providers",
     "get_all_kinds",
+    "get_label_kinds",
     "ConceptProvider",
+    "ConceptProviderError",
     "concept_provider",
     # Backward-compat
     "get_concept_provider",

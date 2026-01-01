@@ -208,6 +208,11 @@ RoleConceptRef = _make_concept_ref_type("role")
 # Combines anatomy_parts and anatomy_regions from ontology.yaml into unified kind.
 PartConceptRef = _make_concept_ref_type("part")
 
+# DEPRECATED: Body region concepts merged into 'part' kind.
+# Kept as alias for backward compatibility with existing code.
+# New code should use PartConceptRef.
+BodyRegionConceptRef = PartConceptRef  # Deprecated alias
+
 # Influence region concepts (influence_region:foreground, influence_region:background, etc.)
 # Built-in regions for image composition masking.
 InfluenceRegionConceptRef = _make_concept_ref_type("influence_region")
@@ -310,6 +315,7 @@ __all__ = [
     "BranchIntentConceptRef",
     "RoleConceptRef",
     "PartConceptRef",
+    "BodyRegionConceptRef",  # Deprecated alias for PartConceptRef
     "InfluenceRegionConceptRef",
     # Factory
     "concept_ref_field",

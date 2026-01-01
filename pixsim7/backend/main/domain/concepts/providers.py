@@ -8,9 +8,8 @@ Providers self-register using the @concept_provider decorator, eliminating
 the need to manually update registry.py or __init__.py when adding new kinds.
 """
 from abc import ABC, abstractmethod
-from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Optional, Type, TypeVar
 import yaml
 
 from pixsim7.backend.main.routes.concepts.schemas import ConceptResponse
@@ -21,7 +20,16 @@ _ONTOLOGY_PATH = Path(__file__).parent.parent / "ontology" / "data" / "ontology.
 # Provider registry (populated by @concept_provider decorator)
 _provider_registry: Dict[str, "ConceptProvider"] = {}
 
+# Track registered provider classes for re-initialization after reset
+_provider_classes: List[Type["ConceptProvider"]] = []
+
 T = TypeVar("T", bound="ConceptProvider")
+
+
+class ConceptProviderError(Exception):
+    """Error during concept provider registration or operation."""
+
+    pass
 
 
 def concept_provider(cls: Type[T]) -> Type[T]:
@@ -36,16 +44,48 @@ def concept_provider(cls: Type[T]) -> Type[T]:
 
     The provider instance is created and registered immediately.
     No manual imports or registration calls needed.
+
+    Raises:
+        ConceptProviderError: If kind is empty or already registered.
     """
-    # Instantiate and register
+    # Instantiate to get kind/group_name values
     instance = cls()
+
+    # Validate kind is set
+    if not instance.kind:
+        raise ConceptProviderError(
+            f"Provider {cls.__name__} has empty 'kind'. "
+            "Set kind = 'your_kind' as a class attribute."
+        )
+
+    # Validate group_name is set
+    if not instance.group_name:
+        raise ConceptProviderError(
+            f"Provider {cls.__name__} has empty 'group_name'. "
+            "Set group_name = 'Display Name' as a class attribute."
+        )
+
+    # Check for duplicate registration
+    if instance.kind in _provider_registry:
+        existing = _provider_registry[instance.kind]
+        raise ConceptProviderError(
+            f"Duplicate concept kind '{instance.kind}': "
+            f"{cls.__name__} conflicts with {type(existing).__name__}"
+        )
+
+    # Register instance and track class for re-initialization
     _provider_registry[instance.kind] = instance
+    _provider_classes.append(cls)
+
     return cls
 
 
 def get_registered_providers() -> Dict[str, "ConceptProvider"]:
-    """Get all registered providers (keyed by kind)."""
-    return _provider_registry
+    """Get all registered providers (keyed by kind).
+
+    Returns a copy to prevent external mutation of the registry.
+    """
+    return dict(_provider_registry)
 
 
 def get_provider(kind: str) -> Optional["ConceptProvider"]:
@@ -58,6 +98,27 @@ def get_all_kinds() -> List[str]:
     return list(_provider_registry.keys())
 
 
+def get_label_kinds() -> List[str]:
+    """Get concept kinds that should be included in label autocomplete."""
+    return [
+        kind
+        for kind, provider in _provider_registry.items()
+        if provider.include_in_labels
+    ]
+
+
+def reset_providers() -> None:
+    """Reset and re-initialize the provider registry.
+
+    Clears the registry and re-instantiates all registered provider classes.
+    Useful for testing.
+    """
+    _provider_registry.clear()
+    for cls in _provider_classes:
+        instance = cls()
+        _provider_registry[instance.kind] = instance
+
+
 class ConceptProvider(ABC):
     """Abstract base class for concept providers.
 
@@ -68,6 +129,7 @@ class ConceptProvider(ABC):
 
     Optional overrides:
         - supports_packages: bool - Whether package filtering is supported (default: False)
+        - include_in_labels: bool - Whether to include in label autocomplete (default: True)
         - get_priority() - Priority ordering of concept IDs
     """
 
@@ -77,6 +139,10 @@ class ConceptProvider(ABC):
 
     # Whether this provider supports package filtering
     supports_packages: bool = False
+
+    # Whether to include this kind in label autocomplete suggestions
+    # Set to False for concept kinds that aren't meant for labeling
+    include_in_labels: bool = True
 
     @abstractmethod
     def get_concepts(
@@ -365,12 +431,15 @@ class InfluenceRegionConceptProvider(ConceptProvider):
 
 # Export
 __all__ = [
-    # Decorator
+    # Decorator and errors
     "concept_provider",
+    "ConceptProviderError",
     # Registry access
     "get_registered_providers",
     "get_provider",
     "get_all_kinds",
+    "get_label_kinds",
+    "reset_providers",
     # Base class
     "ConceptProvider",
     # Provider implementations (for type hints, not for manual registration)

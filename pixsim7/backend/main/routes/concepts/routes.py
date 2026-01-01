@@ -72,11 +72,42 @@ async def list_kinds():
             kind=provider.kind,
             group_name=provider.group_name,
             supports_packages=provider.supports_packages,
+            include_in_labels=provider.include_in_labels,
         )
         for provider in providers.values()
     ]
 
     return ConceptKindsResponse(kinds=kinds)
+
+
+@router.get("/body_region", response_model=ConceptsListResponse, deprecated=True)
+async def list_body_regions_deprecated(
+    packages: Optional[str] = Query(None),
+):
+    """
+    DEPRECATED: Use /concepts/part instead.
+
+    Body regions have been merged into the 'part' kind.
+    This endpoint returns part concepts for backward compatibility.
+    """
+    from pixsim7.backend.main.domain.concepts import get_provider
+
+    provider = get_provider("part")
+    if not provider:
+        raise HTTPException(status_code=500, detail="Part provider not found")
+
+    package_ids = None
+    if packages:
+        package_ids = [p.strip() for p in packages.split(",") if p.strip()]
+
+    concepts = provider.get_concepts(package_ids)
+
+    return ConceptsListResponse(
+        kind="body_region",  # Keep original kind for compat
+        concepts=concepts,
+        priority=provider.get_priority(),
+        group_name="Body Regions (deprecated)",
+    )
 
 
 @router.get("/roles", response_model=RolesListResponse)

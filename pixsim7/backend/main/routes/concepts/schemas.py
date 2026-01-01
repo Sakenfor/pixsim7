@@ -63,6 +63,10 @@ class ConceptKindInfo(BaseModel):
         default=False,
         description="Whether this kind supports package filtering",
     )
+    include_in_labels: bool = Field(
+        default=True,
+        description="Whether to include in label autocomplete suggestions",
+    )
 
 
 class ConceptKindsResponse(BaseModel):

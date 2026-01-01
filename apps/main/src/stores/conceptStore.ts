@@ -205,13 +205,15 @@ export const useConceptStore = create<ConceptState>((set, get) => ({
 
   /**
    * Get kinds to use for label autocomplete.
-   * Uses API-discovered kinds if available, otherwise defaults.
+   * Uses API-discovered kinds filtered by include_in_labels, otherwise defaults.
    */
   getLabelKinds: () => {
     const state = get();
     if (state.kindsLoaded && state.availableKinds.length > 0) {
-      // Use all available kinds from API
-      return state.availableKinds.map((k) => k.kind);
+      // Filter to only kinds marked for label inclusion
+      return state.availableKinds
+        .filter((k) => k.include_in_labels)
+        .map((k) => k.kind);
     }
     // Fallback to default known kinds
     return [...DEFAULT_LABEL_KINDS];
