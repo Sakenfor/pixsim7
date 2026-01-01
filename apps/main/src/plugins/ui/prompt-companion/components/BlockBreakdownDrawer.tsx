@@ -217,9 +217,9 @@ export function BlockBreakdownDrawer({
                   <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
                     <PromptInlineViewer
                       prompt={analysis.prompt}
-                      blocks={viewerSegments}
+                      segments={viewerSegments}
                       showLegend
-                      onBlockClick={(block) => onInsertBlock(block.text)}
+                      onSegmentClick={(segment) => onInsertBlock(segment.text)}
                     />
                   </div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">

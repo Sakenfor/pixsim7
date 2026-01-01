@@ -41,13 +41,13 @@ export interface PromptInlineViewerProps {
   /** Original prompt text */
   prompt: string;
   /** Parsed segments with position data */
-  blocks: PromptSegmentDisplay[];
+  segments: PromptSegmentDisplay[];
   /** Show role legend below text */
   showLegend?: boolean;
   /** Custom class for the container */
   className?: string;
   /** Click handler for segment spans */
-  onBlockClick?: (segment: PromptSegmentDisplay) => void;
+  onSegmentClick?: (segment: PromptSegmentDisplay) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,24 +170,24 @@ function buildSpans(prompt: string, segments: PromptSegmentDisplay[]): TextSpan[
 
 export function PromptInlineViewer({
   prompt,
-  blocks,
+  segments,
   showLegend = false,
   className = '',
-  onBlockClick,
+  onSegmentClick,
 }: PromptInlineViewerProps) {
   const [hoveredSegment, setHoveredSegment] = useState<PromptSegmentDisplay | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
-  const spans = useMemo(() => buildSpans(prompt, blocks), [prompt, blocks]);
+  const spans = useMemo(() => buildSpans(prompt, segments), [prompt, segments]);
 
   // Get unique roles present in segments
   const presentRoles = useMemo(() => {
     const roles = new Set<PromptSegmentRole>();
-    for (const seg of blocks) {
+    for (const seg of segments) {
       roles.add(seg.role);
     }
     return Array.from(roles);
-  }, [blocks]);
+  }, [segments]);
 
   const handleMouseEnter = useCallback((e: React.MouseEvent, segment: PromptSegmentDisplay) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -221,7 +221,7 @@ export function PromptInlineViewer({
               `}
               onMouseEnter={(e) => handleMouseEnter(e, span.segment!)}
               onMouseLeave={handleMouseLeave}
-              onClick={() => onBlockClick?.(span.segment!)}
+              onClick={() => onSegmentClick?.(span.segment!)}
             >
               {span.text}
             </span>
