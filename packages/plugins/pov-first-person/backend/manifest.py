@@ -48,6 +48,6 @@ manifest = PluginManifest(
 # Registration Hook
 # =============================================================================
 
-def on_load() -> None:
+def on_load(app) -> None:
     """Called when plugin loads. Registers the composition package."""
     register_composition_package_from_yaml(PACKAGE_PATH, plugin_id=manifest.id)
