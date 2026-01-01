@@ -47,6 +47,8 @@
   let assetsLoadedCount = 0;
   let assetsNextCursor = null;
   let adStatusCache = new Map();
+  // Cache TTL in milliseconds (5 minutes to match backend cache)
+  const AD_STATUS_CACHE_TTL = 5 * 60 * 1000;
 
   // Sync caches with modules
   function syncModuleCaches() {
@@ -97,9 +99,9 @@
     const selected = getCurrentAccount();
     if (!selected) return;
 
-    // Skip if recently cached
+    // Skip if recently cached (use same TTL as prefetch)
     const cached = adStatusCache.get(selected.id);
-    if (cached && (Date.now() - cached.time) < 60000) return;
+    if (cached && (Date.now() - cached.time) < AD_STATUS_CACHE_TTL) return;
 
     sendMessageWithTimeout({
       action: 'getPixverseStatus',
@@ -128,12 +130,12 @@
   }
 
   // Prefetch ad status for multiple accounts (used when menu opens)
-  function prefetchAdStatusForAccounts(accounts, limit = 5) {
+  function prefetchAdStatusForAccounts(accounts, limit = 20) {
     // Only fetch for accounts without recent cache, limited to avoid overload
     const toFetch = accounts
       .filter(a => {
         const cached = adStatusCache.get(a.id);
-        return !cached || (Date.now() - cached.time) > 60000;
+        return !cached || (Date.now() - cached.time) > AD_STATUS_CACHE_TTL;
       })
       .slice(0, limit);
 
@@ -403,8 +405,8 @@
       }
     }).catch(() => {});
 
-    // Prefetch ad status for accounts that will be shown in dropdown
-    prefetchAdStatusForAccounts(accountsCache, 8);
+    // Prefetch ad status for all accounts in dropdown (uses default limit of 20)
+    prefetchAdStatusForAccounts(accountsCache);
 
     const menu = document.createElement('div');
     menu.className = MENU_CLASS;
@@ -560,7 +562,10 @@
     if (cached?.data) {
       renderAdsPill(adsPill, cached.data);
     } else {
-      adsPill.style.display = 'none'; // Hide until data arrives
+      // Show placeholder instead of hiding - will be updated when data arrives
+      adsPill.textContent = 'Ads ?/?';
+      adsPill.title = 'Loading ad status...';
+      adsPill.style.color = COLORS.textMuted;
     }
     meta.appendChild(adsPill);
 

@@ -95,9 +95,10 @@ async function syncCreditsThrottled(reason, options = {}) {
       console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
       await chrome.storage.local.set({ lastCreditSyncAt: now });
 
-      // Clear ad status cache so it gets refreshed on next view
-      accountExtendedInfoCache.clear();
-      persistAccountExtendedInfoCache();
+      // NOTE: Don't clear accountExtendedInfoCache here!
+      // Ad status has its own 5-minute TTL and is independent of credits.
+      // Clearing it causes all ad pills to show "Ads …" loading state,
+      // creating a jarring "revert" effect for users.
 
       // Refresh accounts to show updated credits if Accounts tab is active
       if (currentUser && document.getElementById('tab-accounts').classList.contains('active')) {
