@@ -979,3 +979,49 @@ async def tick_world_manually(
         npcs_simulated=npcs_simulated,
         tick_duration_ms=tick_duration_ms,
     )
+
+
+# =============================================================================
+# World Config Endpoint (Unified Stats/Gating/Manifest)
+# =============================================================================
+
+from pixsim7.backend.main.domain.stats import (
+    get_world_config,
+    WorldConfigResponse,
+)
+
+
+@router.get("/{world_id}/config", response_model=WorldConfigResponse)
+async def get_world_config_endpoint(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> WorldConfigResponse:
+    """
+    Get unified world configuration with merged stat definitions.
+
+    Returns the complete world configuration including:
+    - stats_config: Merged stat definitions (base + world overrides)
+    - manifest: World manifest (turn preset, enabled plugins, etc.)
+    - intimacy_gating: Intimacy gating thresholds
+    - tier_order: Pre-computed tier ordering for relationships
+    - level_order: Pre-computed level ordering for relationships
+    - schema_version: Schema version for validation
+
+    The base stat definitions come from registered providers (e.g., the
+    default relationship stats). World-specific overrides in world.meta
+    are merged on top.
+
+    Plugins can register additional stat definitions or extend existing
+    ones by using the @stat_definition_provider decorator.
+
+    This endpoint is the single source of truth for frontend configuration.
+    Frontend should fetch this on world load and use the pre-computed
+    orderings for gating comparisons.
+    """
+    world = await _get_owned_world(world_id, user, game_world_service)
+
+    # Get merged config using the stats registry
+    config = get_world_config(world.meta)
+
+    return config
