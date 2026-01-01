@@ -29,6 +29,13 @@ from fastapi import FastAPI, APIRouter
 import structlog
 
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.lib.registry import (
+    discover_manifests,
+    discover_nested_manifests,
+    NameValidator,
+    DEFAULT_NAME_PATTERN,
+    DEFAULT_RESERVED_NAMES,
+)
 from .types import PluginManifest, BackendPlugin, plugin_hooks, PluginEvents
 from .permissions import (
     validate_permissions,
@@ -65,9 +72,11 @@ class PluginManager:
         self.load_order: list[str] = []
         self.failed_plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {error_message, manifest?, required?}
 
-    # Valid plugin name pattern: lowercase alphanumeric, underscores, hyphens
-    _PLUGIN_NAME_PATTERN = __import__('re').compile(r'^[a-z][a-z0-9_-]*$')
-    _RESERVED_NAMES = {'plugin', 'plugins', 'core', 'system', 'internal', 'test', 'tests'}
+        # Use shared name validator for plugin discovery
+        self._name_validator = NameValidator(
+            pattern=DEFAULT_NAME_PATTERN,
+            reserved=set(DEFAULT_RESERVED_NAMES),
+        )
 
     def discover_plugins(self, plugin_dir: str | Path) -> list[str]:
         """
@@ -85,33 +94,13 @@ class PluginManager:
         Plugin names must be lowercase alphanumeric with underscores/hyphens.
         Reserved names (plugin, core, system, etc.) are not allowed.
         """
-        plugin_dir = Path(plugin_dir)
-        discovered = []
-
-        if not plugin_dir.exists():
-            logger.warning(f"Plugin directory not found: {plugin_dir}")
-            return []
-
-        for item in plugin_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('_'):
-                # Validate plugin name format
-                if not self._PLUGIN_NAME_PATTERN.match(item.name):
-                    logger.warning(
-                        f"Skipping invalid plugin name (must be lowercase alphanumeric with _/-): {item.name}"
-                    )
-                    continue
-
-                # Check reserved names
-                if item.name in self._RESERVED_NAMES:
-                    logger.warning(f"Skipping reserved plugin name: {item.name}")
-                    continue
-
-                manifest_file = item / 'manifest.py'
-                if manifest_file.exists():
-                    discovered.append(item.name)
-                    logger.debug(f"Discovered plugin: {item.name}")
-
-        return discovered
+        # Use shared discovery utility with name validation
+        manifests = discover_manifests(
+            plugin_dir,
+            manifest_file="manifest.py",
+            validator=self._name_validator,
+        )
+        return [m.name for m in manifests]
 
     def discover_external_plugins(self, external_plugins_dir: str | Path) -> list[tuple[str, Path]]:
         """
@@ -136,40 +125,15 @@ class PluginManager:
         Returns:
             List of (plugin_name, manifest_dir_path) tuples
         """
-        external_plugins_dir = Path(external_plugins_dir)
-        discovered: list[tuple[str, Path]] = []
-
-        if not external_plugins_dir.exists():
-            logger.debug(f"External plugins directory not found: {external_plugins_dir}")
-            return []
-
-        for item in external_plugins_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('_') and not item.name.startswith('.'):
-                # Check if this is an external plugin (has backend/ subdirectory with manifest.py)
-                backend_dir = item / 'backend'
-                manifest_file = backend_dir / 'manifest.py'
-
-                if manifest_file.exists():
-                    # External plugin found - use the parent directory name as plugin name
-                    plugin_name = item.name
-
-                    # Validate plugin name format
-                    if not self._PLUGIN_NAME_PATTERN.match(plugin_name):
-                        logger.warning(
-                            f"Skipping invalid external plugin name "
-                            f"(must be lowercase alphanumeric with _/-): {plugin_name}"
-                        )
-                        continue
-
-                    # Check reserved names
-                    if plugin_name in self._RESERVED_NAMES:
-                        logger.warning(f"Skipping reserved external plugin name: {plugin_name}")
-                        continue
-
-                    discovered.append((plugin_name, backend_dir))
-                    logger.debug(f"Discovered external plugin: {plugin_name} at {backend_dir}")
-
-        return discovered
+        # Use shared nested discovery utility
+        manifests = discover_nested_manifests(
+            external_plugins_dir,
+            nested_subdir="backend",
+            manifest_file="manifest.py",
+            validator=self._name_validator,
+        )
+        # Return tuples of (name, package_dir) for compatibility with load_external_plugin
+        return [(m.name, m.package_dir) for m in manifests]
 
     def load_external_plugin(self, plugin_name: str, backend_dir: Path) -> bool:
         """

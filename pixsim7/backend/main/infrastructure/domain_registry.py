@@ -10,6 +10,13 @@ from pathlib import Path
 from typing import Any, Optional, Type, List
 import structlog
 
+from pixsim7.backend.main.lib.registry import (
+    discover_manifests,
+    resolve_load_order,
+    CircularDependencyError,
+    MissingDependencyError,
+)
+
 logger = structlog.get_logger(__name__)
 
 
@@ -65,21 +72,9 @@ class DomainModelRegistry:
           game_models/
             manifest.py
         """
-        domain_dir = Path(domain_dir)
-        discovered = []
-
-        if not domain_dir.exists():
-            logger.warning(f"Domain models directory not found: {domain_dir}")
-            return []
-
-        for item in domain_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('_'):
-                manifest_file = item / 'manifest.py'
-                if manifest_file.exists():
-                    discovered.append(item.name)
-                    logger.debug(f"Discovered domain package: {item.name}")
-
-        return discovered
+        # Use shared discovery utility (no name validation for domain models)
+        manifests = discover_manifests(domain_dir, manifest_file="manifest.py")
+        return [m.name for m in manifests]
 
     def load_package(self, package_name: str, domain_dir: str | Path) -> bool:
         """
@@ -145,36 +140,16 @@ class DomainModelRegistry:
         Resolve package load order based on dependencies.
 
         Returns list of package IDs in load order.
-        Raises ValueError if circular dependencies detected.
+        Raises CircularDependencyError or MissingDependencyError on failure.
         """
-        loaded = set()
-        load_order = []
+        # Build dependency map from loaded packages
+        dependencies = {
+            package_id: list(package["manifest"].dependencies)
+            for package_id, package in self.packages.items()
+        }
 
-        def visit(package_id: str, visiting: set):
-            if package_id in loaded:
-                return
-            if package_id in visiting:
-                raise ValueError(f"Circular dependency detected: {package_id}")
-
-            visiting.add(package_id)
-
-            package = self.packages.get(package_id)
-            if not package:
-                raise ValueError(f"Missing dependency: {package_id}")
-
-            # Visit dependencies first
-            for dep in package['manifest'].dependencies:
-                visit(dep, visiting)
-
-            visiting.remove(package_id)
-            loaded.add(package_id)
-            load_order.append(package_id)
-
-        # Visit all packages
-        for package_id in self.packages:
-            visit(package_id, set())
-
-        return load_order
+        # Use shared dependency resolution
+        return resolve_load_order(dependencies, strict=True)
 
     def register_all(self) -> int:
         """
@@ -215,7 +190,7 @@ class DomainModelRegistry:
 
             return len(self.registered_models)
 
-        except ValueError as e:
+        except (CircularDependencyError, MissingDependencyError) as e:
             logger.error(f"Dependency resolution failed: {e}")
             raise
 
