@@ -21,11 +21,7 @@
 
 import type { GameSessionDTO } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
-import {
-  extract_relationship_values,
-  compute_relationship_tier,
-  compute_intimacy_level,
-} from '../relationships/computation';
+import { extract_relationship_values } from '../relationships/computation';
 
 // ===== Immutability Helpers =====
 
@@ -46,8 +42,12 @@ function cloneSession(session: GameSessionDTO): GameSessionDTO {
  * Get NPC relationship state from session
  *
  * Extracts numeric relationship values and flags for a specific NPC.
- * Prefers backend-computed tierId and intimacyLevelId when available.
- * Falls back to local computation if not present.
+ * Uses backend-computed tierId and intimacyLevelId when available.
+ * If backend hasn't computed these values, they remain undefined.
+ *
+ * Use the `isNormalized` field to check if backend computed the tier/level.
+ * For preview/editor scenarios where you need fallback computation,
+ * use the preview API or the deprecated compute_* functions.
  *
  * @param session - Game session containing relationships
  * @param npcId - NPC ID to get relationship for
@@ -70,21 +70,13 @@ export function getNpcRelationshipState(
     npcId
   );
 
-  // Prefer backend-computed values
-  let tierId = typeof raw.tierId === 'string' ? raw.tierId : undefined;
-  let intimacyLevelId = raw.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
+  // Use backend-computed values only (no fallback)
+  // If backend didn't compute, values remain undefined
+  const tierId = typeof raw.tierId === 'string' ? raw.tierId : undefined;
+  const intimacyLevelId = raw.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
 
   // Marker indicating whether backend normalization ran
-  const isNormalized =
-    raw.tierId !== undefined || raw.intimacyLevelId !== undefined;
-
-  // Fallback to local computation if not provided by backend
-  if (!tierId) {
-    tierId = compute_relationship_tier(affinity);
-  }
-  if (intimacyLevelId === undefined) {
-    intimacyLevelId = compute_intimacy_level({ affinity, trust, chemistry, tension });
-  }
+  const isNormalized = tierId !== undefined || intimacyLevelId !== undefined;
 
   return {
     affinity,

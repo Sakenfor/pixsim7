@@ -19,7 +19,7 @@
   "author": "PixSim Team",
   "license": "UNLICENSED",
   "peerDependencies": {
-    "@pixsim7/shared-types": "workspace:*"
+    "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.0.0"

@@ -20,6 +20,7 @@ import {
 } from '@pixsim7/game.engine';
 import type { GameSessionDTO, GameWorldDetail } from '@lib/registries';
 import { useGameStateStore } from '@/stores/gameStateStore';
+import { useWorldConfigSync } from '@/hooks/useWorldConfigSync';
 import {
   createGameSession,
   getGameWorld,
@@ -114,6 +115,10 @@ export function useGameRuntime(): UseGameRuntimeReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastTickEvents, setLastTickEvents] = useState<GameEvent[]>([]);
+
+  // Sync world config store when world changes
+  // This keeps worldConfigStore in sync with the current world's meta config
+  useWorldConfigSync(world);
 
   // Connect to gameStateStore for mode transitions
   const {

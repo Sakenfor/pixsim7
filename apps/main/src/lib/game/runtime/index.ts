@@ -86,3 +86,16 @@ export type {
   OnTickHook,
   AfterTickHook,
 } from './gameHooks';
+
+// World config (reactive access to world.meta configs)
+// Note: useWorldConfigSync is called internally by useGameRuntime
+export {
+  useWorldConfig,
+  useStatsConfig,
+  useManifest,
+  useIntimacyGating,
+  useTurnDelta,
+  useRelationshipTiers,
+  useIntimacyLevels,
+  usePluginConfig,
+} from '@/hooks/useWorldConfig';

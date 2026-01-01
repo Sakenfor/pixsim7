@@ -141,6 +141,15 @@ export * from './compositionPackages'
 export * from './region-labels.generated'
 
 // ===================
+// World Configuration Schemas
+// ===================
+
+export * from './worldConfig'
+
+// Namespace export for organized access
+export * as WorldConfig from './worldConfig'
+
+// ===================
 // Backend OpenAPI Contract (Generated)
 // ===================
 //

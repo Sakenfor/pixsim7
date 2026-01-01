@@ -2,24 +2,27 @@
  * Intimacy Gating System
  *
  * Centralized config-driven gating logic for intimacy and content ratings.
- * Replaces hardcoded thresholds with world-configurable values that integrate
- * with the stat system.
+ * Uses world-configurable values from the WorldConfig system.
  *
+ * Types and defaults are imported from @pixsim7/shared.types (single source of truth).
+ * This file contains the business logic functions that operate on those types.
+ *
+ * @see packages/shared/types/src/worldConfig.ts - Canonical schemas & defaults
  * @see claude-tasks/109-intimacy-and-content-gating-stat-integration.md
  */
 
-/**
- * Intimacy band levels
- */
-export type IntimacyBand = 'none' | 'light' | 'deep' | 'intense';
+import {
+  type IntimacyBand,
+  type ContentRating,
+  type IntimacyGatingConfig,
+  parseIntimacyGating,
+} from '@pixsim7/shared.types';
+
+// Re-export types for consumers that import from this file
+export type { IntimacyBand, ContentRating, IntimacyGatingConfig };
 
 /**
- * Content rating levels
- */
-export type ContentRating = 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
-
-/**
- * Relationship state with metrics
+ * Relationship state with metrics (local type for function signatures)
  */
 export interface RelationshipState {
   affinity?: number;
@@ -31,156 +34,36 @@ export interface RelationshipState {
 }
 
 /**
- * Intimacy gating configuration
- *
- * Stored in world.meta.intimacy_gating (optional)
- * Falls back to defaults if not configured
+ * Result type for content rating checks
  */
-export interface IntimacyGatingConfig {
-  version: number;
-
-  // Intimacy band thresholds (derived from raw metrics)
-  intimacyBands?: {
-    light?: { chemistry?: number; affinity?: number };
-    deep?: { chemistry?: number; affinity?: number };
-    intense?: { chemistry?: number; affinity?: number };
-  };
-
-  // Content rating gates (what's required for each rating)
-  contentRatings?: {
-    romantic?: {
-      minimumBand?: IntimacyBand;
-      minimumChemistry?: number;
-      minimumAffinity?: number;
-      minimumLevel?: string;
-    };
-    mature_implied?: {
-      minimumBand?: IntimacyBand;
-      minimumChemistry?: number;
-      minimumAffinity?: number;
-      minimumLevel?: string;
-    };
-    restricted?: {
-      minimumBand?: IntimacyBand;
-      minimumChemistry?: number;
-      minimumAffinity?: number;
-      minimumLevel?: string;
-    };
-  };
-
-  // Interaction-specific gates
-  interactions?: {
-    seduction?: {
-      minimumAffinity?: number;
-      minimumChemistry?: number;
-      appropriateLevels?: string[];
-    };
-    sensualTouch?: {
-      minimumAffinity?: number;
-      minimumLevel?: string;
-    };
+export interface ContentGatingResult {
+  supported: boolean;
+  reason?: string;
+  suggestedMinimums?: {
+    chemistry?: number;
+    affinity?: number;
+    intimacyLevel?: string;
+    intimacyBand?: IntimacyBand;
   };
 }
 
 /**
- * Default intimacy gating configuration
- *
- * Matches existing hardcoded behavior for backwards compatibility
+ * Result type for interaction gating checks
  */
-export const DEFAULT_INTIMACY_GATING: IntimacyGatingConfig = {
-  version: 1,
-  intimacyBands: {
-    light: { chemistry: 25, affinity: 60 }, // chemistry >= 25 OR affinity >= 60
-    deep: { chemistry: 50 }, // chemistry >= 50
-    intense: { chemistry: 70, affinity: 70 }, // chemistry >= 70 AND affinity >= 70
-  },
-  contentRatings: {
-    romantic: {
-      minimumBand: 'light',
-      minimumChemistry: 25,
-      minimumAffinity: 40,
-    },
-    mature_implied: {
-      minimumBand: 'deep',
-      minimumChemistry: 50,
-      minimumAffinity: 60,
-      minimumLevel: 'intimate',
-    },
-    restricted: {
-      minimumBand: 'intense',
-      minimumChemistry: 70,
-      minimumAffinity: 70,
-      minimumLevel: 'very_intimate',
-    },
-  },
-  interactions: {
-    seduction: {
-      minimumAffinity: 30,
-      minimumChemistry: 20,
-      appropriateLevels: [
-        'light_flirt',
-        'flirting',
-        'romantic_interest',
-        'intimate',
-        'lovers',
-        'deep_bond',
-      ],
-    },
-    sensualTouch: {
-      minimumAffinity: 50,
-    },
-  },
-};
+export interface InteractionGatingResult {
+  allowed: boolean;
+  reason?: string;
+  minimumAffinity?: number;
+  minimumChemistry?: number;
+  minimumLevel?: string;
+}
 
 /**
  * Get effective intimacy gating config
  *
- * Merges world config with defaults
+ * @deprecated Use parseIntimacyGating directly from @pixsim7/shared.types
  */
-export function getIntimacyGatingConfig(
-  worldConfig?: Partial<IntimacyGatingConfig>
-): IntimacyGatingConfig {
-  if (!worldConfig) {
-    return DEFAULT_INTIMACY_GATING;
-  }
-
-  // Deep merge with defaults
-  return {
-    version: worldConfig.version ?? DEFAULT_INTIMACY_GATING.version,
-    intimacyBands: {
-      light: { ...DEFAULT_INTIMACY_GATING.intimacyBands?.light, ...worldConfig.intimacyBands?.light },
-      deep: { ...DEFAULT_INTIMACY_GATING.intimacyBands?.deep, ...worldConfig.intimacyBands?.deep },
-      intense: {
-        ...DEFAULT_INTIMACY_GATING.intimacyBands?.intense,
-        ...worldConfig.intimacyBands?.intense,
-      },
-    },
-    contentRatings: {
-      romantic: {
-        ...DEFAULT_INTIMACY_GATING.contentRatings?.romantic,
-        ...worldConfig.contentRatings?.romantic,
-      },
-      mature_implied: {
-        ...DEFAULT_INTIMACY_GATING.contentRatings?.mature_implied,
-        ...worldConfig.contentRatings?.mature_implied,
-      },
-      restricted: {
-        ...DEFAULT_INTIMACY_GATING.contentRatings?.restricted,
-        ...worldConfig.contentRatings?.restricted,
-      },
-    },
-    interactions: {
-      seduction: {
-        ...DEFAULT_INTIMACY_GATING.interactions?.seduction,
-        ...worldConfig.interactions?.seduction,
-      },
-      sensualTouch: {
-        ...DEFAULT_INTIMACY_GATING.interactions?.sensualTouch,
-        ...worldConfig.interactions?.sensualTouch,
-      },
-    },
-  };
-}
+export const getIntimacyGatingConfig = parseIntimacyGating;
 
 /**
  * Derive intimacy band from relationship metrics
@@ -191,7 +74,7 @@ export function deriveIntimacyBand(
   state: RelationshipState,
   config?: Partial<IntimacyGatingConfig>
 ): IntimacyBand {
-  const effectiveConfig = getIntimacyGatingConfig(config);
+  const effectiveConfig = parseIntimacyGating(config);
   const chemistry = state.chemistry || 0;
   const affinity = state.affinity || 0;
 
@@ -247,7 +130,7 @@ export function supportsContentRating(
     intimacyBand?: IntimacyBand;
   };
 } {
-  const effectiveConfig = getIntimacyGatingConfig(config);
+  const effectiveConfig = parseIntimacyGating(config);
 
   // SFW is always supported
   if (rating === 'sfw') {
@@ -343,7 +226,7 @@ export function getContentRatingRequirements(
   minimumAffinity?: number;
   minimumLevel?: string;
 } {
-  const effectiveConfig = getIntimacyGatingConfig(config);
+  const effectiveConfig = parseIntimacyGating(config);
 
   if (rating === 'sfw') {
     return {}; // No requirements
@@ -376,7 +259,7 @@ export function canAttemptSeduction(
   minimumAffinity?: number;
   minimumChemistry?: number;
 } {
-  const effectiveConfig = getIntimacyGatingConfig(config);
+  const effectiveConfig = parseIntimacyGating(config);
   const seductionConfig = effectiveConfig.interactions?.seduction;
 
   if (!seductionConfig) {
@@ -437,7 +320,7 @@ export function canAttemptSensualTouch(
   minimumAffinity?: number;
   minimumLevel?: string;
 } {
-  const effectiveConfig = getIntimacyGatingConfig(config);
+  const effectiveConfig = parseIntimacyGating(config);
   const touchConfig = effectiveConfig.interactions?.sensualTouch;
 
   if (!touchConfig) {

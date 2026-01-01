@@ -21,6 +21,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
   "peerDependencies": {},
   "devDependencies": {
     "typescript": "^5.4.0"
