@@ -42,7 +42,7 @@
       "Bash(python -m:*)",
       "Bash(python -c:*)",
       "Bash(pip:*)",
-      "Bash(PYTHONPATH=*)",
+      "Bash(PYTHONPATH=:*)",
       "Bash(alembic:*)",
       "Bash(docker ps:*)",
       "Bash(adb:*)",
