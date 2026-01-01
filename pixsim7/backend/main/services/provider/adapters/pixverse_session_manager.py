@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any, Awaitable, Callable, Dict, TypeVar, Union
 
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -15,6 +17,33 @@ from pixsim_logging import get_logger
 logger = get_logger()
 
 T = TypeVar("T")
+
+# Reauth cooldown settings
+REAUTH_COOLDOWN_SECONDS = 300  # 5 minutes per-account cooldown
+GLOBAL_RATE_LIMIT_COOLDOWN_SECONDS = 600  # 10 minutes global cooldown on rate limit
+
+# Module-level state for reauth cooldowns (shared across instances)
+_reauth_last_attempt: Dict[int, float] = {}  # account_id -> timestamp
+_global_rate_limit_until: float = 0.0  # timestamp when global cooldown ends
+
+# Shared reauth locks - prevents concurrent reauth attempts for the same account
+# Used by both API reauth endpoint and auto-reauth
+_reauth_locks: Dict[int, asyncio.Lock] = {}
+_reauth_locks_lock = asyncio.Lock()
+
+
+async def acquire_reauth_lock(account_id: int) -> asyncio.Lock:
+    """Get or create the reauth lock for an account."""
+    async with _reauth_locks_lock:
+        if account_id not in _reauth_locks:
+            _reauth_locks[account_id] = asyncio.Lock()
+        return _reauth_locks[account_id]
+
+
+def is_reauth_locked(account_id: int) -> bool:
+    """Check if reauth is currently in progress for an account."""
+    lock = _reauth_locks.get(account_id)
+    return lock.locked() if lock else False
 
 
 class PixverseSessionManager:
@@ -281,11 +310,40 @@ class PixverseSessionManager:
         outcome: SessionErrorOutcome,
         context: str,
     ) -> bool:
+        global _global_rate_limit_until
+
         if not outcome.should_attempt_reauth:
             logger.debug(
                 "pixverse_auto_reauth_skipped",
                 account_id=account.id,
                 reason="outcome_says_no",
+                context=context,
+            )
+            return False
+
+        # Check global rate limit cooldown (from "too many login attempts")
+        now = time.time()
+        if now < _global_rate_limit_until:
+            remaining = int(_global_rate_limit_until - now)
+            logger.info(
+                "pixverse_auto_reauth_skipped",
+                account_id=account.id,
+                reason="global_rate_limit_cooldown",
+                cooldown_remaining_seconds=remaining,
+                context=context,
+            )
+            return False
+
+        # Check per-account cooldown
+        account_id = account.id
+        last_attempt = _reauth_last_attempt.get(account_id, 0)
+        if now - last_attempt < REAUTH_COOLDOWN_SECONDS:
+            remaining = int(REAUTH_COOLDOWN_SECONDS - (now - last_attempt))
+            logger.info(
+                "pixverse_auto_reauth_skipped",
+                account_id=account.id,
+                reason="per_account_cooldown",
+                cooldown_remaining_seconds=remaining,
                 context=context,
             )
             return False
@@ -343,22 +401,39 @@ class PixverseSessionManager:
             )
             return False
 
-        logger.info(
-            "pixverse_auto_reauth_attempt",
-            account_id=account.id,
-            auth_method=auth_method.value,
-            error_code=outcome.error_code,
-            error_reason=outcome.error_reason,
-            context=context,
-        )
+        # Acquire the shared reauth lock (prevents concurrent reauth from API endpoint too)
+        reauth_lock = await acquire_reauth_lock(account_id)
 
-        success = await self.provider._try_auto_reauth(account)
+        # Check if another reauth is already in progress
+        if reauth_lock.locked():
+            logger.info(
+                "pixverse_auto_reauth_skipped",
+                account_id=account.id,
+                reason="reauth_already_in_progress",
+                context=context,
+            )
+            return False
 
-        logger.info(
-            "pixverse_auto_reauth_completed",
-            account_id=account.id,
-            success=success,
-            context=context,
-        )
+        # Mark this attempt (before trying, to prevent rapid retries)
+        _reauth_last_attempt[account_id] = now
 
-        return success
+        async with reauth_lock:
+            logger.info(
+                "pixverse_auto_reauth_attempt",
+                account_id=account.id,
+                auth_method=auth_method.value,
+                error_code=outcome.error_code,
+                error_reason=outcome.error_reason,
+                context=context,
+            )
+
+            success = await self.provider._try_auto_reauth(account)
+
+            logger.info(
+                "pixverse_auto_reauth_completed",
+                account_id=account.id,
+                success=success,
+                context=context,
+            )
+
+            return success

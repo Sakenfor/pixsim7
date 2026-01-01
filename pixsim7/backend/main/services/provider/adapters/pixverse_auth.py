@@ -6,6 +6,7 @@ Handles user info extraction, auto re-auth, and account data extraction.
 import json
 import base64
 import asyncio
+import uuid as uuid_mod
 from typing import Dict, Any
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -67,18 +68,26 @@ class PixverseAuthMixin:
                 api = PixverseAPI()
                 user_info_data = await api.get_user_info(temp_account)
             except Exception as e:  # pragma: no cover - defensive fallback
-                # No account ID/email here, but still record a normalized provider error.
-                log_provider_error(
-                    provider_id="pixverse",
-                    operation="get_user_info",
-                    stage="provider:status",
-                    account_id=None,
-                    email=None,
-                    error=str(e),
-                    error_type=e.__class__.__name__,
-                    severity="warning",
-                )
-                logger.warning(f"PixverseAPI get_user_info failed: {e}")
+                # Check if this is a session error (expected when account not active)
+                err_str = str(e).lower()
+                is_session_error = "10005" in err_str or "10003" in err_str or "logged in elsewhere" in err_str or "not login" in err_str
+
+                # Only log at warning for non-session errors; session errors are expected
+                # when checking multiple accounts but only one is active in browser
+                if not is_session_error:
+                    log_provider_error(
+                        provider_id="pixverse",
+                        operation="get_user_info",
+                        stage="provider:status",
+                        account_id=None,
+                        email=None,
+                        error=str(e),
+                        error_type=e.__class__.__name__,
+                        severity="warning",
+                    )
+                    logger.warning(f"PixverseAPI get_user_info failed: {e}")
+                else:
+                    logger.debug(f"PixverseAPI get_user_info session error (expected): {e}")
                 user_info_data = {}
 
         # Extract user details from the flat response (no "Resp" wrapper)
@@ -195,7 +204,35 @@ class PixverseAuthMixin:
             if extracted.get("jwt_token"):
                 account.jwt_token = extracted["jwt_token"]
             if extracted.get("cookies"):
-                account.cookies = extracted["cookies"]
+                # Preserve session sharing IDs from old cookies during reauth
+                # These allow backend to appear as same session as browser
+                old_cookies = account.cookies or {}
+                new_cookies = extracted["cookies"]
+                for session_id_key in ("_pxs7_trace_id", "_pxs7_anonymous_id"):
+                    if old_cookies.get(session_id_key) and session_id_key not in new_cookies:
+                        new_cookies[session_id_key] = old_cookies[session_id_key]
+                        logger.debug(
+                            "pixverse_auto_reauth_preserving_session_id",
+                            account_id=account.id,
+                            key=session_id_key,
+                        )
+                # If no session IDs exist (e.g., password-only account), generate stable ones
+                # to avoid "logged in elsewhere" errors from random IDs on each request
+                if "_pxs7_trace_id" not in new_cookies:
+                    new_cookies["_pxs7_trace_id"] = str(uuid_mod.uuid4())
+                    logger.debug(
+                        "pixverse_auto_reauth_generated_session_id",
+                        account_id=account.id,
+                        key="_pxs7_trace_id",
+                    )
+                if "_pxs7_anonymous_id" not in new_cookies:
+                    new_cookies["_pxs7_anonymous_id"] = str(uuid_mod.uuid4())
+                    logger.debug(
+                        "pixverse_auto_reauth_generated_session_id",
+                        account_id=account.id,
+                        key="_pxs7_anonymous_id",
+                    )
+                account.cookies = new_cookies
             account.provider_metadata = meta
 
             logger.debug(
@@ -221,8 +258,25 @@ class PixverseAuthMixin:
             )
             return True
         except Exception as exc:
-            msg = str(exc)
-            if "Please sign in via OAuth" in msg:
+            msg = str(exc).lower()
+
+            # Check for rate limiting - trigger global cooldown
+            if "too many login attempts" in msg or "500213" in str(exc):
+                from pixsim7.backend.main.services.provider.adapters.pixverse_session_manager import (
+                    _global_rate_limit_until,
+                    GLOBAL_RATE_LIMIT_COOLDOWN_SECONDS,
+                )
+                import time
+                import pixsim7.backend.main.services.provider.adapters.pixverse_session_manager as sm
+                sm._global_rate_limit_until = time.time() + GLOBAL_RATE_LIMIT_COOLDOWN_SECONDS
+                logger.warning(
+                    "pixverse_rate_limit_detected",
+                    account_id=account.id,
+                    cooldown_seconds=GLOBAL_RATE_LIMIT_COOLDOWN_SECONDS,
+                    note="global_reauth_cooldown_activated",
+                )
+
+            if "please sign in via oauth" in msg:
                 # This is an OAuth-only account (Google/Discord/Apple); password-based
                 # reauth will never work. Mark it as GOOGLE so future auto-reauth
                 # attempts are skipped and rely purely on cookie-based flows.
@@ -325,28 +379,40 @@ class PixverseAuthMixin:
             )
 
         except Exception as e:
-            log_provider_error(
-                provider_id="pixverse",
-                operation="get_user_info_extract",
-                stage="provider:status",
-                account_id=None,
-                email=fallback_email,
-                error=str(e),
-                error_type=type(e).__name__,
-                extra={
-                    "has_jwt": bool(ai_token),
-                    "jwt_length": len(ai_token) if ai_token else 0,
-                },
-                severity="warning",
-            )
-            logger.warning(
-                "pixverse_get_user_info_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                has_jwt=bool(ai_token),
-                jwt_length=len(ai_token) if ai_token else 0,
-                exc_info=True,
-            )
+            # Check if this is a session error (expected when account not active in browser)
+            err_str = str(e).lower()
+            is_session_error = "10005" in err_str or "10003" in err_str or "logged in elsewhere" in err_str or "not login" in err_str
+
+            # Only log at warning for non-session errors; session errors are expected
+            if not is_session_error:
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="get_user_info_extract",
+                    stage="provider:status",
+                    account_id=None,
+                    email=fallback_email,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    extra={
+                        "has_jwt": bool(ai_token),
+                        "jwt_length": len(ai_token) if ai_token else 0,
+                    },
+                    severity="warning",
+                )
+                logger.warning(
+                    "pixverse_get_user_info_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    has_jwt=bool(ai_token),
+                    jwt_length=len(ai_token) if ai_token else 0,
+                    exc_info=True,
+                )
+            else:
+                logger.debug(
+                    "pixverse_get_user_info_session_error",
+                    error=str(e),
+                    note="expected when account not active in browser, falling back to JWT",
+                )
 
             # Fallback: Parse JWT to extract username/account_id and generate pseudo-email
             try:
@@ -379,7 +445,8 @@ class PixverseAuthMixin:
                         )
                     # Do NOT fabricate placeholder emails; keep username/account_id only
                     else:
-                        logger.warning(
+                        # Not a warning - fallback_email will be used if available
+                        logger.debug(
                             "pixverse_jwt_no_email",
                             jwt_keys=list(payload.keys()),
                             has_username=bool(jwt_username),
@@ -456,6 +523,16 @@ class PixverseAuthMixin:
             cookies['_pxs7_trace_id'] = session_ids['ai_trace_id']
         if session_ids.get('ai_anonymous_id'):
             cookies['_pxs7_anonymous_id'] = session_ids['ai_anonymous_id']
+
+        # If no session IDs were captured (e.g., password login without browser),
+        # generate stable ones to avoid "logged in elsewhere" errors from random
+        # IDs being generated on each API request
+        if '_pxs7_trace_id' not in cookies:
+            cookies['_pxs7_trace_id'] = str(uuid_mod.uuid4())
+            logger.debug("pixverse_generated_session_id", key="_pxs7_trace_id")
+        if '_pxs7_anonymous_id' not in cookies:
+            cookies['_pxs7_anonymous_id'] = str(uuid_mod.uuid4())
+            logger.debug("pixverse_generated_session_id", key="_pxs7_anonymous_id")
 
         return {
             'email': email,

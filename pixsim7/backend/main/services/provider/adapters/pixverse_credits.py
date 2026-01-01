@@ -273,9 +273,25 @@ class PixverseCreditsMixin:
             cookies["_ai_token"] = jwt_token
 
         # Build headers to closely mirror the real web client and the
-        # pixverse-py session validation strategy. Some fields (ai-trace-id,
-        # ai-anonymous-id, x-platform) appear to influence which tasks are
-        # returned by the API.
+        # pixverse-py session validation strategy. Use shared session IDs from
+        # browser when available to avoid "logged in elsewhere" errors.
+        shared_trace_id = cookies.get("_pxs7_trace_id")
+        shared_anonymous_id = cookies.get("_pxs7_anonymous_id")
+
+        if shared_trace_id or shared_anonymous_id:
+            logger.debug(
+                "pixverse_ad_task_using_shared_session",
+                account_id=account.id,
+                has_trace_id=bool(shared_trace_id),
+                has_anonymous_id=bool(shared_anonymous_id),
+            )
+        else:
+            logger.debug(
+                "pixverse_ad_task_no_shared_session",
+                account_id=account.id,
+                cookie_keys=list(cookies.keys())[:10],  # First 10 keys for debugging
+            )
+
         headers: Dict[str, str] = {
             "Accept": "application/json, text/plain, */*",
             "User-Agent": (
@@ -286,8 +302,8 @@ class PixverseCreditsMixin:
             "Origin": "https://app.pixverse.ai",
             "Referer": "https://app.pixverse.ai/",
             "x-platform": "Web",
-            "ai-trace-id": str(uuid.uuid4()),
-            "ai-anonymous-id": str(uuid.uuid4()),
+            "ai-trace-id": shared_trace_id or str(uuid.uuid4()),
+            "ai-anonymous-id": shared_anonymous_id or str(uuid.uuid4()),
         }
         if jwt_token:
             headers["token"] = jwt_token

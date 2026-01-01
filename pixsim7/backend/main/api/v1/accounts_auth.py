@@ -207,9 +207,11 @@ class CookieImportResponse(BaseModel):
 
 # ===== ENDPOINTS =====
 
-# In-memory locks to prevent concurrent re-auth for the same account
-_reauth_locks: Dict[int, asyncio.Lock] = {}
-_reauth_locks_lock = asyncio.Lock()
+# Import shared reauth locks from session_manager (used by both API and auto-reauth)
+from pixsim7.backend.main.services.provider.adapters.pixverse_session_manager import (
+    acquire_reauth_lock,
+    is_reauth_locked,
+)
 
 
 @router.get("/accounts/{account_id}/cookies", response_model=AccountCookiesResponse)
@@ -350,11 +352,9 @@ async def reauth_account(
             "Account has no stored password or provider global password. Provide password in request.",
         )
 
-    # Acquire lock for this account to prevent concurrent re-auth attempts
-    async with _reauth_locks_lock:
-        if account_id not in _reauth_locks:
-            _reauth_locks[account_id] = asyncio.Lock()
-        account_lock = _reauth_locks[account_id]
+    # Acquire shared lock for this account to prevent concurrent re-auth attempts
+    # (shared with auto-reauth in session_manager)
+    account_lock = await acquire_reauth_lock(account_id)
 
     # Check if another re-auth is in progress
     if account_lock.locked():
