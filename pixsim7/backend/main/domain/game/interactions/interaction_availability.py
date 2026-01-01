@@ -122,7 +122,8 @@ def check_time_gating(
 def check_relationship_gating(
     gating: Optional[RelationshipGating],
     relationship: Optional[RelationshipSnapshot],
-    world_tier_order: Optional[List[str]] = None
+    world_tier_order: Optional[List[str]] = None,
+    world_intimacy_level_order: Optional[List[str]] = None
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if relationship state passes gating requirements.
@@ -131,6 +132,7 @@ def check_relationship_gating(
         gating: Relationship gating config
         relationship: Current relationship state
         world_tier_order: Ordered list of tier IDs from world schema (lowest to highest)
+        world_intimacy_level_order: Ordered list of intimacy level IDs (lowest to highest priority)
 
     Returns:
         (passes, disabled_reason_message)
@@ -185,11 +187,24 @@ def check_relationship_gating(
             return False, f"Tension too high (max: {gating.max_tension}, current: {relationship.tension:.0f})"
 
     # Check intimacy level
-    if gating.min_intimacy_level and relationship.intimacy_level_id:
-        # Note: Would need world intimacy schema to compare levels
-        # For now, just check exact match or presence
-        # TODO: Integrate with world intimacy level ordering when available
-        pass
+    if gating.min_intimacy_level:
+        if not relationship.intimacy_level_id:
+            return False, f"Requires {gating.min_intimacy_level} intimacy level"
+
+        if world_intimacy_level_order:
+            try:
+                current_idx = world_intimacy_level_order.index(relationship.intimacy_level_id)
+                required_idx = world_intimacy_level_order.index(gating.min_intimacy_level)
+                if current_idx < required_idx:
+                    return False, f"Requires {gating.min_intimacy_level} intimacy level or higher"
+            except ValueError:
+                # Level not found in order - fall back to exact match
+                if relationship.intimacy_level_id != gating.min_intimacy_level:
+                    return False, f"Requires {gating.min_intimacy_level} intimacy level"
+        else:
+            # No ordering provided - check exact match
+            if relationship.intimacy_level_id != gating.min_intimacy_level:
+                return False, f"Requires {gating.min_intimacy_level} intimacy level"
 
     return True, None
 
@@ -421,6 +436,7 @@ def evaluate_interaction_availability(
     definition: NpcInteractionDefinition,
     context: InteractionContext,
     world_tier_order: Optional[List[str]] = None,
+    world_intimacy_level_order: Optional[List[str]] = None,
     current_time: Optional[int] = None
 ) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
     """
@@ -429,7 +445,8 @@ def evaluate_interaction_availability(
     Args:
         definition: Interaction definition to evaluate
         context: Interaction context with NPC/session state
-        world_tier_order: Ordered list of relationship tier IDs
+        world_tier_order: Ordered list of relationship tier IDs (lowest to highest)
+        world_intimacy_level_order: Ordered list of intimacy level IDs (lowest to highest priority)
         current_time: Current time for cooldown checks. Should be world_time for gameplay consistency.
                      Falls back to real-time if not provided (for backward compatibility).
 
@@ -437,11 +454,9 @@ def evaluate_interaction_availability(
         For gameplay consistency, always pass world_time as current_time.
         This ensures cooldowns use game time, not real-world time.
 
-    Args (original docstring continues):
-        definition: Interaction definition
-        context: Current interaction context
-        world_tier_order: Ordered list of relationship tier IDs
-        current_time: Current unix timestamp (for cooldown checks)
+        To get tier/level ordering from world config:
+        - tier_order: sorted by tiers[].min value (ascending)
+        - level_order: sorted by levels[].priority value (ascending)
 
     Returns:
         (available, disabled_reason_enum, disabled_message)
@@ -460,7 +475,8 @@ def evaluate_interaction_availability(
     passes, msg = check_relationship_gating(
         gating.relationship,
         context.relationship_snapshot,
-        world_tier_order
+        world_tier_order,
+        world_intimacy_level_order
     )
     if not passes:
         # Determine if too low or too high

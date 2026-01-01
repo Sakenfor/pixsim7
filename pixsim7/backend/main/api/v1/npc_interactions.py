@@ -169,17 +169,56 @@ def get_world_tier_order(world: Dict[str, Any]) -> Optional[List[str]]:
         world: World dict with meta (from capability API)
 
     Returns:
-        List of tier IDs in order from lowest to highest
+        List of tier IDs in order from lowest to highest (by min affinity value)
     """
     world_meta = world.get("meta") or {}
     if not world_meta:
         return None
 
-    # Look for relationship schema
+    # Look in stats_config.definitions.relationships.tiers
+    stats_config = world_meta.get("stats_config") or {}
+    definitions = stats_config.get("definitions") or {}
+    relationships = definitions.get("relationships") or {}
+    tiers = relationships.get("tiers") or []
+
+    if tiers and isinstance(tiers, list):
+        # Sort by min value (ascending)
+        sorted_tiers = sorted(tiers, key=lambda t: t.get("min", 0))
+        return [tier.get("id") for tier in sorted_tiers if "id" in tier]
+
+    # Fallback: Legacy location in world_meta.relationships
     if "relationships" in world_meta:
         rel_schema = world_meta["relationships"]
         if "tiers" in rel_schema and isinstance(rel_schema["tiers"], list):
             return [tier.get("id") for tier in rel_schema["tiers"] if "id" in tier]
+
+    return None
+
+
+def get_world_intimacy_level_order(world: Dict[str, Any]) -> Optional[List[str]]:
+    """
+    Extract intimacy level ordering from world metadata.
+
+    Args:
+        world: World dict with meta (from capability API)
+
+    Returns:
+        List of level IDs in order from lowest to highest priority
+    """
+    world_meta = world.get("meta") or {}
+    if not world_meta:
+        return None
+
+    # Look in stats_config.definitions.relationships.levels
+    stats_config = world_meta.get("stats_config") or {}
+    definitions = stats_config.get("definitions") or {}
+    relationships = definitions.get("relationships") or {}
+    levels = relationships.get("levels") or []
+
+    if levels and isinstance(levels, list):
+        # Sort by priority (ascending)
+        sorted_levels = sorted(levels, key=lambda l: l.get("priority", 0))
+        return [level.get("id") for level in sorted_levels if "id" in level]
 
     return None
 
@@ -259,8 +298,9 @@ async def list_npc_interactions(
     # Build context
     context = build_interaction_context(session, req.npc_id, req.location_id)
 
-    # Get world tier order
+    # Get world tier/level ordering for gating comparisons
     tier_order = get_world_tier_order(world)
+    level_order = get_world_intimacy_level_order(world)
 
     # Evaluate each interaction
     instances = []
@@ -271,6 +311,7 @@ async def list_npc_interactions(
             defn,
             context,
             tier_order,
+            level_order,
             current_time
         )
 
@@ -383,8 +424,9 @@ async def execute_npc_interaction(
     # Build context for availability check
     context = build_interaction_context(session, req.npc_id, req.context.get("locationId") if req.context else None)
 
-    # Get world tier order
+    # Get world tier/level ordering for gating comparisons
     tier_order = get_world_tier_order(world)
+    level_order = get_world_intimacy_level_order(world)
 
     # Check availability before executing
     ctx.log.debug("Checking interaction availability")
@@ -392,6 +434,7 @@ async def execute_npc_interaction(
         definition,
         context,
         tier_order,
+        level_order,
         int(time.time())
     )
 
