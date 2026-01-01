@@ -239,6 +239,31 @@ export async function getGameWorld(worldId: number): Promise<GameWorldDetail> {
   return res.data;
 }
 
+/**
+ * World config response from /worlds/{id}/config endpoint.
+ * Contains merged stat definitions and pre-computed ordering.
+ */
+export interface WorldConfigResponse {
+  schema_version: number;
+  stats_config: {
+    version: number;
+    definitions: Record<string, import('@pixsim7/shared.types').StatDefinition>;
+  };
+  manifest: import('@pixsim7/shared.types').WorldManifestParsed;
+  intimacy_gating: import('@pixsim7/shared.types').IntimacyGatingConfig;
+  tier_order: string[];
+  level_order: string[];
+}
+
+/**
+ * Get unified world configuration with merged stat definitions.
+ * Backend is the source of truth - includes pre-computed ordering.
+ */
+export async function getWorldConfig(worldId: number): Promise<WorldConfigResponse> {
+  const res = await apiClient.get<WorldConfigResponse>(`/game/worlds/${worldId}/config`);
+  return res.data;
+}
+
 export async function saveGameWorldMeta(
   worldId: number,
   meta: Record<string, unknown>,

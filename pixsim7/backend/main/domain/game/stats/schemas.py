@@ -333,3 +333,95 @@ class WorldStatsConfig(BaseModel):
 
     class Config:
         extra = "ignore"  # Allow extra fields for forward compatibility
+
+    def get_definition(self, definition_id: str) -> Optional[StatDefinition]:
+        """Get a stat definition by ID."""
+        return self.definitions.get(definition_id)
+
+    def get_tier_order(self, definition_id: str) -> List[str]:
+        """Get tier order for a definition (sorted by min value)."""
+        defn = self.get_definition(definition_id)
+        if not defn:
+            return []
+        sorted_tiers = sorted(defn.tiers, key=lambda t: t.min)
+        return [t.id for t in sorted_tiers]
+
+    def get_level_order(self, definition_id: str) -> List[str]:
+        """Get level order for a definition (sorted by priority)."""
+        defn = self.get_definition(definition_id)
+        if not defn:
+            return []
+        sorted_levels = sorted(defn.levels, key=lambda l: l.priority)
+        return [l.id for l in sorted_levels]
+
+
+# =============================================================================
+# Schema Version
+# =============================================================================
+
+STATS_SCHEMA_VERSION = 1
+
+
+# =============================================================================
+# Intimacy Gating Config
+# =============================================================================
+
+class IntimacyBandThreshold(BaseModel):
+    """Threshold for an intimacy band."""
+    chemistry: Optional[float] = Field(default=None, ge=0, le=100)
+    affinity: Optional[float] = Field(default=None, ge=0, le=100)
+
+
+class ContentRatingGate(BaseModel):
+    """Gate requirements for a content rating."""
+    minimum_band: Optional[str] = None
+    minimum_chemistry: Optional[float] = Field(default=None, ge=0, le=100)
+    minimum_affinity: Optional[float] = Field(default=None, ge=0, le=100)
+    minimum_level: Optional[str] = None
+
+
+class InteractionGate(BaseModel):
+    """Gate requirements for an interaction."""
+    minimum_affinity: Optional[float] = Field(default=None, ge=0, le=100)
+    minimum_chemistry: Optional[float] = Field(default=None, ge=0, le=100)
+    minimum_level: Optional[str] = None
+    appropriate_levels: Optional[List[str]] = None
+
+
+class IntimacyGatingConfig(BaseModel):
+    """Intimacy gating configuration."""
+    version: int = Field(default=1, ge=1)
+    intimacy_bands: Optional[Dict[str, IntimacyBandThreshold]] = None
+    content_ratings: Optional[Dict[str, ContentRatingGate]] = None
+    interactions: Optional[Dict[str, InteractionGate]] = None
+
+
+# =============================================================================
+# World Manifest
+# =============================================================================
+
+class WorldManifest(BaseModel):
+    """World manifest configuration."""
+    turn_preset: Optional[str] = None
+    enabled_arc_graphs: List[str] = Field(default_factory=list)
+    enabled_campaigns: List[str] = Field(default_factory=list)
+    enabled_plugins: List[str] = Field(default_factory=list)
+    gating_plugin: Optional[str] = "intimacy.default"
+
+    class Config:
+        extra = "allow"  # Allow additional fields
+
+
+# =============================================================================
+# Complete World Config Response
+# =============================================================================
+
+class WorldConfigResponse(BaseModel):
+    """Complete world configuration returned by /worlds/{id}/config endpoint."""
+    schema_version: int = STATS_SCHEMA_VERSION
+    stats_config: WorldStatsConfig
+    manifest: WorldManifest
+    intimacy_gating: IntimacyGatingConfig
+    # Pre-computed for frontend
+    tier_order: List[str] = Field(default_factory=list)
+    level_order: List[str] = Field(default_factory=list)

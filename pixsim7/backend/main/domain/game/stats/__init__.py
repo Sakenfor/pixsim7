@@ -31,6 +31,17 @@ from .schemas import (
     StatCondition,
     StatDefinition,
     WorldStatsConfig,
+    # Schema version
+    STATS_SCHEMA_VERSION,
+    # Gating models
+    IntimacyBandThreshold,
+    ContentRatingGate,
+    InteractionGate,
+    IntimacyGatingConfig,
+    # Manifest
+    WorldManifest,
+    # Response
+    WorldConfigResponse,
 )
 from .derivation_schemas import (
     DerivationFormula,
@@ -52,6 +63,9 @@ from .package_registry import (
     get_all_semantic_types,
     find_axes_by_semantic_type,
     get_applicable_derivations,
+    # World config builder
+    get_merged_stats_config,
+    get_world_config,
 )
 from .derivation_engine import (
     DerivationEngine,
@@ -162,6 +176,17 @@ __all__ = [
     "StatCondition",
     "StatDefinition",
     "WorldStatsConfig",
+    # Schema version
+    "STATS_SCHEMA_VERSION",
+    # Gating models
+    "IntimacyBandThreshold",
+    "ContentRatingGate",
+    "InteractionGate",
+    "IntimacyGatingConfig",
+    # Manifest
+    "WorldManifest",
+    # Response
+    "WorldConfigResponse",
     # Derivation schemas
     "DerivationFormula",
     "DerivationCapability",
@@ -189,6 +214,9 @@ __all__ = [
     "get_all_semantic_types",
     "find_axes_by_semantic_type",
     "get_applicable_derivations",
+    # World config builder
+    "get_merged_stats_config",
+    "get_world_config",
     # Default definitions
     "get_default_relationship_definition",
     "get_default_personality_definition",

@@ -985,10 +985,14 @@ async def tick_world_manually(
 # World Config Endpoint (Unified Stats/Gating/Manifest)
 # =============================================================================
 
-from pixsim7.backend.main.domain.stats import (
+from pixsim7.backend.main.domain.game.stats import (
     get_world_config,
     WorldConfigResponse,
+    register_core_stat_packages,
 )
+
+# Ensure core stat packages are registered
+register_core_stat_packages()
 
 
 @router.get("/{world_id}/config", response_model=WorldConfigResponse)

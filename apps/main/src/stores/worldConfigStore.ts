@@ -24,10 +24,6 @@ import {
   getTurnDeltaFromPreset,
   getRelationshipTierOrder,
   getIntimacyLevelOrder,
-  compareTiers,
-  compareLevels,
-  levelMeetsMinimum,
-  tierMeetsMinimum,
   DEFAULT_WORLD_STATS_CONFIG,
   DEFAULT_WORLD_MANIFEST,
   DEFAULT_INTIMACY_GATING,
@@ -56,14 +52,21 @@ interface WorldConfigState {
   manifest: Readonly<WorldManifestParsed>;
   intimacyGating: Readonly<IntimacyGatingConfig>;
 
+  // Pre-computed ordering from backend (source of truth)
+  backendTierOrder: string[] | null;
+  backendLevelOrder: string[] | null;
+
   // Derived values
   turnDeltaSeconds: number;
 
   // Loading state
   isLoaded: boolean;
+  isConfigLoading: boolean;
+  configError: string | null;
 
   // Actions
   loadWorld: (world: GameWorldDetail) => void;
+  loadWorldConfig: (worldId: number) => Promise<void>;
   updateWorld: (world: GameWorldDetail) => void;
   invalidate: () => void;
 
@@ -149,8 +152,12 @@ export const useWorldConfigStore = create<WorldConfigState>()(
     statsConfig: Object.freeze(DEFAULT_WORLD_STATS_CONFIG),
     manifest: Object.freeze(DEFAULT_WORLD_MANIFEST),
     intimacyGating: Object.freeze(DEFAULT_INTIMACY_GATING),
+    backendTierOrder: null,
+    backendLevelOrder: null,
     turnDeltaSeconds: TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET],
     isLoaded: false,
+    isConfigLoading: false,
+    configError: null,
 
     loadWorld: (world: GameWorldDetail) => {
       const meta = world.meta ?? {};
@@ -169,7 +176,54 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         intimacyGating,
         turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
         isLoaded: true,
+        // Clear backend ordering - will be fetched via loadWorldConfig
+        backendTierOrder: null,
+        backendLevelOrder: null,
+        configError: null,
       });
+    },
+
+    loadWorldConfig: async (worldId: number) => {
+      const { getWorldConfig } = await import('../lib/api/game');
+
+      set({ isConfigLoading: true, configError: null });
+
+      try {
+        const config = await getWorldConfig(worldId);
+
+        // Validate schema version (optional - could warn on mismatch)
+        if (config.schema_version !== 1) {
+          console.warn(`[WorldConfig] Schema version mismatch: expected 1, got ${config.schema_version}`);
+        }
+
+        // Transform backend response to match frontend types
+        const statsConfig = Object.freeze({
+          version: config.stats_config.version,
+          definitions: config.stats_config.definitions,
+        }) as Readonly<WorldStatsConfig>;
+
+        const manifest = Object.freeze(config.manifest) as Readonly<WorldManifestParsed>;
+        const intimacyGating = Object.freeze(config.intimacy_gating) as Readonly<IntimacyGatingConfig>;
+
+        set({
+          statsConfig,
+          manifest,
+          intimacyGating,
+          backendTierOrder: config.tier_order,
+          backendLevelOrder: config.level_order,
+          turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
+          lastUpdatedAt: Date.now(),
+          isConfigLoading: false,
+          isLoaded: true,
+        });
+      } catch (error) {
+        console.error('[WorldConfig] Failed to load config from backend:', error);
+        set({
+          isConfigLoading: false,
+          configError: error instanceof Error ? error.message : 'Unknown error',
+        });
+        // Keep existing frontend-parsed config as fallback
+      }
     },
 
     updateWorld: (world: GameWorldDetail) => {
@@ -206,8 +260,12 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         statsConfig: Object.freeze(DEFAULT_WORLD_STATS_CONFIG),
         manifest: Object.freeze(DEFAULT_WORLD_MANIFEST),
         intimacyGating: Object.freeze(DEFAULT_INTIMACY_GATING),
+        backendTierOrder: null,
+        backendLevelOrder: null,
         turnDeltaSeconds: TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET],
         isLoaded: false,
+        isConfigLoading: false,
+        configError: null,
       });
     },
 
@@ -243,35 +301,69 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       return Object.freeze(merged) as Readonly<T>;
     },
 
-    // Ordering accessors - delegate to shared utility functions
+    // Ordering accessors - prefer backend values, fallback to frontend computation
     getTierOrder: (): string[] => {
-      const { statsConfig } = get();
+      const { backendTierOrder, statsConfig } = get();
+      // Use backend pre-computed order if available (source of truth)
+      if (backendTierOrder !== null) {
+        return backendTierOrder;
+      }
+      // Fallback to frontend computation
       return getRelationshipTierOrder(statsConfig);
     },
 
     getLevelOrder: (): string[] => {
-      const { statsConfig } = get();
+      const { backendLevelOrder, statsConfig } = get();
+      // Use backend pre-computed order if available (source of truth)
+      if (backendLevelOrder !== null) {
+        return backendLevelOrder;
+      }
+      // Fallback to frontend computation
       return getIntimacyLevelOrder(statsConfig);
     },
 
     compareTiers: (tierA: string | undefined, tierB: string | undefined): number => {
-      const { statsConfig } = get();
-      return compareTiers(tierA, tierB, statsConfig);
+      if (!tierA && !tierB) return 0;
+      if (!tierA) return -1;
+      if (!tierB) return 1;
+
+      const order = get().getTierOrder();
+      const indexA = order.indexOf(tierA);
+      const indexB = order.indexOf(tierB);
+
+      // Unknown tiers sort to the end
+      if (indexA === -1 && indexB === -1) return 0;
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+
+      return indexA - indexB;
     },
 
     compareLevels: (levelA: string | undefined | null, levelB: string | undefined | null): number => {
-      const { statsConfig } = get();
-      return compareLevels(levelA, levelB, statsConfig);
+      if (!levelA && !levelB) return 0;
+      if (!levelA) return -1;
+      if (!levelB) return 1;
+
+      const order = get().getLevelOrder();
+      const indexA = order.indexOf(levelA);
+      const indexB = order.indexOf(levelB);
+
+      // Unknown levels sort to the end
+      if (indexA === -1 && indexB === -1) return 0;
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+
+      return indexA - indexB;
     },
 
     levelMeetsMinimum: (currentLevel: string | undefined | null, minimumLevel: string): boolean => {
-      const { statsConfig } = get();
-      return levelMeetsMinimum(currentLevel, minimumLevel, statsConfig);
+      if (!currentLevel) return false;
+      return get().compareLevels(currentLevel, minimumLevel) >= 0;
     },
 
     tierMeetsMinimum: (currentTier: string | undefined, minimumTier: string): boolean => {
-      const { statsConfig } = get();
-      return tierMeetsMinimum(currentTier, minimumTier, statsConfig);
+      if (!currentTier) return false;
+      return get().compareTiers(currentTier, minimumTier) >= 0;
     },
 
     getGatingProfile: (): GatingProfile => {
@@ -279,8 +371,8 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       return {
         pluginId: manifest.gating_plugin ?? 'intimacy.default',
         intimacyGating,
-        tierOrder: getRelationshipTierOrder(statsConfig),
-        levelOrder: getIntimacyLevelOrder(statsConfig),
+        tierOrder: get().getTierOrder(),
+        levelOrder: get().getLevelOrder(),
         tiers: statsConfig.definitions.relationships?.tiers ?? [],
         levels: statsConfig.definitions.relationships?.levels ?? [],
       };
@@ -353,9 +445,12 @@ export const worldConfigSelectors = {
   getRelationshipTiers: () => useWorldConfigStore.getState().getRelationshipTiers(),
   getIntimacyLevels: () => useWorldConfigStore.getState().getIntimacyLevels(),
   isLoaded: () => useWorldConfigStore.getState().isLoaded,
-  // Ordering selectors
+  isConfigLoading: () => useWorldConfigStore.getState().isConfigLoading,
+  getConfigError: () => useWorldConfigStore.getState().configError,
+  // Ordering selectors (prefer backend values)
   getTierOrder: () => useWorldConfigStore.getState().getTierOrder(),
   getLevelOrder: () => useWorldConfigStore.getState().getLevelOrder(),
+  hasBackendOrdering: () => useWorldConfigStore.getState().backendTierOrder !== null,
   compareTiers: (a: string | undefined, b: string | undefined) => useWorldConfigStore.getState().compareTiers(a, b),
   compareLevels: (a: string | undefined | null, b: string | undefined | null) => useWorldConfigStore.getState().compareLevels(a, b),
   levelMeetsMinimum: (current: string | undefined | null, min: string) => useWorldConfigStore.getState().levelMeetsMinimum(current, min),
