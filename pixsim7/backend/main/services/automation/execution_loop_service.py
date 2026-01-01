@@ -79,7 +79,12 @@ class ExecutionLoopService:
         result = await self.db.execute(query)
         return len(result.scalars().all())
 
-    async def _eligible_accounts_query(self, loop: ExecutionLoop, exclude_account_ids: set[int] = None) -> List[ProviderAccount]:
+    async def _eligible_accounts_query(
+        self,
+        loop: ExecutionLoop,
+        exclude_account_ids: set[int] = None,
+        for_update_skip_locked: bool = False,
+    ) -> List[ProviderAccount]:
         query = select(ProviderAccount).where(ProviderAccount.status == AccountStatus.ACTIVE)
 
         # Filter by specific account IDs
@@ -89,6 +94,11 @@ class ExecutionLoopService:
         # Exclude accounts with active executions
         if exclude_account_ids:
             query = query.where(~ProviderAccount.id.in_(exclude_account_ids))
+
+        # Use FOR UPDATE SKIP LOCKED to prevent concurrent selection of same account
+        # This ensures that if another process is selecting an account, we skip it
+        if for_update_skip_locked:
+            query = query.with_for_update(skip_locked=True)
 
         # Credit filters: use total credits across types
         # This is enforced after fetch because credits are a relationship
@@ -108,8 +118,26 @@ class ExecutionLoopService:
             filtered.append(acct)
         return filtered
 
-    async def select_next_account(self, loop: ExecutionLoop, exclude_account_ids: set[int] = None) -> Optional[ProviderAccount]:
-        accounts = await self._eligible_accounts_query(loop, exclude_account_ids=exclude_account_ids)
+    async def select_next_account(
+        self,
+        loop: ExecutionLoop,
+        exclude_account_ids: set[int] = None,
+        lock_for_execution: bool = False,
+    ) -> Optional[ProviderAccount]:
+        """Select next account for execution.
+
+        Args:
+            loop: The execution loop
+            exclude_account_ids: Account IDs to exclude from selection
+            lock_for_execution: If True, use FOR UPDATE SKIP LOCKED to prevent
+                concurrent selection of the same account by parallel processes.
+                Lock is held until transaction commits.
+        """
+        accounts = await self._eligible_accounts_query(
+            loop,
+            exclude_account_ids=exclude_account_ids,
+            for_update_skip_locked=lock_for_execution,
+        )
         if not accounts:
             return None
 
@@ -235,7 +263,15 @@ class ExecutionLoopService:
         excluded_ids = active_account_ids.copy()
 
         for i in range(num_to_create):
-            account = await self.select_next_account(loop, exclude_account_ids=excluded_ids)
+            # Use lock_for_execution=True to prevent race condition where
+            # concurrent process_loop() calls select the same account.
+            # FOR UPDATE SKIP LOCKED ensures we skip accounts being selected
+            # by other processes, and the lock is held until commit.
+            account = await self.select_next_account(
+                loop,
+                exclude_account_ids=excluded_ids,
+                lock_for_execution=True,
+            )
             if not account:
                 if i == 0:
                     # No accounts available on first iteration
@@ -245,11 +281,13 @@ class ExecutionLoopService:
                 break
 
             # Create execution and enqueue processing task
+            # Note: The account row lock is held until this commit, preventing
+            # other processes from selecting the same account concurrently.
             try:
                 execution = await self.create_execution_from_loop(loop, account)
                 task_id = await queue_task("process_automation", execution.id)
                 execution.task_id = task_id
-                await self.db.commit()
+                await self.db.commit()  # Releases lock, execution now visible
 
                 created_executions.append(execution)
                 excluded_ids.add(account.id)  # Don't select this account again in this iteration

@@ -222,14 +222,33 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
 
                 return {"status": "completed"}
             finally:
-                # Restore device to ONLINE (it was marked BUSY during assignment)
+                # Clean up device assignment and potentially restore status
                 try:
                     device = await db.get(AndroidDevice, device.id)
                     if device:
-                        # Only restore to ONLINE if device was BUSY (expected state)
-                        # If device is OFFLINE/ERROR from connectivity check, preserve that
+                        # Clear automation assignment (we're done with the device)
+                        device.assigned_account_id = None
+
+                        # Only restore to ONLINE if:
+                        # 1. Device was BUSY (expected state from automation)
+                        # 2. Device is NOT in an ad watching session
+                        # If ad detection marked device as watching ads, keep it BUSY
+                        # so the ad session can complete naturally
                         if device.status == DeviceStatus.BUSY:
-                            device.status = DeviceStatus.ONLINE
+                            is_in_ad_session = (
+                                device.is_watching_ad or
+                                device.ad_session_started_at is not None
+                            )
+                            if not is_in_ad_session:
+                                device.status = DeviceStatus.ONLINE
+                            else:
+                                logger.info(
+                                    "automation_preserving_ad_session",
+                                    device_id=device.id,
+                                    device_name=device.name,
+                                    is_watching_ad=device.is_watching_ad,
+                                    ad_session_started_at=str(device.ad_session_started_at),
+                                )
                         await db.commit()
                 except Exception as e:
                     logger.error("automation_restore_status_failed", error=str(e), exc_info=True)
