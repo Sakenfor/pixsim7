@@ -53,6 +53,13 @@ from .simple import (
     KeyNotFoundError,
     create_registry,
 )
+from .world_merge import (
+    WorldMergeMixin,
+    MergeStrategy,
+    MergeResult,
+    deep_merge_dicts,
+    merge_by_id,
+)
 
 __all__ = [
     # Discovery
@@ -73,4 +80,10 @@ __all__ = [
     "DuplicateKeyError",
     "KeyNotFoundError",
     "create_registry",
+    # World merge
+    "WorldMergeMixin",
+    "MergeStrategy",
+    "MergeResult",
+    "deep_merge_dicts",
+    "merge_by_id",
 ]

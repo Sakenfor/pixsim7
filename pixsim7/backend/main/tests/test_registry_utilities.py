@@ -21,6 +21,10 @@ from pixsim7.backend.main.lib.registry import (
     DuplicateKeyError,
     KeyNotFoundError,
     create_registry,
+    WorldMergeMixin,
+    MergeResult,
+    deep_merge_dicts,
+    merge_by_id,
 )
 
 
@@ -507,3 +511,301 @@ class TestCreateRegistry:
         registry.register_item(item)
 
         assert registry.get("my-item") is item
+
+
+class TestDeepMergeDicts:
+    """Tests for deep_merge_dicts utility."""
+
+    def test_shallow_merge(self):
+        """Should merge top-level keys."""
+        base = {"a": 1, "b": 2}
+        override = {"b": 3, "c": 4}
+
+        result = deep_merge_dicts(base, override)
+
+        assert result == {"a": 1, "b": 3, "c": 4}
+
+    def test_nested_merge(self):
+        """Should recursively merge nested dicts."""
+        base = {"outer": {"a": 1, "b": 2}}
+        override = {"outer": {"b": 3, "c": 4}}
+
+        result = deep_merge_dicts(base, override)
+
+        assert result == {"outer": {"a": 1, "b": 3, "c": 4}}
+
+    def test_list_replace(self):
+        """Lists should be replaced, not merged."""
+        base = {"items": [1, 2, 3]}
+        override = {"items": [4, 5]}
+
+        result = deep_merge_dicts(base, override)
+
+        assert result == {"items": [4, 5]}
+
+    def test_does_not_mutate_originals(self):
+        """Should not mutate input dicts."""
+        base = {"a": {"nested": 1}}
+        override = {"a": {"nested": 2}}
+
+        result = deep_merge_dicts(base, override)
+
+        assert base["a"]["nested"] == 1
+        assert override["a"]["nested"] == 2
+        assert result["a"]["nested"] == 2
+
+
+class TestMergeById:
+    """Tests for merge_by_id utility."""
+
+    def test_merge_by_id(self):
+        """Should merge items by ID field."""
+        base = [
+            {"id": "a", "value": 1},
+            {"id": "b", "value": 2},
+        ]
+        override = [
+            {"id": "b", "value": 20},  # Override existing
+            {"id": "c", "value": 3},   # Add new
+        ]
+
+        merged, overridden, added = merge_by_id(base, override)
+
+        assert len(merged) == 3
+        assert overridden == ["b"]
+        assert added == ["c"]
+
+        # Check values
+        by_id = {item["id"]: item for item in merged}
+        assert by_id["a"]["value"] == 1
+        assert by_id["b"]["value"] == 20
+        assert by_id["c"]["value"] == 3
+
+    def test_custom_id_field(self):
+        """Should support custom ID field name."""
+        base = [{"name": "a", "val": 1}]
+        override = [{"name": "a", "val": 2}]
+
+        merged, _, _ = merge_by_id(base, override, id_field="name")
+
+        assert merged[0]["val"] == 2
+
+    def test_skip_items_without_id(self):
+        """Should skip items without ID field."""
+        base = [{"id": "a", "value": 1}]
+        override = [{"value": 2}]  # No id
+
+        merged, overridden, added = merge_by_id(base, override)
+
+        assert len(merged) == 1
+        assert overridden == []
+        assert added == []
+
+
+class TestWorldMergeMixin:
+    """Tests for WorldMergeMixin."""
+
+    def test_collect_from_packages(self):
+        """Should collect items from all packages."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Item:
+            name: str
+            value: int
+
+        @dataclass
+        class Package:
+            id: str
+            items: dict
+
+        packages = [
+            Package("pkg1", {"a": Item("A", 1)}),
+            Package("pkg2", {"b": Item("B", 2)}),
+        ]
+
+        class TestRegistry(WorldMergeMixin[Package, Item]):
+            meta_key = "config"
+            items_key = "items"
+
+            def _get_packages(self):
+                return packages
+
+            def _collect_base_items(self, pkg):
+                return pkg.items
+
+        registry = TestRegistry()
+        result = registry.get_merged_items(None)
+
+        assert "a" in result.items
+        assert "b" in result.items
+        assert result.items["a"].value == 1
+        assert result.items["b"].value == 2
+
+    def test_later_package_overrides(self):
+        """Later packages should override earlier ones."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Item:
+            value: int
+
+        @dataclass
+        class Package:
+            items: dict
+
+        packages = [
+            Package({"shared": Item(1)}),
+            Package({"shared": Item(2)}),  # Overrides
+        ]
+
+        class TestRegistry(WorldMergeMixin[Package, Item]):
+            meta_key = "config"
+            items_key = "items"
+
+            def _get_packages(self):
+                return packages
+
+            def _collect_base_items(self, pkg):
+                return pkg.items
+
+        registry = TestRegistry()
+        result = registry.get_merged_items(None)
+
+        assert result.items["shared"].value == 2
+
+    def test_world_override_merge(self):
+        """Should apply world.meta overrides."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Item:
+            name: str
+            value: int
+
+        @dataclass
+        class Package:
+            items: dict
+
+        packages = [Package({"a": Item("A", 1)})]
+
+        class TestRegistry(WorldMergeMixin[Package, Item]):
+            meta_key = "my_config"
+            items_key = "definitions"
+
+            def _get_packages(self):
+                return packages
+
+            def _collect_base_items(self, pkg):
+                return pkg.items
+
+            def _merge_item(self, base, override):
+                # Simple merge: update value if provided
+                from copy import deepcopy
+                merged = deepcopy(base)
+                if "value" in override:
+                    merged.value = override["value"]
+                return merged
+
+        registry = TestRegistry()
+        world_meta = {
+            "my_config": {
+                "definitions": {
+                    "a": {"value": 100},  # Override
+                }
+            }
+        }
+
+        result = registry.get_merged_items(world_meta)
+
+        assert result.items["a"].value == 100
+        assert result.items["a"].name == "A"  # Unchanged
+        assert result.overridden_ids == ["a"]
+
+    def test_world_add_new_items(self):
+        """Should add new items from world.meta if _create_item implemented."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Item:
+            name: str
+            value: int
+
+        @dataclass
+        class Package:
+            items: dict
+
+        packages = [Package({"a": Item("A", 1)})]
+
+        class TestRegistry(WorldMergeMixin[Package, Item]):
+            meta_key = "config"
+            items_key = "items"
+
+            def _get_packages(self):
+                return packages
+
+            def _collect_base_items(self, pkg):
+                return pkg.items
+
+            def _create_item(self, item_id, data):
+                return Item(name=data.get("name", item_id), value=data.get("value", 0))
+
+        registry = TestRegistry()
+        world_meta = {
+            "config": {
+                "items": {
+                    "b": {"name": "B", "value": 2},
+                }
+            }
+        }
+
+        result = registry.get_merged_items(world_meta)
+
+        assert "b" in result.items
+        assert result.items["b"].value == 2
+        assert result.added_ids == ["b"]
+
+    def test_validation_errors(self):
+        """Should report validation errors."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Item:
+            value: int
+
+        @dataclass
+        class Package:
+            items: dict
+
+        packages = [Package({"a": Item(1)})]
+
+        class TestRegistry(WorldMergeMixin[Package, Item]):
+            meta_key = "config"
+            items_key = "items"
+
+            def _get_packages(self):
+                return packages
+
+            def _collect_base_items(self, pkg):
+                return pkg.items
+
+            def _validate_override(self, item_id, override):
+                if "value" in override and override["value"] < 0:
+                    return "value must be non-negative"
+                return None
+
+        registry = TestRegistry()
+        world_meta = {
+            "config": {
+                "items": {
+                    "a": {"value": -1},
+                }
+            }
+        }
+
+        result = registry.get_merged_items(world_meta)
+
+        assert len(result.errors) == 1
+        assert "value must be non-negative" in result.errors[0]
+        # Original should be unchanged since validation failed
+        assert result.items["a"].value == 1
