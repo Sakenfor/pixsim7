@@ -7,8 +7,6 @@
  * Backend equivalent: domain/composition/package_registry.py
  */
 
-import type { ImageCompositionRole } from './composition-roles.generated';
-
 /**
  * Definition of a composition role contributed by a package.
  */
@@ -111,6 +109,8 @@ export interface CompositionGenerationConfig {
   compositionSlots?: CompositionSlotPolicy;
 }
 
+export const CORE_COMPOSITION_PACKAGE_ID = 'core.base';
+
 /**
  * Helper to get available roles from active packages.
  *
@@ -120,11 +120,16 @@ export interface CompositionGenerationConfig {
  */
 export function getAvailableRoles(
   packages: CompositionPackage[],
-  activeIds: string[]
+  activeIds: string[] = []
 ): CompositionRoleDefinition[] {
   const rolesById = new Map<string, CompositionRoleDefinition>();
+  const resolvedIds = activeIds.length ? activeIds : packages.map((pkg) => pkg.id);
+  const packageIds = [
+    CORE_COMPOSITION_PACKAGE_ID,
+    ...resolvedIds.filter((pkgId) => pkgId !== CORE_COMPOSITION_PACKAGE_ID),
+  ];
 
-  for (const pkgId of activeIds) {
+  for (const pkgId of packageIds) {
     const pkg = packages.find((p) => p.id === pkgId);
     if (!pkg) continue;
 
@@ -143,7 +148,7 @@ export function getAvailableRoles(
  * @param roles - Available role definitions
  * @returns Matching role ID or undefined
  */
-export function inferRoleFromTags(
+export function inferRoleFromPackageTags(
   tags: string[],
   roles: CompositionRoleDefinition[]
 ): string | undefined {

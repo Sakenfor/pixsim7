@@ -10,6 +10,7 @@ Frontend generates equivalent TS constants via scripts/generate-composition-role
 """
 from __future__ import annotations
 
+import copy
 import os
 from enum import Enum
 from pathlib import Path
@@ -81,6 +82,11 @@ COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA["aliases"]
 TAG_NAMESPACE_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["namespaceMappings"]
 TAG_SLUG_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["slugMappings"]
 COMPOSITION_ROLE_PRIORITY: List[str] = _ROLE_DATA["priority"]
+
+
+def get_composition_role_metadata() -> Dict[str, Dict[str, Any]]:
+    """Return a defensive copy of role metadata from YAML."""
+    return copy.deepcopy(_ROLE_DATA["roles"])
 
 # Prompt role mapping (PromptSegmentRole -> composition role)
 # Not in YAML because prompt roles are a separate concern from tag/alias roles

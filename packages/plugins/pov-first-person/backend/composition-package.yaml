@@ -1,0 +1,28 @@
+package:
+  id: pov.first_person
+  label: First-Person POV
+  description: Composition roles for first-person perspective games
+  version: 1.0.0
+  recommendedFor:
+    - first_person
+    - pov_adventure
+    - fps
+    - immersive_sim
+
+roles:
+  pov_hands:
+    label: POV Hands
+    description: First-person player hands overlay
+    color: amber
+    defaultLayer: 2
+    tags: [pov, hands, player, foreground, overlay]
+    slugMappings: [pov:hands, role:pov_hands, hands]
+    namespaceMappings: [pov]
+  pov_held_item:
+    label: POV Held Item
+    description: Item held in player's hands (weapon, tool, etc.)
+    color: yellow
+    defaultLayer: 2
+    tags: [pov, item, held, foreground]
+    slugMappings: [pov:item, pov:held, role:pov_held_item]
+    namespaceMappings: []

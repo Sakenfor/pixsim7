@@ -135,7 +135,12 @@ def get_available_roles(
     """
     roles_by_id: Dict[str, CompositionRoleDefinition] = {}
 
-    package_ids = active_package_ids if active_package_ids else list(_packages.keys())
+    if active_package_ids:
+        package_ids = list(active_package_ids)
+        if "core.base" in _packages and "core.base" not in package_ids:
+            package_ids = ["core.base", *package_ids]
+    else:
+        package_ids = list(_packages.keys())
 
     for pkg_id in package_ids:
         pkg = _packages.get(pkg_id)

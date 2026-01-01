@@ -2,10 +2,20 @@
 Core Composition Package
 
 Provides the base composition roles that are always available.
-These match the roles defined in shared/composition-roles.yaml.
+These are derived from shared/composition-roles.yaml.
 
 This package is auto-registered and cannot be deactivated.
 """
+
+from __future__ import annotations
+
+from typing import Dict, List
+
+from pixsim7.backend.main.shared.composition import (
+    TAG_NAMESPACE_TO_COMPOSITION_ROLE,
+    TAG_SLUG_TO_COMPOSITION_ROLE,
+    get_composition_role_metadata,
+)
 
 from .package_registry import (
     CompositionPackage,
@@ -17,69 +27,47 @@ from .package_registry import (
 CORE_PACKAGE_ID = "core.base"
 
 
-# Core role definitions (matching composition-roles.yaml)
-CORE_ROLES = [
-    CompositionRoleDefinition(
-        id="main_character",
-        label="Main Character",
-        description="Primary subject/character in the scene",
-        color="blue",
-        default_layer=1,
-        tags=["character", "subject", "primary"],
-        slug_mappings=["char:hero", "pov:player", "role:char", "role:character"],
-        namespace_mappings=["character", "person", "npc"],
-    ),
-    CompositionRoleDefinition(
-        id="companion",
-        label="Companion",
-        description="Supporting characters (NPCs, pets, monsters)",
-        color="purple",
-        default_layer=1,
-        tags=["character", "secondary", "npc"],
-        slug_mappings=["char:npc", "char:monster"],
-        namespace_mappings=["animal", "creature"],
-    ),
-    CompositionRoleDefinition(
-        id="environment",
-        label="Environment",
-        description="Background, setting, location",
-        color="green",
-        default_layer=0,
-        tags=["background", "setting", "location"],
-        slug_mappings=["bg", "role:bg", "role:environment", "role:setting"],
-        namespace_mappings=["location", "environment", "setting", "background", "scene", "place"],
-    ),
-    CompositionRoleDefinition(
-        id="prop",
-        label="Prop",
-        description="Objects, vehicles, items",
-        color="orange",
-        default_layer=1,
-        tags=["object", "item", "prop"],
-        slug_mappings=[],
-        namespace_mappings=["object", "prop", "vehicle"],
-    ),
-    CompositionRoleDefinition(
-        id="style_reference",
-        label="Style Reference",
-        description="Style/aesthetic reference images",
-        color="pink",
-        default_layer=0,
-        tags=["style", "reference", "aesthetic"],
-        slug_mappings=["comic_frame"],
-        namespace_mappings=["style"],
-    ),
-    CompositionRoleDefinition(
-        id="effect",
-        label="Effect",
-        description="Lighting, camera, visual effects",
-        color="cyan",
-        default_layer=2,
-        tags=["effect", "lighting", "camera"],
-        slug_mappings=[],
-        namespace_mappings=["lighting", "camera"],
-    ),
-]
+_ACRONYM_WORDS = {
+    "pov": "POV",
+    "npc": "NPC",
+}
+
+
+def _format_role_label(role_id: str) -> str:
+    words = role_id.replace("-", " ").replace("_", " ").split()
+    return " ".join(_ACRONYM_WORDS.get(word, word.capitalize()) for word in words)
+
+
+def _invert_mapping(mapping: Dict[str, str]) -> Dict[str, List[str]]:
+    inverted: Dict[str, List[str]] = {}
+    for key, role in mapping.items():
+        inverted.setdefault(role, []).append(key)
+    return inverted
+
+
+def _build_core_roles() -> List[CompositionRoleDefinition]:
+    roles_meta = get_composition_role_metadata()
+    slug_by_role = _invert_mapping(TAG_SLUG_TO_COMPOSITION_ROLE)
+    namespace_by_role = _invert_mapping(TAG_NAMESPACE_TO_COMPOSITION_ROLE)
+
+    roles: List[CompositionRoleDefinition] = []
+    for role_id, meta in roles_meta.items():
+        default_layer = meta.get("defaultLayer", meta.get("default_layer", 0))
+        if default_layer is None:
+            default_layer = 0
+        roles.append(
+            CompositionRoleDefinition(
+                id=role_id,
+                label=meta.get("label") or _format_role_label(role_id),
+                description=meta.get("description", ""),
+                color=meta.get("color", "slate"),
+                default_layer=int(default_layer),
+                tags=list(meta.get("tags") or []),
+                slug_mappings=sorted(slug_by_role.get(role_id, [])),
+                namespace_mappings=sorted(namespace_by_role.get(role_id, [])),
+            )
+        )
+    return roles
 
 
 CORE_COMPOSITION_PACKAGE = CompositionPackage(
@@ -87,7 +75,7 @@ CORE_COMPOSITION_PACKAGE = CompositionPackage(
     label="Core Composition",
     description="Base composition roles for image/video generation",
     plugin_id=None,  # Built-in
-    roles=CORE_ROLES,
+    roles=_build_core_roles(),
     recommended_for=[],  # Always available
     version="1.0.0",
 )

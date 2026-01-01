@@ -7,26 +7,39 @@
 # To add new mappings: edit this file, then run `pnpm generate:composition-roles`
 
 # Canonical roles with metadata
-# Each role has: description (for UI), color (tailwind color name for badges)
+# Each role has: description (for UI), color (tailwind color name for badges),
+# defaultLayer (0=background, higher=foreground), tags (filtering + matching)
 roles:
   main_character:
     description: Primary subject/character in the scene
     color: blue
+    defaultLayer: 1
+    tags: [character, subject, primary]
   companion:
     description: Supporting characters (NPCs, pets, monsters)
     color: purple
+    defaultLayer: 1
+    tags: [character, secondary, npc]
   environment:
     description: Background, setting, location
     color: green
+    defaultLayer: 0
+    tags: [background, setting, location]
   prop:
     description: Objects, vehicles, items
     color: orange
+    defaultLayer: 1
+    tags: [object, item, prop]
   style_reference:
     description: Style/aesthetic reference images
     color: pink
+    defaultLayer: 0
+    tags: [style, reference, aesthetic]
   effect:
     description: Lighting, camera, visual effects
     color: cyan
+    defaultLayer: 2
+    tags: [effect, lighting, camera]
 
 # Priority order for role selection (highest first)
 # When an asset has multiple tags mapping to different roles, pick the highest priority.

@@ -21,6 +21,11 @@ from .package_registry import (
     get_available_roles,
     get_role_by_id,
 )
+from .package_loader import (
+    load_composition_package_from_yaml,
+    register_composition_package_from_yaml,
+    register_composition_packages_from_dir,
+)
 from .core_package import (
     CORE_COMPOSITION_PACKAGE,
     register_core_composition_package,
@@ -32,6 +37,9 @@ __all__ = [
     "CompositionPackage",
     # Registry functions
     "register_composition_package",
+    "load_composition_package_from_yaml",
+    "register_composition_package_from_yaml",
+    "register_composition_packages_from_dir",
     "get_composition_package",
     "list_composition_packages",
     "get_available_roles",
