@@ -2,7 +2,7 @@
 Concepts API
 
 Provides runtime access to ontology concepts for frontend.
-Supports multiple concept kinds: role, part, body_region, pose, influence_region.
+Concept kinds are dynamically discovered from registered providers.
 
 This endpoint supplements the build-time generated constants by:
 - Including plugin-contributed concepts (which generators don't see)
@@ -21,9 +21,10 @@ from pixsim7.backend.main.shared.composition import COMPOSITION_ROLE_PRIORITY
 from .schemas import (
     ConceptResponse,
     ConceptsListResponse,
+    ConceptKindInfo,
+    ConceptKindsResponse,
     RoleConceptResponse,
     RolesListResponse,
-    get_group_name,
 )
 
 router = APIRouter(prefix="/concepts", tags=["concepts"])
@@ -43,9 +44,39 @@ def _role_to_concept_response(role: CompositionRoleDefinition) -> RoleConceptRes
     )
 
 
-# ===== Endpoints =====
+# =============================================================================
+# Endpoints
 # IMPORTANT: Static routes MUST be registered BEFORE dynamic /{kind} route
 # to avoid shadowing. FastAPI matches routes in order of registration.
+# =============================================================================
+
+
+@router.get("", response_model=ConceptKindsResponse)
+async def list_kinds():
+    """
+    List available concept kinds with metadata.
+
+    Returns information about each registered concept kind including:
+    - kind: The kind identifier (e.g., 'role', 'part', 'pose')
+    - group_name: Display name for UI grouping
+    - supports_packages: Whether the kind supports package filtering
+
+    Use this endpoint to dynamically discover available kinds
+    instead of hardcoding them in the frontend.
+    """
+    from pixsim7.backend.main.domain.concepts import get_registered_providers
+
+    providers = get_registered_providers()
+    kinds = [
+        ConceptKindInfo(
+            kind=provider.kind,
+            group_name=provider.group_name,
+            supports_packages=provider.supports_packages,
+        )
+        for provider in providers.values()
+    ]
+
+    return ConceptKindsResponse(kinds=kinds)
 
 
 @router.get("/roles", response_model=RolesListResponse)
@@ -81,8 +112,10 @@ async def list_roles(
     )
 
 
-# ===== Generic Endpoint =====
+# =============================================================================
+# Generic Endpoint
 # IMPORTANT: This MUST be registered AFTER static routes like /roles
+# =============================================================================
 
 
 @router.get("/{kind}", response_model=ConceptsListResponse)
@@ -90,35 +123,30 @@ async def list_concepts(
     kind: str,
     packages: Optional[str] = Query(
         None,
-        description="Comma-separated package IDs (only applies to 'role' kind)",
+        description="Comma-separated package IDs (only applies to kinds that support packages)",
     ),
 ):
     """
     Get concepts of a specific kind.
 
-    Kinds:
-    - role: Composition roles (main_character, environment, etc.)
-    - part: Anatomy parts (face, hands, torso, etc.)
-    - body_region: Body regions (chest, groin, back, etc.)
-    - pose: Poses (standing_neutral, kissing, etc.)
-    - influence_region: Built-in influence regions (foreground, background, full, subject)
+    Available kinds are dynamically registered. Use GET /concepts to list them.
 
     Query params:
         packages: Comma-separated package IDs to filter by.
-                  Only applies to kinds that support packages (currently: role).
+                  Only applies to kinds where supports_packages is true.
                   For other kinds, this parameter is ignored.
 
     Example: /api/v1/concepts/pose
     Example: /api/v1/concepts/role?packages=core.base
     """
-    from pixsim7.backend.main.domain.concepts import get_concept_provider
+    from pixsim7.backend.main.domain.concepts import get_provider, get_all_kinds
 
-    provider = get_concept_provider(kind)
+    provider = get_provider(kind)
     if not provider:
+        valid_kinds = ", ".join(get_all_kinds())
         raise HTTPException(
             status_code=404,
-            detail=f"Unknown concept kind: '{kind}'. "
-            f"Valid kinds: role, part, body_region, pose, influence_region",
+            detail=f"Unknown concept kind: '{kind}'. Valid kinds: {valid_kinds}",
         )
 
     # Parse package IDs if provided
@@ -128,11 +156,10 @@ async def list_concepts(
 
     concepts = provider.get_concepts(package_ids)
     priority = provider.get_priority()
-    group_name = provider.get_group_name()
 
     return ConceptsListResponse(
         kind=kind,
         concepts=concepts,
         priority=priority,
-        group_name=group_name,
+        group_name=provider.group_name,
     )

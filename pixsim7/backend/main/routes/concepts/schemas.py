@@ -2,9 +2,9 @@
 Generic concept response schemas.
 
 These schemas support the unified ConceptRef system where all concept kinds
-(role, part, body_region, pose, influence_region) share a common structure.
+share a common structure. Group names and metadata come from providers.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from pydantic import BaseModel, Field, computed_field
 
 
@@ -49,7 +49,31 @@ class ConceptsListResponse(BaseModel):
     )
 
 
-# ===== Role-Specific Schemas (Backward Compatibility) =====
+# =============================================================================
+# Kinds Metadata (for GET /concepts endpoint)
+# =============================================================================
+
+
+class ConceptKindInfo(BaseModel):
+    """Metadata about a concept kind."""
+
+    kind: str = Field(description="Concept kind identifier")
+    group_name: str = Field(description="Display name for UI grouping")
+    supports_packages: bool = Field(
+        default=False,
+        description="Whether this kind supports package filtering",
+    )
+
+
+class ConceptKindsResponse(BaseModel):
+    """Response from GET /concepts listing available kinds."""
+
+    kinds: List[ConceptKindInfo] = Field(description="Available concept kinds")
+
+
+# =============================================================================
+# Role-Specific Schemas (Backward Compatibility)
+# =============================================================================
 
 
 class RoleConceptResponse(BaseModel):
@@ -87,21 +111,3 @@ class RolesListResponse(BaseModel):
     priority: List[str] = Field(
         description="Role IDs in priority order for conflict resolution"
     )
-
-
-# ===== Helpers =====
-
-
-# Group display names for different concept kinds
-CONCEPT_GROUP_NAMES: Dict[str, str] = {
-    "role": "Composition Roles",
-    "part": "Anatomy Parts",
-    "body_region": "Body Regions",
-    "pose": "Poses",
-    "influence_region": "Influence Regions",
-}
-
-
-def get_group_name(kind: str) -> str:
-    """Get the display name for a concept kind's group."""
-    return CONCEPT_GROUP_NAMES.get(kind, kind.replace("_", " ").title())

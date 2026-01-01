@@ -1,15 +1,19 @@
 /**
  * Concept Store
  *
- * Zustand store for unified concepts across all kinds
- * (role, part, body_region, pose, influence_region).
+ * Zustand store for unified concepts across all kinds.
+ * Kinds are dynamically discovered from the API.
  *
  * This provides the single source of truth for concept data at runtime,
  * replacing build-time generated constants with dynamic API data.
  */
 import { create } from 'zustand';
-import type { ConceptResponse, ConceptKind } from '@lib/api/concepts';
-import { getConcepts } from '@lib/api/concepts';
+import type {
+  ConceptResponse,
+  ConceptKind,
+  ConceptKindInfo,
+} from '@lib/api/concepts';
+import { getConcepts, getConceptKinds, KNOWN_KINDS } from '@lib/api/concepts';
 
 // ============================================================================
 // Types
@@ -28,7 +32,18 @@ export interface LabelSuggestion {
   group: string;
 }
 
+/**
+ * Kinds to include in label autocomplete.
+ * These are fetched from the API but we start with known kinds for initial render.
+ */
+const DEFAULT_LABEL_KINDS: ConceptKind[] = ['influence_region', 'role', 'part', 'pose'];
+
 interface ConceptState {
+  // Kind metadata (fetched from /concepts)
+  availableKinds: ConceptKindInfo[];
+  kindsLoaded: boolean;
+  kindsLoading: boolean;
+
   // Data by kind (plain objects for immutability)
   conceptsByKind: Record<string, ConceptResponse[]>;
   priorityByKind: Record<string, string[]>;
@@ -40,6 +55,7 @@ interface ConceptState {
   error: string | null;
 
   // Actions
+  fetchAvailableKinds: () => Promise<void>;
   fetchKind: (kind: ConceptKind | string) => Promise<void>;
   fetchKinds: (kinds: (ConceptKind | string)[]) => Promise<void>;
   fetchAllLabelKinds: () => Promise<void>;
@@ -49,6 +65,7 @@ interface ConceptState {
   getById: (kind: string, id: string) => ConceptResponse | undefined;
   getPriority: (kind: string) => string[];
   getGroupName: (kind: string) => string;
+  getLabelKinds: () => string[];
 
   // Derived: labels for autocomplete (combines multiple kinds)
   getLabelsForAutocomplete: () => LabelSuggestion[];
@@ -64,12 +81,42 @@ interface ConceptState {
 
 export const useConceptStore = create<ConceptState>((set, get) => ({
   // Initial state
+  availableKinds: [],
+  kindsLoaded: false,
+  kindsLoading: false,
   conceptsByKind: {},
   priorityByKind: {},
   groupNameByKind: {},
   loadedKinds: [],
   loadingKinds: [],
   error: null,
+
+  /**
+   * Fetch available concept kinds from the API.
+   */
+  fetchAvailableKinds: async () => {
+    const state = get();
+    if (state.kindsLoaded || state.kindsLoading) {
+      return;
+    }
+
+    set({ kindsLoading: true, error: null });
+
+    try {
+      const response = await getConceptKinds();
+      set({
+        availableKinds: response.kinds,
+        kindsLoaded: true,
+        kindsLoading: false,
+      });
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to fetch concept kinds';
+      set({
+        error: errorMessage,
+        kindsLoading: false,
+      });
+    }
+  },
 
   /**
    * Fetch concepts of a specific kind from the API.
@@ -117,9 +164,17 @@ export const useConceptStore = create<ConceptState>((set, get) => ({
 
   /**
    * Fetch all kinds needed for label autocomplete.
+   * Uses dynamically discovered kinds if available, otherwise falls back to defaults.
    */
   fetchAllLabelKinds: async () => {
-    const labelKinds: ConceptKind[] = ['influence_region', 'role', 'part', 'body_region', 'pose'];
+    const state = get();
+
+    // Ensure kinds are loaded first
+    if (!state.kindsLoaded && !state.kindsLoading) {
+      await get().fetchAvailableKinds();
+    }
+
+    const labelKinds = get().getLabelKinds();
     await get().fetchKinds(labelKinds);
   },
 
@@ -133,15 +188,41 @@ export const useConceptStore = create<ConceptState>((set, get) => ({
 
   getPriority: (kind) => get().priorityByKind[kind] ?? [],
 
-  getGroupName: (kind) => get().groupNameByKind[kind] ?? kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+  getGroupName: (kind) => {
+    const state = get();
+    // Try from loaded data first
+    if (state.groupNameByKind[kind]) {
+      return state.groupNameByKind[kind];
+    }
+    // Try from available kinds metadata
+    const kindInfo = state.availableKinds.find((k) => k.kind === kind);
+    if (kindInfo) {
+      return kindInfo.group_name;
+    }
+    // Fallback to formatted kind name
+    return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  },
 
   /**
-   * Get labels for autocomplete, combining multiple concept kinds.
-   * Order: influence_region (builtins), role, part, body_region, pose
+   * Get kinds to use for label autocomplete.
+   * Uses API-discovered kinds if available, otherwise defaults.
+   */
+  getLabelKinds: () => {
+    const state = get();
+    if (state.kindsLoaded && state.availableKinds.length > 0) {
+      // Use all available kinds from API
+      return state.availableKinds.map((k) => k.kind);
+    }
+    // Fallback to default known kinds
+    return [...DEFAULT_LABEL_KINDS];
+  },
+
+  /**
+   * Get labels for autocomplete, combining all concept kinds.
    */
   getLabelsForAutocomplete: () => {
     const state = get();
-    const kinds: ConceptKind[] = ['influence_region', 'role', 'part', 'body_region', 'pose'];
+    const kinds = get().getLabelKinds();
 
     return kinds.flatMap((kind) =>
       (state.conceptsByKind[kind] ?? []).map((c) => ({
@@ -194,8 +275,8 @@ export function useLabelsForAutocomplete(): {
   const labels = store.getLabelsForAutocomplete();
   const error = store.error;
 
-  // Check if all label kinds are loaded
-  const labelKinds: ConceptKind[] = ['influence_region', 'role', 'part', 'body_region', 'pose'];
+  // Get label kinds (dynamic or default)
+  const labelKinds = store.getLabelKinds();
   const allLoaded = labelKinds.every((kind) => store.isKindLoaded(kind));
   const anyLoading = labelKinds.some((kind) => store.isKindLoading(kind));
 

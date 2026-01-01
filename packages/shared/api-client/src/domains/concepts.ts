@@ -1,6 +1,57 @@
 import type { PixSimApiClient } from '../client';
 
 // ============================================================================
+// Concept Kind Types (Option B: Known + Extensible)
+// ============================================================================
+
+/**
+ * Known concept kinds with autocomplete support.
+ * These are the kinds that ship with the core system.
+ */
+export const KNOWN_KINDS = ['role', 'part', 'pose', 'influence_region'] as const;
+
+/**
+ * Known concept kind type for strict contexts (routing, grouping).
+ */
+export type KnownConceptKind = (typeof KNOWN_KINDS)[number];
+
+/**
+ * Concept kind type that allows known kinds plus any string for forward compatibility.
+ * Use this for passthrough/fetching or feature-flagged kinds.
+ */
+export type ConceptKind = KnownConceptKind | (string & {});
+
+/**
+ * Type guard to check if a string is a known concept kind.
+ */
+export function isKnownConceptKind(kind: string): kind is KnownConceptKind {
+  return (KNOWN_KINDS as readonly string[]).includes(kind);
+}
+
+// ============================================================================
+// Concept Kind Metadata
+// ============================================================================
+
+/**
+ * Metadata about a concept kind from the API.
+ */
+export interface ConceptKindInfo {
+  /** Concept kind identifier */
+  kind: string;
+  /** Display name for UI grouping */
+  group_name: string;
+  /** Whether this kind supports package filtering */
+  supports_packages: boolean;
+}
+
+/**
+ * Response from GET /concepts listing available kinds.
+ */
+export interface ConceptKindsResponse {
+  kinds: ConceptKindInfo[];
+}
+
+// ============================================================================
 // Generic Concept Types
 // ============================================================================
 
@@ -11,7 +62,7 @@ import type { PixSimApiClient } from '../client';
  * metadata in the `metadata` field.
  */
 export interface ConceptResponse {
-  /** Concept kind (role, part, body_region, pose, influence_region) */
+  /** Concept kind (role, part, pose, influence_region, etc.) */
   kind: string;
   /** Concept ID (unique within kind) */
   id: string;
@@ -76,20 +127,25 @@ export interface RolesListResponse {
 }
 
 // ============================================================================
-// Concept Kinds
-// ============================================================================
-
-/** Available concept kinds */
-export type ConceptKind = 'role' | 'part' | 'body_region' | 'pose' | 'influence_region';
-
-// ============================================================================
 // API Client
 // ============================================================================
 
 export function createConceptsApi(client: PixSimApiClient) {
   // Use closures to avoid `this` binding issues when destructuring
+
+  /**
+   * Get available concept kinds with metadata.
+   * Use this to dynamically discover kinds instead of hardcoding.
+   */
+  const getConceptKinds = async (): Promise<ConceptKindsResponse> => {
+    return client.get<ConceptKindsResponse>('/concepts');
+  };
+
+  /**
+   * Get concepts of a specific kind.
+   */
   const getConcepts = async (
-    kind: ConceptKind | string,
+    kind: ConceptKind,
     packageIds?: string[]
   ): Promise<ConceptsListResponse> => {
     const params = packageIds?.length
@@ -100,12 +156,14 @@ export function createConceptsApi(client: PixSimApiClient) {
   };
 
   return {
+    // Meta endpoint
+    getConceptKinds,
+
     // Generic method
     getConcepts,
 
-    // Convenience methods (use closure, not `this`)
+    // Convenience methods for known kinds (use closure, not `this`)
     getParts: (packageIds?: string[]) => getConcepts('part', packageIds),
-    getBodyRegions: (packageIds?: string[]) => getConcepts('body_region', packageIds),
     getPoses: (packageIds?: string[]) => getConcepts('pose', packageIds),
     getInfluenceRegions: (packageIds?: string[]) => getConcepts('influence_region', packageIds),
 
