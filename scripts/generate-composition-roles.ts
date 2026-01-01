@@ -69,13 +69,24 @@ const namespaceMappings = Object.fromEntries(
 const priority = data.priority as string[];
 
 // Extract roles - now an object with metadata
-const rolesData = data.roles as Record<string, { description: string; color: string }>;
+const rolesData = data.roles as Record<string, {
+  description: string;
+  color: string;
+  defaultLayer?: number;
+  tags?: string[];
+}>;
 const roles = Object.keys(rolesData);
 const descriptions = Object.fromEntries(
   Object.entries(rolesData).map(([k, v]) => [k, v.description])
 );
 const colors = Object.fromEntries(
   Object.entries(rolesData).map(([k, v]) => [k, v.color])
+);
+const defaultLayers = Object.fromEntries(
+  Object.entries(rolesData).map(([k, v]) => [k, v.defaultLayer ?? 0])
+);
+const roleTags = Object.fromEntries(
+  Object.entries(rolesData).map(([k, v]) => [k, v.tags ?? []])
 );
 
 // Generate TypeScript output
@@ -102,6 +113,16 @@ export const ROLE_DESCRIPTIONS = ${JSON.stringify(descriptions, null, 2)} as con
  * Role colors (tailwind color names) for badges/UI.
  */
 export const ROLE_COLORS = ${JSON.stringify(colors, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
+
+/**
+ * Default layer order per role (0=background, higher=foreground).
+ */
+export const ROLE_DEFAULT_LAYERS = ${JSON.stringify(defaultLayers, null, 2)} as const satisfies Record<ImageCompositionRole, number>;
+
+/**
+ * Role tags for filtering and asset matching.
+ */
+export const ROLE_TAGS = ${JSON.stringify(roleTags, null, 2)} as const satisfies Record<ImageCompositionRole, readonly string[]>;
 
 /**
  * Tag slug -> composition role mapping.

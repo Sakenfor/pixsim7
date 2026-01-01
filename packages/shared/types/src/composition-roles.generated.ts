@@ -37,6 +37,54 @@ export const ROLE_COLORS = {
 } as const satisfies Record<ImageCompositionRole, string>;
 
 /**
+ * Default layer order per role (0=background, higher=foreground).
+ */
+export const ROLE_DEFAULT_LAYERS = {
+  "main_character": 1,
+  "companion": 1,
+  "environment": 0,
+  "prop": 1,
+  "style_reference": 0,
+  "effect": 2
+} as const satisfies Record<ImageCompositionRole, number>;
+
+/**
+ * Role tags for filtering and asset matching.
+ */
+export const ROLE_TAGS = {
+  "main_character": [
+    "character",
+    "subject",
+    "primary"
+  ],
+  "companion": [
+    "character",
+    "secondary",
+    "npc"
+  ],
+  "environment": [
+    "background",
+    "setting",
+    "location"
+  ],
+  "prop": [
+    "object",
+    "item",
+    "prop"
+  ],
+  "style_reference": [
+    "style",
+    "reference",
+    "aesthetic"
+  ],
+  "effect": [
+    "effect",
+    "lighting",
+    "camera"
+  ]
+} as const satisfies Record<ImageCompositionRole, readonly string[]>;
+
+/**
  * Tag slug -> composition role mapping.
  * Exact match lookup (e.g., "bg", "char:hero").
  */

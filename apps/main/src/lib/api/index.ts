@@ -40,6 +40,7 @@ export * from './game';
 export * from './accounts';
 export * from './assets';
 export * from './automation';
+export * from './composition';
 export * from './interactions';
 export * from './generations';
 export * from './generationOperations';

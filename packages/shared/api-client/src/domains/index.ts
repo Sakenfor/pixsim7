@@ -9,6 +9,7 @@ export { createAccountsApi } from './accounts';
 export { createAnalyzersApi } from './analyzers';
 export { createAssetsApi } from './assets';
 export { createAutomationApi } from './automation';
+export { createCompositionApi } from './composition';
 export { createGenerationOperationsApi } from './generationOperations';
 export { createGenerationsApi } from './generations';
 export { createLogsApi } from './logs';
@@ -96,4 +97,6 @@ export type {
   UserPreferences,
   UserPreferencesResponse,
 } from './userPreferences';
+
+export type { CompositionPackagesResponse } from './composition';
 
