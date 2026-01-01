@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
-import type { ExpansionComponentProps } from '@/plugins/ui/cube-formation-v1/lib/cubeExpansionRegistry';
+import type { ExpansionComponentProps } from '@features/cubes';
 
 /**
  * Graph status expansion for cube

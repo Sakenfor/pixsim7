@@ -1,23 +1,16 @@
-/**
- * Module Registration
- *
- * This is where all application modules are imported and registered
- * with the module registry. Add new modules here as they're developed.
- */
+// Module Registration
+// Core and page modules are registered manually.
+// Feature modules are auto-discovered from features/[name]/module.ts
 
 import { moduleRegistry } from './types';
-import { galleryModule } from '@features/gallery/module';
+import { registerDiscoveredFeatureModules } from './autoDiscover';
+
+// Core modules (must be manually imported - not in features/)
 import { pluginBootstrapModule } from './core/pluginBootstrapModule';
 import { graphSystemModule } from '@features/graph/systemModule';
 import { gameSessionModule } from './core/gameSessionModule';
-import { controlCenterModule } from '@features/controlCenter/module';
-import { assetsModule } from '@features/assets/module';
-import { workspaceModule } from '@features/workspace';
-import { generationModule } from '@features/generation/module';
-import { gameModule } from '@features/worldTools/module';
-import { automationModule } from '@features/automation/module';
-import { pluginsModule } from '@features/plugins/module';
-import { appMapModule } from '@features/devtools/module';
+
+// Page modules (navigation metadata only)
 import {
   arcGraphModule,
   graphModule as graphPageModule,
@@ -46,19 +39,9 @@ export function registerModules() {
   moduleRegistry.register(graphSystemModule);
   moduleRegistry.register(gameSessionModule);
 
-  // UI/Feature modules (priority: 50)
-  // Standard feature modules that provide capabilities
-  moduleRegistry.register(controlCenterModule);
-  moduleRegistry.register(assetsModule);
-  moduleRegistry.register(workspaceModule);
-  moduleRegistry.register(generationModule);
-  moduleRegistry.register(gameModule);
-  moduleRegistry.register(automationModule);
-  moduleRegistry.register(pluginsModule);
-  moduleRegistry.register(appMapModule);
-
-  // Legacy gallery module (kept for compatibility)
-  moduleRegistry.register(galleryModule);
+  // Feature modules (priority: 50-70) - AUTO-DISCOVERED
+  // Any features/*/module.ts is automatically picked up
+  registerDiscoveredFeatureModules();
 
   // Page-only modules (no initialization logic, just navigation metadata)
   moduleRegistry.register(arcGraphModule);
@@ -75,26 +58,26 @@ export function registerModules() {
   moduleRegistry.register(pluginWorkspaceModule);
   moduleRegistry.register(modulesDevModule);
   moduleRegistry.register(overlayConfigModule);
-
-  // Note: sceneBuilder now lives under @domain/sceneBuilder (no module init).
 }
 
 // Export registry for easy access
 export { moduleRegistry };
 
+// Export auto-discovery utilities
+export {
+  registerDiscoveredFeatureModules,
+  getDiscoveredFeatureModules,
+  getDiscoveredFeatureModuleIds,
+} from './autoDiscover';
+
 // Export page category constants and types
 export { PAGE_CATEGORIES, type PageCategory } from './types';
 
-// Export module instances for direct access
-export { galleryModule } from '@features/gallery/module';
+// Export core module instances for direct access
 export { pluginBootstrapModule } from './core/pluginBootstrapModule';
 export { graphSystemModule } from '@features/graph/systemModule';
 export { gameSessionModule } from './core/gameSessionModule';
-export { controlCenterModule } from '@features/controlCenter/module';
-export { assetsModule } from '@features/assets/module';
-export { workspaceModule } from '@features/workspace';
-export { generationModule } from '@features/generation/module';
-export { gameModule } from '@features/worldTools/module';
-export { automationModule } from '@features/automation/module';
-export { pluginsModule } from '@features/plugins/module';
-export { appMapModule } from '@features/devtools/module';
+
+// Note: Feature modules are auto-discovered and can be accessed via:
+// - moduleRegistry.get('module-id')
+// - getDiscoveredFeatureModules()

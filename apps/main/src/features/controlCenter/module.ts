@@ -1,5 +1,4 @@
 import type { Module } from '@app/modules/types';
-import { registerCubeExpansions } from '@/plugins/ui/cube-formation-v1/lib';
 import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
 import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
 import { ProviderOverviewModule } from '@features/providers';
@@ -8,9 +7,11 @@ import { PanelLauncherModule } from '@features/controlCenter/components/PanelLau
 /**
  * Control Center Module
  *
- * Manages the Control Center UI system including cube expansions
- * and control center configurations. The Control Center provides
- * quick access to generation, presets, providers, and other tools.
+ * Manages the Control Center UI system including the dock-based interface.
+ * The Control Center provides quick access to generation, presets, providers,
+ * and other tools.
+ *
+ * Note: Cubes are now a separate feature (@features/cubes) with their own module.
  */
 export const controlCenterModule: Module = {
   id: 'control-center',
@@ -18,8 +19,7 @@ export const controlCenterModule: Module = {
   priority: 50, // Standard UI module
 
   async initialize() {
-    // Register cube expansions for the cube-based control center mode
-    registerCubeExpansions();
+    // Control center initialization (dock mode is default)
   },
 
   // Auto-register Control Center panels to global panelRegistry

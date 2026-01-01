@@ -1,18 +1,13 @@
 import { Rnd } from "react-rnd";
 import { useWorkspaceStore, type PanelId } from "@features/workspace";
-import { useControlCubeStore } from "@features/controlCenter/stores/controlCubeStore";
 import { panelRegistry } from "@features/panels";
 import { ContextHubHost } from "@features/contextHub";
-import { BASE_CUBE_SIZE } from "@/config/cubeConstants";
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 import { devToolRegistry } from "@lib/dev/devtools/devToolRegistry";
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
-  const minimizeFloatingPanel = useWorkspaceStore(
-    (s) => s.minimizeFloatingPanel,
-  );
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition,
   );
@@ -22,36 +17,6 @@ export function FloatingPanelsManager() {
   const bringFloatingPanelToFront = useWorkspaceStore(
     (s) => s.bringFloatingPanelToFront,
   );
-
-  const minimizePanelToCube = useControlCubeStore((s) => s.minimizePanelToCube);
-  const cubes = useControlCubeStore((s) => s.cubes);
-  const addCube = useControlCubeStore((s) => s.addCube);
-  const setActiveCube = useControlCubeStore((s) => s.setActiveCube);
-  const updateCube = useControlCubeStore((s) => s.updateCube);
-
-  const handleMinimize = (panelId: PanelId) => {
-    const panel = floatingPanels.find((p) => p.id === panelId);
-    if (!panel) return;
-
-    // Calculate center position of the panel (where cube will appear)
-    const cubeSize = BASE_CUBE_SIZE;
-    const centerX = panel.x + panel.width / 2 - cubeSize / 2;
-    const centerY = panel.y + panel.height / 2 - cubeSize / 2;
-
-    // Create cube at panel's center
-    minimizePanelToCube(
-      {
-        panelId: panel.id,
-        originalPosition: { x: panel.x, y: panel.y },
-        originalSize: { width: panel.width, height: panel.height },
-        zIndex: panel.zIndex,
-      },
-      { x: centerX, y: centerY },
-    );
-
-    // Remove panel from floating panels
-    minimizeFloatingPanel(panelId);
-  };
 
   return (
     <>
@@ -84,33 +49,6 @@ export function FloatingPanelsManager() {
           Component = panelDef.component;
           title = panelDef.title;
         }
-        const dockedCubes = Object.values(cubes).filter(
-          (cube) => cube.dockedToPanelId === panel.id,
-        );
-        const dockedCount = dockedCubes.length;
-
-        const handlePanelCubeClick = () => {
-          // If there are docked cubes for this panel, bring them into focus
-          if (dockedCount > 0) {
-            dockedCubes.forEach((cube) => {
-              updateCube(cube.id, { visible: true });
-            });
-            setActiveCube(dockedCubes[0].id);
-            return;
-          }
-
-          // Otherwise, spawn a new panel cube at the panel's center and dock it
-          const cubeSize = BASE_CUBE_SIZE;
-          const centerX = panel.x + panel.width / 2 - cubeSize / 2;
-          const centerY = panel.y + panel.height / 2 - cubeSize / 2;
-
-          const cubeId = addCube("panel", { x: centerX, y: centerY });
-          updateCube(cubeId, {
-            mode: "docked",
-            dockedToPanelId: panel.id,
-          });
-          setActiveCube(cubeId);
-        };
 
         return (
           <Rnd
@@ -133,9 +71,6 @@ export function FloatingPanelsManager() {
             minHeight={200}
             bounds="window"
             dragHandleClassName="floating-panel-header"
-            // Use a high base z-index so floating panels appear above
-            // other overlays like the Control Center dock (z-50) and
-            // cube systems (z-9999). Base at 10000+ to be above cubes.
             style={{ zIndex: 10100 + panel.zIndex }}
             className="floating-panel"
           >
@@ -151,20 +86,6 @@ export function FloatingPanelsManager() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handlePanelCubeClick}
-                    className="px-1.5 py-0.5 text-[10px] rounded bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-100 border border-neutral-300 dark:border-neutral-600"
-                    title="Open or focus a cube for this panel"
-                  >
-                    Cube{dockedCount > 0 ? ` (${dockedCount})` : ""}
-                  </button>
-                  <button
-                    onClick={() => handleMinimize(panel.id)}
-                    className="text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-base leading-none"
-                    title="Minimize to cube"
-                  >
-                    📦
-                  </button>
                   <button
                     onClick={() => closeFloatingPanel(panel.id)}
                     className="text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"

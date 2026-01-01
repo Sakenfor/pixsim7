@@ -1,8 +1,8 @@
 /**
  * Control Center Feature
  *
- * Consolidated Control Center domain with expandable control cubes,
- * docking panels, and workspace UI components.
+ * Control Center domain with dock-based UI.
+ * Cube functionality has been moved to @features/cubes.
  *
  * @barrel-export
  * This barrel exports the public surface of the Control Center feature.
@@ -15,10 +15,6 @@
 
 export { ControlCenterManager } from './components/ControlCenterManager';
 export { ControlCenterDock } from './components/ControlCenterDock';
-export { CubeFormationControlCenter } from './components/CubeFormationControlCenter';
-export { CubeSpawnDock } from './components/CubeSpawnDock';
-export { ControlCube } from './components/ControlCube';
-export type { ControlCubeProps } from './components/ControlCube';
 
 // Generation-related components moved to @lib/generation-ui
 // Import from @lib/generation-ui instead
@@ -35,18 +31,6 @@ export {
   type LayoutBehavior,
 } from './stores/controlCenterStore';
 
-export {
-  useControlCubeStore,
-  type CubeState,
-  type CubeFace,
-  type CubeType,
-} from './stores/controlCubeStore';
-
-export {
-  useCubeSettingsStore,
-  type LinkingGesture,
-} from './stores/cubeSettingsStore';
-
 // ============================================================================
 // Hooks - Feature Hooks
 // ============================================================================
@@ -55,11 +39,6 @@ export {
   useControlCenterLayout,
   type ControlCenterLayoutConfig,
 } from './hooks/useControlCenterLayout';
-
-export {
-  useCubeDocking,
-  usePanelRects,
-} from './hooks/useCubeDocking';
 
 // ============================================================================
 // Lib - API & Utilities

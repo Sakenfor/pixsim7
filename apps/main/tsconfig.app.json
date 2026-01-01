@@ -67,6 +67,8 @@
       "@features/assets": ["./src/features/assets/index.ts"],
       "@features/preview/*": ["./src/features/preview/*"],
       "@features/preview": ["./src/features/preview/index.ts"],
+      "@features/cubes/*": ["./src/features/cubes/*"],
+      "@features/cubes": ["./src/features/cubes/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

@@ -21,9 +21,9 @@ export async function bootstrapControlCenters(): Promise<void> {
     await import('../../plugins/ui/dock-control-center/plugin');
     console.info('✅ Loaded Dock Control Center');
 
-    // 2. Cube Formation V1 (original floating cubes)
-    await import('../../plugins/ui/cube-formation-v1/plugin');
-    console.info('✅ Loaded Cube Formation V1');
+    // NOTE: Cube Formation V1 has been extracted to @features/cubes as CubeWidgetOverlay.
+    // It now works as a standalone overlay alongside Dock, not as a control center mode.
+    // See: features/cubes/CubeWidgetOverlay.tsx
 
     // NOTE: Cube System V2 (3D WebGL) is deprecated and no longer loaded.
     // It was an experimental full-screen 3D interface that didn't fit the workflow.

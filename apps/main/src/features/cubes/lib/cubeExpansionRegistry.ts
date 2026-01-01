@@ -1,6 +1,12 @@
+/**
+ * Cube Expansion Registry
+ *
+ * Registry for cube expansion providers that show contextual UI on cube hover/click.
+ */
+
 import { ComponentType } from 'react';
 import type { PanelId } from '@features/workspace';
-import type { CubeType } from '@features/controlCenter/stores/controlCubeStore';
+import type { CubeType } from '../useCubeStore';
 
 /**
  * Types of expansions that cubes can show

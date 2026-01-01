@@ -8,7 +8,7 @@ import React from "react";
  * which cube widgets can then expose on their faces when docked.
  */
 
-import type { CubeFace } from "../stores/controlCubeStore";
+import type { CubeFace } from "@pixsim7/pixcubes";
 
 export interface PanelActionError {
   actionId: string;

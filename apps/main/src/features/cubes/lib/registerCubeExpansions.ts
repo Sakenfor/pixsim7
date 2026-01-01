@@ -1,3 +1,10 @@
+/**
+ * Register Cube Expansions
+ *
+ * Registers all default cube expansion providers.
+ * Call this once during app initialization.
+ */
+
 import { cubeExpansionRegistry } from './cubeExpansionRegistry';
 import { HealthCubeExpansion } from '@/components/health/HealthCubeExpansion';
 import { GalleryCubeExpansion } from '@features/assets';
@@ -39,6 +46,4 @@ export function registerCubeExpansions() {
   });
 
   // Add more expansions here as they're created
-  // cubeExpansionRegistry.register('graph', { ... });
-  // cubeExpansionRegistry.register('providers', { ... });
 }
