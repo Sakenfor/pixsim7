@@ -1,16 +1,32 @@
 // Auto-generated from composition-roles.yaml - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
+//
+// IMPORTANT: This file contains CORE roles only.
+// Plugin-contributed roles are fetched via /api/v1/concepts/roles at runtime.
+// Use `RoleId` type for data that may include plugin roles.
 
 /**
- * Canonical composition roles (single source of truth).
+ * Canonical composition roles from core (single source of truth).
  * Add new roles to composition-roles.yaml, not here.
+ *
+ * Note: Plugin roles are not included here - use the /concepts/roles API
+ * and merge with these constants, deduping by id.
  */
 export const COMPOSITION_ROLES = ["main_character","companion","environment","prop","style_reference","effect"] as const;
 
 /**
  * Canonical composition role type, derived from YAML.
+ * This only includes core roles - not plugin-contributed ones.
  */
 export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
+
+/**
+ * Flexible role ID type that includes core + plugin roles.
+ * Use this for runtime data that may contain plugin-contributed role IDs.
+ *
+ * Core roles are type-checked, plugin roles are strings.
+ */
+export type RoleId = ImageCompositionRole | (string & {});
 
 /**
  * Role descriptions for UI display.

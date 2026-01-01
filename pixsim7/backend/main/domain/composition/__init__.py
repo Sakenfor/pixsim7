@@ -31,6 +31,11 @@ from .core_package import (
     CORE_COMPOSITION_PACKAGE,
     register_core_composition_package,
 )
+from .role_resolver import (
+    resolve_role,
+    resolve_role_from_tags,
+    resolve_role_from_prompt_role,
+)
 
 __all__ = [
     # Types
@@ -49,4 +54,8 @@ __all__ = [
     # Core package
     "CORE_COMPOSITION_PACKAGE",
     "register_core_composition_package",
+    # Role resolver
+    "resolve_role",
+    "resolve_role_from_tags",
+    "resolve_role_from_prompt_role",
 ]

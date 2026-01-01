@@ -41,6 +41,7 @@ export * from './accounts';
 export * from './assets';
 export * from './automation';
 export * from './composition';
+export * from './concepts';
 export * from './interactions';
 export * from './generations';
 export * from './generationOperations';

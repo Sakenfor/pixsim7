@@ -199,6 +199,11 @@ ContentRatingConceptRef = _make_concept_ref_type("rating")
 # Branch intent concepts (branch:escalate, branch:cool_down, etc.)
 BranchIntentConceptRef = _make_concept_ref_type("branch")
 
+# Composition role concepts (role:main_character, role:environment, etc.)
+# Used for typed role references in composition pipeline.
+# Plugin roles are fetched via /api/v1/concepts/roles at runtime.
+RoleConceptRef = _make_concept_ref_type("role")
+
 
 # ===================
 # Factory Function
@@ -295,6 +300,7 @@ __all__ = [
     "IntimacyLevelConceptRef",
     "ContentRatingConceptRef",
     "BranchIntentConceptRef",
+    "RoleConceptRef",
     # Factory
     "concept_ref_field",
     # Utilities

@@ -5,10 +5,11 @@ These schemas define the canonical multi-image composition format used across
 fusion, image editing, and prompt blocks.
 """
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator
+from pydantic import BaseModel, Field, AliasChoices, ConfigDict, computed_field, field_validator
 
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
 from pixsim7.backend.main.shared.composition import normalize_composition_role
+from pixsim7.backend.main.domain.ontology.concept_ref import ConceptRef
 
 
 class CompositionAsset(BaseModel):
@@ -77,3 +78,15 @@ class CompositionAsset(BaseModel):
         if v is None:
             return None
         return normalize_composition_role(str(v))
+
+    @computed_field
+    @property
+    def role_concept(self) -> Optional[ConceptRef]:
+        """Get role as typed ConceptRef (kind='role').
+
+        Provides typed access to role for code that uses the unified ConceptRef system.
+        Returns None if role is not set.
+        """
+        if self.role:
+            return ConceptRef(kind="role", id=self.role)
+        return None

@@ -57,6 +57,7 @@ from pixsim7.backend.main.domain.ontology.concept_ref import (
     IntimacyLevelConceptRef,
     ContentRatingConceptRef,
     BranchIntentConceptRef,
+    RoleConceptRef,
     concept_ref_field,
     canonicalize_concept_id,
     parse_concept_id,
@@ -96,6 +97,7 @@ __all__ = [
     "IntimacyLevelConceptRef",
     "ContentRatingConceptRef",
     "BranchIntentConceptRef",
+    "RoleConceptRef",
     "concept_ref_field",
     # ConceptRef utilities
     "canonicalize_concept_id",

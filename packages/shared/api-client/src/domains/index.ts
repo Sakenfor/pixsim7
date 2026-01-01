@@ -10,6 +10,7 @@ export { createAnalyzersApi } from './analyzers';
 export { createAssetsApi } from './assets';
 export { createAutomationApi } from './automation';
 export { createCompositionApi } from './composition';
+export { createConceptsApi } from './concepts';
 export { createGenerationOperationsApi } from './generationOperations';
 export { createGenerationsApi } from './generations';
 export { createLogsApi } from './logs';
@@ -99,4 +100,6 @@ export type {
 } from './userPreferences';
 
 export type { CompositionPackagesResponse } from './composition';
+
+export type { RoleConceptResponse, RolesListResponse } from './concepts';
 
