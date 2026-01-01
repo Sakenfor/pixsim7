@@ -2,17 +2,13 @@
  * RegionEditForm
  *
  * Inline form for editing region labels and notes.
- * Includes autocomplete suggestions from existing vocabularies.
+ * Includes autocomplete suggestions from concept store API.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icon } from '@lib/icons';
 import { useAssetRegionStore } from '../stores/assetRegionStore';
-import {
-  ALL_REGION_LABELS,
-  LABEL_GROUP_NAMES,
-  type LabelSuggestion,
-} from '@pixsim7/shared.types';
+import { useLabelsForAutocomplete, type LabelSuggestion } from '@/stores/conceptStore';
 
 // ============================================================================
 // Types
@@ -78,6 +74,9 @@ function LabelAutocomplete({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Fetch labels from concept store
+  const { labels: allLabels, isLoading } = useLabelsForAutocomplete();
+
   // Get recent labels
   const recentLabels = useMemo(() => getRecentLabels(), []);
 
@@ -90,24 +89,24 @@ function LabelAutocomplete({
       const recentSuggestions: LabelSuggestion[] = recentLabels.map((id) => ({
         id,
         label: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' '),
-        group: 'builtin' as const, // Will be overridden in display
+        group: 'Recent',
       }));
 
       // Get first few from each group
-      const defaults = ALL_REGION_LABELS.slice(0, 12);
+      const defaults = allLabels.slice(0, 12);
 
       return { recent: recentSuggestions, suggestions: defaults };
     }
 
     // Filter by id or label
-    const matches = ALL_REGION_LABELS.filter(
+    const matches = allLabels.filter(
       (s) =>
         s.id.toLowerCase().includes(query) ||
         s.label.toLowerCase().includes(query)
     );
 
     return { recent: [], suggestions: matches.slice(0, 15) };
-  }, [value, recentLabels]);
+  }, [value, recentLabels, allLabels]);
 
   // Group suggestions
   const groupedSuggestions = useMemo(() => {
@@ -256,9 +255,7 @@ function LabelAutocomplete({
             <div key={group}>
               {/* Group header */}
               <div className="px-2 py-1 text-[10px] font-medium text-neutral-500 uppercase tracking-wide bg-neutral-750 sticky top-0">
-                {group === 'recent'
-                  ? 'Recent'
-                  : LABEL_GROUP_NAMES[group as keyof typeof LABEL_GROUP_NAMES] ?? group}
+                {group === 'recent' ? 'Recent' : group}
               </div>
               {/* Items */}
               {suggestions.map((suggestion) => {

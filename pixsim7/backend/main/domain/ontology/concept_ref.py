@@ -204,6 +204,18 @@ BranchIntentConceptRef = _make_concept_ref_type("branch")
 # Plugin roles are fetched via /api/v1/concepts/roles at runtime.
 RoleConceptRef = _make_concept_ref_type("role")
 
+# Anatomy part concepts (part:face, part:hands, part:torso, etc.)
+# From ontology.yaml anatomy_parts section.
+PartConceptRef = _make_concept_ref_type("part")
+
+# Body region concepts (body_region:chest, body_region:groin, etc.)
+# From ontology.yaml anatomy_regions section.
+BodyRegionConceptRef = _make_concept_ref_type("body_region")
+
+# Influence region concepts (influence_region:foreground, influence_region:background, etc.)
+# Built-in regions for image composition masking.
+InfluenceRegionConceptRef = _make_concept_ref_type("influence_region")
+
 
 # ===================
 # Factory Function
@@ -301,6 +313,9 @@ __all__ = [
     "ContentRatingConceptRef",
     "BranchIntentConceptRef",
     "RoleConceptRef",
+    "PartConceptRef",
+    "BodyRegionConceptRef",
+    "InfluenceRegionConceptRef",
     # Factory
     "concept_ref_field",
     # Utilities

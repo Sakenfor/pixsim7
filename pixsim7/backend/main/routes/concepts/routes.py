@@ -2,16 +2,15 @@
 Concepts API
 
 Provides runtime access to ontology concepts for frontend.
-Includes composition roles with full metadata for role inference.
+Supports multiple concept kinds: role, part, body_region, pose, influence_region.
 
 This endpoint supplements the build-time generated constants by:
-- Including plugin-contributed roles (which generators don't see)
-- Providing role priority for conflict resolution
-- Exposing slug/namespace mappings for frontend inference
+- Including plugin-contributed concepts (which generators don't see)
+- Providing priority ordering for conflict resolution
+- Exposing mappings for frontend inference
 """
-from typing import List, Optional
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Query
 
 from pixsim7.backend.main.domain.composition import (
     get_available_roles,
@@ -19,49 +18,35 @@ from pixsim7.backend.main.domain.composition import (
 )
 from pixsim7.backend.main.shared.composition import COMPOSITION_ROLE_PRIORITY
 
+from .schemas import (
+    ConceptResponse,
+    ConceptsListResponse,
+    RoleConceptResponse,
+    RolesListResponse,
+    get_group_name,
+)
+
 router = APIRouter(prefix="/concepts", tags=["concepts"])
 
 
-# ===== Response Schemas =====
-
-class RoleConceptResponse(BaseModel):
-    """A composition role as a concept."""
-    id: str = Field(description="Role ID (e.g., 'main_character', 'environment')")
-    label: str = Field(description="Human-readable label")
-    description: str = Field(description="Role description")
-    color: str = Field(description="Tailwind color name for UI badges")
-    default_layer: int = Field(default=0, description="Layer order (0=background, higher=foreground)")
-    tags: List[str] = Field(default_factory=list, description="Tags for filtering")
-    slug_mappings: List[str] = Field(
-        default_factory=list,
-        description="Exact tag slugs that map to this role (e.g., 'bg', 'char:hero')"
+def _role_to_concept_response(role: CompositionRoleDefinition) -> RoleConceptResponse:
+    """Convert domain role to response schema."""
+    return RoleConceptResponse(
+        id=role.id,
+        label=role.label,
+        description=role.description,
+        color=role.color,
+        default_layer=role.default_layer,
+        tags=list(role.tags),
+        slug_mappings=list(role.slug_mappings),
+        namespace_mappings=list(role.namespace_mappings),
     )
-    namespace_mappings: List[str] = Field(
-        default_factory=list,
-        description="Tag namespace prefixes that map to this role (e.g., 'npc', 'location')"
-    )
-
-    @classmethod
-    def from_domain(cls, role: CompositionRoleDefinition) -> "RoleConceptResponse":
-        return cls(
-            id=role.id,
-            label=role.label,
-            description=role.description,
-            color=role.color,
-            default_layer=role.default_layer,
-            tags=list(role.tags),
-            slug_mappings=list(role.slug_mappings),
-            namespace_mappings=list(role.namespace_mappings),
-        )
-
-
-class RolesListResponse(BaseModel):
-    """Response containing composition roles with inference metadata."""
-    roles: List[RoleConceptResponse] = Field(description="Available composition roles")
-    priority: List[str] = Field(description="Role IDs in priority order for conflict resolution")
 
 
 # ===== Endpoints =====
+# IMPORTANT: Static routes MUST be registered BEFORE dynamic /{kind} route
+# to avoid shadowing. FastAPI matches routes in order of registration.
+
 
 @router.get("/roles", response_model=RolesListResponse)
 async def list_roles(
@@ -91,6 +76,63 @@ async def list_roles(
     roles = get_available_roles(active_ids)
 
     return RolesListResponse(
-        roles=[RoleConceptResponse.from_domain(r) for r in roles],
+        roles=[_role_to_concept_response(r) for r in roles],
         priority=list(COMPOSITION_ROLE_PRIORITY),
+    )
+
+
+# ===== Generic Endpoint =====
+# IMPORTANT: This MUST be registered AFTER static routes like /roles
+
+
+@router.get("/{kind}", response_model=ConceptsListResponse)
+async def list_concepts(
+    kind: str,
+    packages: Optional[str] = Query(
+        None,
+        description="Comma-separated package IDs (only applies to 'role' kind)",
+    ),
+):
+    """
+    Get concepts of a specific kind.
+
+    Kinds:
+    - role: Composition roles (main_character, environment, etc.)
+    - part: Anatomy parts (face, hands, torso, etc.)
+    - body_region: Body regions (chest, groin, back, etc.)
+    - pose: Poses (standing_neutral, kissing, etc.)
+    - influence_region: Built-in influence regions (foreground, background, full, subject)
+
+    Query params:
+        packages: Comma-separated package IDs to filter by.
+                  Only applies to kinds that support packages (currently: role).
+                  For other kinds, this parameter is ignored.
+
+    Example: /api/v1/concepts/pose
+    Example: /api/v1/concepts/role?packages=core.base
+    """
+    from pixsim7.backend.main.domain.concepts import get_concept_provider
+
+    provider = get_concept_provider(kind)
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown concept kind: '{kind}'. "
+            f"Valid kinds: role, part, body_region, pose, influence_region",
+        )
+
+    # Parse package IDs if provided
+    package_ids = None
+    if packages:
+        package_ids = [p.strip() for p in packages.split(",") if p.strip()]
+
+    concepts = provider.get_concepts(package_ids)
+    priority = provider.get_priority()
+    group_name = provider.get_group_name()
+
+    return ConceptsListResponse(
+        kind=kind,
+        concepts=concepts,
+        priority=priority,
+        group_name=group_name,
     )
