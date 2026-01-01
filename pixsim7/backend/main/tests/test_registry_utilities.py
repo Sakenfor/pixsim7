@@ -17,6 +17,10 @@ from pixsim7.backend.main.lib.registry import (
     MissingDependencyError,
     DEFAULT_NAME_PATTERN,
     DEFAULT_RESERVED_NAMES,
+    SimpleRegistry,
+    DuplicateKeyError,
+    KeyNotFoundError,
+    create_registry,
 )
 
 
@@ -324,3 +328,182 @@ class TestResolveLoadOrder:
         assert order.index("db") < order.index("worker")
         assert order.index("cache") < order.index("worker")
         assert order.index("logging") < order.index("worker")
+
+
+class TestSimpleRegistry:
+    """Tests for SimpleRegistry class."""
+
+    def test_register_and_get(self):
+        """Should register and retrieve items."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("one", 1)
+        registry.register("two", 2)
+
+        assert registry.get("one") == 1
+        assert registry.get("two") == 2
+
+    def test_get_raises_on_missing(self):
+        """Should raise KeyNotFoundError for missing key."""
+        registry = SimpleRegistry[str, int](name="test")
+
+        with pytest.raises(KeyNotFoundError) as exc_info:
+            registry.get("missing")
+
+        assert exc_info.value.key == "missing"
+        assert "test" in str(exc_info.value)
+
+    def test_get_or_none(self):
+        """Should return None for missing key."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("exists", 42)
+
+        assert registry.get_or_none("exists") == 42
+        assert registry.get_or_none("missing") is None
+
+    def test_has(self):
+        """Should check if key exists."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("exists", 1)
+
+        assert registry.has("exists")
+        assert not registry.has("missing")
+
+    def test_unregister(self):
+        """Should remove items."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("key", 42)
+
+        removed = registry.unregister("key")
+
+        assert removed == 42
+        assert not registry.has("key")
+        assert registry.unregister("missing") is None
+
+    def test_clear(self):
+        """Should remove all items."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("a", 1)
+        registry.register("b", 2)
+
+        registry.clear()
+
+        assert len(registry) == 0
+
+    def test_keys_values_items(self):
+        """Should return keys, values, and items."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("a", 1)
+        registry.register("b", 2)
+
+        assert set(registry.keys()) == {"a", "b"}
+        assert set(registry.values()) == {1, 2}
+        assert set(registry.items()) == {("a", 1), ("b", 2)}
+
+    def test_len_and_contains(self):
+        """Should support len() and 'in' operator."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("key", 42)
+
+        assert len(registry) == 1
+        assert "key" in registry
+        assert "missing" not in registry
+
+    def test_iteration(self):
+        """Should iterate over keys."""
+        registry = SimpleRegistry[str, int](name="test")
+        registry.register("a", 1)
+        registry.register("b", 2)
+
+        keys = list(registry)
+
+        assert set(keys) == {"a", "b"}
+
+    def test_duplicate_overwrite_allowed(self):
+        """Should allow overwriting by default."""
+        registry = SimpleRegistry[str, int](name="test", allow_overwrite=True)
+        registry.register("key", 1)
+        registry.register("key", 2)
+
+        assert registry.get("key") == 2
+
+    def test_duplicate_overwrite_prevented(self):
+        """Should raise DuplicateKeyError when overwrite disabled."""
+        registry = SimpleRegistry[str, int](name="test", allow_overwrite=False)
+        registry.register("key", 1)
+
+        with pytest.raises(DuplicateKeyError) as exc_info:
+            registry.register("key", 2)
+
+        assert exc_info.value.key == "key"
+
+    def test_register_item_with_key_extraction(self):
+        """Should extract key from item using _get_item_key."""
+        class Item:
+            def __init__(self, id: str, value: int):
+                self.id = id
+                self.value = value
+
+        class ItemRegistry(SimpleRegistry[str, Item]):
+            def _get_item_key(self, item: Item) -> str:
+                return item.id
+
+        registry = ItemRegistry(name="items")
+        item = Item("my-id", 42)
+
+        key = registry.register_item(item)
+
+        assert key == "my-id"
+        assert registry.get("my-id") is item
+
+    def test_register_item_raises_without_override(self):
+        """Should raise if _get_item_key not overridden."""
+        registry = SimpleRegistry[str, int](name="test")
+
+        with pytest.raises(NotImplementedError):
+            registry.register_item(42)
+
+    def test_reset_with_seed_defaults(self):
+        """Should clear and re-seed on reset."""
+        class SeededRegistry(SimpleRegistry[str, int]):
+            def _seed_defaults(self):
+                self.register("default", 100)
+
+        registry = SeededRegistry(name="seeded", seed_on_init=True)
+
+        # Should have default
+        assert registry.get("default") == 100
+
+        # Add another item
+        registry.register("custom", 200)
+        assert len(registry) == 2
+
+        # Reset should clear and re-seed
+        registry.reset()
+
+        assert len(registry) == 1
+        assert registry.get("default") == 100
+        assert not registry.has("custom")
+
+
+class TestCreateRegistry:
+    """Tests for create_registry helper."""
+
+    def test_create_basic_registry(self):
+        """Should create a basic registry."""
+        registry = create_registry("test")
+        registry.register("key", "value")
+
+        assert registry.get("key") == "value"
+
+    def test_create_registry_with_key_extractor(self):
+        """Should create registry with custom key extraction."""
+        class Item:
+            def __init__(self, name: str):
+                self.name = name
+
+        registry = create_registry("items", get_key=lambda i: i.name)
+        item = Item("my-item")
+
+        registry.register_item(item)
+
+        assert registry.get("my-item") is item

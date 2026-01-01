@@ -1,13 +1,15 @@
 """
-Registry utilities for manifest-based discovery and dependency resolution.
+Registry utilities for manifest-based discovery, dependency resolution,
+and simple key-value registries.
 
 Usage:
     from pixsim7.backend.main.lib.registry import (
+        # Discovery
         discover_manifests,
         resolve_load_order,
-        DiscoveredManifest,
-        CircularDependencyError,
-        MissingDependencyError,
+        # Simple registry
+        SimpleRegistry,
+        create_registry,
     )
 
     # Discover all subdirectories containing manifest.py
@@ -21,6 +23,13 @@ Usage:
         items={"a": ["b"], "b": [], "c": ["a", "b"]},
     )
     # Returns: ["b", "a", "c"]
+
+    # Create a simple registry
+    class MyRegistry(SimpleRegistry[str, MyItem]):
+        pass
+
+    registry = MyRegistry()
+    registry.register("key", item)
 """
 
 from .discovery import (
@@ -33,8 +42,16 @@ from .discovery import (
 )
 from .dependencies import (
     resolve_load_order,
+    resolve_load_order_with_getter,
+    find_dependents,
     CircularDependencyError,
     MissingDependencyError,
+)
+from .simple import (
+    SimpleRegistry,
+    DuplicateKeyError,
+    KeyNotFoundError,
+    create_registry,
 )
 
 __all__ = [
@@ -47,6 +64,13 @@ __all__ = [
     "DEFAULT_RESERVED_NAMES",
     # Dependencies
     "resolve_load_order",
+    "resolve_load_order_with_getter",
+    "find_dependents",
     "CircularDependencyError",
     "MissingDependencyError",
+    # Simple registry
+    "SimpleRegistry",
+    "DuplicateKeyError",
+    "KeyNotFoundError",
+    "create_registry",
 ]

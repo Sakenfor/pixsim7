@@ -1,34 +1,37 @@
 """
 Metric registry for managing available metric evaluators.
+
+Uses shared SimpleRegistry for core functionality.
 """
 
-from typing import Dict, Callable, Any
+from pixsim7.backend.main.lib.registry import SimpleRegistry, KeyNotFoundError
 from .types import MetricType, MetricEvaluator
 
 
-class MetricRegistry:
-    """Registry of available metric evaluators."""
+class MetricRegistry(SimpleRegistry[MetricType, MetricEvaluator]):
+    """
+    Registry of available metric evaluators.
+
+    Built on SimpleRegistry for consistent registry behavior.
+    """
 
     def __init__(self):
-        self._evaluators: Dict[MetricType, MetricEvaluator] = {}
-
-    def register(self, metric_type: MetricType, evaluator: MetricEvaluator):
-        """Register an evaluator for a metric type."""
-        self._evaluators[metric_type] = evaluator
+        super().__init__(name="MetricRegistry", log_operations=False)
 
     def get_evaluator(self, metric_type: MetricType) -> MetricEvaluator:
         """Get evaluator for a metric type."""
-        if metric_type not in self._evaluators:
+        try:
+            return self.get(metric_type)
+        except KeyNotFoundError:
             raise ValueError(f"Unknown metric type: {metric_type}")
-        return self._evaluators[metric_type]
 
     def list_metrics(self) -> list[MetricType]:
         """List all registered metric types."""
-        return list(self._evaluators.keys())
+        return self.keys()
 
     def is_registered(self, metric_type: MetricType) -> bool:
         """Check if a metric type is registered."""
-        return metric_type in self._evaluators
+        return self.has(metric_type)
 
 
 # Global registry instance

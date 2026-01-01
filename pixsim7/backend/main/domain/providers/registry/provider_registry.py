@@ -7,10 +7,13 @@ Design:
 - Manifest is the single source of truth for provider metadata
 - Manifest is attached to provider instance during loading
 - Providers are routed to appropriate registry based on kind (video/LLM/both)
+
+Uses shared SimpleRegistry for core functionality.
 """
 from typing import Dict, TYPE_CHECKING
 import logging
 
+from pixsim7.backend.main.lib.registry import SimpleRegistry, KeyNotFoundError
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError
 
 if TYPE_CHECKING:
@@ -19,13 +22,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ProviderRegistry:
+class ProviderRegistry(SimpleRegistry[str, "Provider"]):
     """
     Provider registry - manages available providers
 
+    Built on SimpleRegistry for consistent registry behavior.
+
     Usage:
         # Register provider
-        registry.register(PixverseProvider())
+        registry.register_item(PixverseProvider())
 
         # Get provider
         provider = registry.get("pixverse")
@@ -35,11 +40,15 @@ class ProviderRegistry:
     """
 
     def __init__(self):
-        self._providers: Dict[str, "Provider"] = {}
+        super().__init__(name="ProviderRegistry", log_operations=True)
+
+    def _get_item_key(self, provider: "Provider") -> str:
+        """Extract provider_id from provider instance."""
+        return provider.provider_id
 
     def register(self, provider: "Provider") -> None:
         """
-        Register a provider
+        Register a provider (legacy API - uses register_item internally).
 
         Args:
             provider: Provider instance
@@ -47,15 +56,7 @@ class ProviderRegistry:
         Example:
             registry.register(PixverseProvider())
         """
-        provider_id = provider.provider_id
-        self._providers[provider_id] = provider
-        logger.info(f"Registered provider: {provider_id}")
-
-    def unregister(self, provider_id: str) -> None:
-        """Unregister a provider"""
-        if provider_id in self._providers:
-            del self._providers[provider_id]
-            logger.info(f"Unregistered provider: {provider_id}")
+        self.register_item(provider)
 
     def get(self, provider_id: str) -> "Provider":
         """
@@ -70,26 +71,18 @@ class ProviderRegistry:
         Raises:
             ProviderNotFoundError: Provider not registered
         """
-        if provider_id not in self._providers:
+        try:
+            return super().get(provider_id)
+        except KeyNotFoundError:
             raise ProviderNotFoundError(provider_id)
-
-        return self._providers[provider_id]
-
-    def has(self, provider_id: str) -> bool:
-        """Check if provider is registered"""
-        return provider_id in self._providers
 
     def list_providers(self) -> Dict[str, "Provider"]:
         """Get all registered providers"""
-        return self._providers.copy()
+        return dict(self.items())
 
     def list_provider_ids(self) -> list[str]:
         """Get all registered provider IDs"""
-        return list(self._providers.keys())
-
-    def clear(self) -> None:
-        """Clear all providers (useful for testing)"""
-        self._providers.clear()
+        return self.keys()
 
     def get_provider_domains(self) -> dict[str, dict]:
         """
