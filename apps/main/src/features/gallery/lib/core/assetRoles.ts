@@ -16,8 +16,7 @@
  */
 
 import type { GalleryAsset } from './types';
-import type { ImageCompositionRole } from '@pixsim7/shared.types';
-import { inferRoleFromTags } from '@pixsim7/shared.types/composition-roles.generated';
+import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 
 /**
  * Character identity tags (from world/NPC systems)
@@ -213,16 +212,16 @@ export function filterAssetsByRoleAndIdentity(
 /**
  * Infer canonical composition role from asset tags.
  *
- * Uses the generated mapping from data/composition-roles.yaml.
+ * Uses runtime API data from compositionPackageStore.
  * Strategy:
  * 1. Check exact slug match (e.g., "bg", "char:hero")
  * 2. Extract namespace prefix (e.g., "npc:alex" -> "npc") and check namespace mapping
  * 3. Return highest-priority role if multiple matches
  *
  * @param asset - GalleryAsset with tags
- * @returns Canonical ImageCompositionRole or undefined
+ * @returns Canonical composition role ID or undefined
  */
-export function inferCompositionRoleFromAsset(asset: GalleryAsset): ImageCompositionRole | undefined {
+export function inferCompositionRoleFromAsset(asset: GalleryAsset): string | undefined {
   const tags = getAssetTagValues(asset);
-  return inferRoleFromTags(tags);
+  return useCompositionPackageStore.getState().inferRoleFromTags(tags);
 }

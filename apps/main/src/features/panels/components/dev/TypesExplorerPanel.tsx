@@ -2,25 +2,16 @@
  * Types Explorer Panel
  *
  * Browse generated types from the shared types package:
- * - Composition Roles (runtime values)
+ * - Composition Roles (runtime API)
  * - Region Labels (runtime values)
  * - OpenAPI info (type-only, metadata display)
  */
 
 import { useState, useMemo } from 'react';
 import { Icon } from '@lib/icons';
+import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
-// Import runtime values from generated types
-import {
-  COMPOSITION_ROLES,
-  ROLE_DESCRIPTIONS,
-  ROLE_COLORS,
-  SLUG_TO_COMPOSITION_ROLE,
-  NAMESPACE_TO_COMPOSITION_ROLE,
-  COMPOSITION_ROLE_PRIORITY,
-  type ImageCompositionRole,
-} from '@shared/types/composition-roles.generated';
-
+// Region labels still from generated types (separate concern)
 import {
   ALL_REGION_LABELS,
   LABEL_GROUP_NAMES,
@@ -49,6 +40,8 @@ interface TabConfig {
 // =============================================================================
 
 function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
+  const { roles, priority, slugToRole, namespaceToRole, isLoading } = useCompositionPackages();
+
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['roles', 'slugs', 'namespaces'])
   );
@@ -66,33 +59,33 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
   };
 
   const filteredRoles = useMemo(() => {
-    if (!searchQuery.trim()) return COMPOSITION_ROLES;
+    if (!searchQuery.trim()) return roles;
     const q = searchQuery.toLowerCase();
-    return COMPOSITION_ROLES.filter(
+    return roles.filter(
       (role) =>
-        role.toLowerCase().includes(q) ||
-        ROLE_DESCRIPTIONS[role]?.toLowerCase().includes(q)
+        role.id.toLowerCase().includes(q) ||
+        role.description?.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [searchQuery, roles]);
 
   const filteredSlugs = useMemo(() => {
-    if (!searchQuery.trim()) return Object.entries(SLUG_TO_COMPOSITION_ROLE);
+    if (!searchQuery.trim()) return Object.entries(slugToRole);
     const q = searchQuery.toLowerCase();
-    return Object.entries(SLUG_TO_COMPOSITION_ROLE).filter(
+    return Object.entries(slugToRole).filter(
       ([slug, role]) =>
         slug.toLowerCase().includes(q) || role.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [searchQuery, slugToRole]);
 
   const filteredNamespaces = useMemo(() => {
     if (!searchQuery.trim())
-      return Object.entries(NAMESPACE_TO_COMPOSITION_ROLE);
+      return Object.entries(namespaceToRole);
     const q = searchQuery.toLowerCase();
-    return Object.entries(NAMESPACE_TO_COMPOSITION_ROLE).filter(
+    return Object.entries(namespaceToRole).filter(
       ([ns, role]) =>
         ns.toLowerCase().includes(q) || role.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [searchQuery, namespaceToRole]);
 
   const roleColorClasses: Record<string, string> = {
     blue: 'bg-blue-500',
@@ -101,7 +94,14 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
     orange: 'bg-orange-500',
     pink: 'bg-pink-500',
     cyan: 'bg-cyan-500',
+    amber: 'bg-amber-500',
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-4 text-neutral-400">Loading composition roles...</div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
@@ -123,20 +123,20 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 ml-5">
             {filteredRoles.map((role) => (
               <div
-                key={role}
+                key={role.id}
                 className="flex items-start gap-3 p-2 bg-neutral-800 rounded-md"
               >
                 <div
                   className={`w-3 h-3 rounded-full mt-1 flex-shrink-0 ${
-                    roleColorClasses[ROLE_COLORS[role]] || 'bg-gray-500'
+                    roleColorClasses[role.color] || 'bg-gray-500'
                   }`}
                 />
                 <div className="min-w-0">
                   <code className="text-xs font-mono text-emerald-400">
-                    {role}
+                    {role.id}
                   </code>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    {ROLE_DESCRIPTIONS[role]}
+                    {role.description}
                   </p>
                 </div>
               </div>
@@ -163,13 +163,13 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
         </button>
         {expandedSections.has('priority') && (
           <div className="ml-5 flex flex-wrap gap-1">
-            {COMPOSITION_ROLE_PRIORITY.map((role, idx) => (
+            {priority.map((roleId, idx) => (
               <span
-                key={role}
+                key={roleId}
                 className="px-2 py-1 bg-neutral-800 rounded text-xs font-mono"
               >
                 <span className="text-neutral-500">{idx + 1}.</span>{' '}
-                <span className="text-emerald-400">{role}</span>
+                <span className="text-emerald-400">{roleId}</span>
               </span>
             ))}
           </div>
@@ -192,14 +192,14 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
         </button>
         {expandedSections.has('slugs') && (
           <div className="ml-5 space-y-1 max-h-48 overflow-y-auto">
-            {filteredSlugs.map(([slug, role]) => (
+            {filteredSlugs.map(([slug, roleId]) => (
               <div
                 key={slug}
                 className="flex items-center gap-2 text-xs font-mono"
               >
                 <code className="text-cyan-400">{slug}</code>
                 <span className="text-neutral-600">→</span>
-                <code className="text-emerald-400">{role}</code>
+                <code className="text-emerald-400">{roleId}</code>
               </div>
             ))}
           </div>
@@ -226,14 +226,14 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
         </button>
         {expandedSections.has('namespaces') && (
           <div className="ml-5 space-y-1 max-h-48 overflow-y-auto">
-            {filteredNamespaces.map(([ns, role]) => (
+            {filteredNamespaces.map(([ns, roleId]) => (
               <div
                 key={ns}
                 className="flex items-center gap-2 text-xs font-mono"
               >
                 <code className="text-purple-400">{ns}:</code>
                 <span className="text-neutral-600">→</span>
-                <code className="text-emerald-400">{role}</code>
+                <code className="text-emerald-400">{roleId}</code>
               </div>
             ))}
           </div>
@@ -245,12 +245,11 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
         <p>
           Source:{' '}
           <code className="text-neutral-400">
-            packages/shared/types/src/composition-roles.generated.ts
+            /api/v1/concepts/roles (runtime)
           </code>
         </p>
-        <p className="mt-1">
-          Regenerate:{' '}
-          <code className="text-neutral-400">pnpm composition-roles:gen</code>
+        <p className="mt-1 text-emerald-400/70">
+          Data fetched from backend API (includes plugin roles)
         </p>
       </div>
     </div>
@@ -511,9 +510,10 @@ type GenerationJob = ApiComponents['schemas']['GenerationJobResponse'];`}
 export function TypesExplorerPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('roles');
+  const { roles } = useCompositionPackages();
 
   const tabs: TabConfig[] = [
-    { id: 'roles', label: 'Composition Roles', count: COMPOSITION_ROLES.length },
+    { id: 'roles', label: 'Composition Roles', count: roles.length },
     { id: 'labels', label: 'Region Labels', count: ALL_REGION_LABELS.length },
     { id: 'openapi', label: 'OpenAPI' },
   ];

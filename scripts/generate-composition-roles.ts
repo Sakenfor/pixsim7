@@ -92,58 +92,82 @@ const roleTags = Object.fromEntries(
 // Generate TypeScript output
 const output = `// Auto-generated from composition-roles.yaml - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
+//
+// ⚠️  DEPRECATED: This file is deprecated for runtime use.
+// Frontend should use compositionPackageStore (apps/main/src/stores/compositionPackageStore.ts)
+// which fetches roles from /api/v1/concepts/roles at runtime, including plugin roles.
+//
+// This file remains for:
+// - Backward compatibility with existing imports
+// - Type definitions (ImageCompositionRole, RoleId)
+// - Fallback when API is unavailable
 
 /**
- * Canonical composition roles (single source of truth).
- * Add new roles to composition-roles.yaml, not here.
+ * Canonical composition roles from core YAML.
+ * @deprecated Use compositionPackageStore.roles from runtime API instead.
  */
 export const COMPOSITION_ROLES = ${JSON.stringify(roles)} as const;
 
 /**
- * Canonical composition role type, derived from YAML.
+ * Core composition role type, derived from YAML.
+ * Only includes core roles - not plugin-contributed ones.
  */
 export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
 
 /**
+ * Flexible role ID type that includes core + plugin roles.
+ * Use this for runtime data that may contain plugin-contributed role IDs.
+ */
+export type RoleId = ImageCompositionRole | (string & {});
+
+/**
  * Role descriptions for UI display.
+ * @deprecated Use compositionPackageStore.getRoleDescription() instead.
  */
 export const ROLE_DESCRIPTIONS = ${JSON.stringify(descriptions, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
 
 /**
  * Role colors (tailwind color names) for badges/UI.
+ * @deprecated Use compositionPackageStore.getRoleColor() instead.
  */
 export const ROLE_COLORS = ${JSON.stringify(colors, null, 2)} as const satisfies Record<ImageCompositionRole, string>;
 
 /**
  * Default layer order per role (0=background, higher=foreground).
+ * @deprecated Use role.default_layer from compositionPackageStore.roles instead.
  */
 export const ROLE_DEFAULT_LAYERS = ${JSON.stringify(defaultLayers, null, 2)} as const satisfies Record<ImageCompositionRole, number>;
 
 /**
  * Role tags for filtering and asset matching.
+ * @deprecated Use role.tags from compositionPackageStore.roles instead.
  */
 export const ROLE_TAGS = ${JSON.stringify(roleTags, null, 2)} as const satisfies Record<ImageCompositionRole, readonly string[]>;
 
 /**
  * Tag slug -> composition role mapping.
  * Exact match lookup (e.g., "bg", "char:hero").
+ * @deprecated Use compositionPackageStore.slugToRole instead.
  */
 export const SLUG_TO_COMPOSITION_ROLE = ${JSON.stringify(slugMappings, null, 2)} as const satisfies Record<string, ImageCompositionRole>;
 
 /**
  * Tag namespace -> composition role mapping.
  * Used after extracting prefix before ":" (e.g., "npc:alex" -> "npc").
+ * @deprecated Use compositionPackageStore.namespaceToRole instead.
  */
 export const NAMESPACE_TO_COMPOSITION_ROLE = ${JSON.stringify(namespaceMappings, null, 2)} as const satisfies Record<string, ImageCompositionRole>;
 
 /**
  * Priority order for role selection (highest first).
  * When multiple tags map to different roles, pick the highest priority.
+ * @deprecated Use compositionPackageStore.priority instead.
  */
 export const COMPOSITION_ROLE_PRIORITY = ${JSON.stringify(priority)} as const satisfies readonly ImageCompositionRole[];
 
 /**
  * Infer composition role from a single tag string.
+ * @deprecated Use compositionPackageStore.inferRoleFromTag() instead.
  *
  * Strategy:
  * 1. Check exact slug match (e.g., "bg", "char:hero")
@@ -175,6 +199,7 @@ export function inferRoleFromTag(tag: string): ImageCompositionRole | undefined 
 /**
  * Infer composition role from multiple tags.
  * Returns highest-priority role found.
+ * @deprecated Use compositionPackageStore.inferRoleFromTags() instead.
  *
  * @param tags - Array of tag strings
  * @returns Highest-priority canonical composition role found, or undefined

@@ -2,7 +2,7 @@ import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore'
 import type { QueuedAsset } from '@features/generation';
 import { normalizeProviderParams } from '@features/generation/lib/core/normalizeProviderParams';
 import type { OperationType } from '@/types/operations';
-import { inferRoleFromTags } from '@pixsim7/shared.types/composition-roles.generated';
+import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 
 // Re-export for backwards compatibility
 export type { OperationType };
@@ -107,7 +107,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     if (!queueAssets || queueAssets.length === 0) return undefined;
     return queueAssets.map((queueItem, index) => {
       const tags = getTagStrings(queueItem.asset);
-      const inferredRole = inferRoleFromTags(tags);
+      const inferredRole = useCompositionPackageStore.getState().inferRoleFromTags(tags);
       // Default: first image is environment (background), others are main_character (subjects)
       const defaultRole = index === 0 ? 'environment' : 'main_character';
       return {

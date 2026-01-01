@@ -65,8 +65,8 @@ def resolve_role(
     if isinstance(value, ConceptRef):
         if value.kind == "role":
             return value
-        # Wrong kind - try to extract and normalize the id
-        value = value.id
+        # Wrong kind - don't try to interpret non-role ConceptRefs as roles
+        return None
 
     # Dict format
     if isinstance(value, dict):
@@ -164,8 +164,9 @@ def resolve_role_from_tags(
             return ConceptRef(kind="role", id=role_id)
 
     # Return any found role if not in priority list (plugin-defined roles)
+    # Sort for deterministic ordering when multiple plugin roles match
     if roles_found:
-        return ConceptRef(kind="role", id=next(iter(roles_found)))
+        return ConceptRef(kind="role", id=sorted(roles_found)[0])
 
     return None
 
