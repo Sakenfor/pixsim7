@@ -281,8 +281,11 @@ def get_stat_package(package_id: str) -> Optional[StatPackage]:
 
 
 def list_stat_packages() -> Dict[str, StatPackage]:
-    """Return a snapshot of all registered stat packages."""
-    return dict(_registry._items)
+    """Return a snapshot of all registered stat packages (deep-copied)."""
+    return {
+        key: pkg.model_copy(deep=True)
+        for key, pkg in _registry._items.items()
+    }
 
 
 def find_stat_definitions(
@@ -327,6 +330,14 @@ def get_merged_stats_config(world_meta: Optional[Dict] = None) -> "WorldStatsCon
     from .schemas import WorldStatsConfig
 
     result = _registry.get_merged_items(world_meta)
+
+    if result.errors:
+        logger.warning(
+            "stats_config_merge_errors",
+            error_count=len(result.errors),
+            errors=result.errors,
+        )
+
     return WorldStatsConfig(version=1, definitions=result.items)
 
 
@@ -422,4 +433,3 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
         tier_order=tier_order,
         level_order=level_order,
     )
-

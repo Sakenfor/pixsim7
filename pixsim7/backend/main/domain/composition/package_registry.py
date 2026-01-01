@@ -189,7 +189,9 @@ def get_composition_package(package_id: str) -> Optional[CompositionPackage]:
 
 def list_composition_packages() -> Dict[str, CompositionPackage]:
     """Return a snapshot of all registered composition packages."""
-    return dict(_registry._items)
+    import copy
+
+    return {key: copy.deepcopy(pkg) for key, pkg in _registry._items.items()}
 
 
 def get_available_roles(

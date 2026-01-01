@@ -129,7 +129,10 @@ def get_npc_surface_package(package_id: str) -> Optional[NpcSurfacePackage]:
 
 def list_npc_surface_packages() -> Dict[str, NpcSurfacePackage]:
     """Return a snapshot of all registered NPC surface packages."""
-    return dict(_registry._items)
+    return {
+        key: pkg.model_copy(deep=True)
+        for key, pkg in _registry._items.items()
+    }
 
 
 def find_surface_types(
