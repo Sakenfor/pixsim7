@@ -213,18 +213,25 @@ async def sync_all_account_credits(
 
             # Try provider's get_credits method first
             credits_data = None
+            get_credits_error = None
             if hasattr(provider, "get_credits"):
                 try:
                     # All providers use get_credits() for basic credit sync (no ad task)
                     credits_data = await provider.get_credits(account, retry_on_session_error=True)
                 except Exception as e:
+                    get_credits_error = e
                     logger.debug(f"Provider get_credits failed for {account_email}: {e}")
 
             # Fallback: extract from account data
-            if not credits_data:
-                raw_data = {'cookies': account_cookies or {}}
+            # Skip fallback if get_credits failed with a session error (reauth already attempted)
+            # - the fallback would fail anyway since session is invalid
+            if not credits_data and not get_credits_error:
+                raw_data = {'cookies': account_cookies or {}, 'jwt_token': account.jwt_token}
                 extracted = await provider.extract_account_data(raw_data, fallback_email=account_email)
                 credits_data = extracted.get('credits')
+            elif get_credits_error and not credits_data:
+                # Re-raise the original get_credits error instead of masking it
+                raise get_credits_error
 
             # Update credits if available
             if credits_data and isinstance(credits_data, dict):

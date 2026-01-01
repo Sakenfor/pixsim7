@@ -304,6 +304,25 @@ class PixverseSessionManager:
         )
         self.provider._evict_account_cache(account)
 
+        # For "logged in elsewhere" errors, clear stale session IDs
+        # so fresh ones will be generated on next attempt or after reauth.
+        # These IDs are clearly invalid since Pixverse rejected them.
+        if outcome.error_reason == "logged_elsewhere" and account.cookies:
+            cleared_ids = []
+            if "_pxs7_trace_id" in account.cookies:
+                del account.cookies["_pxs7_trace_id"]
+                cleared_ids.append("trace_id")
+            if "_pxs7_anonymous_id" in account.cookies:
+                del account.cookies["_pxs7_anonymous_id"]
+                cleared_ids.append("anonymous_id")
+            if cleared_ids:
+                logger.info(
+                    "pixverse_session_ids_cleared",
+                    account_id=account.id,
+                    cleared=cleared_ids,
+                    reason="logged_elsewhere_invalidation",
+                )
+
     async def _maybe_auto_reauth(
         self,
         account: ProviderAccount,
