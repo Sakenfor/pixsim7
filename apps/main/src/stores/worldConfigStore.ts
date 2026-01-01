@@ -80,6 +80,27 @@ interface WorldConfigState {
   compareLevels: (levelA: string | undefined | null, levelB: string | undefined | null) => number;
   levelMeetsMinimum: (currentLevel: string | undefined | null, minimumLevel: string) => boolean;
   tierMeetsMinimum: (currentTier: string | undefined, minimumTier: string) => boolean;
+
+  // Unified gating profile accessor
+  getGatingProfile: () => GatingProfile;
+}
+
+/**
+ * Unified gating profile - all config needed for gating decisions
+ */
+export interface GatingProfile {
+  /** Gating plugin ID (e.g., 'intimacy.default') */
+  pluginId: string;
+  /** Intimacy gating thresholds and rules */
+  intimacyGating: Readonly<IntimacyGatingConfig>;
+  /** Ordered tier IDs (lowest to highest) */
+  tierOrder: string[];
+  /** Ordered level IDs (lowest to highest priority) */
+  levelOrder: string[];
+  /** Relationship tiers with min/max values */
+  tiers: Readonly<StatTier[]>;
+  /** Intimacy levels with conditions */
+  levels: Readonly<StatLevel[]>;
 }
 
 // =============================================================================
@@ -252,6 +273,18 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       const { statsConfig } = get();
       return tierMeetsMinimum(currentTier, minimumTier, statsConfig);
     },
+
+    getGatingProfile: (): GatingProfile => {
+      const { manifest, intimacyGating, statsConfig } = get();
+      return {
+        pluginId: manifest.gating_plugin ?? 'intimacy.default',
+        intimacyGating,
+        tierOrder: getRelationshipTierOrder(statsConfig),
+        levelOrder: getIntimacyLevelOrder(statsConfig),
+        tiers: statsConfig.definitions.relationships?.tiers ?? [],
+        levels: statsConfig.definitions.relationships?.levels ?? [],
+      };
+    },
   }))
 );
 
@@ -327,4 +360,6 @@ export const worldConfigSelectors = {
   compareLevels: (a: string | undefined | null, b: string | undefined | null) => useWorldConfigStore.getState().compareLevels(a, b),
   levelMeetsMinimum: (current: string | undefined | null, min: string) => useWorldConfigStore.getState().levelMeetsMinimum(current, min),
   tierMeetsMinimum: (current: string | undefined, min: string) => useWorldConfigStore.getState().tierMeetsMinimum(current, min),
+  // Unified gating profile
+  getGatingProfile: () => useWorldConfigStore.getState().getGatingProfile(),
 };

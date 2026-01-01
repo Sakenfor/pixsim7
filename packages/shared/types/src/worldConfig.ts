@@ -373,6 +373,8 @@ export const WorldManifestSchema = z.object({
   enabled_campaigns: z.array(z.string()).optional(),
   campaign_progression: z.record(CampaignProgressionSchema).optional(),
   enabled_plugins: z.array(z.string()).optional(),
+  /** ID of the gating plugin to use (e.g., 'intimacy.default') */
+  gating_plugin: z.string().optional(),
 }).passthrough(); // Allow additional custom fields
 
 export type WorldManifestParsed = z.infer<typeof WorldManifestSchema>;
@@ -385,6 +387,7 @@ export const DEFAULT_WORLD_MANIFEST: WorldManifestParsed = {
   enabled_arc_graphs: [],
   enabled_campaigns: [],
   enabled_plugins: [],
+  gating_plugin: 'intimacy.default',
 };
 
 // =============================================================================

@@ -109,6 +109,20 @@ export function useTurnDelta(): number {
   return useWorldConfigStore((s) => s.turnDeltaSeconds);
 }
 
+/**
+ * Get the configured gating plugin ID
+ */
+export function useGatingPlugin(): string {
+  return useWorldConfigStore((s) => s.manifest.gating_plugin ?? 'intimacy.default');
+}
+
+/**
+ * Get the unified gating profile with all config needed for gating decisions
+ */
+export function useGatingProfile() {
+  return useWorldConfigStore((s) => s.getGatingProfile());
+}
+
 // =============================================================================
 // Relationship-Specific Hooks
 // =============================================================================

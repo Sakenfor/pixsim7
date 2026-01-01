@@ -95,6 +95,8 @@ export {
   useManifest,
   useIntimacyGating,
   useTurnDelta,
+  useGatingPlugin,
+  useGatingProfile,
   useRelationshipTiers,
   useIntimacyLevels,
   usePluginConfig,
