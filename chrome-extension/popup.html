@@ -895,41 +895,109 @@
 
       <!-- TAB 4: SETTINGS -->
       <div class="tab-pane" id="tab-settings">
-        <div class="section-title">⚙️ Extension Settings</div>
-
-        <label>PixSim7 Backend URL</label>
-        <input type="url" id="backendUrl" placeholder="http://10.243.48.125:8000">
-        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px; margin-bottom: 12px;">
-          Change this if backend is running on different IP/port (default: port 8000)
+        <!-- Settings Sub-tabs -->
+        <div class="settings-subtabs" style="display: flex; gap: 4px; margin-bottom: 12px;">
+          <button class="settings-subtab active" data-subtab="general" style="flex: 1; padding: 8px; font-size: 11px; font-weight: 600; background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 6px; color: #a5b4fc; cursor: pointer; transition: all 0.2s;">
+            ⚙️ General
+          </button>
+          <button class="settings-subtab" data-subtab="debug" style="flex: 1; padding: 8px; font-size: 11px; font-weight: 600; background: transparent; border: 1px solid #374151; border-radius: 6px; color: #9ca3af; cursor: pointer; transition: all 0.2s;">
+            🐛 Debug
+          </button>
         </div>
 
-        <div class="btn-row">
-          <button id="saveSettingsBtn" class="btn-secondary">💾 Save Settings</button>
-          <button id="resetSettingsBtn" class="btn-secondary">🔄 Reset to Default</button>
+        <!-- General Settings Sub-pane -->
+        <div class="settings-subpane active" id="settings-general">
+          <label>PixSim7 Backend URL</label>
+          <input type="url" id="backendUrl" placeholder="http://10.243.48.125:8000">
+          <div style="font-size: 11px; color: #9ca3af; margin-top: 4px; margin-bottom: 12px;">
+            Change this if backend is running on different IP/port (default: port 8000)
+          </div>
+
+          <div class="btn-row">
+            <button id="saveSettingsBtn" class="btn-secondary">💾 Save Settings</button>
+            <button id="resetSettingsBtn" class="btn-secondary">🔄 Reset to Default</button>
+          </div>
+
+          <label style="margin-top: 12px;">Default Upload Provider</label>
+          <select id="defaultUploadProvider" style="width:100%; padding:8px; font-size:12px;">
+            <option value="pixverse">Pixverse (OpenAPI)</option>
+            <option value="runway">Runway</option>
+            <option value="pika">Pika</option>
+            <option value="sora">Sora</option>
+          </select>
+          <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">
+            Used by image badges and context menu uploads.
+          </div>
+
+          <label style="margin-top: 16px;">
+            <input type="checkbox" id="autoImport">
+            Auto-import cookies when visiting provider sites
+          </label>
+
+          <div class="info-box" style="margin-top: 12px;">
+            <strong>How it works:</strong><br>
+            1. Login to PixSim7 backend<br>
+            2. Visit a provider site (e.g., pixverse.ai)<br>
+            3. Extension detects provider and shows accounts<br>
+            4. Click an account to inject cookies and login
+          </div>
         </div>
 
-        <label style="margin-top: 12px;">Default Upload Provider</label>
-        <select id="defaultUploadProvider" style="width:100%; padding:8px; font-size:12px;">
-          <option value="pixverse">Pixverse (OpenAPI)</option>
-          <option value="runway">Runway</option>
-          <option value="pika">Pika</option>
-          <option value="sora">Sora</option>
-        </select>
-        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">
-          Used by image badges and context menu uploads.
-        </div>
+        <!-- Debug Settings Sub-pane -->
+        <div class="settings-subpane" id="settings-debug" style="display: none;">
+          <div style="margin-bottom: 16px;">
+            <div style="font-size: 12px; color: #9ca3af; margin-bottom: 12px;">
+              Enable debug logging for specific features. Logs appear in browser DevTools console (F12).
+            </div>
 
-        <label style="margin-top: 16px;">
-          <input type="checkbox" id="autoImport">
-          Auto-import cookies when visiting provider sites
-        </label>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #1a1f2e; border-radius: 6px; border: 1px solid #2d3748;">
+                <input type="checkbox" id="debugImagePicker" style="width: 16px; height: 16px; accent-color: #6366f1;">
+                <div>
+                  <div style="font-size: 12px; color: #e5e7eb;">Image Picker & Upload</div>
+                  <div style="font-size: 10px; color: #6b7280;">Slot selection, image injection, upload interception</div>
+                </div>
+              </label>
 
-        <div class="info-box" style="margin-top: 12px;">
-          <strong>How it works:</strong><br>
-          1. Login to PixSim7 backend<br>
-          2. Visit a provider site (e.g., pixverse.ai)<br>
-          3. Extension detects provider and shows accounts<br>
-          4. Click an account to inject cookies and login
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #1a1f2e; border-radius: 6px; border: 1px solid #2d3748;">
+                <input type="checkbox" id="debugCookies" style="width: 16px; height: 16px; accent-color: #6366f1;">
+                <div>
+                  <div style="font-size: 12px; color: #e5e7eb;">Cookie Import/Export</div>
+                  <div style="font-size: 10px; color: #6b7280;">Cookie capture, injection, session sync</div>
+                </div>
+              </label>
+
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #1a1f2e; border-radius: 6px; border: 1px solid #2d3748;">
+                <input type="checkbox" id="debugAuth" style="width: 16px; height: 16px; accent-color: #6366f1;">
+                <div>
+                  <div style="font-size: 12px; color: #e5e7eb;">Auth & Session</div>
+                  <div style="font-size: 10px; color: #6b7280;">JWT capture, bearer tokens, login detection</div>
+                </div>
+              </label>
+
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #1a1f2e; border-radius: 6px; border: 1px solid #2d3748;">
+                <input type="checkbox" id="debugPresets" style="width: 16px; height: 16px; accent-color: #6366f1;">
+                <div>
+                  <div style="font-size: 12px; color: #e5e7eb;">Presets & Buttons</div>
+                  <div style="font-size: 10px; color: #6b7280;">Preset injection, button rendering, UI overlays</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div style="padding: 10px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 6px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" id="debugAll" style="width: 18px; height: 18px; accent-color: #6366f1;">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: #a5b4fc;">Enable All Debug Logging</div>
+                <div style="font-size: 10px; color: #9ca3af;">Turn on all debug categories at once</div>
+              </div>
+            </label>
+          </div>
+
+          <div style="font-size: 10px; color: #6b7280; margin-top: 12px; text-align: center;">
+            Refresh the page after changing settings for them to take effect.
+          </div>
         </div>
       </div>
     </div>

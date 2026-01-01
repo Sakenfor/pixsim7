@@ -93,6 +93,9 @@ async function _cookieImport_extractRawData(providerId, config) {
         hasTraceId: !!sessionIds.traceId,
         hasAnonymousId: !!sessionIds.anonymousId,
       });
+    } else {
+      // Log warning when session IDs not captured - this will cause "logged in elsewhere" errors
+      console.warn('[PixSim7] Session IDs not captured - backend requests may get "logged in elsewhere" errors. Try performing an action on the page first.');
     }
     // Also capture JWT token from header if available
     if (sessionIds.jwtToken) {

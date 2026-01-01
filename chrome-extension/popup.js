@@ -52,6 +52,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load settings
   await loadSettings();
 
+  // Setup settings sub-tabs and debug listeners
+  setupSettingsSubtabs();
+  setupDebugSettingsListeners();
+
   // Restore filter state (sort, hide empty, etc.)
   await loadFilterState();
 

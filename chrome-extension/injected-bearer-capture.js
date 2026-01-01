@@ -1,6 +1,6 @@
 /**
  * Injected Script - Bearer Token & Session ID Capture
- * Runs in page context to intercept fetch calls
+ * Runs in page context to intercept fetch calls and read from storage
  *
  * Captures:
  * - Bearer token (Authorization header)
@@ -11,6 +11,48 @@
  * JWT, Pixverse treats them as separate sessions → "logged in elsewhere" error.
  */
 (function() {
+  // Try to capture session IDs from localStorage immediately on load
+  // Pixverse stores these for session tracking
+  function captureFromStorage() {
+    try {
+      // Common storage keys Pixverse might use
+      const storageKeys = [
+        'ai-trace-id', 'ai_trace_id', 'traceId', 'trace_id',
+        'ai-anonymous-id', 'ai_anonymous_id', 'anonymousId', 'anonymous_id'
+      ];
+
+      for (const key of storageKeys) {
+        const localVal = localStorage.getItem(key);
+        const sessionVal = sessionStorage.getItem(key);
+        const val = localVal || sessionVal;
+
+        if (val) {
+          if (key.includes('trace')) {
+            window.__pixsim7_trace_id = val;
+          } else if (key.includes('anonymous')) {
+            window.__pixsim7_anonymous_id = val;
+          }
+        }
+      }
+
+      // Also check for JWT token in storage
+      const tokenKeys = ['_ai_token', 'ai_token', 'token', 'jwt_token'];
+      for (const key of tokenKeys) {
+        const val = localStorage.getItem(key) || sessionStorage.getItem(key);
+        if (val && val.startsWith('eyJ')) {
+          window.__pixsim7_jwt_token = val;
+          break;
+        }
+      }
+    } catch (e) {
+      // Storage access might fail in some contexts
+    }
+  }
+
+  // Capture immediately on script load
+  captureFromStorage();
+
+  // Also intercept fetch calls to capture IDs from headers (backup/update)
   const originalFetch = window.fetch;
   window.fetch = function(...args) {
     const [url, options] = args;
