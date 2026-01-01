@@ -129,6 +129,12 @@ export * from './asset-core'
 export * from './composition-roles.generated'
 
 // ===================
+// Composition Packages
+// ===================
+
+export * from './compositionPackages'
+
+// ===================
 // Region Labels (Generated)
 // ===================
 

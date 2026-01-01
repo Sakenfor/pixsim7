@@ -48,6 +48,7 @@ PluginProvides = Literal[
     "npc_surfaces",         # Registers NPC body surfaces
     "content_packs",        # Provides content data (archetypes, activities)
     "external_services",    # Integrates external services
+    "composition_packages", # Registers composition role packages
 ]
 
 # Load order priority (lower = earlier)
@@ -99,7 +100,7 @@ PLUGIN_KIND_CONFIG: dict[str, dict] = {
     "content": {
         "router_required": False,
         "default_provides": ["content_packs"],
-        "expected_provides": ["content_packs"],
+        "expected_provides": ["content_packs", "composition_packages"],
         "forbidden_provides": ["api_routes"],  # Content should be data-only
     },
     "integration": {

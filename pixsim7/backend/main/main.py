@@ -91,6 +91,7 @@ async def lifespan(app: FastAPI):
         setup_event_handlers,
         setup_ecs_components,
         setup_stat_packages,
+        setup_composition_packages,
         setup_link_system,
         setup_behavior_builtins,
         setup_plugins,
@@ -133,6 +134,9 @@ async def lifespan(app: FastAPI):
 
     # Setup stat packages
     stat_packages_count = setup_stat_packages()
+
+    # Setup composition packages
+    composition_packages_count = setup_composition_packages()
 
     # Setup link system
     link_stats = setup_link_system()

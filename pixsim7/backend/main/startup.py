@@ -267,6 +267,38 @@ def setup_stat_packages() -> int:
     return len(packages)
 
 
+def setup_composition_packages() -> int:
+    """
+    Register core composition packages.
+
+    Composition packages define roles for multi-image generation
+    (main_character, environment, pov_hands, etc.).
+
+    Returns:
+        int: Number of packages registered
+
+    Why this is a separate function:
+    - Makes registration explicit in startup flow
+    - Returns count for observability
+    - Testable in isolation
+    """
+    from pixsim7.backend.main.domain.composition import (
+        register_core_composition_package,
+        list_composition_packages,
+    )
+
+    register_core_composition_package()
+    packages = list_composition_packages()
+
+    logger.info(
+        "composition_packages_registered",
+        count=len(packages),
+        packages=[p.id for p in packages.values()]
+    )
+
+    return len(packages)
+
+
 def setup_link_system() -> dict:
     """
     Initialize the generic ObjectLink system.
