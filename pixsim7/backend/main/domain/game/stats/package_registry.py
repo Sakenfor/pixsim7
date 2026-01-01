@@ -6,6 +6,9 @@ is a reusable bundle of StatDefinition objects (e.g. relationships,
 combat, economy) plus light metadata that tools and worlds can
 discover and install.
 
+Uses SimpleRegistry for basic registry operations and WorldMergeMixin
+for merging package definitions with world overrides.
+
 This module is intentionally world-agnostic: it does not depend on
 GameWorld or GameSession. Worlds/projects can choose which packages
 and definitions to use via GameWorld.meta.stats_config or other
@@ -21,11 +24,11 @@ Derivation Capabilities:
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, Iterable, List, Tuple, Optional, Set
 from pydantic import BaseModel, Field
 import logging
 
-from pixsim7.backend.main.lib.registry import merge_by_id
+from pixsim7.backend.main.lib.registry import SimpleRegistry, WorldMergeMixin, merge_by_id
 from .schemas import StatDefinition
 from .derivation_schemas import DerivationCapability
 
@@ -112,192 +115,219 @@ class StatPackage(BaseModel):
         return applicable
 
 
-_packages: Dict[str, StatPackage] = {}
+class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[StatPackage, StatDefinition]):
+    """
+    Registry for stat packages with world config merging support.
+
+    Extends SimpleRegistry for basic operations and WorldMergeMixin
+    for merging package definitions with world overrides.
+    """
+
+    # WorldMergeMixin config
+    meta_key = "stats_config"
+    items_key = "definitions"
+
+    def __init__(self) -> None:
+        super().__init__(name="StatPackageRegistry", log_operations=False)
+
+    def _get_item_key(self, item: StatPackage) -> str:
+        return item.id
+
+    def register_package(self, pkg: StatPackage) -> None:
+        """Register or overwrite a stat package."""
+        existing = self._items.get(pkg.id)
+        if existing:
+            logger.warning(
+                "Overwriting existing stat package",
+                extra={
+                    "package_id": pkg.id,
+                    "old_plugin": existing.source_plugin_id,
+                    "new_plugin": pkg.source_plugin_id,
+                },
+            )
+        self._items[pkg.id] = pkg
+        logger.info(
+            "Registered stat package",
+            extra={
+                "package_id": pkg.id,
+                "definitions": list(pkg.definitions.keys()),
+                "source_plugin_id": pkg.source_plugin_id,
+            },
+        )
+
+    # =========================================================================
+    # WorldMergeMixin Implementation
+    # =========================================================================
+
+    def _get_packages(self) -> Iterable[StatPackage]:
+        """Return all registered packages."""
+        return self._items.values()
+
+    def _collect_base_items(self, package: StatPackage) -> Dict[str, StatDefinition]:
+        """Extract definitions from a package."""
+        return package.definitions
+
+    def _merge_item(self, base: StatDefinition, override: Dict) -> StatDefinition:
+        """Merge an override dict into a base definition."""
+        return _merge_definition(base, override)
+
+    def _create_item(self, item_id: str, data: Dict) -> Optional[StatDefinition]:
+        """Create a new StatDefinition from raw dict."""
+        try:
+            return StatDefinition.model_validate(data)
+        except Exception:
+            return None
+
+    # =========================================================================
+    # Query Methods
+    # =========================================================================
+
+    def find_stat_definitions(
+        self, stat_definition_id: str
+    ) -> List[Tuple[StatPackage, StatDefinition]]:
+        """
+        Find all StatDefinition instances with the given ID across all packages.
+
+        Returns a list of (StatPackage, StatDefinition) pairs.
+        """
+        results: List[Tuple[StatPackage, StatDefinition]] = []
+        for pkg in self._items.values():
+            if stat_definition_id in pkg.definitions:
+                results.append((pkg, pkg.definitions[stat_definition_id]))
+        return results
+
+    def get_all_semantic_types(
+        self, package_ids: Optional[List[str]] = None
+    ) -> Set[str]:
+        """Get all semantic types provided by registered packages."""
+        types: Set[str] = set()
+        packages = (
+            self._items.values()
+            if package_ids is None
+            else [self._items[pid] for pid in package_ids if pid in self._items]
+        )
+        for pkg in packages:
+            types.update(pkg.get_provided_semantic_types())
+        return types
+
+    def find_axes_by_semantic_type(
+        self,
+        semantic_type: str,
+        package_ids: Optional[List[str]] = None,
+    ) -> List[Tuple[StatPackage, StatDefinition, "StatAxis"]]:
+        """Find all axes with a given semantic type across packages."""
+        from .schemas import StatAxis
+
+        results: List[Tuple[StatPackage, StatDefinition, StatAxis]] = []
+        packages = (
+            self._items.values()
+            if package_ids is None
+            else [self._items[pid] for pid in package_ids if pid in self._items]
+        )
+
+        for pkg in packages:
+            for definition in pkg.definitions.values():
+                for axis in definition.axes:
+                    if axis.semantic_type == semantic_type:
+                        results.append((pkg, definition, axis))
+
+        return results
+
+    def get_applicable_derivations(
+        self,
+        package_ids: List[str],
+        excluded_derivation_ids: Optional[Set[str]] = None,
+    ) -> List[Tuple[StatPackage, DerivationCapability]]:
+        """Get all derivation capabilities that can run given the available packages."""
+        excluded = excluded_derivation_ids or set()
+
+        # Gather all available semantic types from active packages
+        available_types = self.get_all_semantic_types(package_ids)
+
+        # Find all derivations that can run
+        applicable: List[Tuple[StatPackage, DerivationCapability]] = []
+        for pid in package_ids:
+            pkg = self._items.get(pid)
+            if not pkg:
+                continue
+
+            for cap in pkg.get_derivations_for_available_types(available_types):
+                if cap.id not in excluded and cap.enabled_by_default:
+                    applicable.append((pkg, cap))
+
+        # Sort by priority (lower = runs first)
+        applicable.sort(key=lambda x: x[1].priority)
+
+        return applicable
+
+
+# Singleton instance
+_registry = StatPackageRegistry()
+
+
+# =============================================================================
+# Public API Functions (backwards compatible)
+# =============================================================================
 
 
 def register_stat_package(pkg: StatPackage) -> None:
-    """
-    Register or overwrite a stat package.
-
-    This can be called by core modules or backend plugins during startup.
-    If a package with the same ID already exists, it will be replaced and
-    a warning will be logged.
-    """
-    existing = _packages.get(pkg.id)
-    if existing:
-        logger.warning(
-            "Overwriting existing stat package",
-            extra={"package_id": pkg.id, "old_plugin": existing.source_plugin_id, "new_plugin": pkg.source_plugin_id},
-        )
-    _packages[pkg.id] = pkg
-    logger.info(
-        "Registered stat package",
-        extra={
-            "package_id": pkg.id,
-            "definitions": list(pkg.definitions.keys()),
-            "source_plugin_id": pkg.source_plugin_id,
-        },
-    )
+    """Register or overwrite a stat package."""
+    _registry.register_package(pkg)
 
 
 def get_stat_package(package_id: str) -> Optional[StatPackage]:
     """Get a stat package by ID, or None if not registered."""
-    return _packages.get(package_id)
+    return _registry.get_or_none(package_id)
 
 
 def list_stat_packages() -> Dict[str, StatPackage]:
     """Return a snapshot of all registered stat packages."""
-    return dict(_packages)
+    return dict(_registry._items)
 
 
-def find_stat_definitions(stat_definition_id: str) -> List[Tuple[StatPackage, StatDefinition]]:
-    """
-    Find all StatDefinition instances with the given ID across all packages.
-
-    Returns a list of (StatPackage, StatDefinition) pairs. This can be used
-    by tools to discover which packages provide a particular stat definition
-    (e.g. multiple plugins providing 'relationships').
-    """
-    results: List[Tuple[StatPackage, StatDefinition]] = []
-    for pkg in _packages.values():
-        if stat_definition_id in pkg.definitions:
-            results.append((pkg, pkg.definitions[stat_definition_id]))
-    return results
+def find_stat_definitions(
+    stat_definition_id: str,
+) -> List[Tuple[StatPackage, StatDefinition]]:
+    """Find all StatDefinition instances with the given ID across all packages."""
+    return _registry.find_stat_definitions(stat_definition_id)
 
 
 def get_all_semantic_types(package_ids: Optional[List[str]] = None) -> Set[str]:
-    """
-    Get all semantic types provided by registered packages.
-
-    Args:
-        package_ids: Optional list of package IDs to check. If None, checks all.
-
-    Returns:
-        Set of all semantic types available from the specified packages.
-    """
-    types: Set[str] = set()
-    packages = _packages.values() if package_ids is None else [
-        _packages[pid] for pid in package_ids if pid in _packages
-    ]
-    for pkg in packages:
-        types.update(pkg.get_provided_semantic_types())
-    return types
+    """Get all semantic types provided by registered packages."""
+    return _registry.get_all_semantic_types(package_ids)
 
 
 def find_axes_by_semantic_type(
     semantic_type: str,
-    package_ids: Optional[List[str]] = None
+    package_ids: Optional[List[str]] = None,
 ) -> List[Tuple[StatPackage, StatDefinition, "StatAxis"]]:
-    """
-    Find all axes with a given semantic type across packages.
-
-    Args:
-        semantic_type: The semantic type to search for
-        package_ids: Optional list of package IDs to search. If None, searches all.
-
-    Returns:
-        List of (package, definition, axis) tuples for matching axes
-    """
-    from .schemas import StatAxis  # Import here to avoid circular
-
-    results: List[Tuple[StatPackage, StatDefinition, StatAxis]] = []
-    packages = _packages.values() if package_ids is None else [
-        _packages[pid] for pid in package_ids if pid in _packages
-    ]
-
-    for pkg in packages:
-        for definition in pkg.definitions.values():
-            for axis in definition.axes:
-                if axis.semantic_type == semantic_type:
-                    results.append((pkg, definition, axis))
-
-    return results
+    """Find all axes with a given semantic type across packages."""
+    return _registry.find_axes_by_semantic_type(semantic_type, package_ids)
 
 
 def get_applicable_derivations(
     package_ids: List[str],
-    excluded_derivation_ids: Optional[Set[str]] = None
+    excluded_derivation_ids: Optional[Set[str]] = None,
 ) -> List[Tuple[StatPackage, DerivationCapability]]:
-    """
-    Get all derivation capabilities that can run given the available packages.
-
-    Args:
-        package_ids: List of package IDs that are active
-        excluded_derivation_ids: Optional set of derivation IDs to exclude
-
-    Returns:
-        List of (package, derivation_capability) tuples that can run,
-        sorted by priority (lower first)
-    """
-    excluded = excluded_derivation_ids or set()
-
-    # Gather all available semantic types from active packages
-    available_types = get_all_semantic_types(package_ids)
-
-    # Find all derivations that can run
-    applicable: List[Tuple[StatPackage, DerivationCapability]] = []
-    for pid in package_ids:
-        pkg = _packages.get(pid)
-        if not pkg:
-            continue
-
-        for cap in pkg.get_derivations_for_available_types(available_types):
-            if cap.id not in excluded and cap.enabled_by_default:
-                applicable.append((pkg, cap))
-
-    # Sort by priority (lower = runs first)
-    applicable.sort(key=lambda x: x[1].priority)
-
-    return applicable
+    """Get all derivation capabilities that can run given the available packages."""
+    return _registry.get_applicable_derivations(package_ids, excluded_derivation_ids)
 
 
 # =============================================================================
 # World Config Builder
 # =============================================================================
 
+
 def get_merged_stats_config(world_meta: Optional[Dict] = None) -> "WorldStatsConfig":
     """
     Get stats config merged with world overrides.
 
-    Starts with definitions from all registered packages, then merges any
-    world-specific overrides from world.meta.stats_config.
-
-    Args:
-        world_meta: The world's meta dict (optional)
-
-    Returns:
-        WorldStatsConfig with merged definitions
+    Uses WorldMergeMixin to merge package definitions with world overrides.
     """
-    from .schemas import WorldStatsConfig, StatDefinition, StatTier, StatLevel
+    from .schemas import WorldStatsConfig
 
-    # Collect all definitions from registered packages
-    merged_definitions: Dict[str, StatDefinition] = {}
-    for pkg in _packages.values():
-        for def_id, defn in pkg.definitions.items():
-            # If multiple packages provide the same definition, later wins
-            merged_definitions[def_id] = defn.model_copy(deep=True)
-
-    # Apply world overrides if present
-    if world_meta:
-        world_stats = world_meta.get("stats_config", {})
-        world_defs = world_stats.get("definitions", {})
-
-        for def_id, override in world_defs.items():
-            if def_id in merged_definitions:
-                # Merge override into existing definition
-                base = merged_definitions[def_id]
-                merged_definitions[def_id] = _merge_definition(base, override)
-            else:
-                # New definition from world (no base)
-                try:
-                    merged_definitions[def_id] = StatDefinition.model_validate(override)
-                except Exception:
-                    pass  # Skip invalid definitions
-
-    return WorldStatsConfig(
-        version=1,
-        definitions=merged_definitions
-    )
+    result = _registry.get_merged_items(world_meta)
+    return WorldStatsConfig(version=1, definitions=result.items)
 
 
 def _merge_definition(base: "StatDefinition", override: Dict) -> "StatDefinition":
