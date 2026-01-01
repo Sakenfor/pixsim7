@@ -75,6 +75,11 @@ class NpcSurfacePackageRegistry(SimpleRegistry[str, NpcSurfacePackage]):
     def _get_item_key(self, item: NpcSurfacePackage) -> str:
         return item.id
 
+    def _on_reset(self) -> None:
+        """Reset the core package registration flag."""
+        from .core_surfaces import reset_core_surface_registration
+        reset_core_surface_registration()
+
     def register_package(self, pkg: NpcSurfacePackage) -> None:
         """Register or overwrite an NPC surface package."""
         existing = self._items.get(pkg.id)
@@ -144,7 +149,4 @@ def find_surface_types(
 
 def clear_npc_surface_packages() -> None:
     """Clear all registered packages. Mainly for testing."""
-    _registry.reset()
-    # Reset the core package registration flag so it can be re-registered
-    from .core_surfaces import reset_core_surface_registration
-    reset_core_surface_registration()
+    _registry.reset()  # Calls _on_reset() to reset registration flag

@@ -209,9 +209,15 @@ class SimpleRegistry(Generic[K, V]):
         """
         Clear the registry and re-seed defaults.
 
-        Calls _seed_defaults() after clearing. Override _seed_defaults()
-        to define what gets seeded on reset.
+        Calls:
+        1. _on_reset() - for subclass cleanup (e.g., reset registration flags)
+        2. clear() - remove all items
+        3. _seed_defaults() - re-seed default items
+
+        Override _on_reset() to reset external state like registration flags.
+        Override _seed_defaults() to define what gets seeded on reset.
         """
+        self._on_reset()
         self.clear()
         self._seed_defaults()
 
@@ -275,6 +281,20 @@ class SimpleRegistry(Generic[K, V]):
 
         Override this to define default items that should be registered
         when the registry is initialized or reset.
+        """
+        pass
+
+    def _on_reset(self) -> None:
+        """
+        Called at the start of reset() before clearing.
+
+        Override this to reset external state like registration flags
+        that need to be cleared when the registry is reset.
+
+        Example:
+            def _on_reset(self) -> None:
+                from .core_package import reset_core_registration
+                reset_core_registration()
         """
         pass
 

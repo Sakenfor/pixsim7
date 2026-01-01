@@ -133,6 +133,11 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
     def _get_item_key(self, item: StatPackage) -> str:
         return item.id
 
+    def _on_reset(self) -> None:
+        """Reset the core package registration flag."""
+        from . import reset_core_stat_packages_registration
+        reset_core_stat_packages_registration()
+
     def register_package(self, pkg: StatPackage) -> None:
         """Register or overwrite a stat package."""
         existing = self._items.get(pkg.id)
@@ -318,10 +323,7 @@ def get_applicable_derivations(
 
 def clear_stat_packages() -> None:
     """Clear all registered packages. Mainly for testing."""
-    _registry.reset()
-    # Reset the core package registration flag so it can be re-registered
-    from . import reset_core_stat_packages_registration
-    reset_core_stat_packages_registration()
+    _registry.reset()  # Calls _on_reset() to reset registration flag
 
 
 # =============================================================================

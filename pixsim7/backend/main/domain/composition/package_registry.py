@@ -95,6 +95,11 @@ class CompositionPackageRegistry(SimpleRegistry[str, CompositionPackage]):
     def _get_item_key(self, item: CompositionPackage) -> str:
         return item.id
 
+    def _on_reset(self) -> None:
+        """Reset the core package registration flag."""
+        from .core_package import reset_core_composition_registration
+        reset_core_composition_registration()
+
     def register_package(self, pkg: CompositionPackage) -> None:
         """Register or update a composition package."""
         existing = self._items.get(pkg.id)
@@ -211,7 +216,4 @@ def get_role_by_id(
 
 def clear_composition_packages() -> None:
     """Clear all registered packages. Mainly for testing."""
-    _registry.reset()
-    # Reset the core package registration flag so it can be re-registered
-    from .core_package import reset_core_composition_registration
-    reset_core_composition_registration()
+    _registry.reset()  # Calls _on_reset() to reset registration flag
