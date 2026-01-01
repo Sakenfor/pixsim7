@@ -93,17 +93,33 @@ def get_core_mood_package() -> NpcSurfacePackage:
     )
 
 
+_registered = False
+
+
 def register_core_surface_packages() -> None:
     """
     Register all core surface packages.
 
     This should be called during app startup to make core surface types
     available to all plugins and tools.
+
+    Safe to call multiple times (idempotent).
     """
+    global _registered
+    if _registered:
+        return
+
     from .package_registry import register_npc_surface_package
 
     register_npc_surface_package(get_core_portrait_package())
     register_npc_surface_package(get_core_mood_package())
+    _registered = True
+
+
+def reset_core_surface_registration() -> None:
+    """Reset the registration flag. Used by clear functions for testing."""
+    global _registered
+    _registered = False
 
 
 # Register packages at import time so they are always available in the

@@ -45,6 +45,11 @@ from .package_registry import (
     get_npc_surface_package,
     list_npc_surface_packages,
     find_surface_types,
+    clear_npc_surface_packages,
+)
+from .core_surfaces import (
+    register_core_surface_packages,
+    reset_core_surface_registration,
 )
 
 from .validation import (
@@ -62,6 +67,9 @@ __all__ = [
     "get_npc_surface_package",
     "list_npc_surface_packages",
     "find_surface_types",
+    "clear_npc_surface_packages",
+    "register_core_surface_packages",
+    "reset_core_surface_registration",
     "validate_expression_meta",
     "build_expression_meta",
     "get_surface_type",

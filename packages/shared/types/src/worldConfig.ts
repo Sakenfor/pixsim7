@@ -374,7 +374,7 @@ export const WorldManifestSchema = z.object({
   campaign_progression: z.record(CampaignProgressionSchema).optional(),
   enabled_plugins: z.array(z.string()).optional(),
   /** ID of the gating plugin to use (e.g., 'intimacy.default') */
-  gating_plugin: z.string().optional(),
+  gating_plugin: z.string().default('intimacy.default'),
 }).passthrough(); // Allow additional custom fields
 
 export type WorldManifestParsed = z.infer<typeof WorldManifestSchema>;

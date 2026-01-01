@@ -253,8 +253,11 @@ def setup_stat_packages() -> int:
     from pixsim7.backend.main.domain.game.stats import (
         register_core_stat_packages,
         list_stat_packages,
+        setup_stat_package_hooks,
     )
 
+    # Set up plugin hooks for stat package registration
+    setup_stat_package_hooks()
     register_core_stat_packages()
     packages = list_stat_packages()
 

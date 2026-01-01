@@ -63,6 +63,7 @@ from .package_registry import (
     get_all_semantic_types,
     find_axes_by_semantic_type,
     get_applicable_derivations,
+    clear_stat_packages,
     # World config builder
     get_merged_stats_config,
     get_world_config,
@@ -138,6 +139,12 @@ def register_core_stat_packages() -> None:
     register_conversation_style_package()
 
     _core_packages_registered = True
+
+
+def reset_core_stat_packages_registration() -> None:
+    """Reset the registration flag. Used by clear functions for testing."""
+    global _core_packages_registered
+    _core_packages_registered = False
 
 
 def _on_stat_packages_register(plugin_id: str) -> None:
@@ -232,5 +239,7 @@ __all__ = [
     "normalize_stat_package_all",
     # Package registration (for plugin system integration)
     "register_core_stat_packages",
+    "reset_core_stat_packages_registration",
     "setup_stat_package_hooks",
+    "clear_stat_packages",
 ]

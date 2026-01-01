@@ -140,3 +140,11 @@ def find_surface_types(
 ) -> List[Tuple[NpcSurfacePackage, Dict[str, Any]]]:
     """Find all surface type definitions with the given ID across all packages."""
     return _registry.find_surface_types(surface_type_id)
+
+
+def clear_npc_surface_packages() -> None:
+    """Clear all registered packages. Mainly for testing."""
+    _registry.reset()
+    # Reset the core package registration flag so it can be re-registered
+    from .core_surfaces import reset_core_surface_registration
+    reset_core_surface_registration()

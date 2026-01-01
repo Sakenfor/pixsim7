@@ -809,3 +809,61 @@ class TestWorldMergeMixin:
         assert "value must be non-negative" in result.errors[0]
         # Original should be unchanged since validation failed
         assert result.items["a"].value == 1
+
+
+class TestPackageRegistryClearFunctions:
+    """Tests for package registry clear/reset functions."""
+
+    def test_clear_composition_packages(self):
+        """Should clear and allow re-registration of composition packages."""
+        from pixsim7.backend.main.domain.composition import (
+            clear_composition_packages,
+            register_core_composition_package,
+            list_composition_packages,
+        )
+
+        # Clear the registry
+        clear_composition_packages()
+        assert len(list_composition_packages()) == 0
+
+        # Re-register should work
+        register_core_composition_package()
+        packages = list_composition_packages()
+        assert "core.base" in packages
+        assert len(packages) >= 1
+
+    def test_clear_npc_surface_packages(self):
+        """Should clear and allow re-registration of NPC surface packages."""
+        from pixsim7.backend.main.domain.game.entities.npc_surfaces import (
+            clear_npc_surface_packages,
+            register_core_surface_packages,
+            list_npc_surface_packages,
+        )
+
+        # Clear the registry
+        clear_npc_surface_packages()
+        assert len(list_npc_surface_packages()) == 0
+
+        # Re-register should work
+        register_core_surface_packages()
+        packages = list_npc_surface_packages()
+        assert "core.portrait" in packages
+        assert "core.mood" in packages
+
+    def test_clear_stat_packages(self):
+        """Should clear and allow re-registration of stat packages."""
+        from pixsim7.backend.main.domain.game.stats import (
+            clear_stat_packages,
+            register_core_stat_packages,
+            list_stat_packages,
+        )
+
+        # Clear the registry
+        clear_stat_packages()
+        assert len(list_stat_packages()) == 0
+
+        # Re-register should work
+        register_core_stat_packages()
+        packages = list_stat_packages()
+        assert "core.relationships" in packages
+        assert len(packages) >= 1

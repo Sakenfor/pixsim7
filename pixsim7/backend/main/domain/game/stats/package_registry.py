@@ -316,6 +316,14 @@ def get_applicable_derivations(
     return _registry.get_applicable_derivations(package_ids, excluded_derivation_ids)
 
 
+def clear_stat_packages() -> None:
+    """Clear all registered packages. Mainly for testing."""
+    _registry.reset()
+    # Reset the core package registration flag so it can be re-registered
+    from . import reset_core_stat_packages_registration
+    reset_core_stat_packages_registration()
+
+
 # =============================================================================
 # World Config Builder
 # =============================================================================
