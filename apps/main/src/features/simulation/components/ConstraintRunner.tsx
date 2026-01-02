@@ -5,22 +5,29 @@
  * Allows users to define constraints and automatically advance simulation until conditions are met.
  */
 
-import { useState, useEffect, useRef } from 'react';
 import { Panel, Button, Select, Input } from '@pixsim7/shared.ui';
-import { formatWorldTime } from '@pixsim7/game.engine';
-import type {
-  AnyConstraint,
-  ConstraintEvaluationContext,
-  ConstraintEvaluationResult,
-} from '@features/simulation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import {
-  evaluateConstraint,
-  createWorldTimeConstraint,
+  createEventConstraint,
   createFlagConstraint,
   createNpcLocationConstraint,
   createTickCountConstraint,
-  createEventConstraint,
-} from '@features/simulation';
+  createWorldTimeConstraint,
+  evaluateConstraint,
+  type AnyConstraint,
+  type ConstraintEvaluationContext,
+  type ConstraintEvaluationResult,
+} from '@features/simulation/lib/core/constraints';
+
+type WorldTimeOperator = 'gte' | 'lte' | 'eq';
+type FlagOperator = 'eq' | 'neq' | 'exists' | 'notExists';
+
+const isWorldTimeOperator = (value: string): value is WorldTimeOperator =>
+  value === 'gte' || value === 'lte' || value === 'eq';
+
+const isFlagOperator = (value: string): value is FlagOperator =>
+  value === 'eq' || value === 'neq' || value === 'exists' || value === 'notExists';
 
 interface ConstraintRunnerProps {
   context: ConstraintEvaluationContext;
@@ -42,12 +49,10 @@ export function ConstraintRunner({
   const [tickInterval, setTickInterval] = useState<number>(500); // ms between ticks
 
   // Constraint-specific parameters
-  const [worldTimeOperator, setWorldTimeOperator] = useState<'gte' | 'lte' | 'eq'>('gte');
+  const [worldTimeOperator, setWorldTimeOperator] = useState<WorldTimeOperator>('gte');
   const [worldTimeTarget, setWorldTimeTarget] = useState<number>(0);
   const [flagPath, setFlagPath] = useState<string>('');
-  const [flagOperator, setFlagOperator] = useState<'eq' | 'neq' | 'exists' | 'notExists'>(
-    'eq'
-  );
+  const [flagOperator, setFlagOperator] = useState<FlagOperator>('eq');
   const [flagValue, setFlagValue] = useState<string>('');
   const [npcId, setNpcId] = useState<number>(1);
   const [locationId, setLocationId] = useState<number>(1);
@@ -62,6 +67,11 @@ export function ConstraintRunner({
   const [runLog, setRunLog] = useState<string[]>([]);
   const intervalRef = useRef<number | null>(null);
   const ticksRunRef = useRef<number>(0);
+
+  const handleStop = useCallback((reason: string) => {
+    onRunningChange(false);
+    setRunLog((prev) => [...prev, `[Stopped] ${reason} (${ticksRunRef.current} ticks)`]);
+  }, [onRunningChange]);
 
   // Evaluate constraints whenever context changes
   useEffect(() => {
@@ -81,7 +91,7 @@ export function ConstraintRunner({
         handleStop('All constraints satisfied!');
       }
     }
-  }, [context, constraints, isRunning]);
+  }, [context, constraints, handleStop, isRunning]);
 
   // Run loop
   useEffect(() => {
@@ -103,8 +113,9 @@ export function ConstraintRunner({
 
       try {
         await onRunTick();
-      } catch (e: any) {
-        handleStop(`Error: ${e.message}`);
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        handleStop(`Error: ${message}`);
       }
     }, tickInterval);
 
@@ -114,12 +125,7 @@ export function ConstraintRunner({
         intervalRef.current = null;
       }
     };
-  }, [isRunning, maxTicks, tickInterval, onRunTick]);
-
-  const handleStop = (reason: string) => {
-    onRunningChange(false);
-    setRunLog((prev) => [...prev, `[Stopped] ${reason} (${ticksRunRef.current} ticks)`]);
-  };
+  }, [handleStop, isRunning, maxTicks, onRunTick, tickInterval]);
 
   const handleStart = () => {
     if (constraints.length === 0) {
@@ -217,7 +223,12 @@ export function ConstraintRunner({
               <Select
                 size="sm"
                 value={worldTimeOperator}
-                onChange={(e) => setWorldTimeOperator(e.target.value as any)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (isWorldTimeOperator(value)) {
+                    setWorldTimeOperator(value);
+                  }
+                }}
                 className="w-20"
               >
                 <option value="gte">&gt;=</option>
@@ -253,7 +264,12 @@ export function ConstraintRunner({
                 <Select
                   size="sm"
                   value={flagOperator}
-                  onChange={(e) => setFlagOperator(e.target.value as any)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (isFlagOperator(value)) {
+                      setFlagOperator(value);
+                    }
+                  }}
                   className="w-32"
                 >
                   <option value="eq">Equals</option>

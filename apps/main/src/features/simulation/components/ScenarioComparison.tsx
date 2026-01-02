@@ -5,10 +5,11 @@
  * Highlights differences in world state, relationships, and flags.
  */
 
-import { Panel } from '@pixsim7/shared.ui';
 import { formatWorldTime } from '@pixsim7/game.engine';
+import { Panel } from '@pixsim7/shared.ui';
+
+import type { SimulationSnapshot } from '@features/simulation/lib/core/history';
 import type { SimulationScenario } from '@features/simulation/lib/core/scenarios';
-import type { SimulationSnapshot } from '@features/simulation/history';
 
 interface ScenarioComparisonProps {
   scenario1: SimulationScenario | SimulationSnapshot | null;
@@ -17,12 +18,15 @@ interface ScenarioComparisonProps {
   label2?: string;
 }
 
-function isScenario(item: any): item is SimulationScenario {
-  return item && 'initialWorldTime' in item;
+const isRecord = (item: unknown): item is Record<string, unknown> =>
+  typeof item === 'object' && item !== null;
+
+function isScenario(item: unknown): item is SimulationScenario {
+  return isRecord(item) && 'initialWorldTime' in item;
 }
 
-function isSnapshot(item: any): item is SimulationSnapshot {
-  return item && 'timestamp' in item && 'worldTime' in item;
+function isSnapshot(item: unknown): item is SimulationSnapshot {
+  return isRecord(item) && 'timestamp' in item && 'worldTime' in item;
 }
 
 export function ScenarioComparison({

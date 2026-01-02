@@ -187,13 +187,13 @@ export function calculateSnapshotDeltas(
 ): {
   timeDelta: number;
   flagChanges: { key: string; from: unknown; to: unknown }[];
-  relationshipChanges: { key: string; from: any; to: any }[];
+  relationshipChanges: { key: string; from: unknown; to: unknown }[];
   eventCountDelta: number;
 } {
   const result = {
     timeDelta: 0,
     flagChanges: [] as { key: string; from: unknown; to: unknown }[],
-    relationshipChanges: [] as { key: string; from: any; to: any }[],
+    relationshipChanges: [] as { key: string; from: unknown; to: unknown }[],
     eventCountDelta: 0,
   };
 

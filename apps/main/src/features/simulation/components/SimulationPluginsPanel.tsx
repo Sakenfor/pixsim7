@@ -5,12 +5,21 @@
  * Shows registered plugins, their status, and allows enabling/disabling them.
  */
 
+import { Button, Panel } from '@pixsim7/shared.ui';
 import { useState } from 'react';
-import { Panel, Button } from '@pixsim7/shared.ui';
-import type { SimulationPlugin } from '@features/simulation/hooks';
+
+export type SimulationPluginSummary = {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  enabled: boolean;
+  hooks: Record<string, unknown>;
+};
 
 interface SimulationPluginsPanelProps {
-  plugins: SimulationPlugin[];
+  plugins: SimulationPluginSummary[];
   onTogglePlugin: (pluginId: string, enabled: boolean) => void;
 }
 
@@ -23,12 +32,14 @@ export function SimulationPluginsPanel({
   const enabledPlugins = plugins.filter((p) => p.enabled);
   const disabledPlugins = plugins.filter((p) => !p.enabled);
 
-  const getHookCount = (plugin: SimulationPlugin): number => {
+  const getHookCount = (plugin: SimulationPluginSummary): number => {
     return Object.values(plugin.hooks).filter((h) => h !== undefined).length;
   };
 
-  const getHookNames = (plugin: SimulationPlugin): string[] => {
-    return Object.keys(plugin.hooks).filter((k) => (plugin.hooks as any)[k] !== undefined);
+  const getHookNames = (plugin: SimulationPluginSummary): string[] => {
+    return Object.entries(plugin.hooks)
+      .filter(([, hook]) => hook !== undefined)
+      .map(([hookName]) => hookName);
   };
 
   return (

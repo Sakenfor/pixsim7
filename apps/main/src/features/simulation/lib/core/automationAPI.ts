@@ -5,14 +5,11 @@
  * Supports automated testing, regression checks, and CI integration.
  */
 
-import type { SimulationScenario } from './scenarios';
-import { getScenario, loadScenarios } from './scenarios';
-import type { SimulationHistory, SimulationSnapshot } from './history';
-import { createHistory, addSnapshot } from './history';
-import type { AnyConstraint, ConstraintEvaluationContext } from './constraints';
-import { evaluateConstraint } from './constraints';
-import { simulationHooksRegistry } from './hooks';
-import type { SimulationTickContext, SimulationEvent } from './hooks';
+import { simulationHooksRegistry, type SimulationEvent, type SimulationTickContext } from '../../hooks';
+
+import { evaluateConstraint, type AnyConstraint, type ConstraintEvaluationContext } from './constraints';
+import { addSnapshot, createHistory, type SimulationHistory } from './history';
+import { getScenario, type SimulationScenario } from './scenarios';
 
 /**
  * Simulation run configuration
@@ -35,7 +32,7 @@ export interface SimulationRunResult {
   ticksRun: number;
   finalWorldTime: number;
   finalFlags: Record<string, unknown>;
-  finalRelationships: Record<string, any>;
+  finalRelationships: Record<string, unknown>;
   events: SimulationEvent[];
   history: SimulationHistory;
   constraintSatisfied?: boolean;
@@ -48,8 +45,8 @@ export interface SimulationRunResult {
 export interface AssertionResult {
   passed: boolean;
   message: string;
-  expected?: any;
-  actual?: any;
+  expected?: unknown;
+  actual?: unknown;
 }
 
 /**
@@ -87,7 +84,7 @@ export interface RegressionTestSuiteResult {
 export class HeadlessSimulationRunner {
   private worldTime: number = 0;
   private sessionFlags: Record<string, unknown> = {};
-  private sessionRelationships: Record<string, any> = {};
+  private sessionRelationships: Record<string, unknown> = {};
   private history: SimulationHistory | null = null;
   private events: SimulationEvent[] = [];
 
@@ -111,14 +108,14 @@ export class HeadlessSimulationRunner {
     // Build tick context
     const context: SimulationTickContext = {
       worldId,
-      worldDetail: null as any, // Would need real world data in production
+      worldDetail: null as SimulationTickContext['worldDetail'], // Would need real world data in production
       worldTime: this.worldTime,
       deltaSeconds,
       session: {
         id: 0,
         flags: this.sessionFlags,
         relationships: this.sessionRelationships,
-      } as any,
+      } as SimulationTickContext['session'],
       selectedNpcIds: [],
     };
 
@@ -170,7 +167,7 @@ export class HeadlessSimulationRunner {
       // Evaluate constraint
       const context: ConstraintEvaluationContext = {
         worldTime: this.worldTime,
-        worldDetail: null as any,
+        worldDetail: null as ConstraintEvaluationContext['worldDetail'],
         sessionFlags: this.sessionFlags,
         npcPresences: [],
         tickCount: ticksRun,
@@ -192,7 +189,7 @@ export class HeadlessSimulationRunner {
   getSummary(): {
     worldTime: number;
     flags: Record<string, unknown>;
-    relationships: Record<string, any>;
+    relationships: Record<string, unknown>;
     totalEvents: number;
   } {
     return {
@@ -275,7 +272,7 @@ export async function runSimulation(
 
     // Run simulation
     if (config.constraint) {
-      const { satisfied, ticksRun } = await runner.runUntilConstraint(
+      const { satisfied } = await runner.runUntilConstraint(
         config.constraint,
         tickSize,
         worldId,
@@ -330,10 +327,13 @@ export const assertions = {
   flagEquals: (flagPath: string, expectedValue: unknown) => {
     return (result: SimulationRunResult): AssertionResult => {
       const parts = flagPath.split('.');
-      let current: any = result.finalFlags;
+      let current: unknown = result.finalFlags;
       for (const part of parts) {
-        if (current == null) break;
-        current = current[part];
+        if (current == null || typeof current !== 'object') {
+          current = undefined;
+          break;
+        }
+        current = (current as Record<string, unknown>)[part];
       }
 
       const passed = JSON.stringify(current) === JSON.stringify(expectedValue);

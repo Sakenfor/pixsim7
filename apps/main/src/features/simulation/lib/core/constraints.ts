@@ -5,7 +5,8 @@
  * until specific conditions are met.
  */
 
-import type { GameWorldDetail, NpcPresenceDTO } from '../api/game';
+import type { GameWorldDetail, NpcPresenceDTO } from '@lib/api/game';
+
 import type { SimulationSnapshot } from './history';
 
 /**
@@ -144,12 +145,15 @@ function evaluateWorldTimeConstraint(
 /**
  * Get nested value from object by path (e.g., "quest.stage.current")
  */
-function getNestedValue(obj: any, path: string): unknown {
+function getNestedValue(
+  obj: Record<string, unknown> | null | undefined,
+  path: string
+): unknown {
   const parts = path.split('.');
-  let current = obj;
+  let current: unknown = obj;
   for (const part of parts) {
-    if (current == null) return undefined;
-    current = current[part];
+    if (current == null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[part];
   }
   return current;
 }

@@ -5,81 +5,82 @@
  * Allows defining scenarios, advancing time, and observing changes via brain/world tools.
  */
 
-import { useEffect, useState, useMemo } from 'react';
-import { Panel, Button, Select, Input } from '@pixsim7/shared.ui';
-import { usePixSim7Core } from '@lib/game/usePixSim7Core';
 import {
-  listGameWorlds,
-  listGameNpcs,
-  listGameLocations,
-  updateGameSession,
-  type GameWorldSummary,
-  type GameNpcSummary,
-  type GameLocationSummary,
-  type NpcPresenceDTO,
-} from '@lib/api/game';
-import {
-  parseWorldTime,
   formatWorldTime,
-  SECONDS_PER_HOUR,
+  parseWorldTime,
   SECONDS_PER_DAY,
+  SECONDS_PER_HOUR,
 } from '@pixsim7/game.engine';
-import { useGameRuntime, useActorPresence } from '@lib/game/runtime';
-import { WorldToolsPanel, worldToolRegistry, type WorldToolContext } from '@features/worldTools';
-import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
-import { brainToolRegistry } from '@features/brainTools/lib/registry';
-import type { BrainToolContext } from '@features/brainTools/lib/types';
+import { Button, Input, Panel, Select } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import {
-  loadScenarios,
-  createScenario,
-  deleteScenario,
-  createDefaultScenario,
-  type SimulationScenario,
-} from '@features/simulation/lib/core/scenarios';
+  listGameLocations,
+  listGameNpcs,
+  listGameWorlds,
+  updateGameSession,
+  type GameLocationSummary,
+  type GameNpcSummary,
+  type GameWorldSummary,
+} from '@lib/api/game';
+import { getTopBehaviorUrges, hasBehaviorUrgency } from '@lib/core';
 import {
   gameHooksRegistry,
   registerBuiltinGamePlugins,
   unregisterBuiltinGamePlugins,
+  useActorPresence,
+  useGameRuntime,
   type GameEvent,
+  type GamePlugin,
 } from '@lib/game/runtime';
+import { usePixSim7Core } from '@lib/game/usePixSim7Core';
+
+import { brainToolRegistry } from '@features/brainTools/lib/registry';
+import type { BrainToolContext } from '@features/brainTools/lib/types';
+import { ExportImportPanel } from '@features/panels/components/tools/ExportImportPanel';
+import type { ConstraintEvaluationContext } from '@features/simulation';
 // Legacy simulation hooks - kept for backward compatibility with existing plugins
 import {
-  simulationHooksRegistry,
   registerBuiltinHooks,
-  unregisterBuiltinHooks,
   registerExamplePlugins as registerLegacyExamplePlugins,
+  simulationHooksRegistry,
+  type SimulationPlugin,
+  unregisterBuiltinHooks,
   unregisterExamplePlugins as unregisterLegacyExamplePlugins,
-} from '@features/simulation/lib/core/hooks';
+} from '@features/simulation/hooks';
 import {
-  createHistory,
   addSnapshot,
-  saveHistory,
-  loadHistory,
   clearHistory,
+  createHistory,
   getHistoryStats,
   goToSnapshot,
+  loadHistory,
+  saveHistory,
   type SimulationHistory,
-  type SimulationSnapshot,
 } from '@features/simulation/lib/core/history';
-import { LocationPresenceMap } from './LocationPresenceMap';
-import { TimelineScrubber } from './TimelineScrubber';
-import { ScenarioComparison } from './ScenarioComparison';
-import { WorldStateOverview } from './WorldStateOverview';
-import { MultiRunComparison } from './MultiRunComparison';
-import { ConstraintRunner } from './ConstraintRunner';
-import { SimulationPluginsPanel } from './SimulationPluginsPanel';
-import { ExportImportPanel } from '@features/panels/components/tools/ExportImportPanel';
 import {
+  deleteSavedRun,
   loadSavedRuns,
   saveSimulationRun,
-  deleteSavedRun,
   type SavedSimulationRun,
 } from '@features/simulation/lib/core/multiRunStorage';
-import type { ConstraintEvaluationContext } from '@features/simulation';
 import {
-  getTopBehaviorUrges,
-  hasBehaviorUrgency,
-} from '@lib/core';
+  createScenario,
+  deleteScenario,
+  loadScenarios,
+  type SimulationScenario,
+} from '@features/simulation/lib/core/scenarios';
+import { WorldToolsPanel, worldToolRegistry, type WorldToolContext } from '@features/worldTools';
+
+import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
+
+import { ConstraintRunner } from './ConstraintRunner';
+import { LocationPresenceMap } from './LocationPresenceMap';
+import { MultiRunComparison } from './MultiRunComparison';
+import { ScenarioComparison } from './ScenarioComparison';
+import { SimulationPluginsPanel, type SimulationPluginSummary } from './SimulationPluginsPanel';
+import { TimelineScrubber } from './TimelineScrubber';
+import { WorldStateOverview } from './WorldStateOverview';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -168,10 +169,31 @@ export function SimulationPlayground() {
 
   // Phase 8: Plugin management
   const [showPluginsPanel, setShowPluginsPanel] = useState(false);
-  const [plugins, setPlugins] = useState<any[]>([]);
+  const [plugins, setPlugins] = useState<SimulationPluginSummary[]>([]);
 
   // Phase 9: Export/Import
   const [showExportImport, setShowExportImport] = useState(false);
+  const hasAutoSelectedWorld = useRef(false);
+
+  const toPluginSummary = useCallback(
+    (plugin: GamePlugin | SimulationPlugin): SimulationPluginSummary => ({
+      id: plugin.id,
+      name: plugin.name,
+      description: plugin.description,
+      version: plugin.version,
+      author: plugin.author,
+      enabled: plugin.enabled,
+      hooks: plugin.hooks as Record<string, unknown>,
+    }),
+    []
+  );
+
+  const refreshPlugins = useCallback(() => {
+    setPlugins([
+      ...gameHooksRegistry.getPlugins(),
+      ...simulationHooksRegistry.getPlugins(),
+    ].map(toPluginSummary));
+  }, [toPluginSummary]);
 
   // Register simulation hooks on mount
   useEffect(() => {
@@ -191,17 +213,14 @@ export function SimulationPlayground() {
     }
 
     // Load initial plugins from both registries
-    setPlugins([
-      ...gameHooksRegistry.getPlugins(),
-      ...simulationHooksRegistry.getPlugins(),
-    ]);
+    refreshPlugins();
 
     return () => {
       unregisterBuiltinGamePlugins();
       unregisterBuiltinHooks();
       unregisterLegacyExamplePlugins();
     };
-  }, []);
+  }, [refreshPlugins]);
 
   // Load initial data
   useEffect(() => {
@@ -218,18 +237,13 @@ export function SimulationPlayground() {
         setScenarios(loadScenarios());
         setSavedRuns(loadSavedRuns());
 
-        // Auto-select first world if available (runtime handles session creation)
-        if (worldList.length > 0 && !selectedWorldId) {
-          await handleSelectWorld(worldList[0].id);
-        }
       } catch (e: unknown) {
         setLocalError(String((e as Error)?.message ?? e));
       }
     })();
   }, []);
 
-
-  const handleSelectWorld = async (worldId: number) => {
+  const handleSelectWorld = useCallback(async (worldId: number) => {
     setLocalError(null);
     try {
       // Use runtime to ensure session for simulation
@@ -237,9 +251,16 @@ export function SimulationPlayground() {
     } catch (e: unknown) {
       setLocalError(String((e as Error)?.message ?? e));
     }
-  };
+  }, [ensureSession]);
 
-  const handleAdvanceTime = async (deltaSeconds: number) => {
+  useEffect(() => {
+    if (hasAutoSelectedWorld.current) return;
+    if (worlds.length === 0 || selectedWorldId) return;
+    hasAutoSelectedWorld.current = true;
+    void handleSelectWorld(worlds[0].id);
+  }, [handleSelectWorld, selectedWorldId, worlds]);
+
+  const handleAdvanceTime = useCallback(async (deltaSeconds: number) => {
     if (!selectedWorldId || !worldDetail) {
       setLocalError('No world selected');
       return;
@@ -280,7 +301,15 @@ export function SimulationPlayground() {
     } finally {
       setLocalLoading(false);
     }
-  };
+  }, [
+    gameSession,
+    runtimeAdvanceTime,
+    runtimeState.worldTimeSeconds,
+    selectedNpcIds,
+    selectedWorldId,
+    simulationHistory,
+    worldDetail,
+  ]);
 
   const handleRunTicks = async (numTicks: number) => {
     const totalDelta = tickSize * numTicks;
@@ -298,7 +327,7 @@ export function SimulationPlayground() {
     }, autoPlayInterval);
 
     return () => clearInterval(interval);
-  }, [isAutoPlaying, autoPlayInterval, tickSize, selectedWorldId, isLoading]);
+  }, [autoPlayInterval, handleAdvanceTime, isAutoPlaying, isLoading, selectedWorldId, tickSize]);
 
   const handleClearHistory = () => {
     if (confirm('Clear simulation history? This cannot be undone.')) {
@@ -425,7 +454,7 @@ export function SimulationPlayground() {
       return;
     }
 
-    const run = saveSimulationRun(
+    saveSimulationRun(
       newRunName || `Run ${savedRuns.length + 1}`,
       selectedWorldId,
       simulationHistory,
@@ -466,10 +495,7 @@ export function SimulationPlayground() {
     // Try both registries (unified game hooks + legacy simulation hooks)
     gameHooksRegistry.setPluginEnabled(pluginId, enabled);
     simulationHooksRegistry.setPluginEnabled(pluginId, enabled);
-    setPlugins([
-      ...gameHooksRegistry.getPlugins(),
-      ...simulationHooksRegistry.getPlugins(),
-    ]);
+    refreshPlugins();
   };
 
   // Phase 9: Handle import complete
@@ -966,7 +992,7 @@ export function SimulationPlayground() {
             <p className="text-xs text-neutral-500">No events yet. Advance time to generate events.</p>
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-2">
-              {simulationEvents.slice().reverse().map((event, idx) => (
+              {simulationEvents.slice().reverse().map((event) => (
                 <div
                   key={event.id}
                   className={`p-2 rounded text-xs border ${
@@ -1282,7 +1308,7 @@ export function SimulationPlayground() {
                     rest: '😴', eat: '🍽️', relax: '🧘', socialize: '💬',
                     explore: '🧭', achieve: '🏆', mood_boost: '✨',
                   };
-                  return topUrges.map((urge, i) => (
+                  return topUrges.map((urge) => (
                     <span
                       key={urge.key}
                       className={`px-2 py-1 rounded text-xs ${
