@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BACKEND_BASE } from '../lib/api/client';
-import { useMediaSettingsStore } from '../stores/mediaSettingsStore';
+import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
 import { authService } from '@lib/auth/authService';
 

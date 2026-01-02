@@ -60,8 +60,6 @@ interface AssetRegionState {
   regionsByAsset: Map<string, AssetRegion[]>;
   /** Currently selected region ID */
   selectedRegionId: string | null;
-  /** Whether annotation mode is active */
-  annotationMode: boolean;
   /** Current drawing mode */
   drawingMode: 'rect' | 'polygon' | 'select';
 
@@ -80,8 +78,6 @@ interface AssetRegionState {
   selectRegion: (regionId: string | null) => void;
   /** Clear all regions for an asset */
   clearAssetRegions: (assetId: string | number) => void;
-  /** Toggle annotation mode */
-  setAnnotationMode: (enabled: boolean) => void;
   /** Set drawing mode */
   setDrawingMode: (mode: 'rect' | 'polygon' | 'select') => void;
   /** Export regions for an asset as structured data */
@@ -110,7 +106,6 @@ const EMPTY_REGIONS: AssetRegion[] = [];
 export const useAssetRegionStore = create<AssetRegionState>((set, get) => ({
   regionsByAsset: new Map(),
   selectedRegionId: null,
-  annotationMode: false,
   drawingMode: 'rect',
 
   addRegion: (assetId, regionData) => {
@@ -189,10 +184,6 @@ export const useAssetRegionStore = create<AssetRegionState>((set, get) => ({
     });
   },
 
-  setAnnotationMode: (enabled) => {
-    set({ annotationMode: enabled });
-  },
-
   setDrawingMode: (mode) => {
     set({ drawingMode: mode });
   },
@@ -214,6 +205,5 @@ export const useAssetRegionStore = create<AssetRegionState>((set, get) => ({
 // Selectors
 // ============================================================================
 
-export const selectAnnotationMode = (state: AssetRegionState) => state.annotationMode;
 export const selectSelectedRegionId = (state: AssetRegionState) => state.selectedRegionId;
 export const selectDrawingMode = (state: AssetRegionState) => state.drawingMode;

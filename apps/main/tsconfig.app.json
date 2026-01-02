@@ -69,6 +69,8 @@
       "@features/preview": ["./src/features/preview/index.ts"],
       "@features/cubes/*": ["./src/features/cubes/*"],
       "@features/cubes": ["./src/features/cubes/index.ts"],
+      "@features/mediaViewer/*": ["./src/features/mediaViewer/*"],
+      "@features/mediaViewer": ["./src/features/mediaViewer/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],
@@ -106,6 +108,8 @@
       "@lib/models/*": ["./src/lib/models/*"],
       "@lib/plugins": ["./src/lib/plugins/index.ts"],
       "@lib/plugins/*": ["./src/lib/plugins/*"],
+      "@lib/widgets": ["./src/lib/widgets/index.ts"],
+      "@lib/widgets/*": ["./src/lib/widgets/*"],
       "@lib/registries": ["./src/lib/registries.ts"],
       "@lib/backendStorage": ["./src/lib/backendStorage.ts"],
       "@lib/assetUrlResolver": ["./src/lib/assetUrlResolver.ts"],

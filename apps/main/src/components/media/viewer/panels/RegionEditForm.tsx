@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icon } from '@lib/icons';
-import { useAssetRegionStore } from '../stores/assetRegionStore';
+import { useAssetRegionStore } from '@features/mediaViewer';
 import { useLabelsForAutocomplete, type LabelSuggestion } from '@/stores/conceptStore';
 
 // ============================================================================

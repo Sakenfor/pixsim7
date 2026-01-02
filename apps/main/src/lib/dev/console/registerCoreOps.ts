@@ -7,7 +7,7 @@
 
 import { opsRegistry } from './opsRegistry';
 import { useWorkspaceStore } from '@features/workspace';
-import { useSelectionStore } from '@/stores/selectionStore';
+import { useSelectionStore } from '@features/graph';
 import { useConsoleStore } from './consoleStore';
 import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
 

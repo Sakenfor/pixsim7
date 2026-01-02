@@ -12,7 +12,7 @@
 
 import { useEffect } from 'react';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
-import { useMediaSettingsStore, type ServerMediaSettings } from '@/stores/mediaSettingsStore';
+import { useMediaSettingsStore, type ServerMediaSettings } from '@features/assets';
 import { useAssetSettingsStore } from '@features/assets';
 import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
 import { apiClient } from '@/lib/api';

@@ -51,6 +51,9 @@ export {
 } from './stores/graphStore';
 export type { GraphState, NodeGroupManagementState, NavigationState } from './stores/graphStore';
 
+// Stores - Selection Store
+export { useSelectionStore } from './stores/selectionStore';
+
 // Stores - Arc Graph Store
 export {
   useArcGraphStore,

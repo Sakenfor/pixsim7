@@ -7,7 +7,7 @@
 import type { ConsoleModule } from "@lib/dev/console/moduleRegistry";
 import { opsRegistry } from "@lib/dev/console/opsRegistry";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useSelectionStore } from "@/stores/selectionStore";
+import { useSelectionStore } from "@features/graph";
 import { getWorkspaceDockviewApi } from "./getWorkspaceDockviewApi";
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */

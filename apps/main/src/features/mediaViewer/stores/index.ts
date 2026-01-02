@@ -1,14 +1,19 @@
 /**
  * Media Viewer Stores
  *
- * State management for the media viewer panels.
+ * State management for the media viewer feature.
  */
 
 export {
   useAssetRegionStore,
-  selectAnnotationMode,
   selectSelectedRegionId,
   selectDrawingMode,
   type AssetRegion,
   type ExportedRegion,
 } from './assetRegionStore';
+
+export {
+  useAssetViewerOverlayStore,
+  selectOverlayMode,
+  type AssetViewerOverlayMode,
+} from './assetViewerOverlayStore';

@@ -16,7 +16,7 @@ import 'reactflow/dist/style.css';
 import { Button, useToast } from '@pixsim7/shared.ui';
 import { useGraphStore, type GraphState, SceneNode, NodeGroup, NodePalette, type NodeType } from '@features/graph';
 import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
-import { useSelectionStore } from '@/stores/selectionStore';
+import { useSelectionStore } from '@features/graph';
 import { logEvent } from '@lib/utils/logging';
 import { Breadcrumbs } from '../navigation/Breadcrumbs';
 import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
@@ -30,7 +30,7 @@ import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
 import { useTemplateStore } from '@features/graph' // templatesStore';
 import { captureTemplate, applyTemplate } from '@features/graph' // graphTemplates';
 import type { GraphTemplate } from '@features/graph' // graphTemplates';
-import { useWorldContextStore } from '@/stores/worldContextStore';
+import { useWorldContextStore } from '@features/scene';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
 import { graphClipboard } from '@features/graph' // clipboard';
 

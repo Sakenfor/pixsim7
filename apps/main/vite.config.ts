@@ -38,6 +38,7 @@ export default defineConfig({
       { find: '@lib/dev/console', replacement: path.resolve(__dirname, './src/lib/dev/console') },
       { find: '@lib/dev', replacement: path.resolve(__dirname, './src/lib/dev') },
       { find: '@lib/plugins', replacement: path.resolve(__dirname, './src/lib/plugins') },
+      { find: '@lib/widgets', replacement: path.resolve(__dirname, './src/lib/widgets') },
       { find: '@lib/assetProvider', replacement: path.resolve(__dirname, './src/lib/assetProvider') },
       { find: '@lib/registries', replacement: path.resolve(__dirname, './src/lib/registries.ts') },
       { find: '@lib/editing-core', replacement: path.resolve(__dirname, './src/lib/editing-core') },
@@ -78,6 +79,7 @@ export default defineConfig({
       { find: '@features/componentSettings', replacement: path.resolve(__dirname, './src/features/componentSettings') },
       { find: '@features/npcs', replacement: path.resolve(__dirname, './src/features/npcs') },
       { find: '@features/preview', replacement: path.resolve(__dirname, './src/features/preview') },
+      { find: '@features/mediaViewer', replacement: path.resolve(__dirname, './src/features/mediaViewer') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)

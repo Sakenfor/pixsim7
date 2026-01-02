@@ -22,9 +22,10 @@ import {
 } from '@features/contextHub';
 import {
   useAssetRegionStore,
+  useAssetViewerOverlayStore,
   type AssetRegion,
   type ExportedRegion,
-} from '../stores/assetRegionStore';
+} from '@features/mediaViewer';
 
 /** Stable empty array to avoid infinite re-renders */
 const EMPTY_REGIONS: AssetRegion[] = [];
@@ -115,14 +116,21 @@ export function useProvideRegionAnnotations({
     assetId ? s.getRegions(assetId) : EMPTY_REGIONS
   );
   const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
-  const annotationMode = useAssetRegionStore((s) => s.annotationMode);
+  const annotationMode = useAssetViewerOverlayStore((s) => s.overlayMode === 'annotate');
   const drawingMode = useAssetRegionStore((s) => s.drawingMode);
 
   const selectRegion = useAssetRegionStore((s) => s.selectRegion);
-  const setAnnotationMode = useAssetRegionStore((s) => s.setAnnotationMode);
+  const setOverlayMode = useAssetViewerOverlayStore((s) => s.setOverlayMode);
   const setDrawingMode = useAssetRegionStore((s) => s.setDrawingMode);
   const exportRegionsFromStore = useAssetRegionStore((s) => s.exportRegions);
   const clearAssetRegions = useAssetRegionStore((s) => s.clearAssetRegions);
+
+  const setAnnotationMode = useCallback(
+    (enabled: boolean) => {
+      setOverlayMode(enabled ? 'annotate' : 'none');
+    },
+    [setOverlayMode]
+  );
 
   // Memoize actions that depend on assetId
   const exportRegions = useCallback(() => {

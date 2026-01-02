@@ -37,6 +37,12 @@ export { SceneStateEditor, type SceneStateEditorProps } from './components/playe
 export type { PlaybackEvent } from './lib/core';
 
 // ============================================================================
+// Stores
+// ============================================================================
+
+export { useWorldContextStore } from './stores/worldContextStore';
+
+// ============================================================================
 // Plugin SDK - Stable Exports for Scene View Plugins
 // ============================================================================
 //

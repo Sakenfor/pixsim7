@@ -20,7 +20,7 @@ import type { ViewerSettings } from '../types';
 import {
   useAssetRegionStore,
   type AssetRegion,
-} from '../stores/assetRegionStore';
+} from '@features/mediaViewer';
 
 // ============================================================================
 // Types

@@ -9,8 +9,8 @@ import { dataRegistry } from './dataRegistry';
 
 // Import stores
 import { useWorkspaceStore } from '@features/workspace';
-import { useWorldContextStore } from '@/stores/worldContextStore';
-import { useSelectionStore } from '@/stores/selectionStore';
+import { useWorldContextStore } from '@features/scene';
+import { useSelectionStore } from '@features/graph';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { useGenerationsStore, useGenerationSettingsStore } from '@features/generation';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';

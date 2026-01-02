@@ -8,9 +8,9 @@
 import type { EditorContext } from '@lib/context';
 import { derivePrimaryView, deriveEditorMode } from '@lib/context';
 import { useWorkspaceStore } from '@features/workspace';
-import { useWorldContextStore } from '@/stores/worldContextStore';
+import { useWorldContextStore } from '@features/scene';
 import { useGraphStore, type GraphState } from '@features/graph';
-import { useSelectionStore } from '@/stores/selectionStore';
+import { useSelectionStore } from '@features/graph';
 import { useGameStateStore } from '@/stores/gameStateStore';
 import { panelManager } from '@features/panels/lib/PanelManager';
 import { resolvePanelDefinitionId } from '@lib/dockview/panelAdd';

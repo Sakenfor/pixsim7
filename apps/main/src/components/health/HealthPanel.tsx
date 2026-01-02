@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { validateScene, type ValidationIssue, type ValidationResult } from '@domain/sceneBuilder/validation';
-import { useSelectionStore } from '@/stores/selectionStore';
+import { useSelectionStore } from '@features/graph';
 import { Button } from '@pixsim7/shared.ui';
 
 interface HealthPanelProps {

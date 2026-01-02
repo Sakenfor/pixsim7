@@ -6,6 +6,8 @@
 
 import { Icon } from '@lib/icons';
 import type { FitMode } from './MediaDisplay';
+import type { AssetViewerOverlayMode } from '@features/mediaViewer';
+import type { MediaOverlayId, MediaOverlayTone, MediaOverlayTool } from '../overlays';
 
 interface MediaControlBarProps {
   // Navigation
@@ -30,9 +32,10 @@ interface MediaControlBarProps {
   isMaximized: boolean;
   onToggleMaximize: () => void;
 
-  // Annotation mode
-  annotationMode?: boolean;
-  onToggleAnnotation?: () => void;
+  // Overlay mode
+  overlayMode?: AssetViewerOverlayMode;
+  overlayTools?: MediaOverlayTool[];
+  onToggleOverlay?: (id: MediaOverlayId) => void;
 }
 
 export function MediaControlBar({
@@ -50,9 +53,19 @@ export function MediaControlBar({
   onFitModeChange,
   isMaximized,
   onToggleMaximize,
-  annotationMode,
-  onToggleAnnotation,
+  overlayMode,
+  overlayTools,
+  onToggleOverlay,
 }: MediaControlBarProps) {
+  const isOverlayActive = overlayMode !== undefined && overlayMode !== 'none';
+  const overlayList = overlayTools ?? [];
+  const toneClasses: Record<MediaOverlayTone, string> = {
+    green: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
+    purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
+    blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+    amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
+  };
+
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700">
       <div className="flex items-center justify-between px-3 py-1.5">
@@ -106,10 +119,10 @@ export function MediaControlBar({
           </button>
         </div>
 
-        {/* Right: Fit modes, annotation, and maximize */}
+        {/* Right: Fit modes, overlays, and maximize */}
         <div className="flex items-center gap-2">
-          {/* Fit modes - hide when annotation mode is active */}
-          {!annotationMode && (
+          {/* Fit modes - hide when overlay mode is active */}
+          {!isOverlayActive && (
             <div className="flex items-center gap-1">
               {(['contain', 'cover', 'actual'] as const).map((mode) => (
                 <button
@@ -128,20 +141,30 @@ export function MediaControlBar({
             </div>
           )}
 
-          {/* Annotation toggle button */}
-          {onToggleAnnotation && (
-            <button
-              onClick={onToggleAnnotation}
-              className={`px-2 py-0.5 text-[10px] rounded ${
-                annotationMode
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
-              title={annotationMode ? 'Exit annotation mode' : 'Annotate regions (A)'}
-            >
-              {annotationMode ? '✓ Annotate' : '✎ Annotate'}
-            </button>
-          )}
+          {onToggleOverlay && overlayList.map((tool) => {
+            const isActive = overlayMode === tool.id;
+            const tone = tool.tone ?? 'blue';
+            const activeClass = toneClasses[tone];
+            const baseClass = 'px-2 py-0.5 text-[10px] rounded';
+            const title = tool.shortcut
+              ? `${tool.label} (${tool.shortcut})`
+              : tool.label;
+
+            return (
+              <button
+                key={tool.id}
+                onClick={() => onToggleOverlay(tool.id)}
+                className={`${baseClass} ${
+                  isActive
+                    ? activeClass
+                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+                title={isActive ? `Exit ${tool.label.toLowerCase()}` : title}
+              >
+                {tool.label}
+              </button>
+            );
+          })}
 
           {/* Maximize/Restore button */}
           <button

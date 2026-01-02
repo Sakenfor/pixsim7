@@ -5,7 +5,7 @@
  * when available (controlled by media settings).
  */
 
-import { useMediaSettingsStore } from '@/stores/mediaSettingsStore';
+import { useMediaSettingsStore } from '@features/assets';
 
 export interface AssetWithUrls {
   id?: number | string;

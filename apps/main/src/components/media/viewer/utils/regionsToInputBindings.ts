@@ -5,7 +5,7 @@
  * format used by MultiImageEditPrompt for multi-image composition.
  */
 
-import type { ExportedRegion } from '../stores/assetRegionStore';
+import type { ExportedRegion } from '@features/mediaViewer';
 import { labelToInfluenceRegion } from '@pixsim7/shared.types';
 
 // ============================================================================

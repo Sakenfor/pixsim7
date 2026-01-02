@@ -85,6 +85,12 @@ export {
   type LocalAsset,
 } from './stores/localFoldersStore';
 
+export {
+  useMediaSettingsStore,
+  getEffectiveServerSettings,
+  type ServerMediaSettings,
+} from './stores/mediaSettingsStore';
+
 // ============================================================================
 // Lib - Asset Actions & API
 // ============================================================================
