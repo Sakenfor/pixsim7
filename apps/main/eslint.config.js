@@ -54,10 +54,19 @@ export default defineConfig([
             '**/*.gif',
             '**/*.woff',
             '**/*.woff2',
+            '**/*.json',
 
             // Feature submodules (intentionally exposed for advanced tooling)
             '@features/*/plugins/*',
             '@features/*/lib/*',
+
+            // Local imports & common deep externals
+            './**',
+            '../**',
+            '@/components/**',
+            '@/types/**',
+            '@/data/**',
+            'zustand/**',
 
             // All lib directories now have barrel exports!
             // Deep imports are no longer allowed - use @lib/* aliases instead
@@ -110,6 +119,7 @@ export default defineConfig([
     files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
     rules: {
       'import/no-internal-modules': 'off',
+      'import/no-unresolved': ['error', { ignore: ['^@types/', '^vitest$'] }],
     },
   },
 
@@ -138,6 +148,8 @@ export default defineConfig([
   {
     files: ['**/features/**/*.{ts,tsx}'],
     rules: {
+      // Feature internals routinely use deep/relative imports; allow them here.
+      'import/no-internal-modules': 'off',
       'no-restricted-imports': [
         'warn',
         {

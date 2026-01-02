@@ -3,12 +3,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
+
+import type { ArcGraph } from './types';
 import {
   validateArcGraphReferences,
   validateArcGraphStructure,
   validateArcGraph,
 } from './validation';
-import type { ArcGraph, ArcGraphNode } from './types';
 
 describe('Arc Graph Validation', () => {
   describe('validateArcGraphReferences', () => {

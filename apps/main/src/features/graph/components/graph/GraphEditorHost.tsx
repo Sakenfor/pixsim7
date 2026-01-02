@@ -7,10 +7,12 @@
  */
 
 import { useMemo } from 'react';
+
+import { usePanelConfigStore } from '@features/panels';
+import { useWorkspacePresets, useWorkspaceStore } from '@features/workspace';
+
 import { graphEditorRegistry } from '../../lib/editor/editorRegistry';
 import type { GraphEditorId } from '../../lib/editor/types';
-import { usePanelConfigStore } from '@features/panels';
-import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 
 export interface GraphEditorHostProps {
   /**

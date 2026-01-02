@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
-import { useGraphStore, type GraphState } from '../../stores/graphStore';
+
 import type { ExpansionComponentProps } from '@features/cubes';
 
+import { useGraphStore, type GraphState } from '../../stores/graphStore';
 /**
  * Graph status expansion for cube
  * Shows compact summary of scenes and nodes.
  */
-export function GraphCubeExpansion({ cubeId }: ExpansionComponentProps) {
+export function GraphCubeExpansion(_props: ExpansionComponentProps) {
+  void _props;
   const scenes = useGraphStore((s: GraphState) => s.scenes);
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
 
@@ -21,9 +23,10 @@ export function GraphCubeExpansion({ cubeId }: ExpansionComponentProps) {
     if (currentScene?.edges && currentScene.edges.length > 0) {
       edgeCount = currentScene.edges.length;
     } else if (currentScene?.nodes) {
-      currentScene.nodes.forEach((n: any) => {
-        if (Array.isArray(n.connections)) {
-          edgeCount += n.connections.length;
+      currentScene.nodes.forEach((node) => {
+        const legacyNode = node as { connections?: string[] };
+        if (Array.isArray(legacyNode.connections)) {
+          edgeCount += legacyNode.connections.length;
         }
       });
     }
@@ -86,4 +89,3 @@ export function GraphCubeExpansion({ cubeId }: ExpansionComponentProps) {
     </div>
   );
 }
-

@@ -17,7 +17,7 @@ interface CharacterInScene {
   characterName: string;
   role: string;
   required: boolean;
-  roleMetadata?: any;
+  roleMetadata?: Record<string, unknown>;
 }
 
 export const SceneCharacterViewer: React.FC<SceneCharacterViewerProps> = ({

@@ -13,24 +13,27 @@
 
 import React, { useMemo } from 'react';
 import ReactFlow, {
-  type Node,
   type Edge,
+  type Node,
+  type NodeTypes,
   Background,
   Controls,
+  Handle,
   MiniMap,
-  useNodesState,
+  Position,
   useEdgesState,
-  type NodeTypes,
+  useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+
 import type { ActionBlock } from '@/types/promptGraphs';
+
 import {
   buildActionBlockGraph,
   getNodeColorByComplexity,
   getCompositeNodeStyle,
   getActionEdgeStyle,
 } from '../../lib/builders/actionGraphBuilder';
-import { Handle, Position } from 'reactflow';
 
 export interface ActionBlockGraphSurfaceProps {
   blocks: ActionBlock[];
@@ -72,7 +75,7 @@ export function ActionBlockGraphSurface({
 
     // Position package nodes
     let pkgX = 100;
-    packageNodes.forEach((pkgNode, pkgIndex) => {
+    packageNodes.forEach((pkgNode) => {
       nodes.push({
         id: pkgNode.id,
         type: 'packageNode',
@@ -192,8 +195,10 @@ export function ActionBlockGraphSurface({
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            const nodeData = node.data as any;
-            if (node.type === 'actionBlockNode') return getNodeColorByComplexity(nodeData.complexity);
+            if (node.type === 'actionBlockNode') {
+              const nodeData = node.data as ActionBlockNodeData;
+              return getNodeColorByComplexity(nodeData.complexity);
+            }
             if (node.type === 'packageNode') return '#8b5cf6'; // violet-500
             if (node.type === 'promptVersionNode') return '#06b6d4'; // cyan-500
             return '#6b7280';

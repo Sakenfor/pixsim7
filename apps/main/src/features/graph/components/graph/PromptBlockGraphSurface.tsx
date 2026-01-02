@@ -11,19 +11,22 @@
 
 import React, { useMemo } from 'react';
 import ReactFlow, {
-  type Node,
   type Edge,
+  type Node,
+  type NodeTypes,
   Background,
   Controls,
+  Handle,
   MiniMap,
-  useNodesState,
+  Position,
   useEdgesState,
-  type NodeTypes,
+  useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+
 import type { PromptSegment } from '@/types/promptGraphs';
+
 import { buildPromptSegmentGraph, getNodeColorByRole, getEdgeStyle } from '../../lib/builders/promptGraphBuilder';
-import { Handle, Position } from 'reactflow';
 
 export interface PromptBlockGraphSurfaceProps {
   segments: PromptSegment[];
@@ -137,9 +140,11 @@ export function PromptBlockGraphSurface({
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            const nodeData = node.data as any;
             if (node.type === 'promptNode') return '#6366f1'; // indigo-500
-            if (node.type === 'segmentNode') return getNodeColorByRole(nodeData.role);
+            if (node.type === 'segmentNode') {
+              const nodeData = node.data as SegmentNodeData;
+              return getNodeColorByRole(nodeData.role);
+            }
             if (node.type === 'roleNode') return '#94a3b8'; // neutral-400
             return '#6b7280';
           }}

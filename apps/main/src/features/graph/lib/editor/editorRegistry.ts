@@ -6,8 +6,9 @@
  * Part of Task 53 - Graph Editor Registry & Modular Surfaces
  */
 
-import type { GraphEditorDefinition, GraphEditorId } from './types';
-import { BaseRegistry } from '@lib/core/BaseRegistry';
+import { BaseRegistry } from '@lib/core';
+
+import type { GraphEditorDefinition } from './types';
 
 /**
  * GraphEditorRegistry - Centralized registry for graph editor surfaces

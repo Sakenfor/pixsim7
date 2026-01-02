@@ -7,7 +7,15 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
  * mirroring the style of other custom node renderers.
  */
 function IntimacyGenerationNodeRenderer({ node, hasErrors, isSelected }: NodeRendererProps) {
-  const data = node.data as any;
+  const data = node.data as {
+    generationType?: string;
+    purpose?: string;
+    strategy?: string;
+    socialContext?: {
+      intimacyBand?: string;
+      contentRating?: string;
+    };
+  } | undefined;
   const generationType = data?.generationType ?? 'transition';
   const purpose = data?.purpose ?? 'adaptive';
   const strategy = data?.strategy ?? 'per_playthrough';

@@ -4,11 +4,11 @@
  * Interactive browser for the character identity graph.
  * Shows all connections between characters, instances, NPCs, scenes, and assets.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+
 import type {
   CharacterIdentityGraph,
   CharacterGraphNodeUnion,
-  CharacterGraphEdge,
   CharacterUsageStats,
 } from '@lib/registries';
 
@@ -432,8 +432,16 @@ interface ScenesViewProps {
   apiBaseUrl: string;
 }
 
+interface CharacterSceneUsage {
+  sceneId: string | number;
+  title?: string;
+  description?: string;
+  role?: unknown;
+  required?: boolean;
+}
+
 const ScenesView: React.FC<ScenesViewProps> = ({ characterId, apiBaseUrl }) => {
-  const [scenes, setScenes] = useState<any[]>([]);
+  const [scenes, setScenes] = useState<CharacterSceneUsage[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -442,7 +450,7 @@ const ScenesView: React.FC<ScenesViewProps> = ({ characterId, apiBaseUrl }) => {
         const url = `${apiBaseUrl}/character-graph/character/${characterId}/scenes`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch scenes');
-        const data = await response.json();
+        const data = await response.json() as { scenes?: CharacterSceneUsage[] };
         setScenes(data.scenes || []);
       } catch (err) {
         console.error('Error fetching scenes:', err);
@@ -495,8 +503,15 @@ interface AssetsViewProps {
   apiBaseUrl: string;
 }
 
+interface CharacterAssetUsage {
+  assetId: string | number;
+  mediaType?: string;
+  description?: string;
+  tags?: string[];
+}
+
 const AssetsView: React.FC<AssetsViewProps> = ({ characterId, worldId, apiBaseUrl }) => {
-  const [assets, setAssets] = useState<any[]>([]);
+  const [assets, setAssets] = useState<CharacterAssetUsage[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -510,7 +525,7 @@ const AssetsView: React.FC<AssetsViewProps> = ({ characterId, worldId, apiBaseUr
 
         const response = await fetch(url.toString());
         if (!response.ok) throw new Error('Failed to fetch assets');
-        const data = await response.json();
+        const data = await response.json() as { assets?: CharacterAssetUsage[] };
         setAssets(data.assets || []);
       } catch (err) {
         console.error('Error fetching assets:', err);
@@ -539,7 +554,7 @@ const AssetsView: React.FC<AssetsViewProps> = ({ characterId, worldId, apiBaseUr
                 {asset.description && <p>{asset.description}</p>}
                 {asset.tags && asset.tags.length > 0 && (
                   <div className="asset-tags">
-                    {asset.tags.map((tag: string, i: number) => (
+                  {asset.tags.map((tag, i) => (
                       <span key={i} className="tag">
                         {tag}
                       </span>

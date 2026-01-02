@@ -1,4 +1,3 @@
-import type { GraphTemplate } from './graphTemplates';
 import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 
 /**

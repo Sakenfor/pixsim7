@@ -1,10 +1,14 @@
 import { useState } from 'react';
+
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
+
 import { builtinWizards, type TemplateWizard } from '../../lib/editor/templateWizards';
+
 import { TemplateWizardDialog } from './TemplateWizardDialog';
 
 interface TemplateWizardPaletteProps {
   /** Callback when wizard completes and generates nodes/edges */
-  onWizardComplete: (nodes: any[], edges: any[]) => void;
+  onWizardComplete: (nodes: DraftSceneNode[], edges: DraftEdge[]) => void;
 
   /** Compact mode for smaller display */
   compact?: boolean;
@@ -62,7 +66,7 @@ export function TemplateWizardPalette({
     setActiveWizard(wizard);
   };
 
-  const handleWizardComplete = (nodes: any[], edges: any[]) => {
+  const handleWizardComplete = (nodes: DraftSceneNode[], edges: DraftEdge[]) => {
     onWizardComplete(nodes, edges);
     setActiveWizard(null);
   };

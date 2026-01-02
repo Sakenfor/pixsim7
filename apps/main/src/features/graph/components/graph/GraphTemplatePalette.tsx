@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { useTemplateStore } from '../../stores/templatesStore';
+import { useEffect, useState } from 'react';
+
+import type { DraftScene } from '@domain/sceneBuilder';
+
 import {
   validateTemplate,
   validatePreconditions,
@@ -9,7 +11,7 @@ import {
   type TemplateCategory,
 } from '../../lib/editor/graphTemplates';
 import type { GraphTemplate } from '../../lib/editor/graphTemplates';
-import type { DraftScene } from '@domain/sceneBuilder';
+import { useTemplateStore } from '../../stores/templatesStore';
 
 // Available categories for filtering
 const TEMPLATE_CATEGORIES: (TemplateCategory | 'All')[] = [
@@ -56,17 +58,20 @@ function exportTemplate(template: GraphTemplate): void {
 /**
  * Validate that an imported object is a valid GraphTemplate
  */
-function isValidTemplateJSON(obj: any): obj is GraphTemplate {
+function isValidTemplateJSON(obj: unknown): obj is GraphTemplate {
+  if (!obj || typeof obj !== 'object') return false;
+  const record = obj as Record<string, unknown>;
+  const data = record.data as Record<string, unknown> | null;
+
   return (
-    typeof obj === 'object' &&
-    obj !== null &&
-    typeof obj.id === 'string' &&
-    typeof obj.name === 'string' &&
-    typeof obj.createdAt === 'number' &&
-    Array.isArray(obj.nodeTypes) &&
-    typeof obj.data === 'object' &&
-    Array.isArray(obj.data.nodes) &&
-    Array.isArray(obj.data.edges)
+    typeof record.id === 'string' &&
+    typeof record.name === 'string' &&
+    typeof record.createdAt === 'number' &&
+    Array.isArray(record.nodeTypes) &&
+    !!data &&
+    typeof data === 'object' &&
+    Array.isArray(data.nodes) &&
+    Array.isArray(data.edges)
   );
 }
 
@@ -197,7 +202,7 @@ export function GraphTemplatePalette({
 
     if (confirm(`Delete template "${template.name}"?`)) {
       try {
-        await removeTemplate(template.id, worldId);
+        await removeTemplate(template.id);
       } catch (error) {
         alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
@@ -324,7 +329,7 @@ export function GraphTemplatePalette({
         const text = await file.text();
         const result = importTemplatePack(text);
 
-        if (!result.valid) {
+        if (!result.valid || !result.pack) {
           alert(`Failed to import pack:\n${result.errors.join('\n')}`);
           return;
         }

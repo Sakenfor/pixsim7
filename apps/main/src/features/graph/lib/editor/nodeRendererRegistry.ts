@@ -1,7 +1,8 @@
 import type { ComponentType } from 'react';
 
-import type { DraftSceneNode } from '@domain/sceneBuilder';
 import type { ArcGraphNode } from '@features/graph/models/arcGraph';
+
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 export interface NodeRendererProps<TNode = DraftSceneNode> {
   node: TNode;

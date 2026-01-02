@@ -1,5 +1,6 @@
-import type { DraftSceneNode } from '@domain/sceneBuilder';
 import type { Scene } from '@shared/types';
+
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 import { NodeTypeRegistry, type NodeTypeDefinition } from './registry';
 

@@ -72,8 +72,10 @@
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],
+      "@lib/core/*": ["./src/lib/core/*"],
       "@lib/shapes": ["./src/lib/shapes/index.ts"],
       "@lib/api": ["./src/lib/api/index.ts"],
+      "@lib/api/*": ["./src/lib/api/*"],
 
       // Lib - UI (consolidated)
       "@lib/ui": ["./src/lib/ui/index.ts"],
@@ -87,13 +89,25 @@
 
       // Lib - Infrastructure (Phase 1 & 3)
       "@lib/utils": ["./src/lib/utils/index.ts"],
+      "@lib/utils/*": ["./src/lib/utils/*"],
       "@lib/auth": ["./src/lib/auth/index.ts"],
       "@lib/theming": ["./src/lib/theming/index.ts"],
       "@lib/game": ["./src/lib/game/index.ts"],
+      "@lib/game/*": ["./src/lib/game/*"],
       "@lib/analyzers": ["./src/lib/analyzers/index.ts"],
       "@lib/assets": ["./src/lib/assets/index.ts"],
+      "@lib/capabilities": ["./src/lib/capabilities/index.ts"],
+      "@lib/capabilities/*": ["./src/lib/capabilities/*"],
       "@lib/context": ["./src/lib/context/index.ts"],
+      "@lib/dev": ["./src/lib/dev/index.ts"],
+      "@lib/dev/*": ["./src/lib/dev/*"],
       "@lib/dockview": ["./src/lib/dockview/index.ts"],
+      "@lib/models": ["./src/lib/models/index.ts"],
+      "@lib/models/*": ["./src/lib/models/*"],
+      "@lib/plugins": ["./src/lib/plugins/index.ts"],
+      "@lib/plugins/*": ["./src/lib/plugins/*"],
+      "@lib/registries": ["./src/lib/registries.ts"],
+      "@lib/backendStorage": ["./src/lib/backendStorage.ts"],
       "@lib/assetUrlResolver": ["./src/lib/assetUrlResolver.ts"],
 
       // Packages

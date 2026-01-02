@@ -1,5 +1,6 @@
-import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 import { nodeTypeRegistry } from '@lib/registries';
+
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 
 /**
  * Template source type
@@ -617,7 +618,7 @@ export function exportTemplatePack(
  * Phase 9: Import a template pack from JSON
  */
 export function importTemplatePack(jsonString: string): {
-  pack: TemplatePack;
+  pack: TemplatePack | null;
   templates: GraphTemplate[];
   valid: boolean;
   errors: string[];
@@ -625,47 +626,53 @@ export function importTemplatePack(jsonString: string): {
   const errors: string[] = [];
 
   try {
-    const parsed = JSON.parse(jsonString);
+    const parsed = JSON.parse(jsonString) as {
+      pack?: unknown;
+      templates?: unknown;
+    };
 
     // Validate structure
     if (!parsed.pack || !parsed.templates) {
       errors.push('Invalid pack format: missing pack or templates');
-      return { pack: null as any, templates: [], valid: false, errors };
+      return { pack: null, templates: [], valid: false, errors };
     }
 
-    if (!parsed.pack.id || !parsed.pack.name) {
+    const packRecord = parsed.pack as Record<string, unknown>;
+    if (!packRecord.id || !packRecord.name) {
       errors.push('Invalid pack: missing id or name');
-      return { pack: null as any, templates: [], valid: false, errors };
+      return { pack: null, templates: [], valid: false, errors };
     }
 
     if (!Array.isArray(parsed.templates)) {
       errors.push('Invalid pack: templates must be an array');
-      return { pack: null as any, templates: [], valid: false, errors };
+      return { pack: null, templates: [], valid: false, errors };
     }
 
     // Validate each template
-    parsed.templates.forEach((template: any, index: number) => {
-      if (!template.id || !template.name) {
+    parsed.templates.forEach((template, index) => {
+      const templateRecord = template as Record<string, unknown>;
+      if (!templateRecord.id || !templateRecord.name) {
         errors.push(`Template ${index + 1}: missing id or name`);
       }
-      if (!template.data || !Array.isArray(template.data.nodes) || !Array.isArray(template.data.edges)) {
+      const templateData = templateRecord.data as Record<string, unknown> | undefined;
+      if (!templateData || !Array.isArray(templateData.nodes) || !Array.isArray(templateData.edges)) {
         errors.push(`Template ${index + 1}: invalid data structure`);
       }
     });
 
     if (errors.length > 0) {
-      return { pack: null as any, templates: [], valid: false, errors };
+      return { pack: null, templates: [], valid: false, errors };
     }
 
     return {
-      pack: parsed.pack,
-      templates: parsed.templates,
+      pack: parsed.pack as TemplatePack,
+      templates: parsed.templates as GraphTemplate[],
       valid: true,
       errors: [],
     };
   } catch (error) {
     errors.push(`JSON parse error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    return { pack: null as any, templates: [], valid: false, errors };
+    return { pack: null, templates: [], valid: false, errors };
   }
 }
 

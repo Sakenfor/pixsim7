@@ -1,9 +1,9 @@
-import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
+import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Custom renderer for video nodes - shows media thumbnail and playback info
  */
-export function VideoNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
+export function VideoNodeRenderer({ node }: NodeRendererProps) {
   // Extract media info
   const mediaUrl = node.mediaUrl || node.media?.[0]?.url;
   const hasMedia = !!mediaUrl;

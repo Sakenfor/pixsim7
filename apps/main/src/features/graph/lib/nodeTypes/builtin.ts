@@ -1,9 +1,10 @@
+import { registerIntimacyNodeTypes } from '@features/interactions';
+
 import type { DraftSceneNode } from '@domain/sceneBuilder';
 
+import { registerNpcResponseNode } from './npcResponse';
 import { sceneNodeTypeRegistry } from './sceneRegistry';
 import type { SceneRuntimeNode } from './sceneRegistry';
-import { registerNpcResponseNode } from './npcResponse';
-import { registerIntimacyNodeTypes } from '@features/interactions';
 
 // Ensure built-in node types are only registered once per process
 let builtinNodeTypesRegistered = false;

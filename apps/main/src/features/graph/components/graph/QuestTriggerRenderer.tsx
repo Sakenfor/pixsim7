@@ -5,8 +5,9 @@
  * Shows quest details, objectives, conditions, and rewards.
  */
 
-import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import type { QuestTriggerNodeData, QuestObjective } from '@lib/plugins/questTriggerNode';
+
+import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Quest Trigger Node Renderer Component
@@ -20,7 +21,8 @@ export function QuestTriggerRenderer({
   hasErrors,
 }: NodeRendererProps) {
   // Cast node data to our custom type
-  const data = (node.metadata as any)?.questTriggerConfig as QuestTriggerNodeData | undefined;
+  const metadata = node.metadata as Record<string, unknown> | undefined;
+  const data = metadata?.questTriggerConfig as QuestTriggerNodeData | undefined;
 
   // If no config yet, show placeholder
   if (!data) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+
 import { apiClient } from '@lib/api/client';
 
 export interface GraphNode { id: number; media_type: string; provider_id: string; thumbnail_url: string; duration_sec?: number | null }

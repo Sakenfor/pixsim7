@@ -5,8 +5,9 @@
  * Shows stages, current progress, and affinity requirements.
  */
 
-import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 import type { SeductionNodeData, SeductionStage } from '@lib/plugins/seductionNode';
+
+import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Seduction Node Renderer Component
@@ -20,8 +21,9 @@ export function SeductionNodeRenderer({
   hasErrors,
 }: NodeRendererProps) {
   // Cast node data to our custom type
-  const data = (node as any).stages
-    ? (node as SeductionNodeData)
+  const candidate = node as unknown as SeductionNodeData;
+  const data = candidate?.stages
+    ? candidate
     : undefined;
 
   // If no config yet, show placeholder

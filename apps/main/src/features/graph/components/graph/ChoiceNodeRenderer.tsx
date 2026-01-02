@@ -1,10 +1,10 @@
-import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
+import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Custom renderer for choice nodes - shows available choices
  */
-export function ChoiceNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
-  const choices = (node.metadata?.choices as any[]) || [];
+export function ChoiceNodeRenderer({ node }: NodeRendererProps) {
+  const choices = Array.isArray(node.metadata?.choices) ? node.metadata?.choices : [];
   const hasChoices = choices.length > 0;
 
   return (

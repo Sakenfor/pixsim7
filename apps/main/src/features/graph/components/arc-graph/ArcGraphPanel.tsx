@@ -15,10 +15,9 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { arcNodeTypeRegistry } from '../../lib/nodeTypes/arcRegistry';
-
 import type { ArcGraph, ArcGraphEdge, ArcGraphNode } from '@features/graph/models/arcGraph';
 
+import { arcNodeTypeRegistry } from '../../lib/nodeTypes/arcRegistry';
 import { useArcGraphStore, type ArcGraphState } from '../../stores/arcGraphStore';
 import { ArcNode } from '../nodes/ArcNode';
 import { NodePalette } from '../nodes/NodePalette';

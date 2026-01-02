@@ -2,15 +2,17 @@
  * Tests for Graph Dependency Tracking
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
+import type { ArcGraph } from '@features/graph/models/arcGraph';
+
 import {
   buildArcSceneDependencyIndex,
   getArcNodesForScene,
+  getDependencyCount,
   getSceneForArcNode,
   sceneHasDependencies,
-  getDependencyCount,
 } from './dependencies';
-import type { ArcGraph } from '@features/graph/domain/arcGraph/types';
 
 describe('Graph Dependency Tracking', () => {
   describe('buildArcSceneDependencyIndex', () => {
@@ -341,3 +343,4 @@ describe('Graph Dependency Tracking', () => {
     });
   });
 });
+

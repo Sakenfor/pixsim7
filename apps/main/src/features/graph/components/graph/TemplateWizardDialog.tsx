@@ -1,10 +1,13 @@
-import { useState } from 'react';
 import { Button } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
+
 import type { TemplateWizard, WizardField, WizardValues } from '../../lib/editor/templateWizards';
 
 interface TemplateWizardDialogProps {
   wizard: TemplateWizard;
-  onComplete: (nodes: any[], edges: any[]) => void;
+  onComplete: (nodes: DraftSceneNode[], edges: DraftEdge[]) => void;
   onCancel: () => void;
 }
 

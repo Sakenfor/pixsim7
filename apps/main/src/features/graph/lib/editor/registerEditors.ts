@@ -12,10 +12,14 @@
  * @see coreEditorRole in PanelDefinition for panel-level identification
  */
 
-import { graphEditorRegistry } from './editorRegistry';
-import { ArcGraphPanel } from '@features/graph';
-import { debugFlags } from '@lib/utils/debugFlags';
 import { lazy } from 'react';
+
+import { debugFlags } from '@lib/utils/debugFlags';
+
+import { ArcGraphPanel } from '@features/graph';
+
+import { graphEditorRegistry } from './editorRegistry';
+import type { GraphEditorComponent } from './types';
 
 // Use lazy import to break circular dependency
 const GraphPanelWithProvider = lazy(() =>
@@ -35,7 +39,7 @@ export function registerGraphEditors(): void {
     description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
     icon: '🔀',
     category: 'core',
-    component: GraphPanelWithProvider as any,
+    component: GraphPanelWithProvider as GraphEditorComponent,
     storeId: 'scene-graph-v2',
     supportsMultiScene: true,
     supportsWorldContext: true,
