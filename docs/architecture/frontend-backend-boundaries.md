@@ -1,4 +1,4 @@
-# Frontend vs Backend Boundaries
+﻿# Frontend vs Backend Boundaries
 
 **Last Updated:** 2025-12-12
 **Status:** Current architecture reference
@@ -17,10 +17,10 @@ PixSim7 maintains **clear separation** between frontend (React/TypeScript) and b
 - **Communication:** RESTful API (`/api/v1/*`) + WebSocket (`/ws/*`) for real-time updates
 
 **Status Post-Cleanup:**
-- ✅ `mockCore` removed (commit `09b066e`)
-- ✅ All game data flows through production API endpoints
-- ✅ Import hygiene enforced via ESLint rules
-- ✅ Development tools clearly separated with `/dev/*` prefix
+- âœ… `mockCore` removed (commit `09b066e`)
+- âœ… All game data flows through production API endpoints
+- âœ… Import hygiene enforced via ESLint rules
+- âœ… Development tools clearly separated with `/dev/*` prefix
 
 ---
 
@@ -41,7 +41,7 @@ The frontend exposes controlled public APIs through **barrel exports** (`index.t
 | **Widgets** | `@lib/widgets` | Widget composition | `widgetRegistry`, `PanelComposer`, `ComposedPanel` |
 | **Utils** | `@lib/utils` | Shared utilities | `logger`, `uuid`, `debugFlags`, `storage`, `polling` |
 | **Auth** | `@lib/auth` | Authentication | `authService`, `AuthProvider` |
-| **Hooks** | `@lib/hooks` | React hooks | Shared React hooks |
+| **Hooks** | `@/hooks` | React hooks | Shared React hooks |
 | **Game** | `@lib/game` | Game runtime | `coreAdapter`, `usePixSim7Core` |
 | **Devtools** | `@lib/devtools` | Developer tools | `devToolRegistry`, `registerDevTools()` |
 
@@ -69,15 +69,15 @@ The frontend exposes controlled public APIs through **barrel exports** (`index.t
 
 **Import Rules (Enforced by ESLint):**
 ```typescript
-// ✅ CORRECT - Import from barrels
+// âœ… CORRECT - Import from barrels
 import { BrainState, getMood } from '@lib/core';
 import { GraphEditorHost } from '@features/graph';
 
-// ❌ FORBIDDEN - Deep imports blocked by ESLint
+// âŒ FORBIDDEN - Deep imports blocked by ESLint
 import { BrainState } from '@/lib/core/types';
 import { GraphEditorHost } from '@features/graph/components/graph/GraphEditorHost';
 
-// ✅ EXCEPTION - Feature plugins/lib (intentional exposure)
+// âœ… EXCEPTION - Feature plugins/lib (intentional exposure)
 import { createPreset } from '@features/worldTools/lib/hudPresets';
 import { inventoryPlugin } from '@features/worldTools/plugins/inventory';
 ```
@@ -130,8 +130,8 @@ from .scene import Scene, SceneAsset, SceneConnection
 from .enums import MediaType, SyncStatus, GenerationStatus
 
 # Subsystems (import from submodules, NOT from domain.__init__)
-# ❌ from pixsim7.backend.main.domain import GameWorld  # WRONG
-# ✅ from pixsim7.backend.main.domain.game import GameWorld  # CORRECT
+# âŒ from pixsim7.backend.main.domain import GameWorld  # WRONG
+# âœ… from pixsim7.backend.main.domain.game import GameWorld  # CORRECT
 ```
 
 **Domain Subsystems (use submodule imports):**
@@ -156,12 +156,12 @@ Services are organized into focused modules with barrel exports:
 
 **Import Pattern:**
 ```python
-# ✅ CORRECT - Import from service barrels
+# âœ… CORRECT - Import from service barrels
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.domain.stats import StatEngine
 from pixsim7.backend.main.domain.stats.migration import migrate_world_meta_to_stats_config
 
-# ❌ WRONG - Direct file imports discouraged
+# âŒ WRONG - Direct file imports discouraged
 from pixsim7.backend.main.services.generation.creation_service import GenerationCreationService
 from pixsim7.backend.main.domain.stats.engine import StatEngine
 ```
@@ -210,7 +210,7 @@ import type { SceneNode } from '@shared/types';
 ##### IDs Namespace (ID Types)
 
 ```typescript
-// ✅ RECOMMENDED - Clean namespace imports
+// âœ… RECOMMENDED - Clean namespace imports
 import { IDs } from '@shared/types';
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
@@ -230,7 +230,7 @@ export async function createGameSession(
 
 ##### Scene Namespace (Scene Graph Types)
 ```typescript
-// ✅ RECOMMENDED - Namespace for scene graph code
+// âœ… RECOMMENDED - Namespace for scene graph code
 import { Scene } from '@shared/types';
 
 function buildScene(): Scene.Scene {
@@ -259,7 +259,7 @@ function buildScene(): Scene.Scene {
 
 ##### Game Namespace (Game DTOs)
 ```typescript
-// ✅ RECOMMENDED - Namespace for game API code
+// âœ… RECOMMENDED - Namespace for game API code
 import { Game, IDs } from '@shared/types';
 
 async function createLocation(
@@ -273,7 +273,7 @@ async function createLocation(
 
 **Direct Import Pattern (Alternative for focused files):**
 ```typescript
-// ✅ ALSO VALID - Direct imports for specific types
+// âœ… ALSO VALID - Direct imports for specific types
 import { LocationId, SessionId, SceneContentNode } from '@shared/types';
 
 export async function updateLocation(locationId: LocationId) {
@@ -326,95 +326,95 @@ Existing code using direct imports continues to work unchanged. Gradually migrat
 
 ---
 
-## 2. Backend → Frontend Data Flow
+## 2. Backend â†’ Frontend Data Flow
 
 ### 2.1 Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                           FRONTEND (React/TS)                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────────┐   ┌──────────────────┐   ┌─────────────────┐ │
-│  │  Components &    │   │   Zustand Stores │   │  React Hooks    │ │
-│  │  Routes          │   │                  │   │                 │ │
-│  │                  │   │  • authStore     │   │  • usePixSim7Core│
-│  │  • GameWorld     │   │  • generations   │   │  • useGeneration│
-│  │  • NpcBrainLab   │   │    Store         │   │    WebSocket    │
-│  │  • Gallery       │   │  • worldContext  │   │  • useRecent    │
-│  └────────┬─────────┘   └────────┬─────────┘   │    Generations  │
-│           │                      │              └────────┬────────┘
-│           │                      │                       │          │
-│           └──────────────────────┴───────────────────────┘          │
-│                                  │                                  │
-│                       ┌──────────▼──────────┐                       │
-│                       │   @lib/api/client   │                       │
-│                       │                     │                       │
-│                       │  • apiClient (Axios)│                       │
-│                       │  • Auth interceptor │                       │
-│                       │  • Error handling   │                       │
-│                       └──────────┬──────────┘                       │
-│                                  │                                  │
-└──────────────────────────────────┼──────────────────────────────────┘
-                                   │
-                    ┌──────────────┼──────────────┐
-                    │              │              │
-            ┌───────▼──────┐   ┌──▼──────────┐   │
-            │  HTTP/REST   │   │  WebSocket  │   │
-            │  /api/v1/*   │   │  /ws/*      │   │
-            └───────┬──────┘   └──┬──────────┘   │
-                    │              │              │
-┌───────────────────┼──────────────┼──────────────┼──────────────────┐
-│                   │   BACKEND (FastAPI/Python)  │                  │
-├───────────────────┼──────────────┼──────────────┼──────────────────┤
-│                   │              │              │                  │
-│       ┌───────────▼─────────┐    │    ┌─────────▼─────────┐       │
-│       │   API Routes        │    │    │  WebSocket Handler│       │
-│       │   (api/v1/*.py)     │◄───┼────┤  (websocket.py)   │       │
-│       │                     │    │    │                   │       │
-│       │  • auth.py          │    │    │  Real-time events:│       │
-│       │  • game_*.py        │    │    │  • Generation     │       │
-│       │  • generations.py   │    │    │    status updates │       │
-│       │  • assets.py        │    │    └───────────────────┘       │
-│       │  • /dev/* (dev)     │    │                                │
-│       └──────────┬──────────┘    │                                │
-│                  │                │                                │
-│       ┌──────────▼──────────┐    │                                │
-│       │   Services Layer    │    │                                │
-│       │                     │    │                                │
-│       │  • GenerationService│────┘                                │
-│       │  • GameSessionService                                     │
-│       │  • AssetService     │                                     │
-│       │  • LLMService       │                                     │
-│       └──────────┬──────────┘                                     │
-│                  │                                                 │
-│       ┌──────────▼──────────┐                                     │
-│       │   Domain Models     │                                     │
-│       │   (domain/*.py)     │                                     │
-│       │                     │                                     │
-│       │  • User, Asset      │                                     │
-│       │  • Generation       │                                     │
-│       │  • GameSession      │                                     │
-│       │  • domain.game.*    │                                     │
-│       │  • domain.stats.*   │                                     │
-│       └─────────────────────┘                                     │
-│                                                                    │
-└────────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                           FRONTEND (React/TS)                        â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                                       â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
+â”‚  â”‚  Components &    â”‚   â”‚   Zustand Stores â”‚   â”‚  React Hooks    â”‚ â”‚
+â”‚  â”‚  Routes          â”‚   â”‚                  â”‚   â”‚                 â”‚ â”‚
+â”‚  â”‚                  â”‚   â”‚  â€¢ authStore     â”‚   â”‚  â€¢ usePixSim7Coreâ”‚
+â”‚  â”‚  â€¢ GameWorld     â”‚   â”‚  â€¢ generations   â”‚   â”‚  â€¢ useGenerationâ”‚
+â”‚  â”‚  â€¢ NpcBrainLab   â”‚   â”‚    Store         â”‚   â”‚    WebSocket    â”‚
+â”‚  â”‚  â€¢ Gallery       â”‚   â”‚  â€¢ worldContext  â”‚   â”‚  â€¢ useRecent    â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚    Generations  â”‚
+â”‚           â”‚                      â”‚              â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+â”‚           â”‚                      â”‚                       â”‚          â”‚
+â”‚           â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜          â”‚
+â”‚                                  â”‚                                  â”‚
+â”‚                       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                       â”‚
+â”‚                       â”‚   @lib/api/client   â”‚                       â”‚
+â”‚                       â”‚                     â”‚                       â”‚
+â”‚                       â”‚  â€¢ apiClient (Axios)â”‚                       â”‚
+â”‚                       â”‚  â€¢ Auth interceptor â”‚                       â”‚
+â”‚                       â”‚  â€¢ Error handling   â”‚                       â”‚
+â”‚                       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                       â”‚
+â”‚                                  â”‚                                  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                   â”‚
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                    â”‚              â”‚              â”‚
+            â”Œâ”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”‚
+            â”‚  HTTP/REST   â”‚   â”‚  WebSocket  â”‚   â”‚
+            â”‚  /api/v1/*   â”‚   â”‚  /ws/*      â”‚   â”‚
+            â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜   â””â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â”‚
+                    â”‚              â”‚              â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                   â”‚   BACKEND (FastAPI/Python)  â”‚                  â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                   â”‚              â”‚              â”‚                  â”‚
+â”‚       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”‚    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”       â”‚
+â”‚       â”‚   API Routes        â”‚    â”‚    â”‚  WebSocket Handlerâ”‚       â”‚
+â”‚       â”‚   (api/v1/*.py)     â”‚â—„â”€â”€â”€â”¼â”€â”€â”€â”€â”¤  (websocket.py)   â”‚       â”‚
+â”‚       â”‚                     â”‚    â”‚    â”‚                   â”‚       â”‚
+â”‚       â”‚  â€¢ auth.py          â”‚    â”‚    â”‚  Real-time events:â”‚       â”‚
+â”‚       â”‚  â€¢ game_*.py        â”‚    â”‚    â”‚  â€¢ Generation     â”‚       â”‚
+â”‚       â”‚  â€¢ generations.py   â”‚    â”‚    â”‚    status updates â”‚       â”‚
+â”‚       â”‚  â€¢ assets.py        â”‚    â”‚    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜       â”‚
+â”‚       â”‚  â€¢ /dev/* (dev)     â”‚    â”‚                                â”‚
+â”‚       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â”‚                                â”‚
+â”‚                  â”‚                â”‚                                â”‚
+â”‚       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”‚                                â”‚
+â”‚       â”‚   Services Layer    â”‚    â”‚                                â”‚
+â”‚       â”‚                     â”‚    â”‚                                â”‚
+â”‚       â”‚  â€¢ GenerationServiceâ”‚â”€â”€â”€â”€â”˜                                â”‚
+â”‚       â”‚  â€¢ GameSessionService                                     â”‚
+â”‚       â”‚  â€¢ AssetService     â”‚                                     â”‚
+â”‚       â”‚  â€¢ LLMService       â”‚                                     â”‚
+â”‚       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                                     â”‚
+â”‚                  â”‚                                                 â”‚
+â”‚       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                                     â”‚
+â”‚       â”‚   Domain Models     â”‚                                     â”‚
+â”‚       â”‚   (domain/*.py)     â”‚                                     â”‚
+â”‚       â”‚                     â”‚                                     â”‚
+â”‚       â”‚  â€¢ User, Asset      â”‚                                     â”‚
+â”‚       â”‚  â€¢ Generation       â”‚                                     â”‚
+â”‚       â”‚  â€¢ GameSession      â”‚                                     â”‚
+â”‚       â”‚  â€¢ domain.game.*    â”‚                                     â”‚
+â”‚       â”‚  â€¢ domain.stats.*   â”‚                                     â”‚
+â”‚       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                                     â”‚
+â”‚                                                                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
-           ┌────────────────────────────────────┐
-           │   Shared Contract (@shared/types)  │
-           │                                    │
-           │  TypeScript DTOs define API shape  │
-           │  • GameSession, BrainState         │
-           │  • SceneNode, SceneEdge            │
-           └────────────────────────────────────┘
+           â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+           â”‚   Shared Contract (@shared/types)  â”‚
+           â”‚                                    â”‚
+           â”‚  TypeScript DTOs define API shape  â”‚
+           â”‚  â€¢ GameSession, BrainState         â”‚
+           â”‚  â€¢ SceneNode, SceneEdge            â”‚
+           â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### 2.2 Data Flow Details
 
 #### **Flow 1: REST API (Primary Data Flow)**
 
-**Pattern:** Component/Hook → API Client → Backend Endpoint → Service → Domain → Response
+**Pattern:** Component/Hook â†’ API Client â†’ Backend Endpoint â†’ Service â†’ Domain â†’ Response
 
 **Example: Fetching Game Worlds**
 
@@ -471,7 +471,7 @@ class GameWorld:
 
 #### **Flow 2: WebSocket (Real-Time Updates)**
 
-**Pattern:** Component subscribes → WebSocket emits event → Hook fetches full data → Store updates
+**Pattern:** Component subscribes â†’ WebSocket emits event â†’ Hook fetches full data â†’ Store updates
 
 **Example: Generation Status Updates**
 
@@ -534,7 +534,7 @@ export const useGenerationsStore = create<GenerationsStore>((set) => ({
 
 #### **Flow 3: Polling (Fallback/Legacy)**
 
-**Pattern:** Hook polls API on interval → Updates store
+**Pattern:** Hook polls API on interval â†’ Updates store
 
 **Example: Generation Status Polling**
 
@@ -561,7 +561,7 @@ export function useGenerationStatus(generationId: number) {
 
 #### **Flow 4: Game Engine Adapter**
 
-**Pattern:** Game engine → Adapter → Frontend API Client
+**Pattern:** Game engine â†’ Adapter â†’ Frontend API Client
 
 **Bridge:** `@lib/game/coreAdapter.ts`
 
@@ -603,7 +603,7 @@ const core = new PixSim7Core({
 
 ### 3.1 Development Tools (Intentional Overlap)
 
-**Status:** ✅ **Well-Separated** with clear naming conventions
+**Status:** âœ… **Well-Separated** with clear naming conventions
 
 | Component | Location | Backend Endpoint | Purpose |
 |-----------|----------|------------------|---------|
@@ -620,7 +620,7 @@ const core = new PixSim7Core({
 
 ### 3.2 Shared Types (`@shared/types`)
 
-**Status:** ✅ **Clear Contract Layer**
+**Status:** âœ… **Clear Contract Layer**
 
 **Potential Confusion:**
 - TypeScript types in `@shared/types` define **frontend expectations**
@@ -634,7 +634,7 @@ const core = new PixSim7Core({
 
 ### 3.3 Game Engine (`packages/game/`)
 
-**Status:** ✅ **Backend-Agnostic by Design**
+**Status:** âœ… **Backend-Agnostic by Design**
 
 **Potential Confusion:**
 - Game engine lives in frontend monorepo but is not "frontend code"
@@ -647,7 +647,7 @@ const core = new PixSim7Core({
 
 ### 3.4 Historical: `mockCore` (Removed)
 
-**Status:** ✅ **Fully Removed** (commit `09b066e`)
+**Status:** âœ… **Fully Removed** (commit `09b066e`)
 
 **What Was It?**
 - Local in-memory mock of backend API for offline development
@@ -664,7 +664,7 @@ const core = new PixSim7Core({
 
 ### 4.1 Documentation Updates
 
-#### **Update `docs/repo-map.md`** ✅ Already Complete
+#### **Update `docs/repo-map.md`** âœ… Already Complete
 
 Current `repo-map.md` includes:
 - Import hygiene section with examples
@@ -672,10 +672,10 @@ Current `repo-map.md` includes:
 - ESLint rules reference
 
 **Additional Recommendation:**
-Add a new section **"Frontend ↔ Backend Communication"** with link to this document.
+Add a new section **"Frontend â†” Backend Communication"** with link to this document.
 
 ```markdown
-## Frontend ↔ Backend Communication
+## Frontend â†” Backend Communication
 
 See [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) for:
 - How backend data flows to frontend
@@ -694,24 +694,24 @@ See [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.
 ## Key Concepts
 
 1. **Frontend uses barrel exports** - Always import from `@lib/*` or `@features/*`, never deep paths
-2. **Backend is FastAPI/Python** - Domain models → Services → API routes
+2. **Backend is FastAPI/Python** - Domain models â†’ Services â†’ API routes
 3. **Communication is REST + WebSocket** - All data flows through `/api/v1/*` endpoints
 4. **Shared types in `@shared/types`** - TypeScript contract for API responses
 5. **Dev tools use `/dev/*`** - Development endpoints clearly separated
 
 ## Quick Start
 
-- **Add a new API endpoint?** → Edit `pixsim7/backend/main/api/v1/*.py`
-- **Add a new frontend feature?** → Create module in `apps/main/src/features/*` with barrel export
-- **Share data between frontend/backend?** → Define types in `packages/shared/types/src/`
-- **Need backend data in frontend?** → Add API call in `@lib/api/*`, consume via hook
+- **Add a new API endpoint?** â†’ Edit `pixsim7/backend/main/api/v1/*.py`
+- **Add a new frontend feature?** â†’ Create module in `apps/main/src/features/*` with barrel export
+- **Share data between frontend/backend?** â†’ Define types in `packages/shared/types/src/`
+- **Need backend data in frontend?** â†’ Add API call in `@lib/api/*`, consume via hook
 
-## Red Flags 🚩
+## Red Flags ðŸš©
 
-- ❌ Importing from `@lib/core/types` (use `@lib/core` barrel)
-- ❌ Hardcoded backend URLs (use `@lib/api/client.ts`)
-- ❌ Frontend calling backend services directly (use API client)
-- ❌ Backend importing frontend code (layers must be separate)
+- âŒ Importing from `@lib/core/types` (use `@lib/core` barrel)
+- âŒ Hardcoded backend URLs (use `@lib/api/client.ts`)
+- âŒ Frontend calling backend services directly (use API client)
+- âŒ Backend importing frontend code (layers must be separate)
 ```
 
 ### 4.2 Structural Improvements
@@ -727,8 +727,8 @@ Update all barrel `index.ts` files with warnings:
  * @lib/core - Core game engine types and interfaces
  *
  * PUBLIC API - Use barrel imports only:
- *   ✅ import { BrainState } from '@lib/core';
- *   ❌ import { BrainState } from '@lib/core/types';
+ *   âœ… import { BrainState } from '@lib/core';
+ *   âŒ import { BrainState } from '@lib/core/types';
  *
  * This module re-exports:
  *   - Core types from @shared/types
@@ -765,9 +765,9 @@ SUBSYSTEM IMPORTS (not exported from here):
   - domain.stats.* - Import directly: from pixsim7.backend.main.domain.stats import StatEngine
 
 PATTERN:
-  ✅ from pixsim7.backend.main.domain import User, Asset
-  ✅ from pixsim7.backend.main.domain.game import GameWorld
-  ❌ from pixsim7.backend.main.domain.user import User  # Use barrel instead
+  âœ… from pixsim7.backend.main.domain import User, Asset
+  âœ… from pixsim7.backend.main.domain.game import GameWorld
+  âŒ from pixsim7.backend.main.domain.user import User  # Use barrel instead
 """
 
 from .user import User, UserSession
@@ -820,7 +820,7 @@ export const API_ENDPOINTS: ApiEndpointMeta[] = [
 
 ### 4.3 Automated Enforcement
 
-#### **4.3.1 ESLint Rules (Already Implemented)** ✅
+#### **4.3.1 ESLint Rules (Already Implemented)** âœ…
 
 Current rules in `apps/main/eslint.config.js`:
 - `import/no-internal-modules` - Prevents deep imports
@@ -829,7 +829,7 @@ Current rules in `apps/main/eslint.config.js`:
 
 **Status:** Working well post-import hygiene pass.
 
-#### **4.3.2 Pre-commit Hooks (Already Implemented)** ✅
+#### **4.3.2 Pre-commit Hooks (Already Implemented)** âœ…
 
 Current setup:
 - Husky + lint-staged
@@ -915,7 +915,7 @@ See individual API modules:
 - `assets.ts` - Asset management
 ````
 
-#### **4.4.2 Interactive Backend Architecture Panel** ✅ Already Exists
+#### **4.4.2 Interactive Backend Architecture Panel** âœ… Already Exists
 
 The `BackendArchitecturePanel` component already provides:
 - Live backend introspection via `/dev/architecture/map`
@@ -980,8 +980,8 @@ cat > apps/main/src/features/myFeature/index.ts << 'EOF'
  * @features/myFeature - My feature description
  *
  * PUBLIC API - Use barrel imports only:
- *   ✅ import { MyComponent } from '@features/myFeature';
- *   ❌ import { MyComponent } from '@features/myFeature/components/MyComponent';
+ *   âœ… import { MyComponent } from '@features/myFeature';
+ *   âŒ import { MyComponent } from '@features/myFeature/components/MyComponent';
  */
 
 export { MyComponent } from './components/MyComponent';
@@ -1060,9 +1060,9 @@ function MyComponent({ id }: { id: number }) {
 
 | Channel | Direction | Protocol | Use Case |
 |---------|-----------|----------|----------|
-| REST API | Frontend → Backend | HTTP/JSON | All CRUD operations, primary data flow |
-| WebSocket | Backend → Frontend | WS/JSON | Real-time generation updates |
-| Polling | Frontend → Backend | HTTP/JSON | Fallback for generation status |
+| REST API | Frontend â†’ Backend | HTTP/JSON | All CRUD operations, primary data flow |
+| WebSocket | Backend â†’ Frontend | WS/JSON | Real-time generation updates |
+| Polling | Frontend â†’ Backend | HTTP/JSON | Fallback for generation status |
 | localStorage | Frontend only | Browser API | Session persistence, offline cache |
 
 ---
@@ -1071,11 +1071,11 @@ function MyComponent({ id }: { id: number }) {
 
 PixSim7 maintains **clean separation** between frontend and backend with:
 
-✅ **Clear boundaries** - Barrel exports, enforced by ESLint
-✅ **Documented patterns** - Import rules, API client usage
-✅ **No mock/test bleed** - `mockCore` removed, dev tools clearly marked
-✅ **Shared contract** - `@shared/types` defines API shape
-✅ **Intentional overlap** - Dev tools (`/dev/*`) are well-separated
+âœ… **Clear boundaries** - Barrel exports, enforced by ESLint
+âœ… **Documented patterns** - Import rules, API client usage
+âœ… **No mock/test bleed** - `mockCore` removed, dev tools clearly marked
+âœ… **Shared contract** - `@shared/types` defines API shape
+âœ… **Intentional overlap** - Dev tools (`/dev/*`) are well-separated
 
 **For new contributors:**
 1. Read this document first
@@ -1090,3 +1090,4 @@ PixSim7 maintains **clean separation** between frontend and backend with:
 4. Document intentional boundary crossings
 
 This architecture ensures the team always knows "where backend ends and frontend begins."
+

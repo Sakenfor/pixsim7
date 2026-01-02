@@ -9,8 +9,8 @@
  */
 
 import React from 'react';
-import { usePendingDialogue } from '@lib/hooks/usePendingDialogue';
-import type { ExecutedDialogue } from '@lib/hooks/usePendingDialogue';
+import { usePendingDialogue } from '@/hooks/usePendingDialogue';
+import type { ExecutedDialogue } from '@/hooks/usePendingDialogue';
 import './PendingDialoguePanel.css';
 
 export interface PendingDialoguePanelProps {

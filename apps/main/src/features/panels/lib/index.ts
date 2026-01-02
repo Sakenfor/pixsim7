@@ -39,7 +39,7 @@ export {
   pluginManager,
 } from "./panelPlugin";
 export { initializePanels } from "./initializePanels";
-export { PanelHostLite } from "./PanelHostLite";
+export { PanelHostLite } from "../components/host/PanelHostLite";
 
 // Auto-discovery system
 export {
@@ -88,7 +88,7 @@ export {
 export {
   ScopeInstanceProvider,
   useScopeInstanceId,
-} from "./scopeContext";
+} from "../components/scope/scopeContext";
 
 // ScopeHost for automatic scope provider wrapping
-export { ScopeHost, type ScopeHostProps } from "./ScopeHost";
+export { ScopeHost, type ScopeHostProps } from "../components/scope/ScopeHost";

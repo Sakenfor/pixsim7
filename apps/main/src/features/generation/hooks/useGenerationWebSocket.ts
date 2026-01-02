@@ -15,7 +15,7 @@ import type { GenerationResponse } from '@lib/api/generations';
 import { parseWebSocketMessage } from '@/types/websocket';
 import { assetEvents } from '@features/assets';
 import { apiClient, BACKEND_BASE } from '@lib/api/client';
-import { useAssetSettingsStore } from '@/stores/assetSettingsStore';
+import { useAssetSettingsStore } from '@features/assets';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 function computeWebSocketUrl(): string {

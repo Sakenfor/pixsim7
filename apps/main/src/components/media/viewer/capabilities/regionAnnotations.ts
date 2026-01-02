@@ -14,8 +14,8 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { registerCapabilityDescriptor } from '@features/contextHub/descriptorRegistry';
 import {
+  registerCapabilityDescriptor,
   useProvideCapability,
   useCapability,
   type CapabilityProvider,

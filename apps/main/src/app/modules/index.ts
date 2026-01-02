@@ -7,7 +7,6 @@ import { registerDiscoveredFeatureModules } from './autoDiscover';
 
 // Core modules (must be manually imported - not in features/)
 import { pluginBootstrapModule } from './core/pluginBootstrapModule';
-import { graphSystemModule } from '@features/graph/systemModule';
 import { gameSessionModule } from './core/gameSessionModule';
 
 // Page modules (navigation metadata only)
@@ -35,11 +34,10 @@ export function registerModules() {
   moduleRegistry.register(pluginBootstrapModule);
 
   // Core system modules (priority: 75)
-  // Graph and session systems required by features
-  moduleRegistry.register(graphSystemModule);
+  // Session systems required by features
   moduleRegistry.register(gameSessionModule);
 
-  // Feature modules (priority: 50-70) - AUTO-DISCOVERED
+  // Feature modules (priority: 50-75) - AUTO-DISCOVERED
   // Any features/*/module.ts is automatically picked up
   registerDiscoveredFeatureModules();
 
@@ -75,7 +73,6 @@ export { PAGE_CATEGORIES, type PageCategory } from './types';
 
 // Export core module instances for direct access
 export { pluginBootstrapModule } from './core/pluginBootstrapModule';
-export { graphSystemModule } from '@features/graph/systemModule';
 export { gameSessionModule } from './core/gameSessionModule';
 
 // Note: Feature modules are auto-discovered and can be accessed via:

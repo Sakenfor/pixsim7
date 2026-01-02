@@ -76,3 +76,9 @@ export {
   type QuickGenerateContext,
   type BuildGenerationResult,
 } from '@features/generation/lib/quickGenerateLogic';
+
+// ============================================================================
+// Stores
+// ============================================================================
+
+export { usePromptSettingsStore } from './stores/promptSettingsStore';

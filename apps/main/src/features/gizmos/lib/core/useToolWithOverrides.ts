@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react';
 import { getTool, createToolInstance, type InteractiveTool } from '@pixsim7/scene.gizmos';
-import { useToolConfigStore, type ToolOverrides } from '@/stores/toolConfigStore';
+import { useToolConfigStore, type ToolOverrides } from '@features/gizmos/stores/toolConfigStore';
 
 /**
  * Deep merge helper that properly handles nested objects

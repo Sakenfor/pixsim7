@@ -31,7 +31,6 @@ export default defineConfig({
       { find: '@lib/auth', replacement: path.resolve(__dirname, './src/lib/auth') },
       { find: '@lib/theming', replacement: path.resolve(__dirname, './src/lib/theming') },
       { find: '@lib/game', replacement: path.resolve(__dirname, './src/lib/game') },
-      { find: '@lib/hooks', replacement: path.resolve(__dirname, './src/lib/hooks') },
       { find: '@lib/analyzers', replacement: path.resolve(__dirname, './src/lib/analyzers') },
       { find: '@lib/context', replacement: path.resolve(__dirname, './src/lib/context') },
       { find: '@lib/dockview', replacement: path.resolve(__dirname, './src/lib/dockview') },

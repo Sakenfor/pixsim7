@@ -5,7 +5,7 @@
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
 import { pixsimClient } from './client';
-import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
+import { usePromptSettingsStore } from '@features/prompts';
 import { createGenerationsApi } from '@pixsim7/api-client/domains';
 import type {
   CreateGenerationRequest,

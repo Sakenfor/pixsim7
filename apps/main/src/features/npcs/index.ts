@@ -11,4 +11,4 @@ export { NpcPortraits } from './routes/NpcPortraits';
 export { NpcPreferencesEditor } from './components/NpcPreferencesEditor';
 
 // Page module
-export { npcPortraitsModule } from './pages';
+export { npcPortraitsModule } from './routes';

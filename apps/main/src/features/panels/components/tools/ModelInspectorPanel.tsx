@@ -9,7 +9,7 @@ import { useState, useCallback, useRef } from "react";
 import { Button, useToast } from "@pixsim7/shared.ui";
 import { Model3DViewport } from "@/components/3d/Model3DViewport";
 import { AnimationTimeline } from "@/components/3d/AnimationTimeline";
-import { useModel3DStore } from "@/stores/model3DStore";
+import { useModel3DStore } from "@features/panels/stores/model3DStore";
 import type {
   InspectorMode,
   RenderMode,

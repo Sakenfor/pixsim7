@@ -9,9 +9,8 @@
  */
 
 import type { MenuAction, MenuActionContext } from "../types";
-import { useContextHubOverridesStore } from "@features/contextHub";
+import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/contextHub";
 import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
-import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 import { panelRegistry } from "@features/panels";
 import { getCapabilityKeys } from "@features/panels/lib/panelTypes";
 import {

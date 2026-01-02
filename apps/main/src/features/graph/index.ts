@@ -67,8 +67,8 @@ export { useLineageGraph } from './hooks/useLineageGraph';
 // Lib - Editor Core APIs (explicit - these are the main APIs)
 export { graphEditorRegistry, type GraphEditorDefinition } from './lib/editor/editorRegistry';
 export { nodeRendererRegistry, type NodeRendererDefinition } from './lib/editor/nodeRendererRegistry';
-export { useTemplateAnalyticsStore } from './lib/editor/templateAnalyticsStore';
-export { useTemplateStore } from './lib/editor/templatesStore';
+export { useTemplateAnalyticsStore } from './stores/templateAnalyticsStore';
+export { useTemplateStore } from './stores/templatesStore';
 export { graphClipboard } from './lib/editor/clipboard';
 
 // Lib - Editor Utilities (wildcard - many helper functions)

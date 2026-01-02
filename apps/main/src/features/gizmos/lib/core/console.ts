@@ -18,7 +18,7 @@ import {
   getAllGizmos,
   getGizmo,
 } from '@pixsim7/scene.gizmos';
-import { useToolConfigStore } from '@/stores/toolConfigStore';
+import { useToolConfigStore } from '@features/gizmos/stores/toolConfigStore';
 
 // ============================================================================
 // Tool State Store (for console control)

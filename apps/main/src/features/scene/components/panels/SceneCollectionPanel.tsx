@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from 'react';
-import { useSceneCollectionStore } from '@/stores/sceneCollectionStore';
+import { useSceneCollectionStore } from '@domain/sceneCollection';
 import { validateSceneCollection } from '@domain/sceneCollection';
 import type { SceneCollection, SceneCollectionType } from '@domain/sceneCollection';
 

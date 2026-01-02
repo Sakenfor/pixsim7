@@ -1,4 +1,4 @@
-# Repository Map
+﻿# Repository Map
 
 High-level guide to the pixsim7 codebase. Use this as a starting point when you need to find code, docs, or assets.
 
@@ -18,19 +18,19 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 
 ## Front-End (`apps/main/src`)
 
-- `features/` — **Feature-first modules** (self-contained domains with components/lib/hooks/stores).
-- `components/` — Shared UI components and legacy feature-specific UIs.
-- `components/panels/` — Dockview panels (Model inspector, console, world tools).
-- `lib/` — Front-end libraries (console namespace, gizmo registries, interaction stats logic).
-- `stores/` — Zustand stores for editor/runtime state (tool configs, interaction stats, workspace layout).
-- `routes/` — Top-level React routes (Simulation Playground, NPC labs, etc.).
-- `plugins/` — Feature bundles that plug into the editor (world tools, ops panels).
+- `features/` â€” **Feature-first modules** (self-contained domains with components/lib/hooks/stores).
+- `components/` â€” Shared UI components and legacy feature-specific UIs.
+- `components/panels/` â€” Dockview panels (Model inspector, console, world tools).
+- `lib/` â€” Front-end libraries (console namespace, gizmo registries, interaction stats logic).
+- `stores/` â€” Zustand stores for editor/runtime state (tool configs, interaction stats, workspace layout).
+- `routes/` â€” Top-level React routes (Simulation Playground, NPC labs, etc.).
+- `plugins/` â€” Feature bundles that plug into the editor (world tools, ops panels).
 
 ### Import Hygiene & Barrel Exports
 
 PixSim7 uses barrel exports (`index.ts`) to control public API surfaces and maintain clean import boundaries.
 
-**📖 See Also:** [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) - Comprehensive guide on how backend data flows to frontend, API patterns, and architectural boundaries.
+**ðŸ“– See Also:** [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) - Comprehensive guide on how backend data flows to frontend, API patterns, and architectural boundaries.
 
 **Lib Aliases** (`@lib/*`) - All 29 lib modules now have barrels:
 
@@ -44,7 +44,7 @@ PixSim7 uses barrel exports (`index.ts`) to control public API surfaces and main
 *Infrastructure & Utilities:*
 - `@lib/utils` - Shared utilities (logging, uuid, debugFlags, storage, time, validation, polling)
 - `@lib/auth` - Authentication service and providers
-- `@lib/hooks` - Shared React hooks
+- `@/hooks` - Shared React hooks
 - `@lib/theming` - Theme system and tokens
 - `@lib/game` - Game runtime adapters and session management
 - `@lib/context` - Editor context and state derivation
@@ -60,18 +60,18 @@ All 13 features have barrel exports. Import from feature root, not nested paths.
 
 **Feature Libs Reorganization:**
 Feature-specific code has been moved from `lib/` to feature directories:
-- `lib/graph/` + `lib/graphs/` → `@features/graph/lib/` (editor, builders)
-- `lib/gallery/` → `@features/gallery/lib/core/` (surfaces, sources, tools)
-- `lib/hud/` → `@features/hud/lib/core/` (layout management)
-- `lib/generation/` → `@features/generation/lib/core/`
-- `lib/simulation/` → `@features/simulation/lib/core/`
-- `lib/automation/` → `@features/automation/lib/core/`
-- `lib/gizmos/` → `@features/gizmos/lib/core/`
+- `lib/graph/` + `lib/graphs/` â†’ `@features/graph/lib/` (editor, builders)
+- `lib/gallery/` â†’ `@features/gallery/lib/core/` (surfaces, sources, tools)
+- `lib/hud/` â†’ `@features/hud/lib/core/` (layout management)
+- `lib/generation/` â†’ `@features/generation/lib/core/`
+- `lib/simulation/` â†’ `@features/simulation/lib/core/`
+- `lib/automation/` â†’ `@features/automation/lib/core/`
+- `lib/gizmos/` â†’ `@features/gizmos/lib/core/`
 
 **Import Rules**:
-1. ✅ Import from barrels: `@lib/core`, `@features/graph`
-2. ❌ Never deep import: `@lib/core/types`, `@features/graph/components/...`
-3. ✅ Exception: Feature plugins/lib: `@features/worldTools/plugins/inventory`, `@features/worldTools/lib/hudPresets`
+1. âœ… Import from barrels: `@lib/core`, `@features/graph`
+2. âŒ Never deep import: `@lib/core/types`, `@features/graph/components/...`
+3. âœ… Exception: Feature plugins/lib: `@features/worldTools/plugins/inventory`, `@features/worldTools/lib/hudPresets`
 4. Enforced by ESLint `import/no-internal-modules` rule
 
 **Example**:
@@ -102,80 +102,80 @@ New self-contained features should go under `apps/main/src/features/`:
 
 ```
 features/
-├── intimacy/           # Intimacy composer, gating, playtesting
-│   ├── components/     # React components
-│   ├── lib/            # Business logic
-│   ├── hooks/          # React hooks (if any)
-│   └── index.ts        # Barrel export
-├── automation/         # Browser automation (devices, presets, loops)
-│   ├── components/     # Device, preset, loop, execution UIs
-│   ├── types.ts        # Automation-specific types
-│   └── index.ts        # Barrel export
-├── interactions/       # NPC interaction UI (menus, history, suggestions, editor)
-│   ├── components/     # InteractionMenu, MoodIndicator, ChainProgress, etc.
-│   ├── components/editor/ # InteractionEditor, TemplateSelector
-│   └── index.ts        # Barrel export
-├── prompts/            # Prompt/generation workbench (inspection, editing, quick generation)
-│   ├── components/     # PromptSegmentsViewer
-│   ├── hooks/          # usePromptInspection, useQuickGenerateController, etc.
-│   ├── lib/            # quickGenerateLogic
-│   ├── types.ts        # Prompt segment types
-│   └── index.ts        # Barrel export
-├── gallery/            # Gallery UI (surfaces, layout controls, tools panels)
-│   ├── components/     # GallerySurfaceHost, GallerySurfaceSwitcher, GalleryLayoutControls
-│   ├── components/panels/ # GalleryToolsPanel
-│   ├── hooks/          # useGallerySurfaceController, useCuratorGalleryController
-│   └── index.ts        # Barrel export
-├── scene/              # Scene browsing, playback, and management UI
-│   ├── components/panels/ # SceneManagementPanel, SceneLibraryPanel, ScenePlaybackPanel, etc.
-│   ├── components/player/ # PlaybackTimeline, MockStateEditor
-│   └── index.ts        # Barrel export
-├── hud/                # HUD layout builder, editor, and renderer
-│   ├── components/     # HudLayoutBuilder, HudRenderer, HudLayoutSwitcher, etc.
-│   ├── components/editor/ # HudEditor (main HUD configuration UI)
-│   ├── panels/         # RegionalHudLayout, HudCustomizationPanel, HudProfileSwitcher
-│   ├── stores/         # hudLayoutStore (HUD layout state management)
-│   └── index.ts        # Barrel export
-├── worldTools/         # World tools editor/debugging functionality
-│   ├── components/     # WorldToolsPanel, WorldVisualRolesPanel
-│   ├── plugins/        # World tool plugins (inventory, questLog, relationshipDashboard, etc.)
-│   ├── lib/            # World tools types, registry, HUD layout/profile management
-│   └── index.ts        # Barrel export
-├── brainTools/         # NPC Brain Lab and brain inspection tools
-│   ├── components/     # NpcBrainLab (main panel)
-│   ├── plugins/        # Brain tool plugins (traits, mood, social, memories, etc.)
-│   ├── lib/            # Registry, types
-│   └── index.ts        # Barrel export
-├── simulation/         # Simulation Playground (world/brain evolution testing)
-│   ├── components/     # SimulationPlayground, WorldStateOverview, ConstraintRunner, etc.
-│   └── index.ts        # Barrel export (note: low-level libs remain in @/lib/simulation)
-├── generation/         # Generation workbench, queue, and status tracking
-│   ├── components/     # GenerationWorkbench, GenerationsPanel, GenerationHistoryButton
-│   ├── hooks/          # useGenerationWebSocket, useRecentGenerations, useMediaCardGenerationStatus, etc.
-│   ├── stores/         # generationsStore, generationQueueStore, generationSettingsStore
-│   └── index.ts        # Barrel export
-├── graph/              # Scene graph editing, arc/quest graphs, character graphs
-│   ├── components/     # GraphEditorHost, node renderers, graph surfaces, templates
-│   │   ├── graph/      # Main graph editor (ActionBlockGraphSurface, node renderers, templates)
-│   │   ├── arc-graph/  # ArcGraphPanel (arc/quest level graphs)
-│   │   ├── character-graph/ # CharacterGraphBrowser, SceneCharacterViewer
-│   │   └── nodes/      # ArcNode, NodeGroup, NodePalette, SceneNode
-│   ├── stores/         # graphStore (scene graphs), arcGraphStore (arc/quest graphs)
-│   ├── hooks/          # useLineageGraph
-│   └── index.ts        # Barrel export
-├── controlCenter/      # Control Center domain - docking panels and expandable cubes
-│   ├── components/     # ControlCenterDock, CubeFormationControlCenter, GenerationSettingsBar, etc.
-│   │   ├── modules/    # Control center modules (Workspace, Gallery, Plugins)
-│   │   ├── preset-operator/ # Preset operator components (AssetCard, Timeline, etc.)
-│   │   └── hooks/      # Component-specific hooks (useDockBehavior)
-│   ├── hooks/          # Feature hooks (useControlCenterLayout, useCubeDocking)
-│   ├── stores/         # Control center stores (controlCenterStore, controlCubeStore, cubeSettingsStore)
-│   ├── lib/            # Control center utilities
-│   │   ├── cubes/      # Cube expansion registry, formations, registration
-│   │   ├── api.ts      # Generation API wrapper (generateAsset)
-│   │   └── controlCenterModuleRegistry.ts # Module registry
-│   └── index.ts        # Barrel export
-└── [future-feature]/
+â”œâ”€â”€ intimacy/           # Intimacy composer, gating, playtesting
+â”‚   â”œâ”€â”€ components/     # React components
+â”‚   â”œâ”€â”€ lib/            # Business logic
+â”‚   â”œâ”€â”€ hooks/          # React hooks (if any)
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ automation/         # Browser automation (devices, presets, loops)
+â”‚   â”œâ”€â”€ components/     # Device, preset, loop, execution UIs
+â”‚   â”œâ”€â”€ types.ts        # Automation-specific types
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ interactions/       # NPC interaction UI (menus, history, suggestions, editor)
+â”‚   â”œâ”€â”€ components/     # InteractionMenu, MoodIndicator, ChainProgress, etc.
+â”‚   â”œâ”€â”€ components/editor/ # InteractionEditor, TemplateSelector
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ prompts/            # Prompt/generation workbench (inspection, editing, quick generation)
+â”‚   â”œâ”€â”€ components/     # PromptSegmentsViewer
+â”‚   â”œâ”€â”€ hooks/          # usePromptInspection, useQuickGenerateController, etc.
+â”‚   â”œâ”€â”€ lib/            # quickGenerateLogic
+â”‚   â”œâ”€â”€ types.ts        # Prompt segment types
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ gallery/            # Gallery UI (surfaces, layout controls, tools panels)
+â”‚   â”œâ”€â”€ components/     # GallerySurfaceHost, GallerySurfaceSwitcher, GalleryLayoutControls
+â”‚   â”œâ”€â”€ components/panels/ # GalleryToolsPanel
+â”‚   â”œâ”€â”€ hooks/          # useGallerySurfaceController, useCuratorGalleryController
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ scene/              # Scene browsing, playback, and management UI
+â”‚   â”œâ”€â”€ components/panels/ # SceneManagementPanel, SceneLibraryPanel, ScenePlaybackPanel, etc.
+â”‚   â”œâ”€â”€ components/player/ # PlaybackTimeline, MockStateEditor
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ hud/                # HUD layout builder, editor, and renderer
+â”‚   â”œâ”€â”€ components/     # HudLayoutBuilder, HudRenderer, HudLayoutSwitcher, etc.
+â”‚   â”œâ”€â”€ components/editor/ # HudEditor (main HUD configuration UI)
+â”‚   â”œâ”€â”€ panels/         # RegionalHudLayout, HudCustomizationPanel, HudProfileSwitcher
+â”‚   â”œâ”€â”€ stores/         # hudLayoutStore (HUD layout state management)
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ worldTools/         # World tools editor/debugging functionality
+â”‚   â”œâ”€â”€ components/     # WorldToolsPanel, WorldVisualRolesPanel
+â”‚   â”œâ”€â”€ plugins/        # World tool plugins (inventory, questLog, relationshipDashboard, etc.)
+â”‚   â”œâ”€â”€ lib/            # World tools types, registry, HUD layout/profile management
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ brainTools/         # NPC Brain Lab and brain inspection tools
+â”‚   â”œâ”€â”€ components/     # NpcBrainLab (main panel)
+â”‚   â”œâ”€â”€ plugins/        # Brain tool plugins (traits, mood, social, memories, etc.)
+â”‚   â”œâ”€â”€ lib/            # Registry, types
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ simulation/         # Simulation Playground (world/brain evolution testing)
+â”‚   â”œâ”€â”€ components/     # SimulationPlayground, WorldStateOverview, ConstraintRunner, etc.
+â”‚   â””â”€â”€ index.ts        # Barrel export (note: low-level libs remain in @/lib/simulation)
+â”œâ”€â”€ generation/         # Generation workbench, queue, and status tracking
+â”‚   â”œâ”€â”€ components/     # GenerationWorkbench, GenerationsPanel, GenerationHistoryButton
+â”‚   â”œâ”€â”€ hooks/          # useGenerationWebSocket, useRecentGenerations, useMediaCardGenerationStatus, etc.
+â”‚   â”œâ”€â”€ stores/         # generationsStore, generationQueueStore, generationSettingsStore
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ graph/              # Scene graph editing, arc/quest graphs, character graphs
+â”‚   â”œâ”€â”€ components/     # GraphEditorHost, node renderers, graph surfaces, templates
+â”‚   â”‚   â”œâ”€â”€ graph/      # Main graph editor (ActionBlockGraphSurface, node renderers, templates)
+â”‚   â”‚   â”œâ”€â”€ arc-graph/  # ArcGraphPanel (arc/quest level graphs)
+â”‚   â”‚   â”œâ”€â”€ character-graph/ # CharacterGraphBrowser, SceneCharacterViewer
+â”‚   â”‚   â””â”€â”€ nodes/      # ArcNode, NodeGroup, NodePalette, SceneNode
+â”‚   â”œâ”€â”€ stores/         # graphStore (scene graphs), arcGraphStore (arc/quest graphs)
+â”‚   â”œâ”€â”€ hooks/          # useLineageGraph
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â”œâ”€â”€ controlCenter/      # Control Center domain - docking panels and expandable cubes
+â”‚   â”œâ”€â”€ components/     # ControlCenterDock, CubeFormationControlCenter, GenerationSettingsBar, etc.
+â”‚   â”‚   â”œâ”€â”€ modules/    # Control center modules (Workspace, Gallery, Plugins)
+â”‚   â”‚   â”œâ”€â”€ preset-operator/ # Preset operator components (AssetCard, Timeline, etc.)
+â”‚   â”‚   â””â”€â”€ hooks/      # Component-specific hooks (useDockBehavior)
+â”‚   â”œâ”€â”€ hooks/          # Feature hooks (useControlCenterLayout, useCubeDocking)
+â”‚   â”œâ”€â”€ stores/         # Control center stores (controlCenterStore, controlCubeStore, cubeSettingsStore)
+â”‚   â”œâ”€â”€ lib/            # Control center utilities
+â”‚   â”‚   â”œâ”€â”€ cubes/      # Cube expansion registry, formations, registration
+â”‚   â”‚   â”œâ”€â”€ api.ts      # Generation API wrapper (generateAsset)
+â”‚   â”‚   â””â”€â”€ controlCenterModuleRegistry.ts # Module registry
+â”‚   â””â”€â”€ index.ts        # Barrel export
+â””â”€â”€ [future-feature]/
 ```
 
 **When to use `features/`:**
@@ -184,7 +184,7 @@ features/
 - New features that don't fit existing `lib/` or `components/` patterns
 
 **When NOT to use `features/`:**
-- Code that already has a shared package (e.g., gizmos → `@pixsim7/scene.gizmos`)
+- Code that already has a shared package (e.g., gizmos â†’ `@pixsim7/scene.gizmos`)
 - Pure utilities or shared components
 - Existing aliased domains (`@/gizmos`, `@/narrative`, etc.)
 
@@ -215,7 +215,7 @@ The workspace uses **SmartDockview** as the single layout engine for all dockvie
 
 1. **SmartDockview** owns layout persistence via `storageKey` prop
 2. **Presets** are named snapshots stored in `workspaceStore.presets`
-   - Save: `api.toJSON()` → store in presets list
+   - Save: `api.toJSON()` â†’ store in presets list
    - Load: `api.fromJSON(preset.layout)` directly
 3. **Reset to default**: Clear localStorage + remount (via `resetDockviewLayout`)
 4. **PanelManager** tracks panel metadata and open/close state (no layout)
@@ -229,15 +229,15 @@ The workspace uses **SmartDockview** as the single layout engine for all dockvie
 
 ## Game Engine (`packages/game/engine/src`)
 
-- `narrative/` — Narrative runtime (ConditionEvaluator, EffectApplicator, executor, integration hooks, scene bridge).
-- `world/` — Runtime plugins, game profile definitions, runtime types.
-- `scenarios/` — Scenario scripts/tests for engine behaviors.
-- `runtime/` — Game runtime typings/hooks used by front-end runtime integration.
+- `narrative/` â€” Narrative runtime (ConditionEvaluator, EffectApplicator, executor, integration hooks, scene bridge).
+- `world/` â€” Runtime plugins, game profile definitions, runtime types.
+- `scenarios/` â€” Scenario scripts/tests for engine behaviors.
+- `runtime/` â€” Game runtime typings/hooks used by front-end runtime integration.
 
 ## Shared Packages
 
-- `packages/shared/types/` — Canonical DTOs (GameSession, NPC zones, graph schemas) referenced by both front-end and backend.
-- `packages/scene/gizmos/` — Core gizmo types, registries, NPC preferences, zone utilities (shared by engine + UI).
+- `packages/shared/types/` â€” Canonical DTOs (GameSession, NPC zones, graph schemas) referenced by both front-end and backend.
+- `packages/scene/gizmos/` â€” Core gizmo types, registries, NPC preferences, zone utilities (shared by engine + UI).
 
 ### Gizmo Architecture
 
@@ -247,33 +247,33 @@ Gizmos follow a **package/app split**:
 |-------|----------|-------|---------|
 | **Core** | `packages/scene/gizmos/` | `@pixsim7/scene.gizmos` | Types, registry, NPC preferences, zone utils, video generation manager |
 | **App UI** | `apps/main/src/lib/gizmos/` | `@/gizmos` | Surface registry, console integration, tool overrides, interaction stats |
-| **Components** | `apps/main/src/components/gizmos/` | — | React components (BodyMapGizmo, InteractiveTool, etc.) |
+| **Components** | `apps/main/src/components/gizmos/` | â€” | React components (BodyMapGizmo, InteractiveTool, etc.) |
 
 The core package is UI-agnostic and shared across engine/UI layers. The app layer adds presentation-specific code. Import from `@pixsim7/scene.gizmos` in shared libraries, use `@/gizmos` in app code.
 
 ## Backend (`pixsim7/backend`)
 
-- `main/api/` — FastAPI routes for game worlds, assets, automation.
-- `main/services/simulation/` — World scheduler, context, automation loop (tick-based backend simulation).
-- `main/services/automation/`, `main/domain/` — Automation loops, scenario runners, shared domain models.
-- `main/services/scenarios/` — Scenario runner used for deterministic tests.
+- `main/api/` â€” FastAPI routes for game worlds, assets, automation.
+- `main/services/simulation/` â€” World scheduler, context, automation loop (tick-based backend simulation).
+- `main/services/automation/`, `main/domain/` â€” Automation loops, scenario runners, shared domain models.
+- `main/services/scenarios/` â€” Scenario runner used for deterministic tests.
 
-**📖 See Also:** [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) - Details on backend API structure, domain modules, and how data flows to the frontend.
+**ðŸ“– See Also:** [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md) - Details on backend API structure, domain modules, and how data flows to the frontend.
 
 ## Documentation
 
-- `docs/` — Current specs (architecture, engine layering, subsystem plans). Use `docs/README.md` or this map to locate topics.
-- `docs/architecture/` — Architectural decision records and system boundary documentation.
-  - **[Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md)** — Comprehensive guide on API patterns, data flow, and architectural boundaries.
-- `docs/archive/` — Completed plans and historical references. Subfolders grouped by theme (meta, launcher, completed, etc.).
-- `claude-tasks/` — Task briefs and AI planning notes. Active work (e.g., Model Inspector plan, path alias refactor) lives here until completed.
+- `docs/` â€” Current specs (architecture, engine layering, subsystem plans). Use `docs/README.md` or this map to locate topics.
+- `docs/architecture/` â€” Architectural decision records and system boundary documentation.
+  - **[Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.md)** â€” Comprehensive guide on API patterns, data flow, and architectural boundaries.
+- `docs/archive/` â€” Completed plans and historical references. Subfolders grouped by theme (meta, launcher, completed, etc.).
+- `claude-tasks/` â€” Task briefs and AI planning notes. Active work (e.g., Model Inspector plan, path alias refactor) lives here until completed.
 
 ## How to Explore
 
-1. **Features** — Start in `apps/main/src/components/panels/...` or `apps/main/src/features/...` for UI; jump to matching engine modules under `packages/game/engine/src/...`.
-2. **Narrative/Scene** — `packages/game/engine/src/narrative/` for logic, `apps/main/src/lib/console/modules/tools.ts` + `apps/main/src/lib/gizmos/` for UI integration.
-3. **Scheduler/Simulation** — Look under `pixsim7/backend/main/services/simulation/` and `docs/behavior_system/`.
-4. **Docs** — Use `/docs` for current specs, `/docs/archive` for historical context. Active tasks live in `claude-tasks/`.
+1. **Features** â€” Start in `apps/main/src/components/panels/...` or `apps/main/src/features/...` for UI; jump to matching engine modules under `packages/game/engine/src/...`.
+2. **Narrative/Scene** â€” `packages/game/engine/src/narrative/` for logic, `apps/main/src/lib/console/modules/tools.ts` + `apps/main/src/lib/gizmos/` for UI integration.
+3. **Scheduler/Simulation** â€” Look under `pixsim7/backend/main/services/simulation/` and `docs/behavior_system/`.
+4. **Docs** â€” Use `/docs` for current specs, `/docs/archive` for historical context. Active tasks live in `claude-tasks/`.
 
 ---
 
@@ -432,3 +432,4 @@ Potential future aliases as the codebase evolves:
   2. Add the alias to all Vite configs
   3. Create or update the barrel export (`index.ts`)
   4. Document the alias in this file
+

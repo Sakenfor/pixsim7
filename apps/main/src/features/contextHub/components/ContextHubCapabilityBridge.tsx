@@ -5,16 +5,16 @@ import {
   useCapabilityStore,
 } from "@lib/capabilities";
 import { useShallow } from "zustand/react/shallow";
-import { useContextHubState } from "../ContextHubHost";
+import { useContextHubState } from "./ContextHubHost";
 import type { CapabilityProvider } from "../types";
 import {
   registerCapabilityDescriptor,
   unregisterCapabilityDescriptor,
-} from "../descriptorRegistry";
+} from "../domain/descriptorRegistry";
 import {
   getAppActionCapabilityKey,
   getAppStateCapabilityKey,
-} from "../appCapabilityBridge";
+} from "../domain/appCapabilityBridge";
 
 type ProviderDisposer = () => void;
 

@@ -19,7 +19,7 @@ import {
   getZoneEffectivenessDescription,
 } from '@pixsim7/scene.gizmos';
 import type { NpcBodyZone, ZoneInteractionContext } from '@lib/registries';
-import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
+import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
 import { useStatsDecay } from '@/hooks/useStatsDecay';
 import {
   calculateStatChanges,

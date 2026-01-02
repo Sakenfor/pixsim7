@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
-import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
+import { usePromptSettingsStore } from '@features/prompts';
 import { listPromptAnalyzers, type AnalyzerInfo } from '@lib/api/analyzers';
 import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers/constants';
 

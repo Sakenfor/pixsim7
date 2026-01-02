@@ -64,6 +64,8 @@ export { useAssetSelectionStore } from './stores/assetSelectionStore';
 
 export { useAssetDetailStore } from './stores/assetDetailStore';
 
+export { useAssetSettingsStore } from './stores/assetSettingsStore';
+
 export {
   useAssetViewerStore,
   selectIsViewerOpen,

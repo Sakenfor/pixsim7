@@ -94,7 +94,7 @@ export {
   pluginManager,
 } from "./lib/panelPlugin";
 export { initializePanels } from "./lib/initializePanels";
-export { PanelHostLite } from "./lib/PanelHostLite";
+export { PanelHostLite } from "./components/host/PanelHostLite";
 
 // Panel actions
 export * from "./lib/actions";
@@ -121,6 +121,14 @@ export {
   type PanelInstanceSettingsState,
   type PanelInstanceSettingsActions,
 } from "./stores/panelInstanceSettingsStore";
+export {
+  useModel3DStore,
+  selectHasModel,
+  selectIsInZoneMode,
+  selectHasAnimations,
+  selectZoneIds,
+  selectSelectedZoneConfig,
+} from "./stores/model3DStore";
 
 // Re-export lib index for convenience
 export * from "./lib";

@@ -12,7 +12,7 @@
  */
 
 import { opsRegistry } from './opsRegistry';
-import { useInteractionStatsStore, startStatDecay, stopStatDecay } from '@/stores/interactionStatsStore';
+import { useInteractionStatsStore, startStatDecay, stopStatDecay } from '@features/gizmos/stores/interactionStatsStore';
 import {
   DEFAULT_STAT_CONFIGS,
   DEFAULT_TOOL_STATS,

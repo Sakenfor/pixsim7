@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { useTemplateStore } from '../../lib/editor/templatesStore';
+import { useTemplateStore } from '../../stores/templatesStore';
 import {
   validateTemplate,
   validatePreconditions,

@@ -37,7 +37,7 @@
 
 import type { InteractiveTool } from '@pixsim7/scene.gizmos';
 import { opsRegistry, type Operation } from '@lib/dev/console/opsRegistry';
-import { useToolConfigStore } from '@/stores/toolConfigStore';
+import { useToolConfigStore } from '@features/gizmos/stores/toolConfigStore';
 
 /**
  * Context passed to tool console operations

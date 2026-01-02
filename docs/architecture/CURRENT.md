@@ -1,25 +1,25 @@
-# PixSim7 Frontend Architecture Analysis
+﻿# PixSim7 Frontend Architecture Analysis
 
 **Snapshot Date:** 2025-12-13
-**Status:** 📊 **Architecture Audit** - Import patterns and module structure analysis
+**Status:** ðŸ“Š **Architecture Audit** - Import patterns and module structure analysis
 **Context:** Comprehensive refactoring of import paths revealed architectural patterns
 
 ---
 
-## 🎯 Executive Summary
+## ðŸŽ¯ Executive Summary
 
 Following a comprehensive import path refactoring that fixed **80+ broken imports** across **80+ files**, this document captures the architectural state of the frontend codebase. The analysis reveals a **well-structured modular architecture** with 100% barrel export coverage, but identifies opportunities for better import consistency and feature boundary improvements.
 
 **Key Metrics:**
-- ✅ 17 features with full barrel exports
-- ✅ 25 lib modules with full barrel exports
-- ⚠️ 598 generic `@/` imports (should use specific aliases)
-- ⚠️ 100+ deep imports bypassing barrel exports
-- ⚠️ 28+ registries with inconsistent patterns
+- âœ… 17 features with full barrel exports
+- âœ… 25 lib modules with full barrel exports
+- âš ï¸ 598 generic `@/` imports (should use specific aliases)
+- âš ï¸ 100+ deep imports bypassing barrel exports
+- âš ï¸ 28+ registries with inconsistent patterns
 
 ---
 
-## 📁 Module Structure Overview
+## ðŸ“ Module Structure Overview
 
 ### Feature Modules (`apps/main/src/features/`)
 
@@ -45,8 +45,8 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 - settings, simulation, worldTools, assets
 
 **Features without lib directories (2/17):**
-- ❌ interactions (only components)
-- ❌ scene (only components)
+- âŒ interactions (only components)
+- âŒ scene (only components)
 
 ### Lib Modules (`apps/main/src/lib/`)
 
@@ -56,7 +56,7 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 - `@lib/core` - BaseRegistry, core types
 - `@lib/api` - Backend API client & endpoints
 - `@lib/utils` - Shared utilities (logging, time, polling, validation)
-- `@lib/hooks` - Shared React hooks
+- `@/hooks` - Shared React hooks
 
 **Domain-Specific:**
 - `@lib/panels` - Panel registry & management
@@ -70,23 +70,23 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 
 ---
 
-## 🔗 Import Alias System
+## ðŸ”— Import Alias System
 
-### ⚠️ Import Rules (Enforced via ESLint)
+### âš ï¸ Import Rules (Enforced via ESLint)
 
 **Three cardinal rules for all imports:**
 
-1. **✅ Use `@features/*` for ALL feature imports**
-   - ❌ Never: `import { X } from '@/features/controlCenter'`
-   - ✅ Always: `import { X } from '@features/controlCenter'`
+1. **âœ… Use `@features/*` for ALL feature imports**
+   - âŒ Never: `import { X } from '@/features/controlCenter'`
+   - âœ… Always: `import { X } from '@features/controlCenter'`
 
-2. **✅ Use `@lib/*` for ALL lib module imports**
-   - ❌ Never: `import { apiClient } from '@/lib/api'`
-   - ✅ Always: `import { apiClient } from '@lib/api'`
+2. **âœ… Use `@lib/*` for ALL lib module imports**
+   - âŒ Never: `import { apiClient } from '@/lib/api'`
+   - âœ… Always: `import { apiClient } from '@lib/api'`
 
-3. **✅ Use `@/` ONLY for root-level directories**
-   - ✅ Allowed: `@/components/*`, `@/stores/*`, `@/types/*`, `@/utils/*`
-   - ❌ Forbidden: `@/features/*`, `@/lib/*`
+3. **âœ… Use `@/` ONLY for root-level directories**
+   - âœ… Allowed: `@/components/*`, `@/stores/*`, `@/types/*`, `@/utils/*`, `@/hooks/*`
+   - âŒ Forbidden: `@/features/*`, `@/lib/*`
 
 **Relative imports (`../`) are acceptable ONLY within the same feature/lib module.**
 
@@ -96,16 +96,16 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 
 **Domain-Specific Aliases:**
 ```typescript
-@/gizmos     → ./src/features/gizmos/lib/core
-@/types      → ./src/types
-@/narrative  → ../../packages/game/engine/src/narrative
-@/scene      → ../../packages/game/engine/src/narrative
-@shared/types → ../../packages/shared/types/src
+@/gizmos     â†’ ./src/features/gizmos/lib/core
+@/types      â†’ ./src/types
+@/narrative  â†’ ../../packages/game/engine/src/narrative
+@/scene      â†’ ../../packages/game/engine/src/narrative
+@shared/types â†’ ../../packages/shared/types/src
 ```
 
-**Lib Module Aliases (25 defined):**
+**Lib Module Aliases (defined):**
 ```typescript
-@lib/core, @lib/api, @lib/utils, @lib/hooks, @lib/panels
+@lib/core, @lib/api, @lib/utils, @lib/panels
 @lib/plugins, @lib/game, @lib/shapes, @lib/widgets, ...
 ```
 
@@ -118,7 +118,7 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 
 **Generic Fallback:**
 ```typescript
-@ → ./src (catch-all, should be least used)
+@ â†’ ./src (catch-all, should be least used)
 ```
 
 ### Actual Usage Statistics
@@ -126,21 +126,21 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 | Alias Pattern | Files | Occurrences | Should Be |
 |--------------|-------|-------------|-----------|
 | `@/` (generic) | 316 | 598 | Minimize - use specific aliases |
-| `../` (relative) | 436 | 942 | ✅ OK for internal imports |
-| `@features/` | 154 | 272 | ✅ Good - should increase |
-| `@lib/` | 38 | 44 | ✅ Good for lib→lib |
+| `../` (relative) | 436 | 942 | âœ… OK for internal imports |
+| `@features/` | 154 | 272 | âœ… Good - should increase |
+| `@lib/` | 38 | 44 | âœ… Good for libâ†’lib |
 
 **Problem:** Despite having 42+ specific aliases, the generic `@/` is overused (598 occurrences).
 
 ---
 
-## 🎨 Import Pattern Issues & Recommendations
+## ðŸŽ¨ Import Pattern Issues & Recommendations
 
 ### Issue 1: Inconsistent Alias Usage
 
 **Current Problem:**
 ```typescript
-// ❌ Both patterns exist in codebase
+// âŒ Both patterns exist in codebase
 import { ControlCenterDock } from '@/features/controlCenter/components/ControlCenterDock';
 import { HudEditor } from '@features/hud/components/editor/HudEditor';
 
@@ -151,16 +151,16 @@ import { GenerationStatusDisplay } from '@/features/controlCenter/components/Gen
 
 **Recommendation:**
 ```typescript
-// ✅ Enforce @features/* for all feature imports
+// âœ… Enforce @features/* for all feature imports
 import { ControlCenterDock } from '@features/controlCenter';
 import { HudEditor } from '@features/hud';
 import { settingsRegistry } from '@features/settings';
 
-// ✅ Enforce @lib/* for all lib imports
+// âœ… Enforce @lib/* for all lib imports
 import { apiClient } from '@lib/api';
-import { useKeyboardShortcuts } from '@lib/hooks';
+import { useKeyboardShortcuts } from '@/hooks';
 
-// ✅ Reserve @/ only for: components/, stores/, types/, utils/ at root
+// âœ… Reserve @/ only for: components/, stores/, types/, utils/, hooks/ at root
 import { MediaCard } from '@/components/media/MediaCard';
 import { authStore } from '@/stores/authStore';
 ```
@@ -191,7 +191,7 @@ import { authStore } from '@/stores/authStore';
 **Problem:** 100+ occurrences of deep imports despite 100% barrel export coverage
 
 ```typescript
-// ❌ Bypassing barrel exports
+// âŒ Bypassing barrel exports
 import { buildHudLayout } from '@features/worldTools/lib/hudLayout';
 import { getStatusConfig } from '@features/generation/lib/core/generationStatusConfig';
 import { automationService } from '@features/automation/lib/core/automationService';
@@ -250,7 +250,7 @@ These 10 deep imports occur most frequently and should be fixed in Phase 2:
 
 **Identified coupling patterns:**
 
-**1. controlCenter ↔ generation**
+**1. controlCenter â†” generation**
 ```typescript
 // generation feature imports UI from controlCenter
 import { GenerationSettingsBar } from '@features/controlCenter/components/GenerationSettingsBar';
@@ -272,7 +272,7 @@ import { GenerationStatusDisplay } from '@features/controlCenter/components/Gene
 import { GenerationSettingsBar } from '@lib/generation-ui';
 ```
 
-**2. hud ↔ worldTools**
+**2. hud â†” worldTools**
 ```typescript
 // HUD feature depends heavily on worldTools
 import { buildHudLayout, getHudConfig } from '@features/worldTools/lib/hudLayout';
@@ -283,7 +283,7 @@ import { hudProfiles, hudPresets } from '@features/worldTools/lib/...';
 - HUD system should be unified under one feature
 - worldTools can remain for non-HUD world management tools
 
-**3. gallery ↔ assets**
+**3. gallery â†” assets**
 ```typescript
 // Asset management responsibilities overlap
 import { assetRoles } from '@features/gallery/lib/core/assetRoles';
@@ -308,24 +308,24 @@ import { assetSelectionStore } from '@features/assets/stores/assetSelectionStore
 **Decision Rules for Future Code:**
 
 **Q: Where does generation UI code go?**
-- ✅ Shared UI components → `@lib/generation-ui`
-- ✅ Generation-specific logic → `@features/generation`
-- ❌ Never put generation logic in `@features/controlCenter`
+- âœ… Shared UI components â†’ `@lib/generation-ui`
+- âœ… Generation-specific logic â†’ `@features/generation`
+- âŒ Never put generation logic in `@features/controlCenter`
 
 **Q: Where does HUD code go?**
-- ✅ HUD layouts, profiles, configs → `@features/hud/lib/hudLayout`
-- ✅ World context (non-HUD) → `@features/worldTools`
-- ❌ Never split HUD concerns across features
+- âœ… HUD layouts, profiles, configs â†’ `@features/hud/lib/hudLayout`
+- âœ… World context (non-HUD) â†’ `@features/worldTools`
+- âŒ Never split HUD concerns across features
 
 **Q: Where does asset code go?**
-- ✅ Asset CRUD, backend API → `@features/assets`
-- ✅ Gallery presentation, filters → `@features/gallery`
-- ✅ Asset roles & types → `@features/gallery/lib/core/assetRoles` (domain model)
-- ❌ Never duplicate asset logic across features
+- âœ… Asset CRUD, backend API â†’ `@features/assets`
+- âœ… Gallery presentation, filters â†’ `@features/gallery`
+- âœ… Asset roles & types â†’ `@features/gallery/lib/core/assetRoles` (domain model)
+- âŒ Never duplicate asset logic across features
 
 ---
 
-## 📊 Registry Pattern Analysis
+## ðŸ“Š Registry Pattern Analysis
 
 ### Current State: 28+ Registries
 
@@ -380,13 +380,13 @@ export const ShapeRegistry = new ShapeRegistryClass();
 
 **Recommendation:** Standardize on BaseRegistry pattern
 
-**📖 Reference:** See `apps/main/src/lib/core/BaseRegistry.ts` for the standard registry base class.
+**ðŸ“– Reference:** See `apps/main/src/lib/core/BaseRegistry.ts` for the standard registry base class.
 
 BaseRegistry provides:
-- ✅ CRUD operations (`register`, `unregister`, `get`, `getAll`, `has`, `clear`)
-- ✅ Listener/subscription support (`subscribe`, `notifyListeners`)
-- ✅ Duplicate ID handling with configurable policies
-- ✅ Consistent interface across all registries
+- âœ… CRUD operations (`register`, `unregister`, `get`, `getAll`, `has`, `clear`)
+- âœ… Listener/subscription support (`subscribe`, `notifyListeners`)
+- âœ… Duplicate ID handling with configurable policies
+- âœ… Consistent interface across all registries
 
 **Migration Example:**
 ```typescript
@@ -415,7 +415,7 @@ export const shapeRegistry = new ShapeRegistry();
 
 ---
 
-## 🏗️ Module Structure Standards
+## ðŸ—ï¸ Module Structure Standards
 
 ### Standard Feature Structure
 
@@ -486,18 +486,18 @@ export { automationService } from './lib/core/automationService';
 
 ---
 
-## 🔄 Migration Action Plan
+## ðŸ”„ Migration Action Plan
 
 ### Phase 1: Import Standardization (Low Risk)
 **Goal:** Enforce consistent import aliases
 **Time:** 1-2 hours
 
 **Tasks:**
-1. ✅ Add ESLint rules to enforce `@features/*` and `@lib/*` patterns
-2. ✅ Create codemod script: `@/features/*` → `@features/*`
-3. ✅ Create codemod script: `@/lib/*` → `@lib/*`
-4. ✅ Run codemods across codebase
-5. ✅ Verify with `npm run lint`
+1. âœ… Add ESLint rules to enforce `@features/*` and `@lib/*` patterns
+2. âœ… Create codemod script: `@/features/*` â†’ `@features/*`
+3. âœ… Create codemod script: `@/lib/*` â†’ `@lib/*`
+4. âœ… Run codemods across codebase
+5. âœ… Verify with `npm run lint`
 
 **ESLint Configuration:**
 ```javascript
@@ -525,11 +525,11 @@ export { automationService } from './lib/core/automationService';
 **Time:** 2-4 hours
 
 **Tasks:**
-1. ✅ Audit all 100+ deep imports
-2. ✅ Identify commonly imported modules
-3. ✅ Expand barrel exports for these modules
-4. ✅ Update imports to use barrel exports
-5. ✅ Move truly internal modules to `_internal/`
+1. âœ… Audit all 100+ deep imports
+2. âœ… Identify commonly imported modules
+3. âœ… Expand barrel exports for these modules
+4. âœ… Update imports to use barrel exports
+5. âœ… Move truly internal modules to `_internal/`
 
 **Example:**
 ```typescript
@@ -549,10 +549,10 @@ import { buildHudLayout } from '@features/worldTools';
 **Time:** 1-2 days
 
 **Tasks:**
-1. ✅ Extract `@lib/generation-ui` from controlCenter
-2. ✅ Evaluate hud + worldTools merger
-3. ✅ Clarify gallery vs assets ownership
-4. ✅ Add lib/core to interactions & scene features
+1. âœ… Extract `@lib/generation-ui` from controlCenter
+2. âœ… Evaluate hud + worldTools merger
+3. âœ… Clarify gallery vs assets ownership
+4. âœ… Add lib/core to interactions & scene features
 
 **Example: Extract generation-ui**
 ```bash
@@ -582,11 +582,11 @@ EOF
 **Time:** 1 day
 
 **Tasks:**
-1. ✅ Identify all 28+ registries
-2. ✅ Migrate custom registries to extend BaseRegistry
-3. ✅ Centralize common registries in `@lib/core/registries`
-4. ✅ Update all imports
-5. ✅ Remove registry bridge if no longer needed
+1. âœ… Identify all 28+ registries
+2. âœ… Migrate custom registries to extend BaseRegistry
+3. âœ… Centralize common registries in `@lib/core/registries`
+4. âœ… Update all imports
+5. âœ… Remove registry bridge if no longer needed
 
 **Example Migration:**
 ```typescript
@@ -614,43 +614,43 @@ class ShapeRegistry extends BaseRegistry<SemanticShape> {
 **Time:** 2-3 hours
 
 **Tasks:**
-1. ✅ Create ARCHITECTURE.md with import patterns
-2. ✅ Document feature module structure standards
-3. ✅ Add README.md to each feature with public API
-4. ✅ Create migration guide for future features
+1. âœ… Create ARCHITECTURE.md with import patterns
+2. âœ… Document feature module structure standards
+3. âœ… Add README.md to each feature with public API
+4. âœ… Create migration guide for future features
 
 ---
 
-## 📈 Success Metrics
+## ðŸ“ˆ Success Metrics
 
 ### Import Quality Metrics
 
 | Metric | Before | Target | Status |
 |--------|--------|--------|--------|
-| Generic `@/` imports | 598 | < 100 | 🟡 In Progress |
-| `@features/*` imports | 272 | > 500 | 🟡 In Progress |
-| Deep imports | 100+ | 0 | 🔴 Not Started |
-| Relative imports | 942 | < 800 | 🟡 Acceptable |
-| Import errors | 0 | 0 | ✅ Complete |
+| Generic `@/` imports | 598 | < 100 | ðŸŸ¡ In Progress |
+| `@features/*` imports | 272 | > 500 | ðŸŸ¡ In Progress |
+| Deep imports | 100+ | 0 | ðŸ”´ Not Started |
+| Relative imports | 942 | < 800 | ðŸŸ¡ Acceptable |
+| Import errors | 0 | 0 | âœ… Complete |
 
 ### Module Quality Metrics
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| Features with barrel exports | 17/17 | 17/17 | ✅ Complete |
-| Lib modules with barrel exports | 25/25 | 25/25 | ✅ Complete |
-| Features with lib/core | 15/17 | 17/17 | 🟡 85% |
-| Registries using BaseRegistry | ~10/28 | 28/28 | 🔴 36% |
-| Feature coupling score | Medium | Low | 🟡 In Progress |
+| Features with barrel exports | 17/17 | 17/17 | âœ… Complete |
+| Lib modules with barrel exports | 25/25 | 25/25 | âœ… Complete |
+| Features with lib/core | 15/17 | 17/17 | ðŸŸ¡ 85% |
+| Registries using BaseRegistry | ~10/28 | 28/28 | ðŸ”´ 36% |
+| Feature coupling score | Medium | Low | ðŸŸ¡ In Progress |
 
 ---
 
-## 🎯 Key Recommendations Summary
+## ðŸŽ¯ Key Recommendations Summary
 
 ### Immediate Actions (Quick Wins)
 
 1. **Add ESLint rules** for import pattern enforcement
-2. **Run codemod** to fix `@/features/*` → `@features/*` (598 occurrences)
+2. **Run codemod** to fix `@/features/*` â†’ `@features/*` (598 occurrences)
 3. **Document standards** in ARCHITECTURE.md
 
 ### Short-term Actions (1-2 weeks)
@@ -668,32 +668,32 @@ class ShapeRegistry extends BaseRegistry<SemanticShape> {
 
 ---
 
-## 📝 Lessons Learned
+## ðŸ“ Lessons Learned
 
 ### What Worked Well
 
-✅ **100% Barrel Export Coverage** - All features and lib modules have index.ts
-✅ **Comprehensive Alias System** - 42+ aliases defined for clean imports
-✅ **Feature-based Architecture** - Clear separation of concerns
-✅ **Registry Pattern** - Consistent plugin/extension system
+âœ… **100% Barrel Export Coverage** - All features and lib modules have index.ts
+âœ… **Comprehensive Alias System** - 42+ aliases defined for clean imports
+âœ… **Feature-based Architecture** - Clear separation of concerns
+âœ… **Registry Pattern** - Consistent plugin/extension system
 
 ### What Needs Improvement
 
-⚠️ **Alias Usage Discipline** - Need enforcement via tooling
-⚠️ **Deep Import Prevention** - Barrel exports exist but are bypassed
-⚠️ **Feature Boundaries** - Some features have unclear ownership
-⚠️ **Registry Consistency** - 3 different patterns need standardization
+âš ï¸ **Alias Usage Discipline** - Need enforcement via tooling
+âš ï¸ **Deep Import Prevention** - Barrel exports exist but are bypassed
+âš ï¸ **Feature Boundaries** - Some features have unclear ownership
+âš ï¸ **Registry Consistency** - 3 different patterns need standardization
 
 ### Key Insights
 
-1. **Good Architecture ≠ Good Usage**: Having the right structure doesn't guarantee it will be used correctly without enforcement
+1. **Good Architecture â‰  Good Usage**: Having the right structure doesn't guarantee it will be used correctly without enforcement
 2. **Barrel Exports Need Expansion**: Simply having index.ts isn't enough - they must export commonly used modules
 3. **Feature Coupling is Subtle**: Cross-feature imports seem innocent but indicate boundary issues
 4. **Tooling is Critical**: ESLint rules and codemods are necessary to maintain standards
 
 ---
 
-## 🔗 Related Documentation
+## ðŸ”— Related Documentation
 
 - [Frontend-Backend Boundaries](./frontend-backend-boundaries.md)
 - [Clean Coupling Strategy](./clean-coupling-strategy.md)
@@ -706,3 +706,4 @@ class ShapeRegistry extends BaseRegistry<SemanticShape> {
 - 2025-12-13: Initial snapshot created following import refactoring
 - Analysis based on fixing 80+ import errors across 80+ files
 - Comprehensive audit of 17 features, 25 lib modules, 28+ registries
+

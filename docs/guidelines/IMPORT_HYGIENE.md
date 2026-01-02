@@ -313,9 +313,9 @@ Feature-specific libs moved from `lib/` to their respective features:
 - `lib/gizmos/` → `@features/gizmos/lib/core/`
 
 **Phase 3: Complete Barrel Coverage**
-Added barrels to all remaining lib directories:
+Added barrels to remaining lib directories (plus app hooks):
 - `lib/game/` - Game runtime adapters
-- `lib/hooks/` - Shared React hooks
+- `src/hooks/` - Shared React hooks (import via `@/hooks`)
 - `lib/control/`, `lib/context/`, `lib/assets/`, `lib/display/`, `lib/analyzers/`
 
 **Phase 4: Enforcement**

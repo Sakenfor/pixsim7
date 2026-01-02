@@ -15,33 +15,33 @@ The World Tools feature provides a plugin-based system for extending the editor 
 
 ```
 features/worldTools/
-├── components/          # UI components
-│   ├── WorldToolsPanel.tsx          # Main panel for rendering world tools
-│   └── WorldVisualRolesPanel.tsx    # Panel for binding assets to world roles
-├── plugins/             # World tool plugins
-│   ├── index.ts                     # Plugin barrel export
-│   ├── inventory.tsx                # Inventory tool
-│   ├── questLog.tsx                 # Quest log tool
-│   ├── relationshipDashboard.tsx    # Relationship visualization
-│   ├── worldInfo.tsx                # World metadata display
-│   ├── moodDebug.tsx                # NPC mood debugging
-│   ├── sessionFlagsDebug.tsx        # Session flags inspector
-│   ├── turnHistoryDebug.tsx         # Turn history viewer
-│   ├── npcBrainDebug.tsx            # NPC brain state inspector
-│   ├── worldManifestDebug.tsx       # World manifest viewer
-│   ├── npcPresenceDebug.tsx         # NPC presence tracking
-│   ├── relationshipDiffDebug.tsx    # Relationship change tracking
-│   └── worldThemeEditor.tsx         # World theme editor
-├── lib/                 # Core library
-│   ├── types.ts                     # Type definitions and registry
-│   ├── context.ts                   # World tool context types
-│   ├── registry.ts                  # Plugin registration
-│   ├── hudLayout.ts                 # HUD layout resolution
-│   ├── hudLayoutVariants.ts         # Layout variants and inheritance
-│   ├── hudPresets.ts                # HUD preset management
-│   ├── hudProfiles.ts               # HUD profile management
-│   └── playerHudPreferences.ts      # Player-specific HUD preferences
-└── index.ts             # Feature barrel export
+????????? components/          # UI components
+???   ????????? WorldToolsPanel.tsx          # Main panel for rendering world tools
+???   ????????? WorldVisualRolesPanel.tsx    # Panel for binding assets to world roles
+????????? plugins/             # World tool plugins
+???   ????????? index.ts                     # Plugin barrel export
+???   ????????? inventory.tsx                # Inventory tool
+???   ????????? questLog.tsx                 # Quest log tool
+???   ????????? relationshipDashboard.tsx    # Relationship visualization
+???   ????????? worldInfo.tsx                # World metadata display
+???   ????????? moodDebug.tsx                # NPC mood debugging
+???   ????????? sessionFlagsDebug.tsx        # Session flags inspector
+???   ????????? turnHistoryDebug.tsx         # Turn history viewer
+???   ????????? npcBrainDebug.tsx            # NPC brain state inspector
+???   ????????? worldManifestDebug.tsx       # World manifest viewer
+???   ????????? npcPresenceDebug.tsx         # NPC presence tracking
+???   ????????? relationshipDiffDebug.tsx    # Relationship change tracking
+???   ????????? worldThemeEditor.tsx         # World theme editor
+????????? lib/                 # Core library
+???   ????????? types.ts                     # Type definitions and registry
+???   ????????? context.ts                   # World tool context types
+???   ????????? registry.ts                  # Plugin registration
+???   ????????? hudLayout.ts                 # HUD layout resolution
+???   ????????? hudLayoutVariants.ts         # Layout variants and inheritance
+???   ????????? hudPresets.ts                # HUD preset management
+???   ????????? hudProfiles.ts               # HUD profile management
+???   ????????? playerHudPreferences.ts      # Player-specific HUD preferences
+????????? index.ts             # Feature barrel export
 ```
 
 ## Usage
@@ -97,7 +97,7 @@ export const myCustomTool: WorldToolPlugin = {
   id: 'my-custom-tool',
   name: 'Custom Tool',
   description: 'My custom world analysis tool',
-  icon: '🔧',
+  icon: '????',
   category: 'debug',
 
   // Optional visibility predicate
@@ -299,7 +299,7 @@ The World Tools feature integrates with:
 
 - **Game2D Route**: Primary consumer of world tools for in-game debugging
 - **HUD Feature** (`@features/hud`): Provides HUD layout management
-- **Panel System**: Registered via `features/panels/definitions/*` auto-discovery
+- **Panel System**: Registered via `features/panels/domain/definitions/*` auto-discovery
 - **Gizmo Surface Registry**: WorldToolsPanel registered as a gizmo surface
 
 ## Shared Systems
@@ -313,10 +313,10 @@ The following remain in their current locations:
 ## Migration Notes
 
 This feature was created by consolidating:
-- `apps/main/src/lib/worldTools/*` → `features/worldTools/lib/`
-- `apps/main/src/plugins/worldTools/*` → `features/worldTools/plugins/`
-- `apps/main/src/components/game/panels/WorldToolsPanel.tsx` → `features/worldTools/components/`
-- `apps/main/src/components/game/panels/WorldVisualRolesPanel.tsx` → `features/worldTools/components/`
+- `apps/main/src/lib/worldTools/*` ??? `features/worldTools/lib/`
+- `apps/main/src/plugins/worldTools/*` ??? `features/worldTools/plugins/`
+- `apps/main/src/components/game/panels/WorldToolsPanel.tsx` ??? `features/worldTools/components/`
+- `apps/main/src/components/game/panels/WorldVisualRolesPanel.tsx` ??? `features/worldTools/components/`
 
 All imports have been updated to use the `@features/worldTools` alias.
 

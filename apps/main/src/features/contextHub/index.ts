@@ -1,5 +1,5 @@
-export { ContextHubHost, useContextHubState, useContextHubHostId } from "./ContextHubHost";
-export type { ContextHubState } from "./ContextHubHost";
+export { ContextHubHost, useContextHubState, useContextHubHostId } from "./components/ContextHubHost";
+export type { ContextHubState } from "./components/ContextHubHost";
 export { useCapability, useProvideCapability, usePanelContext } from "./hooks";
 export {
   CAP_ASSET_SELECTION,
@@ -13,13 +13,13 @@ export {
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
-} from "./capabilities";
+} from "./domain/capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
   APP_STATE_KEY_PREFIX,
   getAppActionCapabilityKey,
   getAppStateCapabilityKey,
-} from "./appCapabilityBridge";
+} from "./domain/appCapabilityBridge";
 export type {
   AssetSelection,
   SceneContextSummary,
@@ -33,8 +33,8 @@ export type {
   GenerationWidgetContext,
   GenerationSourceMode,
   GenerationSourceContext,
-} from "./capabilities";
-export type { CapabilityDescriptor, CapabilityDescriptorKind, CapabilityDescriptorSource } from "./descriptorRegistry";
+} from "./domain/capabilities";
+export type { CapabilityDescriptor, CapabilityDescriptorKind, CapabilityDescriptorSource } from "./domain/descriptorRegistry";
 export {
   getCapabilityDescriptor,
   getCapabilityDescriptors,
@@ -44,30 +44,30 @@ export {
   unregisterCapabilityDescriptor,
   clearCapabilityDescriptors,
   setDescriptorWarnOnOverwrite,
-} from "./descriptorRegistry";
+} from "./domain/descriptorRegistry";
 export {
   setConsumptionThrottle,
   getConsumptionThrottle,
-} from "./registry";
+} from "./domain/registry";
 export type {
   CapabilityContract,
   CapabilityCompatibilityResult,
-} from "./contracts";
+} from "./domain/contracts";
 export {
   getCapabilityContract,
   getCapabilityContracts,
   registerCapabilityContract,
   unregisterCapabilityContract,
-} from "./contracts";
-export { useContextHubOverridesStore } from "./store/contextHubOverridesStore";
-export { useContextHubSettingsStore } from "./store/contextHubSettingsStore";
+} from "./domain/contracts";
+export { useContextHubOverridesStore } from "./stores/contextHubOverridesStore";
+export { useContextHubSettingsStore } from "./stores/contextHubSettingsStore";
 export type {
   UnifiedCapabilityEntry,
   UnifiedCapabilityKind,
   UnifiedCapabilitySource,
   UnifiedCapabilityOptions,
-} from "./capabilityFacade";
-export { useUnifiedCapabilities, useUnifiedCapability } from "./capabilityFacade";
+} from "./hooks";
+export { useUnifiedCapabilities, useUnifiedCapability } from "./hooks";
 export type {
   CapabilityKey,
   CapabilityProvider,

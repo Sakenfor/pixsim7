@@ -90,7 +90,6 @@
       "@lib/auth": ["./src/lib/auth/index.ts"],
       "@lib/theming": ["./src/lib/theming/index.ts"],
       "@lib/game": ["./src/lib/game/index.ts"],
-      "@lib/hooks": ["./src/lib/hooks/index.ts"],
       "@lib/analyzers": ["./src/lib/analyzers/index.ts"],
       "@lib/assets": ["./src/lib/assets/index.ts"],
       "@lib/context": ["./src/lib/context/index.ts"],

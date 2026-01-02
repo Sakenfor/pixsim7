@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { Panel } from "@pixsim7/shared.ui";
 import {
+  getCapabilityDescriptor,
   useContextHubState,
   useContextHubOverridesStore,
   type CapabilityKey,
   type CapabilityProvider,
 } from "@features/contextHub";
 import { useCapability } from "@features/contextHub";
-import { getCapabilityDescriptor } from "@features/contextHub/descriptorRegistry";
 
 type RegistrySnapshot = {
   label: string;

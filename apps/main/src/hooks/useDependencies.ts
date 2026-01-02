@@ -27,8 +27,8 @@
 import { useMemo } from 'react';
 import { useGraphStore } from '../stores/graphStore';
 import { useArcGraphStore } from '../stores/arcGraphStore';
-import { useSceneCollectionStore } from '../stores/sceneCollectionStore';
-import { useCampaignStore } from '../stores/campaignStore';
+import { useSceneCollectionStore } from '@domain/sceneCollection';
+import { useCampaignStore } from '@domain/campaign';
 import {
   buildCompleteDependencyIndex,
   getArcNodesForScene,

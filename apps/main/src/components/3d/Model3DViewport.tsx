@@ -17,7 +17,7 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { useModel3DStore } from '@/stores/model3DStore';
+import { useModel3DStore } from '@features/panels/stores/model3DStore';
 import { ModelLoader } from './ModelLoader';
 import { ZoneHighlighter } from './ZoneHighlighter';
 

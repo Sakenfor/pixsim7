@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from 'react';
-import { useCampaignStore } from '@/stores/campaignStore';
+import { useCampaignStore } from '@domain/campaign';
 import { validateCampaign } from '@domain/campaign';
 import type { Campaign, CampaignType } from '@domain/campaign';
 

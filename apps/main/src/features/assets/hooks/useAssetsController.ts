@@ -12,7 +12,7 @@ import { useFilterPersistence } from '@/hooks/useFilterPersistence';
 import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
 import { createAssetActions } from '../lib/assetCardActions';
-import { useAssetSettingsStore } from '@/stores/assetSettingsStore';
+import { useAssetSettingsStore } from '../stores/assetSettingsStore';
 import { authService } from '@lib/auth/authService';
 
 const SESSION_KEY = 'assets_filters';

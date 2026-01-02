@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useInteractionStatsStore } from '@/stores/interactionStatsStore';
+import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
 
 /**
  * Hook to subscribe to the stats decay timer.

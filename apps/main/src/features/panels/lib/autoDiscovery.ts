@@ -5,13 +5,13 @@
  * Uses Vite's import.meta.glob for build-time discovery.
  *
  * Convention:
- * - Panels live in `src/features/panels/definitions/`
+ * - Panels live in `src/features/panels/domain/definitions/`
  * - Each panel is a folder with an `index.ts` that exports a default PanelDefinition
  * - Panel definitions are created using `definePanel()`
  *
  * Directory structure:
  * ```
- * src/features/panels/definitions/
+ * src/features/panels/domain/definitions/
  * ├── interactive-surface/
  * │   ├── index.ts           # exports default definePanel({...})
  * │   └── InteractiveSurfacePanel.tsx
@@ -67,7 +67,7 @@ export interface DiscoveryResult {
  * This is evaluated at build time.
  */
 const panelModules = import.meta.glob<PanelModule>(
-  '../definitions/*/index.ts',
+  '../domain/definitions/*/index.ts',
   { eager: true }
 );
 

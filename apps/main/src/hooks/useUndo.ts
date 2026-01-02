@@ -45,14 +45,14 @@ import {
   useSceneCollectionStoreRedo,
   useSceneCollectionStoreCanUndo,
   useSceneCollectionStoreCanRedo,
-} from '../stores/sceneCollectionStore';
+} from '@domain/sceneCollection';
 import {
   useCampaignStore,
   useCampaignStoreUndo,
   useCampaignStoreRedo,
   useCampaignStoreCanUndo,
   useCampaignStoreCanRedo,
-} from '../stores/campaignStore';
+} from '@domain/campaign';
 
 /**
  * Hook for graph store undo/redo with keyboard shortcuts

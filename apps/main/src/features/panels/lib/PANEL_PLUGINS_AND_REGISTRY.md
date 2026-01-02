@@ -32,7 +32,7 @@ Workspace panels in PixSim7 are now first-class plugins integrated with the unif
    - Helper functions for dual registration
    - Syncs panel state across systems
 
-4. **Panel Definitions** (`definitions/*/index.ts`)
+4. **Panel Definitions** (`domain/definitions/*/index.ts`)
    - Auto-discovered built-in workspace panels
    - Registered via registry bridge during auto-discovery
 
@@ -87,7 +87,7 @@ export const myCustomPanel: PanelDefinition = {
   component: MyPanelComponent,
   category: 'custom',
   tags: ['custom', 'utility'],
-  icon: '🔧',
+  icon: '????',
   description: 'A custom panel for special functionality',
   supportsCompactMode: true,
   supportsMultipleInstances: false,
@@ -228,7 +228,7 @@ This helps users identify custom panels and understand their source.
 
 The `gallery` panel now supports badge configuration for media cards:
 
-**Location:** Settings → Panel Configuration → Gallery panel → Card Badges section
+**Location:** Settings ??? Panel Configuration ??? Gallery panel ??? Card Badges section
 
 **Configurable Options:**
 - Media type icon - Show/hide primary media type icons (video, image, audio, 3D model)
@@ -453,7 +453,7 @@ Panel IDs should be unique, lowercase, and kebab-case (e.g., `'my-custom-panel'`
    - Added panel sync to `syncCatalogFromRegistries()`
    - Added panels to `printRegistryComparison()`
 
-3. `apps/main/src/features/panels/definitions/*/index.ts`
+3. `apps/main/src/features/panels/domain/definitions/*/index.ts`
    - Built-in panels defined for auto-discovery (registered via bridge)
 
 4. `apps/main/src/components/plugins/PluginBrowser.tsx`
@@ -500,11 +500,11 @@ Panel IDs should be unique, lowercase, and kebab-case (e.g., `'my-custom-panel'`
 ## Summary
 
 The panel plugin system provides:
-- ✅ Unified discovery via plugin catalog
-- ✅ Enable/disable controls for custom panels
-- ✅ Clear origin tracking (built-in vs custom)
-- ✅ Consistent metadata-driven architecture
-- ✅ No breaking changes to existing code
-- ✅ Plugin Browser UI for management
+- ??? Unified discovery via plugin catalog
+- ??? Enable/disable controls for custom panels
+- ??? Clear origin tracking (built-in vs custom)
+- ??? Consistent metadata-driven architecture
+- ??? No breaking changes to existing code
+- ??? Plugin Browser UI for management
 
 Workspace panels are now first-class plugins!
