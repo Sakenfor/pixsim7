@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, devtools } from 'zustand/middleware';
 import type { GraphState } from './types';
 import type { DraftSceneNode } from '@domain/sceneBuilder';
+import { sceneNodeTypeRegistry, type Scene } from '@lib/registries';
 import { createSceneSlice } from './sceneSlice';
 import { createSignatureSlice } from './signatureSlice';
 import { createNodeSlice } from './nodeSlice';
@@ -46,115 +47,74 @@ export const useGraphStore = create<GraphState>()(
 
             // Runtime scene conversion
             toRuntimeScene: (sceneId?: string): ReturnType<GraphState['toRuntimeScene']> => {
-            const state: GraphState = get() as GraphState;
-            const targetSceneId = sceneId || state.currentSceneId;
-            if (!targetSceneId) return null;
+              const state: GraphState = get() as GraphState;
+              const targetSceneId = sceneId || state.currentSceneId;
+              if (!targetSceneId) return null;
 
-            const scene = state.scenes[targetSceneId];
-            if (!scene || !scene.startNodeId) return null;
+              const scene = state.scenes[targetSceneId];
+              if (!scene || !scene.startNodeId) return null;
 
-            // Helper to convert draft node to runtime node
-            const convertNode = (d: DraftSceneNode): any => {
-              const base = {
-                id: d.id,
-                type: d.type,
-                label: d.metadata?.label,
-                meta: d.metadata,
+              // Helper to convert draft node to runtime node
+              type RuntimeNode = Scene['nodes'][number];
+
+              const convertNode = (d: DraftSceneNode): RuntimeNode | null => {
+                const base: RuntimeNode = {
+                  nodeType: 'scene_content',
+                  id: d.id,
+                  type: d.type,
+                  label: d.metadata?.label,
+                  meta: d.metadata,
+                };
+
+                const typeDef = sceneNodeTypeRegistry.getSync(d.type);
+                const runtimeNode = typeDef?.toRuntime?.(d);
+
+                if (runtimeNode === null) {
+                  return null;
+                }
+
+                if (runtimeNode !== undefined) {
+                  return runtimeNode;
+                }
+
+                return base;
               };
 
-              // Type-specific conversions
-              switch (d.type) {
-                case 'video':
-                  return {
-                    ...base,
-                    media: d.segments,
-                    selection: d.selection,
-                    playback: d.playback,
-                  };
-
-                case 'choice':
-                  return {
-                    ...base,
-                    choices: (d.metadata as any)?.choices || [],
-                  };
-
-                case 'condition':
-                  return {
-                    ...base,
-                    condition: (d.metadata as any)?.condition,
-                    trueTargetNodeId: (d.metadata as any)?.trueTargetNodeId,
-                    falseTargetNodeId: (d.metadata as any)?.falseTargetNodeId,
-                  };
-
-                case 'scene_call':
-                  return {
-                    ...base,
-                    targetSceneId: (d as any).targetSceneId,
-                    parameterBindings: (d as any).parameterBindings,
-                    returnRouting: (d as any).returnRouting,
-                  };
-
-                case 'return':
-                  return {
-                    ...base,
-                    returnPointId: (d as any).returnPointId,
-                    returnValues: (d as any).returnValues,
-                  };
-
-                case 'end':
-                  return {
-                    ...base,
-                    endType: (d.metadata as any)?.endConfig?.endType || 'neutral',
-                    endMessage: (d.metadata as any)?.endConfig?.message,
-                  };
-
-                case 'node_group':
-                  // Node groups don't appear in runtime, they're editor-only
-                  return null;
-
-                case 'generation':
-                  return {
-                    ...base,
-                    // Generation nodes need special handling
-                  };
-
-                default:
-                  // Fallback for unknown types
-                  return base;
-              }
-            };
-
-            return {
-              id: scene.id,
-              title: scene.title,
-              startNodeId: scene.startNodeId,
-              meta: scene.metadata, // Include scene metadata (arc_id, tags, etc.)
-              nodes: scene.nodes
-                .map(convertNode)
-                .filter((n): n is NonNullable<typeof n> => n !== null),
-              edges:
-                scene.edges.length > 0
-                  ? scene.edges.map((e: any, i: number) => ({
-                      id: e.id || `edge_${i}`,
-                      from: e.from,
-                      to: e.to,
-                      label: e.meta?.label || 'Continue',
-                      isDefault: e.meta?.fromPort === 'default',
-                      conditions: e.meta?.conditions,
-                      effects: e.meta?.effects,
-                    }))
-                  : scene.nodes.flatMap((d: any) =>
-                      (d.connections || []).map((to: string, i: number) => ({
-                        id: `${d.id}_edge_${i}`,
-                        from: d.id,
-                        to,
-                        label: 'Continue',
-                        isDefault: true,
+              return {
+                id: scene.id,
+                title: scene.title,
+                startNodeId: scene.startNodeId,
+                meta: scene.metadata, // Include scene metadata (arc_id, tags, etc.)
+                nodes: scene.nodes
+                  .map(convertNode)
+                  .filter((n): n is NonNullable<typeof n> => n !== null),
+                edges:
+                  scene.edges.length > 0
+                    ? scene.edges.map((edge, index) => ({
+                        id: edge.id || `edge_${index}`,
+                        from: edge.from,
+                        to: edge.to,
+                        label: edge.meta?.label || 'Continue',
+                        isDefault: edge.meta?.fromPort === 'default',
+                        conditions: edge.meta?.conditions,
+                        effects: edge.meta?.effects,
                       }))
-                    ),
-            };
-          },
-        };
+                    : scene.nodes.flatMap((node) => {
+                        const legacyNode = node as DraftSceneNode & { connections?: string[] };
+                        const connections = Array.isArray(legacyNode.connections)
+                          ? legacyNode.connections
+                          : [];
+                        return connections.map((to, index) => ({
+                          id: `${node.id}_edge_${index}`,
+                          from: node.id,
+                          to,
+                          label: 'Continue',
+                          isDefault: true,
+                        }));
+                      }),
+              };
+            },
+          };
         },
         {
           limit: 50,

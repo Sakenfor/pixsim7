@@ -12,10 +12,12 @@
  * 3. Heavy/rare renderers stay lazy, core ones are preloaded
  */
 
-import { nodeTypeRegistry } from '@lib/registries';
-import { nodeRendererRegistry, type NodeRenderer } from './nodeRendererRegistry';
+import { sceneNodeTypeRegistry } from '@lib/registries';
+import { sceneNodeRendererRegistry, type NodeRenderer } from './nodeRendererRegistry';
 import type { ComponentType } from 'react';
 import type { NodeRendererProps } from './nodeRendererRegistry';
+
+const placeholderRenderer: ComponentType<NodeRendererProps> = () => null;
 
 /**
  * Priority threshold for automatic preloading
@@ -36,7 +38,7 @@ export const HIGH_PRIORITY_THRESHOLD = 7;
  *   component: VideoNodeRenderer,
  *   defaultSize: { width: 220, height: 180 },
  * });
- * // Priority will be automatically inherited from nodeTypeRegistry.get('video').preloadPriority
+ * // Priority will be automatically inherited from sceneNodeTypeRegistry.get('video').preloadPriority
  * ```
  */
 export function registerRendererFromNodeType(
@@ -56,14 +58,14 @@ export function registerRendererFromNodeType(
   }
   // Otherwise, try to inherit from node type
   else if (!options?.skipNodeTypeLookup) {
-    const nodeType = nodeTypeRegistry.getSync(renderer.nodeType);
+    const nodeType = sceneNodeTypeRegistry.getSync(renderer.nodeType);
     if (nodeType?.preloadPriority !== undefined) {
       preloadPriority = nodeType.preloadPriority;
     }
   }
 
   // Register with the computed priority
-  nodeRendererRegistry.register({
+  sceneNodeRendererRegistry.register({
     ...renderer,
     preloadPriority,
   });
@@ -91,7 +93,7 @@ export function registerRendererFromNodeType(
  * ```
  */
 export async function preloadHighPriorityRenderers(): Promise<void> {
-  const allRenderers = nodeRendererRegistry.getAll();
+  const allRenderers = sceneNodeRendererRegistry.getAll();
 
   // Find renderers with high priority
   const highPriorityRenderers = allRenderers
@@ -110,7 +112,7 @@ export async function preloadHighPriorityRenderers(): Promise<void> {
 
   // Preload in parallel
   await Promise.all(
-    highPriorityRenderers.map(r => nodeRendererRegistry.getAsync(r.nodeType))
+    highPriorityRenderers.map(r => sceneNodeRendererRegistry.getAsync(r.nodeType))
   );
 
   console.log('✓ High-priority renderers preloaded');
@@ -138,7 +140,7 @@ export async function preloadRenderers(nodeTypes: string[]): Promise<void> {
   console.log(`⏳ Preloading ${nodeTypes.length} specific renderers:`, nodeTypes);
 
   await Promise.all(
-    nodeTypes.map(nodeType => nodeRendererRegistry.getAsync(nodeType))
+    nodeTypes.map(nodeType => sceneNodeRendererRegistry.getAsync(nodeType))
   );
 
   console.log('✓ Specific renderers preloaded');
@@ -175,7 +177,7 @@ export function createLazyRenderer(
 ): NodeRenderer {
   return {
     nodeType,
-    component: null as any, // Will be loaded lazily
+    component: placeholderRenderer, // Will be loaded lazily
     loader,
     ...options,
   };
@@ -187,7 +189,7 @@ export function createLazyRenderer(
  * @returns Information about registered renderers and their preload status
  */
 export function getPreloadStats() {
-  const allRenderers = nodeRendererRegistry.getAll();
+  const allRenderers = sceneNodeRendererRegistry.getAll();
   const highPriority = allRenderers.filter(r => (r.preloadPriority || 0) > HIGH_PRIORITY_THRESHOLD);
   const lazy = allRenderers.filter(r => r.loader !== undefined);
   const eager = allRenderers.filter(r => r.loader === undefined);

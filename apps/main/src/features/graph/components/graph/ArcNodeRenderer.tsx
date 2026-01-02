@@ -1,6 +1,8 @@
-import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
-import { nodeTypeRegistry } from '@lib/registries';
-import type { ArcNodeData } from '@features/graph/domain/arcGraph';
+import { arcNodeTypeRegistry } from '@lib/registries';
+
+import type { ArcNodeData } from '@features/graph/models/arcGraph';
+
+import type { ArcNodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Type guard to check if a node is an ArcNodeData
@@ -19,8 +21,8 @@ function isArcNodeData(node: unknown): node is ArcNodeData {
 /**
  * Arc node renderer - shows arc/story beat information
  */
-export function ArcNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
-  const typeDef = nodeTypeRegistry.getSync(node.type);
+export function ArcNodeRenderer({ node }: ArcNodeRendererProps) {
+  const typeDef = arcNodeTypeRegistry.getSync(node.type);
 
   // Validate node is actually an ArcNodeData
   if (!isArcNodeData(node)) {
@@ -146,3 +148,4 @@ export function ArcNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRe
 
 // Default export for auto-wire system (import.meta.glob)
 export default ArcNodeRenderer;
+

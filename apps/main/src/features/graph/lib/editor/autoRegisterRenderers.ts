@@ -1,9 +1,20 @@
 import type { ComponentType } from 'react';
-import { nodeRendererRegistry, type NodeRendererProps } from './nodeRendererRegistry';
-import { nodeTypeRegistry } from '@lib/registries';
+
+import {
+  arcNodeRendererRegistry,
+  sceneNodeRendererRegistry,
+  type NodeRenderer,
+  type NodeRendererRegistry,
+  type NodeRendererProps,
+} from './nodeRendererRegistry';
+import { arcNodeTypeRegistry } from '../nodeTypes/arcRegistry';
+import { sceneNodeTypeRegistry } from '../nodeTypes/sceneRegistry';
+import type { NodeTypeDefinition, NodeTypeRegistry } from '../nodeTypes/registry';
 import { registerRenderer } from '@lib/plugins/registryBridge';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
 import { debugFlags } from '@lib/utils/debugFlags';
+
+const placeholderRenderer: ComponentType<NodeRendererProps<unknown>> = () => null;
 
 /**
  * Auto-wire renderers from node type definitions
@@ -12,50 +23,18 @@ import { debugFlags } from '@lib/utils/debugFlags';
  * automatically registers them based on the `rendererComponent` field in
  * NodeTypeDefinition. This eliminates the need to manually import and register
  * plugin renderers in pluginRenderers.ts.
- *
- * USAGE:
- * Call registerRenderersFromNodeTypes() after node types are registered
- * but before scenes are rendered (typically in App.tsx initialization).
- *
- * IMPORTANT: Renderer components MUST export a default export to be discoverable:
- * ```typescript
- * export function MyRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
- *   // ... renderer implementation
- * }
- *
- * // Required for auto-wire to work
- * export default MyRenderer;
- * ```
- *
- * @example
- * ```typescript
- * // In App.tsx
- * registerBuiltinNodeTypes();
- * registerBuiltinRenderers(); // Manual registrations (skipped by auto-wire)
- * loadAllPlugins(); // Registers plugin node types
- * registerRenderersFromNodeTypes(); // Auto-register plugin renderers
- * ```
  */
 
 /**
  * Dynamically import all renderer components
  * Maps filename (without extension) to lazy-loaded component
- *
- * Pattern matches:
- * - /src/features/graph/components/graph/SeductionNodeRenderer.tsx → 'SeductionNodeRenderer'
- * - /src/features/graph/components/graph/QuestTriggerRenderer.tsx → 'QuestTriggerRenderer'
- * - etc.
  */
 const rendererModules = import.meta.glob<{
-  default: ComponentType<NodeRendererProps>;
+  default: ComponentType<NodeRendererProps<unknown>>;
 }>('/src/features/graph/components/graph/**/*Renderer.{tsx,ts}', { eager: false });
 
 /**
  * Extract renderer name from file path
- *
- * @example
- * getRendererNameFromPath('/src/features/graph/components/graph/SeductionNodeRenderer.tsx')
- * // Returns: 'SeductionNodeRenderer'
  */
 function getRendererNameFromPath(path: string): string {
   const filename = path.split('/').pop() || '';
@@ -64,16 +43,13 @@ function getRendererNameFromPath(path: string): string {
 
 /**
  * Build a map of renderer names to their lazy loaders
- *
- * @returns Map<rendererName, loaderFunction>
  */
-function buildRendererMap(): Map<string, () => Promise<ComponentType<NodeRendererProps>>> {
-  const rendererMap = new Map<string, () => Promise<ComponentType<NodeRendererProps>>>();
+function buildRendererMap(): Map<string, () => Promise<ComponentType<NodeRendererProps<unknown>>>> {
+  const rendererMap = new Map<string, () => Promise<ComponentType<NodeRendererProps<unknown>>>>();
 
   for (const [path, moduleLoader] of Object.entries(rendererModules)) {
     const rendererName = getRendererNameFromPath(path);
 
-    // Create a loader function that imports the module and extracts the default export
     const loader = async () => {
       try {
         const module = await moduleLoader();
@@ -93,66 +69,48 @@ function buildRendererMap(): Map<string, () => Promise<ComponentType<NodeRendere
   return rendererMap;
 }
 
-/**
- * Auto-register renderers based on node type definitions
- *
- * This function:
- * 1. Scans all registered node types
- * 2. For each type with a `rendererComponent` field, finds the matching renderer module
- * 3. Registers the renderer with nodeRendererRegistry using lazy loading
- *
- * Benefits:
- * - No need to manually import renderer components
- * - Plugin developers just set `rendererComponent` in their node type definition
- * - Renderers are loaded on demand, improving initial load time
- *
- * @param options Configuration options
- * @param options.verbose Whether to log registration details (default: true)
- * @param options.strict Whether to throw on missing renderers (default: false)
- */
-export function registerRenderersFromNodeTypes(options: {
-  verbose?: boolean;
-  strict?: boolean;
-} = {}) {
-  const { verbose = true, strict = false } = options;
+function registerRenderersFromRegistry(
+  registry: NodeTypeRegistry<NodeTypeDefinition>,
+  rendererRegistry: NodeRendererRegistry<unknown>,
+  options: {
+    verbose?: boolean;
+    strict?: boolean;
+    trackInCatalog?: boolean;
+  } = {}
+) {
+  const { verbose = true, strict = false, trackInCatalog = true } = options;
 
-  // Build the renderer map
   const rendererMap = buildRendererMap();
 
   if (verbose) {
-    console.log(`📦 Discovered ${rendererMap.size} renderer components`);
+    console.log(`dY"▌ Discovered ${rendererMap.size} renderer components`);
   }
 
-  // Get all registered node types
-  const nodeTypes = nodeTypeRegistry.getAll();
+  const nodeTypes = registry.getAll();
 
   let registeredCount = 0;
   let skippedCount = 0;
   const missingRenderers: string[] = [];
 
   for (const nodeType of nodeTypes) {
-    // Skip if no renderer component specified
     if (!nodeType.rendererComponent) {
       continue;
     }
 
     const rendererName = nodeType.rendererComponent;
 
-    // Check if we already have a renderer registered for this node type
-    // (builtinRenderers.ts and arcRenderers.ts may have already registered some)
-    if (nodeRendererRegistry.has(nodeType.id)) {
+    if (rendererRegistry.has(nodeType.id)) {
       skippedCount++;
       if (verbose) {
-        debugFlags.log('registry', `  ⏭️  Skipped ${nodeType.id} (renderer already registered)`);
+        debugFlags.log('registry', `  Г?-Л,?  Skipped ${nodeType.id} (renderer already registered)`);
       }
       continue;
     }
 
-    // Find the matching renderer module
     const rendererLoader = rendererMap.get(rendererName);
 
     if (!rendererLoader) {
-      missingRenderers.push(`${nodeType.id} → ${rendererName}`);
+      missingRenderers.push(`${nodeType.id} Г+' ${rendererName}`);
 
       if (strict) {
         throw new Error(
@@ -163,46 +121,54 @@ export function registerRenderersFromNodeTypes(options: {
 
       if (verbose) {
         console.warn(
-          `  ⚠️  Missing renderer: ${nodeType.id} expects "${rendererName}" ` +
+          `  Гs Л,?  Missing renderer: ${nodeType.id} expects "${rendererName}" ` +
           `(file not found in /src/components/graph/)`
         );
       }
       continue;
     }
 
-    // Determine origin from the node type's catalog entry
-    const nodeTypeMetadata = pluginCatalog.get(nodeType.id);
-    const origin = nodeTypeMetadata?.origin || 'builtin';
+    if (trackInCatalog && rendererRegistry === sceneNodeRendererRegistry) {
+      const nodeTypeMetadata = pluginCatalog.get(nodeType.id);
+      const origin = nodeTypeMetadata?.origin || 'builtin';
 
-    // Register the renderer with lazy loading and origin tracking
-    registerRenderer(
-      {
+      registerRenderer(
+        {
+          nodeType: nodeType.id,
+          component: placeholderRenderer,
+          loader: rendererLoader as NodeRenderer['loader'],
+          defaultSize: { width: 220, height: 200 },
+          preloadPriority: nodeType.preloadPriority,
+        },
+        { origin }
+      );
+    } else {
+      const renderer: NodeRenderer<unknown> = {
         nodeType: nodeType.id,
-        component: null as any, // Will be loaded lazily
-        loader: rendererLoader,
-        defaultSize: { width: 220, height: 200 }, // Default size, can be overridden
+        component: placeholderRenderer,
+        loader: rendererLoader as NodeRenderer<unknown>['loader'],
+        defaultSize: { width: 220, height: 200 },
         preloadPriority: nodeType.preloadPriority,
-      },
-      { origin }
-    );
+      };
+      rendererRegistry.register(renderer);
+    }
 
     registeredCount++;
 
     if (verbose) {
-      debugFlags.log('registry', `  ✓ Auto-registered renderer for "${nodeType.id}" → ${rendererName} (origin: ${origin})`);
+      debugFlags.log('registry', `  Гo" Auto-registered renderer for "${nodeType.id}" Г+' ${rendererName}`);
     }
   }
 
-  // Summary
   if (verbose) {
     console.log(
-      `✓ Auto-registered ${registeredCount} renderer(s) from node types ` +
+      `Гo" Auto-registered ${registeredCount} renderer(s) from node types ` +
       `(skipped ${skippedCount} already registered)`
     );
 
     if (missingRenderers.length > 0) {
       console.warn(
-        `⚠️  Warning: ${missingRenderers.length} node type(s) specify rendererComponent but ` +
+        `Гs Л,?  Warning: ${missingRenderers.length} node type(s) specify rendererComponent but ` +
         `the renderer file was not found:\n  ${missingRenderers.join('\n  ')}`
       );
     }
@@ -215,14 +181,26 @@ export function registerRenderersFromNodeTypes(options: {
   };
 }
 
-/**
- * Preload high-priority renderers
- *
- * Call this after registerRenderersFromNodeTypes() to eagerly load
- * renderers that are likely to be needed soon.
- *
- * @param nodeTypes Optional list of node types to preload (defaults to high-priority types)
- */
-export async function preloadRenderers(nodeTypes?: string[]): Promise<void> {
-  await nodeRendererRegistry.preload(nodeTypes);
+export function registerRenderersFromNodeTypes(options: {
+  verbose?: boolean;
+  strict?: boolean;
+} = {}) {
+  return registerRenderersFromRegistry(sceneNodeTypeRegistry, sceneNodeRendererRegistry, options);
+}
+
+export function registerArcRenderersFromNodeTypes(options: {
+  verbose?: boolean;
+  strict?: boolean;
+} = {}) {
+  return registerRenderersFromRegistry(arcNodeTypeRegistry, arcNodeRendererRegistry, {
+    ...options,
+    trackInCatalog: false,
+  });
+}
+
+export async function preloadRenderers(
+  nodeTypes?: string[],
+  registry: NodeRendererRegistry<unknown> = sceneNodeRendererRegistry
+): Promise<void> {
+  await registry.preload(nodeTypes);
 }

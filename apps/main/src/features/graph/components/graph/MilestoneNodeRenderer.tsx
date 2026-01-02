@@ -1,12 +1,14 @@
-import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
-import { nodeTypeRegistry } from '@lib/registries';
-import type { MilestoneNodeData } from '@features/graph/domain/arcGraph';
+import { arcNodeTypeRegistry } from '@lib/registries';
+
+import type { MilestoneNodeData } from '@features/graph/models/arcGraph';
+
+import type { ArcNodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Milestone node renderer - shows major story checkpoint information
  */
-export function MilestoneNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
-  const typeDef = nodeTypeRegistry.getSync(node.type);
+export function MilestoneNodeRenderer({ node }: ArcNodeRendererProps) {
+  const typeDef = arcNodeTypeRegistry.getSync(node.type);
   const milestoneNode = node as unknown as MilestoneNodeData;
 
   return (
@@ -90,3 +92,4 @@ export function MilestoneNodeRenderer({ node, isSelected, isStart, hasErrors }: 
 
 // Default export for auto-wire system (import.meta.glob)
 export default MilestoneNodeRenderer;
+

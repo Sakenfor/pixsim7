@@ -1,12 +1,14 @@
-import { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
-import { nodeTypeRegistry } from '@lib/registries';
-import type { QuestNodeData } from '@features/graph/domain/arcGraph';
+import { arcNodeTypeRegistry } from '@lib/registries';
+
+import type { QuestNodeData } from '@features/graph/models/arcGraph';
+
+import type { ArcNodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 
 /**
  * Quest node renderer - shows quest objective information
  */
-export function QuestNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
-  const typeDef = nodeTypeRegistry.getSync(node.type);
+export function QuestNodeRenderer({ node }: ArcNodeRendererProps) {
+  const typeDef = arcNodeTypeRegistry.getSync(node.type);
   const questNode = node as unknown as QuestNodeData;
 
   return (
@@ -122,3 +124,4 @@ export function QuestNodeRenderer({ node, isSelected, isStart, hasErrors }: Node
 
 // Default export for auto-wire system (import.meta.glob)
 export default QuestNodeRenderer;
+

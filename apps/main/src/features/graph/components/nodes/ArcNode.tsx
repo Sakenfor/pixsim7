@@ -1,8 +1,10 @@
-import { memo, useState, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
+
+import type { ArcGraphNode } from '@features/graph/models/arcGraph';
+
+import { arcNodeRendererRegistry } from '../../lib/editor/nodeRendererRegistry';
 import { useArcGraphStore, type ArcGraphState } from '../../stores/arcGraphStore';
-import { nodeRendererRegistry } from '../../lib/editor/nodeRendererRegistry';
-import type { ArcGraphNode } from '@features/graph/domain/arcGraph';
 
 interface ArcNodeData {
   label: string;
@@ -17,7 +19,7 @@ interface ArcNodeData {
  * Similar to SceneNode but designed for arc/quest graphs:
  * - Uses ArcGraphNode types instead of DraftSceneNode
  * - Integrates with arcGraphStore
- * - Dynamically renders using nodeRendererRegistry
+ * - Dynamically renders using arcNodeRendererRegistry
  * - Simpler port configuration (arc graphs use standard connections)
  */
 export const ArcNode = memo(({ id, data, selected }: NodeProps<ArcNodeData>) => {
@@ -94,7 +96,7 @@ export const ArcNode = memo(({ id, data, selected }: NodeProps<ArcNodeData>) => 
       {(() => {
         try {
           // Get renderer for this node type
-          const renderer = nodeRendererRegistry.getOrDefault(data.nodeType);
+          const renderer = arcNodeRendererRegistry.getOrDefault(data.nodeType);
           const RendererComponent = renderer?.component;
 
           if (!RendererComponent) {
@@ -111,7 +113,7 @@ export const ArcNode = memo(({ id, data, selected }: NodeProps<ArcNodeData>) => 
 
           return (
             <RendererComponent
-              node={data.arcNode as any}
+              node={data.arcNode}
               isSelected={selected}
               isStart={data.isStart}
               hasErrors={false}
@@ -150,3 +152,4 @@ export const ArcNode = memo(({ id, data, selected }: NodeProps<ArcNodeData>) => 
 });
 
 ArcNode.displayName = 'ArcNode';
+
