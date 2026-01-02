@@ -1,12 +1,15 @@
 import { create } from 'zustand';
-import { persist, devtools } from 'zustand/middleware';
-import type { ArcGraphState } from './types';
-import { createArcGraphSlice } from './arcGraphSlice';
-import { createArcNodeSlice } from './arcNodeSlice';
-import { createArcNavigationSlice } from './arcNavigationSlice';
-import { createArcImportExportSlice } from './arcImportExportSlice';
+import { devtools, persist } from 'zustand/middleware';
+
 import { createBackendStorage } from '@lib/backendStorage';
-import { createTemporalStore, arcGraphStorePartialize } from '@/stores/_shared/temporal';
+
+import { arcGraphStorePartialize, createTemporalStore } from '@/stores/_shared/temporal';
+
+import { createArcGraphSlice } from './arcGraphSlice';
+import { createArcImportExportSlice } from './arcImportExportSlice';
+import { createArcNavigationSlice } from './arcNavigationSlice';
+import { createArcNodeSlice } from './arcNodeSlice';
+import type { ArcGraphState } from './types';
 
 /**
  * Arc Graph Store

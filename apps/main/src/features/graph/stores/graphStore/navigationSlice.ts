@@ -1,6 +1,8 @@
-import type { StateCreator } from './types';
-import type { NodeGroupData } from '@domain/sceneBuilder';
 import { logEvent } from '@lib/utils/logging';
+
+import type { NodeGroupData } from '@domain/sceneBuilder';
+
+import type { StateCreator } from './types';
 
 /**
  * Navigation Slice
@@ -29,7 +31,7 @@ export interface NavigationState {
   getNavigationBreadcrumbs: () => Array<{ id: string; label: string }>;
 }
 
-export const createNavigationSlice: StateCreator<NavigationState> = (set, get, _api) => ({
+export const createNavigationSlice: StateCreator<NavigationState> = (set, get) => ({
   currentSceneId: null,
   navigationStack: [],
 

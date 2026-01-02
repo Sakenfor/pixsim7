@@ -1,4 +1,5 @@
 import type { DraftScene } from '@domain/sceneBuilder';
+
 import type { StateCreator, SceneManagementState } from './types';
 
 /**
@@ -6,7 +7,7 @@ import type { StateCreator, SceneManagementState } from './types';
  *
  * Handles scene CRUD operations: create, delete, duplicate, load, rename
  */
-export const createSceneSlice: StateCreator<SceneManagementState> = (set, get, _api) => ({
+export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) => ({
   scenes: {},
   currentSceneId: null,
   sceneMetadata: {},

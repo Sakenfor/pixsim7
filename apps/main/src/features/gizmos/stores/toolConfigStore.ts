@@ -6,8 +6,8 @@
  * for testing, development, or "cheat" purposes.
  */
 
-import { create } from 'zustand';
 import type { InteractiveTool } from '@pixsim7/scene.gizmos';
+import { create } from 'zustand';
 
 /** Deep partial type for nested overrides */
 type DeepPartial<T> = {
@@ -211,8 +211,9 @@ export const useToolConfigStore = create<ToolConfigState & ToolConfigActions>((s
 
   resetTool: (toolId) => {
     set((state) => {
-      const { [toolId]: _removed, ...rest } = state.overrides;
-      return { overrides: rest };
+      const nextOverrides = { ...state.overrides };
+      delete nextOverrides[toolId];
+      return { overrides: nextOverrides };
     });
   },
 

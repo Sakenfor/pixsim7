@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand';
+
 import {
   type StatValues,
   type StatConfig,
@@ -20,7 +21,7 @@ import {
   getDominantStat,
   getActiveStats,
   getStatReactionLevel,
-} from '@/gizmos/interactionStats';
+} from '@features/gizmos/lib/core';
 
 interface InteractionStatsState {
   /** Current stat values (0-1 for each) */
@@ -121,7 +122,6 @@ interface InteractionStatsActions {
 
 // Module-level timer reference (managed by store)
 let decayTimerId: ReturnType<typeof setInterval> | null = null;
-let currentIntervalMs = 100;
 
 export const useInteractionStatsStore = create<InteractionStatsState & InteractionStatsActions>(
   (set, get) => ({
@@ -204,8 +204,9 @@ export const useInteractionStatsStore = create<InteractionStatsState & Interacti
 
     resetStat: (stat) => {
       set((state) => {
-        const { [stat]: _, ...rest } = state.stats;
-        return { stats: rest };
+        const nextStats = { ...state.stats };
+        delete nextStats[stat];
+        return { stats: nextStats };
       });
     },
 
@@ -308,7 +309,6 @@ export const useInteractionStatsStore = create<InteractionStatsState & Interacti
         return;
       }
 
-      currentIntervalMs = intervalMs;
       decayTimerId = setInterval(() => {
         get().applyDecay();
       }, intervalMs);

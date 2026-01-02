@@ -5,7 +5,7 @@ import type { StateCreator, SignatureManagementState } from './types';
  *
  * Handles scene signature operations: parameters and return points
  */
-export const createSignatureSlice: StateCreator<SignatureManagementState> = (set, _get, _api) => ({
+export const createSignatureSlice: StateCreator<SignatureManagementState> = (set) => ({
   updateSceneSignature: (sceneId, signaturePatch) => {
     set(
       (state) => {

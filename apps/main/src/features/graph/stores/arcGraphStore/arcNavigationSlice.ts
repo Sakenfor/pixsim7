@@ -4,7 +4,7 @@ import type { ArcStateCreator, ArcNavigationState } from './types';
  * Arc Navigation Slice
  * Handles navigation within arc graphs and drill-down to scenes
  */
-export const createArcNavigationSlice: ArcStateCreator<ArcNavigationState> = (set, get) => ({
+export const createArcNavigationSlice: ArcStateCreator<ArcNavigationState> = (set) => ({
   selectedArcNodeId: null,
 
   setSelectedArcNode: (nodeId: string | null) => {

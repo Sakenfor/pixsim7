@@ -1,13 +1,15 @@
-import type { StateCreator, ImportExportState } from './types';
-import type { DraftScene } from '@domain/sceneBuilder';
 import { logEvent } from '@lib/utils/logging';
+
+import type { DraftScene } from '@domain/sceneBuilder';
+
+import type { StateCreator, ImportExportState } from './types';
 
 /**
  * Import/Export Slice
  *
  * Handles scene and project import/export
  */
-export const createImportExportSlice: StateCreator<ImportExportState> = (set, get, _api) => ({
+export const createImportExportSlice: StateCreator<ImportExportState> = (set, get) => ({
   exportScene: (sceneId) => {
     const state = get();
     const scene = state.scenes[sceneId];

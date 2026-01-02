@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GraphTemplate, TemplateSource, TemplatePack } from '../lib/editor/graphTemplates';
-import { getGameWorld, saveGameWorldMeta } from '@lib/api/game';
+
+import { getGameWorld, saveGameWorldMeta } from '@lib/api';
 import type { GameWorldDetail } from '@lib/registries';
+
 import builtinTemplatesJson from '@/data/graphTemplates.json';
+
+import type { GraphTemplate, TemplateSource, TemplatePack } from '../lib/editor/graphTemplates';
 
 /**
  * Template Store State
@@ -40,7 +43,7 @@ interface TemplateStoreState {
   updateTemplate: (id: string, updates: Partial<GraphTemplate>) => Promise<void>;
 
   /** Remove a template */
-  removeTemplate: (id: string, worldId?: number | null) => Promise<void>;
+  removeTemplate: (id: string) => Promise<void>;
 
   /** Toggle favorite status */
   toggleFavorite: (id: string) => Promise<void>;
@@ -64,10 +67,10 @@ interface TemplateStoreState {
  * Helper to get templates from world meta
  */
 function getWorldTemplates(world: GameWorldDetail): GraphTemplate[] {
-  const meta = world.meta as any;
-  const templates = meta?.graphTemplates || [];
-  return templates.map((t: GraphTemplate) => ({
-    ...t,
+  const meta = world.meta as { graphTemplates?: GraphTemplate[] } | null;
+  const templates = meta?.graphTemplates ?? [];
+  return templates.map((template) => ({
+    ...template,
     source: 'world' as TemplateSource,
     worldId: world.id,
   }));
@@ -215,7 +218,7 @@ export const useTemplateStore = create<TemplateStoreState>()(
         }
       },
 
-      removeTemplate: async (id: string, worldId?: number | null) => {
+      removeTemplate: async (id: string) => {
         const template = get().getTemplate(id);
         if (!template) {
           throw new Error('Template not found');

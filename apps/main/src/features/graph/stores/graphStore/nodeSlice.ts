@@ -1,5 +1,6 @@
-import type { StateCreator, NodeManagementState, GraphState } from './types';
 import type { DraftSceneNode } from '@domain/sceneBuilder';
+
+import type { StateCreator, NodeManagementState, GraphState } from './types';
 
 /**
  * Node Management Slice
@@ -7,7 +8,7 @@ import type { DraftSceneNode } from '@domain/sceneBuilder';
  * Handles node operations on the current scene:
  * add, update, remove, connect, set start node
  */
-export const createNodeSlice: StateCreator<NodeManagementState> = (set, _get, _api) => ({
+export const createNodeSlice: StateCreator<NodeManagementState> = (set) => ({
   addNode: (node) => {
     set(
       (state) => {

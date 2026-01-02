@@ -1,7 +1,11 @@
-import type { StateCreator, GraphState } from './types';
-import type { NodeGroupData, DraftSceneNode } from '@domain/sceneBuilder';
-import { logEvent } from '@lib/utils/logging';
 import { useToastStore } from '@pixsim7/shared.ui';
+
+import { logEvent } from '@lib/utils/logging';
+
+import type { NodeGroupData, DraftSceneNode } from '@domain/sceneBuilder';
+
+import type { StateCreator, GraphState } from './types';
+
 
 /**
  * Node Group Slice
@@ -47,7 +51,7 @@ export interface NodeGroupManagementState {
   listNodeGroups: () => NodeGroupData[];
 }
 
-export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set, get, _api) => ({
+export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set, get) => ({
   createNodeGroup: (nodeIds, options = {}) => {
     const state = get();
     if (!state.currentSceneId) {
@@ -241,7 +245,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
         // Note: Children don't store parent references in DraftSceneNode, only in React Flow nodes
         // The parent relationship is rebuilt from group.childNodeIds during toFlowNodes conversion
         // When the group is deleted, children will automatically render without a parent on next render
-        let updatedNodes = scene.nodes.filter((n) => !nodesToRemove.includes(n.id));
+        const updatedNodes = scene.nodes.filter((n) => !nodesToRemove.includes(n.id));
 
         // If keeping children, we don't need to modify them since:
         // 1. Positions are stored as absolute coordinates, not relative to parent
