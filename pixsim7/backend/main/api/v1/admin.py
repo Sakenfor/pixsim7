@@ -7,6 +7,7 @@ Provides monitoring and management capabilities:
 - System metrics
 - Service control
 """
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -15,6 +16,8 @@ import os
 import json
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser
 from pixsim7.backend.main.infrastructure.redis import check_redis_connection, get_redis
@@ -571,11 +574,11 @@ async def stream_logs(websocket):
                             "data": entry.dict()
                         })
                     except json.JSONDecodeError:
-                        # Skip invalid JSON
+                        # Skip invalid JSON (common in log files, not worth logging)
                         pass
                     except Exception as e:
-                        # Skip problematic entries
-                        pass
+                        # Log but don't crash - continue streaming other entries
+                        logger.debug("Error processing log entry: %s", e)
                 else:
                     # No new data, wait a bit
                     await asyncio.sleep(0.5)
@@ -589,17 +592,20 @@ async def stream_logs(websocket):
                     pass
 
     except WebSocketDisconnect:
-        pass
+        logger.debug("WebSocket client disconnected")
     except Exception as e:
+        logger.warning("WebSocket log stream error: %s", e)
         try:
             await websocket.send_json({
                 "type": "error",
                 "message": str(e)
             })
-        except:
+        except Exception:
+            # Client already disconnected, can't send error
             pass
     finally:
         try:
             await websocket.close()
-        except:
+        except Exception:
+            # Already closed or failed to close - nothing we can do
             pass
