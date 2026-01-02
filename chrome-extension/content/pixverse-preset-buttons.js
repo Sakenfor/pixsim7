@@ -1054,15 +1054,16 @@
         let pendingState = await storage.loadAndClearPendingPageState();
 
         // Fallback: check direct storage key if module didn't find it
+        // Use same key as storage module: 'pixsim7PendingPageState'
         if (!pendingState) {
-          const stored = await chrome.storage.local.get('pxs7_pendingPageState');
-          if (stored.pxs7_pendingPageState) {
-            const age = Date.now() - (stored.pxs7_pendingPageState.savedAt || 0);
+          const stored = await chrome.storage.local.get('pixsim7PendingPageState');
+          if (stored.pixsim7PendingPageState) {
+            const age = Date.now() - (stored.pixsim7PendingPageState.savedAt || 0);
             if (age < 120000) { // 2 minute expiry
-              pendingState = stored.pxs7_pendingPageState;
+              pendingState = stored.pixsim7PendingPageState;
               console.log('[PixSim7] Found pending state via fallback key');
             }
-            await chrome.storage.local.remove('pxs7_pendingPageState');
+            await chrome.storage.local.remove('pixsim7PendingPageState');
           }
         }
 

@@ -193,8 +193,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } else {
           console.warn('[PixSim7] Storage module not available, saving directly');
           // Fallback: save directly to chrome.storage
+          // Use same key as storage module: 'pixsim7PendingPageState'
           await chrome.storage.local.set({
-            pxs7_pendingPageState: { ...pageState, savedAt: Date.now() }
+            pixsim7PendingPageState: { ...pageState, savedAt: Date.now() }
           });
           console.log('[PixSim7] Saved page state directly:', pageState);
         }
