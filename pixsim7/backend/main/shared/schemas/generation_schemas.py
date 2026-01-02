@@ -25,17 +25,21 @@ from pixsim7.backend.main.shared.schemas.composition_schemas import CompositionA
 
 class SceneRefSchema(BaseModel):
     """Scene reference for generation context"""
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
     id: str
     mood: Optional[str] = None
     summary: Optional[str] = None
     location: Optional[str] = None
-    emotional_state: Optional[str] = None
+    emotional_state: Optional[str] = Field(None, alias="emotionalState")
 
 
 class PlayerContextSnapshotSchema(BaseModel):
     """Player state snapshot for generation context"""
-    playthrough_id: Optional[str] = None
-    player_id: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    playthrough_id: Optional[str] = Field(None, alias="playthroughId")
+    player_id: Optional[str] = Field(None, alias="playerId")
     choices: Optional[Dict[str, Any]] = None
     flags: Optional[Dict[str, bool]] = None
     stats: Optional[Dict[str, float]] = None
@@ -50,10 +54,12 @@ class DurationRuleSchema(BaseModel):
 
 class ConstraintSetSchema(BaseModel):
     """Content constraints and rating"""
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
     rating: Optional[str] = Field(None, pattern="^(G|PG|PG-13|R)$")
-    required_elements: Optional[List[str]] = None
-    avoid_elements: Optional[List[str]] = None
-    content_rules: Optional[List[str]] = None
+    required_elements: Optional[List[str]] = Field(None, alias="requiredElements")
+    avoid_elements: Optional[List[str]] = Field(None, alias="avoidElements")
+    content_rules: Optional[List[str]] = Field(None, alias="contentRules")
 
 
 class StyleRulesSchema(BaseModel):
@@ -66,21 +72,23 @@ class StyleRulesSchema(BaseModel):
     - The backend's _canonicalize_params extracts these to top-level canonical fields
     - This allows the schema to remain backward-compatible while supporting provider extensions
     """
-    mood_from: Optional[str] = None
-    mood_to: Optional[str] = None
-    pacing: Optional[str] = Field(None, pattern="^(slow|medium|fast)$")
-    transition_type: Optional[str] = Field(None, pattern="^(gradual|abrupt)$")
-
     # Allow extra fields for provider-specific extensions (e.g., pixverse: {...})
-    model_config = {"extra": "allow"}
+    model_config = ConfigDict(extra="allow", populate_by_name=True, serialize_by_alias=True)
+
+    mood_from: Optional[str] = Field(None, alias="moodFrom")
+    mood_to: Optional[str] = Field(None, alias="moodTo")
+    pacing: Optional[str] = Field(None, pattern="^(slow|medium|fast)$")
+    transition_type: Optional[str] = Field(None, pattern="^(gradual|abrupt)$", alias="transitionType")
 
 
 class FallbackConfigSchema(BaseModel):
     """Fallback configuration for failed generations"""
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
     mode: str = Field(..., pattern="^(default_content|skip|retry|placeholder)$")
-    default_content_id: Optional[str] = None
-    max_retries: Optional[int] = Field(None, ge=1, le=10)
-    timeout_ms: Optional[int] = Field(None, ge=1000)
+    default_content_id: Optional[str] = Field(None, alias="defaultContentId")
+    max_retries: Optional[int] = Field(None, ge=1, le=10, alias="maxRetries")
+    timeout_ms: Optional[int] = Field(None, ge=1000, alias="timeoutMs")
 
 
 class GenerationNodeConfigSchema(BaseModel):
@@ -97,15 +105,23 @@ class GenerationNodeConfigSchema(BaseModel):
     - source_asset_id(s): Asset references for provider URL resolution
     - prompts: Transition prompts for video_transition operations
     """
-    generation_type: str = Field(..., pattern="^(text_to_image|transition|variation|dialogue|environment|npc_response|image_edit|video_extend|fusion)$")
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    generation_type: str = Field(
+        ...,
+        pattern="^(text_to_image|transition|variation|dialogue|environment|npc_response|image_edit|video_extend|fusion)$",
+        alias="generationType"
+    )
     purpose: str = Field(..., pattern="^(gap_fill|variation|adaptive|ambient)$")
     style: StyleRulesSchema
     duration: DurationRuleSchema
     constraints: ConstraintSetSchema
     strategy: str = Field(..., pattern="^(once|per_playthrough|per_player|always)$")
-    seed_source: Optional[str] = Field(None, pattern="^(playthrough|player|timestamp|fixed)$")
+    seed_source: Optional[str] = Field(
+        None, pattern="^(playthrough|player|timestamp|fixed)$", alias="seedSource"
+    )
     fallback: FallbackConfigSchema
-    template_id: Optional[str] = None
+    template_id: Optional[str] = Field(None, alias="templateId")
     enabled: bool = True
     version: int = Field(1, ge=1)
 
@@ -116,10 +132,12 @@ class GenerationNodeConfigSchema(BaseModel):
     # Frontend passes asset IDs, backend resolves to provider-specific URLs
     source_asset_id: Optional[int] = Field(
         None,
+        alias="sourceAssetId",
         description="Asset ID for single-asset operations (image_to_video, image_to_image, video_extend). Backend resolves to provider-specific URL."
     )
     source_asset_ids: Optional[List[int]] = Field(
         None,
+        alias="sourceAssetIds",
         description="Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL."
     )
 
