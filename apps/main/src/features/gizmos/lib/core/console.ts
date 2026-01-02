@@ -11,14 +11,17 @@
  * - Dynamic tool-defined operations
  */
 
-import { create } from 'zustand';
 import {
-  getAllTools,
-  getTool,
   getAllGizmos,
+  getAllTools,
   getGizmo,
+  getTool,
 } from '@pixsim7/scene.gizmos';
-import { useToolConfigStore } from '@features/gizmos/stores/toolConfigStore';
+import { create } from 'zustand';
+
+import type { Operation } from '@lib/dev';
+
+import { useToolConfigStore } from '../../stores/toolConfigStore';
 
 // ============================================================================
 // Tool State Store (for console control)
@@ -57,6 +60,15 @@ export const useToolConsoleStore = create<ToolState>((set) => ({
 
 let registered = false;
 
+type ConsoleOpsRegistry = {
+  registerCategory: (id: string, name: string, description: string) => void;
+  register: (categoryId: string, operation: Operation) => void;
+};
+
+type ConsoleDataRegistry = {
+  register: (id: string, data: unknown) => void;
+};
+
 /**
  * Register tool and gizmo console operations.
  * Called automatically when this module is imported.
@@ -66,7 +78,7 @@ export function registerGizmoConsole(): void {
   registered = true; // Set immediately to prevent double registration
 
   // Lazy import to avoid circular dependencies
-  import('@/lib/dev/console').then(({ opsRegistry, dataRegistry, isConsoleInitialized }) => {
+  import('@lib/dev').then(({ opsRegistry, dataRegistry, isConsoleInitialized }) => {
     if (!isConsoleInitialized()) {
       return;
     }
@@ -84,8 +96,8 @@ export function registerGizmoConsole(): void {
  * Called by the console module system.
  */
 export function registerGizmoConsoleSync(
-  opsRegistry: { registerCategory: Function; register: Function },
-  dataRegistry: { register: Function }
+  opsRegistry: ConsoleOpsRegistry,
+  dataRegistry: ConsoleDataRegistry
 ): void {
   if (registered) return;
 
@@ -99,7 +111,7 @@ export function registerGizmoConsoleSync(
 // Tool Operations (Enhanced)
 // ============================================================================
 
-function registerToolOps(opsRegistry: { registerCategory: Function; register: Function }): void {
+function registerToolOps(opsRegistry: ConsoleOpsRegistry): void {
   opsRegistry.registerCategory('tools', 'Tools', 'Interactive tool configuration, parameter adjustment, and cheats');
 
   // List all tools
@@ -393,7 +405,7 @@ function registerToolOps(opsRegistry: { registerCategory: Function; register: Fu
 // Gizmo Operations
 // ============================================================================
 
-function registerGizmoOps(opsRegistry: { registerCategory: Function; register: Function }): void {
+function registerGizmoOps(opsRegistry: ConsoleOpsRegistry): void {
   opsRegistry.registerCategory('gizmos', 'Gizmos', 'Interactive gizmo operations');
 
   opsRegistry.register('gizmos', {
@@ -436,7 +448,7 @@ function registerGizmoOps(opsRegistry: { registerCategory: Function; register: F
 // Data Store Registration
 // ============================================================================
 
-function registerDataStore(dataRegistry: { register: Function }): void {
+function registerDataStore(dataRegistry: ConsoleDataRegistry): void {
   dataRegistry.register({
     id: 'toolConsole',
     name: 'Tool Console State',

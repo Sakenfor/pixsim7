@@ -5,15 +5,16 @@
  * per context and viewing their status.
  */
 
-import { useState, useMemo } from "react";
 import { Panel, Button, Badge } from "@pixsim7/shared.ui";
+import { useMemo, useState } from "react";
+
 import {
   gizmoSurfaceRegistry,
   type GizmoSurfaceDefinition,
   type GizmoSurfaceCategory,
   type GizmoSurfaceContext,
-} from "@/gizmos";
-import { useGizmoSurfaceStore } from "@/gizmos/gizmoSurfaceStore";
+} from "@features/gizmos";
+import { useGizmoSurfaceStore } from "@features/gizmos/stores/gizmoSurfaceStore";
 
 interface GizmoSurfacesPanelProps {
   /** Optional callback when panel is closed */
@@ -71,22 +72,6 @@ export function GizmoSurfacesPanel({ onClose }: GizmoSurfacesPanelProps) {
 
     return counts;
   }, [allSurfaces]);
-
-  // Get category badge variant
-  const getCategoryVariant = (category?: GizmoSurfaceCategory) => {
-    switch (category) {
-      case "scene":
-        return "info";
-      case "world":
-        return "success";
-      case "npc":
-        return "warning";
-      case "debug":
-        return "error";
-      default:
-        return "secondary";
-    }
-  };
 
   return (
     <Panel className="space-y-4" padded={true}>
