@@ -10,7 +10,7 @@ Defines configurable stat definitions that can be used for:
 """
 
 from typing import Dict, List, Optional, Any, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StatAxis(BaseModel):
@@ -374,25 +374,35 @@ class IntimacyBandThreshold(BaseModel):
 
 class ContentRatingGate(BaseModel):
     """Gate requirements for a content rating."""
-    minimum_band: Optional[str] = None
-    minimum_chemistry: Optional[float] = Field(default=None, ge=0, le=100)
-    minimum_affinity: Optional[float] = Field(default=None, ge=0, le=100)
-    minimum_level: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    minimum_band: Optional[str] = Field(default=None, alias="minimumBand")
+    minimum_chemistry: Optional[float] = Field(default=None, ge=0, le=100, alias="minimumChemistry")
+    minimum_affinity: Optional[float] = Field(default=None, ge=0, le=100, alias="minimumAffinity")
+    minimum_level: Optional[str] = Field(default=None, alias="minimumLevel")
 
 
 class InteractionGate(BaseModel):
     """Gate requirements for an interaction."""
-    minimum_affinity: Optional[float] = Field(default=None, ge=0, le=100)
-    minimum_chemistry: Optional[float] = Field(default=None, ge=0, le=100)
-    minimum_level: Optional[str] = None
-    appropriate_levels: Optional[List[str]] = None
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    minimum_affinity: Optional[float] = Field(default=None, ge=0, le=100, alias="minimumAffinity")
+    minimum_chemistry: Optional[float] = Field(default=None, ge=0, le=100, alias="minimumChemistry")
+    minimum_level: Optional[str] = Field(default=None, alias="minimumLevel")
+    appropriate_levels: Optional[List[str]] = Field(default=None, alias="appropriateLevels")
 
 
 class IntimacyGatingConfig(BaseModel):
     """Intimacy gating configuration."""
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
     version: int = Field(default=1, ge=1)
-    intimacy_bands: Optional[Dict[str, IntimacyBandThreshold]] = None
-    content_ratings: Optional[Dict[str, ContentRatingGate]] = None
+    intimacy_bands: Optional[Dict[str, IntimacyBandThreshold]] = Field(
+        default=None, alias="intimacyBands"
+    )
+    content_ratings: Optional[Dict[str, ContentRatingGate]] = Field(
+        default=None, alias="contentRatings"
+    )
     interactions: Optional[Dict[str, InteractionGate]] = None
 
 
