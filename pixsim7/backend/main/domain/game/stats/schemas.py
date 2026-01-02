@@ -416,7 +416,13 @@ class WorldManifest(BaseModel):
     enabled_arc_graphs: List[str] = Field(default_factory=list)
     enabled_campaigns: List[str] = Field(default_factory=list)
     enabled_plugins: List[str] = Field(default_factory=list)
-    gating_plugin: Optional[str] = "intimacy.default"
+    # TODO: gating_plugin is stored but not yet wired into runtime gating logic.
+    # Currently the frontend uses 'intimacy.default' plugin directly.
+    # Future work: backend should use this field to select the gating plugin.
+    gating_plugin: Optional[str] = Field(
+        default="intimacy.default",
+        description="ID of the gating plugin to use (not yet wired - future work)"
+    )
 
     class Config:
         extra = "allow"  # Allow additional fields
@@ -435,3 +441,8 @@ class WorldConfigResponse(BaseModel):
     # Pre-computed for frontend
     tier_order: List[str] = Field(default_factory=list)
     level_order: List[str] = Field(default_factory=list)
+    # Merge warnings (e.g., invalid overrides in world.meta)
+    merge_warnings: List[str] = Field(
+        default_factory=list,
+        description="Warnings from merging world.meta overrides (e.g., invalid definitions)"
+    )

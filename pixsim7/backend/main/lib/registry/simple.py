@@ -232,12 +232,38 @@ class SimpleRegistry(Generic[K, V]):
         """Get all registered keys."""
         return list(self._items.keys())
 
-    def values(self) -> List[V]:
-        """Get all registered items."""
+    def values(self, *, deep_copy: bool = False) -> List[V]:
+        """
+        Get all registered items.
+
+        Args:
+            deep_copy: If True, return deep copies of items to prevent mutation.
+                      Default False for performance (returns live references).
+
+        Warning:
+            Without deep_copy=True, returned items are live references.
+            Mutating them will modify the registry's internal state.
+        """
+        if deep_copy:
+            import copy
+            return [copy.deepcopy(v) for v in self._items.values()]
         return list(self._items.values())
 
-    def items(self) -> List[tuple[K, V]]:
-        """Get all key-value pairs."""
+    def items(self, *, deep_copy: bool = False) -> List[tuple[K, V]]:
+        """
+        Get all key-value pairs.
+
+        Args:
+            deep_copy: If True, return deep copies of values to prevent mutation.
+                      Default False for performance (returns live references).
+
+        Warning:
+            Without deep_copy=True, returned values are live references.
+            Mutating them will modify the registry's internal state.
+        """
+        if deep_copy:
+            import copy
+            return [(k, copy.deepcopy(v)) for k, v in self._items.items()]
         return list(self._items.items())
 
     def __len__(self) -> int:

@@ -331,11 +331,16 @@ def clear_stat_packages() -> None:
 # =============================================================================
 
 
-def get_merged_stats_config(world_meta: Optional[Dict] = None) -> "WorldStatsConfig":
+def get_merged_stats_config(
+    world_meta: Optional[Dict] = None,
+) -> Tuple["WorldStatsConfig", List[str]]:
     """
     Get stats config merged with world overrides.
 
     Uses WorldMergeMixin to merge package definitions with world overrides.
+
+    Returns:
+        Tuple of (WorldStatsConfig, list of warning messages)
     """
     from .schemas import WorldStatsConfig
 
@@ -348,7 +353,7 @@ def get_merged_stats_config(world_meta: Optional[Dict] = None) -> "WorldStatsCon
             errors=result.errors,
         )
 
-    return WorldStatsConfig(version=1, definitions=result.items)
+    return WorldStatsConfig(version=1, definitions=result.items), result.errors
 
 
 def _merge_definition(base: "StatDefinition", override: Dict) -> "StatDefinition":
@@ -403,7 +408,7 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
         world_meta: The world's meta dict (optional)
 
     Returns:
-        WorldConfigResponse with all config and pre-computed orders
+        WorldConfigResponse with all config, pre-computed orders, and merge warnings
     """
     from .schemas import (
         WorldConfigResponse,
@@ -413,23 +418,27 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
     )
 
     meta = world_meta or {}
+    warnings: List[str] = []
 
-    # Get merged stats config
-    stats_config = get_merged_stats_config(meta)
+    # Get merged stats config (includes merge warnings)
+    stats_config, stats_warnings = get_merged_stats_config(meta)
+    warnings.extend(stats_warnings)
 
     # Parse manifest
     manifest_data = meta.get("manifest", {})
     try:
         manifest = WorldManifest.model_validate(manifest_data)
-    except Exception:
+    except Exception as e:
         manifest = WorldManifest()
+        warnings.append(f"Invalid manifest, using defaults: {e}")
 
     # Parse intimacy gating
     gating_data = meta.get("intimacy_gating", {})
     try:
         intimacy_gating = IntimacyGatingConfig.model_validate(gating_data)
-    except Exception:
+    except Exception as e:
         intimacy_gating = IntimacyGatingConfig()
+        warnings.append(f"Invalid intimacy_gating, using defaults: {e}")
 
     # Pre-compute ordering for relationships (primary stat definition)
     tier_order = stats_config.get_tier_order("relationships")
@@ -442,4 +451,5 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
         intimacy_gating=intimacy_gating,
         tier_order=tier_order,
         level_order=level_order,
+        merge_warnings=warnings,
     )

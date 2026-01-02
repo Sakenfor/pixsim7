@@ -988,11 +988,8 @@ async def tick_world_manually(
 from pixsim7.backend.main.domain.game.stats import (
     get_world_config,
     WorldConfigResponse,
-    register_core_stat_packages,
 )
-
-# Ensure core stat packages are registered
-register_core_stat_packages()
+# Note: Core stat packages are registered in startup.py via setup_registries()
 
 
 @router.get("/{world_id}/config", response_model=WorldConfigResponse)
