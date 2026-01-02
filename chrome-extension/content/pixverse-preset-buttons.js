@@ -1089,15 +1089,36 @@
 
               console.log('[PixSim7] Opening model selector to restore:', pendingState.selectedModel);
               modelContainer.click();
-              await new Promise(r => setTimeout(r, 300));
+              await new Promise(r => setTimeout(r, 400));
 
-              const modelOptions = document.querySelectorAll('div[class*="cursor-pointer"] img[src*="asset/media/model/model-"]');
+              // Find model options in dropdown (larger images w-16 vs w-11 in selector)
+              const modelOptions = document.querySelectorAll('img[src*="asset/media/model/model-"]');
+              console.log('[PixSim7] Found', modelOptions.length, 'model images in dropdown');
+
               for (const optionImg of modelOptions) {
-                const optionContainer = optionImg.closest('div.cursor-pointer, div[class*="cursor-pointer"]');
-                const optionName = optionContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
-                if (optionName?.textContent?.trim() === pendingState.selectedModel) {
-                  console.log('[PixSim7] Found and clicking model:', pendingState.selectedModel);
-                  optionContainer.click();
+                // Skip the small image in the selector itself (w-11)
+                if (optionImg.className.includes('w-11')) continue;
+
+                // Find the clickable parent - traverse up to find element with cursor-pointer
+                let clickTarget = optionImg.parentElement;
+                while (clickTarget && !clickTarget.className?.includes('cursor-pointer')) {
+                  clickTarget = clickTarget.parentElement;
+                  if (clickTarget === document.body) {
+                    clickTarget = null;
+                    break;
+                  }
+                }
+
+                // Find model name - could be sibling span or inside parent
+                const optionName = clickTarget?.querySelector('span.font-semibold, span[class*="font-semibold"]') ||
+                                   clickTarget?.querySelector('span');
+                const modelName = optionName?.textContent?.trim();
+
+                console.log('[PixSim7] Checking model option:', modelName);
+
+                if (modelName === pendingState.selectedModel) {
+                  console.log('[PixSim7] Found and clicking model:', modelName);
+                  clickTarget.click();
                   return;
                 }
               }
