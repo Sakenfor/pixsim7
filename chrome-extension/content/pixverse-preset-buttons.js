@@ -10,6 +10,15 @@
 (function() {
   'use strict';
 
+  // Debug mode - controlled by extension settings
+  let DEBUG_PRESETS = false;
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.local.get({ debugPresets: false, debugAll: false }, (result) => {
+      DEBUG_PRESETS = result.debugPresets || result.debugAll;
+    });
+  }
+  const debugLog = (...args) => DEBUG_PRESETS && console.log('[PixSim7]', ...args);
+
   // ===== Module Imports =====
   const { BTN_GROUP_CLASS, BTN_CLASS, MENU_CLASS, COLORS, injectStyle } = window.PXS7.styles;
   const {
@@ -79,7 +88,7 @@
         // Fetch ad status for selected account only (manual refresh for all via extension popup)
         fetchSelectedAccountStatus();
 
-        console.log('[PixSim7] Loaded', accountsCache.length, 'accounts');
+        debugLog('Loaded', accountsCache.length, 'accounts');
         return accountsCache;
       } else {
         console.warn('[PixSim7] loadAccounts failed:', res?.error || 'unknown error');
@@ -238,7 +247,7 @@
         return [];
       }
 
-      console.log('[PixSim7] Raw backend response:', {
+      debugLog('Raw backend response:', {
         success: res.success,
         dataType: Array.isArray(res.data) ? 'array' : typeof res.data,
         dataKeys: res.data && typeof res.data === 'object' ? Object.keys(res.data) : null,
@@ -256,7 +265,7 @@
         items = items.items || items.assets || items.data || items.results || [];
       }
 
-      console.log('[PixSim7] Parsed response:', {
+      debugLog('Parsed response:', {
         itemsCount: items?.length,
         total,
         nextCursor: nextCursor ? 'exists' : 'null',
@@ -303,7 +312,7 @@
         assetsTotalCount = assetsLoadedCount + 1; // Signal there might be more
       }
 
-      console.log('[PixSim7] Loaded assets:', {
+      debugLog('Loaded assets:', {
         newCount: newImages.length,
         totalInCache: assetsCache.length,
         assetsLoadedCount,
@@ -1061,14 +1070,14 @@
             const age = Date.now() - (stored.pixsim7PendingPageState.savedAt || 0);
             if (age < 120000) { // 2 minute expiry
               pendingState = stored.pixsim7PendingPageState;
-              console.log('[PixSim7] Found pending state via fallback key');
+              debugLog('Found pending state via fallback key');
             }
             await chrome.storage.local.remove('pixsim7PendingPageState');
           }
         }
 
         if (pendingState) {
-          console.log('[PixSim7] Found pending page state to restore:', pendingState);
+          debugLog('Found pending page state to restore:', pendingState);
 
           // === STEP 1: Restore model first (may affect available options) ===
           if (pendingState.selectedModel) {
@@ -1083,17 +1092,17 @@
 
               const currentModelSpan = modelContainer.querySelector('span.font-semibold, span[class*="font-semibold"]');
               if (currentModelSpan?.textContent?.trim() === pendingState.selectedModel) {
-                console.log('[PixSim7] Model already correct:', pendingState.selectedModel);
+                debugLog(' Model already correct:', pendingState.selectedModel);
                 return;
               }
 
-              console.log('[PixSim7] Opening model selector to restore:', pendingState.selectedModel);
+              debugLog(' Opening model selector to restore:', pendingState.selectedModel);
               modelContainer.click();
               await new Promise(r => setTimeout(r, 400));
 
               // Find model options in dropdown (larger images w-16 vs w-11 in selector)
               const modelOptions = document.querySelectorAll('img[src*="asset/media/model/model-"]');
-              console.log('[PixSim7] Found', modelOptions.length, 'model images in dropdown');
+              debugLog(' Found', modelOptions.length, 'model images in dropdown');
 
               for (const optionImg of modelOptions) {
                 // Skip the small image in the selector itself (w-11)
@@ -1114,10 +1123,10 @@
                                    clickTarget?.querySelector('span');
                 const modelName = optionName?.textContent?.trim();
 
-                console.log('[PixSim7] Checking model option:', modelName);
+                debugLog(' Checking model option:', modelName);
 
                 if (modelName === pendingState.selectedModel) {
-                  console.log('[PixSim7] Found and clicking model:', modelName);
+                  debugLog(' Found and clicking model:', modelName);
                   clickTarget.click();
                   return;
                 }
@@ -1138,10 +1147,10 @@
                 if (ratioText === pendingState.selectedAspectRatio) {
                   // Check if already selected
                   if (!btn.className.includes('bg-button-secondary-hover')) {
-                    console.log('[PixSim7] Clicking aspect ratio:', ratioText);
+                    debugLog(' Clicking aspect ratio:', ratioText);
                     btn.click();
                   } else {
-                    console.log('[PixSim7] Aspect ratio already correct:', ratioText);
+                    debugLog(' Aspect ratio already correct:', ratioText);
                   }
                   return true;
                 }
@@ -1230,7 +1239,7 @@
               });
 
               if (restored > 0) {
-                console.log('[PixSim7] Restored', restored, 'prompt(s)');
+                debugLog(' Restored', restored, 'prompt(s)');
                 promptsRestored = true;
               }
               return restored > 0;
@@ -1246,136 +1255,26 @@
             }
           }
 
-          // === STEP 4: Restore image slot count by clicking the + button ===
-          if (pendingState.imageSlotCount && pendingState.imageSlotCount > 0) {
-            const targetSlots = pendingState.imageSlotCount;
-            const currentSlots = document.querySelectorAll('[id*="customer_img"] input[type="file"]').length;
-            const slotsToAdd = targetSlots - currentSlots;
-
-            if (slotsToAdd > 0) {
-              console.log('[PixSim7] Restoring slot count:', currentSlots, '->', targetSlots);
-
-              // Find the + button by its SVG path
-              const plusPath = "M8 2v6m0 0v6m0-6h6M8 8H2";
-              const plusSvg = document.querySelector(`svg path[d="${plusPath}"]`);
-              const plusBtn = plusSvg?.closest('div[class*="opacity"]') || plusSvg?.parentElement?.parentElement;
-
-              if (plusBtn) {
-                for (let i = 0; i < slotsToAdd; i++) {
-                  plusBtn.click();
-                  await new Promise(r => setTimeout(r, 100)); // Small delay between clicks
-                }
-                console.log('[PixSim7] Added', slotsToAdd, 'image slot(s)');
-                // Wait for DOM to update
-                await new Promise(r => setTimeout(r, 300));
-              } else {
-                console.warn('[PixSim7] Could not find + button to restore slots');
-              }
-            }
-          }
-
-          // === STEP 5: Auto-restore images to their original containers ===
+          // === STEP 4 & 5: Restore images using shared restoreAllImages ===
+          // (handles slot adding and sequential upload with completion waiting)
           if (pendingState.images && pendingState.images.length > 0) {
-            const { injectImageToUpload } = imagePicker;
-            const uploadInputs = imagePicker.findUploadInputs ? imagePicker.findUploadInputs() : [];
+            const { restoreAllImages } = window.PXS7.uploadUtils || {};
 
-            // Normalize images to array of {url, slot, containerId} objects (handle old format)
-            const imagesToRestore = pendingState.images.map(img =>
-              typeof img === 'string' ? { url: img, slot: -1, containerId: '' } : img
-            );
+            if (restoreAllImages) {
+              debugLog(' Using restoreAllImages for', pendingState.images.length, 'images');
+              const result = await restoreAllImages(pendingState.images);
 
-            console.log('[PixSim7] Auto-restoring', imagesToRestore.length, 'images');
-            console.log('[PixSim7] Available upload slots:', uploadInputs.map(u => ({
-              containerId: u.containerId,
-              hasImage: u.hasImage,
-              priority: u.priority
-            })));
-
-            let restored = 0;
-            let failed = [];
-
-            for (const imgData of imagesToRestore) {
-              const { url, slot, containerId } = imgData;
-              let targetInput = null;
-              let matchType = 'none';
-
-              // Priority 1: Match by exact containerId (most reliable)
-              if (containerId) {
-                const exactMatch = uploadInputs.find(u =>
-                  u.containerId === containerId && !u.hasImage
-                );
-                if (exactMatch) {
-                  targetInput = exactMatch.input;
-                  matchType = 'containerId';
-                }
+              if (result.success > 0) {
+                showToast(`Restored ${result.success} image(s)`, true);
               }
 
-              // Priority 2: Match by containerId prefix (e.g., "create_image-customer_img" matches any customer_img slot)
-              if (!targetInput && containerId) {
-                // Extract the base type (e.g., "customer_img" from "create_image-customer_img_paths")
-                const baseType = containerId.replace(/^(create_image|image_text|transition|fusion)-/, '');
-                const prefixMatch = uploadInputs.find(u =>
-                  u.containerId?.includes(baseType) && !u.hasImage
-                );
-                if (prefixMatch) {
-                  targetInput = prefixMatch.input;
-                  matchType = 'prefix';
-                }
+              // If some failed, show the picker panel with remaining images
+              if (result.failed.length > 0) {
+                debugLog(' Some images failed to auto-restore, showing picker:', result.failed);
+                showImageRestorePanel(result.failed);
               }
-
-              // Priority 3: Fall back to slot index if on same page type
-              if (!targetInput && slot >= 0 && slot < uploadInputs.length) {
-                const slotMatch = uploadInputs[slot];
-                if (slotMatch && !slotMatch.hasImage) {
-                  // Only use slot if it's a high-priority (page-relevant) slot
-                  if (slotMatch.priority >= 10) {
-                    targetInput = slotMatch.input;
-                    matchType = 'slot';
-                  }
-                }
-              }
-
-              // Priority 4: First empty high-priority slot
-              if (!targetInput) {
-                const emptySlot = uploadInputs.find(u => !u.hasImage && u.priority >= 10);
-                if (emptySlot) {
-                  targetInput = emptySlot.input;
-                  matchType = 'firstEmpty';
-                }
-              }
-
-              if (targetInput) {
-                console.log(`[PixSim7] Restoring image to ${matchType} match:`, containerId || `slot ${slot}`);
-                try {
-                  const success = await injectImageToUpload(url, targetInput);
-                  if (success) {
-                    restored++;
-                    // Mark slot as used
-                    const slotInfo = uploadInputs.find(u => u.input === targetInput);
-                    if (slotInfo) slotInfo.hasImage = true;
-                  } else {
-                    failed.push(url);
-                  }
-                } catch (e) {
-                  console.warn('[PixSim7] Failed to restore image to slot:', e);
-                  failed.push(url);
-                }
-                // Small delay for DOM stability (main waiting is done in injectImageToUpload)
-                await new Promise(r => setTimeout(r, 200));
-              } else {
-                console.log('[PixSim7] No matching slot found for:', containerId || `slot ${slot}`);
-                failed.push(url);
-              }
-            }
-
-            if (restored > 0) {
-              showToast(`Restored ${restored} image(s)`, true);
-            }
-
-            // If some failed, show the picker panel with remaining images
-            if (failed.length > 0) {
-              console.log('[PixSim7] Some images failed to auto-restore, showing picker:', failed);
-              showImageRestorePanel(failed);
+            } else {
+              console.warn('[PixSim7] restoreAllImages not available');
             }
           }
         }
@@ -1409,7 +1308,7 @@
       }
     });
 
-    console.log('[PixSim7] Preset buttons ready');
+    debugLog(' Preset buttons ready');
   }
 
   if (document.readyState === 'loading') {

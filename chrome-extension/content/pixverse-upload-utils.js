@@ -1,0 +1,748 @@
+/**
+ * Pixverse Upload Utilities
+ * Handles upload detection, image injection, and input preservation
+ */
+
+(function() {
+  'use strict';
+
+  // Make utilities available globally for other scripts
+  window.PXS7 = window.PXS7 || {};
+  const storage = window.PXS7.storage || {};
+  const { sendMessageWithTimeout, normalizeUrl, extractImageUrl } = window.PXS7.utils || {};
+  const showToast = window.PXS7.showToast;
+
+  const SESSION_KEY_PRESERVED_INPUT = 'pxs7_preserved_input';
+  const DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
+  const debugLog = (...args) => DEBUG_IMAGE_PICKER && console.log('[PixSim7]', ...args);
+
+  // Persistent ID tracking for upload inputs
+  const inputStableIdMap = new WeakMap();
+  const baseIdCounters = {};
+
+  // ===== Input Preservation =====
+
+  function saveInputState() {
+    try {
+      const state = { inputs: {}, images: [] };
+
+      // Save all textareas with content
+      document.querySelectorAll('textarea').forEach((el, i) => {
+        if (el.value && el.value.trim()) {
+          const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+          state.inputs[key] = el.value;
+        }
+      });
+
+      // Save contenteditable divs
+      document.querySelectorAll('[contenteditable="true"]').forEach((el, i) => {
+        if (el.textContent && el.textContent.trim()) {
+          const key = el.id || el.dataset.placeholder || `editable_${i}`;
+          state.inputs[`ce_${key}`] = el.innerHTML;
+        }
+      });
+
+      // Save uploaded image URLs from Ant Design upload containers
+      document.querySelectorAll('.ant-upload-drag-container img').forEach(img => {
+        const src = img.src;
+        if (src && src.includes('media.pixverse.ai')) {
+          const cleanUrl = normalizeUrl(src);
+          if (!state.images.includes(cleanUrl)) {
+            state.images.push(cleanUrl);
+          }
+        }
+      });
+
+      // Also check for background images in upload previews
+      document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
+        const url = extractImageUrl(el.getAttribute('style'));
+        if (url && !state.images.includes(url)) {
+          state.images.push(url);
+        }
+      });
+
+      if (Object.keys(state.inputs).length > 0 || state.images.length > 0) {
+        sessionStorage.setItem(SESSION_KEY_PRESERVED_INPUT, JSON.stringify(state));
+        debugLog('Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images');
+      }
+    } catch (e) {
+      console.warn('[PixSim7] Failed to save input state:', e);
+    }
+  }
+
+  function restoreInputState(showImageRestorePanel) {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY_PRESERVED_INPUT);
+      if (!saved) return;
+
+      const state = JSON.parse(saved);
+      const inputs = state.inputs || state;
+      const images = state.images || [];
+
+      let restored = 0;
+
+      // Restore textareas
+      document.querySelectorAll('textarea').forEach((el, i) => {
+        const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+        if (inputs[key]) {
+          el.value = inputs[key];
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          restored++;
+        }
+      });
+
+      // Restore contenteditable
+      document.querySelectorAll('[contenteditable="true"]').forEach((el, i) => {
+        const key = el.id || el.dataset.placeholder || `editable_${i}`;
+        if (inputs[`ce_${key}`]) {
+          el.innerHTML = inputs[`ce_${key}`];
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          restored++;
+        }
+      });
+
+      // Show image restoration panel if there are images
+      if (images.length > 0 && showImageRestorePanel) {
+        showImageRestorePanel(images);
+      }
+
+      if (restored > 0) {
+        debugLog('Restored', restored, 'input(s)');
+        if (showToast) showToast(`Restored ${restored} input(s)`, true);
+      }
+
+      sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+    } catch (e) {
+      console.warn('[PixSim7] Failed to restore input state:', e);
+    }
+  }
+
+  // ===== Upload Input Detection =====
+
+  function findUploadInputs() {
+    const results = [];
+    const seenInputs = new Set();
+    const url = window.location.pathname;
+    const isImageTextPage = url.includes('image-text') || url.includes('image_text');
+    const isImageGenPage = url.includes('create-image') || url.includes('image-generation') || url.includes('/create/image');
+    const isTransitionPage = url.includes('/transition');
+    const isFusionPage = url.includes('/fusion');
+    const isExtendPage = url.includes('/extend');
+    const isImageEditPage = url.includes('/edit') && !isExtendPage;
+
+    const allFileInputs = document.querySelectorAll('input[type="file"]');
+    const inputs = Array.from(allFileInputs).filter(input => {
+      const accept = input.getAttribute('accept') || '';
+      return accept.includes('image') ||
+             accept.includes('.jpg') ||
+             accept.includes('.png') ||
+             accept.includes('.jpeg') ||
+             accept.includes('.webp') ||
+             input.closest('.ant-upload') ||
+             input.closest('[class*="upload"]');
+    });
+
+    inputs.forEach(input => {
+      if (seenInputs.has(input)) return;
+      seenInputs.add(input);
+
+      let container = input.closest('.ant-upload') ||
+                      input.closest('.ant-upload-btn') ||
+                      input.closest('[class*="ant-upload"]') ||
+                      input.closest('[class*="upload"]');
+
+      const parentWithId = input.closest('[id]');
+      const containerId = parentWithId?.id || '';
+
+      let priority = 0;
+      if (isImageTextPage && containerId.includes('image_text')) {
+        priority = 10;
+      } else if (isImageGenPage && containerId.includes('create_image')) {
+        priority = 10;
+      } else if (isTransitionPage && containerId.startsWith('transition')) {
+        priority = 10;
+      } else if (isFusionPage && containerId.startsWith('fusion')) {
+        priority = 10;
+      } else if (isExtendPage && (containerId.startsWith('extend') || containerId.includes('extend'))) {
+        priority = 10;
+      } else if (isImageEditPage && (containerId.includes('edit') || containerId.includes('image_edit'))) {
+        priority = 10;
+      }
+
+      if (priority === 0) {
+        const accept = input.getAttribute('accept') || '';
+        const isImageInput = accept.includes('image');
+        if (isImageInput && (isTransitionPage || isFusionPage || isExtendPage)) {
+          priority = 10;
+        }
+      }
+
+      if (priority === 0 && (containerId.includes('customer') || containerId.includes('main'))) {
+        priority = 5;
+      }
+      if (containerId.includes('video')) {
+        priority = 0;
+      }
+
+      let hasImage = false;
+      if (container) {
+        const parentArea = container.closest('.ant-upload-wrapper') || container.parentElement?.parentElement;
+        if (parentArea) {
+          const existingImg = parentArea.querySelector('img[src]:not([src=""]):not([src="#"])');
+          const bgWithImage = parentArea.querySelector('[style*="background-image"]');
+          const uploadListItem = parentArea.querySelector('.ant-upload-list-item, .ant-upload-list-picture-card-container');
+          const previewEl = parentArea.querySelector('[class*="preview"], [class*="Preview"]');
+
+          let imgHasContent = false;
+          if (existingImg) {
+            const src = existingImg.src || '';
+            imgHasContent = src.length > 100 || src.includes('media.pixverse') || src.includes('blob:') || src.includes('aliyun');
+          }
+
+          let bgHasContent = false;
+          if (bgWithImage) {
+            const style = bgWithImage.getAttribute('style') || '';
+            bgHasContent = style.includes('url(') && !style.includes('data:image/gif');
+          }
+
+          let previewHasContent = false;
+          if (previewEl) {
+            const previewImg = previewEl.querySelector('img[src]');
+            const previewBg = previewEl.querySelector('[style*="background-image"]') ||
+                              (previewEl.style?.backgroundImage && previewEl.style.backgroundImage !== 'none');
+            if (previewImg) {
+              const src = previewImg.src || '';
+              previewHasContent = src.length > 100 || src.includes('media.pixverse') || src.includes('blob:') || src.includes('aliyun');
+            } else if (previewBg) {
+              const style = typeof previewBg === 'object' ? (previewBg.getAttribute?.('style') || '') : '';
+              previewHasContent = style.includes('url(') && !style.includes('data:image/gif');
+            }
+          }
+
+          hasImage = imgHasContent || bgHasContent || !!uploadListItem || previewHasContent;
+        }
+      }
+
+      results.push({ input, container, hasImage, priority, containerId });
+    });
+
+    results.sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      return (a.containerId || '').localeCompare(b.containerId || '');
+    });
+
+    // Assign persistent IDs
+    results.forEach((r) => {
+      const input = r.input;
+      if (!input) {
+        r.containerId = (r.containerId || 'unknown') + '#orphan';
+        return;
+      }
+
+      let stableId = inputStableIdMap.get(input);
+
+      if (!stableId) {
+        const baseId = r.containerId || 'unknown';
+        if (baseIdCounters[baseId] === undefined) {
+          baseIdCounters[baseId] = 0;
+        }
+        stableId = `${baseId}#${baseIdCounters[baseId]}`;
+        baseIdCounters[baseId]++;
+        inputStableIdMap.set(input, stableId);
+        debugLog('[Slots] Assigned new stable ID:', stableId);
+      }
+
+      r.containerId = stableId;
+      input.dataset.pxs7SlotId = stableId;
+    });
+
+    return results;
+  }
+
+  // ===== Upload Interception =====
+
+  function setupUploadInterceptor() {
+    setTimeout(() => {
+      try {
+        if (document.querySelector('#pxs7-upload-interceptor')) return;
+        const script = document.createElement('script');
+        script.id = 'pxs7-upload-interceptor';
+        script.src = chrome.runtime.getURL('injected-upload-interceptor.js');
+        script.onerror = (e) => console.warn('[PixSim7] Failed to load upload interceptor:', e);
+        (document.head || document.documentElement).appendChild(script);
+      } catch (e) {
+        console.warn('[PixSim7] Error setting up upload interceptor:', e);
+      }
+    }, 0);
+  }
+
+  function setPendingImageUrl(url) {
+    window.dispatchEvent(new CustomEvent('__pxs7SetPendingUrl', { detail: url }));
+  }
+
+  // ===== Upload Container Management =====
+
+  async function clearUploadContainer(container) {
+    try {
+      const wrapper = container?.closest('.ant-upload-wrapper') ||
+                      container?.closest('[class*="ant-upload"]')?.parentElement ||
+                      container?.parentElement?.parentElement;
+      if (!wrapper) {
+        debugLog('[Clear] Could not find upload wrapper');
+        return false;
+      }
+
+      const hoverTargets = [
+        wrapper.querySelector('.ant-upload-list-item'),
+        wrapper.querySelector('[class*="upload-list"]'),
+        wrapper.querySelector('[class*="preview"]'),
+        wrapper,
+      ].filter(Boolean);
+
+      for (const target of hoverTargets) {
+        target.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      }
+      await new Promise(r => setTimeout(r, 150));
+
+      const deleteSelectors = [
+        'div.absolute[class*="bg-black"][class*="rounded-full"]',
+        'div[class*="-right-"][class*="-top-"][class*="rounded-full"]',
+        '.anticon-delete',
+        '.anticon-close',
+        '.anticon-close-circle',
+        '[class*="delete"]',
+        '[class*="remove"]',
+        '[class*="Delete"]',
+        '[class*="Remove"]',
+        'svg[class*="close"]',
+        'svg[class*="delete"]',
+        '[aria-label*="delete"]',
+        '[aria-label*="remove"]',
+        '[aria-label*="Delete"]',
+        '[aria-label*="Remove"]',
+        '.ant-upload-list-item-actions button',
+        '.ant-upload-list-item-card-actions button',
+      ];
+
+      let deleteBtn = null;
+      const wrapperParent = wrapper.parentElement;
+      const searchAreas = [];
+
+      if (wrapperParent) {
+        Array.from(wrapperParent.children).forEach(child => {
+          if (child !== wrapper) searchAreas.push(child);
+        });
+        searchAreas.push(wrapperParent);
+      }
+      searchAreas.push(wrapper);
+
+      for (const area of searchAreas) {
+        if (deleteBtn) break;
+        for (const selector of deleteSelectors) {
+          deleteBtn = area.querySelector(selector);
+          if (deleteBtn) break;
+        }
+      }
+
+      if (deleteBtn) {
+        debugLog('[Clear] Clicking delete button');
+        deleteBtn.click();
+        await new Promise(r => setTimeout(r, 200));
+        return true;
+      }
+
+      debugLog('[Clear] No delete button found, trying manual clear');
+      const previewDiv = wrapper.querySelector('[style*="background-image"]');
+      if (previewDiv) {
+        previewDiv.style.backgroundImage = '';
+        const placeholder = previewDiv.querySelector('div[style*="display: none"], svg[style*="display: none"]');
+        if (placeholder) placeholder.style.display = '';
+      }
+
+      const fileInput = wrapper.querySelector('input[type="file"]');
+      if (fileInput) fileInput.value = '';
+
+      debugLog('Cleared upload container (manual)');
+      return true;
+    } catch (e) {
+      console.warn('[PixSim7] Failed to clear container:', e);
+      return false;
+    }
+  }
+
+  function getMimeTypeFromUrl(url) {
+    const ext = normalizeUrl(url).split('.').pop()?.toLowerCase();
+    const mimeMap = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'webp': 'image/webp',
+      'gif': 'image/gif'
+    };
+    return mimeMap[ext] || 'image/jpeg';
+  }
+
+  /**
+   * Try to directly inject a Pixverse CDN URL into the preview without upload.
+   * This works by:
+   * 1. Setting the visual preview (background-image or img src)
+   * 2. Storing the URL in a data attribute for later retrieval
+   * 3. Trying to update React internal state if accessible
+   */
+  async function tryDirectPreviewInjection(container, imageUrl) {
+    try {
+      const wrapper = container?.closest('.ant-upload-wrapper') || container?.parentElement?.parentElement;
+      if (!wrapper) {
+        debugLog('[Direct] No wrapper found');
+        return false;
+      }
+
+      // Find or create preview element
+      let previewEl = wrapper.querySelector('[class*="preview"], [class*="Preview"], .ant-upload-list-item');
+
+      // Look for the upload area that shows the image
+      const uploadArea = wrapper.querySelector('.ant-upload, [class*="upload"]');
+      const bgDiv = wrapper.querySelector('[style*="background-image"]') ||
+                    uploadArea?.querySelector('div[style]');
+
+      // Try setting background-image on existing element
+      if (bgDiv) {
+        bgDiv.style.backgroundImage = `url("${imageUrl}")`;
+        bgDiv.style.backgroundSize = 'cover';
+        bgDiv.style.backgroundPosition = 'center';
+        debugLog('[Direct] Set background-image on existing div');
+      }
+
+      // Hide the placeholder/upload prompt
+      const placeholder = wrapper.querySelector('svg, [class*="placeholder"], [class*="Placeholder"], .ant-upload-drag-icon');
+      if (placeholder) {
+        placeholder.style.display = 'none';
+      }
+      const uploadText = wrapper.querySelector('.ant-upload-text, [class*="uploadText"]');
+      if (uploadText) {
+        uploadText.style.display = 'none';
+      }
+
+      // Store the URL in a data attribute for potential later use
+      wrapper.dataset.pxs7ImageUrl = imageUrl;
+      if (container) {
+        container.dataset.pxs7ImageUrl = imageUrl;
+      }
+
+      // Try to find React fiber and update state
+      // Look for React internal keys
+      const reactKey = Object.keys(wrapper).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+      if (reactKey) {
+        debugLog('[Direct] Found React fiber, attempting state update');
+        try {
+          const fiber = wrapper[reactKey];
+          // Walk up to find component with image state
+          let current = fiber;
+          let attempts = 0;
+          while (current && attempts < 20) {
+            const stateNode = current.stateNode;
+            if (stateNode && typeof stateNode.setState === 'function') {
+              // Found a class component - try to find image-related state
+              debugLog('[Direct] Found class component');
+            }
+            // Check memoizedProps for onChange or value setters
+            const props = current.memoizedProps;
+            if (props?.onChange && props?.fileList !== undefined) {
+              debugLog('[Direct] Found upload component props');
+              // This might be an Ant Design Upload component
+            }
+            current = current.return;
+            attempts++;
+          }
+        } catch (e) {
+          debugLog('[Direct] React state update failed:', e.message);
+        }
+      }
+
+      // Create a visual preview if none exists
+      if (!bgDiv && !previewEl) {
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1;';
+        const uploadEl = wrapper.querySelector('.ant-upload') || uploadArea || wrapper;
+        if (uploadEl) {
+          uploadEl.style.position = 'relative';
+          uploadEl.appendChild(img);
+          debugLog('[Direct] Created img element');
+        }
+      }
+
+      // Check if visual was actually set
+      await new Promise(r => setTimeout(r, 100));
+      const hasVisual = wrapper.querySelector('img[src*="pixverse"], [style*="pixverse"]') ||
+                        wrapper.querySelector('[style*="background-image"]')?.style.backgroundImage.includes('pixverse');
+
+      debugLog('[Direct] Has visual after injection:', !!hasVisual);
+      return !!hasVisual;
+    } catch (e) {
+      debugLog('[Direct] Injection error:', e);
+      return false;
+    }
+  }
+
+  // ===== Image Injection =====
+
+  async function injectImageToUpload(imageUrl, targetInputOrContainerId = null, targetSlotIndex = null, expectedContainerId = null) {
+    try {
+      const uploads = findUploadInputs();
+
+      if (uploads.length === 0) {
+        if (showToast) showToast('No upload area found', false);
+        return false;
+      }
+
+      const relevantSlots = uploads.filter(u => u.priority >= 10);
+      const freshSlotSnapshot = relevantSlots.map((s, idx) => ({ idx, containerId: s.containerId, hasImage: s.hasImage }));
+      debugLog('[Slots] Fresh slots:', JSON.stringify(freshSlotSnapshot));
+
+      let targetUpload;
+      // Helper to match container IDs (handles #N suffix variations)
+      const containerIdMatches = (a, b) => {
+        if (!a || !b) return false;
+        if (a === b) return true;
+        // Strip #N suffix for comparison
+        const stripSuffix = (s) => s.replace(/#\d+$/, '');
+        return stripSuffix(a) === stripSuffix(b);
+      };
+
+      if (targetSlotIndex !== null && targetSlotIndex >= 0 && targetSlotIndex < relevantSlots.length) {
+        targetUpload = relevantSlots[targetSlotIndex];
+        debugLog('Using slot index', targetSlotIndex, 'containerId:', targetUpload?.containerId);
+
+        if (expectedContainerId && !containerIdMatches(targetUpload?.containerId, expectedContainerId)) {
+          debugLog('[Slots] ORDER MISMATCH! Expected:', expectedContainerId, 'Got:', targetUpload?.containerId);
+          const correctSlot = relevantSlots.find(s => containerIdMatches(s.containerId, expectedContainerId));
+          if (correctSlot) {
+            debugLog('[Slots] Found correct slot by containerId, using that instead');
+            targetUpload = correctSlot;
+          } else {
+            debugLog('[Slots] Could not find slot by containerId:', expectedContainerId);
+            debugLog('[Slots] Available containerIds:', relevantSlots.map(s => s.containerId));
+            // Fall back to index-based selection
+          }
+        } else if (expectedContainerId) {
+          debugLog('[Slots] Verified: index', targetSlotIndex, 'matches', expectedContainerId);
+        }
+      } else if (targetInputOrContainerId) {
+        if (typeof targetInputOrContainerId === 'string') {
+          targetUpload = relevantSlots.find(u => containerIdMatches(u.containerId, targetInputOrContainerId));
+          if (!targetUpload) {
+            targetUpload = uploads.find(u => containerIdMatches(u.containerId, targetInputOrContainerId));
+          }
+          debugLog('Using containerId:', targetInputOrContainerId, 'found:', !!targetUpload);
+        } else {
+          targetUpload = relevantSlots.find(u => u.input === targetInputOrContainerId) ||
+                         uploads.find(u => u.input === targetInputOrContainerId);
+          debugLog('Using direct input ref, found:', !!targetUpload);
+        }
+      } else {
+        targetUpload = relevantSlots.find(u => !u.hasImage) || relevantSlots[0];
+        debugLog('Auto-selected slot:', targetUpload?.containerId);
+      }
+
+      if (!targetUpload) {
+        if (showToast) showToast('Could not find upload slot', false);
+        return false;
+      }
+
+      const input = targetUpload.input;
+      const container = targetUpload.container;
+
+      // Clear existing image if present
+      if (targetUpload.hasImage && container) {
+        const cleared = await clearUploadContainer(container);
+        if (!cleared) {
+          debugLog('Warning: Failed to clear existing image, continuing anyway');
+        }
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      // For Pixverse CDN URLs, use a tiny placeholder - interceptor returns original URL
+      const isPixverseCdn = imageUrl.includes('media.pixverse.ai') || imageUrl.includes('pixverse-fe-upload');
+      let file;
+
+      if (isPixverseCdn) {
+        debugLog('Using placeholder for Pixverse CDN URL (interceptor will return original)');
+        // 1x1 transparent PNG
+        const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        const pngData = atob(pngBase64);
+        const pngArray = new Uint8Array(pngData.length);
+        for (let i = 0; i < pngData.length; i++) {
+          pngArray[i] = pngData.charCodeAt(i);
+        }
+        const placeholderBlob = new Blob([pngArray], { type: 'image/png' });
+        file = new File([placeholderBlob], 'image.png', { type: 'image/png' });
+      } else {
+        // For non-Pixverse URLs, fetch and upload the actual image
+        debugLog('Fetching external image for upload');
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+        const blob = await response.blob();
+        const filename = imageUrl.split('/').pop().split('?')[0] || 'image.jpg';
+        const mimeType = getMimeTypeFromUrl(imageUrl);
+        file = new File([blob], filename, { type: mimeType });
+      }
+
+      // Create DataTransfer with file
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+
+      // Trigger upload via input
+      setPendingImageUrl(imageUrl);
+      input.files = dataTransfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      setTimeout(() => { if (showToast) showToast('Upload triggered!', true); }, 500);
+      return true;
+    } catch (e) {
+      console.error('[PixSim7] Failed to inject image:', e);
+      if (showToast) showToast('Failed to add image', false);
+      return false;
+    }
+  }
+
+  /**
+   * Restore multiple images sequentially, waiting for each upload to complete.
+   * @param {Array} images - Array of URLs or {url, slot, containerId} objects
+   * @param {Object} options - Options: { onProgress, timeout }
+   * @returns {Object} - { success: number, failed: string[] }
+   */
+  async function restoreAllImages(images, options = {}) {
+    const { onProgress, timeout = 5000 } = options;
+    let success = 0;
+    const failed = [];
+
+    // Get fresh slot list
+    let uploads = findUploadInputs();
+    let relevantSlots = uploads.filter(u => u.priority >= 10);
+    const emptySlots = relevantSlots.filter(s => !s.hasImage);
+
+    debugLog('[RestoreAll] Starting restore of', images.length, 'images');
+    debugLog('[RestoreAll] Available slots:', relevantSlots.length, 'empty:', emptySlots.length);
+
+    // Add slots if we need more than available empty slots
+    const slotsNeeded = images.length - emptySlots.length;
+    if (slotsNeeded > 0) {
+      debugLog('[RestoreAll] Need to add', slotsNeeded, 'more slot(s)');
+
+      // Find the + button by its SVG path
+      const plusPath = "M8 2v6m0 0v6m0-6h6M8 8H2";
+      const plusSvg = document.querySelector(`svg path[d="${plusPath}"]`);
+      const plusBtn = plusSvg?.closest('div[class*="opacity"]') || plusSvg?.parentElement?.parentElement;
+
+      if (plusBtn) {
+        for (let i = 0; i < slotsNeeded; i++) {
+          plusBtn.click();
+          await new Promise(r => setTimeout(r, 150));
+        }
+        debugLog('[RestoreAll] Added', slotsNeeded, 'slot(s)');
+        // Wait for DOM to update
+        await new Promise(r => setTimeout(r, 400));
+
+        // Refresh slot list
+        uploads = findUploadInputs();
+        relevantSlots = uploads.filter(u => u.priority >= 10);
+        debugLog('[RestoreAll] After adding, available slots:', relevantSlots.length);
+      } else {
+        debugLog('[RestoreAll] Could not find + button to add slots');
+      }
+    }
+
+    for (let i = 0; i < images.length; i++) {
+      // Normalize to {url, slot, containerId} format
+      const imgData = typeof images[i] === 'string'
+        ? { url: images[i], slot: i, containerId: null }
+        : images[i];
+
+      const { url, slot, containerId } = imgData;
+      debugLog('[RestoreAll] Restoring image', i + 1, 'of', images.length, ':', url);
+
+      // Find target slot - priority: containerId > slot index > first empty
+      let targetSlot = null;
+      if (containerId) {
+        targetSlot = relevantSlots.find(s => s.containerId === containerId && !s.hasImage);
+      }
+      if (!targetSlot && slot >= 0 && slot < relevantSlots.length) {
+        const byIndex = relevantSlots[slot];
+        if (byIndex && !byIndex.hasImage) targetSlot = byIndex;
+      }
+      if (!targetSlot) {
+        targetSlot = relevantSlots.find(s => !s.hasImage);
+      }
+
+      if (!targetSlot) {
+        debugLog('[RestoreAll] No empty slot found for image', i + 1);
+        failed.push(url);
+        continue;
+      }
+
+      // Create promise that resolves when upload completes or times out
+      const uploadComplete = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          debugLog('[RestoreAll] Upload timeout for image', i + 1);
+          resolve(false);
+        }, timeout);
+
+        const handler = (e) => {
+          if (e.detail?.url === url || e.detail?.success) {
+            clearTimeout(timer);
+            window.removeEventListener('__pxs7UploadComplete', handler);
+            debugLog('[RestoreAll] Upload complete for image', i + 1);
+            resolve(true);
+          }
+        };
+        window.addEventListener('__pxs7UploadComplete', handler);
+      });
+
+      // Trigger the upload
+      const slotIndex = relevantSlots.indexOf(targetSlot);
+      const injected = await injectImageToUpload(url, null, slotIndex, targetSlot.containerId);
+
+      if (injected) {
+        // Wait for completion or timeout
+        const completed = await uploadComplete;
+        if (completed) {
+          success++;
+          targetSlot.hasImage = true; // Mark as used
+        } else {
+          failed.push(url);
+        }
+      } else {
+        failed.push(url);
+      }
+
+      // Progress callback
+      if (onProgress) {
+        onProgress({ current: i + 1, total: images.length, success, failed: failed.length });
+      }
+
+      // Delay for DOM stability before next image
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    debugLog('[RestoreAll] Done. Success:', success, 'Failed:', failed.length);
+    return { success, failed };
+  }
+
+  // Export to global scope
+  window.PXS7.uploadUtils = {
+    saveInputState,
+    restoreInputState,
+    findUploadInputs,
+    setupUploadInterceptor,
+    setPendingImageUrl,
+    clearUploadContainer,
+    getMimeTypeFromUrl,
+    injectImageToUpload,
+    restoreAllImages
+  };
+
+})();
