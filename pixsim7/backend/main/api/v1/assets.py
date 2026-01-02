@@ -37,7 +37,7 @@ from pixsim7.backend.main.api.v1 import assets_bulk
 from pixsim7.backend.main.api.v1 import assets_tags
 from pixsim7.backend.main.api.v1 import assets_versions
 
-router = APIRouter()
+router = APIRouter(prefix="/assets")
 logger = get_logger()
 
 # Include sub-routers
@@ -49,7 +49,7 @@ router.include_router(assets_versions.router)
 
 # ===== LIST ASSETS =====
 
-@router.get("/assets", response_model=AssetListResponse)
+@router.get("", response_model=AssetListResponse)
 async def list_assets(
     user: CurrentUser,
     asset_service: AssetSvc,
@@ -181,7 +181,7 @@ class FilterMetadataResponse(BaseModel):
     )
 
 
-@router.get("/assets/filter-metadata", response_model=FilterMetadataResponse)
+@router.get("/filter-metadata", response_model=FilterMetadataResponse)
 async def get_filter_metadata(
     user: CurrentUser,
     db: DatabaseSession,
@@ -276,7 +276,7 @@ class AutocompleteResponse(BaseModel):
     suggestions: List[str] = Field(description="List of autocomplete suggestions")
 
 
-@router.get("/assets/autocomplete", response_model=AutocompleteResponse)
+@router.get("/autocomplete", response_model=AutocompleteResponse)
 async def autocomplete_assets(
     user: CurrentUser,
     db: DatabaseSession,
@@ -342,7 +342,7 @@ async def autocomplete_assets(
 
 # ===== GET ASSET =====
 
-@router.get("/assets/{asset_id}", response_model=AssetResponse)
+@router.get("/{asset_id}", response_model=AssetResponse)
 async def get_asset(
     asset_id: int,
     user: CurrentUser,
@@ -389,7 +389,7 @@ class CheckByHashResponse(BaseModel):
     note: Optional[str] = Field(None, description="Additional information")
 
 
-@router.post("/assets/check-by-hash", response_model=CheckByHashResponse)
+@router.post("/check-by-hash", response_model=CheckByHashResponse)
 async def check_asset_by_hash(
     user: CurrentUser,
     asset_service: AssetSvc,
@@ -480,7 +480,7 @@ class BatchCheckByHashResponse(BaseModel):
     found_count: int = Field(..., description="Number of hashes that matched existing assets")
 
 
-@router.post("/assets/check-by-hash-batch", response_model=BatchCheckByHashResponse)
+@router.post("/check-by-hash-batch", response_model=BatchCheckByHashResponse)
 async def check_assets_by_hash_batch(
     user: CurrentUser,
     asset_service: AssetSvc,
@@ -539,7 +539,7 @@ async def check_assets_by_hash_batch(
         )
 
 
-@router.post("/assets/{asset_id}/sync", response_model=AssetResponse, status_code=http_status.HTTP_200_OK)
+@router.post("/{asset_id}/sync", response_model=AssetResponse, status_code=http_status.HTTP_200_OK)
 async def sync_asset(asset_id: int, user: CurrentUser, asset_service: AssetSvc):
     """Download remote provider asset locally and optionally extract embedded assets."""
     try:
@@ -553,7 +553,7 @@ async def sync_asset(asset_id: int, user: CurrentUser, asset_service: AssetSvc):
 
 # ===== DELETE ASSET =====
 
-@router.delete("/assets/{asset_id}", status_code=204)
+@router.delete("/{asset_id}", status_code=204)
 async def delete_asset(
     asset_id: int,
     user: CurrentUser,
@@ -597,7 +597,7 @@ class ArchiveAssetResponse(BaseModel):
     message: str
 
 
-@router.patch("/assets/{asset_id}/archive", response_model=ArchiveAssetResponse)
+@router.patch("/{asset_id}/archive", response_model=ArchiveAssetResponse)
 async def archive_asset(
     asset_id: int,
     request: ArchiveAssetRequest,
@@ -647,7 +647,7 @@ async def archive_asset(
 
 # ===== SERVE LOCAL ASSET FILE =====
 
-@router.get("/assets/{asset_id}/file")
+@router.get("/{asset_id}/file")
 async def serve_asset_file(
     asset_id: int,
     user: CurrentUser,
@@ -714,7 +714,7 @@ async def serve_asset_file(
 
 # ===== ASSET SIBLINGS (Same Input Variations) =====
 
-@router.get("/assets/{asset_id}/siblings")
+@router.get("/{asset_id}/siblings")
 async def get_asset_siblings(
     asset_id: int,
     user: CurrentUser,
@@ -776,7 +776,7 @@ class UploadAssetResponse(BaseModel):
     note: str | None = None
 
 
-@router.post("/assets/upload", response_model=UploadAssetResponse)
+@router.post("/upload", response_model=UploadAssetResponse)
 async def upload_asset_to_provider(
     user: CurrentUser,
     db: DatabaseSession,
@@ -1136,7 +1136,7 @@ class UploadFromUrlRequest(BaseModel):
     )
 
 
-@router.post("/assets/upload-from-url", response_model=UploadAssetResponse)
+@router.post("/upload-from-url", response_model=UploadAssetResponse)
 async def upload_asset_from_url(
     request: UploadFromUrlRequest,
     user: CurrentUser,
@@ -1572,7 +1572,7 @@ class ExtractFrameRequest(BaseModel):
     frame_number: Optional[int] = Field(None, description="Optional frame number for metadata")
 
 
-@router.post("/assets/extract-frame", response_model=AssetResponse)
+@router.post("/extract-frame", response_model=AssetResponse)
 async def extract_frame(
     request: ExtractFrameRequest,
     user: CurrentUser,
@@ -1641,12 +1641,19 @@ class EnrichAssetResponse(BaseModel):
     message: str
 
 
+@router.post("/{asset_id}/test-enrich")
+async def test_enrich(asset_id: int):
+    """Minimal test endpoint - no auth, no dependencies"""
+    return {"test": "success", "asset_id": asset_id}
+
+
 @router.post("/{asset_id}/enrich", response_model=EnrichAssetResponse)
 async def enrich_asset(
     asset_id: int,
     user: CurrentUser,
     db: DatabaseSession,
     asset_service: AssetSvc,
+    force: bool = Query(default=False, description="Force re-enrichment even if generation exists"),
 ):
     """
     Enrich an asset by fetching metadata from the provider and running synthetic generation.
@@ -1657,15 +1664,18 @@ async def enrich_asset(
     3. Create a synthetic Generation record with prompt/params
 
     Useful for assets synced without full metadata (e.g., from extension badge click).
+
+    Set force=true to re-enrich assets that already have generations (for debugging/re-sync).
     """
-    from pixsim7.backend.main.domain import Asset
+    from pixsim7.backend.main.domain import Asset, Generation
     from pixsim7.backend.main.domain.providers import ProviderAccount
+    from pixsim7.backend.main.domain.assets.lineage import AssetLineage
     from pixsim7.backend.main.services.asset.enrichment import AssetEnrichmentService
     from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
-    from sqlalchemy import select
+    from sqlalchemy import select, delete
 
     # Get the asset
-    asset = await asset_service.get_asset(asset_id, user)
+    asset = await asset_service.get_asset_for_user(asset_id, user)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
@@ -1674,15 +1684,6 @@ async def enrich_asset(
         raise HTTPException(
             status_code=400,
             detail=f"Enrichment not supported for provider: {asset.provider_id}"
-        )
-
-    # Already has generation? Skip
-    if asset.source_generation_id:
-        return EnrichAssetResponse(
-            asset_id=asset.id,
-            enriched=False,
-            generation_id=asset.source_generation_id,
-            message="Asset already has generation record"
         )
 
     # Need provider_account_id to fetch metadata
@@ -1714,7 +1715,51 @@ async def enrich_asset(
         if asset.media_type.value == "VIDEO":
             provider_metadata = await client.get_video(asset.provider_asset_id)
         else:
+            # For images, get_image() only works for recent images
+            # For older images, we need to search through list_images()
             provider_metadata = await client.get_image(asset.provider_asset_id)
+
+            # If we got minimal data (no prompt), try finding it in the image list
+            if provider_metadata and not provider_metadata.get("prompt"):
+                logger.info(
+                    "enrich_asset_image_minimal_data",
+                    asset_id=asset.id,
+                    searching_image_list=True,
+                )
+
+                # Search through paginated image list
+                found = False
+                offset = 0
+                limit = 100
+                max_pages = 20  # Search up to 2000 images
+
+                for page in range(max_pages):
+                    images = await client.list_images(limit=limit, offset=offset)
+                    if not images:
+                        break
+
+                    for img in images:
+                        if str(img.get("image_id")) == str(asset.provider_asset_id):
+                            provider_metadata = img
+                            found = True
+                            logger.info(
+                                "enrich_asset_found_in_image_list",
+                                asset_id=asset.id,
+                                page=page,
+                                offset=offset,
+                            )
+                            break
+
+                    if found:
+                        break
+                    offset += limit
+
+                if not found:
+                    logger.warning(
+                        "enrich_asset_not_in_image_list",
+                        asset_id=asset.id,
+                        pages_searched=page + 1,
+                    )
     except Exception as e:
         logger.warning(
             "enrich_asset_fetch_failed",
@@ -1737,9 +1782,40 @@ async def enrich_asset(
     asset.media_metadata = provider_metadata
     await db.commit()
 
+    # Debug logging to see what metadata we got
+    logger.info(
+        "enrich_asset_metadata_fetched",
+        asset_id=asset.id,
+        has_customer_paths=bool(provider_metadata.get("customer_paths")),
+        has_prompt=bool(provider_metadata.get("prompt") or provider_metadata.get("customer_paths", {}).get("prompt")),
+        has_customer_img_url=bool(provider_metadata.get("customer_img_url") or provider_metadata.get("customer_paths", {}).get("customer_img_url")),
+        create_mode=provider_metadata.get("customer_paths", {}).get("create_mode") or provider_metadata.get("create_mode"),
+        metadata_keys=list(provider_metadata.keys()) if provider_metadata else [],
+    )
+
     # Run enrichment pipeline
     enrichment_service = AssetEnrichmentService(db)
-    generation = await enrichment_service.enrich_synced_asset(asset, user, provider_metadata)
+
+    # If already has generation and force=true, re-enrich (update existing)
+    # Otherwise, create new generation
+    if asset.source_generation_id and force:
+        logger.info(
+            "enrich_asset_re_populate",
+            asset_id=asset.id,
+            generation_id=asset.source_generation_id,
+        )
+        generation = await enrichment_service.re_enrich_synced_asset(asset, user, provider_metadata)
+    elif asset.source_generation_id:
+        # Already has generation, skip
+        return EnrichAssetResponse(
+            asset_id=asset.id,
+            enriched=False,
+            generation_id=asset.source_generation_id,
+            message="Asset already has generation record (use force=true to re-enrich)"
+        )
+    else:
+        # No generation yet, create one
+        generation = await enrichment_service.enrich_synced_asset(asset, user, provider_metadata)
 
     return EnrichAssetResponse(
         asset_id=asset.id,

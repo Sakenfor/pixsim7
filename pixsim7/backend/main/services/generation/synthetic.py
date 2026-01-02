@@ -101,8 +101,6 @@ class SyntheticGenerationService:
         Returns:
             Created Generation or None if insufficient metadata
         """
-        meta = media_metadata or asset.media_metadata or {}
-
         # Skip if already has generation
         if asset.source_generation_id:
             logger.debug(
@@ -111,6 +109,115 @@ class SyntheticGenerationService:
                 existing_generation_id=asset.source_generation_id,
             )
             return None
+
+        # Prepare generation data (shared logic with update_for_asset)
+        gen_data = await self._prepare_generation_data(asset, user, media_metadata)
+
+        # Create synthetic generation
+        generation = Generation(
+            user_id=user.id,
+            operation_type=gen_data["operation_type"],
+            provider_id=asset.provider_id,
+            raw_params={},  # Not available from sync
+            canonical_params=gen_data["canonical_params"],
+            inputs=gen_data["inputs"],
+            reproducible_hash=gen_data["reproducible_hash"],
+            prompt_version_id=gen_data["prompt_version_id"],
+            final_prompt=gen_data["final_prompt"],
+            status=GenerationStatus.COMPLETED,
+            started_at=asset.created_at,
+            completed_at=asset.created_at,
+            asset_id=asset.id,
+            account_id=asset.provider_account_id,
+            origin=GenerationOrigin.SYNC,
+            billing_state=BillingState.SKIPPED,  # Already paid on provider
+        )
+
+        self.db.add(generation)
+        await self.db.flush()  # Get generation.id
+
+        # Link asset back to generation
+        asset.source_generation_id = generation.id
+
+        # Explicit commit - FastAPI dependency doesn't auto-commit
+        await self.db.commit()
+
+        logger.info(
+            "synthetic_generation_created",
+            generation_id=generation.id,
+            asset_id=asset.id,
+            operation_type=gen_data["operation_type"].value,
+            has_prompt=bool(gen_data["final_prompt"]),
+            input_count=len(gen_data["inputs"]),
+            reproducible_hash=gen_data["reproducible_hash"][:16] if gen_data["reproducible_hash"] else None,
+        )
+
+        return generation
+
+    async def update_for_asset(
+        self,
+        generation: Generation,
+        asset: Asset,
+        user: User,
+        media_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Generation:
+        """
+        Update/repopulate an existing Generation from asset's media_metadata.
+
+        This is used for re-sync operations where we want to update the generation
+        data without deleting and recreating it (preserves generation ID).
+
+        Args:
+            generation: Existing generation to update
+            asset: The synced asset
+            user: Asset owner
+            media_metadata: Provider metadata (defaults to asset.media_metadata)
+
+        Returns:
+            Updated Generation
+        """
+        # Prepare generation data (shared logic with create_for_asset)
+        gen_data = await self._prepare_generation_data(asset, user, media_metadata)
+
+        # Update generation fields
+        generation.operation_type = gen_data["operation_type"]
+        generation.canonical_params = gen_data["canonical_params"]
+        generation.inputs = gen_data["inputs"]
+        generation.reproducible_hash = gen_data["reproducible_hash"]
+        generation.prompt_version_id = gen_data["prompt_version_id"]
+        generation.final_prompt = gen_data["final_prompt"]
+
+        self.db.add(generation)
+        await self.db.commit()
+
+        logger.info(
+            "synthetic_generation_updated",
+            generation_id=generation.id,
+            asset_id=asset.id,
+            operation_type=gen_data["operation_type"].value,
+            has_prompt=bool(gen_data["final_prompt"]),
+            input_count=len(gen_data["inputs"]),
+            reproducible_hash=gen_data["reproducible_hash"][:16] if gen_data["reproducible_hash"] else None,
+        )
+
+        return generation
+
+    async def _prepare_generation_data(
+        self,
+        asset: Asset,
+        user: User,
+        media_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Extract and prepare generation data from asset metadata.
+
+        This is shared logic used by both create_for_asset and update_for_asset.
+
+        Returns:
+            Dict with keys: operation_type, final_prompt, prompt_version_id,
+                           canonical_params, inputs, reproducible_hash
+        """
+        meta = media_metadata or asset.media_metadata or {}
 
         # Extract operation type from create_mode
         customer_paths = meta.get("customer_paths", {})
@@ -141,9 +248,15 @@ class SyntheticGenerationService:
         # Build inputs from existing lineage edges
         inputs = await self._build_inputs_from_lineage(asset.id, create_mode)
 
-        # Compute reproducible hash (for sibling discovery, NOT dedup)
-        # Only compute hash if we have meaningful inputs, otherwise skip
-        # to avoid clustering unrelated assets with sparse/empty metadata
+        logger.info(
+            "synthetic_generation_inputs_built",
+            asset_id=asset.id,
+            input_count=len(inputs),
+            has_prompt=bool(prompt_text),
+            create_mode=create_mode,
+        )
+
+        # Compute reproducible hash
         reproducible_hash = None
         if inputs:
             reproducible_hash = Generation.compute_hash(canonical_params, inputs)
@@ -154,46 +267,14 @@ class SyntheticGenerationService:
                 reason="no_inputs",
             )
 
-        # Create synthetic generation
-        generation = Generation(
-            user_id=user.id,
-            operation_type=operation_type,
-            provider_id=asset.provider_id,
-            raw_params={},  # Not available from sync
-            canonical_params=canonical_params,
-            inputs=inputs,
-            reproducible_hash=reproducible_hash,
-            prompt_version_id=prompt_version_id,
-            final_prompt=prompt_text,
-            status=GenerationStatus.COMPLETED,
-            started_at=asset.created_at,
-            completed_at=asset.created_at,
-            asset_id=asset.id,
-            account_id=asset.provider_account_id,
-            origin=GenerationOrigin.SYNC,
-            billing_state=BillingState.SKIPPED,  # Already paid on provider
-        )
-
-        self.db.add(generation)
-        await self.db.flush()  # Get generation.id
-
-        # Link asset back to generation
-        asset.source_generation_id = generation.id
-
-        # Explicit commit - FastAPI dependency doesn't auto-commit
-        await self.db.commit()
-
-        logger.info(
-            "synthetic_generation_created",
-            generation_id=generation.id,
-            asset_id=asset.id,
-            operation_type=operation_type.value,
-            has_prompt=bool(prompt_text),
-            input_count=len(inputs),
-            reproducible_hash=reproducible_hash[:16] if reproducible_hash else None,
-        )
-
-        return generation
+        return {
+            "operation_type": operation_type,
+            "final_prompt": prompt_text,
+            "prompt_version_id": prompt_version_id,
+            "canonical_params": canonical_params,
+            "inputs": inputs,
+            "reproducible_hash": reproducible_hash,
+        }
 
     async def _find_or_create_prompt_version(
         self,

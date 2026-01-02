@@ -118,6 +118,111 @@ class AssetEnrichmentService:
 
         return generation
 
+    async def re_enrich_synced_asset(
+        self,
+        asset: Asset,
+        user: User,
+        provider_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional["Generation"]:
+        """
+        Re-enrich an asset that already has a generation by repopulating it.
+
+        Unlike enrich_synced_asset, this:
+        - Re-extracts embedded assets and updates lineage
+        - Updates the existing generation instead of creating new one
+        - Preserves the generation ID
+
+        Args:
+            asset: The synced asset with existing generation
+            user: Asset owner
+            provider_metadata: Full provider metadata (e.g., from client.get_video())
+                              Falls back to asset.media_metadata if not provided.
+
+        Returns:
+            Updated Generation or None if no generation exists
+        """
+        from pixsim7.backend.main.services.generation.synthetic import SyntheticGenerationService
+        from pixsim7.backend.main.domain import Generation
+        from pixsim7.backend.main.domain.assets.lineage import AssetLineage
+        from sqlalchemy import select, delete
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
+        # Must have existing generation
+        if not asset.source_generation_id:
+            logger.warning(
+                "re_enrich_no_generation",
+                asset_id=asset.id,
+            )
+            return None
+
+        metadata = provider_metadata or asset.media_metadata
+
+        # Get existing generation
+        stmt = select(Generation).where(Generation.id == asset.source_generation_id)
+        result = await self.db.execute(stmt)
+        generation = result.scalar_one_or_none()
+
+        if not generation:
+            logger.warning(
+                "re_enrich_generation_not_found",
+                asset_id=asset.id,
+                generation_id=asset.source_generation_id,
+            )
+            return None
+
+        # Step 1: Delete old lineage and re-extract embedded assets
+        try:
+            # Delete existing lineage
+            await self.db.execute(
+                delete(AssetLineage).where(AssetLineage.child_asset_id == asset.id)
+            )
+            await self.db.commit()
+
+            logger.info(
+                "re_enrich_extracting_embedded",
+                asset_id=asset.id,
+                has_metadata=bool(metadata),
+            )
+
+            # Re-extract embedded assets and create new lineage
+            await self._extract_and_register_embedded(asset, user)
+
+            # Check how many lineage edges were created
+            from sqlalchemy import select, func
+            count_stmt = select(func.count()).select_from(AssetLineage).where(
+                AssetLineage.child_asset_id == asset.id
+            )
+            result = await self.db.execute(count_stmt)
+            lineage_count = result.scalar()
+
+            logger.info(
+                "re_enrich_lineage_created",
+                asset_id=asset.id,
+                lineage_count=lineage_count,
+            )
+        except Exception as e:
+            logger.warning(
+                "re_enrich_embedded_failed",
+                asset_id=asset.id,
+                error=str(e),
+            )
+
+        # Step 2: Update generation with new data
+        try:
+            synthetic_service = SyntheticGenerationService(self.db)
+            generation = await synthetic_service.update_for_asset(generation, asset, user, metadata)
+        except Exception as e:
+            logger.warning(
+                "re_enrich_update_failed",
+                asset_id=asset.id,
+                generation_id=generation.id,
+                error=str(e),
+            )
+            return None
+
+        return generation
+
     async def _extract_and_register_embedded(self, asset: Asset, user: User) -> None:
         """
         Use provider hook to extract embedded assets (images/prompts) and
@@ -126,11 +231,20 @@ class AssetEnrichmentService:
         Uses create_lineage_links_with_metadata to preserve sequence_order,
         time ranges, and frame metadata.
         """
-        from pixsim7.backend.main.domain.providers.registry import registry
+        from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
         from pixsim_logging import get_logger
         logger = get_logger()
 
-        provider = registry.get(asset.provider_id)
+        # Only pixverse is currently supported
+        if asset.provider_id != "pixverse":
+            logger.debug(
+                "embedded_extraction_not_supported",
+                provider_id=asset.provider_id,
+                asset_id=asset.id,
+            )
+            return
+
+        provider = PixverseProvider()
 
         try:
             embedded = await provider.extract_embedded_assets(
