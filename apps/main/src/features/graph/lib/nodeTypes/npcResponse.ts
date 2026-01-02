@@ -4,8 +4,22 @@
  * Integrates with existing scene graph system and AI video generation
  */
 
-import { sceneNodeTypeRegistry, type SceneNodeTypeDefinition } from './sceneRegistry';
+import type { InstanceRef, CharacterRef } from '@shared/types';
+
+import {
+  normalizeInstanceRef,
+  normalizeCharacterRef,
+  extractInstanceIdFromRef,
+} from '../refs/graphRefs';
+import {
+  createNpcLinkInfo,
+  buildRuntimeTemplateRefs,
+  buildRuntimeLinkMap,
+  type TemplateRef,
+} from '../refs/objectLinks';
+
 import type { NpcZoneConfiguration } from './npcZones';
+import { sceneNodeTypeRegistry, type SceneNodeTypeDefinition } from './sceneRegistry';
 
 // ============================================================================
 // NPC Response Data Structure
@@ -96,7 +110,18 @@ export interface NpcResponseMetadata {
 
   // NPC character settings
   npc: {
-    id?: string;
+    /**
+     * Character instance reference.
+     * Supports:
+     * - Raw UUID string (legacy): "abc-123-..."
+     * - Canonical InstanceRef: "instance:abc-123-..."
+     * - Canonical CharacterRef: "character:abc-123-..." (for template reference)
+     */
+    id?: string | InstanceRef | CharacterRef;
+    /** Character instance UUID (normalized canonical form) */
+    instanceRef?: InstanceRef;
+    /** Character template UUID (normalized canonical form) */
+    characterRef?: CharacterRef;
     name: string;
     avatarUrl?: string;
     personality?: 'gentle' | 'intense' | 'playful' | 'custom';
@@ -561,6 +586,83 @@ export function registerNpcResponseNode() {
     editorComponent: 'NpcResponseNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',  // TODO: Create NpcResponseNodeRenderer
     preloadPriority: 8,
+
+    // Runtime conversion with ObjectLink support
+    toRuntime: (node) => {
+      const metadata = node.metadata as NpcResponseMetadata | undefined;
+      if (!metadata) {
+        return {
+          nodeType: 'scene_content' as const,
+          id: node.id,
+          type: node.type,
+          label: undefined,
+          meta: node.metadata,
+        };
+      }
+
+      // Normalize NPC reference to canonical form
+      const npcId = metadata.npc?.id;
+      let instanceRef = metadata.npc?.instanceRef;
+      let characterRef = metadata.npc?.characterRef;
+
+      // Try to normalize raw ID to instance ref
+      if (npcId && !instanceRef) {
+        const normalized = normalizeInstanceRef(npcId);
+        if (normalized.success) {
+          instanceRef = normalized.ref;
+        } else {
+          // Try as character ref
+          const charNormalized = normalizeCharacterRef(npcId);
+          if (charNormalized.success) {
+            characterRef = charNormalized.ref;
+          }
+        }
+      }
+
+      // Build ObjectLink template refs for runtime
+      const templateRefs: TemplateRef[] = [];
+      const linkMap: Record<string, { mappingId?: string; syncDirection?: string }> = {};
+
+      // Add NPC link if we have an instance ref
+      if (instanceRef) {
+        const instanceId = extractInstanceIdFromRef(instanceRef);
+        if (instanceId) {
+          const linkInfo = createNpcLinkInfo(instanceId, {
+            nodeId: node.id,
+            nodeType: node.type,
+          });
+          if (linkInfo) {
+            const refs = buildRuntimeTemplateRefs([linkInfo]);
+            const map = buildRuntimeLinkMap([linkInfo]);
+            templateRefs.push(...refs);
+            Object.assign(linkMap, map);
+          }
+        }
+      }
+
+      return {
+        nodeType: 'scene_content' as const,
+        id: node.id,
+        type: node.type,
+        label: metadata.npc?.name,
+        meta: {
+          ...node.metadata,
+          // Include normalized refs for easy access
+          _refs: {
+            instanceRef,
+            characterRef,
+          },
+          // ObjectLink data for template↔runtime linking
+          _templateRefs: templateRefs.length > 0 ? templateRefs : undefined,
+          _linkMap: Object.keys(linkMap).length > 0 ? linkMap : undefined,
+        },
+        // NPC-specific runtime data
+        npcName: metadata.npc?.name,
+        npcPersonality: metadata.npc?.personality,
+        videoGenEnabled: metadata.videoGen?.enabled,
+        realtimePreset: metadata.videoGen?.realtime?.preset,
+      };
+    },
 
     ports: {
       inputs: [

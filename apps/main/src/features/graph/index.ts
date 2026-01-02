@@ -97,3 +97,9 @@ export * from './lib/nodeTypes/builtin';
 
 // Namespace export for node types
 export * as NodeTypes from './lib/nodeTypes/registry';
+
+// Lib - Refs (canonical IDs and ObjectLinks)
+export * from './lib/refs';
+
+// Lib - Capabilities (ContextHub integration)
+export * from './lib/capabilities';

@@ -1,4 +1,77 @@
+import type { SceneIdRef, InstanceRef } from '@shared/types';
+
+import { normalizeSceneRef } from '../refs/graphRefs';
+
 import { arcNodeTypeRegistry } from './arcRegistry';
+
+// ============================================================================
+// Arc Node Metadata Types
+// ============================================================================
+
+/**
+ * Arc node metadata with canonical refs.
+ */
+export interface ArcNodeMetadata {
+  /** Arc identifier */
+  arcId?: string;
+  /** Story stage/beat number */
+  stage?: number;
+  /**
+   * Scene reference. Supports:
+   * - Raw number: 123
+   * - String number: "123"
+   * - Canonical SceneIdRef: "scene:game:123"
+   */
+  sceneId?: string | number | SceneIdRef;
+  /** Normalized scene ref */
+  sceneRef?: SceneIdRef;
+  /** Relationship requirements for this arc stage */
+  relationshipRequirements?: Array<{
+    characterRef?: InstanceRef;
+    minLevel?: number;
+    type?: string;
+  }>;
+  /** Quest requirements for this arc stage */
+  questRequirements?: string[];
+  /** Required flags */
+  requiredFlags?: string[];
+}
+
+/**
+ * Quest node metadata with canonical refs.
+ */
+export interface QuestNodeMetadata {
+  /** Quest identifier */
+  questId?: string;
+  /** Scene reference */
+  sceneId?: string | number | SceneIdRef;
+  sceneRef?: SceneIdRef;
+  /** Objective IDs in this quest */
+  objectiveIds?: string[];
+  /** Relationship requirements */
+  relationshipRequirements?: Array<{
+    characterRef?: InstanceRef;
+    minLevel?: number;
+    type?: string;
+  }>;
+  /** Quest requirements (other quests that must be completed) */
+  questRequirements?: string[];
+}
+
+/**
+ * Milestone node metadata with canonical refs.
+ */
+export interface MilestoneNodeMetadata {
+  /** Milestone identifier */
+  milestoneId?: string;
+  /** Scene reference */
+  sceneId?: string | number | SceneIdRef;
+  sceneRef?: SceneIdRef;
+  /** Required arcs to complete before this milestone */
+  requiredArcs?: string[];
+  /** Required quests to complete before this milestone */
+  requiredQuests?: string[];
+}
 
 // Ensure arc node types are only registered once per process
 let arcNodeTypesRegistered = false;
@@ -34,6 +107,35 @@ export function registerArcNodeTypes() {
     editorComponent: 'ArcNodeEditor',
     rendererComponent: 'ArcNodeRenderer',
     preloadPriority: 4, // Arc-level, moderately important
+    toRuntime: (node) => {
+      const metadata = node.metadata as ArcNodeMetadata | undefined;
+      let sceneRef = metadata?.sceneRef;
+
+      // Normalize scene ID to canonical ref
+      if (metadata?.sceneId && !sceneRef) {
+        const normalized = normalizeSceneRef(metadata.sceneId);
+        if (normalized.success) {
+          sceneRef = normalized.ref;
+        }
+      }
+
+      return {
+        nodeType: 'arc_content' as const,
+        id: node.id,
+        type: node.type,
+        label: metadata?.arcId || `Arc Stage ${metadata?.stage ?? 1}`,
+        meta: {
+          ...node.metadata,
+          _refs: { sceneRef },
+        },
+        arcId: metadata?.arcId,
+        stage: metadata?.stage,
+        sceneRef,
+        relationshipRequirements: metadata?.relationshipRequirements,
+        questRequirements: metadata?.questRequirements,
+        requiredFlags: metadata?.requiredFlags,
+      };
+    },
   });
 
   // Quest node - represents quest objective or branch
@@ -57,6 +159,34 @@ export function registerArcNodeTypes() {
     editorComponent: 'QuestNodeEditor',
     rendererComponent: 'QuestNodeRenderer',
     preloadPriority: 4, // Arc-level, moderately important
+    toRuntime: (node) => {
+      const metadata = node.metadata as QuestNodeMetadata | undefined;
+      let sceneRef = metadata?.sceneRef;
+
+      // Normalize scene ID to canonical ref
+      if (metadata?.sceneId && !sceneRef) {
+        const normalized = normalizeSceneRef(metadata.sceneId);
+        if (normalized.success) {
+          sceneRef = normalized.ref;
+        }
+      }
+
+      return {
+        nodeType: 'arc_content' as const,
+        id: node.id,
+        type: node.type,
+        label: metadata?.questId || 'Quest',
+        meta: {
+          ...node.metadata,
+          _refs: { sceneRef },
+        },
+        questId: metadata?.questId,
+        sceneRef,
+        objectiveIds: metadata?.objectiveIds,
+        relationshipRequirements: metadata?.relationshipRequirements,
+        questRequirements: metadata?.questRequirements,
+      };
+    },
   });
 
   // Milestone node - represents major story checkpoint
@@ -79,6 +209,33 @@ export function registerArcNodeTypes() {
     editorComponent: 'MilestoneNodeEditor',
     rendererComponent: 'MilestoneNodeRenderer',
     preloadPriority: 3, // Arc-level, less common
+    toRuntime: (node) => {
+      const metadata = node.metadata as MilestoneNodeMetadata | undefined;
+      let sceneRef = metadata?.sceneRef;
+
+      // Normalize scene ID to canonical ref
+      if (metadata?.sceneId && !sceneRef) {
+        const normalized = normalizeSceneRef(metadata.sceneId);
+        if (normalized.success) {
+          sceneRef = normalized.ref;
+        }
+      }
+
+      return {
+        nodeType: 'arc_content' as const,
+        id: node.id,
+        type: node.type,
+        label: metadata?.milestoneId || 'Milestone',
+        meta: {
+          ...node.metadata,
+          _refs: { sceneRef },
+        },
+        milestoneId: metadata?.milestoneId,
+        sceneRef,
+        requiredArcs: metadata?.requiredArcs,
+        requiredQuests: metadata?.requiredQuests,
+      };
+    },
   });
 
   // Arc Group - organizational container for arc nodes
