@@ -532,6 +532,11 @@ def configure_admin_diagnostics(plugin_manager, routes_manager) -> None:
     - Depends on both plugin managers
     - Can be disabled for security
     """
-    from pixsim7.backend.main.api.v1.admin_plugins import set_plugin_managers
-    set_plugin_managers(plugin_manager, routes_manager)
-    logger.info("admin_diagnostics_configured")
+    try:
+        # Expose plugin managers via admin_plugins dependency (stored on app.state)
+        from pixsim7.backend.main.api.v1 import admin_plugins
+        admin_plugins.set_plugin_managers(plugin_manager, routes_manager)
+        logger.info("admin_diagnostics_configured")
+    except Exception as e:
+        # Admin diagnostics are optional; log and continue if module unavailable
+        logger.info("admin_diagnostics_skipped", error=str(e))

@@ -433,6 +433,20 @@ export function parseIntimacyGating(raw: unknown): IntimacyGatingConfig {
   return DEFAULT_INTIMACY_GATING;
 }
 
+// =============================================================================
+// API Response Types
+// =============================================================================
+
+export interface WorldConfigResponse {
+  schema_version: number;
+  stats_config: WorldStatsConfig;
+  manifest: WorldManifestParsed;
+  intimacy_gating: IntimacyGatingConfig;
+  tier_order: string[];
+  level_order: string[];
+  merge_warnings: string[];
+}
+
 /**
  * Get turn delta seconds from preset
  */

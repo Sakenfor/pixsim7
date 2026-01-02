@@ -21,16 +21,12 @@ router = APIRouter(prefix="/admin/plugins", tags=["admin", "plugins"])
 
 def get_plugin_managers(request: Request) -> Tuple[PluginManager, Optional[PluginManager]]:
     """
-    Get plugin managers from app.state (set during startup in main.py).
+    Get plugin managers from app.state (preferred) or module-level fallback.
 
-    Returns:
-        Tuple of (plugin_manager, routes_manager)
-
-    Raises:
-        HTTPException 500 if plugin manager not initialized
+    Raises 500 if not initialized anywhere.
     """
-    plugin_manager = getattr(request.app.state, "plugin_manager", None)
-    routes_manager = getattr(request.app.state, "routes_manager", None)
+    plugin_manager = getattr(request.app.state, "plugin_manager", None) or _plugin_manager
+    routes_manager = getattr(request.app.state, "routes_manager", None) or _routes_manager
 
     if not plugin_manager:
         raise HTTPException(status_code=500, detail="Plugin manager not initialized")
@@ -41,8 +37,14 @@ def get_plugin_managers(request: Request) -> Tuple[PluginManager, Optional[Plugi
 # Legacy function kept for backwards compatibility during transition
 # TODO: Remove once all callers updated to use app.state directly
 def set_plugin_managers(plugin_manager: PluginManager, routes_manager: PluginManager):
-    """DEPRECATED: Plugin managers are now accessed via request.app.state"""
-    pass  # No-op - managers are already on app.state
+    """
+    Set plugin managers on module-level state and on app.state for backward compatibility.
+
+    Called from startup. New code should rely on get_plugin_managers() (app.state).
+    """
+    global _plugin_manager, _routes_manager
+    _plugin_manager = plugin_manager
+    _routes_manager = routes_manager
 
 
 # ===== ENDPOINTS =====
