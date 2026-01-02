@@ -93,6 +93,9 @@ importers:
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../packages/game/engine
+      '@pixsim7/pixcubes':
+        specifier: workspace:*
+        version: link:../../packages/pixcubes
       '@pixsim7/scene.gizmos':
         specifier: workspace:*
         version: link:../../packages/scene/gizmos
@@ -270,6 +273,28 @@ importers:
       vitest:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@24.10.1)
+
+  packages/pixcubes:
+    dependencies:
+      clsx:
+        specifier: '>=2'
+        version: 2.1.1
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+      react-dom:
+        specifier: '>=18'
+        version: 19.2.0(react@19.2.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.27
+        version: 18.3.27
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      zustand:
+        specifier: ^5.0.9
+        version: 5.0.9(@types/react@18.3.27)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
 
   packages/plugins/personality:
     dependencies:
@@ -1389,6 +1414,9 @@ packages:
   '@types/offscreencanvas@2019.7.3':
     resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
 
+  '@types/prop-types@15.7.15':
+    resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
+
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
@@ -1403,6 +1431,9 @@ packages:
     resolution: {integrity: sha512-cMi5ZrLG7UtbL7LTK6hq9w/EZIRk4Mf1Z5qHoI+qBh7/WkYkFXQ7gOto2yfUvPzF5ERMAhaXS5eTQ2SAnHjLzA==}
     peerDependencies:
       '@types/react': '*'
+
+  '@types/react@18.3.27':
+    resolution: {integrity: sha512-cisd7gxkzjBKU2GgdYrTdtQx1SORymWyaAFhaxQPK9bYO9ot3Y5OikQRvY0VYQtvwjeQnizCINJAenh/V7MK2w==}
 
   '@types/react@19.2.6':
     resolution: {integrity: sha512-p/jUvulfgU7oKtj6Xpk8cA2Y1xKTtICGpJYeJXz2YVO2UcvjQgeRMLDGfDeqeRW2Ta+0QNFwcc8X3GH8SxZz6w==}
@@ -3624,6 +3655,24 @@ packages:
       use-sync-external-store:
         optional: true
 
+  zustand@5.0.9:
+    resolution: {integrity: sha512-ALBtUj0AfjJt3uNRQoL1tL2tMvj6Gp/6e39dnfT6uzpelGru8v1tPOGBzayOWbPJvujM8JojDk3E1LxeFisBNg==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
+
 snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
@@ -4521,6 +4570,8 @@ snapshots:
 
   '@types/offscreencanvas@2019.7.3': {}
 
+  '@types/prop-types@15.7.15': {}
+
   '@types/react-dom@19.2.3(@types/react@19.2.6)':
     dependencies:
       '@types/react': 19.2.6
@@ -4532,6 +4583,11 @@ snapshots:
   '@types/react-reconciler@0.32.3(@types/react@19.2.6)':
     dependencies:
       '@types/react': 19.2.6
+
+  '@types/react@18.3.27':
+    dependencies:
+      '@types/prop-types': 15.7.15
+      csstype: 3.2.3
 
   '@types/react@19.2.6':
     dependencies:
@@ -6952,5 +7008,11 @@ snapshots:
   zustand@5.0.8(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)):
     optionalDependencies:
       '@types/react': 19.2.6
+      react: 19.2.0
+      use-sync-external-store: 1.6.0(react@19.2.0)
+
+  zustand@5.0.9(@types/react@18.3.27)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)):
+    optionalDependencies:
+      '@types/react': 18.3.27
       react: 19.2.0
       use-sync-external-store: 1.6.0(react@19.2.0)

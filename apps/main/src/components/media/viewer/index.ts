@@ -6,7 +6,9 @@
 
 export * from './panels';
 export * from './types';
-export * from './stores';
 export * from './capabilities';
+
+// Re-export stores from feature module
+export * from '@features/mediaViewer';
 export { AssetViewerDockview } from './AssetViewerDockview';
 export type { AssetViewerDockviewProps } from './AssetViewerDockview';

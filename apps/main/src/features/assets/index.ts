@@ -28,7 +28,6 @@ export { TreeFolderView } from './components/TreeFolderView';
 // ============================================================================
 
 export { GalleryCubeExpansion } from './components/GalleryCubeExpansion';
-export { MediaViewerCube } from './components/MediaViewerCube';
 
 // ============================================================================
 // Components - Filters

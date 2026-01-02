@@ -26,6 +26,7 @@
     "@pixsim7/scene.shapes": "workspace:*",
     "@pixsim7/shared.types": "workspace:*",
     "@pixsim7/shared.ui": "workspace:*",
+    "@pixsim7/pixcubes": "workspace:*",
     "@react-spring/three": "^10.0.3",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
