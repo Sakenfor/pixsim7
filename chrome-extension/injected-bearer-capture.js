@@ -15,28 +15,53 @@
   // Pixverse stores these for session tracking
   function captureFromStorage() {
     try {
-      // Common storage keys Pixverse might use
-      const storageKeys = [
-        'ai-trace-id', 'ai_trace_id', 'traceId', 'trace_id',
-        'ai-anonymous-id', 'ai_anonymous_id', 'anonymousId', 'anonymous_id'
-      ];
+      // Common storage keys Pixverse might use (explicit patterns)
+      const tracePatterns = ['ai-trace-id', 'ai_trace_id', 'traceId', 'trace_id', 'trace-id'];
+      const anonPatterns = ['ai-anonymous-id', 'ai_anonymous_id', 'anonymousId', 'anonymous_id', 'anonymous-id'];
 
-      for (const key of storageKeys) {
-        const localVal = localStorage.getItem(key);
-        const sessionVal = sessionStorage.getItem(key);
-        const val = localVal || sessionVal;
-
+      // Check explicit patterns first
+      for (const key of tracePatterns) {
+        const val = localStorage.getItem(key) || sessionStorage.getItem(key);
         if (val) {
-          if (key.includes('trace')) {
-            window.__pixsim7_trace_id = val;
-          } else if (key.includes('anonymous')) {
-            window.__pixsim7_anonymous_id = val;
-          }
+          window.__pixsim7_trace_id = val;
+          break;
         }
       }
 
+      for (const key of anonPatterns) {
+        const val = localStorage.getItem(key) || sessionStorage.getItem(key);
+        if (val) {
+          window.__pixsim7_anonymous_id = val;
+          break;
+        }
+      }
+
+      // Fallback: scan all storage keys for trace/anonymous patterns
+      if (!window.__pixsim7_trace_id || !window.__pixsim7_anonymous_id) {
+        const scanStorage = (storage) => {
+          for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i);
+            if (!key) continue;
+            const keyLower = key.toLowerCase();
+            const val = storage.getItem(key);
+            if (!val) continue;
+
+            if (!window.__pixsim7_trace_id && keyLower.includes('trace') && !keyLower.includes('stack')) {
+              window.__pixsim7_trace_id = val;
+              console.debug('[PixSim7] Found trace ID from key:', key);
+            }
+            if (!window.__pixsim7_anonymous_id && keyLower.includes('anonymous')) {
+              window.__pixsim7_anonymous_id = val;
+              console.debug('[PixSim7] Found anonymous ID from key:', key);
+            }
+          }
+        };
+        scanStorage(localStorage);
+        scanStorage(sessionStorage);
+      }
+
       // Also check for JWT token in storage
-      const tokenKeys = ['_ai_token', 'ai_token', 'token', 'jwt_token'];
+      const tokenKeys = ['_ai_token', 'ai_token', 'token', 'jwt_token', 'jwtToken'];
       for (const key of tokenKeys) {
         const val = localStorage.getItem(key) || sessionStorage.getItem(key);
         if (val && val.startsWith('eyJ')) {
@@ -44,13 +69,35 @@
           break;
         }
       }
+
+      // Fallback: scan for any JWT-looking token
+      if (!window.__pixsim7_jwt_token) {
+        const scanForJwt = (storage) => {
+          for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i);
+            if (!key) continue;
+            const val = storage.getItem(key);
+            if (val && val.startsWith('eyJ') && val.includes('.')) {
+              window.__pixsim7_jwt_token = val;
+              console.debug('[PixSim7] Found JWT from key:', key);
+              break;
+            }
+          }
+        };
+        scanForJwt(localStorage);
+        if (!window.__pixsim7_jwt_token) scanForJwt(sessionStorage);
+      }
     } catch (e) {
-      // Storage access might fail in some contexts
+      console.warn('[PixSim7] Storage capture failed:', e);
     }
   }
 
   // Capture immediately on script load
   captureFromStorage();
+
+  // Retry capture after a short delay (page may set values after initial load)
+  setTimeout(captureFromStorage, 500);
+  setTimeout(captureFromStorage, 2000);
 
   // Also intercept fetch calls to capture IDs from headers (backup/update)
   const originalFetch = window.fetch;
@@ -59,32 +106,62 @@
 
     // Only capture from Pixverse API calls
     if (options && options.headers && typeof url === 'string' && url.includes('pixverse')) {
-      const headers = new Headers(options.headers);
+      const headers = options.headers instanceof Headers
+        ? options.headers
+        : new Headers(options.headers);
 
       // Capture Authorization/Bearer token
-      const auth = headers.get('Authorization');
+      const auth = headers.get('Authorization') || headers.get('authorization');
       if (auth && auth.startsWith('Bearer ')) {
         window.__pixsim7_bearer_token = auth.substring(7);
       }
 
       // Capture token header (Pixverse uses this for JWT)
-      const token = headers.get('token');
+      const token = headers.get('token') || headers.get('Token');
       if (token) {
         window.__pixsim7_jwt_token = token;
       }
 
       // Capture session identifiers for session sharing
-      const traceId = headers.get('ai-trace-id');
-      const anonymousId = headers.get('ai-anonymous-id');
+      // Check multiple header name variations
+      const traceHeaders = ['ai-trace-id', 'ai_trace_id', 'x-trace-id', 'trace-id'];
+      const anonHeaders = ['ai-anonymous-id', 'ai_anonymous_id', 'x-anonymous-id', 'anonymous-id'];
 
-      if (traceId) {
-        window.__pixsim7_trace_id = traceId;
+      for (const h of traceHeaders) {
+        const val = headers.get(h);
+        if (val) {
+          window.__pixsim7_trace_id = val;
+          break;
+        }
       }
-      if (anonymousId) {
-        window.__pixsim7_anonymous_id = anonymousId;
+
+      for (const h of anonHeaders) {
+        const val = headers.get(h);
+        if (val) {
+          window.__pixsim7_anonymous_id = val;
+          break;
+        }
       }
     }
 
     return originalFetch.apply(this, args);
+  };
+
+  // Also intercept XMLHttpRequest for older API patterns
+  const originalXhrOpen = XMLHttpRequest.prototype.open;
+  const originalXhrSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+
+  XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+    const nameLower = name.toLowerCase();
+    if (nameLower.includes('trace')) {
+      window.__pixsim7_trace_id = value;
+    } else if (nameLower.includes('anonymous')) {
+      window.__pixsim7_anonymous_id = value;
+    } else if (nameLower === 'token' && value) {
+      window.__pixsim7_jwt_token = value;
+    } else if (nameLower === 'authorization' && value && value.startsWith('Bearer ')) {
+      window.__pixsim7_bearer_token = value.substring(7);
+    }
+    return originalXhrSetHeader.apply(this, arguments);
   };
 })();

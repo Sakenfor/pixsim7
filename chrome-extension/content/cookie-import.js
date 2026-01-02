@@ -83,7 +83,17 @@ async function _cookieImport_extractRawData(providerId, config) {
   // These allow backend to appear as the same session as the browser,
   // preventing "logged in elsewhere" errors
   if (providerId === 'pixverse') {
-    const sessionIds = getPixverseSessionIds();
+    // Wait for session IDs with retries (injected script may need time to capture)
+    let sessionIds = getPixverseSessionIds();
+    let retries = 0;
+    const maxRetries = 5;
+
+    while ((!sessionIds.traceId || !sessionIds.anonymousId) && retries < maxRetries) {
+      await new Promise(r => setTimeout(r, 300));
+      sessionIds = getPixverseSessionIds();
+      retries++;
+    }
+
     if (sessionIds.traceId || sessionIds.anonymousId) {
       data.session_ids = {
         ai_trace_id: sessionIds.traceId,
@@ -92,10 +102,11 @@ async function _cookieImport_extractRawData(providerId, config) {
       debugLogCookies('Captured Pixverse session IDs:', {
         hasTraceId: !!sessionIds.traceId,
         hasAnonymousId: !!sessionIds.anonymousId,
+        retries,
       });
     } else {
       // Log warning when session IDs not captured - this will cause "logged in elsewhere" errors
-      console.warn('[PixSim7] Session IDs not captured - backend requests may get "logged in elsewhere" errors. Try performing an action on the page first.');
+      console.warn('[PixSim7] Session IDs not captured after retries - backend requests may get "logged in elsewhere" errors. Try performing an action on the page first.');
     }
     // Also capture JWT token from header if available
     if (sessionIds.jwtToken) {
