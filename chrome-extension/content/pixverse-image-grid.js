@@ -589,6 +589,35 @@
 
         return;
       }
+
+      // Handle left-click on thumbnail (not buttons) - inject to first empty slot
+      const thumb = e.target.closest('.pxs7-thumb');
+      if (thumb && !e.target.closest('.pxs7-asset-btns')) {
+        const idx = parseInt(thumb.dataset.idx, 10);
+        const data = itemDataMap.get(idx);
+        if (data && data.fullUrl) {
+          e.stopPropagation();
+
+          // Find first empty slot
+          const slots = findUploadInputs().filter(u => u.priority >= 10);
+          const emptySlotIndex = slots.findIndex(s => !s.hasImage);
+
+          if (emptySlotIndex >= 0) {
+            debugLog('[Click] Injecting to first empty slot:', emptySlotIndex);
+            injectImageToUpload(data.fullUrl, null, emptySlotIndex, slots[emptySlotIndex].containerId);
+          } else if (slots.length > 0) {
+            // No empty slots - show context menu to let user choose
+            debugLog('[Click] No empty slots, showing menu');
+            showUploadSlotMenu(data.fullUrl, e.clientX, e.clientY, slots, {
+              ...data,
+              ...data.item,
+              assetId: data.item?.id || data.item?.asset_id,
+            });
+          } else {
+            if (showToast) showToast('No upload slots available', false);
+          }
+        }
+      }
     }, true); // Capture phase to handle before other click listeners
 
     // Right-click context menu for slot selection and restore

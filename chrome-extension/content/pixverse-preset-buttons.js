@@ -1055,7 +1055,21 @@
     });
 
     // Restore any saved input state after a delay (wait for page to fully render)
-    setTimeout(restoreInputState, 1000);
+    // This handles page refresh restore (sessionStorage-based)
+    // Skip if there's chrome.storage pending state (account switch takes precedence)
+    setTimeout(async () => {
+      try {
+        // Check if there's pending chrome.storage state - if so, let that flow handle it
+        const stored = await chrome.storage.local.get('pixsim7PendingPageState');
+        if (stored.pixsim7PendingPageState) {
+          debugLog('Skipping sessionStorage restore - chrome.storage pending state exists');
+          return;
+        }
+        await restoreInputState({ autoRestoreImages: true });
+      } catch (e) {
+        console.warn('[PixSim7] restoreInputState error:', e);
+      }
+    }, 1200); // Run before chrome.storage restore (1500ms)
 
     // Also check for pending page state from account switch (chrome.storage)
     setTimeout(async () => {

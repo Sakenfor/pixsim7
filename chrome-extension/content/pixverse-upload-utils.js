@@ -16,6 +16,9 @@
   const DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
   const debugLog = (...args) => DEBUG_IMAGE_PICKER && console.log('[PixSim7]', ...args);
 
+  // Track if we've setup beforeunload handler
+  let beforeUnloadSetup = false;
+
   // Persistent ID tracking for upload inputs
   const inputStableIdMap = new WeakMap();
   const baseIdCounters = {};
@@ -24,7 +27,7 @@
 
   function saveInputState() {
     try {
-      const state = { inputs: {}, images: [] };
+      const state = { inputs: {}, images: [], savedAt: Date.now() };
 
       // Save all textareas with content
       document.querySelectorAll('textarea').forEach((el, i) => {
@@ -61,59 +64,228 @@
         }
       });
 
-      if (Object.keys(state.inputs).length > 0 || state.images.length > 0) {
+      // Check upload containers with preview images (various Pixverse CDN patterns)
+      const cdnPatterns = ['pixverse-fe-upload', 'aliyuncs.com'];
+      document.querySelectorAll('.ant-upload-wrapper img, [class*="upload"] img').forEach(img => {
+        const src = img.src;
+        if (src && cdnPatterns.some(p => src.includes(p))) {
+          const cleanUrl = normalizeUrl(src);
+          if (!state.images.includes(cleanUrl)) {
+            state.images.push(cleanUrl);
+          }
+        }
+      });
+
+      // Save model selection if present
+      const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
+      const modelContainer = modelImg?.closest('div.cursor-pointer');
+      const modelSpan = modelContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
+      if (modelSpan?.textContent?.trim()) {
+        state.selectedModel = modelSpan.textContent.trim();
+      }
+
+      // Save aspect ratio selection if present
+      const selectedRatio = document.querySelector('div[class*="aspect-"][class*="bg-button-secondary-hover"]');
+      if (selectedRatio?.textContent?.trim()) {
+        state.selectedAspectRatio = selectedRatio.textContent.trim();
+      }
+
+      // Save current URL path for context
+      state.url = window.location.href;
+      state.path = window.location.pathname;
+
+      const hasContent = Object.keys(state.inputs).length > 0 || state.images.length > 0;
+      if (hasContent) {
         sessionStorage.setItem(SESSION_KEY_PRESERVED_INPUT, JSON.stringify(state));
         debugLog('Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images');
+      } else {
+        // Clear stale state if nothing to save
+        sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
       }
+
+      return hasContent;
     } catch (e) {
       console.warn('[PixSim7] Failed to save input state:', e);
+      return false;
     }
   }
 
-  function restoreInputState(showImageRestorePanel) {
+  /**
+   * Setup auto-save on page unload (refresh, navigation, close)
+   */
+  function setupAutoSave() {
+    if (beforeUnloadSetup) return;
+    beforeUnloadSetup = true;
+
+    window.addEventListener('beforeunload', () => {
+      saveInputState();
+    });
+
+    // Also save periodically when user is actively editing (debounced)
+    let saveTimeout = null;
+    const debouncedSave = () => {
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(saveInputState, 2000);
+    };
+
+    // Listen for input changes on textareas
+    document.addEventListener('input', (e) => {
+      if (e.target.matches('textarea, [contenteditable="true"]')) {
+        debouncedSave();
+      }
+    }, true);
+
+    debugLog('Auto-save enabled');
+  }
+
+  /**
+   * Restore saved input state from sessionStorage.
+   * @param {Object} options - Options for restore behavior
+   * @param {Function} options.showImageRestorePanel - Callback to show image restore UI (fallback)
+   * @param {boolean} options.autoRestoreImages - If true, auto-restore images without panel (default: true)
+   */
+  async function restoreInputState(options = {}) {
+    // Handle legacy call signature: restoreInputState(showImageRestorePanel)
+    if (typeof options === 'function') {
+      options = { showImageRestorePanel: options };
+    }
+    const { showImageRestorePanel, autoRestoreImages = true } = options;
+
     try {
       const saved = sessionStorage.getItem(SESSION_KEY_PRESERVED_INPUT);
-      if (!saved) return;
+      if (!saved) return { restored: false };
 
       const state = JSON.parse(saved);
+
+      // Check if state is stale (older than 5 minutes)
+      if (state.savedAt && Date.now() - state.savedAt > 5 * 60 * 1000) {
+        debugLog('Saved state is stale, ignoring');
+        sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+        return { restored: false };
+      }
+
       const inputs = state.inputs || state;
       const images = state.images || [];
+      let textRestored = 0;
+      let imagesRestored = 0;
 
-      let restored = 0;
+      debugLog('Restoring state:', {
+        inputs: Object.keys(inputs).length,
+        images: images.length,
+        model: state.selectedModel,
+        aspectRatio: state.selectedAspectRatio
+      });
 
-      // Restore textareas
+      // === Restore model selection ===
+      if (state.selectedModel) {
+        const restoreModel = async (retries = 3) => {
+          const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
+          const modelContainer = modelImg?.closest('div.cursor-pointer');
+          if (!modelContainer) {
+            if (retries > 0) setTimeout(() => restoreModel(retries - 1), 500);
+            return;
+          }
+
+          const currentModelSpan = modelContainer.querySelector('span.font-semibold, span[class*="font-semibold"]');
+          if (currentModelSpan?.textContent?.trim() === state.selectedModel) {
+            debugLog('Model already correct:', state.selectedModel);
+            return;
+          }
+
+          debugLog('Opening model selector to restore:', state.selectedModel);
+          modelContainer.click();
+          await new Promise(r => setTimeout(r, 400));
+
+          const modelOptions = document.querySelectorAll('img[src*="asset/media/model/model-"]');
+          for (const optionImg of modelOptions) {
+            if (optionImg.className.includes('w-11')) continue;
+            let clickTarget = optionImg.parentElement;
+            while (clickTarget && !clickTarget.className?.includes('cursor-pointer')) {
+              clickTarget = clickTarget.parentElement;
+              if (clickTarget === document.body) { clickTarget = null; break; }
+            }
+            const optionName = clickTarget?.querySelector('span.font-semibold, span[class*="font-semibold"]');
+            if (optionName?.textContent?.trim() === state.selectedModel) {
+              debugLog('Found and clicking model:', state.selectedModel);
+              clickTarget.click();
+              return;
+            }
+          }
+          document.body.click(); // Close dropdown if not found
+        };
+        await restoreModel();
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      // === Restore aspect ratio ===
+      if (state.selectedAspectRatio) {
+        const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
+        for (const btn of ratioButtons) {
+          if (btn.textContent?.trim() === state.selectedAspectRatio) {
+            if (!btn.className.includes('bg-button-secondary-hover')) {
+              debugLog('Clicking aspect ratio:', state.selectedAspectRatio);
+              btn.click();
+            }
+            break;
+          }
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // === Restore textareas ===
       document.querySelectorAll('textarea').forEach((el, i) => {
+        if (el.value && el.value.trim()) return; // Don't overwrite existing content
         const key = el.id || el.name || el.placeholder || `textarea_${i}`;
         if (inputs[key]) {
           el.value = inputs[key];
           el.dispatchEvent(new Event('input', { bubbles: true }));
-          restored++;
+          textRestored++;
         }
       });
 
-      // Restore contenteditable
+      // === Restore contenteditable ===
       document.querySelectorAll('[contenteditable="true"]').forEach((el, i) => {
+        if (el.textContent && el.textContent.trim()) return;
         const key = el.id || el.dataset.placeholder || `editable_${i}`;
         if (inputs[`ce_${key}`]) {
           el.innerHTML = inputs[`ce_${key}`];
           el.dispatchEvent(new Event('input', { bubbles: true }));
-          restored++;
+          textRestored++;
         }
       });
 
-      // Show image restoration panel if there are images
-      if (images.length > 0 && showImageRestorePanel) {
-        showImageRestorePanel(images);
+      // === Restore images ===
+      if (images.length > 0) {
+        if (autoRestoreImages) {
+          // Auto-restore images using restoreAllImages
+          debugLog('Auto-restoring', images.length, 'images');
+          const result = await restoreAllImages(images);
+          imagesRestored = result.success;
+
+          // Show panel for failed images only
+          if (result.failed.length > 0 && showImageRestorePanel) {
+            showImageRestorePanel(result.failed);
+          }
+        } else if (showImageRestorePanel) {
+          // Show panel for all images (legacy behavior)
+          showImageRestorePanel(images);
+        }
       }
 
-      if (restored > 0) {
-        debugLog('Restored', restored, 'input(s)');
-        if (showToast) showToast(`Restored ${restored} input(s)`, true);
+      // Show success message
+      if (textRestored > 0 || imagesRestored > 0) {
+        const parts = [];
+        if (textRestored > 0) parts.push(`${textRestored} input(s)`);
+        if (imagesRestored > 0) parts.push(`${imagesRestored} image(s)`);
+        debugLog('Restored:', parts.join(', '));
+        if (showToast) showToast(`Restored ${parts.join(' and ')}`, true);
       }
 
       sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+      return { restored: textRestored > 0 || imagesRestored > 0, textRestored, imagesRestored };
     } catch (e) {
       console.warn('[PixSim7] Failed to restore input state:', e);
+      return { restored: false, error: e.message };
     }
   }
 
@@ -623,13 +795,12 @@
     // Get fresh slot list
     let uploads = findUploadInputs();
     let relevantSlots = uploads.filter(u => u.priority >= 10);
-    const emptySlots = relevantSlots.filter(s => !s.hasImage);
 
     debugLog('[RestoreAll] Starting restore of', images.length, 'images');
-    debugLog('[RestoreAll] Available slots:', relevantSlots.length, 'empty:', emptySlots.length);
+    debugLog('[RestoreAll] Available slots:', relevantSlots.length);
 
-    // Add slots if we need more than available empty slots
-    const slotsNeeded = images.length - emptySlots.length;
+    // Add slots if we need more total slots (we restore from index 0, so need images.length slots total)
+    const slotsNeeded = images.length - relevantSlots.length;
     if (slotsNeeded > 0) {
       debugLog('[RestoreAll] Need to add', slotsNeeded, 'more slot(s)');
 
@@ -665,21 +836,26 @@
       const { url, slot, containerId } = imgData;
       debugLog('[RestoreAll] Restoring image', i + 1, 'of', images.length, ':', url);
 
-      // Find target slot - priority: containerId > slot index > first empty
+      // Find target slot - use slot index starting from 0, clear existing if needed
+      // Priority: explicit slot > sequential index (starting from 0)
       let targetSlot = null;
+      const targetIndex = (slot !== undefined && slot !== null && slot >= 0) ? slot : i;
+
       if (containerId) {
-        targetSlot = relevantSlots.find(s => s.containerId === containerId && !s.hasImage);
+        // Try to find by containerId first (may have existing image that we'll clear)
+        targetSlot = relevantSlots.find(s => s.containerId === containerId);
       }
-      if (!targetSlot && slot >= 0 && slot < relevantSlots.length) {
-        const byIndex = relevantSlots[slot];
-        if (byIndex && !byIndex.hasImage) targetSlot = byIndex;
+      if (!targetSlot && targetIndex < relevantSlots.length) {
+        // Use the target index directly - start from slot 0, not first empty
+        targetSlot = relevantSlots[targetIndex];
       }
       if (!targetSlot) {
-        targetSlot = relevantSlots.find(s => !s.hasImage);
+        // Fallback to first available slot
+        targetSlot = relevantSlots[i] || relevantSlots.find(s => !s.hasImage);
       }
 
       if (!targetSlot) {
-        debugLog('[RestoreAll] No empty slot found for image', i + 1);
+        debugLog('[RestoreAll] No slot found for image', i + 1);
         failed.push(url);
         continue;
       }
@@ -736,6 +912,7 @@
   window.PXS7.uploadUtils = {
     saveInputState,
     restoreInputState,
+    setupAutoSave,
     findUploadInputs,
     setupUploadInterceptor,
     setPendingImageUrl,
@@ -744,5 +921,8 @@
     injectImageToUpload,
     restoreAllImages
   };
+
+  // Auto-setup on load
+  setupAutoSave();
 
 })();

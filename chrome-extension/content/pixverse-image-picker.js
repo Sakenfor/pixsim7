@@ -110,6 +110,7 @@ window.PXS7 = window.PXS7 || {};
   const {
     saveInputState,
     restoreInputState,
+    setupAutoSave,
     findUploadInputs,
     setupUploadInterceptor,
     setPendingImageUrl,
@@ -850,6 +851,7 @@ window.PXS7 = window.PXS7 || {};
   window.PXS7.imagePicker = {
     saveInputState,
     restoreInputState,
+    setupAutoSave,
     setupUploadInterceptor,
     findUploadInputs,
     injectImageToUpload,
