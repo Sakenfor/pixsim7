@@ -790,6 +790,68 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Get single asset details
+  if (message.action === 'getAsset') {
+    (async () => {
+      try {
+        const { assetId } = message;
+        const endpoint = `/api/v1/assets/${assetId}`;
+        const data = await backendRequest(endpoint);
+
+        // Fix relative URLs
+        const settings = await getSettings();
+        const backendUrl = settings.backendUrl || DEFAULT_BACKEND_URL;
+        const fixRelativeUrl = (url) => {
+          if (!url) return url;
+          if (url.startsWith('/')) return backendUrl + url;
+          return url;
+        };
+
+        if (data) {
+          if (data.thumbnail_url) data.thumbnail_url = fixRelativeUrl(data.thumbnail_url);
+          if (data.file_url) data.file_url = fixRelativeUrl(data.file_url);
+          if (data.preview_url) data.preview_url = fixRelativeUrl(data.preview_url);
+          if (data.remote_url) data.remote_url = fixRelativeUrl(data.remote_url);
+        }
+
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Get generation details
+  if (message.action === 'getGeneration') {
+    (async () => {
+      try {
+        const { generationId } = message;
+        const endpoint = `/api/v1/generations/${generationId}`;
+        const data = await backendRequest(endpoint);
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Re-enrich asset (re-sync metadata and generation)
+  if (message.action === 'enrichAsset') {
+    (async () => {
+      try {
+        const { assetId } = message;
+        const endpoint = `/api/v1/assets/${assetId}/enrich?force=true`;
+        const data = await backendRequest(endpoint, { method: 'POST' });
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Proxy image fetch for HTTP URLs (avoids mixed content issues on HTTPS pages)
   // Also handles Private Network Access (PNA) restrictions when loading from private IPs
   // Once backend has HTTPS, this proxy is bypassed automatically
