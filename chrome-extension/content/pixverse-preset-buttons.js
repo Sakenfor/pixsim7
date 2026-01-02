@@ -1070,7 +1070,73 @@
         if (pendingState) {
           console.log('[PixSim7] Found pending page state to restore:', pendingState);
 
-          // Restore prompts to textareas (with retry for slow-loading pages)
+          // === STEP 1: Restore model first (may affect available options) ===
+          if (pendingState.selectedModel) {
+            const restoreModel = async (retries = 3) => {
+              const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
+              const modelContainer = modelImg?.closest('div.cursor-pointer');
+
+              if (!modelContainer) {
+                if (retries > 0) setTimeout(() => restoreModel(retries - 1), 500);
+                return;
+              }
+
+              const currentModelSpan = modelContainer.querySelector('span.font-semibold, span[class*="font-semibold"]');
+              if (currentModelSpan?.textContent?.trim() === pendingState.selectedModel) {
+                console.log('[PixSim7] Model already correct:', pendingState.selectedModel);
+                return;
+              }
+
+              console.log('[PixSim7] Opening model selector to restore:', pendingState.selectedModel);
+              modelContainer.click();
+              await new Promise(r => setTimeout(r, 300));
+
+              const modelOptions = document.querySelectorAll('div[class*="cursor-pointer"] img[src*="asset/media/model/model-"]');
+              for (const optionImg of modelOptions) {
+                const optionContainer = optionImg.closest('div.cursor-pointer, div[class*="cursor-pointer"]');
+                const optionName = optionContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
+                if (optionName?.textContent?.trim() === pendingState.selectedModel) {
+                  console.log('[PixSim7] Found and clicking model:', pendingState.selectedModel);
+                  optionContainer.click();
+                  return;
+                }
+              }
+              document.body.click(); // Close dropdown if not found
+              console.warn('[PixSim7] Could not find model option:', pendingState.selectedModel);
+            };
+            await restoreModel();
+            await new Promise(r => setTimeout(r, 300)); // Let model change settle
+          }
+
+          // === STEP 2: Restore aspect ratio ===
+          if (pendingState.selectedAspectRatio) {
+            const restoreAspectRatio = (retries = 3) => {
+              const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
+              for (const btn of ratioButtons) {
+                const ratioText = btn.textContent?.trim();
+                if (ratioText === pendingState.selectedAspectRatio) {
+                  // Check if already selected
+                  if (!btn.className.includes('bg-button-secondary-hover')) {
+                    console.log('[PixSim7] Clicking aspect ratio:', ratioText);
+                    btn.click();
+                  } else {
+                    console.log('[PixSim7] Aspect ratio already correct:', ratioText);
+                  }
+                  return true;
+                }
+              }
+              if (retries > 0) {
+                setTimeout(() => restoreAspectRatio(retries - 1), 500);
+              } else {
+                console.warn('[PixSim7] Could not find aspect ratio:', pendingState.selectedAspectRatio);
+              }
+              return false;
+            };
+            restoreAspectRatio();
+            await new Promise(r => setTimeout(r, 200));
+          }
+
+          // === STEP 3: Restore prompts to textareas (with retry for slow-loading pages) ===
           if (pendingState.prompts && Object.keys(pendingState.prompts).length > 0) {
             let promptsRestored = false;
 
@@ -1159,7 +1225,7 @@
             }
           }
 
-          // Restore image slot count by clicking the + button
+          // === STEP 4: Restore image slot count by clicking the + button ===
           if (pendingState.imageSlotCount && pendingState.imageSlotCount > 0) {
             const targetSlots = pendingState.imageSlotCount;
             const currentSlots = document.querySelectorAll('[id*="customer_img"] input[type="file"]').length;
@@ -1187,7 +1253,7 @@
             }
           }
 
-          // Auto-restore images to their original containers
+          // === STEP 5: Auto-restore images to their original containers ===
           if (pendingState.images && pendingState.images.length > 0) {
             const { injectImageToUpload } = imagePicker;
             const uploadInputs = imagePicker.findUploadInputs ? imagePicker.findUploadInputs() : [];

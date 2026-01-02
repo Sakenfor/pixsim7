@@ -186,6 +186,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.log('[PixSim7] Captured image slot count:', imageSlotCount);
         }
 
+        // Capture selected model (the div with model image and name)
+        // Look for model selector: div containing img[src*="model/model-"] and span with model name
+        const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
+        if (modelImg) {
+          const modelContainer = modelImg.closest('div');
+          const modelNameSpan = modelContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
+          if (modelNameSpan?.textContent) {
+            pageState.selectedModel = modelNameSpan.textContent.trim();
+            console.log('[PixSim7] Captured selected model:', pageState.selectedModel);
+          }
+        }
+
+        // Capture selected aspect ratio (look for selected ratio button with bg-button-secondary-hover)
+        // The ratio buttons show text like "9:16", "16:9", "1:1", etc.
+        const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
+        for (const btn of ratioButtons) {
+          // Selected button has bg-button-secondary-hover class
+          if (btn.className.includes('bg-button-secondary-hover')) {
+            // Find the ratio text (e.g., "9:16")
+            const ratioText = btn.textContent?.trim();
+            if (ratioText && ratioText.includes(':')) {
+              pageState.selectedAspectRatio = ratioText;
+              console.log('[PixSim7] Captured aspect ratio:', ratioText);
+              break;
+            }
+          }
+        }
+
         // Save to chrome.storage via the storage module
         if (window.PXS7?.storage?.savePendingPageState) {
           await window.PXS7.storage.savePendingPageState(pageState);
