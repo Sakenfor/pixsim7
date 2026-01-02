@@ -5,17 +5,16 @@
  * and configuring contact zones for interactive tools.
  */
 
-import { useState, useCallback, useRef } from "react";
 import { Button, useToast } from "@pixsim7/shared.ui";
-import { Model3DViewport } from "@/components/3d/Model3DViewport";
+import { useCallback, useRef, useState } from "react";
+
+import type { InspectorMode, RenderMode } from "@lib/models";
+import { formatZoneLabel } from "@lib/models";
+
 import { AnimationTimeline } from "@/components/3d/AnimationTimeline";
-import { useModel3DStore } from "@features/panels/stores/model3DStore";
-import type {
-  InspectorMode,
-  RenderMode,
-  ZoneProperties,
-} from "@lib/models/types";
-import { formatZoneLabel } from "@lib/models/zoneUtils";
+import { Model3DViewport } from "@/components/3d/Model3DViewport";
+
+import { useModel3DStore } from "../../stores/model3DStore";
 
 /**
  * Collapsible section component.

@@ -1,6 +1,7 @@
-import { definePanel } from '../../../lib/definePanel';
 import { ControlCenterManager } from '@features/controlCenter';
-import { createPanelSchemaSettingsSection } from '@features/settings/components/shared/panelSchemaSettings';
+import { createPanelSchemaSettingsSection } from '@features/settings';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'controlCenter',

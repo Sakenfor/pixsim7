@@ -33,6 +33,7 @@ export { PromptsSettings } from './components/modules/PromptsSettings';
 
 export { DynamicSettingsPanel } from './components/shared/DynamicSettingsPanel';
 export { SettingFieldRenderer } from './components/shared/SettingFieldRenderer';
+export { createPanelSchemaSettingsSection } from './components/shared/panelSchemaSettings';
 
 // ============================================================================
 // Lib - Core Settings System

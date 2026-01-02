@@ -87,8 +87,8 @@ export {
 // Scope instance helpers
 export {
   ScopeInstanceProvider,
-  useScopeInstanceId,
 } from "../components/scope/scopeContext";
+export { useScopeInstanceId } from "../components/scope/scopeInstanceContext";
 
 // ScopeHost for automatic scope provider wrapping
 export { ScopeHost, type ScopeHostProps } from "../components/scope/ScopeHost";

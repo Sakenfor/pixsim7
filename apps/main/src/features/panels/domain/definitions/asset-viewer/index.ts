@@ -1,6 +1,8 @@
-import { definePanel } from '../../../lib/definePanel';
+import { createPanelSchemaSettingsSection } from '@features/settings';
+
 import { AssetViewerPanel } from '@/components/media/AssetViewerPanel';
-import { createPanelSchemaSettingsSection } from '@features/settings/components/shared/panelSchemaSettings';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'assetViewer',

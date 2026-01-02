@@ -1,18 +1,21 @@
-import type { CSSProperties, ReactNode } from "react";
 import clsx from "clsx";
+import type { CSSProperties, ReactNode } from "react";
+
 import {
   useEditorContext,
   type EditorContext,
   type EditorMode,
-} from "@lib/context/editorContext";
-import type { PanelId } from "@features/workspace";
-import { PanelHeader } from "@features/panels/components/shared/PanelHeader";
+} from "@lib/context";
+
 import { ContextHubHost } from "@features/contextHub";
+import type { PanelId } from "@features/workspace";
+
 import {
   panelRegistry,
   type ContextLabelStrategy,
   type CoreEditorRole,
 } from "../../lib/panelRegistry";
+import { PanelHeader } from "../shared/PanelHeader";
 
 type PanelHostVariant = "standalone" | "embedded" | "dockview";
 
