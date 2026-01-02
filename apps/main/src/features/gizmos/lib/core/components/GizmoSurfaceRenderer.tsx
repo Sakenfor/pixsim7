@@ -5,9 +5,11 @@
  * Used in Game2D, scene editor, playground, etc.
  */
 
-import { useMemo } from 'react';
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '@/gizmos';
-import { useGizmoSurfaceStore } from '@/gizmos/gizmoSurfaceStore';
+import { useMemo, type ComponentType } from 'react';
+
+import { useGizmoSurfaceStore } from '@features/gizmos/stores/gizmoSurfaceStore';
+
+import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '../surfaceRegistry';
 
 interface GizmoSurfaceRendererProps {
   /** The context in which to render surfaces */
@@ -17,7 +19,7 @@ interface GizmoSurfaceRendererProps {
   componentType?: 'overlay' | 'panel' | 'hud';
 
   /** Additional props to pass to each gizmo component */
-  componentProps?: Record<string, any>;
+  componentProps?: Record<string, unknown>;
 
   /** Optional className for the container */
   className?: string;
@@ -70,7 +72,7 @@ export function GizmoSurfaceRenderer({
     <div className={className} data-gizmo-surface-renderer data-context={context}>
       {enabledSurfaces.map((surface) => {
         // Get the appropriate component based on type
-        let Component: React.ComponentType<any> | undefined;
+        let Component: ComponentType<Record<string, unknown>> | undefined;
 
         if (componentType === 'overlay') {
           Component = surface!.overlayComponent;
@@ -98,38 +100,4 @@ export function GizmoSurfaceRenderer({
       })}
     </div>
   );
-}
-
-/**
- * Hook to get enabled surfaces for a context
- */
-export function useEnabledGizmoSurfaces(context: GizmoSurfaceContext) {
-  const enabledSurfaceIds = useGizmoSurfaceStore((state) =>
-    state.getEnabledSurfaces(context)
-  );
-
-  return useMemo(() => {
-    return enabledSurfaceIds
-      .map((id) => gizmoSurfaceRegistry.get(id))
-      .filter(Boolean);
-  }, [enabledSurfaceIds]);
-}
-
-/**
- * Hook to check if a surface is enabled
- */
-export function useIsSurfaceEnabled(
-  context: GizmoSurfaceContext,
-  surfaceId: string
-) {
-  return useGizmoSurfaceStore((state) =>
-    state.isSurfaceEnabled(context, surfaceId)
-  );
-}
-
-/**
- * Hook to toggle a surface
- */
-export function useToggleSurface() {
-  return useGizmoSurfaceStore((state) => state.toggleSurface);
 }

@@ -5,10 +5,12 @@
  * Shows which gizmo surfaces are currently enabled.
  */
 
-import { useState } from 'react';
 import { Badge } from '@pixsim7/shared.ui';
-import { useGizmoSurfaceStore } from '@/gizmos/gizmoSurfaceStore';
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '@/gizmos';
+import { useState } from 'react';
+
+import { useGizmoSurfaceStore } from '@features/gizmos/stores/gizmoSurfaceStore';
+
+import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '../surfaceRegistry';
 
 interface ActiveGizmosIndicatorProps {
   /** The context to show active gizmos for */

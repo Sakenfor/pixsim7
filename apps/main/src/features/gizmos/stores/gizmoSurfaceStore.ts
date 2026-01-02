@@ -6,7 +6,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GizmoSurfaceId, GizmoSurfaceContext } from './surfaceRegistry';
+
+import type { GizmoSurfaceId, GizmoSurfaceContext } from '../lib/core/surfaceRegistry';
 
 /**
  * State for gizmo surface enablement

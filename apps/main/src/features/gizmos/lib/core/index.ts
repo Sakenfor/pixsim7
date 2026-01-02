@@ -27,7 +27,7 @@ export {
 } from './registerGizmoSurfaces';
 
 // Surface State Store
-export { useGizmoSurfaceStore } from './gizmoSurfaceStore';
+export { useGizmoSurfaceStore } from '../../stores/gizmoSurfaceStore';
 
 // Existing gizmo pack registries
 export * from './registry';
@@ -45,11 +45,13 @@ export {
   applyToolOverrides,
   getToolWithOverrides,
   createToolInstanceWithOverrides,
+} from './toolOverrides';
+export {
   useToolWithOverrides,
   useToolInstanceWithOverrides,
   useToolHasOverrides,
   useAllToolsWithOverrides,
-} from './useToolWithOverrides';
+} from '../../hooks/useToolWithOverrides';
 
 // Tool console operations extension
 export {
@@ -87,7 +89,12 @@ export {
 // React Components (UI layer)
 // ============================================================================
 
-export { GizmoSurfaceRenderer, useEnabledGizmoSurfaces, useIsSurfaceEnabled, useToggleSurface } from './components/GizmoSurfaceRenderer';
+export { GizmoSurfaceRenderer } from './components/GizmoSurfaceRenderer';
+export {
+  useEnabledGizmoSurfaces,
+  useIsSurfaceEnabled,
+  useToggleSurface,
+} from '../../hooks/gizmoSurfaceHooks';
 export { ActiveGizmosIndicator } from './components/ActiveGizmosIndicator';
 export { InteractiveTool } from './components/InteractiveTool';
 export { BodyMapGizmo } from './components/BodyMapGizmo';
