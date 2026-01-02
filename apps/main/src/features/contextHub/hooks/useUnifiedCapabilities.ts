@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from "react";
+
 import type {
   ActionCapability,
   FeatureCapability,
@@ -6,13 +7,15 @@ import type {
   StateCapability,
 } from "@lib/capabilities";
 import { useCapabilityStore } from "@lib/capabilities";
-import { useContextHubState, type ContextHubState } from "../components/ContextHubHost";
-import type { CapabilityKey } from "../types";
+
+import { getAppActionCapabilityKey, getAppStateCapabilityKey } from "../domain/appCapabilityBridge";
 import {
   getCapabilityDescriptors,
   type CapabilityDescriptor,
 } from "../domain/descriptorRegistry";
-import { getAppActionCapabilityKey, getAppStateCapabilityKey } from "../domain/appCapabilityBridge";
+import type { CapabilityKey } from "../types";
+
+import { useContextHubState, type ContextHubState } from "./contextHubContext";
 
 export type UnifiedCapabilityKind =
   | "context"

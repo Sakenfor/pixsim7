@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useRef } from "react";
+
 import {
   type ActionCapability,
   type StateCapability,
   useCapabilityStore,
 } from "@lib/capabilities";
-import { useShallow } from "zustand/react/shallow";
-import { useContextHubState } from "./ContextHubHost";
-import type { CapabilityProvider } from "../types";
-import {
-  registerCapabilityDescriptor,
-  unregisterCapabilityDescriptor,
-} from "../domain/descriptorRegistry";
+
 import {
   getAppActionCapabilityKey,
   getAppStateCapabilityKey,
 } from "../domain/appCapabilityBridge";
+import {
+  registerCapabilityDescriptor,
+  unregisterCapabilityDescriptor,
+} from "../domain/descriptorRegistry";
+import { useContextHubState } from "../hooks/contextHubContext";
+import type { CapabilityProvider } from "../types";
 
 type ProviderDisposer = () => void;
 
@@ -28,8 +29,8 @@ function getRootHub(state: ReturnType<typeof useContextHubState>) {
 
 export function ContextHubCapabilityBridge() {
   const hub = useContextHubState();
-  const actionsMap = useCapabilityStore(useShallow((s) => s.actions));
-  const statesMap = useCapabilityStore(useShallow((s) => s.states));
+  const actionsMap = useCapabilityStore((s) => s.actions);
+  const statesMap = useCapabilityStore((s) => s.states);
 
   const actions = useMemo(
     () => Array.from(actionsMap.values()).filter((a) => !a.enabled || a.enabled()),
@@ -120,10 +121,13 @@ export function ContextHubCapabilityBridge() {
       }
     });
 
+    const disposers = disposerRef.current;
+    const providers = providerRef.current;
+
     return () => {
-      disposerRef.current.forEach((dispose) => dispose());
-      disposerRef.current.clear();
-      providerRef.current.clear();
+      disposers.forEach((dispose) => dispose());
+      disposers.clear();
+      providers.clear();
     };
   }, [actions, states, root]);
 

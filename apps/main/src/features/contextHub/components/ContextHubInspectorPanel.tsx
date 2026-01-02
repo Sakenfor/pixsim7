@@ -1,18 +1,14 @@
-import { useMemo } from "react";
 import { Panel } from "@pixsim7/shared.ui";
+import { useMemo } from "react";
+
 import {
   getCapabilityDescriptor,
+  useCapability,
   useContextHubState,
   useContextHubOverridesStore,
   type CapabilityKey,
   type CapabilityProvider,
 } from "@features/contextHub";
-import { useCapability } from "@features/contextHub";
-
-type RegistrySnapshot = {
-  label: string;
-  providersByKey: Record<CapabilityKey, CapabilityProvider[]>;
-};
 
 function summarizeProvider(provider: CapabilityProvider) {
   if (provider.label) {

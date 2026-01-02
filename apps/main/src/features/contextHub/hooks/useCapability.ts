@@ -1,15 +1,20 @@
 import type { DependencyList } from "react";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+
+import { CAP_PANEL_CONTEXT } from "../domain/capabilityKeys";
+import { useContextHubOverridesStore } from "../stores/contextHubOverridesStore";
 import type {
   CapabilityKey,
   CapabilityProvider,
   CapabilitySnapshot,
   CapabilityScope,
 } from "../types";
-import { useContextHubState, useContextHubHostId } from "../components/ContextHubHost";
-import type { ContextHubState } from "../components/ContextHubHost";
-import { useContextHubOverridesStore } from "../stores/contextHubOverridesStore";
-import { CAP_PANEL_CONTEXT } from "../domain/capabilityKeys";
+
+import {
+  useContextHubHostId,
+  useContextHubState,
+  type ContextHubState,
+} from "./contextHubContext";
 
 function shallowEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -25,12 +30,14 @@ function shallowEqual(a: unknown, b: unknown): boolean {
     return true;
   }
 
-  const aKeys = Object.keys(a as Record<string, unknown>);
-  const bKeys = Object.keys(b as Record<string, unknown>);
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  const bKeys = Object.keys(bRecord);
   if (aKeys.length !== bKeys.length) return false;
   for (const key of aKeys) {
     if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-    if (!Object.is((a as any)[key], (b as any)[key])) return false;
+    if (!Object.is(aRecord[key], bRecord[key])) return false;
   }
   return true;
 }
@@ -137,18 +144,16 @@ export function useProvideCapability<T>(
   const hub = useContextHubState();
   const providerRef = useRef(provider);
 
-  const stableProvider = useMemo<CapabilityProvider<T>>(
-    () => ({
-      id: provider.id,
-      label: provider.label,
-      description: provider.description,
-      priority: provider.priority,
-      exposeToContextMenu: provider.exposeToContextMenu,
-      isAvailable: () => providerRef.current.isAvailable?.(),
-      getValue: () => providerRef.current.getValue(),
-    }),
-    [],
-  );
+  const stableProviderRef = useRef<CapabilityProvider<T>>({
+    id: provider.id,
+    label: provider.label,
+    description: provider.description,
+    priority: provider.priority,
+    exposeToContextMenu: provider.exposeToContextMenu,
+    isAvailable: () => providerRef.current.isAvailable?.(),
+    getValue: () => providerRef.current.getValue(),
+  });
+  const stableProvider = stableProviderRef.current;
 
   useEffect(() => {
     if (!hub) {
@@ -164,7 +169,7 @@ export function useProvideCapability<T>(
       }
     }
     return target.registry.register(key, stableProvider);
-  }, [hub, key, options?.scope]);
+  }, [hub, key, options?.scope, stableProvider]);
 
   useEffect(() => {
     providerRef.current = provider;
@@ -173,7 +178,7 @@ export function useProvideCapability<T>(
     stableProvider.description = provider.description;
     stableProvider.priority = provider.priority;
     stableProvider.exposeToContextMenu = provider.exposeToContextMenu;
-  }, [provider, stableProvider, ...deps]);
+  }, [provider, deps, stableProvider]);
 }
 
 /**

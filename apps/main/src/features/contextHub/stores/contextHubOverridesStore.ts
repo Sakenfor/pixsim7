@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+
 import type { CapabilityKey } from "../types";
 
 interface CapabilityOverride {
@@ -13,6 +14,11 @@ interface ContextHubOverridesState {
   clearOverride: (key: CapabilityKey, hostId?: string) => void;
   getPreferredProviderId: (key: CapabilityKey, hostId?: string) => string | undefined;
 }
+
+type PersistedOverridesState = {
+  overrides?: Record<string, CapabilityOverride | undefined>;
+  hostOverrides?: Record<string, Record<string, CapabilityOverride | undefined>>;
+};
 
 export const useContextHubOverridesStore = create<ContextHubOverridesState>()(
   persist(
@@ -63,7 +69,8 @@ export const useContextHubOverridesStore = create<ContextHubOverridesState>()(
             return state;
           }
 
-          const { [key]: _, ...rest } = currentHost;
+          const rest = { ...currentHost };
+          delete rest[key];
           const hasOverrides = Object.values(rest).some(Boolean);
           const nextHostOverrides = { ...state.hostOverrides };
           if (hasOverrides) {
@@ -89,11 +96,12 @@ export const useContextHubOverridesStore = create<ContextHubOverridesState>()(
     {
       name: "context_hub_overrides_v1",
       version: 2,
-      migrate: (state: any) => {
-        if (!state) return state;
+      migrate: (state: unknown) => {
+        if (!state || typeof state !== "object") return state;
+        const persisted = state as PersistedOverridesState;
         return {
-          overrides: state.overrides ?? {},
-          hostOverrides: state.hostOverrides ?? {},
+          overrides: persisted.overrides ?? {},
+          hostOverrides: persisted.hostOverrides ?? {},
         };
       },
     },
