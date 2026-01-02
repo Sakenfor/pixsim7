@@ -94,10 +94,38 @@ function hashCookies(cookies) {
 }
 
 /**
+ * Session data bridge from page context.
+ * The injected script runs in page context and can't share window variables
+ * with content scripts. We use CustomEvents to bridge the data.
+ */
+const _pixsim7SessionData = {
+  traceId: null,
+  anonymousId: null,
+  jwtToken: null,
+  bearerToken: null,
+  timestamp: 0,
+};
+
+// Listen for session data from injected script (page context)
+document.addEventListener('pixsim7-session-data', (e) => {
+  if (e.detail) {
+    Object.assign(_pixsim7SessionData, e.detail);
+  }
+});
+
+/**
+ * Request fresh session data from page context.
+ * Useful when you need to ensure you have the latest values.
+ */
+function requestSessionDataRefresh() {
+  document.dispatchEvent(new CustomEvent('pixsim7-request-session'));
+}
+
+/**
  * Get captured bearer token from injected script
  */
 function getBearerToken() {
-  return window.__pixsim7_bearer_token || null;
+  return _pixsim7SessionData.bearerToken || null;
 }
 
 /**
@@ -107,9 +135,9 @@ function getBearerToken() {
  */
 function getPixverseSessionIds() {
   return {
-    traceId: window.__pixsim7_trace_id || null,
-    anonymousId: window.__pixsim7_anonymous_id || null,
-    jwtToken: window.__pixsim7_jwt_token || null,
+    traceId: _pixsim7SessionData.traceId || null,
+    anonymousId: _pixsim7SessionData.anonymousId || null,
+    jwtToken: _pixsim7SessionData.jwtToken || null,
   };
 }
 

@@ -9,8 +9,23 @@
  * These IDs are crucial for session sharing - Pixverse uses them to identify
  * a "session instance". If browser and backend use different IDs with the same
  * JWT, Pixverse treats them as separate sessions → "logged in elsewhere" error.
+ *
+ * Communication: Uses CustomEvents to bridge data to content script context.
+ * Content scripts can't access page window directly due to isolation.
  */
 (function() {
+  // Notify content script of captured session data via CustomEvent
+  function notifyContentScript() {
+    const data = {
+      traceId: window.__pixsim7_trace_id || null,
+      anonymousId: window.__pixsim7_anonymous_id || null,
+      jwtToken: window.__pixsim7_jwt_token || null,
+      bearerToken: window.__pixsim7_bearer_token || null,
+      timestamp: Date.now(),
+    };
+    document.dispatchEvent(new CustomEvent('pixsim7-session-data', { detail: data }));
+  }
+
   // Try to capture session IDs from localStorage immediately on load
   // Pixverse stores these for session tracking
   function captureFromStorage() {
@@ -87,6 +102,8 @@
         scanForJwt(localStorage);
         if (!window.__pixsim7_jwt_token) scanForJwt(sessionStorage);
       }
+      // Notify content script of captured data
+      notifyContentScript();
     } catch (e) {
       console.warn('[PixSim7] Storage capture failed:', e);
     }
@@ -98,6 +115,11 @@
   // Retry capture after a short delay (page may set values after initial load)
   setTimeout(captureFromStorage, 500);
   setTimeout(captureFromStorage, 2000);
+
+  // Also respond to explicit requests from content script
+  document.addEventListener('pixsim7-request-session', () => {
+    notifyContentScript();
+  });
 
   // Also intercept fetch calls to capture IDs from headers (backup/update)
   const originalFetch = window.fetch;
@@ -142,6 +164,9 @@
           break;
         }
       }
+
+      // Notify content script of newly captured data
+      notifyContentScript();
     }
 
     return originalFetch.apply(this, args);
@@ -153,14 +178,22 @@
 
   XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
     const nameLower = name.toLowerCase();
+    let captured = false;
     if (nameLower.includes('trace')) {
       window.__pixsim7_trace_id = value;
+      captured = true;
     } else if (nameLower.includes('anonymous')) {
       window.__pixsim7_anonymous_id = value;
+      captured = true;
     } else if (nameLower === 'token' && value) {
       window.__pixsim7_jwt_token = value;
+      captured = true;
     } else if (nameLower === 'authorization' && value && value.startsWith('Bearer ')) {
       window.__pixsim7_bearer_token = value.substring(7);
+      captured = true;
+    }
+    if (captured) {
+      notifyContentScript();
     }
     return originalXhrSetHeader.apply(this, arguments);
   };
