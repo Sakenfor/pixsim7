@@ -3,6 +3,8 @@ FastAPI dependencies - dependency injection for services
 
 Provides clean dependency injection for API routes
 """
+import asyncio
+from functools import lru_cache
 from typing import Annotated, Optional
 from fastapi import Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -137,44 +139,42 @@ def get_entity_ref_resolver(db: AsyncSession = Depends(get_database)) -> EntityR
 
 
 # ===== NARRATIVE ENGINE SINGLETONS =====
-# Centralized singleton management for narrative engines and action systems
-
-_narrative_engine: Optional[NarrativeEngine] = None
-_action_engine: Optional[ActionEngine] = None
-_block_generator: Optional[DynamicBlockGenerator] = None
-_llm_service: Optional[LLMService] = None
+# Thread-safe lazy initialization using @lru_cache (sync) and async lock (async)
+# These are auto-initialized on first use - no explicit startup required
 
 
+@lru_cache(maxsize=1)
 def get_narrative_engine() -> NarrativeEngine:
-    """Get or create the narrative engine singleton."""
-    global _narrative_engine
-    if _narrative_engine is None:
-        _narrative_engine = NarrativeEngine()
-    return _narrative_engine
+    """Get or create the narrative engine singleton (thread-safe via lru_cache)."""
+    return NarrativeEngine()
 
 
+@lru_cache(maxsize=1)
 def get_action_engine() -> ActionEngine:
-    """Get or create the action engine singleton."""
-    global _action_engine
-    if _action_engine is None:
-        _action_engine = ActionEngine(narrative_engine=get_narrative_engine())
-    return _action_engine
+    """Get or create the action engine singleton (thread-safe via lru_cache)."""
+    return ActionEngine(narrative_engine=get_narrative_engine())
 
 
+@lru_cache(maxsize=1)
 def get_block_generator() -> DynamicBlockGenerator:
-    """Get or create the block generator singleton."""
-    global _block_generator
-    if _block_generator is None:
-        _block_generator = DynamicBlockGenerator(use_claude_api=False)
-    return _block_generator
+    """Get or create the block generator singleton (thread-safe via lru_cache)."""
+    return DynamicBlockGenerator(use_claude_api=False)
+
+
+# Async singleton needs a lock for thread-safety
+_llm_service: Optional[LLMService] = None
+_llm_service_lock = asyncio.Lock()
 
 
 async def get_llm_service() -> LLMService:
-    """Get or create the LLM service singleton."""
+    """Get or create the LLM service singleton (thread-safe via async lock)."""
     global _llm_service
     if _llm_service is None:
-        redis_client = await get_redis()
-        _llm_service = LLMService(redis_client, provider="anthropic")
+        async with _llm_service_lock:
+            # Double-check after acquiring lock
+            if _llm_service is None:
+                redis_client = await get_redis()
+                _llm_service = LLMService(redis_client, provider="anthropic")
     return _llm_service
 
 
