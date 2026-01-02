@@ -240,6 +240,138 @@ window.PXS7 = window.PXS7 || {};
     element.style.top = `${Math.max(padding, top)}px`;
   }
 
+  // ===== Page State Capture =====
+
+  /**
+   * Capture current page state for restoration after account switch/reload.
+   * Captures: URL, prompts, images, slot count, model, aspect ratio.
+   * @returns {Object} Page state object
+   */
+  function capturePageState() {
+    const pageState = {
+      url: window.location.href,
+      path: window.location.pathname,
+    };
+
+    // Capture prompt text from textareas
+    const prompts = {};
+    document.querySelectorAll('textarea').forEach((el, i) => {
+      if (el.value && el.value.trim()) {
+        const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+        prompts[key] = el.value;
+      }
+    });
+    if (Object.keys(prompts).length > 0) {
+      pageState.prompts = prompts;
+      console.log('[PixSim7] Captured', Object.keys(prompts).length, 'prompt(s)');
+    }
+
+    // Capture images from upload containers
+    const images = [];
+    const seenUrls = new Set();
+
+    const uploadInputs = Array.from(document.querySelectorAll('input[type="file"]'))
+      .filter(input => {
+        const accept = input.getAttribute('accept') || '';
+        return accept.includes('image') || input.closest('.ant-upload');
+      });
+
+    uploadInputs.forEach((input, slotIndex) => {
+      const container = input.closest('.ant-upload-wrapper') ||
+                       input.closest('.ant-upload') ||
+                       input.parentElement?.parentElement;
+      if (!container) return;
+
+      const parentWithId = input.closest('[id]');
+      const containerId = parentWithId?.id || '';
+
+      // Skip video containers
+      if (containerId.includes('video')) return;
+
+      // Look for images in this container
+      let imageUrl = null;
+
+      // Check img tags
+      const img = container.querySelector('img[src*="media.pixverse.ai"], img[src*="aliyun"]');
+      if (img?.src) {
+        imageUrl = normalizeUrl(img.src);
+      }
+
+      // Check background-image styles
+      if (!imageUrl) {
+        const bgEl = container.querySelector('[style*="media.pixverse.ai"]');
+        if (bgEl) {
+          imageUrl = extractImageUrl(bgEl.getAttribute('style'));
+        }
+      }
+
+      if (imageUrl && !seenUrls.has(imageUrl)) {
+        seenUrls.add(imageUrl);
+        images.push({ url: imageUrl, slot: slotIndex, containerId });
+      }
+    });
+
+    if (images.length > 0) {
+      pageState.images = images;
+      console.log('[PixSim7] Captured', images.length, 'image(s)');
+    }
+
+    // Count image upload slots
+    const imageSlotCount = uploadInputs.filter(input => {
+      const parentWithId = input.closest('[id]');
+      const containerId = parentWithId?.id || '';
+      return containerId.includes('customer_img') && !containerId.includes('video');
+    }).length;
+    if (imageSlotCount > 0) {
+      pageState.imageSlotCount = imageSlotCount;
+      console.log('[PixSim7] Captured slot count:', imageSlotCount);
+    }
+
+    // Capture selected model
+    const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
+    if (modelImg) {
+      const modelContainer = modelImg.closest('div');
+      const modelNameSpan = modelContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
+      if (modelNameSpan?.textContent) {
+        pageState.selectedModel = modelNameSpan.textContent.trim();
+        console.log('[PixSim7] Captured model:', pageState.selectedModel);
+      }
+    }
+
+    // Capture selected aspect ratio
+    const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
+    for (const btn of ratioButtons) {
+      if (btn.className.includes('bg-button-secondary-hover')) {
+        const ratioText = btn.textContent?.trim();
+        if (ratioText && ratioText.includes(':')) {
+          pageState.selectedAspectRatio = ratioText;
+          console.log('[PixSim7] Captured aspect ratio:', ratioText);
+          break;
+        }
+      }
+    }
+
+    return pageState;
+  }
+
+  /**
+   * Save page state to chrome.storage for restoration after reload.
+   * Uses storage module if available, falls back to direct storage.
+   * @param {Object} pageState - State object from capturePageState()
+   */
+  async function savePageState(pageState) {
+    if (window.PXS7?.storage?.savePendingPageState) {
+      await window.PXS7.storage.savePendingPageState(pageState);
+      console.log('[PixSim7] Saved page state via storage module');
+    } else {
+      // Fallback: save directly with same key as storage module
+      await chrome.storage.local.set({
+        pixsim7PendingPageState: { ...pageState, savedAt: Date.now() }
+      });
+      console.log('[PixSim7] Saved page state directly');
+    }
+  }
+
   // Export to global namespace
   window.PXS7.utils = {
     showToast,
@@ -247,15 +379,19 @@ window.PXS7 = window.PXS7 || {};
     positionMenu,
     setupOutsideClick,
     sendMessageWithTimeout,
-    // New helpers
+    // URL helpers
     normalizeUrl,
     extractImageUrl,
+    // DOM helpers
     addHoverEffect,
     withLoadingState,
     createButton,
     createMenuItem,
     createDivider,
     ensureInViewport,
+    // Page state
+    capturePageState,
+    savePageState,
   };
 
 })();
