@@ -35,8 +35,8 @@ except Exception:  # pragma: no cover
 router = APIRouter()
 
 # Provider settings storage (simple file-based for now)
+# Directory created lazily on first write (not at import time)
 PROVIDER_SETTINGS_FILE = Path("data/provider_settings.json")
-PROVIDER_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _method_overridden(provider: Provider, method_name: str) -> bool:
@@ -508,6 +508,8 @@ def _load_provider_settings() -> dict[str, ProviderSettings]:
 def _save_provider_settings(settings: dict[str, ProviderSettings]) -> None:
     """Save provider settings to file"""
     try:
+        # Ensure directory exists on first write
+        PROVIDER_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(PROVIDER_SETTINGS_FILE, 'w') as f:
             data = {k: v.model_dump() for k, v in settings.items()}
             json.dump(data, f, indent=2)
