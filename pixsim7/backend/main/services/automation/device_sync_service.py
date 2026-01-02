@@ -45,8 +45,13 @@ class DeviceSyncService:
             if device.instance_port:
                 ports_to_try.add(device.instance_port)
 
-        # 2. Also try common BlueStacks ports for first-time discovery
-        common_ports = [5555, 5556, 5557, 5558, 5559]
+        # 2. Also try common emulator ports for first-time discovery
+        # BlueStacks: 5555-5559 (odd ports usually)
+        # MuMu12: 16384 + (instance * 32) = 16384, 16416, 16448, 16480...
+        common_ports = [
+            5555, 5557, 5559,  # BlueStacks
+            16384, 16416, 16448, 16480, 16512, 16544,  # MuMu12 (first 6 instances)
+        ]
         ports_to_try.update(common_ports)
 
         # 3. Attempt connections
@@ -144,7 +149,11 @@ class DeviceSyncService:
                         device_name = f"Emulator:{instance_port}" if instance_port else serial
 
             # Check for duplicate connections (same android_id, different adb_id)
-            if android_id and not existing:
+            # Skip duplicate detection for MuMu clones - they share android_id but are distinct instances
+            # MuMu12 uses ports 16384, 16416, 16448, etc. (16384 + instance * 32)
+            is_mumu_clone_port = instance_port and 16384 <= instance_port <= 16640
+
+            if android_id and not existing and not (dev_type == DeviceType.MUMU and is_mumu_clone_port):
                 result = await self.db.execute(
                     select(AndroidDevice).where(
                         AndroidDevice.device_serial == android_id,
@@ -211,7 +220,17 @@ class DeviceSyncService:
                     existing.device_serial = android_id
 
                 # Check if this existing device should be linked as duplicate
-                if android_id and not existing.primary_device_id:
+                # Skip for MuMu clones on distinct ports (they share android_id but are separate instances)
+                existing_is_mumu_clone = existing.instance_port and 16384 <= existing.instance_port <= 16640
+
+                # For MuMu12 clones, actively clear any incorrect duplicate linking
+                if dev_type == DeviceType.MUMU and existing_is_mumu_clone and existing.primary_device_id:
+                    existing.primary_device_id = None
+                    # Also remove (alt) suffix if present
+                    if "(alt)" in existing.name:
+                        existing.name = existing.name.replace(" (alt)", "")
+
+                if android_id and not existing.primary_device_id and not (dev_type == DeviceType.MUMU and existing_is_mumu_clone):
                     dup_result = await self.db.execute(
                         select(AndroidDevice).where(
                             AndroidDevice.device_serial == android_id,

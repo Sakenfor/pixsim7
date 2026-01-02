@@ -69,6 +69,7 @@ class StatusResponse(BaseModel):
 async def list_devices(
     user: CurrentUser,
     include_alt: bool = False,
+    include_disabled: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -77,6 +78,8 @@ async def list_devices(
     Args:
         include_alt: If False (default), exclude alternate connections to same physical device.
                      If True, include all device connections.
+        include_disabled: If False (default), exclude disabled devices.
+                          If True, include all devices regardless of enabled status.
 
     Visibility rules:
     - Admins see all devices (including server-scanned ones with agent_id=None).
@@ -90,6 +93,10 @@ async def list_devices(
             .join(DeviceAgent, AndroidDevice.agent_id == DeviceAgent.id)
             .where(DeviceAgent.user_id == user.id)
         )
+
+    # Filter out disabled devices by default
+    if not include_disabled:
+        query = query.where(AndroidDevice.is_enabled == True)
 
     # Filter out alternate connections by default
     if not include_alt:
