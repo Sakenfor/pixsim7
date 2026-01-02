@@ -8,15 +8,29 @@
  * Uses a singleton pattern to ensure only one WebSocket connection exists
  * regardless of how many components use this hook.
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useGenerationsStore } from '../stores/generationsStore';
+import { useSyncExternalStore } from 'react';
+
+import { apiClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
+import { debugFlags } from '@lib/utils';
+
+import { assetEvents, useAssetSettingsStore } from '@features/assets';
+
+import { parseWebSocketMessage, type WebSocketMessage } from '@/types/websocket';
+
 import { fromGenerationResponse } from '../models';
-import type { GenerationResponse } from '@lib/api/generations';
-import { parseWebSocketMessage } from '@/types/websocket';
-import { assetEvents } from '@features/assets';
-import { apiClient, BACKEND_BASE } from '@lib/api/client';
-import { useAssetSettingsStore } from '@features/assets';
-import { debugFlags } from '@lib/utils/debugFlags';
+import { useGenerationsStore } from '../stores/generationsStore';
+
+type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+}
+
+function getIdValue(value: unknown): number | string | undefined {
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  return undefined;
+}
 
 function computeWebSocketUrl(): string {
   const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
@@ -223,8 +237,13 @@ class WebSocketManager {
           const downloadOnGenerate = useAssetSettingsStore.getState().downloadOnGenerate;
 
           // Extract generation ID from various possible fields
-          const rawData = message as any;
-          const generationId = rawData?.generation_id ?? rawData?.data?.generation_id ?? rawData?.job_id ?? rawData?.id;
+          const rawData = message as WebSocketRecord;
+          const dataRecord = asRecord(rawData.data);
+          const generationId =
+            getIdValue(rawData.generation_id) ??
+            getIdValue(dataRecord?.generation_id) ??
+            getIdValue(rawData.job_id) ??
+            getIdValue(rawData.id);
 
           debugFlags.log('websocket', 'Generation ID:', generationId);
 
@@ -302,8 +321,10 @@ class WebSocketManager {
         } else if (message.type === 'asset:created') {
           // Handle asset creation events (from any source: generation, upload, paused frame)
           debugFlags.log('websocket', 'Asset created event received:', message);
-          const rawData = message as any;
-          const assetId = rawData?.asset_id ?? rawData?.data?.asset_id;
+          const rawData = message as WebSocketRecord;
+          const dataRecord = asRecord(rawData.data);
+          const assetId =
+            getIdValue(rawData.asset_id) ?? getIdValue(dataRecord?.asset_id);
 
           if (assetId) {
             // Small delay to ensure asset is fully synced/downloaded before fetching
@@ -345,8 +366,10 @@ class WebSocketManager {
         } else if (message.type === 'asset:deleted') {
           // Handle asset deletion events
           debugFlags.log('websocket', 'Asset deleted event received:', message);
-          const rawData = message as any;
-          const assetId = rawData?.asset_id ?? rawData?.data?.asset_id;
+          const rawData = message as WebSocketRecord;
+          const dataRecord = asRecord(rawData.data);
+          const assetId =
+            getIdValue(rawData.asset_id) ?? getIdValue(dataRecord?.asset_id);
 
           if (assetId) {
             debugFlags.log('websocket', 'Emitting asset:deleted event to gallery');
