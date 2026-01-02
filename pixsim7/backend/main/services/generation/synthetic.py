@@ -21,6 +21,7 @@ from pixsim7.backend.main.domain import (
     User,
     OperationType,
     BillingState,
+    MediaType,
 )
 from pixsim7.backend.main.domain.enums import GenerationOrigin
 from pixsim7.backend.main.domain.assets.lineage import AssetLineage
@@ -35,6 +36,10 @@ logger = get_logger()
 CREATE_MODE_TO_OPERATION = {
     "i2v": OperationType.IMAGE_TO_VIDEO,
     "t2v": OperationType.TEXT_TO_VIDEO,
+    "i2i": OperationType.IMAGE_TO_IMAGE,
+    "t2i": OperationType.TEXT_TO_IMAGE,
+    "text_to_image": OperationType.TEXT_TO_IMAGE,
+    "image_to_image": OperationType.IMAGE_TO_IMAGE,
     "extend": OperationType.VIDEO_EXTEND,
     "transition": OperationType.VIDEO_TRANSITION,
     "fusion": OperationType.FUSION,
@@ -43,6 +48,8 @@ CREATE_MODE_TO_OPERATION = {
 # Map Pixverse create_mode to input roles
 CREATE_MODE_TO_ROLE = {
     "i2v": "source_image",
+    "i2i": "source_image",
+    "image_to_image": "source_image",
     "extend": "source_video",
     "transition": "transition_input",
     "fusion": "composition_reference",
@@ -103,7 +110,7 @@ class SyntheticGenerationService:
         """
         # Skip if already has generation
         if asset.source_generation_id:
-            logger.debug(
+            logger.info(
                 "synthetic_generation_skip_existing",
                 asset_id=asset.id,
                 existing_generation_id=asset.source_generation_id,
@@ -219,12 +226,9 @@ class SyntheticGenerationService:
         """
         meta = media_metadata or asset.media_metadata or {}
 
-        # Extract operation type from create_mode
+        # Extract prompt
         customer_paths = meta.get("customer_paths", {})
         create_mode = customer_paths.get("create_mode") or meta.get("create_mode", "i2v")
-        operation_type = CREATE_MODE_TO_OPERATION.get(create_mode, OperationType.IMAGE_TO_VIDEO)
-
-        # Extract prompt
         prompt_text = (
             customer_paths.get("prompt")
             or meta.get("prompt")
@@ -242,11 +246,21 @@ class SyntheticGenerationService:
             if prompt_version:
                 prompt_version_id = prompt_version.id
 
-        # Build canonical params from metadata
-        canonical_params = self._build_canonical_params(meta, operation_type, asset)
-
         # Build inputs from existing lineage edges
         inputs = await self._build_inputs_from_lineage(asset.id, create_mode)
+
+        # Extract operation type from create_mode (fallback to asset + inputs)
+        operation_type = CREATE_MODE_TO_OPERATION.get(create_mode)
+        if operation_type is None:
+            if asset.media_type == MediaType.IMAGE:
+                operation_type = (
+                    OperationType.IMAGE_TO_IMAGE if inputs else OperationType.TEXT_TO_IMAGE
+                )
+            else:
+                operation_type = OperationType.IMAGE_TO_VIDEO
+
+        # Build canonical params from metadata
+        canonical_params = self._build_canonical_params(meta, operation_type, asset)
 
         logger.info(
             "synthetic_generation_inputs_built",
@@ -289,10 +303,10 @@ class SyntheticGenerationService:
         """
         prompt_hash = compute_prompt_hash(text)
 
-        # Try to find existing version by hash for this user
+        # Try to find existing one-off version by hash (family_id is NULL)
         stmt = select(PromptVersion).where(
             PromptVersion.prompt_hash == prompt_hash,
-            PromptVersion.user_id == user_id,
+            PromptVersion.family_id.is_(None),
         )
         result = await self.db.execute(stmt)
         existing = result.scalar_one_or_none()
@@ -307,7 +321,6 @@ class SyntheticGenerationService:
 
         # Create new one-off prompt version (no family)
         version = PromptVersion(
-            user_id=user_id,
             family_id=None,  # One-off, not in library
             prompt_text=text,
             prompt_hash=prompt_hash,

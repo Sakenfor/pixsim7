@@ -176,7 +176,7 @@ async def set_family_head(
 
 # ===== ASSET VERSION ENDPOINTS =====
 
-@router.get("/assets/{asset_id}/versions", response_model=List[VersionSummary])
+@router.get("/{asset_id}/versions", response_model=List[VersionSummary])
 async def get_asset_versions(
     asset_id: int,
     user: CurrentUser,
@@ -233,7 +233,7 @@ async def get_asset_versions(
     ]
 
 
-@router.get("/assets/{asset_id}/ancestry", response_model=List[VersionSummary])
+@router.get("/{asset_id}/ancestry", response_model=List[VersionSummary])
 async def get_asset_ancestry(
     asset_id: int,
     user: CurrentUser,
@@ -280,7 +280,7 @@ async def get_asset_ancestry(
     ]
 
 
-@router.post("/assets/{asset_id}/fork", response_model=VersionFamilyResponse)
+@router.post("/{asset_id}/fork", response_model=VersionFamilyResponse)
 async def fork_asset(
     asset_id: int,
     request: ForkRequest,

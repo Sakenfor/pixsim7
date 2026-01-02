@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
-from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
+from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, normalize_enum
 from pixsim7.backend.main.domain.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 
@@ -157,6 +157,29 @@ async def add_asset(
         _fill(existing, "content_id", content_id)
         _fill(existing, "image_hash", image_hash)
         _fill(existing, "phash64", phash64)
+        if existing.provider_id == provider_id:
+            _fill(existing, "provider_account_id", provider_account_id)
+            _fill(existing, "provider_asset_id", provider_asset_id)
+            _fill(existing, "remote_url", remote_url)
+        else:
+            if provider_id and provider_asset_id:
+                from pixsim_logging import get_logger
+                logger = get_logger()
+                uploads = dict(existing.provider_uploads or {})
+                current = uploads.get(provider_id)
+                if not current:
+                    uploads[provider_id] = str(provider_asset_id)
+                    existing.provider_uploads = uploads
+                elif str(current) != str(provider_asset_id):
+                    logger.warning(
+                        "asset_provider_upload_conflict",
+                        existing_asset_id=existing.id,
+                        existing_provider_id=existing.provider_id,
+                        incoming_provider_id=provider_id,
+                        existing_upload_id=current,
+                        incoming_upload_id=provider_asset_id,
+                        detail="Provider upload mapping already exists for provider_id",
+                    )
 
         # NOTE: Tag assignment has been moved to TagService.assign_tags_to_asset()
 
@@ -254,6 +277,8 @@ async def create_lineage_links(
     """
     from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 
+    operation_type = normalize_enum(operation_type, OperationType)
+
     for order, parent_id in enumerate(parent_asset_ids):
         if parent_id == child_asset_id:
             continue
@@ -305,6 +330,7 @@ async def create_lineage_links_with_metadata(
     from pixsim7.backend.main.services.generation.creation import get_relation_type_for_role
 
     created_count = 0
+    operation_type = normalize_enum(operation_type, OperationType)
 
     for input_entry in parent_inputs:
         # Extract asset ID from "asset:123" format

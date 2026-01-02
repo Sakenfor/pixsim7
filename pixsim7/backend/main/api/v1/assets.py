@@ -1679,6 +1679,16 @@ async def enrich_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
+    logger.info(
+        "enrich_asset_start",
+        asset_id=asset.id,
+        provider_id=asset.provider_id,
+        provider_asset_id=asset.provider_asset_id,
+        media_type=asset.media_type.value if asset.media_type else None,
+        provider_account_id=asset.provider_account_id,
+        force=force,
+    )
+
     # Only supported for pixverse currently
     if asset.provider_id != "pixverse":
         raise HTTPException(
@@ -1710,56 +1720,21 @@ async def enrich_asset(
     # Fetch metadata from provider
     try:
         provider = PixverseProvider()
-        client = provider._create_client(account)
 
         if asset.media_type.value == "VIDEO":
+            client = provider._create_client(account)
             provider_metadata = await client.get_video(asset.provider_asset_id)
         else:
-            # For images, get_image() only works for recent images
-            # For older images, we need to search through list_images()
-            provider_metadata = await client.get_image(asset.provider_asset_id)
-
-            # If we got minimal data (no prompt), try finding it in the image list
-            if provider_metadata and not provider_metadata.get("prompt"):
-                logger.info(
-                    "enrich_asset_image_minimal_data",
-                    asset_id=asset.id,
-                    searching_image_list=True,
-                )
-
-                # Search through paginated image list
-                found = False
-                offset = 0
-                limit = 100
-                max_pages = 20  # Search up to 2000 images
-
-                for page in range(max_pages):
-                    images = await client.list_images(limit=limit, offset=offset)
-                    if not images:
-                        break
-
-                    for img in images:
-                        if str(img.get("image_id")) == str(asset.provider_asset_id):
-                            provider_metadata = img
-                            found = True
-                            logger.info(
-                                "enrich_asset_found_in_image_list",
-                                asset_id=asset.id,
-                                page=page,
-                                offset=offset,
-                            )
-                            break
-
-                    if found:
-                        break
-                    offset += limit
-
-                if not found:
-                    logger.warning(
-                        "enrich_asset_not_in_image_list",
-                        asset_id=asset.id,
-                        pages_searched=page + 1,
-                    )
+            provider_metadata = await provider.fetch_image_metadata(
+                account=account,
+                provider_asset_id=asset.provider_asset_id,
+                asset_id=asset.id,
+                remote_url=asset.remote_url,
+                media_metadata=asset.media_metadata,
+                max_pages=20,
+                limit=100,
+                log_prefix="enrich_asset",
+            )
     except Exception as e:
         logger.warning(
             "enrich_asset_fetch_failed",
@@ -1778,17 +1753,34 @@ async def enrich_asset(
             message="No metadata returned from provider"
         )
 
+    if asset.media_metadata and isinstance(provider_metadata, dict):
+        merged_metadata = dict(asset.media_metadata)
+        merged_metadata.update(provider_metadata)
+        provider_metadata = merged_metadata
+
     # Update asset's media_metadata
     asset.media_metadata = provider_metadata
     await db.commit()
 
     # Debug logging to see what metadata we got
+    customer_img_urls = (
+        provider_metadata.get("customer_img_urls")
+        or provider_metadata.get("customer_paths", {}).get("customer_img_urls")
+    )
+    if not isinstance(customer_img_urls, list):
+        customer_img_urls = [customer_img_urls] if customer_img_urls else []
+
     logger.info(
         "enrich_asset_metadata_fetched",
         asset_id=asset.id,
         has_customer_paths=bool(provider_metadata.get("customer_paths")),
         has_prompt=bool(provider_metadata.get("prompt") or provider_metadata.get("customer_paths", {}).get("prompt")),
-        has_customer_img_url=bool(provider_metadata.get("customer_img_url") or provider_metadata.get("customer_paths", {}).get("customer_img_url")),
+        has_customer_img_url=bool(
+            provider_metadata.get("customer_img_url")
+            or provider_metadata.get("customer_paths", {}).get("customer_img_url")
+            or customer_img_urls
+        ),
+        customer_img_url_count=len(customer_img_urls),
         create_mode=provider_metadata.get("customer_paths", {}).get("create_mode") or provider_metadata.get("create_mode"),
         metadata_keys=list(provider_metadata.keys()) if provider_metadata else [],
     )
@@ -1816,6 +1808,15 @@ async def enrich_asset(
     else:
         # No generation yet, create one
         generation = await enrichment_service.enrich_synced_asset(asset, user, provider_metadata)
+
+    logger.info(
+        "enrich_asset_generation_result",
+        asset_id=asset.id,
+        generation_id=generation.id if generation else None,
+        has_generation=bool(generation),
+        source_generation_id=asset.source_generation_id,
+        force=force,
+    )
 
     return EnrichAssetResponse(
         asset_id=asset.id,

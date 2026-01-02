@@ -10,8 +10,10 @@ Design:
 
 Uses shared SimpleRegistry for core functionality.
 """
-from typing import Dict, TYPE_CHECKING
+from typing import Dict, Optional, TYPE_CHECKING, Union
 import logging
+import os
+from pathlib import Path
 
 from pixsim7.backend.main.lib.registry import SimpleRegistry, KeyNotFoundError
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError
@@ -20,6 +22,55 @@ if TYPE_CHECKING:
     from pixsim7.backend.main.services.provider.base import Provider
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PROVIDERS_DIR = "pixsim7/backend/main/providers"
+DEFAULT_PROVIDERS_MODULE = "pixsim7.backend.main.providers"
+_AUTO_DISCOVERY_ATTEMPTED = False
+
+
+def _resolve_providers_dir(providers_dir: str) -> Path:
+    if os.path.isabs(providers_dir):
+        return Path(providers_dir)
+
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / DEFAULT_PROVIDERS_DIR
+        if candidate.exists():
+            return (parent / providers_dir).resolve()
+
+    return (Path.cwd() / providers_dir).resolve()
+
+
+def _providers_module_base(providers_dir: str) -> str:
+    normalized = providers_dir.replace("\\", "/")
+    if os.path.isabs(providers_dir):
+        if normalized.endswith(DEFAULT_PROVIDERS_DIR):
+            return DEFAULT_PROVIDERS_MODULE
+        logger.warning(
+            "Providers dir is absolute; defaulting module base to %s",
+            DEFAULT_PROVIDERS_MODULE,
+        )
+        return DEFAULT_PROVIDERS_MODULE
+
+    if normalized == DEFAULT_PROVIDERS_DIR:
+        return DEFAULT_PROVIDERS_MODULE
+
+    return normalized.replace("/", ".").strip(".")
+
+def _ensure_auto_discovery(reason: str) -> None:
+    global _AUTO_DISCOVERY_ATTEMPTED
+    if _AUTO_DISCOVERY_ATTEMPTED:
+        return
+    _AUTO_DISCOVERY_ATTEMPTED = True
+    resolved_dir = _resolve_providers_dir(DEFAULT_PROVIDERS_DIR)
+    module_base = _providers_module_base(DEFAULT_PROVIDERS_DIR)
+    logger.warning(
+        "Provider registry empty or missing provider; attempting auto-discovery "
+        "reason=%s providers_dir=%s module_base=%s",
+        reason,
+        resolved_dir,
+        module_base,
+    )
+    register_providers_from_plugins()
 
 
 class ProviderRegistry(SimpleRegistry[str, "Provider"]):
@@ -46,17 +97,23 @@ class ProviderRegistry(SimpleRegistry[str, "Provider"]):
         """Extract provider_id from provider instance."""
         return provider.provider_id
 
-    def register(self, provider: "Provider") -> None:
+    def register(self, key_or_provider: Union[str, "Provider"], provider: Optional["Provider"] = None) -> None:
         """
         Register a provider (legacy API - uses register_item internally).
 
         Args:
-            provider: Provider instance
+            key_or_provider: Provider instance or provider_id string
+            provider: Provider instance when key_or_provider is an explicit id
 
         Example:
             registry.register(PixverseProvider())
         """
-        self.register_item(provider)
+        if provider is None:
+            provider_instance = key_or_provider
+            key = self._get_item_key(provider_instance)
+            super().register(key, provider_instance)
+        else:
+            super().register(key_or_provider, provider)
 
     def get(self, provider_id: str) -> "Provider":
         """
@@ -74,7 +131,20 @@ class ProviderRegistry(SimpleRegistry[str, "Provider"]):
         try:
             return super().get(provider_id)
         except KeyNotFoundError:
-            raise ProviderNotFoundError(provider_id)
+            if not self._items:
+                _ensure_auto_discovery("registry_empty")
+            elif not _AUTO_DISCOVERY_ATTEMPTED:
+                _ensure_auto_discovery("provider_missing")
+
+            try:
+                return super().get(provider_id)
+            except KeyNotFoundError:
+                logger.error(
+                    "Provider not found after auto-discovery: provider_id=%s providers=%s",
+                    provider_id,
+                    list(self.keys()),
+                )
+                raise ProviderNotFoundError(provider_id)
 
     def list_providers(self) -> Dict[str, "Provider"]:
         """Get all registered providers"""
@@ -125,7 +195,7 @@ registry = ProviderRegistry()
 
 # ===== AUTO-DISCOVER PROVIDERS =====
 
-def discover_providers(providers_dir: str = "pixsim7/backend/main/providers") -> list[str]:
+def discover_providers(providers_dir: str = DEFAULT_PROVIDERS_DIR) -> list[str]:
     """
     Discover provider plugins by scanning providers directory
 
@@ -135,17 +205,16 @@ def discover_providers(providers_dir: str = "pixsim7/backend/main/providers") ->
     Returns:
         List of discovered provider IDs
     """
-    import os
-
     discovered = []
+    resolved_dir = _resolve_providers_dir(providers_dir)
 
-    if not os.path.exists(providers_dir):
-        logger.warning(f"Providers directory not found: {providers_dir}")
+    if not resolved_dir.exists():
+        logger.warning("Providers directory not found: %s", resolved_dir)
         return discovered
 
     # Scan for provider directories
-    for item in os.listdir(providers_dir):
-        provider_path = os.path.join(providers_dir, item)
+    for item in os.listdir(resolved_dir):
+        provider_path = os.path.join(resolved_dir, item)
 
         # Skip if not a directory
         if not os.path.isdir(provider_path):
@@ -163,11 +232,11 @@ def discover_providers(providers_dir: str = "pixsim7/backend/main/providers") ->
 
         discovered.append(item)
 
-    logger.info(f"Discovered {len(discovered)} provider plugins: {discovered}")
+    logger.info("Discovered %d provider plugins: %s", len(discovered), discovered)
     return discovered
 
 
-def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7/backend/main/providers") -> bool:
+def load_provider_plugin(provider_name: str, providers_dir: str = DEFAULT_PROVIDERS_DIR) -> bool:
     """
     Load and register a provider plugin
 
@@ -187,7 +256,8 @@ def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7/backe
 
     try:
         # Build module path
-        module_path = f"{providers_dir.replace('/', '.')}.{provider_name}.manifest"
+        module_base = _providers_module_base(providers_dir)
+        module_path = f"{module_base}.{provider_name}.manifest"
 
         # Import manifest module
         module = importlib.import_module(module_path)
@@ -249,7 +319,7 @@ def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7/backe
         return False
 
 
-def register_providers_from_plugins(providers_dir: str = "pixsim7/backend/main/providers") -> int:
+def register_providers_from_plugins(providers_dir: str = DEFAULT_PROVIDERS_DIR) -> int:
     """
     Auto-discover and register all provider plugins
 

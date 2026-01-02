@@ -20,7 +20,7 @@ logger = get_logger()
 
 # ===== ASSIGN TAGS =====
 
-@router.post("/assets/{asset_id}/tags/assign", response_model=AssetResponse)
+@router.post("/{asset_id}/tags/assign", response_model=AssetResponse)
 async def assign_tags_to_asset(
     asset_id: int,
     request: AssignTagsRequest,
@@ -70,7 +70,7 @@ async def assign_tags_to_asset(
 
 # ===== ANALYZE ASSET =====
 
-@router.post("/assets/{asset_id}/analyze")
+@router.post("/{asset_id}/analyze")
 async def analyze_asset_for_tags(
     asset_id: int,
     user: CurrentUser,

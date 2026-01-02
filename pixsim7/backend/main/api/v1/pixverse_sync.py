@@ -494,13 +494,18 @@ async def sync_single_pixverse_asset(
 
             if account:
                 provider = PixverseProvider()
-                client = provider._create_client(account)
 
                 # Fetch asset details from PixVerse
                 if media_type == MediaType.VIDEO:
+                    client = provider._create_client(account)
                     pixverse_metadata = await client.get_video(asset_id)
                 else:
-                    pixverse_metadata = await client.get_image(asset_id)
+                    pixverse_metadata = await provider.fetch_image_metadata(
+                        account=account,
+                        provider_asset_id=asset_id,
+                        remote_url=clean_url,
+                        log_prefix="pixverse_single_sync",
+                    )
 
                 logger.info(
                     "pixverse_single_sync_metadata_fetched",

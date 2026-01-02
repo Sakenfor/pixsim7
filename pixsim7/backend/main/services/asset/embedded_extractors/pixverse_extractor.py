@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Optional, Tuple, List, Dict, Any
 import copy
+import re
+from urllib.parse import unquote
 
 
 def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str], Optional[str]]:
@@ -31,14 +33,59 @@ def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str]
     image_urls: List[str] = []
     customer_img_path = None
 
+    def _coerce_pixverse_url(value: Any) -> Optional[str]:
+        if not value:
+            return None
+        if isinstance(value, dict):
+            value = (
+                value.get("url")
+                or value.get("image_url")
+                or value.get("path")
+                or value.get("image_path")
+            )
+        if not value:
+            return None
+        if not isinstance(value, str):
+            value = str(value)
+        value = unquote(value.strip())
+        if value.startswith("http://") or value.startswith("https://"):
+            return value
+        if value.startswith("/"):
+            value = value[1:]
+        if value.startswith("pixverse/") or value.startswith("upload/"):
+            return f"https://media.pixverse.ai/{value}"
+        if value.startswith("openapi/") or value.startswith("openapi\\"):
+            normalized = value.replace("\\", "/")
+            return f"https://media.pixverse.ai/{normalized}"
+        if value.startswith("media.pixverse.ai/"):
+            return f"https://{value}"
+        return value
+
+    create_mode = extra_metadata.get("create_mode")
+    customer_paths = extra_metadata.get("customer_paths")
+    if isinstance(customer_paths, dict) and customer_paths.get("create_mode"):
+        create_mode = customer_paths.get("create_mode")
+
     if extra_metadata.get("customer_img_url"):
         image_urls.append(extra_metadata["customer_img_url"])
+    if extra_metadata.get("customer_img_urls"):
+        urls = extra_metadata["customer_img_urls"]
+        if isinstance(urls, list):
+            image_urls.extend(urls)
+        else:
+            image_urls.append(urls)
+    if extra_metadata.get("customer_img_paths"):
+        paths = extra_metadata["customer_img_paths"]
+        if isinstance(paths, list):
+            image_urls.extend(paths)
+        else:
+            image_urls.append(paths)
     if extra_metadata.get("image_url"):
-        image_urls.append(extra_metadata["image_url"])
+        if create_mode not in {"create_image", "i2i", "t2i", "text_to_image", "image_to_image"}:
+            image_urls.append(extra_metadata["image_url"])
 
     customer_img_path = extra_metadata.get("customer_img_path")
 
-    customer_paths = extra_metadata.get("customer_paths")
     if customer_paths and isinstance(customer_paths, dict):
         if customer_paths.get("customer_img_url"):
             image_urls.append(customer_paths["customer_img_url"])
@@ -46,6 +93,14 @@ def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str]
             urls = customer_paths["customer_img_urls"]
             if isinstance(urls, list):
                 image_urls.extend(urls)
+            else:
+                image_urls.append(urls)
+        if customer_paths.get("customer_img_paths"):
+            paths = customer_paths["customer_img_paths"]
+            if isinstance(paths, list):
+                image_urls.extend(paths)
+            else:
+                image_urls.append(paths)
         if not customer_img_path and customer_paths.get("customer_img_path"):
             customer_img_path = customer_paths["customer_img_path"]
 
@@ -53,9 +108,10 @@ def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str]
     seen = set()
     unique = []
     for u in image_urls:
-        if u and u not in seen:
-            seen.add(u)
-            unique.append(u)
+        coerced = _coerce_pixverse_url(u)
+        if coerced and coerced not in seen:
+            seen.add(coerced)
+            unique.append(coerced)
 
     return (unique, customer_img_path)
 
@@ -73,6 +129,8 @@ def normalize_metadata(extra_metadata: Optional[dict]) -> dict:
             normalized["customer_img_path"] = customer_paths["customer_img_path"]
         if customer_paths.get("customer_img_urls"):
             normalized["customer_img_urls"] = customer_paths["customer_img_urls"]
+        if customer_paths.get("customer_img_paths"):
+            normalized["customer_img_paths"] = customer_paths["customer_img_paths"]
     return normalized
 
 
@@ -179,6 +237,16 @@ def build_embedded_from_pixverse_metadata(
         fusion_meta["original_prompt"] = original_prompt
 
     items: List[Dict[str, Any]] = []
+    uuid_re = re.compile(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        re.IGNORECASE,
+    )
+
+    def _extract_uuid_from_url(url: str) -> Optional[str]:
+        match = uuid_re.search(url)
+        if match:
+            return match.group(0)
+        return None
 
     # VIDEO_EXTEND: add source video as embedded parent if available.
     if create_mode == "extend":
@@ -227,13 +295,16 @@ def build_embedded_from_pixverse_metadata(
             )
 
     for idx, u in enumerate(urls):
+        uuid_value = _extract_uuid_from_url(u)
+        provider_asset_id = uuid_value or f"{provider_video_id}_src_{idx}"
         item: Dict[str, Any] = {
             "type": "image",
             "media_type": "image",
             "remote_url": u,
-            # Synthesize a provider asset id for inputs when unknown
-            "provider_asset_id": f"{provider_video_id}_src_{idx}",
+            "provider_asset_id": provider_asset_id,
         }
+        if uuid_value:
+            item["media_metadata"] = {"pixverse_asset_uuid": uuid_value}
 
         # If this looks like a transition, mark relation/operation hints
         # so lineage creation can classify correctly.

@@ -93,6 +93,15 @@ class AssetEnrichmentService:
         logger = get_logger()
 
         metadata = provider_metadata or asset.media_metadata
+        logger.info(
+            "enrich_synced_asset_start",
+            asset_id=asset.id,
+            provider_id=asset.provider_id,
+            media_type=asset.media_type.value if asset.media_type else None,
+            has_metadata=bool(metadata),
+            metadata_keys=list(metadata.keys()) if isinstance(metadata, dict) else [],
+            source_generation_id=asset.source_generation_id,
+        )
 
         # Step 1: Extract embedded assets and create lineage
         try:
@@ -102,6 +111,7 @@ class AssetEnrichmentService:
                 "enrich_synced_asset_embedded_failed",
                 asset_id=asset.id,
                 error=str(e),
+                error_type=e.__class__.__name__,
             )
 
         # Step 2: Create synthetic generation
@@ -114,6 +124,14 @@ class AssetEnrichmentService:
                 "enrich_synced_asset_synthetic_failed",
                 asset_id=asset.id,
                 error=str(e),
+                error_type=e.__class__.__name__,
+            )
+
+        if not generation:
+            logger.info(
+                "enrich_synced_asset_no_generation",
+                asset_id=asset.id,
+                source_generation_id=asset.source_generation_id,
             )
 
         return generation
@@ -218,6 +236,7 @@ class AssetEnrichmentService:
                 asset_id=asset.id,
                 generation_id=generation.id,
                 error=str(e),
+                error_type=e.__class__.__name__,
             )
             return None
 
@@ -273,6 +292,14 @@ class AssetEnrichmentService:
             )
             embedded = []
 
+        logger.info(
+            "embedded_extraction_result",
+            asset_id=asset.id,
+            provider_id=asset.provider_id,
+            embedded_count=len(embedded),
+            has_metadata=bool(asset.media_metadata),
+        )
+
         if not embedded:
             return
 
@@ -291,11 +318,14 @@ class AssetEnrichmentService:
         CREATE_MODE_TO_OPERATION = {
             "i2v": OperationType.IMAGE_TO_VIDEO,
             "t2v": OperationType.TEXT_TO_VIDEO,
+            "i2i": OperationType.IMAGE_TO_IMAGE,
+            "t2i": OperationType.TEXT_TO_IMAGE,
+            "text_to_image": OperationType.TEXT_TO_IMAGE,
+            "image_to_image": OperationType.IMAGE_TO_IMAGE,
             "extend": OperationType.VIDEO_EXTEND,
             "transition": OperationType.VIDEO_TRANSITION,
             "fusion": OperationType.FUSION,
         }
-        operation_type = CREATE_MODE_TO_OPERATION.get(create_mode, OperationType.IMAGE_TO_VIDEO)
 
         # Collect all inputs for batch lineage creation
         parent_inputs = []
@@ -356,6 +386,16 @@ class AssetEnrichmentService:
 
         # Create lineage with full metadata in one call
         if parent_inputs:
+            operation_type = CREATE_MODE_TO_OPERATION.get(create_mode)
+            if operation_type is None:
+                if asset.media_type == MediaType.IMAGE:
+                    operation_type = (
+                        OperationType.IMAGE_TO_IMAGE
+                        if parent_inputs
+                        else OperationType.TEXT_TO_IMAGE
+                    )
+                else:
+                    operation_type = OperationType.IMAGE_TO_VIDEO
             await create_lineage_links_with_metadata(
                 self.db,
                 child_asset_id=asset.id,

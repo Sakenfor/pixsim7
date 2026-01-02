@@ -14,7 +14,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import uuid
-from urllib.parse import unquote
+import re
+from urllib.parse import unquote, urlparse
 from sqlalchemy.orm import object_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,6 +116,36 @@ def _decode_pixverse_url(value: Any) -> Any:
     return value
 
 
+_PV_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_uuid(value: Optional[str]) -> bool:
+    return bool(value and _PV_UUID_RE.match(value))
+
+
+def _normalize_pixverse_media_url(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    clean = value.split("?", 1)[0]
+    try:
+        parsed = urlparse(clean)
+    except ValueError:
+        return clean
+    if not parsed.scheme or not parsed.netloc:
+        return clean
+    decoded_path = unquote(parsed.path)
+    return f"{parsed.scheme}://{parsed.netloc}{decoded_path}"
+
+
+def _uuid_in_url(uuid_value: Optional[str], url: Optional[str]) -> bool:
+    if not uuid_value or not url:
+        return False
+    return uuid_value.lower() in unquote(url).lower()
+
+
 # Quality normalization: Pixverse API expects resolution format (e.g., "1440p")
 # but the SDK/UI may use marketing format (e.g., "2k", "4k")
 _QUALITY_NORMALIZATION = {
@@ -174,6 +205,164 @@ class PixverseProvider(
             OperationType.VIDEO_TRANSITION,
             OperationType.FUSION,
         ]
+
+    async def fetch_image_metadata(
+        self,
+        account: ProviderAccount,
+        provider_asset_id: str,
+        *,
+        asset_id: Optional[int] = None,
+        remote_url: Optional[str] = None,
+        media_metadata: Optional[Dict[str, Any]] = None,
+        max_pages: int = 20,
+        limit: int = 100,
+        log_prefix: str = "pixverse_image",
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve Pixverse image metadata using ID lookup with list fallback."""
+        context: Dict[str, Any] = {
+            "provider_asset_id": provider_asset_id,
+            "account_id": account.id,
+            "account_email": account.email,
+        }
+        if asset_id is not None:
+            context["asset_id"] = asset_id
+
+        def log_info(suffix: str, **kwargs: Any) -> None:
+            logger.info(f"{log_prefix}_{suffix}", **{**context, **kwargs})
+
+        def log_warning(suffix: str, **kwargs: Any) -> None:
+            logger.warning(f"{log_prefix}_{suffix}", **{**context, **kwargs})
+
+        async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
+            client = self._create_client_from_session(session, account)
+            provider_asset_id_str = str(provider_asset_id or "")
+            lookup_image_id = provider_asset_id_str if provider_asset_id_str.isdigit() else None
+
+            if not lookup_image_id and media_metadata:
+                metadata_image_id = media_metadata.get("image_id")
+                if metadata_image_id is not None and str(metadata_image_id).isdigit():
+                    lookup_image_id = str(metadata_image_id)
+                    log_info(
+                        "using_metadata_image_id",
+                        image_id=lookup_image_id,
+                    )
+
+            if not lookup_image_id:
+                log_info("non_numeric_provider_id")
+
+            provider_metadata = None
+            if lookup_image_id:
+                provider_metadata = await client.get_image(lookup_image_id)
+
+            if provider_metadata and provider_metadata.get("prompt"):
+                return provider_metadata
+
+            search_reason = "no_metadata" if not provider_metadata else "missing_prompt"
+            candidate_urls: list[str] = []
+            url_sources = [
+                remote_url,
+                (media_metadata or {}).get("image_url"),
+                (media_metadata or {}).get("media_url"),
+                (media_metadata or {}).get("customer_img_url"),
+                (provider_metadata or {}).get("image_url") if provider_metadata else None,
+            ]
+            for url in url_sources:
+                normalized = _normalize_pixverse_media_url(url)
+                if normalized and normalized not in candidate_urls:
+                    candidate_urls.append(normalized)
+
+            target_uuid = provider_asset_id_str if _looks_like_uuid(provider_asset_id_str) else None
+            log_info(
+                "image_minimal_data",
+                searching_image_list=True,
+                search_reason=search_reason,
+                candidate_urls=len(candidate_urls),
+                uuid_match=bool(target_uuid),
+                lookup_image_id=lookup_image_id,
+            )
+
+            if not lookup_image_id and not candidate_urls and not target_uuid:
+                return provider_metadata
+
+            found = False
+            scanned = 0
+            offset = 0
+            match_mode = None
+            matched_image_id = None
+
+            for page in range(max_pages):
+                images = await client.list_images(limit=limit, offset=offset)
+                if page == 0:
+                    log_info(
+                        "image_list_page",
+                        page=page,
+                        offset=offset,
+                        returned=len(images),
+                    )
+                if not images:
+                    break
+
+                scanned += len(images)
+                for img in images:
+                    img_id = img.get("image_id")
+                    if lookup_image_id and str(img_id) == str(lookup_image_id):
+                        provider_metadata = img
+                        found = True
+                        match_mode = "image_id"
+                        matched_image_id = img_id
+                        break
+
+                    img_url = img.get("image_url") or img.get("url")
+                    normalized_url = _normalize_pixverse_media_url(img_url)
+                    if normalized_url and normalized_url in candidate_urls:
+                        provider_metadata = img
+                        found = True
+                        match_mode = "image_url"
+                        matched_image_id = img_id
+                        break
+
+                    if target_uuid and _uuid_in_url(target_uuid, img_url):
+                        provider_metadata = img
+                        found = True
+                        match_mode = "uuid_in_url"
+                        matched_image_id = img_id
+                        break
+
+                if found:
+                    if target_uuid and match_mode in {"image_url", "uuid_in_url"}:
+                        provider_metadata = dict(provider_metadata or {})
+                        provider_metadata.setdefault("pixverse_asset_uuid", target_uuid)
+                    log_info(
+                        "found_in_image_list",
+                        page=page,
+                        offset=offset,
+                        match_mode=match_mode,
+                        matched_image_id=matched_image_id,
+                    )
+                    break
+
+                offset += limit
+
+            if not found:
+                log_warning(
+                    "not_in_image_list",
+                    pages_searched=page + 1,
+                    scanned=scanned,
+                    limit=limit,
+                    max_pages=max_pages,
+                    lookup_image_id=lookup_image_id,
+                    candidate_urls=len(candidate_urls),
+                    uuid_match=bool(target_uuid),
+                )
+
+            return provider_metadata
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="fetch_image_metadata",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
 
     # ===== PROVIDER METADATA =====
 

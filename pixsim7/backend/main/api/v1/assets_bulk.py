@@ -44,7 +44,7 @@ class BulkExportRequest(BaseModel):
 
 # ===== BULK TAGS =====
 
-@router.post("/assets/bulk/tags")
+@router.post("/bulk/tags")
 async def bulk_update_tags(
     request: BulkTagRequest,
     user: CurrentUser,
@@ -86,7 +86,7 @@ async def bulk_update_tags(
 
 # ===== BULK DELETE =====
 
-@router.post("/assets/bulk/delete")
+@router.post("/bulk/delete")
 async def bulk_delete_assets(
     request: BulkDeleteRequest,
     user: CurrentUser,
@@ -127,7 +127,7 @@ async def bulk_delete_assets(
 
 # ===== BULK EXPORT =====
 
-@router.post("/assets/bulk/export")
+@router.post("/bulk/export")
 async def bulk_export_assets(
     request: BulkExportRequest,
     user: CurrentUser,

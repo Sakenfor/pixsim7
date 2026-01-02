@@ -1230,24 +1230,45 @@ class PixverseOperationsMixin:
         """Delete video or image from Pixverse"""
         from pixsim7.backend.main.domain.enums import MediaType
 
-        # Currently only support video deletion
-        if media_type == MediaType.IMAGE:
-            logger.warning(
-                "pixverse_image_deletion_not_supported",
-                provider_asset_id=provider_asset_id,
-            )
-            # Don't raise - just skip for now
-            return
+        def _normalize_provider_id(value: str) -> str | int:
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
+            return value
 
         async def _operation(session: PixverseSessionData) -> None:
             client = self._create_client_from_session(session, account)
 
             try:
-                # Call SDK delete method (requires pixverse-py with delete_video)
-                await client.video.delete_video(
-                    video_id=int(provider_asset_id),
-                    account=self._account_from_session(session, account)
-                )
+                normalized_id = _normalize_provider_id(provider_asset_id)
+
+                if media_type == MediaType.IMAGE:
+                    if hasattr(client, "delete_images"):
+                        await client.delete_images([normalized_id])
+                    elif hasattr(client, "delete_assets"):
+                        await client.delete_assets("image", [normalized_id])
+                    elif getattr(client, "image", None) and hasattr(client.image, "delete_images"):
+                        await client.image.delete_images(image_ids=[normalized_id])
+                    else:
+                        logger.warning(
+                            "pixverse_image_deletion_not_supported",
+                            provider_asset_id=provider_asset_id,
+                            account_id=account.id,
+                        )
+                        return
+                else:
+                    if hasattr(client, "delete_videos"):
+                        await client.delete_videos([normalized_id])
+                    elif hasattr(client, "delete_assets"):
+                        await client.delete_assets("video", [normalized_id])
+                    elif getattr(client, "video", None) and hasattr(client.video, "delete_video"):
+                        await client.video.delete_video(video_id=normalized_id)
+                    else:
+                        logger.warning(
+                            "pixverse_video_deletion_not_supported",
+                            provider_asset_id=provider_asset_id,
+                            account_id=account.id,
+                        )
+                        return
 
                 logger.info(
                     "pixverse_delete_success",

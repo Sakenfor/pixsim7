@@ -75,7 +75,7 @@ class BackfillContentBlobsResponse(BaseModel):
 
 # ===== SHA STATS =====
 
-@router.get("/assets/sha-stats", response_model=SHAStatsResponse)
+@router.get("/sha-stats", response_model=SHAStatsResponse)
 async def get_sha_stats(
     admin: CurrentAdminUser,
     db: DatabaseSession,
@@ -131,7 +131,7 @@ async def get_sha_stats(
 
 # ===== BACKFILL SHA =====
 
-@router.post("/assets/backfill-sha", response_model=BackfillSHAResponse)
+@router.post("/backfill-sha", response_model=BackfillSHAResponse)
 async def backfill_sha_hashes(
     admin: CurrentAdminUser,
     asset_service: AssetSvc,
@@ -209,7 +209,7 @@ async def backfill_sha_hashes(
 
 # ===== STORAGE SYNC STATS =====
 
-@router.get("/assets/storage-sync-stats", response_model=StorageSyncStatsResponse)
+@router.get("/storage-sync-stats", response_model=StorageSyncStatsResponse)
 async def get_storage_sync_stats(
     admin: CurrentAdminUser,
     db: DatabaseSession,
@@ -273,7 +273,7 @@ async def get_storage_sync_stats(
 
 # ===== BULK SYNC STORAGE =====
 
-@router.post("/assets/bulk-sync-storage", response_model=BulkSyncResponse)
+@router.post("/bulk-sync-storage", response_model=BulkSyncResponse)
 async def bulk_sync_storage(
     admin: CurrentAdminUser,
     asset_service: AssetSvc,
@@ -367,7 +367,7 @@ async def bulk_sync_storage(
 
 # ===== CONTENT BLOB STATS =====
 
-@router.get("/assets/content-blob-stats", response_model=ContentBlobStatsResponse)
+@router.get("/content-blob-stats", response_model=ContentBlobStatsResponse)
 async def get_content_blob_stats(
     admin: CurrentAdminUser,
     db: DatabaseSession,
@@ -428,7 +428,7 @@ async def get_content_blob_stats(
 
 # ===== CONTENT BLOB BACKFILL =====
 
-@router.post("/assets/backfill-content-blobs", response_model=BackfillContentBlobsResponse)
+@router.post("/backfill-content-blobs", response_model=BackfillContentBlobsResponse)
 async def backfill_content_blobs(
     admin: CurrentAdminUser,
     db: DatabaseSession,
