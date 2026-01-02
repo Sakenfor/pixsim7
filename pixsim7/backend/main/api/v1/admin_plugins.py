@@ -6,8 +6,8 @@ Provides admin endpoints for plugin observability, metrics, and health monitorin
 Phase 16.5: Plugin Observability & Failure Isolation
 """
 
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, HTTPException, Request, Depends
+from typing import Dict, Any, List, Optional, Tuple
 
 from pixsim7.backend.main.infrastructure.plugins.observability import metrics_tracker
 from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
@@ -17,33 +17,50 @@ from pixsim7.backend.main.infrastructure.plugins.manager import PluginManager
 router = APIRouter(prefix="/admin/plugins", tags=["admin", "plugins"])
 
 
-# Global plugin manager references (set by main.py)
-_plugin_manager: Optional[PluginManager] = None
-_routes_manager: Optional[PluginManager] = None
+# ===== DEPENDENCIES =====
+
+def get_plugin_managers(request: Request) -> Tuple[PluginManager, Optional[PluginManager]]:
+    """
+    Get plugin managers from app.state (set during startup in main.py).
+
+    Returns:
+        Tuple of (plugin_manager, routes_manager)
+
+    Raises:
+        HTTPException 500 if plugin manager not initialized
+    """
+    plugin_manager = getattr(request.app.state, "plugin_manager", None)
+    routes_manager = getattr(request.app.state, "routes_manager", None)
+
+    if not plugin_manager:
+        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+
+    return plugin_manager, routes_manager
 
 
+# Legacy function kept for backwards compatibility during transition
+# TODO: Remove once all callers updated to use app.state directly
 def set_plugin_managers(plugin_manager: PluginManager, routes_manager: PluginManager):
-    """Set plugin manager references (called from main.py)"""
-    global _plugin_manager, _routes_manager
-    _plugin_manager = plugin_manager
-    _routes_manager = routes_manager
+    """DEPRECATED: Plugin managers are now accessed via request.app.state"""
+    pass  # No-op - managers are already on app.state
 
 
 # ===== ENDPOINTS =====
 
 @router.get("/list")
-async def list_plugins():
+async def list_plugins(
+    managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
+):
     """
     List all loaded plugins with their status.
 
     Returns:
         List of plugins with metadata
     """
-    if not _plugin_manager:
-        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+    plugin_manager, routes_manager = managers
 
-    feature_plugins = _plugin_manager.list_plugins()
-    route_plugins = _routes_manager.list_plugins() if _routes_manager else []
+    feature_plugins = plugin_manager.list_plugins()
+    route_plugins = routes_manager.list_plugins() if routes_manager else []
 
     return {
         "feature_plugins": feature_plugins,
@@ -176,7 +193,10 @@ async def get_behavior_extensions():
 
 
 @router.get("/{plugin_id}/details")
-async def get_plugin_details(plugin_id: str):
+async def get_plugin_details(
+    plugin_id: str,
+    managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
+):
     """
     Get detailed information about a specific plugin.
 
@@ -186,15 +206,14 @@ async def get_plugin_details(plugin_id: str):
     Returns:
         Plugin details including manifest, metrics, behavior extensions
     """
-    if not _plugin_manager:
-        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+    plugin_manager, routes_manager = managers
 
     # Try feature plugins first
-    plugin_info = _plugin_manager.get_plugin(plugin_id)
+    plugin_info = plugin_manager.get_plugin(plugin_id)
 
     # Try route plugins if not found
-    if not plugin_info and _routes_manager:
-        plugin_info = _routes_manager.get_plugin(plugin_id)
+    if not plugin_info and routes_manager:
+        plugin_info = routes_manager.get_plugin(plugin_id)
 
     if not plugin_info:
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
@@ -253,7 +272,10 @@ async def reset_plugin_metrics(plugin_id: Optional[str] = None):
 
 
 @router.get("/{plugin_id}/frontend")
-async def get_plugin_frontend_manifest(plugin_id: str):
+async def get_plugin_frontend_manifest(
+    plugin_id: str,
+    managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
+):
     """
     Get the frontend manifest for a specific plugin.
 
@@ -268,15 +290,14 @@ async def get_plugin_frontend_manifest(plugin_id: str):
     Returns:
         Frontend manifest with interactions list, or 404 if not found/no manifest
     """
-    if not _plugin_manager:
-        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+    plugin_manager, routes_manager = managers
 
     # Try feature plugins first
-    plugin_info = _plugin_manager.get_plugin(plugin_id)
+    plugin_info = plugin_manager.get_plugin(plugin_id)
 
     # Try route plugins if not found
-    if not plugin_info and _routes_manager:
-        plugin_info = _routes_manager.get_plugin(plugin_id)
+    if not plugin_info and routes_manager:
+        plugin_info = routes_manager.get_plugin(plugin_id)
 
     if not plugin_info:
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not found")
@@ -294,7 +315,9 @@ async def get_plugin_frontend_manifest(plugin_id: str):
 
 
 @router.get("/frontend/all")
-async def list_all_frontend_manifests():
+async def list_all_frontend_manifests(
+    managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
+):
     """
     Get all frontend manifests from all enabled plugins.
 
@@ -304,13 +327,12 @@ async def list_all_frontend_manifests():
     Returns:
         List of frontend manifests from all plugins that have them
     """
-    if not _plugin_manager:
-        raise HTTPException(status_code=500, detail="Plugin manager not initialized")
+    plugin_manager, routes_manager = managers
 
     manifests = []
 
     # Collect from feature plugins
-    for plugin_id, plugin_info in _plugin_manager.plugins.items():
+    for plugin_id, plugin_info in plugin_manager.plugins.items():
         if not plugin_info.get("enabled", False):
             continue
 
@@ -332,8 +354,8 @@ async def list_all_frontend_manifests():
             })
 
     # Collect from route plugins if available
-    if _routes_manager:
-        for plugin_id, plugin_info in _routes_manager.plugins.items():
+    if routes_manager:
+        for plugin_id, plugin_info in routes_manager.plugins.items():
             if not plugin_info.get("enabled", False):
                 continue
 
