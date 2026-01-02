@@ -1,8 +1,10 @@
-import type { ArcStateCreator, ArcNodeManagementState } from './types';
-import type { ArcGraphNode, ArcGraphEdge } from '@features/graph/domain/arcGraph';
-import { validateArcGraphReferences } from '@features/graph/domain/arcGraph/validation';
-import { useGraphStore } from '../graphStore';
 import { useToastStore } from '@pixsim7/shared.ui';
+
+import { validateArcGraphReferences, type ArcGraphEdge, type ArcGraphNode } from '@features/graph/models/arcGraph';
+
+import { useGraphStore } from '../graphStore';
+
+import type { ArcStateCreator, ArcNodeManagementState } from './types';
 
 /**
  * Arc Node Management Slice
@@ -291,3 +293,4 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     return graph.nodes.find((n) => n.id === id) || null;
   },
 });
+

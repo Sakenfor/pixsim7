@@ -1,5 +1,6 @@
-import type { ArcGraph, ArcGraphNode, ArcGraphEdge } from '@features/graph/domain/arcGraph';
 import type { StateCreator as ZustandStateCreator } from 'zustand';
+
+import type { ArcGraph, ArcGraphEdge, ArcGraphNode } from '@features/graph/models/arcGraph';
 
 /**
  * Arc Graph Store State Interface
@@ -75,3 +76,4 @@ export type ArcStateCreator<T> = ZustandStateCreator<
   [],
   T
 >;
+

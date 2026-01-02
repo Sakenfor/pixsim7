@@ -36,7 +36,7 @@ export interface BaseArcNodeData {
   label: string;
   description?: string;
   position?: { x: number; y: number };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -109,7 +109,7 @@ export interface ArcGraphEdge {
   label?: string;
   conditions?: Array<{
     type: 'relationship' | 'quest' | 'flag' | 'arc_stage';
-    data: any;
+    data: unknown;
   }>;
   meta?: {
     fromPort?: string;
@@ -129,7 +129,7 @@ export interface ArcGraph {
   nodes: ArcGraphNode[];
   edges: ArcGraphEdge[];
   startNodeId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   version?: number;
   createdAt?: string;
   updatedAt?: string;

@@ -15,10 +15,11 @@
  * enabling dependency-aware delete operations and usage indicators.
  */
 
-import type { ArcGraph } from '@features/graph/domain/arcGraph';
-import type { SceneCollection } from '@domain/sceneCollection';
+import type { ArcGraph } from '@features/graph/models/arcGraph';
+
 import type { Campaign } from '@domain/campaign';
 import type { DraftScene } from '@domain/sceneBuilder';
+import type { SceneCollection } from '@domain/sceneCollection';
 
 /**
  * Arc-Scene dependency index
@@ -407,3 +408,4 @@ export function getCampaignsForArc(
 ): string[] {
   return Array.from(index.arcToCampaigns.get(arcGraphId) || []);
 }
+

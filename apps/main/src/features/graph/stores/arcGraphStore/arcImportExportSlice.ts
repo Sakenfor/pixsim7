@@ -1,5 +1,6 @@
+import { exportArcGraph as exportGraph, importArcGraph as importGraph } from '@features/graph/models/arcGraph';
+
 import type { ArcStateCreator, ArcImportExportState } from './types';
-import { exportArcGraph as exportGraph, importArcGraph as importGraph } from '@features/graph/domain/arcGraph/utils';
 
 /**
  * Arc Import/Export Slice
@@ -55,3 +56,4 @@ export const createArcImportExportSlice: ArcStateCreator<ArcImportExportState> =
     }
   },
 });
+

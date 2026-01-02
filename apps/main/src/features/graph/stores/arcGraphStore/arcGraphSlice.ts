@@ -1,6 +1,6 @@
+import { createEmptyArcGraph, type ArcGraph } from '@features/graph/models/arcGraph';
+
 import type { ArcStateCreator, ArcGraphManagementState } from './types';
-import { createEmptyArcGraph } from '@features/graph/domain/arcGraph/utils';
-import type { ArcGraph } from '@features/graph/domain/arcGraph';
 
 /**
  * Arc Graph Management Slice
@@ -29,7 +29,8 @@ export const createArcGraphSlice: ArcStateCreator<ArcGraphManagementState> = (se
 
   deleteArcGraph: (graphId: string) => {
     set((state) => {
-      const { [graphId]: deleted, ...rest } = state.arcGraphs;
+      const rest = { ...state.arcGraphs };
+      delete rest[graphId];
       return {
         arcGraphs: rest,
         currentArcGraphId: state.currentArcGraphId === graphId ? null : state.currentArcGraphId,
@@ -121,3 +122,4 @@ export const createArcGraphSlice: ArcStateCreator<ArcGraphManagementState> = (se
     }, false, 'updateArcGraphMetadata');
   },
 });
+

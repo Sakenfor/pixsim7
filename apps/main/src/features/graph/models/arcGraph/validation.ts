@@ -13,12 +13,13 @@
  * - Minimal coupling (accepts sceneIds as Set, not entire store)
  */
 
-import type { ArcGraph, ArcGraphNode } from './types';
 import type {
   ValidationIssue,
   ValidationResult,
   ArcValidationIssueType,
 } from '@domain/validation/types';
+
+import type { ArcGraph } from './types';
 
 /**
  * Validate arc graph scene references against available scenes.
