@@ -7,6 +7,7 @@
 
 // Debug settings keys
 const DEBUG_SETTINGS_KEYS = {
+  debugGeneral: false,
   debugImagePicker: false,
   debugCookies: false,
   debugAuth: false,

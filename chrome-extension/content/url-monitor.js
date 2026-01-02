@@ -6,6 +6,15 @@
  * Caches provider per URL to avoid unnecessary API calls.
  */
 
+// Debug mode - controlled by extension settings
+let _urlMonitor_DEBUG = false;
+if (typeof chrome !== 'undefined' && chrome.storage) {
+  chrome.storage.local.get({ debugGeneral: false, debugAll: false }, (result) => {
+    _urlMonitor_DEBUG = result.debugGeneral || result.debugAll;
+  });
+}
+const _urlMonitor_debugLog = (...args) => _urlMonitor_DEBUG && console.log('[PixSim7 URL Monitor]', ...args);
+
 let _urlMonitor_currentUrl = '';
 let _urlMonitor_cachedProvider = null;
 let _urlMonitor_onProviderChangeCallback = null;
@@ -23,7 +32,7 @@ async function _urlMonitor_detectProviderFromBackend(url) {
       return { providerId: res.data.provider.provider_id };
     }
   } catch (e) {
-    console.warn('[PixSim7 URL Monitor] Provider detection failed:', e);
+    _urlMonitor_debugLog('Provider detection failed:', e);
   }
   return null;
 }
@@ -40,14 +49,14 @@ async function _urlMonitor_checkUrlChange() {
   }
 
   // URL changed - invalidate cache and re-detect
-  console.log('[PixSim7 URL Monitor] URL changed, detecting provider...', url);
+  _urlMonitor_debugLog('URL changed, detecting provider...', url);
   _urlMonitor_currentUrl = url;
   _urlMonitor_cachedProvider = await _urlMonitor_detectProviderFromBackend(url);
 
   if (_urlMonitor_cachedProvider) {
-    console.log(`[PixSim7 URL Monitor] Provider detected: ${_urlMonitor_cachedProvider.providerId}`);
+    _urlMonitor_debugLog('Provider detected:', _urlMonitor_cachedProvider.providerId);
   } else {
-    console.log('[PixSim7 URL Monitor] No provider detected for this URL');
+    _urlMonitor_debugLog('No provider detected for this URL');
   }
 
   // Notify callback of provider change
@@ -99,7 +108,7 @@ function _urlMonitor_watchUrlChanges() {
 function initUrlMonitor(onProviderChange) {
   _urlMonitor_onProviderChangeCallback = onProviderChange;
 
-  console.log('[PixSim7 URL Monitor] Initializing on:', window.location.href);
+  _urlMonitor_debugLog('Initializing on:', window.location.href);
 
   // Start watching for URL changes
   _urlMonitor_watchUrlChanges();

@@ -3,6 +3,9 @@
     if (window.__pxs7UploadInterceptorInstalled) return;
     window.__pxs7UploadInterceptorInstalled = true;
 
+    // Debug logging - uses console.debug (only visible with Verbose level in DevTools)
+    const debugLog = (...args) => console.debug('[PixSim7 Upload]', ...args);
+
     // State for intercepting multipart uploads
     window.__pxs7PendingImageUrl = null;  // Set by content script when we want to intercept
     window.__pxs7FakeUploadId = null;     // Track fake multipart upload
@@ -11,8 +14,10 @@
     const FAKE_ETAG = '"pxs7fake' + Date.now() + '"';
 
   // Helper to check if we should intercept this OSS request
+  // DISABLED - OSS interception causes SDK errors, just intercept batch_upload_media
   function shouldInterceptOSS(url) {
-    return window.__pxs7PendingImageUrl && url.includes('aliyuncs.com');
+    return false; // Disabled - let OSS requests pass through or fail naturally
+    // return window.__pxs7PendingImageUrl && url.includes('aliyuncs.com');
   }
 
   // Intercept XHR (Pixverse uses XHR for OSS uploads)
@@ -33,7 +38,7 @@
     // === Intercept batch_upload_media ===
     if (window.__pxs7PendingImageUrl && method === 'POST' && url.includes('batch_upload_media')) {
       const urlToReturn = window.__pxs7PendingImageUrl;
-      console.log('[PixSim7] Intercepting batch_upload_media, returning:', urlToReturn);
+      debugLog(' Intercepting batch_upload_media, returning:', urlToReturn);
 
       window.__pxs7PendingImageUrl = null;
       window.__pxs7FakeUploadId = null;
@@ -60,9 +65,9 @@
           }
         };
 
-        console.log('[PixSim7] batch_upload_media response:', responseObj);
+        debugLog(' batch_upload_media response:', responseObj);
         fakeXHRResponse(xhr, 200, JSON.stringify(responseObj), responseObj);
-        console.log('[PixSim7] batch_upload_media response sent');
+        debugLog(' batch_upload_media response sent');
 
         // Signal completion so content script knows it's safe to proceed with next image
         window.dispatchEvent(new CustomEvent('__pxs7UploadComplete', {
@@ -74,7 +79,7 @@
 
     // === Intercept OSS multipart: POST ?uploads= (initiate) ===
     if (shouldInterceptOSS(url) && method === 'POST' && url.includes('?uploads')) {
-      console.log('[PixSim7] Intercepting multipart initiate');
+      debugLog(' Intercepting multipart initiate');
       window.__pxs7FakeUploadId = FAKE_UPLOAD_ID;
 
       setTimeout(() => {
@@ -87,14 +92,14 @@
 </InitiateMultipartUploadResult>`;
 
         fakeXHRResponse(xhr, 200, xml);
-        console.log('[PixSim7] Multipart initiate response sent');
+        debugLog(' Multipart initiate response sent');
       }, 30);
       return;
     }
 
     // === Intercept OSS multipart: PUT ?partNumber= (upload part) ===
     if (shouldInterceptOSS(url) && method === 'PUT' && url.includes('partNumber=')) {
-      console.log('[PixSim7] Intercepting multipart part upload');
+      debugLog(' Intercepting multipart part upload');
 
       // Simulate progress
       setTimeout(() => {
@@ -108,14 +113,14 @@
 
         // PUT part returns 200 with ETag header
         fakeXHRResponse(xhr, 200, '', null, { 'ETag': FAKE_ETAG });
-        console.log('[PixSim7] Multipart part upload response sent');
+        debugLog(' Multipart part upload response sent');
       }, 50);
       return;
     }
 
     // === Intercept OSS multipart: POST ?uploadId= (complete) ===
     if (shouldInterceptOSS(url) && method === 'POST' && url.includes('uploadId=') && !url.includes('uploads')) {
-      console.log('[PixSim7] Intercepting multipart complete');
+      debugLog(' Intercepting multipart complete');
 
       setTimeout(() => {
         // Extract key from URL for response
@@ -132,7 +137,7 @@
 </CompleteMultipartUploadResult>`;
 
         fakeXHRResponse(xhr, 200, xml);
-        console.log('[PixSim7] Multipart complete response sent');
+        debugLog(' Multipart complete response sent');
       }, 30);
       return;
     }
@@ -155,12 +160,31 @@
       Object.defineProperty(xhr, 'response', { value: responseText, writable: true, configurable: true });
     }
 
-    // Fake getResponseHeader
-    if (headers) {
-      xhr.getResponseHeader = function(name) {
-        return headers[name] || null;
-      };
+    // Parse XML and set responseXML for OSS SDK
+    if (responseText && responseText.trim().startsWith('<?xml')) {
+      try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(responseText, 'application/xml');
+        Object.defineProperty(xhr, 'responseXML', { value: xmlDoc, writable: true, configurable: true });
+      } catch (e) {
+        console.warn('[PixSim7] Failed to parse XML response:', e);
+      }
     }
+
+    // Fake getResponseHeader - include common headers OSS SDK might check
+    const defaultHeaders = {
+      'Content-Type': responseText?.startsWith('<?xml') ? 'application/xml' : 'application/json',
+      'x-oss-request-id': 'pxs7-fake-' + Date.now(),
+      ...headers
+    };
+    xhr.getResponseHeader = function(name) {
+      // Case-insensitive header lookup
+      const key = Object.keys(defaultHeaders).find(k => k.toLowerCase() === name.toLowerCase());
+      return key ? defaultHeaders[key] : null;
+    };
+    xhr.getAllResponseHeaders = function() {
+      return Object.entries(defaultHeaders).map(([k, v]) => `${k}: ${v}`).join('\r\n');
+    };
 
     // Fire events
     xhr.dispatchEvent(new Event('readystatechange'));
@@ -177,10 +201,10 @@
   window.addEventListener('__pxs7SetPendingUrl', function(e) {
     window.__pxs7PendingImageUrl = e.detail;
     window.__pxs7FakeUploadId = null;
-    console.log('[PixSim7] Pending URL set:', e.detail);
+    debugLog(' Pending URL set:', e.detail);
   });
 
-  console.log('[PixSim7] Upload interceptor installed (multipart support)');
+  debugLog(' Upload interceptor installed (multipart support)');
   } catch (e) {
     console.error('[PixSim7] Upload interceptor failed:', e);
   }

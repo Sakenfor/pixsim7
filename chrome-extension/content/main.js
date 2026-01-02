@@ -12,7 +12,16 @@
  * Only detects provider on URL changes (not on every poll).
  */
 
-console.log('[PixSim7 Content] Loaded on:', window.location.href);
+// Debug mode - controlled by extension settings
+let DEBUG_GENERAL = false;
+if (typeof chrome !== 'undefined' && chrome.storage) {
+  chrome.storage.local.get({ debugGeneral: false, debugAll: false }, (result) => {
+    DEBUG_GENERAL = result.debugGeneral || result.debugAll;
+  });
+}
+const debugLog = (...args) => DEBUG_GENERAL && console.log('[PixSim7 Content]', ...args);
+
+debugLog('Loaded on:', window.location.href);
 
 // Inject bearer token capture (safe no-op if not used)
 try {
@@ -23,7 +32,7 @@ try {
 
 // Initialize URL monitor with callback for provider changes
 setTimeout(() => {
-  console.log('[PixSim7 Content] Initializing...');
+  debugLog('Initializing...');
 
   initUrlMonitor((provider) => {
     // URL changed and provider detected/changed
@@ -82,7 +91,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Save page state before login/account switch (preserves prompt, image, URL)
   if (message.action === 'savePageStateBeforeLogin') {
-    console.log('[PixSim7] Received savePageStateBeforeLogin message');
+    debugLog('Received savePageStateBeforeLogin message');
     (async () => {
       try {
         // Use the image picker's saveInputState to capture to sessionStorage
