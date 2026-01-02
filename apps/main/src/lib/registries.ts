@@ -81,15 +81,21 @@ export type {
   FormFieldType,
 } from './game/interactions/types';
 
-// ===== Node Type Registry =====
-// Manages scene graph node types
+// ===== Node Type Registries =====
+// Manages scene + arc graph node types
 // Source: @features/graph (moved from @pixsim7/shared.types in migration)
-export { nodeTypeRegistry, NodeTypeRegistry } from '@features/graph';
+export {
+  nodeTypeRegistry,
+  sceneNodeTypeRegistry,
+  arcNodeTypeRegistry,
+  NodeTypeRegistry,
+} from '@features/graph';
 
 export type {
   NodeTypeDefinition,
   PortDefinition,
   PortConfig,
+  SceneNodeTypeDefinition,
 } from '@features/graph';
 
 // Node type registration helpers (for plugins)

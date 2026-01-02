@@ -1,19 +1,21 @@
 import type { ComponentType } from 'react';
-import type { DraftSceneNode } from '@domain/sceneBuilder';
 
-export interface NodeRendererProps {
-  node: DraftSceneNode;
+import type { DraftSceneNode } from '@domain/sceneBuilder';
+import type { ArcGraphNode } from '@features/graph/models/arcGraph';
+
+export interface NodeRendererProps<TNode = DraftSceneNode> {
+  node: TNode;
   isSelected: boolean;
   isStart: boolean;
   hasErrors: boolean;
 }
 
-export interface NodeRenderer {
+export interface NodeRenderer<TNode = DraftSceneNode> {
   /** Node type this renders */
   nodeType: string;
 
   /** Render component for node body content */
-  component: ComponentType<NodeRendererProps>;
+  component: ComponentType<NodeRendererProps<TNode>>;
 
   /** Default size hint (used by layout algorithms) */
   defaultSize?: { width: number; height: number };
@@ -22,7 +24,7 @@ export interface NodeRenderer {
   customHeader?: boolean;
 
   /** Lazy loading: function to load the component on demand */
-  loader?: () => Promise<ComponentType<NodeRendererProps>>;
+  loader?: () => Promise<ComponentType<NodeRendererProps<TNode>>>;
 
   /** Priority for preloading (higher = load sooner) */
   preloadPriority?: number;
@@ -86,10 +88,10 @@ class LRUCache<K, V> {
  * - Lazy loading support for plugin-based renderers
  * - Automatic preloading of high-priority renderers
  */
-export class NodeRendererRegistry {
-  private renderers = new Map<string, NodeRenderer>();
-  private cache = new LRUCache<string, NodeRenderer>(50);
-  private loadingPromises = new Map<string, Promise<NodeRenderer>>();
+export class NodeRendererRegistry<TNode = DraftSceneNode> {
+  private renderers = new Map<string, NodeRenderer<TNode>>();
+  private cache = new LRUCache<string, NodeRenderer<TNode>>(50);
+  private loadingPromises = new Map<string, Promise<NodeRenderer<TNode>>>();
   private preloadedIds = new Set<string>();
   private duplicatePolicy: 'warn' | 'error';
 
@@ -98,7 +100,7 @@ export class NodeRendererRegistry {
   }
 
   /** Register a node renderer */
-  register(renderer: NodeRenderer) {
+  register(renderer: NodeRenderer<TNode>) {
     if (this.renderers.has(renderer.nodeType)) {
       const message = `Node renderer for ${renderer.nodeType} already registered`;
       if (this.duplicatePolicy === 'error') {
@@ -129,7 +131,7 @@ export class NodeRendererRegistry {
   }
 
   /** Get renderer for a node type (with caching and lazy loading) */
-  async getAsync(nodeType: string): Promise<NodeRenderer | undefined> {
+  async getAsync(nodeType: string): Promise<NodeRenderer<TNode> | undefined> {
     // Check cache first
     const cached = this.cache.get(nodeType);
     if (cached && !cached.loader) {
@@ -153,7 +155,7 @@ export class NodeRendererRegistry {
   }
 
   /** Synchronous get (use when you know the renderer is loaded) */
-  get(nodeType: string): NodeRenderer | undefined {
+  get(nodeType: string): NodeRenderer<TNode> | undefined {
     // Check cache first
     const cached = this.cache.get(nodeType);
     if (cached) {
@@ -168,7 +170,7 @@ export class NodeRendererRegistry {
   }
 
   /** Load a lazy-loaded renderer */
-  private async loadRenderer(nodeType: string): Promise<NodeRenderer | undefined> {
+  private async loadRenderer(nodeType: string): Promise<NodeRenderer<TNode> | undefined> {
     // Check if already loading
     if (this.loadingPromises.has(nodeType)) {
       return this.loadingPromises.get(nodeType);
@@ -183,7 +185,7 @@ export class NodeRendererRegistry {
     const loadPromise = renderer.loader()
       .then(component => {
         // Replace the stub with the loaded component
-        const loadedRenderer: NodeRenderer = {
+        const loadedRenderer: NodeRenderer<TNode> = {
           ...renderer,
           component,
           loader: undefined, // Remove loader after loading
@@ -229,7 +231,7 @@ export class NodeRendererRegistry {
   }
 
   /** Get renderer or fallback to default */
-  getOrDefault(nodeType: string): NodeRenderer {
+  getOrDefault(nodeType: string): NodeRenderer<TNode> {
     const renderer = this.get(nodeType);
     if (renderer) {
       return renderer;
@@ -245,7 +247,7 @@ export class NodeRendererRegistry {
   }
 
   /** Get all registered renderers */
-  getAll(): NodeRenderer[] {
+  getAll(): NodeRenderer<TNode>[] {
     return Array.from(this.renderers.values());
   }
 
@@ -264,4 +266,22 @@ export class NodeRendererRegistry {
 }
 
 /** Global renderer registry instance */
-export const nodeRendererRegistry = new NodeRendererRegistry({ duplicatePolicy: 'error' });
+export function createNodeRendererRegistry<TNode>(
+  options: NodeRendererRegistryOptions = {}
+): NodeRendererRegistry<TNode> {
+  return new NodeRendererRegistry<TNode>(options);
+}
+
+export const sceneNodeRendererRegistry = createNodeRendererRegistry<DraftSceneNode>({
+  duplicatePolicy: 'error',
+});
+
+export const arcNodeRendererRegistry = createNodeRendererRegistry<ArcGraphNode>({
+  duplicatePolicy: 'error',
+});
+
+export type SceneNodeRendererProps = NodeRendererProps<DraftSceneNode>;
+export type ArcNodeRendererProps = NodeRendererProps<ArcGraphNode>;
+
+/** Compatibility alias for existing imports */
+export const nodeRendererRegistry = sceneNodeRendererRegistry;

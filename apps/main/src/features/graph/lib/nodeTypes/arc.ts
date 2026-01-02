@@ -1,4 +1,4 @@
-import { nodeTypeRegistry } from './registry';
+import { arcNodeTypeRegistry } from './arcRegistry';
 
 // Ensure arc node types are only registered once per process
 let arcNodeTypesRegistered = false;
@@ -13,7 +13,7 @@ export function registerArcNodeTypes() {
   arcNodeTypesRegistered = true;
 
   // Arc node - represents story beat/stage
-  nodeTypeRegistry.register({
+  arcNodeTypeRegistry.register({
     id: 'arc',
     name: 'Arc',
     description: 'Story beat or arc stage',
@@ -37,7 +37,7 @@ export function registerArcNodeTypes() {
   });
 
   // Quest node - represents quest objective or branch
-  nodeTypeRegistry.register({
+  arcNodeTypeRegistry.register({
     id: 'quest',
     name: 'Quest',
     description: 'Quest objective or branch',
@@ -60,7 +60,7 @@ export function registerArcNodeTypes() {
   });
 
   // Milestone node - represents major story checkpoint
-  nodeTypeRegistry.register({
+  arcNodeTypeRegistry.register({
     id: 'milestone',
     name: 'Milestone',
     description: 'Major story checkpoint',
@@ -82,7 +82,7 @@ export function registerArcNodeTypes() {
   });
 
   // Arc Group - organizational container for arc nodes
-  nodeTypeRegistry.register({
+  arcNodeTypeRegistry.register({
     id: 'arc_group',
     name: 'Arc Group',
     description: 'Visual container for organizing arc nodes',

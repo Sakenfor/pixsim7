@@ -1,9 +1,26 @@
-import { nodeTypeRegistry } from './registry';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
+
+import { sceneNodeTypeRegistry } from './sceneRegistry';
+import type { SceneRuntimeNode } from './sceneRegistry';
 import { registerNpcResponseNode } from './npcResponse';
 import { registerIntimacyNodeTypes } from '@features/interactions';
 
 // Ensure built-in node types are only registered once per process
 let builtinNodeTypesRegistered = false;
+
+function createBaseRuntimeNode(node: DraftSceneNode): SceneRuntimeNode {
+  return {
+    nodeType: 'scene_content',
+    id: node.id,
+    type: node.type,
+    label: node.metadata?.label,
+    meta: node.metadata,
+  };
+}
+
+function getNodeMetadata(node: DraftSceneNode): Record<string, unknown> | undefined {
+  return node.metadata as Record<string, unknown> | undefined;
+}
 
 /** Register all built-in node types (idempotent) */
 export function registerBuiltinNodeTypes() {
@@ -19,7 +36,7 @@ export function registerBuiltinNodeTypes() {
   registerIntimacyNodeTypes();
 
   // Video node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'video',
     name: 'Video',
     description: 'Play video/audio media',
@@ -38,10 +55,16 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'VideoNodeEditor',
     rendererComponent: 'VideoNodeRenderer',
     preloadPriority: 10, // Very common, preload eagerly
+    toRuntime: (node) => ({
+      ...createBaseRuntimeNode(node),
+      media: node.segments,
+      selection: node.selection,
+      playback: node.playback,
+    }),
   });
 
   // Choice node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'choice',
     name: 'Choice',
     description: 'Player makes a choice',
@@ -57,20 +80,34 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'ChoiceNodeEditor',
     rendererComponent: 'ChoiceNodeRenderer',
     preloadPriority: 9, // Very common, preload eagerly
+    toRuntime: (node) => {
+      const metadata = getNodeMetadata(node);
+      const choices = Array.isArray(metadata?.choices) ? metadata.choices : [];
+      return {
+        ...createBaseRuntimeNode(node),
+        choices: choices as SceneRuntimeNode['choices'],
+      };
+    },
     ports: {
       dynamic: (node) => {
         // Read choices from node metadata
-        const metadata = node.metadata;
-        const choices = metadata?.choices || [];
+        const metadata = (node as { metadata?: Record<string, unknown> }).metadata;
+        const choices = Array.isArray(metadata?.choices) ? metadata.choices : [];
 
         // Default choices if none configured
         const choicesData = choices.length > 0
-          ? choices.map((choice: any, index: number) => ({
-              id: choice.id,
-              label: choice.text || `Choice ${index + 1}`,
-              color: choice.color || '#a855f7',
-              description: `Player chooses: ${choice.text}`,
-            }))
+          ? choices.map((choice, index) => {
+              const record = choice as Record<string, unknown>;
+              const id = typeof record.id === 'string' ? record.id : `choice_${index + 1}`;
+              const text = typeof record.text === 'string' ? record.text : undefined;
+              const color = typeof record.color === 'string' ? record.color : '#a855f7';
+              return {
+                id,
+                label: text || `Choice ${index + 1}`,
+                color,
+                description: text ? `Player chooses: ${text}` : undefined,
+              };
+            })
           : [
               { id: 'choice_1', label: 'Choice 1', color: '#a855f7' },
               { id: 'choice_2', label: 'Choice 2', color: '#a855f7' },
@@ -85,7 +122,7 @@ export function registerBuiltinNodeTypes() {
               color: '#3b82f6',
             },
           ],
-          outputs: choicesData.map((choice: any) => ({
+          outputs: choicesData.map((choice) => ({
             id: choice.id,
             label: choice.label,
             position: 'bottom',
@@ -98,7 +135,7 @@ export function registerBuiltinNodeTypes() {
   });
 
   // Condition node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'condition',
     name: 'Condition',
     description: 'Branch based on flags',
@@ -116,10 +153,25 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'ConditionNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 7, // Common, but uses default renderer
+    toRuntime: (node) => {
+      const metadata = getNodeMetadata(node);
+      return {
+        ...createBaseRuntimeNode(node),
+        condition: metadata?.condition as SceneRuntimeNode['condition'],
+        trueTargetNodeId:
+          typeof metadata?.trueTargetNodeId === 'string'
+            ? metadata.trueTargetNodeId
+            : undefined,
+        falseTargetNodeId:
+          typeof metadata?.falseTargetNodeId === 'string'
+            ? metadata.falseTargetNodeId
+            : undefined,
+      };
+    },
   });
 
   // End node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'end',
     name: 'End',
     description: 'End scene',
@@ -136,10 +188,21 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'EndNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 5, // Common but simple
+    toRuntime: (node) => {
+      const metadata = getNodeMetadata(node);
+      const endConfig = metadata?.endConfig as
+        | { endType?: SceneRuntimeNode['endType']; message?: string }
+        | undefined;
+      return {
+        ...createBaseRuntimeNode(node),
+        endType: endConfig?.endType || 'neutral',
+        endMessage: endConfig?.message,
+      };
+    },
   });
 
   // Scene call node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'scene_call',
     name: 'Scene Call',
     description: 'Call another scene',
@@ -157,11 +220,20 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'SceneCallNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 8, // Common in complex scenes
+    toRuntime: (node) => {
+      const callNode = node as Extract<DraftSceneNode, { type: 'scene_call' }>;
+      return {
+        ...createBaseRuntimeNode(node),
+        targetSceneId: callNode.targetSceneId,
+        parameterBindings: callNode.parameterBindings,
+        returnRouting: callNode.returnRouting,
+      };
+    },
     ports: {
       dynamic: (node) => {
         // Read return points from node metadata
-        const metadata = node.metadata;
-        const returnPoints = metadata?.returnPoints || [];
+        const metadata = (node as { metadata?: Record<string, unknown> }).metadata;
+        const returnPoints = Array.isArray(metadata?.returnPoints) ? metadata.returnPoints : [];
 
         // Default return point if none configured
         if (returnPoints.length === 0) {
@@ -185,13 +257,16 @@ export function registerBuiltinNodeTypes() {
           };
         }
 
-        const returnData = returnPoints.map((rp: any, index: number) => ({
-          id: rp.id,
-          label: rp.label || `Return ${index + 1}`,
-          position: 'bottom',
-          color: rp.color || '#a855f7',
-          description: rp.description,
-        }));
+        const returnData = returnPoints.map((rp, index) => {
+          const record = rp as Record<string, unknown>;
+          return {
+            id: typeof record.id === 'string' ? record.id : `return_${index + 1}`,
+            label: typeof record.label === 'string' ? record.label : `Return ${index + 1}`,
+            position: 'bottom' as const,
+            color: typeof record.color === 'string' ? record.color : '#a855f7',
+            description: typeof record.description === 'string' ? record.description : undefined,
+          };
+        });
 
         return {
           inputs: [
@@ -209,7 +284,7 @@ export function registerBuiltinNodeTypes() {
   });
 
   // Return node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'return',
     name: 'Return',
     description: 'Return from scene call',
@@ -226,10 +301,18 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'ReturnNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 5, // Moderate frequency
+    toRuntime: (node) => {
+      const returnNode = node as Extract<DraftSceneNode, { type: 'return' }>;
+      return {
+        ...createBaseRuntimeNode(node),
+        returnPointId: returnNode.returnPointId,
+        returnValues: returnNode.returnValues,
+      };
+    },
   });
 
   // Generation node (experimental)
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'generation',
     name: 'Generation',
     description: 'AI content generation',
@@ -261,10 +344,13 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'GenerationNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 2, // Experimental, rare
+    toRuntime: (node) => ({
+      ...createBaseRuntimeNode(node),
+    }),
   });
 
   // Action node
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'action',
     name: 'Action',
     description: 'Trigger actions/effects',
@@ -280,10 +366,13 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'ActionNodeEditor', // TODO: create this
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 6, // Moderately common
+    toRuntime: (node) => ({
+      ...createBaseRuntimeNode(node),
+    }),
   });
 
   // Mini-Game node (special video node with mini-game metadata)
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'miniGame',
     name: 'Mini-Game',
     description: 'Interactive gameplay segment',
@@ -305,10 +394,13 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'MiniGameNodeEditor',
     rendererComponent: 'VideoNodeRenderer',
     preloadPriority: 3, // Less common
+    toRuntime: (node) => ({
+      ...createBaseRuntimeNode(node),
+    }),
   });
 
   // Node Group (organizational)
-  nodeTypeRegistry.register({
+  sceneNodeTypeRegistry.register({
     id: 'node_group',
     name: 'Group',
     description: 'Visual container for organizing nodes',
@@ -323,5 +415,6 @@ export function registerBuiltinNodeTypes() {
     },
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 1, // Organizational, less critical
+    toRuntime: () => null,
   });
 }

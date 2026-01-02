@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
+import { Button, useToast } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactFlow, {
   type Node,
@@ -13,10 +14,12 @@ import ReactFlow, {
   type NodeTypes,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button, useToast } from '@pixsim7/shared.ui';
+
+import { arcNodeTypeRegistry } from '../../lib/nodeTypes/arcRegistry';
+
+import type { ArcGraph, ArcGraphEdge, ArcGraphNode } from '@features/graph/models/arcGraph';
+
 import { useArcGraphStore, type ArcGraphState } from '../../stores/arcGraphStore';
-import type { ArcGraphNode, ArcGraphEdge, ArcGraph } from '@features/graph/domain/arcGraph';
-import { nodeTypeRegistry } from '@lib/registries';
 import { ArcNode } from '../nodes/ArcNode';
 import { NodePalette } from '../nodes/NodePalette';
 
@@ -190,7 +193,7 @@ export function ArcGraphPanel() {
   // Handle adding nodes from palette
   const handleAddNode = useCallback(
     (nodeTypeId: string, position?: { x: number; y: number }) => {
-      const nodeTypeDef = nodeTypeRegistry.getSync(nodeTypeId);
+      const nodeTypeDef = arcNodeTypeRegistry.getSync(nodeTypeId);
       if (!nodeTypeDef) {
         toast.error(`Node type ${nodeTypeId} not found`);
         return;
@@ -200,7 +203,7 @@ export function ArcGraphPanel() {
 
       const newNode: ArcGraphNode = {
         id: crypto.randomUUID(),
-        type: nodeTypeId as any,
+        type: nodeTypeId as ArcGraphNode['type'],
         label: `New ${nodeTypeDef.name}`,
         position: finalPosition,
         ...nodeTypeDef.defaultData,
@@ -259,8 +262,9 @@ export function ArcGraphPanel() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/json';
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
+    input.onchange = (event: Event) => {
+      const target = event.target as HTMLInputElement | null;
+      const file = target?.files?.[0];
       if (!file) return;
 
       const reader = new FileReader();
@@ -333,6 +337,7 @@ export function ArcGraphPanel() {
         {showPalette && (
           <NodePalette
             onNodeCreate={handleAddNode}
+            registry={arcNodeTypeRegistry}
             scope="arc"
           />
         )}
@@ -364,3 +369,4 @@ export function ArcGraphPanel() {
     </div>
   );
 }
+

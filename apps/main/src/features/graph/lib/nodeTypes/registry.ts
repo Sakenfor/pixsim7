@@ -41,13 +41,17 @@ export interface PortConfig {
    *   outputs: [{ id: 'output', label: 'Out', position: 'bottom', color: '#10b981' }]
    * })
    */
-  dynamic?: (nodeData: any) => {
+  dynamic?: (nodeData: unknown) => {
     inputs: PortDefinition[];
     outputs: PortDefinition[];
   };
 }
 
-export interface NodeTypeDefinition<TData = any> {
+export interface NodeTypeDefinition<
+  TData = Record<string, unknown>,
+  TNode = unknown,
+  TRuntime = unknown
+> {
   /** Unique node type ID */
   id: string;
 
@@ -70,7 +74,7 @@ export interface NodeTypeDefinition<TData = any> {
   defaultData: Partial<TData>;
 
   /** JSON schema for validation (optional) */
-  schema?: Record<string, any>;
+  schema?: Record<string, unknown>;
 
   /** Editor component (registered separately in frontend) */
   editorComponent?: string; // Component name for lazy loading
@@ -91,8 +95,11 @@ export interface NodeTypeDefinition<TData = any> {
   /** Port configuration for this node type */
   ports?: PortConfig;
 
+  /** Convert draft node to runtime representation (scene nodes only) */
+  toRuntime?: (node: TNode) => TRuntime | null;
+
   /** Lazy loading: function to load the definition on demand */
-  loader?: () => Promise<NodeTypeDefinition<TData>>;
+  loader?: () => Promise<NodeTypeDefinition<TData, TNode, TRuntime>>;
 
   /** Priority for preloading (higher = load sooner) */
   preloadPriority?: number;
@@ -151,12 +158,12 @@ class LRUCache<K, V> {
   }
 }
 
-export class NodeTypeRegistry {
-  private types = new Map<string, NodeTypeDefinition>();
+export class NodeTypeRegistry<TDefinition extends NodeTypeDefinition = NodeTypeDefinition> {
+  private types = new Map<string, TDefinition>();
   private categoryIndex = new Map<string, Set<string>>(); // category -> type IDs
   private scopeIndex = new Map<string, Set<string>>(); // scope -> type IDs
-  private cache = new LRUCache<string, NodeTypeDefinition>(50);
-  private loadingPromises = new Map<string, Promise<NodeTypeDefinition>>();
+  private cache = new LRUCache<string, TDefinition>(50);
+  private loadingPromises = new Map<string, Promise<TDefinition>>();
   private preloadedIds = new Set<string>();
   private duplicatePolicy: 'warn' | 'error';
 
@@ -165,7 +172,7 @@ export class NodeTypeRegistry {
   }
 
   /** Register a node type */
-  register<TData = any>(def: NodeTypeDefinition<TData>) {
+  register(def: TDefinition) {
     if (this.types.has(def.id)) {
       const message = `Node type ${def.id} already registered`;
       if (this.duplicatePolicy === 'error') {
@@ -207,7 +214,7 @@ export class NodeTypeRegistry {
   }
 
   /** Get node type definition (with caching and lazy loading) */
-  async get(id: string): Promise<NodeTypeDefinition | undefined> {
+  async get(id: string): Promise<TDefinition | undefined> {
     // Check cache first
     const cached = this.cache.get(id);
     if (cached) {
@@ -231,7 +238,7 @@ export class NodeTypeRegistry {
   }
 
   /** Synchronous get (use when you know the type is loaded) */
-  getSync(id: string): NodeTypeDefinition | undefined {
+  getSync(id: string): TDefinition | undefined {
     // Check cache first
     const cached = this.cache.get(id);
     if (cached) {
@@ -246,7 +253,7 @@ export class NodeTypeRegistry {
   }
 
   /** Load a lazy-loaded type */
-  private async loadType(id: string): Promise<NodeTypeDefinition | undefined> {
+  private async loadType(id: string): Promise<TDefinition | undefined> {
     // Check if already loading
     if (this.loadingPromises.has(id)) {
       return this.loadingPromises.get(id);
@@ -297,12 +304,12 @@ export class NodeTypeRegistry {
   }
 
   /** Get all registered types (synchronous, may include lazy stubs) */
-  getAll(): NodeTypeDefinition[] {
+  getAll(): TDefinition[] {
     return Array.from(this.types.values());
   }
 
   /** Get types by category (optimized with index) */
-  getByCategory(category: string): NodeTypeDefinition[] {
+  getByCategory(category: string): TDefinition[] {
     const ids = this.categoryIndex.get(category);
     if (!ids) {
       return [];
@@ -310,11 +317,11 @@ export class NodeTypeRegistry {
 
     return Array.from(ids)
       .map(id => this.types.get(id))
-      .filter((t): t is NodeTypeDefinition => t !== undefined);
+      .filter((t): t is TDefinition => t !== undefined);
   }
 
   /** Get types by scope (optimized with index) */
-  getByScope(scope: string): NodeTypeDefinition[] {
+  getByScope(scope: string): TDefinition[] {
     const ids = this.scopeIndex.get(scope);
     if (!ids) {
       return [];
@@ -322,11 +329,11 @@ export class NodeTypeRegistry {
 
     return Array.from(ids)
       .map(id => this.types.get(id))
-      .filter((t): t is NodeTypeDefinition => t !== undefined);
+      .filter((t): t is TDefinition => t !== undefined);
   }
 
   /** Get types by multiple scopes */
-  getByScopes(scopes: string[]): NodeTypeDefinition[] {
+  getByScopes(scopes: string[]): TDefinition[] {
     const allIds = new Set<string>();
 
     for (const scope of scopes) {
@@ -338,11 +345,11 @@ export class NodeTypeRegistry {
 
     return Array.from(allIds)
       .map(id => this.types.get(id))
-      .filter((t): t is NodeTypeDefinition => t !== undefined);
+      .filter((t): t is TDefinition => t !== undefined);
   }
 
   /** Get user-creatable types */
-  getUserCreatable(): NodeTypeDefinition[] {
+  getUserCreatable(): TDefinition[] {
     return this.getAll().filter(t => t.userCreatable !== false);
   }
 
@@ -404,5 +411,9 @@ export class NodeTypeRegistry {
   }
 }
 
-/** Global registry instance */
-export const nodeTypeRegistry = new NodeTypeRegistry({ duplicatePolicy: 'error' });
+/** Registry factory for custom layers */
+export function createNodeTypeRegistry<TDefinition extends NodeTypeDefinition>(
+  options: NodeTypeRegistryOptions = {}
+): NodeTypeRegistry<TDefinition> {
+  return new NodeTypeRegistry<TDefinition>(options);
+}

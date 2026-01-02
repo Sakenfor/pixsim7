@@ -66,7 +66,15 @@ export { useLineageGraph } from './hooks/useLineageGraph';
 
 // Lib - Editor Core APIs (explicit - these are the main APIs)
 export { graphEditorRegistry, type GraphEditorDefinition } from './lib/editor/editorRegistry';
-export { nodeRendererRegistry, type NodeRendererDefinition } from './lib/editor/nodeRendererRegistry';
+export {
+  nodeRendererRegistry,
+  sceneNodeRendererRegistry,
+  arcNodeRendererRegistry,
+  type NodeRenderer,
+  type NodeRendererRegistry,
+  type SceneNodeRendererProps,
+  type ArcNodeRendererProps,
+} from './lib/editor/nodeRendererRegistry';
 export { useTemplateAnalyticsStore } from './stores/templateAnalyticsStore';
 export { useTemplateStore } from './stores/templatesStore';
 export { graphClipboard } from './lib/editor/clipboard';
@@ -82,6 +90,8 @@ export * from './lib/builders/promptGraphBuilder';
 // Lib - Node Types (from @shared/types migration)
 export * from './lib/nodeTypes/npcResponse';
 export * from './lib/nodeTypes/registry';
+export * from './lib/nodeTypes/sceneRegistry';
+export * from './lib/nodeTypes/arcRegistry';
 export * from './lib/nodeTypes/arc';
 export * from './lib/nodeTypes/builtin';
 

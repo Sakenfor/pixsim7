@@ -4,7 +4,7 @@
  * Integrates with existing scene graph system and AI video generation
  */
 
-import { nodeTypeRegistry, type NodeTypeDefinition } from './registry';
+import { sceneNodeTypeRegistry, type SceneNodeTypeDefinition } from './sceneRegistry';
 import type { NpcZoneConfiguration } from './npcZones';
 
 // ============================================================================
@@ -20,7 +20,7 @@ export interface ResponseGraphNode {
   type: ResponseNodeType;
   label?: string;
   position: { x: number; y: number };
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 export interface ResponseGraphConnection {
@@ -516,7 +516,7 @@ export const RESPONSE_TEMPLATES: ResponseGraphTemplate[] = [
 // ============================================================================
 
 export function registerNpcResponseNode() {
-  const npcResponseNode: NodeTypeDefinition<NpcResponseMetadata> = {
+  const npcResponseNode: SceneNodeTypeDefinition<NpcResponseMetadata> = {
     id: 'npc_response',
     name: 'NPC Response',
     description: 'Interactive NPC with tool-based responses and AI video generation',
@@ -598,5 +598,5 @@ export function registerNpcResponseNode() {
     },
   };
 
-  nodeTypeRegistry.register(npcResponseNode);
+  sceneNodeTypeRegistry.register(npcResponseNode);
 }

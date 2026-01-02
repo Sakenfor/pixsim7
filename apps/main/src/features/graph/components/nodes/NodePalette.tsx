@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
-import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
+
+import type { NodeTypeDefinition, NodeTypeRegistry } from '../../lib/nodeTypes/registry';
+import { sceneNodeTypeRegistry } from '../../lib/nodeTypes/sceneRegistry';
 
 export type NodeType = string; // Now accepts any registered node type
 
@@ -29,6 +31,7 @@ function toNodePaletteItem(def: NodeTypeDefinition): NodePaletteItem {
 interface NodePaletteProps {
   onNodeCreate: (nodeType: NodeType, position?: { x: number; y: number }) => void;
   compact?: boolean;
+  registry?: NodeTypeRegistry<NodeTypeDefinition>;
   /**
    * Filter node types by scope.
    * - 'scene': Show only scene-level nodes (video, choice, condition, etc.)
@@ -39,12 +42,17 @@ interface NodePaletteProps {
   scope?: 'scene' | 'arc' | 'world';
 }
 
-export function NodePalette({ onNodeCreate, compact = false, scope }: NodePaletteProps) {
+export function NodePalette({
+  onNodeCreate,
+  compact = false,
+  scope,
+  registry = sceneNodeTypeRegistry,
+}: NodePaletteProps) {
   const [draggedType, setDraggedType] = useState<NodeType | null>(null);
 
   // Get creatable node types from registry, filtered by scope if provided
   const nodeTypes = useMemo(() => {
-    let types = nodeTypeRegistry.getUserCreatable();
+    let types = registry.getUserCreatable();
 
     // Filter by scope if specified
     // NOTE: All node types should now have an explicit scope defined.
@@ -64,7 +72,7 @@ export function NodePalette({ onNodeCreate, compact = false, scope }: NodePalett
         if (catA !== catB) return catA.localeCompare(catB);
         return a.label.localeCompare(b.label);
       });
-  }, [scope]);
+  }, [scope, registry]);
 
   const handleDragStart = (e: React.DragEvent, nodeType: NodeType) => {
     setDraggedType(nodeType);
@@ -79,6 +87,17 @@ export function NodePalette({ onNodeCreate, compact = false, scope }: NodePalett
   const handleClick = (nodeType: NodeType) => {
     onNodeCreate(nodeType);
   };
+
+  // Group by category
+  const byCategory = useMemo(() => {
+    const groups: Record<string, NodePaletteItem[]> = {};
+    nodeTypes.forEach((item) => {
+      const cat = item.category || 'custom';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    });
+    return groups;
+  }, [nodeTypes]);
 
   if (compact) {
     return (
@@ -105,17 +124,6 @@ export function NodePalette({ onNodeCreate, compact = false, scope }: NodePalett
       </div>
     );
   }
-
-  // Group by category
-  const byCategory = useMemo(() => {
-    const groups: Record<string, NodePaletteItem[]> = {};
-    nodeTypes.forEach((item) => {
-      const cat = item.category || 'custom';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(item);
-    });
-    return groups;
-  }, [nodeTypes]);
 
   const categoryOrder = ['media', 'flow', 'logic', 'action', 'custom'];
 
