@@ -239,33 +239,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/{asset_id}/enrich": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Enrich Asset
-         * @description Enrich an asset by fetching metadata from the provider and running synthetic generation.
-         *
-         *     This will:
-         *     1. Fetch full metadata from the provider API (e.g., prompt, settings, source images)
-         *     2. Extract embedded assets and create lineage links
-         *     3. Create a synthetic Generation record with prompt/params
-         *
-         *     Useful for assets synced without full metadata (e.g., from extension badge click).
-         */
-        readonly post: operations["enrich_asset_api_v1__asset_id__enrich_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/accounts": {
         readonly parameters: {
             readonly query?: never;
@@ -1895,6 +1868,35 @@ export interface paths {
         readonly patch: operations["archive_asset_api_v1_assets__asset_id__archive_patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/{asset_id}/enrich": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Enrich Asset
+         * @description Enrich an asset by fetching metadata from the provider and running synthetic generation.
+         *
+         *     This will:
+         *     1. Fetch full metadata from the provider API (e.g., prompt, settings, source images)
+         *     2. Extract embedded assets and create lineage links
+         *     3. Create a synthetic Generation record with prompt/params
+         *
+         *     Useful for assets synced without full metadata (e.g., from extension badge click).
+         *
+         *     Set force=true to re-enrich assets that already have generations (for debugging/re-sync).
+         */
+        readonly post: operations["enrich_asset_api_v1_assets__asset_id__enrich_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/{asset_id}/file": {
         readonly parameters: {
             readonly query?: never;
@@ -1986,6 +1988,46 @@ export interface paths {
          *     - Created if they don't exist
          */
         readonly post: operations["assign_tags_to_asset_api_v1_assets__asset_id__tags_assign_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/{asset_id}/test-enrich": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Test Enrich
+         * @description Minimal test endpoint - no auth, no dependencies
+         */
+        readonly post: operations["test_enrich_api_v1_assets__asset_id__test_enrich_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/assets/downloads/{filename}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Download Export
+         * @description Download an exported ZIP file
+         */
+        readonly get: operations["download_export_api_v1_assets_assets_downloads__filename__get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2227,26 +2269,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/assets/downloads/{filename}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Download Export
-         * @description Download an exported ZIP file
-         */
-        readonly get: operations["download_export_api_v1_assets_downloads__filename__get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/assets/extract-frame": {
         readonly parameters: {
             readonly query?: never;
@@ -2436,6 +2458,144 @@ export interface paths {
          *     - Preps temp file and delegates to UploadService
          */
         readonly post: operations["upload_asset_from_url_api_v1_assets_upload_from_url_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/versions/{asset_id}/ancestry": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Asset Ancestry
+         * @description Get all ancestors of an asset (parent, grandparent, etc.).
+         *
+         *     Returns ancestors ordered oldest first.
+         */
+        readonly get: operations["get_asset_ancestry_api_v1_assets_versions__asset_id__ancestry_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/versions/{asset_id}/fork": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Fork Asset
+         * @description Create a new version family starting from this asset.
+         *
+         *     SEMANTICS:
+         *     - Creates a NEW family
+         *     - Source asset is NOT moved - it stays in its original family (if any)
+         *     - The new family starts empty; add versions via generation with version_intent="version"
+         *
+         *     Use this when you want to "branch off" in a new direction from an existing asset.
+         */
+        readonly post: operations["fork_asset_api_v1_assets_versions__asset_id__fork_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/versions/{asset_id}/versions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Asset Versions
+         * @description Get all versions of an asset.
+         *
+         *     If the asset belongs to a version family, returns all versions in that family.
+         *     If the asset is standalone, returns just that asset.
+         */
+        readonly get: operations["get_asset_versions_api_v1_assets_versions__asset_id__versions_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/versions/families/{family_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Version Family
+         * @description Get a version family by ID.
+         *
+         *     Returns family metadata with derived version count and latest version number.
+         */
+        readonly get: operations["get_version_family_api_v1_assets_versions_families__family_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/versions/families/{family_id}/set-head": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Set Family Head
+         * @description Set which asset is the HEAD (current best) version.
+         *
+         *     The specified asset must belong to the family.
+         */
+        readonly post: operations["set_family_head_api_v1_assets_versions_families__family_id__set_head_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/versions/families/{family_id}/timeline": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Family Timeline
+         * @description Get timeline view of all versions in a family.
+         *
+         *     Returns versions ordered by version number with HEAD indicator.
+         */
+        readonly get: operations["get_family_timeline_api_v1_assets_versions_families__family_id__timeline_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2799,6 +2959,8 @@ export interface paths {
          *     Args:
          *         include_alt: If False (default), exclude alternate connections to same physical device.
          *                      If True, include all device connections.
+         *         include_disabled: If False (default), exclude disabled devices.
+         *                           If True, include all devices regardless of enabled status.
          *
          *     Visibility rules:
          *     - Admins see all devices (including server-scanned ones with agent_id=None).
@@ -3828,6 +3990,174 @@ export interface paths {
          *     Returns which character references are valid/invalid.
          */
         readonly post: operations["validate_template_api_v1_characters_validate_template_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/composition/packages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Packages
+         * @description List all registered composition packages.
+         *
+         *     Returns packages from core and all enabled plugins.
+         *     Each package contains its role definitions with full metadata.
+         *
+         *     Frontend can filter by active package IDs using the helper:
+         *     `getAvailableRoles(packages, world.meta.generation.compositionPackages)`
+         */
+        readonly get: operations["list_packages_api_v1_composition_packages_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/composition/roles": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Roles
+         * @description List available composition roles.
+         *
+         *     Optionally filter by active package IDs (comma-separated).
+         *     If no filter, returns roles from all registered packages.
+         *     Core package (core.base) is always included.
+         *
+         *     Example: /api/v1/composition/roles?packages=core.base,pov.first_person
+         */
+        readonly get: operations["list_roles_api_v1_composition_roles_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/concepts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Kinds
+         * @description List available concept kinds with metadata.
+         *
+         *     Returns information about each registered concept kind including:
+         *     - kind: The kind identifier (e.g., 'role', 'part', 'pose')
+         *     - group_name: Display name for UI grouping
+         *     - supports_packages: Whether the kind supports package filtering
+         *
+         *     Use this endpoint to dynamically discover available kinds
+         *     instead of hardcoding them in the frontend.
+         */
+        readonly get: operations["list_kinds_api_v1_concepts_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/concepts/{kind}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Concepts
+         * @description Get concepts of a specific kind.
+         *
+         *     Available kinds are dynamically registered. Use GET /concepts to list them.
+         *
+         *     Query params:
+         *         packages: Comma-separated package IDs to filter by.
+         *                   Only applies to kinds where supports_packages is true.
+         *                   For other kinds, this parameter is ignored.
+         *
+         *     Example: /api/v1/concepts/pose
+         *     Example: /api/v1/concepts/role?packages=core.base
+         */
+        readonly get: operations["list_concepts_api_v1_concepts__kind__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/concepts/body_region": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Body Regions Deprecated
+         * @deprecated
+         * @description DEPRECATED: Use /concepts/part instead.
+         *
+         *     Body regions have been merged into the 'part' kind.
+         *     This endpoint returns part concepts for backward compatibility.
+         */
+        readonly get: operations["list_body_regions_deprecated_api_v1_concepts_body_region_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/concepts/roles": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Roles
+         * @description Get composition roles with full metadata for frontend inference.
+         *
+         *     Includes:
+         *     - All roles from core + active packages (or all if no filter)
+         *     - Slug/namespace mappings for inferring role from tags
+         *     - Priority list for conflict resolution
+         *
+         *     This endpoint provides plugin roles that build-time generators cannot include.
+         *     Frontend should merge with generated core constants and dedupe by id.
+         *
+         *     Query params:
+         *         packages: Comma-separated package IDs to filter by (e.g., 'core.base,pov.first_person')
+         *                   If omitted, returns roles from all registered packages.
+         *
+         *     Example: /api/v1/concepts/roles?packages=core.base,pov.first_person
+         */
+        readonly get: operations["list_roles_api_v1_concepts_roles_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6189,6 +6519,45 @@ export interface paths {
          *     Returns validation errors and warnings.
          */
         readonly post: operations["validate_behavior_config_api_v1_game_worlds__world_id__behavior_validate_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/worlds/{world_id}/config": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get World Config Endpoint
+         * @description Get unified world configuration with merged stat definitions.
+         *
+         *     Returns the complete world configuration including:
+         *     - stats_config: Merged stat definitions (base + world overrides)
+         *     - manifest: World manifest (turn preset, enabled plugins, etc.)
+         *     - intimacy_gating: Intimacy gating thresholds
+         *     - tier_order: Pre-computed tier ordering for relationships
+         *     - level_order: Pre-computed level ordering for relationships
+         *     - schema_version: Schema version for validation
+         *
+         *     The base stat definitions come from registered providers (e.g., the
+         *     default relationship stats). World-specific overrides in world.meta
+         *     are merged on top.
+         *
+         *     Plugins can register additional stat definitions or extend existing
+         *     ones by using the @stat_definition_provider decorator.
+         *
+         *     This endpoint is the single source of truth for frontend configuration.
+         *     Frontend should fetch this on world load and use the pre-computed
+         *     orderings for gating comparisons.
+         */
+        readonly get: operations["get_world_config_endpoint_api_v1_game_worlds__world_id__config_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -9319,144 +9688,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/versions/assets/{asset_id}/ancestry": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Asset Ancestry
-         * @description Get all ancestors of an asset (parent, grandparent, etc.).
-         *
-         *     Returns ancestors ordered oldest first.
-         */
-        readonly get: operations["get_asset_ancestry_api_v1_versions_assets__asset_id__ancestry_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/versions/assets/{asset_id}/fork": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Fork Asset
-         * @description Create a new version family starting from this asset.
-         *
-         *     SEMANTICS:
-         *     - Creates a NEW family
-         *     - Source asset is NOT moved - it stays in its original family (if any)
-         *     - The new family starts empty; add versions via generation with version_intent="version"
-         *
-         *     Use this when you want to "branch off" in a new direction from an existing asset.
-         */
-        readonly post: operations["fork_asset_api_v1_versions_assets__asset_id__fork_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/versions/assets/{asset_id}/versions": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Asset Versions
-         * @description Get all versions of an asset.
-         *
-         *     If the asset belongs to a version family, returns all versions in that family.
-         *     If the asset is standalone, returns just that asset.
-         */
-        readonly get: operations["get_asset_versions_api_v1_versions_assets__asset_id__versions_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/versions/families/{family_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Version Family
-         * @description Get a version family by ID.
-         *
-         *     Returns family metadata with derived version count and latest version number.
-         */
-        readonly get: operations["get_version_family_api_v1_versions_families__family_id__get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/versions/families/{family_id}/set-head": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Set Family Head
-         * @description Set which asset is the HEAD (current best) version.
-         *
-         *     The specified asset must belong to the family.
-         */
-        readonly post: operations["set_family_head_api_v1_versions_families__family_id__set_head_post"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/versions/families/{family_id}/timeline": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Get Family Timeline
-         * @description Get timeline view of all versions in a family.
-         *
-         *     Returns versions ordered by version number with HEAD indicator.
-         */
-        readonly get: operations["get_family_timeline_api_v1_versions_families__family_id__timeline_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/health": {
         readonly parameters: {
             readonly query?: never;
@@ -11445,6 +11676,80 @@ export interface components {
             readonly [key: string]: unknown;
         };
         /**
+         * CompositionPackageResponse
+         * @description A composition package with its roles.
+         */
+        readonly CompositionPackageResponse: {
+            /**
+             * Description
+             * @default
+             */
+            readonly description: string;
+            /** Id */
+            readonly id: string;
+            /** Label */
+            readonly label: string;
+            /**
+             * Plugin Id
+             * @description Plugin that registered this package
+             */
+            readonly plugin_id?: string | null;
+            /**
+             * Recommended For
+             * @description Game styles this package suits
+             */
+            readonly recommended_for?: readonly string[];
+            /** Roles */
+            readonly roles: readonly components["schemas"]["CompositionRoleResponse"][];
+            /**
+             * Version
+             * @default 1.0.0
+             */
+            readonly version: string;
+        };
+        /**
+         * CompositionPackagesListResponse
+         * @description Response containing all registered composition packages.
+         */
+        readonly CompositionPackagesListResponse: {
+            /** Packages */
+            readonly packages: readonly components["schemas"]["CompositionPackageResponse"][];
+            /** Total */
+            readonly total: number;
+        };
+        /**
+         * CompositionRoleResponse
+         * @description A composition role contributed by a package.
+         */
+        readonly CompositionRoleResponse: {
+            /** Color */
+            readonly color: string;
+            /**
+             * Default Layer
+             * @description Layer order (0=background, higher=foreground)
+             * @default 0
+             */
+            readonly default_layer: number;
+            /** Description */
+            readonly description: string;
+            /** Id */
+            readonly id: string;
+            /** Label */
+            readonly label: string;
+            /**
+             * Namespace Mappings
+             * @description Tag namespace prefixes for this role
+             */
+            readonly namespace_mappings?: readonly string[];
+            /**
+             * Slug Mappings
+             * @description Exact tag slugs that map to this role
+             */
+            readonly slug_mappings?: readonly string[];
+            /** Tags */
+            readonly tags?: readonly string[];
+        };
+        /**
          * ComputeFitRequest
          * @description Request to compute fit score between a block and asset.
          */
@@ -11460,6 +11765,129 @@ export interface components {
              * @description PromptBlock.id to evaluate
              */
             readonly block_id: string;
+        };
+        /**
+         * ConceptKindInfo
+         * @description Metadata about a concept kind.
+         */
+        readonly ConceptKindInfo: {
+            /**
+             * Group Name
+             * @description Display name for UI grouping
+             */
+            readonly group_name: string;
+            /**
+             * Include In Labels
+             * @description Whether to include in label autocomplete suggestions
+             * @default true
+             */
+            readonly include_in_labels: boolean;
+            /**
+             * Kind
+             * @description Concept kind identifier
+             */
+            readonly kind: string;
+            /**
+             * Supports Packages
+             * @description Whether this kind supports package filtering
+             * @default false
+             */
+            readonly supports_packages: boolean;
+        };
+        /**
+         * ConceptKindsResponse
+         * @description Response from GET /concepts listing available kinds.
+         */
+        readonly ConceptKindsResponse: {
+            /**
+             * Kinds
+             * @description Available concept kinds
+             */
+            readonly kinds: readonly components["schemas"]["ConceptKindInfo"][];
+        };
+        /**
+         * ConceptResponse
+         * @description Generic concept for any kind.
+         *
+         *     All concept kinds share this base structure. Kind-specific
+         *     metadata goes in the `metadata` field.
+         */
+        readonly ConceptResponse: {
+            /**
+             * Color
+             * @description Tailwind color name for UI
+             * @default gray
+             */
+            readonly color: string;
+            /**
+             * Description
+             * @description Longer description
+             * @default
+             */
+            readonly description: string;
+            /**
+             * Group
+             * @description UI grouping category
+             * @default
+             */
+            readonly group: string;
+            /**
+             * Id
+             * @description Concept ID (unique within kind)
+             */
+            readonly id: string;
+            /**
+             * Kind
+             * @description Concept kind (e.g., 'role', 'part', 'pose')
+             */
+            readonly kind: string;
+            /**
+             * Label
+             * @description Human-readable display label
+             */
+            readonly label: string;
+            /**
+             * Metadata
+             * @description Kind-specific additional metadata
+             */
+            readonly metadata?: Record<string, unknown>;
+            /**
+             * Ref
+             * @description Canonical ConceptRef format for linking (kind:id).
+             */
+            readonly ref: string;
+            /**
+             * Tags
+             * @description Tags for filtering/matching
+             */
+            readonly tags?: readonly string[];
+        };
+        /**
+         * ConceptsListResponse
+         * @description Generic response for listing concepts of a specific kind.
+         */
+        readonly ConceptsListResponse: {
+            /**
+             * Concepts
+             * @description List of concepts
+             */
+            readonly concepts: readonly components["schemas"]["ConceptResponse"][];
+            /**
+             * Group Name
+             * @description Display name for this kind's group (e.g., 'Composition Roles')
+             * @default
+             */
+            readonly group_name: string;
+            /**
+             * Kind
+             * @description The concept kind returned
+             */
+            readonly kind: string;
+            /**
+             * Priority
+             * @description Optional priority ordering of concept IDs
+             */
+            readonly priority?: readonly string[];
         };
         /** ConfirmConceptsRequest */
         readonly ConfirmConceptsRequest: {
@@ -11481,14 +11909,14 @@ export interface components {
          * @description Content constraints and rating
          */
         readonly ConstraintSetSchema: {
-            /** Avoid Elements */
-            readonly avoid_elements?: readonly string[] | null;
-            /** Content Rules */
-            readonly content_rules?: readonly string[] | null;
+            /** Avoidelements */
+            readonly avoidElements?: readonly string[] | null;
+            /** Contentrules */
+            readonly contentRules?: readonly string[] | null;
             /** Rating */
             readonly rating?: string | null;
-            /** Required Elements */
-            readonly required_elements?: readonly string[] | null;
+            /** Requiredelements */
+            readonly requiredElements?: readonly string[] | null;
         };
         /**
          * ContentBlobStatsResponse
@@ -11514,6 +11942,20 @@ export interface components {
          * @enum {string}
          */
         readonly ContentDomain: "general" | "adult" | "medical" | "sports" | "fashion" | "education";
+        /**
+         * ContentRatingGate
+         * @description Gate requirements for a content rating.
+         */
+        readonly ContentRatingGate: {
+            /** Minimumaffinity */
+            readonly minimumAffinity?: number | null;
+            /** Minimumband */
+            readonly minimumBand?: string | null;
+            /** Minimumchemistry */
+            readonly minimumChemistry?: number | null;
+            /** Minimumlevel */
+            readonly minimumLevel?: string | null;
+        };
         /**
          * CookieImportRequest
          * @description Request to import cookies from browser
@@ -12479,14 +12921,14 @@ export interface components {
          * @description Fallback configuration for failed generations
          */
         readonly FallbackConfigSchema: {
-            /** Default Content Id */
-            readonly default_content_id?: string | null;
-            /** Max Retries */
-            readonly max_retries?: number | null;
+            /** Defaultcontentid */
+            readonly defaultContentId?: string | null;
+            /** Maxretries */
+            readonly maxRetries?: number | null;
             /** Mode */
             readonly mode: string;
-            /** Timeout Ms */
-            readonly timeout_ms?: number | null;
+            /** Timeoutms */
+            readonly timeoutMs?: number | null;
         };
         /**
          * FilterDefinition
@@ -12859,8 +13301,8 @@ export interface components {
              */
             readonly enabled: boolean;
             readonly fallback: components["schemas"]["FallbackConfigSchema"];
-            /** Generation Type */
-            readonly generation_type: string;
+            /** Generationtype */
+            readonly generationType: string;
             /**
              * Image Url
              * @deprecated
@@ -12879,23 +13321,23 @@ export interface components {
             readonly prompts?: readonly string[] | null;
             /** Purpose */
             readonly purpose: string;
-            /** Seed Source */
-            readonly seed_source?: string | null;
+            /** Seedsource */
+            readonly seedSource?: string | null;
             /**
-             * Source Asset Id
+             * Sourceassetid
              * @description Asset ID for single-asset operations (image_to_video, image_to_image, video_extend). Backend resolves to provider-specific URL.
              */
-            readonly source_asset_id?: number | null;
+            readonly sourceAssetId?: number | null;
             /**
-             * Source Asset Ids
+             * Sourceassetids
              * @description Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL.
              */
-            readonly source_asset_ids?: readonly number[] | null;
+            readonly sourceAssetIds?: readonly number[] | null;
             /** Strategy */
             readonly strategy: string;
             readonly style: components["schemas"]["StyleRulesSchema"];
-            /** Template Id */
-            readonly template_id?: string | null;
+            /** Templateid */
+            readonly templateId?: string | null;
             /**
              * Version
              * @default 1
@@ -13105,11 +13547,58 @@ export interface components {
             readonly worldTime?: number | null;
         };
         /**
+         * InteractionGate
+         * @description Gate requirements for an interaction.
+         */
+        readonly InteractionGate: {
+            /** Appropriatelevels */
+            readonly appropriateLevels?: readonly string[] | null;
+            /** Minimumaffinity */
+            readonly minimumAffinity?: number | null;
+            /** Minimumchemistry */
+            readonly minimumChemistry?: number | null;
+            /** Minimumlevel */
+            readonly minimumLevel?: string | null;
+        };
+        /**
          * InteractionSurface
          * @description Where/how the interaction is presented
          * @enum {string}
          */
         readonly InteractionSurface: "inline" | "dialogue" | "scene" | "notification" | "menu";
+        /**
+         * IntimacyBandThreshold
+         * @description Threshold for an intimacy band.
+         */
+        readonly IntimacyBandThreshold: {
+            /** Affinity */
+            readonly affinity?: number | null;
+            /** Chemistry */
+            readonly chemistry?: number | null;
+        };
+        /**
+         * IntimacyGatingConfig
+         * @description Intimacy gating configuration.
+         */
+        readonly IntimacyGatingConfig: {
+            /** Contentratings */
+            readonly contentRatings?: {
+                readonly [key: string]: components["schemas"]["ContentRatingGate"];
+            } | null;
+            /** Interactions */
+            readonly interactions?: {
+                readonly [key: string]: components["schemas"]["InteractionGate"];
+            } | null;
+            /** Intimacybands */
+            readonly intimacyBands?: {
+                readonly [key: string]: components["schemas"]["IntimacyBandThreshold"];
+            } | null;
+            /**
+             * Version
+             * @default 1
+             */
+            readonly version: number;
+        };
         /**
          * InventoryChangeSummary
          * @description Summary of inventory changes
@@ -14147,10 +14636,10 @@ export interface components {
             readonly flags?: {
                 readonly [key: string]: boolean;
             } | null;
-            /** Player Id */
-            readonly player_id?: string | null;
-            /** Playthrough Id */
-            readonly playthrough_id?: string | null;
+            /** Playerid */
+            readonly playerId?: string | null;
+            /** Playthroughid */
+            readonly playthroughId?: string | null;
             /** Stats */
             readonly stats?: {
                 readonly [key: string]: number;
@@ -15076,6 +15565,74 @@ export interface components {
              */
             readonly template_kind: string;
         };
+        /**
+         * RoleConceptResponse
+         * @description A composition role as a concept.
+         *
+         *     Kept for backward compatibility with existing /concepts/roles endpoint.
+         *     New code should use the generic ConceptResponse via /concepts/{kind}.
+         */
+        readonly RoleConceptResponse: {
+            /**
+             * Color
+             * @description Tailwind color name for UI badges
+             */
+            readonly color: string;
+            /**
+             * Default Layer
+             * @description Layer order (0=background, higher=foreground)
+             * @default 0
+             */
+            readonly default_layer: number;
+            /**
+             * Description
+             * @description Role description
+             */
+            readonly description: string;
+            /**
+             * Id
+             * @description Role ID (e.g., 'main_character', 'environment')
+             */
+            readonly id: string;
+            /**
+             * Label
+             * @description Human-readable label
+             */
+            readonly label: string;
+            /**
+             * Namespace Mappings
+             * @description Tag namespace prefixes that map to this role (e.g., 'npc', 'location')
+             */
+            readonly namespace_mappings?: readonly string[];
+            /**
+             * Slug Mappings
+             * @description Exact tag slugs that map to this role (e.g., 'bg', 'char:hero')
+             */
+            readonly slug_mappings?: readonly string[];
+            /**
+             * Tags
+             * @description Tags for filtering
+             */
+            readonly tags?: readonly string[];
+        };
+        /**
+         * RolesListResponse
+         * @description Response containing composition roles with inference metadata.
+         *
+         *     Kept for backward compatibility with existing /concepts/roles endpoint.
+         */
+        readonly RolesListResponse: {
+            /**
+             * Priority
+             * @description Role IDs in priority order for conflict resolution
+             */
+            readonly priority: readonly string[];
+            /**
+             * Roles
+             * @description Available composition roles
+             */
+            readonly roles: readonly components["schemas"]["RoleConceptResponse"][];
+        };
         /** RollbackRequest */
         readonly RollbackRequest: {
             /** Commit Message */
@@ -15189,8 +15746,8 @@ export interface components {
          * @description Scene reference for generation context
          */
         readonly SceneRefSchema: {
-            /** Emotional State */
-            readonly emotional_state?: string | null;
+            /** Emotionalstate */
+            readonly emotionalState?: string | null;
             /** Id */
             readonly id: string;
             /** Location */
@@ -15880,6 +16437,229 @@ export interface components {
             readonly truncated: boolean;
         };
         /**
+         * StatAxis
+         * @description A single numeric stat axis.
+         *
+         *     Examples:
+         *     - Relationship axis: affinity (0-100)
+         *     - Skill axis: strength (0-100)
+         *     - Resource axis: health (0-maxHealth)
+         *
+         *     Semantic Types:
+         *     Axes can declare a semantic_type to enable automatic derivation between
+         *     packages that don't know about each other. Standard semantic types include:
+         *
+         *     Sentiment:
+         *     - "positive_sentiment": Affinity, liking, approval, reputation
+         *     - "negative_sentiment": Dislike, tension, disapproval, hostility
+         *
+         *     Arousal/Energy:
+         *     - "arousal_source": Chemistry, excitement, stimulation
+         *     - "calming_source": Comfort, relaxation, peace
+         *
+         *     Resources:
+         *     - "energy_resource": Energy, stamina (depletable)
+         *     - "stress_indicator": Stress, anxiety, pressure
+         *
+         *     Personality:
+         *     - "extraversion_trait": Social energy, outgoingness
+         *     - "openness_trait": Curiosity, creativity
+         *     - "agreeableness_trait": Cooperation, empathy
+         */
+        readonly StatAxis: {
+            /**
+             * Default Value
+             * @description Default starting value
+             * @default 0
+             */
+            readonly default_value: number;
+            /**
+             * Description
+             * @description Axis description for tooltips
+             */
+            readonly description?: string | null;
+            /**
+             * Display Name
+             * @description Human-readable name
+             */
+            readonly display_name?: string | null;
+            /**
+             * Max Value
+             * @description Maximum value for this axis
+             * @default 100
+             */
+            readonly max_value: number;
+            /**
+             * Min Value
+             * @description Minimum value for this axis
+             * @default 0
+             */
+            readonly min_value: number;
+            /**
+             * Name
+             * @description Unique name for this axis (e.g., 'affinity', 'strength')
+             */
+            readonly name: string;
+            /**
+             * Semantic Type
+             * @description Semantic type for cross-package derivation (e.g., 'positive_sentiment')
+             */
+            readonly semantic_type?: string | null;
+            /**
+             * Semantic Weight
+             * @description Weight when combining multiple axes of same semantic type (0.0-1.0)
+             * @default 1
+             */
+            readonly semantic_weight: number;
+        };
+        /**
+         * StatCondition
+         * @description A condition for a multi-axis level.
+         *
+         *     Supports various comparison types:
+         *     - min: value >= threshold
+         *     - max: value <= threshold
+         *     - range: min <= value <= max
+         */
+        readonly StatCondition: {
+            /**
+             * Max Value
+             * @description Maximum value (for 'max' or 'range')
+             */
+            readonly max_value?: number | null;
+            /**
+             * Min Value
+             * @description Minimum value (for 'min' or 'range')
+             */
+            readonly min_value?: number | null;
+            /**
+             * Type
+             * @description Type of condition
+             * @enum {string}
+             */
+            readonly type: "min" | "max" | "range";
+        };
+        /**
+         * StatDefinition
+         * @description Complete definition of a stat system.
+         *
+         *     Examples:
+         *     - "relationships": axes=[affinity, trust, chemistry, tension], tiers=[...], levels=[...]
+         *     - "skills": axes=[strength, magic, stealth], tiers=[novice, expert, master]
+         *     - "reputation": axes=[fame, honor], tiers=[unknown, known, famous, legendary]
+         */
+        readonly StatDefinition: {
+            /**
+             * Axes
+             * @description List of stat axes in this system
+             */
+            readonly axes: readonly components["schemas"]["StatAxis"][];
+            /**
+             * Description
+             * @description Description of this stat system
+             */
+            readonly description?: string | null;
+            /**
+             * Display Name
+             * @description Human-readable name
+             */
+            readonly display_name?: string | null;
+            /**
+             * Id
+             * @description Unique stat definition ID (e.g., 'relationships', 'skills')
+             */
+            readonly id: string;
+            /**
+             * Levels
+             * @description Optional level definitions for multi-axis levels
+             */
+            readonly levels?: readonly components["schemas"]["StatLevel"][];
+            /**
+             * Tiers
+             * @description Optional tier definitions for single-axis tiers
+             */
+            readonly tiers?: readonly components["schemas"]["StatTier"][];
+        };
+        /**
+         * StatLevel
+         * @description A level computed from multiple stat axes.
+         *
+         *     Examples:
+         *     - Intimacy level: "intimate" (affinity >= 70, trust >= 60, chemistry >= 50)
+         *     - Combat readiness: "battle_ready" (strength >= 80, stamina >= 70)
+         */
+        readonly StatLevel: {
+            /**
+             * Conditions
+             * @description Map of axis_name -> condition. All must be satisfied.
+             */
+            readonly conditions: {
+                readonly [key: string]: components["schemas"]["StatCondition"];
+            };
+            /**
+             * Description
+             * @description Level description
+             */
+            readonly description?: string | null;
+            /**
+             * Display Name
+             * @description Human-readable level name
+             */
+            readonly display_name?: string | null;
+            /**
+             * Id
+             * @description Unique level ID (e.g., 'intimate', 'battle_ready')
+             */
+            readonly id: string;
+            /**
+             * Priority
+             * @description Priority for level matching (higher = checked first). Useful for overlapping conditions.
+             * @default 0
+             */
+            readonly priority: number;
+        };
+        /**
+         * StatTier
+         * @description A tier/band for a single stat axis.
+         *
+         *     Examples:
+         *     - Relationship tier: "friend" (affinity 40-69)
+         *     - Skill tier: "expert" (strength 80-100)
+         *     - Reputation tier: "famous" (fame 70-89)
+         */
+        readonly StatTier: {
+            /**
+             * Axis Name
+             * @description Which axis this tier applies to
+             */
+            readonly axis_name: string;
+            /**
+             * Description
+             * @description Tier description
+             */
+            readonly description?: string | null;
+            /**
+             * Display Name
+             * @description Human-readable tier name
+             */
+            readonly display_name?: string | null;
+            /**
+             * Id
+             * @description Unique tier ID (e.g., 'friend', 'expert')
+             */
+            readonly id: string;
+            /**
+             * Max
+             * @description Maximum value (None = unbounded)
+             */
+            readonly max?: number | null;
+            /**
+             * Min
+             * @description Minimum value for this tier
+             */
+            readonly min: number;
+        };
+        /**
          * StorageInfoResponse
          * @description Storage information
          */
@@ -15937,14 +16717,14 @@ export interface components {
          *     - This allows the schema to remain backward-compatible while supporting provider extensions
          */
         readonly StyleRulesSchema: {
-            /** Mood From */
-            readonly mood_from?: string | null;
-            /** Mood To */
-            readonly mood_to?: string | null;
+            /** Moodfrom */
+            readonly moodFrom?: string | null;
+            /** Moodto */
+            readonly moodTo?: string | null;
             /** Pacing */
             readonly pacing?: string | null;
-            /** Transition Type */
-            readonly transition_type?: string | null;
+            /** Transitiontype */
+            readonly transitionType?: string | null;
         } & {
             readonly [key: string]: unknown;
         };
@@ -16819,6 +17599,51 @@ export interface components {
             readonly version_number: number;
         };
         /**
+         * WorldConfigResponse
+         * @description Complete world configuration returned by /worlds/{id}/config endpoint.
+         */
+        readonly WorldConfigResponse: {
+            readonly intimacy_gating: components["schemas"]["IntimacyGatingConfig"];
+            /** Level Order */
+            readonly level_order?: readonly string[];
+            readonly manifest: components["schemas"]["WorldManifest"];
+            /**
+             * Merge Warnings
+             * @description Warnings from merging world.meta overrides (e.g., invalid definitions)
+             */
+            readonly merge_warnings?: readonly string[];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+            readonly stats_config: components["schemas"]["WorldStatsConfig"];
+            /** Tier Order */
+            readonly tier_order?: readonly string[];
+        };
+        /**
+         * WorldManifest
+         * @description World manifest configuration.
+         */
+        readonly WorldManifest: {
+            /** Enabled Arc Graphs */
+            readonly enabled_arc_graphs?: readonly string[];
+            /** Enabled Campaigns */
+            readonly enabled_campaigns?: readonly string[];
+            /** Enabled Plugins */
+            readonly enabled_plugins?: readonly string[];
+            /**
+             * Gating Plugin
+             * @description ID of the gating plugin to use (not yet wired - future work)
+             * @default intimacy.default
+             */
+            readonly gating_plugin: string | null;
+            /** Turn Preset */
+            readonly turn_preset?: string | null;
+        } & {
+            readonly [key: string]: unknown;
+        };
+        /**
          * WorldSchemaReport
          * @description Detailed schema validation report for a single world.
          */
@@ -16858,6 +17683,27 @@ export interface components {
             readonly world_id: number;
             /** World Name */
             readonly world_name: string;
+        };
+        /**
+         * WorldStatsConfig
+         * @description World-level configuration for all stat systems.
+         *
+         *     Stored in GameWorld.meta.stats_config (replaces relationship_schemas, intimacy_schema, etc.)
+         */
+        readonly WorldStatsConfig: {
+            /**
+             * Definitions
+             * @description Map of stat_definition_id -> StatDefinition
+             */
+            readonly definitions?: {
+                readonly [key: string]: components["schemas"]["StatDefinition"];
+            };
+            /**
+             * Version
+             * @description Schema version for migrations
+             * @default 1
+             */
+            readonly version: number;
         };
     };
     responses: never;
@@ -17154,39 +18000,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MigrationOperation"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly enrich_asset_api_v1__asset_id__enrich_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["EnrichAssetResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19577,6 +20390,42 @@ export interface operations {
             };
         };
     };
+    readonly enrich_asset_api_v1_assets__asset_id__enrich_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Force re-enrichment even if generation exists */
+                readonly force?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EnrichAssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly serve_asset_file_api_v1_assets__asset_id__file_get: {
         readonly parameters: {
             readonly query?: never;
@@ -19703,6 +20552,70 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly test_enrich_api_v1_assets__asset_id__test_enrich_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly download_export_api_v1_assets_assets_downloads__filename__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly filename: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -20063,39 +20976,6 @@ export interface operations {
             };
         };
     };
-    readonly download_export_api_v1_assets_downloads__filename__get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly filename: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     readonly extract_frame_api_v1_assets_extract_frame_post: {
         readonly parameters: {
             readonly query?: never;
@@ -20319,6 +21199,215 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["UploadAssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_asset_ancestry_api_v1_assets_versions__asset_id__ancestry_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Maximum ancestors to return */
+                readonly max_depth?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["VersionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly fork_asset_api_v1_assets_versions__asset_id__fork_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ForkRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_asset_versions_api_v1_assets_versions__asset_id__versions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["VersionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_version_family_api_v1_assets_versions_families__family_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly set_family_head_api_v1_assets_versions_families__family_id__set_head_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetHeadRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_family_timeline_api_v1_assets_versions_families__family_id__timeline_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly family_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["VersionTimelineEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -20803,6 +21892,7 @@ export interface operations {
         readonly parameters: {
             readonly query?: {
                 readonly include_alt?: boolean;
+                readonly include_disabled?: boolean;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -22280,6 +23370,173 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_packages_api_v1_composition_packages_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CompositionPackagesListResponse"];
+                };
+            };
+        };
+    };
+    readonly list_roles_api_v1_composition_roles_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly packages?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["CompositionRoleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_kinds_api_v1_concepts_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ConceptKindsResponse"];
+                };
+            };
+        };
+    };
+    readonly list_concepts_api_v1_concepts__kind__get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Comma-separated package IDs (only applies to kinds that support packages) */
+                readonly packages?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly kind: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ConceptsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_body_regions_deprecated_api_v1_concepts_body_region_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly packages?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ConceptsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_roles_api_v1_concepts_roles_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly packages?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RolesListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25704,6 +26961,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ValidationResult"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_world_config_endpoint_api_v1_game_worlds__world_id__config_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly world_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WorldConfigResponse"];
                 };
             };
             /** @description Validation Error */
@@ -30642,215 +31932,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["VersionResponse"];
-                };
-            };
-        };
-    };
-    readonly get_asset_ancestry_api_v1_versions_assets__asset_id__ancestry_get: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Maximum ancestors to return */
-                readonly max_depth?: number;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["VersionSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly fork_asset_api_v1_versions_assets__asset_id__fork_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ForkRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_asset_versions_api_v1_versions_assets__asset_id__versions_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly asset_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["VersionSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_version_family_api_v1_versions_families__family_id__get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly family_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly set_family_head_api_v1_versions_families__family_id__set_head_post: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly family_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SetHeadRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["VersionFamilyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    readonly get_family_timeline_api_v1_versions_families__family_id__timeline_get: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path: {
-                readonly family_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": readonly components["schemas"]["VersionTimelineEntry"][];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
