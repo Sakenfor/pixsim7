@@ -6,9 +6,9 @@
  * Phase 8: Adds lifecycle hooks and plugin management separate from runtime.
  */
 
-import type { GameSessionDTO, GameWorldDetail } from '../api/game';
-import type { SimulationScenario } from './scenarios';
-import type { SimulationHistory } from './history';
+import type { GameSessionDTO, GameWorldDetail } from '@lib/api';
+
+import type { SimulationScenario } from '../lib/core/scenarios';
 
 export interface SimulationTickContext {
   worldId: number;
@@ -27,7 +27,7 @@ export interface SimulationEvent {
   category: 'time' | 'npc' | 'relationship' | 'quest' | 'world' | 'custom' | 'lifecycle' | 'plugin';
   title: string;
   message: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Phase 8: Lifecycle hook types
@@ -476,10 +476,13 @@ export const performanceMonitorPlugin: SimulationPlugin = {
   enabled: false,
   hooks: {
     beforeTick: () => {
-      (performance as any).simulationTickStart = performance.now();
+      const perf = performance as Performance & { simulationTickStart?: number };
+      perf.simulationTickStart = performance.now();
     },
     afterTick: (context, events) => {
-      const elapsed = performance.now() - (performance as any).simulationTickStart;
+      void events;
+      const perf = performance as Performance & { simulationTickStart?: number };
+      const elapsed = performance.now() - (perf.simulationTickStart ?? performance.now());
       if (elapsed > 100) {
         // Log slow ticks
         console.warn(
@@ -490,7 +493,8 @@ export const performanceMonitorPlugin: SimulationPlugin = {
       }
     },
     onTick: (context) => {
-      const elapsed = performance.now() - (performance as any).simulationTickStart;
+      const perf = performance as Performance & { simulationTickStart?: number };
+      const elapsed = performance.now() - (perf.simulationTickStart ?? performance.now());
       if (elapsed > 100) {
         return [
           {
@@ -522,14 +526,16 @@ export const stateValidatorPlugin: SimulationPlugin = {
   enabled: false,
   hooks: {
     afterTick: (context, events) => {
+      void events;
       // Example validation: Check if world time is progressing
-      const lastWorldTime = (context as any).lastWorldTime ?? 0;
+      const mutableContext = context as SimulationTickContext & { lastWorldTime?: number };
+      const lastWorldTime = mutableContext.lastWorldTime ?? 0;
       if (context.worldTime <= lastWorldTime && context.deltaSeconds > 0) {
         console.error(
           `[State Validator] World time did not advance! Current: ${context.worldTime}, Last: ${lastWorldTime}`
         );
       }
-      (context as any).lastWorldTime = context.worldTime;
+      mutableContext.lastWorldTime = context.worldTime;
     },
     onTick: (context) => {
       const events: SimulationEvent[] = [];

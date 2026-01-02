@@ -5,9 +5,10 @@
  * Allows scrubbing through snapshots with visual feedback.
  */
 
-import { useState, useRef, useEffect } from 'react';
 import { formatWorldTime } from '@pixsim7/game.engine';
-import type { SimulationSnapshot } from '@features/simulation/history';
+import { useEffect, useRef, useState } from 'react';
+
+import type { SimulationSnapshot } from '@features/simulation/lib/core/history';
 
 interface TimelineScrubberProps {
   snapshots: SimulationSnapshot[];

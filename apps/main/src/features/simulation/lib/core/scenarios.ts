@@ -11,7 +11,7 @@ export interface SimulationScenario {
   worldId: number;
   initialWorldTime: number;
   initialSessionFlags: Record<string, unknown>;
-  initialRelationships: Record<string, any>;
+  initialRelationships: Record<string, unknown>;
   npcIds: number[];
 }
 

@@ -4,7 +4,7 @@
  * Tracks simulation state changes over time for analysis and rollback.
  */
 
-import type { SimulationEvent } from './hooks';
+import type { SimulationEvent } from '../../hooks';
 
 export interface SimulationSnapshot {
   id: string;
@@ -13,7 +13,7 @@ export interface SimulationSnapshot {
   worldId: number;
   sessionSnapshot: {
     flags: Record<string, unknown>;
-    relationships: Record<string, any>;
+    relationships: Record<string, unknown>;
   };
   events: SimulationEvent[];
 }
