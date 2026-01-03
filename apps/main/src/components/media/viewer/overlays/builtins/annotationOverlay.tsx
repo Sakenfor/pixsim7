@@ -7,7 +7,7 @@ export function AnnotationOverlayMain({ asset, settings }: MediaOverlayComponent
   return <RegionAnnotationOverlay asset={asset} settings={settings} />;
 }
 
-export function AnnotationOverlayToolbar({}: MediaOverlayComponentProps) {
+export function AnnotationOverlayToolbar() {
   const drawingMode = useAssetRegionStore((s) => s.drawingMode);
   const setDrawingMode = useAssetRegionStore((s) => s.setDrawingMode);
 
@@ -65,14 +65,14 @@ function AnnotationToolbar({
         className={`${buttonBase} ${drawingMode === 'rect' ? buttonActive : buttonInactive}`}
         title="Draw rectangle regions (R)"
       >
-        ?-- Rect
+        Rect
       </button>
       <button
         onClick={() => onDrawingModeChange('polygon')}
         className={`${buttonBase} ${drawingMode === 'polygon' ? buttonActive : buttonInactive}`}
         title="Draw polygon regions, double-click to finish (P)"
       >
-        ??? Polygon
+        Polygon
       </button>
 
       <div className="w-px h-4 bg-neutral-600 mx-1" />
@@ -82,7 +82,7 @@ function AnnotationToolbar({
         className={`${buttonBase} ${drawingMode === 'select' ? buttonActive : buttonInactive}`}
         title="Select and edit regions (S)"
       >
-        ?+- Select
+        Select
       </button>
 
       <div className="flex-1" />
