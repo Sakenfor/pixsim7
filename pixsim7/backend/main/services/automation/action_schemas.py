@@ -65,7 +65,7 @@ ACTION_SCHEMAS: List[ActionSchema] = [
     ActionSchema(
         type="launch_app",
         display_name="Launch App",
-        description="Launch an application by package name",
+        description="Launch an application by package name. Skips launch if app is already in foreground.",
         category="basic",
         icon="rocket",
         parameters=[
@@ -75,6 +75,13 @@ ACTION_SCHEMAS: List[ActionSchema] = [
                 required=False,
                 description="App package name (uses preset default if not specified)",
                 placeholder="com.example.app"
+            ),
+            ActionParameter(
+                name="force",
+                type="boolean",
+                required=False,
+                default=False,
+                description="Force relaunch even if app is already in foreground"
             )
         ],
         examples=[

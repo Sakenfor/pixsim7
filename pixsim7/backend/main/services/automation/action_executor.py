@@ -287,7 +287,11 @@ class ActionExecutor:
                 await asyncio.sleep(float(params.get("seconds", 1)))
 
             elif a_type == "launch_app":
-                await self.adb.launch_app(ctx.serial, params.get("package") or preset.app_package)
+                package = params.get("package") or preset.app_package
+                force = params.get("force", False)
+                launched = await self.adb.launch_app(ctx.serial, package, force=force)
+                if not launched:
+                    logger.debug("launch_app_skipped", package=package, reason="already_in_foreground")
 
             elif a_type == "open_deeplink":
                 await self.adb.open_deeplink(ctx.serial, params.get("uri", ""))

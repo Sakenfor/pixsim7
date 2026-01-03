@@ -74,9 +74,38 @@ class ADB:
     async def swipe(self, serial: str, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         await self.shell(serial, "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms))
 
-    async def launch_app(self, serial: str, package_name: str) -> None:
+    async def get_foreground_package(self, serial: str) -> Optional[str]:
+        """
+        Get the package name of the currently focused app.
+        Returns just the package name (e.g., 'com.pixverseai.pixverse') or None.
+        """
+        activity = await self.get_focused_activity(serial)
+        if activity and "/" in activity:
+            # Activity format: "com.package/com.package.Activity" or "com.package/.Activity"
+            return activity.split("/")[0]
+        return None
+
+    async def launch_app(self, serial: str, package_name: str, force: bool = False) -> bool:
+        """
+        Launch an app by package name.
+
+        Args:
+            serial: Device serial
+            package_name: Package to launch
+            force: If True, always launch even if already in foreground
+
+        Returns:
+            True if app was launched, False if already in foreground (skipped)
+        """
+        if not force:
+            # Check if app is already in foreground
+            current_package = await self.get_foreground_package(serial)
+            if current_package == package_name:
+                return False  # Already running, skip launch
+
         # Use monkey to launch main activity
         await self.shell(serial, "monkey", "-p", package_name, "-c", "android.intent.category.LAUNCHER", "1")
+        return True
 
     async def screenshot(self, serial: str, dest_path: Path) -> Path:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
