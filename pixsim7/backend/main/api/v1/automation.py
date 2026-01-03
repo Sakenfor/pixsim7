@@ -148,6 +148,52 @@ async def check_device_ads(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/devices/{device_id}/reset")
+async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Reset a stuck device back to ONLINE status.
+
+    Clears:
+    - assigned_account_id (automation assignment)
+    - is_watching_ad (ad detection flag)
+    - ad_session_started_at (ad session tracking)
+    - Sets status to ONLINE if currently BUSY
+
+    Use this when a device is stuck in BUSY state after an automation
+    or ad session failed to clean up properly.
+    """
+    device = await db.get(AndroidDevice, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    old_status = device.status.value
+    was_busy = device.status == DeviceStatus.BUSY
+
+    # Clear all assignment and ad session state
+    device.assigned_account_id = None
+    device.is_watching_ad = False
+    device.ad_session_started_at = None
+
+    # Only change status if it was BUSY
+    if was_busy:
+        device.status = DeviceStatus.ONLINE
+
+    await db.commit()
+
+    return {
+        "status": "reset",
+        "device_id": device_id,
+        "device_name": device.name,
+        "old_status": old_status,
+        "new_status": device.status.value,
+        "cleared": {
+            "assigned_account_id": True,
+            "is_watching_ad": True,
+            "ad_session_started_at": True,
+        }
+    }
+
+
 @router.get("/loops", response_model=List[ExecutionLoop])
 async def list_loops(
     provider_id: Optional[str] = None,

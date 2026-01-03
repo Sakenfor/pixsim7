@@ -10,6 +10,7 @@ import type {
 import {
   listDevices as apiListDevices,
   scanDevices as apiScanDevices,
+  resetDevice as apiResetDevice,
   completePairing as apiCompletePairing,
   listPresets as apiListPresets,
   getPreset as apiGetPreset,
@@ -206,6 +207,10 @@ class AutomationService {
 
   async completeDevicePairing(pairingCode: string): Promise<void> {
     await apiCompletePairing({ pairing_code: pairingCode });
+  }
+
+  async resetDevice(deviceId: number): Promise<{ status: string; device_name: string; old_status: string; new_status: string }> {
+    return apiResetDevice(deviceId);
   }
 
   // ===== Preset Management =====

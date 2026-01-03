@@ -27,6 +27,7 @@ const automationApi = createAutomationApi(pixsimClient);
 
 export const listDevices = automationApi.listDevices;
 export const scanDevices = automationApi.scanDevices;
+export const resetDevice = automationApi.resetDevice;
 export const completePairing = automationApi.completePairing;
 export const listPresets = automationApi.listPresets;
 export const getPreset = automationApi.getPreset;

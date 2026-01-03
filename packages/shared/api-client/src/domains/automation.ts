@@ -49,6 +49,10 @@ export function createAutomationApi(client: PixSimApiClient) {
       return client.post<DeviceScanResponse>('/automation/devices/scan');
     },
 
+    async resetDevice(deviceId: number): Promise<{ status: string; device_id: number; device_name: string; old_status: string; new_status: string }> {
+      return client.post<{ status: string; device_id: number; device_name: string; old_status: string; new_status: string }>(`/automation/devices/${deviceId}/reset`);
+    },
+
     async completePairing(payload: CompletePairingRequest): Promise<CompletePairingResponse> {
       return client.post<CompletePairingResponse>('/automation/agents/complete-pairing', payload);
     },

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, AutomationStatus, ActionType } from '../types';
+import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, type AndroidDevice, AutomationStatus, ActionType, DeviceStatus } from '../types';
 import { Button, Panel, Modal, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';
@@ -33,7 +33,9 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
 
   // Test execution state
   const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
+  const [devices, setDevices] = useState<AndroidDevice[]>([]);
   const [testAccountId, setTestAccountId] = useState<number | null>(null);
+  const [testDeviceId, setTestDeviceId] = useState<number | 'auto'>('auto');
   const [testExecution, setTestExecution] = useState<AutomationExecution | null>(null);
   const [testing, setTesting] = useState(false);
   const [testedActionRange, setTestedActionRange] = useState<{ start: number; count: number } | null>(null);
@@ -52,9 +54,10 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [replaceWithCall, setReplaceWithCall] = useState(true);
   const [creatingPreset, setCreatingPreset] = useState(false);
 
-  // Load accounts for testing
+  // Load accounts and devices for testing
   useEffect(() => {
     getAccounts().then(setAccounts).catch(console.error);
+    automationService.getDevices().then(setDevices).catch(console.error);
   }, []);
 
   // Poll for test execution status
@@ -99,6 +102,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
     setTestedActionRange(startIndex !== undefined ? { start: startIndex, count: actionsToTest.length } : null);
     try {
       const result = await automationService.testActions(testAccountId, actionsToTest, {
+        deviceId: testDeviceId === 'auto' ? undefined : testDeviceId,
         variables: variables.length > 0 ? variables : undefined,
       });
 
@@ -113,7 +117,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
       setTesting(false);
       setTestedActionRange(null);
     }
-  }, [testAccountId, variables, toast]);
+  }, [testAccountId, testDeviceId, variables, toast]);
 
   // Handle creating a new preset from selected actions
   const handleCreatePresetFromSelection = useCallback((selectedActions: ActionDefinition[]) => {
@@ -336,6 +340,32 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
                   {acc.email} ({acc.provider_id})
                 </option>
               ))}
+            </select>
+            <select
+              value={testDeviceId.toString()}
+              onChange={(e) => setTestDeviceId(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
+              className="px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              disabled={testing}
+              title="Device to run test on"
+            >
+              {devices.some(d => d.is_enabled && d.status === DeviceStatus.ONLINE) ? (
+                <option value="auto">📱 Auto (first available)</option>
+              ) : (
+                <option value="auto" disabled>📱 None available</option>
+              )}
+              {devices
+                .filter(d => d.is_enabled)
+                .map((device) => (
+                  <option
+                    key={device.id}
+                    value={device.id}
+                    disabled={device.status !== DeviceStatus.ONLINE}
+                  >
+                    {device.status === DeviceStatus.ONLINE ? '🟢' : device.status === DeviceStatus.BUSY ? '🟡' : '🔴'}{' '}
+                    {device.name}
+                    {device.status !== DeviceStatus.ONLINE && ` (${device.status})`}
+                  </option>
+                ))}
             </select>
             <Button
               type="button"

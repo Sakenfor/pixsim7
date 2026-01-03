@@ -246,7 +246,7 @@ export function DeviceList() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredDevices.map((device) => (
-            <DeviceCard key={device.id} device={device} />
+            <DeviceCard key={device.id} device={device} onRefresh={loadDevices} />
           ))}
         </div>
       )}
