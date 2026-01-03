@@ -6,6 +6,7 @@
 
 import { registerCompleteFeature, useCapabilityStore } from '@lib/capabilities';
 import { useCubeStore } from '../useCubeStore';
+import { useCubeSettingsStore } from '../stores/cubeSettingsStore';
 import type { FormationPattern } from '@pixsim7/pixcubes';
 
 // Formation cycle order
@@ -18,76 +19,75 @@ const FORMATIONS: FormationPattern[] = [
   'scattered',
 ];
 
-// Internal state for visibility (since store doesn't track this)
-let cubesVisible = true;
-let currentFormation: FormationPattern = 'arc';
-const visibilityListeners = new Set<(visible: boolean) => void>();
-const formationListeners = new Set<(formation: FormationPattern) => void>();
-
 /**
  * Toggle cubes visibility
  */
 export function toggleCubesVisibility(): boolean {
-  cubesVisible = !cubesVisible;
-  visibilityListeners.forEach((listener) => listener(cubesVisible));
-  return cubesVisible;
+  return useCubeSettingsStore.getState().toggleVisible();
 }
 
 /**
  * Set cubes visibility
  */
 export function setCubesVisibility(visible: boolean): void {
-  cubesVisible = visible;
-  visibilityListeners.forEach((listener) => listener(cubesVisible));
+  useCubeSettingsStore.getState().setVisible(visible);
 }
 
 /**
  * Get cubes visibility
  */
 export function getCubesVisibility(): boolean {
-  return cubesVisible;
+  return useCubeSettingsStore.getState().visible;
 }
 
 /**
  * Subscribe to visibility changes
  */
 export function subscribeToVisibility(callback: (visible: boolean) => void): () => void {
-  visibilityListeners.add(callback);
-  return () => visibilityListeners.delete(callback);
+  let last = useCubeSettingsStore.getState().visible;
+  return useCubeSettingsStore.subscribe((state) => {
+    if (state.visible === last) return;
+    last = state.visible;
+    callback(state.visible);
+  });
 }
 
 /**
  * Cycle to next formation
  */
 export function cycleFormation(): FormationPattern {
-  const currentIndex = FORMATIONS.indexOf(currentFormation);
+  const settings = useCubeSettingsStore.getState();
+  const currentIndex = FORMATIONS.indexOf(settings.formation);
   const nextIndex = (currentIndex + 1) % FORMATIONS.length;
-  currentFormation = FORMATIONS[nextIndex];
-  formationListeners.forEach((listener) => listener(currentFormation));
-  return currentFormation;
+  const nextFormation = FORMATIONS[nextIndex];
+  settings.setFormation(nextFormation);
+  return nextFormation;
 }
 
 /**
  * Set formation
  */
 export function setFormation(formation: FormationPattern): void {
-  currentFormation = formation;
-  formationListeners.forEach((listener) => listener(currentFormation));
+  useCubeSettingsStore.getState().setFormation(formation);
 }
 
 /**
  * Get current formation
  */
 export function getFormation(): FormationPattern {
-  return currentFormation;
+  return useCubeSettingsStore.getState().formation;
 }
 
 /**
  * Subscribe to formation changes
  */
 export function subscribeToFormation(callback: (formation: FormationPattern) => void): () => void {
-  formationListeners.add(callback);
-  return () => formationListeners.delete(callback);
+  let last = useCubeSettingsStore.getState().formation;
+  return useCubeSettingsStore.subscribe((state) => {
+    if (state.formation === last) return;
+    last = state.formation;
+    callback(state.formation);
+  });
 }
 
 /**
@@ -103,8 +103,8 @@ export function registerCubesCapabilities(): void {
       category: 'utility',
       priority: 50,
       getState: () => ({
-        visible: cubesVisible,
-        formation: currentFormation,
+        visible: useCubeSettingsStore.getState().visible,
+        formation: useCubeSettingsStore.getState().formation,
         cubeCount: Object.keys(useCubeStore.getState().cubes).length,
       }),
       enabled: () => true,
@@ -128,7 +128,7 @@ export function registerCubesCapabilities(): void {
         execute: () => {
           setCubesVisibility(true);
         },
-        enabled: () => !cubesVisible,
+        enabled: () => !useCubeSettingsStore.getState().visible,
       },
       {
         id: 'cubes.hide',
@@ -138,7 +138,7 @@ export function registerCubesCapabilities(): void {
         execute: () => {
           setCubesVisibility(false);
         },
-        enabled: () => cubesVisible,
+        enabled: () => useCubeSettingsStore.getState().visible,
       },
       {
         id: 'cubes.cycleFormation',
@@ -156,7 +156,7 @@ export function registerCubesCapabilities(): void {
         description: 'Arrange cubes in dock layout',
         icon: '📥',
         execute: () => setFormation('dock'),
-        enabled: () => currentFormation !== 'dock',
+        enabled: () => useCubeSettingsStore.getState().formation !== 'dock',
       },
       {
         id: 'cubes.formation.arc',
@@ -164,7 +164,7 @@ export function registerCubesCapabilities(): void {
         description: 'Arrange cubes in arc layout',
         icon: '🌈',
         execute: () => setFormation('arc'),
-        enabled: () => currentFormation !== 'arc',
+        enabled: () => useCubeSettingsStore.getState().formation !== 'arc',
       },
       {
         id: 'cubes.formation.circle',
@@ -172,7 +172,7 @@ export function registerCubesCapabilities(): void {
         description: 'Arrange cubes in circle layout',
         icon: '⭕',
         execute: () => setFormation('circle'),
-        enabled: () => currentFormation !== 'circle',
+        enabled: () => useCubeSettingsStore.getState().formation !== 'circle',
       },
       {
         id: 'cubes.formation.grid',
@@ -180,7 +180,7 @@ export function registerCubesCapabilities(): void {
         description: 'Arrange cubes in grid layout',
         icon: '📊',
         execute: () => setFormation('grid'),
-        enabled: () => currentFormation !== 'grid',
+        enabled: () => useCubeSettingsStore.getState().formation !== 'grid',
       },
       {
         id: 'cubes.formation.constellation',
@@ -188,7 +188,7 @@ export function registerCubesCapabilities(): void {
         description: 'Arrange cubes in constellation layout',
         icon: '✨',
         execute: () => setFormation('constellation'),
-        enabled: () => currentFormation !== 'constellation',
+        enabled: () => useCubeSettingsStore.getState().formation !== 'constellation',
       },
       {
         id: 'cubes.formation.scattered',
@@ -196,7 +196,7 @@ export function registerCubesCapabilities(): void {
         description: 'Arrange cubes in scattered layout',
         icon: '🎯',
         execute: () => setFormation('scattered'),
-        enabled: () => currentFormation !== 'scattered',
+        enabled: () => useCubeSettingsStore.getState().formation !== 'scattered',
       },
       {
         id: 'cubes.clearAll',
@@ -213,14 +213,14 @@ export function registerCubesCapabilities(): void {
       {
         id: 'cubes.visible',
         name: 'Cubes Visible',
-        getValue: () => cubesVisible,
+        getValue: () => useCubeSettingsStore.getState().visible,
         subscribe: subscribeToVisibility,
         readonly: true,
       },
       {
         id: 'cubes.formation',
         name: 'Current Formation',
-        getValue: () => currentFormation,
+        getValue: () => useCubeSettingsStore.getState().formation,
         subscribe: subscribeToFormation,
         readonly: true,
       },

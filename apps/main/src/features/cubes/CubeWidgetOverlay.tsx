@@ -14,11 +14,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { clsx } from 'clsx';
 import { useCubeStore, type CubeType, type FormationPattern } from './useCubeStore';
+import { useCubeSettingsStore } from './stores/cubeSettingsStore';
 import {
   calculateFormation,
   interpolatePosition,
   easeInOutCubic,
-  DEFAULT_CUBE_SIZE,
 } from '@pixsim7/pixcubes';
 import { DraggableCube } from './components/DraggableCube';
 import { getCubeFaceContent, getMinimizedPanelFaceContent } from './components/CubeFaceContent';
@@ -37,16 +37,22 @@ interface CubeWidgetOverlayProps {
   initialCubeTypes?: CubeType[];
 }
 
-export function CubeWidgetOverlay({
-  visible: controlledVisible,
-  onVisibilityChange,
-  initialFormation = 'arc',
-  initialCubeTypes = ['control', 'preset', 'provider', 'panel'],
-}: CubeWidgetOverlayProps) {
-  const [internalVisible, setInternalVisible] = useState(true);
-  const visible = controlledVisible ?? internalVisible;
+export function CubeWidgetOverlay(props: CubeWidgetOverlayProps) {
+  const {
+    visible: controlledVisible,
+    onVisibilityChange,
+    initialFormation,
+    initialCubeTypes = ['control', 'preset', 'provider', 'panel'],
+  } = props;
+  const hasVisibleProp = 'visible' in props;
+  const hasInitialFormationProp = 'initialFormation' in props;
 
-  const [formation, setFormation] = useState<FormationPattern>(initialFormation);
+  const storeVisible = useCubeSettingsStore((s) => s.visible);
+  const setVisible = useCubeSettingsStore((s) => s.setVisible);
+  const toggleVisible = useCubeSettingsStore((s) => s.toggleVisible);
+  const formation = useCubeSettingsStore((s) => s.formation);
+  const setFormation = useCubeSettingsStore((s) => s.setFormation);
+
   const [formationCubeIds, setFormationCubeIds] = useState<string[]>([]);
 
   // Store hooks
@@ -57,6 +63,23 @@ export function CubeWidgetOverlay({
   const restorePanelFromCube = useCubeStore((s) => s.restorePanelFromCube);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+
+  // Sync external visibility/formation overrides into the store
+  useEffect(() => {
+    if (!hasVisibleProp || controlledVisible === undefined) return;
+    if (controlledVisible !== storeVisible) {
+      setVisible(controlledVisible);
+    }
+  }, [hasVisibleProp, controlledVisible, storeVisible, setVisible]);
+
+  useEffect(() => {
+    if (!hasInitialFormationProp || initialFormation === undefined) return;
+    if (initialFormation !== formation) {
+      setFormation(initialFormation);
+    }
+  }, [hasInitialFormationProp, initialFormation, formation, setFormation]);
+
+  const visible = storeVisible;
 
   // Calculate formation positions
   const targetPositions = useMemo(() => {
@@ -204,22 +227,20 @@ export function CubeWidgetOverlay({
       // Ctrl+Shift+C to toggle visibility
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
         e.preventDefault();
-        const newVisible = !visible;
-        setInternalVisible(newVisible);
+        const newVisible = toggleVisible();
         onVisibilityChange?.(newVisible);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [formation, visible, onVisibilityChange]);
+  }, [formation, toggleVisible, onVisibilityChange]);
 
   // Visibility toggle function
   const toggleVisibility = useCallback(() => {
-    const newVisible = !visible;
-    setInternalVisible(newVisible);
+    const newVisible = toggleVisible();
     onVisibilityChange?.(newVisible);
-  }, [visible, onVisibilityChange]);
+  }, [toggleVisible, onVisibilityChange]);
 
   return (
     <>

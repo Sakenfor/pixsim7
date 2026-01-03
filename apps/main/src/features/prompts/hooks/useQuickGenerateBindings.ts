@@ -6,7 +6,7 @@ import {
   type QueuedAsset,
 } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
-import { useCubeSettingsStore } from '@features/controlCenter/stores/cubeSettingsStore';
+import { useCubeSettingsStore } from '@features/cubes';
 import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility

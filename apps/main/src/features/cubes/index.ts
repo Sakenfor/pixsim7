@@ -13,6 +13,7 @@ export { CubeWidgetOverlay } from './CubeWidgetOverlay';
 
 // Store
 export { useCubeStore } from './useCubeStore';
+export { useCubeSettingsStore } from './stores/cubeSettingsStore';
 
 // Components
 export { DraggableCube } from './components/DraggableCube';

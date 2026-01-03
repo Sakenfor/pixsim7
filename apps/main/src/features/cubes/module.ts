@@ -7,6 +7,9 @@
 
 import type { Module } from '@app/modules/types';
 import { initializeCubesIntegration, registerCubeExpansions } from './index';
+import { registerCubeSettings } from './settings/registerCubeSettings';
+
+let unregisterCubeSettings: (() => void) | null = null;
 
 export const cubesModule: Module = {
   id: 'cubes',
@@ -20,6 +23,14 @@ export const cubesModule: Module = {
     // Register cube expansions (for cube hover/click content)
     registerCubeExpansions();
 
+    // Register cubes settings dynamically
+    unregisterCubeSettings = registerCubeSettings();
+
     console.log('[cubes] Module initialized');
+  },
+
+  cleanup() {
+    unregisterCubeSettings?.();
+    unregisterCubeSettings = null;
   },
 };

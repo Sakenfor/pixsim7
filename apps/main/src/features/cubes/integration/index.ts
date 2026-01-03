@@ -4,6 +4,10 @@
  * Integrates cubes with the widget system, capabilities system, and context hub.
  */
 
+import { registerCubesCapabilities, unregisterCubesCapabilities } from './capabilities';
+import { registerCubeWidget } from './widget';
+import { registerCubeContextHub, unregisterCubeContextHub } from './contextHub';
+
 // Capabilities
 export {
   registerCubesCapabilities,
@@ -39,16 +43,10 @@ export {
  * Call this once during app startup
  */
 export function initializeCubesIntegration(): void {
-  // Register capabilities (features, actions, states)
-  const { registerCubesCapabilities } = require('./capabilities');
   registerCubesCapabilities();
 
-  // Register widget
-  const { registerCubeWidget } = require('./widget');
   registerCubeWidget();
 
-  // Register context hub descriptor
-  const { registerCubeContextHub } = require('./contextHub');
   registerCubeContextHub();
 
   console.log('[cubes] All integrations initialized');
@@ -59,9 +57,7 @@ export function initializeCubesIntegration(): void {
  * Call this during app shutdown if needed
  */
 export function cleanupCubesIntegration(): void {
-  const { unregisterCubesCapabilities } = require('./capabilities');
   unregisterCubesCapabilities();
 
-  const { unregisterCubeContextHub } = require('./contextHub');
   unregisterCubeContextHub();
 }
