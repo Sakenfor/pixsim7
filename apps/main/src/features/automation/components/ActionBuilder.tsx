@@ -38,11 +38,22 @@ function CallPresetSummary({ action }: { action: ActionDefinition }) {
   );
 }
 
+// Get a short condition summary for IF actions
+function getConditionSummary(action: ActionDefinition): string {
+  const params = action.params || {};
+  const parts: string[] = [];
+  if (params.resource_id) parts.push(`id:${params.resource_id.split('/').pop()}`);
+  if (params.text) parts.push(`"${params.text.slice(0, 15)}${params.text.length > 15 ? '…' : ''}"`);
+  if (params.content_desc) parts.push(`desc:"${params.content_desc.slice(0, 15)}"`);
+  return parts.length > 0 ? parts.join(' ') : 'no selector';
+}
+
 // Recursive action preview renderer
 function ActionPreviewItem({ action, depth = 0 }: { action: ActionDefinition; depth?: number }) {
   const meta = getActionMeta(action.type);
   const hasNested = action.params?.actions?.length > 0;
   const hasElse = action.params?.else_actions?.length > 0;
+  const isConditional = action.type === ActionType.IF_ELEMENT_EXISTS || action.type === ActionType.IF_ELEMENT_NOT_EXISTS;
 
   return (
     <>
@@ -52,9 +63,12 @@ function ActionPreviewItem({ action, depth = 0 }: { action: ActionDefinition; de
       >
         <span>{meta.icon}</span>
         <span className="truncate">{meta.label}</span>
-        {!hasNested && !hasElse && (
+        {/* Show condition for IF actions, or summary for non-nested actions */}
+        {isConditional ? (
+          <span className="text-purple-400 truncate text-[10px]">[{getConditionSummary(action)}]</span>
+        ) : !hasNested && !hasElse ? (
           <span className="text-gray-500 truncate">{getActionSummary(action)}</span>
-        )}
+        ) : null}
       </div>
       {hasNested && (
         <>
@@ -578,21 +592,16 @@ export function ActionBuilder({
                   <span className="text-gray-400 dark:text-gray-500 cursor-grab active:cursor-grabbing select-none" title="Drag to reorder">
                     ⋮⋮
                   </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleEnabled(index);
-                    }}
-                    className={`w-8 h-8 flex items-center justify-center rounded text-sm font-medium transition-colors ${
+                  {/* Action number */}
+                  <span
+                    className={`w-6 h-6 flex items-center justify-center rounded text-xs font-medium ${
                       isEnabled
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
                     }`}
-                    title={isEnabled ? 'Click to disable' : 'Click to enable'}
                   >
                     {index + 1}
-                  </button>
+                  </span>
                   {/* Test status indicator */}
                   {testStatus === 'running' && (
                     <span className="text-yellow-500" title="Running...">⏳</span>
