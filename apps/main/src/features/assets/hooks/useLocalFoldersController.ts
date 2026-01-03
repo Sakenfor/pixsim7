@@ -65,7 +65,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
 
   // Track which folders have had SHA computed and checked against backend
-  const hashCheckedFoldersRef = useRef<Set<string>>(new Set());
+  const hashCheckedFoldersRef = useRef<Map<string, string>>(new Map());
   const hashCheckInProgressRef = useRef<Set<string>>(new Set());
 
   // Upload state (persisted provider)
@@ -155,9 +155,18 @@ export function useLocalFoldersController(): LocalFoldersController {
   useEffect(() => {
     if (!selectedFolderPath || !crypto.subtle) return;
 
-    // Skip if already checked or in progress
-    if (hashCheckedFoldersRef.current.has(selectedFolderPath)) return;
-    if (hashCheckInProgressRef.current.has(selectedFolderPath)) return;
+    if (filteredAssets.length === 0) return;
+
+    const scopeKey = selectedFolderPath;
+    const maxLastModified = filteredAssets.reduce(
+      (max, asset) => Math.max(max, asset.lastModified ?? 0),
+      0
+    );
+    const scopeSignature = `${filteredAssets.length}:${maxLastModified}`;
+
+    // Skip if already checked or in progress for the same scope signature
+    if (hashCheckInProgressRef.current.has(scopeKey)) return;
+    if (hashCheckedFoldersRef.current.get(scopeKey) === scopeSignature) return;
 
     // Get assets that need hashing
     const assetsToHash = filteredAssets.filter(asset => {
@@ -178,18 +187,14 @@ export function useLocalFoldersController(): LocalFoldersController {
       asset.lastUploadStatus !== 'success'
     );
 
-    // If nothing to do, mark as checked - but ONLY if we actually have assets in this folder.
-    // If filteredAssets is empty, the assets may not have loaded yet (race condition).
-    // Don't mark as checked so we can re-run when assets load.
+    // If nothing to do, mark as checked for this scope signature.
     if (assetsToHash.length === 0 && assetsWithHash.length === 0) {
-      if (filteredAssets.length > 0) {
-        hashCheckedFoldersRef.current.add(selectedFolderPath);
-      }
+      hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
       return;
     }
 
     // Mark as in progress
-    hashCheckInProgressRef.current.add(selectedFolderPath);
+    hashCheckInProgressRef.current.add(scopeKey);
 
     // Background hash computation and check
     const computeAndCheck = async () => {
@@ -263,8 +268,8 @@ export function useLocalFoldersController(): LocalFoldersController {
           }
         }
       } finally {
-        hashCheckInProgressRef.current.delete(selectedFolderPath);
-        hashCheckedFoldersRef.current.add(selectedFolderPath);
+        hashCheckInProgressRef.current.delete(scopeKey);
+        hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
       }
     };
 
