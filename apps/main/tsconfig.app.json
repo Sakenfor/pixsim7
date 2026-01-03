@@ -71,6 +71,8 @@
       "@features/cubes": ["./src/features/cubes/index.ts"],
       "@features/mediaViewer/*": ["./src/features/mediaViewer/*"],
       "@features/mediaViewer": ["./src/features/mediaViewer/index.ts"],
+      "@features/poseBoard/*": ["./src/features/poseBoard/*"],
+      "@features/poseBoard": ["./src/features/poseBoard/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

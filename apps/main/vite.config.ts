@@ -80,6 +80,8 @@ export default defineConfig({
       { find: '@features/npcs', replacement: path.resolve(__dirname, './src/features/npcs') },
       { find: '@features/preview', replacement: path.resolve(__dirname, './src/features/preview') },
       { find: '@features/mediaViewer', replacement: path.resolve(__dirname, './src/features/mediaViewer') },
+      { find: '@features/cubes', replacement: path.resolve(__dirname, './src/features/cubes') },
+      { find: '@features/poseBoard', replacement: path.resolve(__dirname, './src/features/poseBoard') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
       // Local src directory alias for cleaner imports (must be last)
