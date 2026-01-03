@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import type { Module } from '@app/modules/types';
 
 export const game2DModule: Module = {
@@ -8,6 +9,7 @@ export const game2DModule: Module = {
     icon: 'play',
     description: 'Play the turn-based 2D day cycle game',
     category: 'game',
+    component: lazy(() => import('../../../routes/Game2D').then(m => ({ default: m.Game2D }))),
   },
 };
 
@@ -20,5 +22,6 @@ export const simulationModule: Module = {
     description: 'Test and explore simulation features',
     category: 'development',
     hidden: true,
+    component: lazy(() => import('../../../routes/SimulationPlayground').then(m => ({ default: m.SimulationPlayground }))),
   },
 };

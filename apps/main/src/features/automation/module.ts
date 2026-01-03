@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import type { Module } from '@app/modules/types';
 import { registerAutomationFeature } from '@lib/capabilities/registerCoreFeatures';
 
@@ -21,5 +22,6 @@ export const automationModule: Module = {
     description: 'Manage Android devices and automation loops',
     category: 'automation',
     featured: true,
+    component: lazy(() => import('../../routes/Automation').then(m => ({ default: m.AutomationRoute }))),
   },
 };

@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import type { Module } from '@app/modules/types';
 
 export const npcPortraitsModule: Module = {
@@ -8,5 +9,6 @@ export const npcPortraitsModule: Module = {
     icon: 'user',
     description: 'Configure NPC expressions mapped to assets',
     category: 'game',
+    component: lazy(() => import('./NpcPortraits').then(m => ({ default: m.NpcPortraits }))),
   },
 };

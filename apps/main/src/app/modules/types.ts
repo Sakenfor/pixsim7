@@ -1,5 +1,6 @@
 import { logEvent } from '@lib/utils';
 import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
+import type { ComponentType, LazyExoticComponent } from 'react';
 
 /**
  * Page Categories
@@ -121,6 +122,12 @@ export interface Module {
     hidden?: boolean;
     /** Custom icon color class (e.g., 'text-red-500') */
     iconColor?: string;
+    /**
+     * React component for the route (optional)
+     * Can be a lazy-loaded component for code splitting:
+     * component: lazy(() => import('./MyPage'))
+     */
+    component?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
   };
 }
 

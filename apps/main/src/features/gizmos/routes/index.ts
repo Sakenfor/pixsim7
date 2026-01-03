@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import type { Module } from '@app/modules/types';
 
 export const gizmoLabModule: Module = {
@@ -9,5 +10,6 @@ export const gizmoLabModule: Module = {
     iconColor: 'text-purple-500',
     description: 'Explore and test gizmos and interactive tools',
     category: 'development',
+    component: lazy(() => import('../../../routes/GizmoLab').then(m => ({ default: m.GizmoLab }))),
   },
 };

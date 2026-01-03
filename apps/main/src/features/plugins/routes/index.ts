@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import type { Module } from '@app/modules/types';
 
 export const pluginWorkspaceModule: Module = {
@@ -9,5 +10,6 @@ export const pluginWorkspaceModule: Module = {
     description: 'Manage and develop plugins',
     category: 'development',
     hidden: true,
+    component: lazy(() => import('../../../routes/PluginWorkspace').then(m => ({ default: m.PluginWorkspaceRoute }))),
   },
 };

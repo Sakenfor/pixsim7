@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import type { Module } from '@app/modules/types';
 
 export const arcGraphModule: Module = {
@@ -10,6 +11,7 @@ export const arcGraphModule: Module = {
     description: 'Manage story arcs, quests, and narrative flow',
     category: 'creation',
     featured: true,
+    component: lazy(() => import('../../../routes/ArcGraph').then(m => ({ default: m.ArcGraphRoute }))),
   },
 };
 
@@ -17,9 +19,10 @@ export const graphModule: Module = {
   id: 'graph',
   name: 'Graph View',
   page: {
-    route: '/graph/1',
+    route: '/graph/:id',
     icon: 'graph',
     description: 'Visualize asset dependencies and relationships',
     category: 'development',
+    component: lazy(() => import('../../../routes/Graph').then(m => ({ default: m.GraphRoute }))),
   },
 };

@@ -1,5 +1,6 @@
+import { lazy } from "react";
 import type { Module } from "@app/modules/types";
-import { registerWorkspaceFeature } from "./capabilities";
+import { registerWorkspaceFeature } from "./lib/capabilities";
 import { initializePanels } from "@features/panels";
 import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";
 
@@ -45,5 +46,6 @@ export const workspaceModule: Module = {
     description: "Create and edit scenes with timeline",
     category: "creation",
     featured: true,
+    component: lazy(() => import("./routes/Workspace").then(m => ({ default: m.WorkspaceRoute }))),
   },
 };
