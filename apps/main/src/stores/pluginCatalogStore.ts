@@ -16,7 +16,7 @@ import {
 import {
   loadRemotePluginBundles,
   unregisterPlugin,
-} from '@lib/plugins/manifestLoader';
+} from '@lib/plugins/bundleRegistrar';
 import { isBundleFamily, type BundleFamily } from '@lib/plugins/types';
 
 // ===== TYPES =====
@@ -194,7 +194,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
 
       const targetPlugin = get().plugins.find(p => p.plugin_id === pluginId);
       if (targetPlugin && isBundleFamily(targetPlugin.family)) {
-        unregisterPlugin(pluginId, targetPlugin.family);
+        await unregisterPlugin(pluginId, targetPlugin.family);
       }
 
       // Remove from pending

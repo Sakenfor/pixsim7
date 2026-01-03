@@ -12,8 +12,9 @@ export { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 // Plugin loader
 export * from './loader';
 
-// Manifest-based bundle loader
+// Manifest discovery + bundle registration
 export * from './manifestLoader';
+export * from './bundleRegistrar';
 
 // Unified plugin catalog and system
 export { pluginCatalog, pluginActivationManager } from './pluginSystem';

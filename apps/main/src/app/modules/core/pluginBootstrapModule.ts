@@ -1,10 +1,11 @@
-import type { Module } from '../types';
 import { pluginManager, bootstrapExamplePlugins } from '@lib/plugins';
-import { loadAllPlugins } from '@lib/plugins/loader';
-import { discoverBundleRegistrations } from '@lib/plugins/manifestLoader';
 import { discoverControlCenterRegistrations } from '@lib/plugins/bootstrapControlCenters';
 import { discoverSceneViewRegistrations } from '@lib/plugins/bootstrapSceneViews';
-import type { PluginRegistration } from '@lib/plugins/registration';
+import { loadAllPlugins } from '@lib/plugins/loader';
+import { discoverBundleRegistrations } from '@lib/plugins/bundleRegistrar';
+import { registerPluginFamily } from '@lib/plugins/registration';
+
+import type { Module } from '../types';
 
 /**
  * Plugin Bootstrap Module
@@ -43,9 +44,12 @@ export const pluginBootstrapModule: Module = {
     ];
 
     const preferSource = import.meta.env.DEV || bundleRegistrations.length === 0;
-    const selected = selectRegistrations(allRegistrations, preferSource ? 'source' : 'bundle');
-
-    await registerSelectedPlugins(selected, { strict: false, verbose: true });
+    const selected = await registerPluginFamily(allRegistrations, {
+      preferredSource: preferSource ? 'source' : 'bundle',
+      strict: false,
+      verbose: true,
+      logPrefix: 'PluginBootstrap',
+    });
 
     if (selected.some((registration) => registration.family === 'control-center')) {
       const { controlCenterRegistry } = await import('@lib/plugins/controlCenterPlugin');
@@ -63,51 +67,3 @@ export const pluginBootstrapModule: Module = {
     });
   },
 };
-
-function selectRegistrations(
-  registrations: PluginRegistration[],
-  preferredSource: PluginRegistration['source'],
-): PluginRegistration[] {
-  const preferred = registrations.filter((r) => r.source === preferredSource);
-  const fallback = registrations.filter((r) => r.source !== preferredSource);
-  const ordered = [...preferred, ...fallback];
-  const selected = new Map<string, PluginRegistration>();
-
-  for (const registration of ordered) {
-    if (selected.has(registration.id)) {
-      const existing = selected.get(registration.id);
-      console.warn(
-        `[PluginBootstrap] Skipping duplicate plugin "${registration.id}" from ${registration.source} (already using ${existing?.source}).`
-      );
-      continue;
-    }
-    selected.set(registration.id, registration);
-  }
-
-  return Array.from(selected.values());
-}
-
-async function registerSelectedPlugins(
-  registrations: PluginRegistration[],
-  options: { strict: boolean; verbose: boolean },
-): Promise<void> {
-  const { strict, verbose } = options;
-
-  if (verbose) {
-    console.info(`[PluginBootstrap] Registering ${registrations.length} plugin(s)...`);
-  }
-
-  for (const registration of registrations) {
-    try {
-      await registration.register();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const label = registration.label ? ` (${registration.label})` : '';
-      const details = `${registration.id}${label} from ${registration.source}`;
-      if (strict) {
-        throw new Error(`[PluginBootstrap] Failed to register ${details}: ${message}`);
-      }
-      console.warn(`[PluginBootstrap] Failed to register ${details}: ${message}`);
-    }
-  }
-}

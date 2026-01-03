@@ -1,14 +1,5 @@
 import type React from 'react';
-import type { PluginManifest } from './types';
-import {
-  fromPluginSystemMetadata,
-  validateFamilyMetadata,
-  type UnifiedPluginOrigin,
-} from './types';
-import type {
-  ExtendedPluginMetadata,
-  PluginCapabilityHints,
-} from './pluginSystem';
+
 import type {
   SceneMetaComicPanel,
   ComicPanelSession,
@@ -16,6 +7,14 @@ import type {
   ComicPanelRequestContext,
   ComicPanelLayout,
 } from '@features/scene';
+
+import type {
+  ExtendedPluginMetadata,
+  PluginCapabilityHints,
+} from './pluginSystem';
+import type { PluginManifest } from './types';
+import { type UnifiedPluginOrigin } from './types';
+import { registerCatalogMetadata, unregisterCatalogMetadata } from './catalogRegistration';
 
 /**
  * Additional metadata describing a scene view plugin.
@@ -107,18 +106,7 @@ class SceneViewRegistry {
       consumesFeatures,
     };
     void import('./pluginSystem').then(({ pluginCatalog }) => {
-      pluginCatalog.register(metadata);
-
-      // Validate and log warnings
-      const descriptor = fromPluginSystemMetadata(metadata);
-      const validation = validateFamilyMetadata(descriptor);
-      if (!validation.valid) {
-        console.error(`[SceneViewRegistry] Plugin ${manifest.id} has validation errors:`, validation.errors);
-      }
-      if (validation.warnings.length > 0) {
-        console.warn(`[SceneViewRegistry] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
-      }
-    });
+    void registerCatalogMetadata(metadata, 'SceneViewRegistry');
 
     console.info(`[SceneViewRegistry] Registered scene view "${viewId}"`);
   }
@@ -131,9 +119,7 @@ class SceneViewRegistry {
       }
       // Also unregister from unified catalog
       if (entry) {
-        void import('./pluginSystem').then(({ pluginCatalog }) => {
-          pluginCatalog.unregister(entry.manifest.id);
-        });
+        void unregisterCatalogMetadata(entry.manifest.id);
       }
       console.info(`[SceneViewRegistry] Unregistered scene view "${id}"`);
     }
