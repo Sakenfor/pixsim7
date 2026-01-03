@@ -198,6 +198,209 @@ function CallPresetParams({
   );
 }
 
+type SwipeDirection = 'up' | 'down' | 'left' | 'right';
+
+const DIRECTION_OPTIONS: { value: SwipeDirection; label: string; icon: string }[] = [
+  { value: 'up', label: 'Up', icon: '↑' },
+  { value: 'down', label: 'Down', icon: '↓' },
+  { value: 'left', label: 'Left', icon: '←' },
+  { value: 'right', label: 'Right', icon: '→' },
+];
+
+function getDirectionFromCoords(params: Record<string, any>): SwipeDirection | null {
+  const { x1, y1, x2, y2 } = params;
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return null;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx < 0 ? 'left' : 'right';
+  } else {
+    return dy < 0 ? 'up' : 'down';
+  }
+}
+
+function getCoordsFromDirection(direction: SwipeDirection, strength: number): { x1: number; y1: number; x2: number; y2: number } {
+  // Strength 0-100 maps to distance 0.1-0.4 from center
+  const distance = 0.1 + (strength / 100) * 0.3;
+  const center = 0.5;
+
+  switch (direction) {
+    case 'up':
+      return { x1: center, y1: center + distance, x2: center, y2: center - distance };
+    case 'down':
+      return { x1: center, y1: center - distance, x2: center, y2: center + distance };
+    case 'left':
+      return { x1: center + distance, y1: center, x2: center - distance, y2: center };
+    case 'right':
+      return { x1: center - distance, y1: center, x2: center + distance, y2: center };
+  }
+}
+
+function getStrengthFromCoords(params: Record<string, any>): number {
+  const { x1, y1, x2, y2 } = params;
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return 50;
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  const distance = Math.max(dx, dy) / 2; // half of total distance
+  // Reverse the mapping: distance 0.1-0.4 maps to strength 0-100
+  const strength = Math.round(((distance - 0.1) / 0.3) * 100);
+  return Math.max(0, Math.min(100, strength));
+}
+
+function SwipeParams({
+  params,
+  onChange,
+  inputClass,
+}: {
+  params: Record<string, any>;
+  onChange: (params: Record<string, any>) => void;
+  inputClass: string;
+}) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const direction = getDirectionFromCoords(params);
+  const strength = getStrengthFromCoords(params);
+
+  const updateParam = (key: string, value: any) => {
+    onChange({ ...(params || {}), [key]: value });
+  };
+
+  const handleDirectionChange = (newDirection: SwipeDirection) => {
+    const coords = getCoordsFromDirection(newDirection, strength);
+    onChange({ ...params, ...coords });
+  };
+
+  const handleStrengthChange = (newStrength: number) => {
+    if (direction) {
+      const coords = getCoordsFromDirection(direction, newStrength);
+      onChange({ ...params, ...coords });
+    }
+  };
+
+  // Initialize with defaults if no coords set
+  useEffect(() => {
+    if (params.x1 === undefined && params.y1 === undefined) {
+      const coords = getCoordsFromDirection('up', 50);
+      onChange({ ...params, ...coords, duration_ms: params.duration_ms ?? 300 });
+    }
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      {/* Simple mode */}
+      {!showAdvanced && (
+        <>
+          <div>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1.5">Direction</label>
+            <div className="flex gap-1">
+              {DIRECTION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleDirectionChange(opt.value)}
+                  className={`flex-1 px-2 py-1.5 text-sm rounded-lg border transition-colors ${
+                    direction === opt.value
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span className="mr-1">{opt.icon}</span>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+              Strength: {strength}%
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={strength}
+              onChange={(e) => handleStrengthChange(parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+        </>
+      )}
+
+      {/* Advanced mode */}
+      {showAdvanced && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X1 (0-1 or px)</label>
+              <input
+                type="number"
+                step="any"
+                value={params.x1 ?? 0.5}
+                onChange={(e) => updateParam('x1', parseFloat(e.target.value) || 0)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y1 (0-1 or px)</label>
+              <input
+                type="number"
+                step="any"
+                value={params.y1 ?? 0.7}
+                onChange={(e) => updateParam('y1', parseFloat(e.target.value) || 0)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X2 (0-1 or px)</label>
+              <input
+                type="number"
+                step="any"
+                value={params.x2 ?? 0.5}
+                onChange={(e) => updateParam('x2', parseFloat(e.target.value) || 0)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y2 (0-1 or px)</label>
+              <input
+                type="number"
+                step="any"
+                value={params.y2 ?? 0.3}
+                onChange={(e) => updateParam('y2', parseFloat(e.target.value) || 0)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Duration - always visible */}
+      <div>
+        <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+          Duration (ms)
+        </label>
+        <input
+          type="number"
+          value={params.duration_ms ?? 300}
+          onChange={(e) => updateParam('duration_ms', parseInt(e.target.value))}
+          className={inputClass}
+        />
+      </div>
+
+      {/* Toggle */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced(!showAdvanced)}
+        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+      >
+        {showAdvanced ? '← Simple mode' : 'Advanced (custom coordinates) →'}
+      </button>
+    </div>
+  );
+}
+
 export function ActionParamsEditor({ actionType, params, onChange, variables = [] }: ActionParamsEditorProps) {
   const updateParam = (key: string, value: any) => {
     onChange({ ...(params || {}), [key]: value });
@@ -244,17 +447,28 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
 
     case ActionType.LAUNCH_APP:
       return (
-        <div>
-          <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-            Package Name (optional)
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+              Package Name (optional)
+            </label>
+            <input
+              type="text"
+              value={params.package ?? ''}
+              onChange={(e) => updateParam('package', e.target.value)}
+              placeholder="com.example.app"
+              className={inputClass}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={params.force ?? false}
+              onChange={(e) => updateParam('force', e.target.checked)}
+              className="rounded border-gray-300 dark:border-gray-600"
+            />
+            Force relaunch (even if already open)
           </label>
-          <input
-            type="text"
-            value={params.package ?? ''}
-            onChange={(e) => updateParam('package', e.target.value)}
-            placeholder="com.example.app"
-            className={inputClass}
-          />
         </div>
       );
 
@@ -333,65 +547,7 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
       );
 
     case ActionType.SWIPE:
-      return (
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X1 (0-1 or px)</label>
-              <input
-                type="number"
-                step="any"
-                value={params.x1 ?? 0.5}
-                onChange={(e) => updateParam('x1', parseFloat(e.target.value) || 0)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y1 (0-1 or px)</label>
-              <input
-                type="number"
-                step="any"
-                value={params.y1 ?? 0.7}
-                onChange={(e) => updateParam('y1', parseFloat(e.target.value) || 0)}
-                className={inputClass}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X2 (0-1 or px)</label>
-              <input
-                type="number"
-                step="any"
-                value={params.x2 ?? 0.5}
-                onChange={(e) => updateParam('x2', parseFloat(e.target.value) || 0)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y2 (0-1 or px)</label>
-              <input
-                type="number"
-                step="any"
-                value={params.y2 ?? 0.3}
-                onChange={(e) => updateParam('y2', parseFloat(e.target.value) || 0)}
-                className={inputClass}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Duration (ms)
-            </label>
-            <input
-              type="number"
-              value={params.duration_ms ?? 300}
-              onChange={(e) => updateParam('duration_ms', parseInt(e.target.value))}
-              className={inputClass}
-            />
-          </div>
-        </div>
-      );
+      return <SwipeParams params={params} onChange={onChange} inputClass={inputClass} />;
 
     case ActionType.WAIT_FOR_ELEMENT:
       return (
