@@ -626,6 +626,43 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/accounts/deduplicate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Preview Deduplicate Accounts
+         * @description Preview which duplicate accounts would be removed.
+         *
+         *     GET = dry run (preview only)
+         *     POST = actually delete
+         *
+         *     Duplicates can cause session conflicts when logging in because both
+         *     accounts may have the same credentials but different session data.
+         */
+        readonly get: operations["preview_deduplicate_accounts_api_v1_accounts_deduplicate_get"];
+        readonly put?: never;
+        /**
+         * Deduplicate Accounts
+         * @description Remove duplicate accounts, keeping the one with most recent activity.
+         *
+         *     GET = dry run (preview only)
+         *     POST = actually delete
+         *
+         *     Automatically handles all FK constraints:
+         *     - generations, provider_submissions: reassigned to primary account
+         *     - Other tables (credits, etc.): deleted
+         */
+        readonly post: operations["deduplicate_accounts_api_v1_accounts_deduplicate_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/accounts/import-cookies": {
         readonly parameters: {
             readonly query?: never;
@@ -2969,6 +3006,35 @@ export interface paths {
         readonly get: operations["list_devices_api_v1_automation_devices_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/automation/devices/{device_id}/reset": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Reset Device Status
+         * @description Reset a stuck device back to ONLINE status.
+         *
+         *     Clears:
+         *     - assigned_account_id (automation assignment)
+         *     - is_watching_ad (ad detection flag)
+         *     - ad_session_started_at (ad session tracking)
+         *     - Sets status to ONLINE if currently BUSY
+         *
+         *     Use this when a device is stuck in BUSY state after an automation
+         *     or ad session failed to clean up properly.
+         */
+        readonly post: operations["reset_device_status_api_v1_automation_devices__device_id__reset_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -18604,6 +18670,72 @@ export interface operations {
             };
         };
     };
+    readonly preview_deduplicate_accounts_api_v1_accounts_deduplicate_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly deduplicate_accounts_api_v1_accounts_deduplicate_post: {
+        readonly parameters: {
+            readonly query?: {
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly import_cookies_api_v1_accounts_import_cookies_post: {
         readonly parameters: {
             readonly query?: never;
@@ -21909,6 +22041,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["AndroidDevice"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly reset_device_status_api_v1_automation_devices__device_id__reset_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly device_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
                 };
             };
             /** @description Validation Error */

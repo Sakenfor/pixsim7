@@ -102,4 +102,15 @@ export type {
 export type { CompositionPackagesResponse } from './composition';
 
 export type { RoleConceptResponse, RolesListResponse } from './concepts';
-
+export {
+  KNOWN_KINDS,
+  isKnownConceptKind,
+} from './concepts';
+export type {
+  ConceptKind,
+  KnownConceptKind,
+  ConceptKindInfo,
+  ConceptKindsResponse,
+  ConceptResponse,
+  ConceptsListResponse,
+} from './concepts';
