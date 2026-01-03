@@ -157,9 +157,10 @@ interface ActionBuilderProps {
   compact?: boolean;
   // Test functionality (works at any level)
   testAccountId?: number | null;
-  onTestAction?: (actionsToTest: ActionDefinition[]) => void;
+  onTestAction?: (actionsToTest: ActionDefinition[], startIndex?: number) => void;
   testing?: boolean;
   testExecution?: AutomationExecution | null;
+  testedActionRange?: { start: number; count: number } | null; // Track which actions were tested
   // Batch operations (only at top level)
   onCreatePresetFromSelection?: (actions: ActionDefinition[]) => void;
   // Cross-level drag support
@@ -176,6 +177,7 @@ export function ActionBuilder({
   onTestAction,
   testing = false,
   testExecution,
+  testedActionRange,
   onCreatePresetFromSelection,
   onActionDroppedOut,
 }: ActionBuilderProps) {
@@ -493,7 +495,7 @@ export function ActionBuilder({
             const meta = getActionMeta(action.type);
             const colors = getCategoryColors(meta.category);
             const errorPath = testExecution?.error_details?.action_path as number[] | undefined;
-            const testStatus = getActionTestStatus(index, testExecution, depth, errorPath);
+            const testStatus = getActionTestStatus(index, testExecution, depth, errorPath, testedActionRange);
             const isConditional = action.type === ActionType.IF_ELEMENT_EXISTS || action.type === ActionType.IF_ELEMENT_NOT_EXISTS;
             const conditionResult = isConditional ? getConditionResult(index, depth, testExecution) : null;
             const isBatchSelected = batchSelected.has(index);
@@ -681,7 +683,7 @@ export function ActionBuilder({
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          onTestAction([actions[index]]);
+                          onTestAction([actions[index]], index);
                         }}
                         disabled={testing || !isEnabled}
                         className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200 disabled:opacity-30"
@@ -694,7 +696,7 @@ export function ActionBuilder({
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          onTestAction(actions.slice(index));
+                          onTestAction(actions.slice(index), index);
                         }}
                         disabled={testing || !isEnabled}
                         className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200 disabled:opacity-30"
@@ -873,6 +875,7 @@ export function ActionBuilder({
                             onTestAction={onTestAction}
                             testing={testing}
                             testExecution={testExecution}
+                            testedActionRange={testedActionRange}
                             onCreatePresetFromSelection={onCreatePresetFromSelection}
                           />
                         </div>
@@ -900,6 +903,7 @@ export function ActionBuilder({
                             onTestAction={onTestAction}
                             testing={testing}
                             testExecution={testExecution}
+                            testedActionRange={testedActionRange}
                             onCreatePresetFromSelection={onCreatePresetFromSelection}
                           />
                         </div>

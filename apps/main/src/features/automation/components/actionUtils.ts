@@ -125,6 +125,20 @@ export function getConditionResult(
 /** Action test status */
 export type ActionTestStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed';
 
+/** Range of actions that were tested */
+export interface TestedActionRange {
+  start: number;
+  count: number;
+}
+
+/**
+ * Check if an action index is within the tested range
+ */
+function isInTestedRange(index: number, range: TestedActionRange | null | undefined): boolean {
+  if (!range) return true; // No range means all actions were tested
+  return index >= range.start && index < range.start + range.count;
+}
+
 /**
  * Get test status for an action (supports nested path matching)
  */
@@ -132,29 +146,40 @@ export function getActionTestStatus(
   index: number,
   execution: AutomationExecution | null | undefined,
   depth: number = 0,
-  errorPath?: number[]
+  errorPath?: number[],
+  testedRange?: TestedActionRange | null
 ): ActionTestStatus {
   if (!execution) return 'idle';
+
+  // For top-level actions, check if this action was part of the test
+  if (depth === 0 && testedRange && !isInTestedRange(index, testedRange)) {
+    return 'idle'; // This action wasn't tested
+  }
 
   // For FAILED status, check if this action matches the error path
   if (execution.status === AutomationStatus.FAILED) {
     if (errorPath && errorPath.length > depth) {
       // Check if this action is in the error path
-      if (errorPath[depth] === index) {
+      // Adjust error path index relative to tested range
+      const adjustedErrorIndex = testedRange ? errorPath[depth] + testedRange.start : errorPath[depth];
+      if (adjustedErrorIndex === index) {
         return 'failed';
       }
     }
-    // Not in error path - for top level, mark earlier actions as completed
+    // Not in error path - for top level, mark earlier tested actions as completed
     if (depth === 0) {
       const errorTopIndex = errorPath?.[0] ?? execution.error_action_index ?? 0;
-      if (index < errorTopIndex) return 'completed';
+      const adjustedErrorIndex = testedRange ? errorTopIndex + testedRange.start : errorTopIndex;
+      if (index < adjustedErrorIndex && isInTestedRange(index, testedRange)) return 'completed';
     }
     return 'idle';
   }
 
-  // For COMPLETED status
+  // For COMPLETED status - only mark tested actions as completed
   if (execution.status === AutomationStatus.COMPLETED) {
-    // All actions (including nested) are completed
+    if (depth === 0) {
+      return isInTestedRange(index, testedRange) ? 'completed' : 'idle';
+    }
     return 'completed';
   }
 
@@ -162,16 +187,22 @@ export function getActionTestStatus(
   if (execution.status === AutomationStatus.RUNNING) {
     if (depth === 0) {
       const currentIndex = execution.current_action_index ?? 0;
-      if (index < currentIndex) return 'completed';
-      if (index === currentIndex) return 'running';
-      return 'pending';
+      // Adjust current index relative to tested range
+      const adjustedCurrentIndex = testedRange ? currentIndex + testedRange.start : currentIndex;
+      if (index < adjustedCurrentIndex && isInTestedRange(index, testedRange)) return 'completed';
+      if (index === adjustedCurrentIndex) return 'running';
+      if (isInTestedRange(index, testedRange)) return 'pending';
+      return 'idle';
     }
     // For nested: if parent is running, nested are part of it
     return 'idle';
   }
 
   if (execution.status === AutomationStatus.PENDING) {
-    return depth === 0 ? 'pending' : 'idle';
+    if (depth === 0) {
+      return isInTestedRange(index, testedRange) ? 'pending' : 'idle';
+    }
+    return 'idle';
   }
 
   return 'idle';

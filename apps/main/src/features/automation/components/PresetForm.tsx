@@ -36,6 +36,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [testAccountId, setTestAccountId] = useState<number | null>(null);
   const [testExecution, setTestExecution] = useState<AutomationExecution | null>(null);
   const [testing, setTesting] = useState(false);
+  const [testedActionRange, setTestedActionRange] = useState<{ start: number; count: number } | null>(null);
 
   // UI Inspector state
   const [uiElements, setUiElements] = useState<any[]>([]);
@@ -82,7 +83,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   }, [testExecution, toast]);
 
   // Test actions handler - accepts actions array directly (for nested support)
-  const handleTestActions = useCallback(async (actionsToTest: ActionDefinition[]) => {
+  const handleTestActions = useCallback(async (actionsToTest: ActionDefinition[], startIndex?: number) => {
     if (!testAccountId) {
       toast.error('Please select a test account first');
       return;
@@ -94,6 +95,8 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
     }
 
     setTesting(true);
+    // Track which actions are being tested
+    setTestedActionRange(startIndex !== undefined ? { start: startIndex, count: actionsToTest.length } : null);
     try {
       const result = await automationService.testActions(testAccountId, actionsToTest, {
         variables: variables.length > 0 ? variables : undefined,
@@ -108,6 +111,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
     } catch (err: any) {
       toast.error(err.message || 'Failed to start test');
       setTesting(false);
+      setTestedActionRange(null);
     }
   }, [testAccountId, variables, toast]);
 
@@ -373,7 +377,10 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
                 {(testExecution.status === AutomationStatus.COMPLETED || testExecution.status === AutomationStatus.FAILED) && (
                   <button
                     type="button"
-                    onClick={() => setTestExecution(null)}
+                    onClick={() => {
+                      setTestExecution(null);
+                      setTestedActionRange(null);
+                    }}
                     className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                     title="Clear results"
                   >
@@ -459,6 +466,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
           onTestAction={handleTestActions}
           testing={testing}
           testExecution={testExecution}
+          testedActionRange={testedActionRange}
           onCreatePresetFromSelection={handleCreatePresetFromSelection}
         />
       </Panel>
