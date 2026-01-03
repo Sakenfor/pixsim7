@@ -105,7 +105,6 @@ class SceneViewRegistry {
       providesFeatures,
       consumesFeatures,
     };
-    void import('./pluginSystem').then(({ pluginCatalog }) => {
     void registerCatalogMetadata(metadata, 'SceneViewRegistry');
 
     console.info(`[SceneViewRegistry] Registered scene view "${viewId}"`);
