@@ -13,6 +13,7 @@ from pixsim7.backend.main.api.dependencies import get_current_user, get_database
 from pixsim7.backend.main.domain import Asset, User
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+from pixsim7.backend.main.services.provider.adapters.pixverse_ids import collect_candidate_ids
 from pixsim7.backend.main.shared.errors import ProviderError
 from pixsim_logging import get_logger
 
@@ -93,25 +94,26 @@ async def pixverse_sync_dry_run(
 
     # Extract video IDs from remote payload
     remote_items: List[Dict[str, Any]] = []
-    video_ids: List[str] = []
+    candidate_video_ids: set[str] = set()
     for v in videos:
         vid = _extract_video_id(v)
+        candidates = collect_candidate_ids(v, vid, v.get("video_url") or v.get("url"))
         remote_items.append(
             {
                 "video_id": vid,
+                "candidate_ids": candidates,
                 "raw": v,
             }
         )
-        if vid:
-            video_ids.append(vid)
+        candidate_video_ids.update(candidates)
 
     # Look up which video IDs already exist as Assets for this user/provider
     existing_ids: set[str] = set()
-    if video_ids:
+    if candidate_video_ids:
         stmt_assets = select(Asset.provider_asset_id).where(
             Asset.user_id == current_user.id,
             Asset.provider_id == "pixverse",
-            Asset.provider_asset_id.in_(video_ids),
+            Asset.provider_asset_id.in_(candidate_video_ids),
         )
         result_assets = await db.execute(stmt_assets)
         existing_ids = {row[0] for row in result_assets.fetchall()}
@@ -123,7 +125,9 @@ async def pixverse_sync_dry_run(
         items.append(
             {
                 "video_id": vid,
-                "already_imported": bool(vid and vid in existing_ids),
+                "already_imported": any(
+                    candidate in existing_ids for candidate in item.get("candidate_ids", [])
+                ),
                 "raw": item["raw"],
             }
         )
@@ -244,4 +248,3 @@ async def backfill_synthetic_generations(
         "failed": failed_count,
         "results": results,
     }
-

@@ -14,7 +14,6 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import uuid
-import re
 from urllib.parse import unquote, urlparse
 from sqlalchemy.orm import object_session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,6 +88,10 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_session import Pix
 from pixsim7.backend.main.services.provider.adapters.pixverse_auth import PixverseAuthMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_credits import PixverseCreditsMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_operations import PixverseOperationsMixin
+from pixsim7.backend.main.services.provider.adapters.pixverse_ids import (
+    looks_like_pixverse_uuid,
+    uuid_in_url,
+)
 from pixsim7.backend.main.services.generation.pixverse_pricing import (
     get_image_credit_change,
     estimate_video_credit_change,
@@ -116,16 +119,6 @@ def _decode_pixverse_url(value: Any) -> Any:
     return value
 
 
-_PV_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE,
-)
-
-
-def _looks_like_uuid(value: Optional[str]) -> bool:
-    return bool(value and _PV_UUID_RE.match(value))
-
-
 def _normalize_pixverse_media_url(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
@@ -138,12 +131,6 @@ def _normalize_pixverse_media_url(value: Optional[str]) -> Optional[str]:
         return clean
     decoded_path = unquote(parsed.path)
     return f"{parsed.scheme}://{parsed.netloc}{decoded_path}"
-
-
-def _uuid_in_url(uuid_value: Optional[str], url: Optional[str]) -> bool:
-    if not uuid_value or not url:
-        return False
-    return uuid_value.lower() in unquote(url).lower()
 
 
 # Quality normalization: Pixverse API expects resolution format (e.g., "1440p")
@@ -271,7 +258,7 @@ class PixverseProvider(
                 if normalized and normalized not in candidate_urls:
                     candidate_urls.append(normalized)
 
-            target_uuid = provider_asset_id_str if _looks_like_uuid(provider_asset_id_str) else None
+            target_uuid = provider_asset_id_str if looks_like_pixverse_uuid(provider_asset_id_str) else None
             log_info(
                 "image_minimal_data",
                 searching_image_list=True,
@@ -321,7 +308,7 @@ class PixverseProvider(
                         matched_image_id = img_id
                         break
 
-                    if target_uuid and _uuid_in_url(target_uuid, img_url):
+                    if target_uuid and uuid_in_url(target_uuid, img_url):
                         provider_metadata = img
                         found = True
                         match_mode = "uuid_in_url"

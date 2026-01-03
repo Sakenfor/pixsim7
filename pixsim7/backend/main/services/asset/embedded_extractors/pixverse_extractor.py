@@ -11,8 +11,38 @@ from __future__ import annotations
 
 from typing import Optional, Tuple, List, Dict, Any
 import copy
-import re
 from urllib.parse import unquote
+
+from pixsim7.backend.main.services.provider.adapters.pixverse_ids import extract_uuid_from_url
+
+
+def _coerce_pixverse_url(value: Any) -> Optional[str]:
+    if not value:
+        return None
+    if isinstance(value, dict):
+        value = (
+            value.get("url")
+            or value.get("image_url")
+            or value.get("path")
+            or value.get("image_path")
+        )
+    if not value:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    value = unquote(value.strip())
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    if value.startswith("/"):
+        value = value[1:]
+    if value.startswith("pixverse/") or value.startswith("upload/"):
+        return f"https://media.pixverse.ai/{value}"
+    if value.startswith("openapi/") or value.startswith("openapi\\"):
+        normalized = value.replace("\\", "/")
+        return f"https://media.pixverse.ai/{normalized}"
+    if value.startswith("media.pixverse.ai/"):
+        return f"https://{value}"
+    return value
 
 
 def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str], Optional[str]]:
@@ -32,34 +62,6 @@ def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str]
 
     image_urls: List[str] = []
     customer_img_path = None
-
-    def _coerce_pixverse_url(value: Any) -> Optional[str]:
-        if not value:
-            return None
-        if isinstance(value, dict):
-            value = (
-                value.get("url")
-                or value.get("image_url")
-                or value.get("path")
-                or value.get("image_path")
-            )
-        if not value:
-            return None
-        if not isinstance(value, str):
-            value = str(value)
-        value = unquote(value.strip())
-        if value.startswith("http://") or value.startswith("https://"):
-            return value
-        if value.startswith("/"):
-            value = value[1:]
-        if value.startswith("pixverse/") or value.startswith("upload/"):
-            return f"https://media.pixverse.ai/{value}"
-        if value.startswith("openapi/") or value.startswith("openapi\\"):
-            normalized = value.replace("\\", "/")
-            return f"https://media.pixverse.ai/{normalized}"
-        if value.startswith("media.pixverse.ai/"):
-            return f"https://{value}"
-        return value
 
     create_mode = extra_metadata.get("create_mode")
     customer_paths = extra_metadata.get("customer_paths")
@@ -159,8 +161,51 @@ def build_embedded_from_pixverse_metadata(
     """
     normalized = normalize_metadata(extra_metadata)
 
+    def _extract_url_id_map(metadata: dict) -> Dict[str, str]:
+        url_id_map: Dict[str, str] = {}
+
+        def _ingest(value: Any) -> None:
+            if not value:
+                return
+            if isinstance(value, list):
+                for entry in value:
+                    _ingest(entry)
+                return
+            if isinstance(value, dict):
+                url = _coerce_pixverse_url(
+                    value.get("url")
+                    or value.get("image_url")
+                    or value.get("path")
+                    or value.get("image_path")
+                )
+                if not url:
+                    return
+                image_id = value.get("image_id") or value.get("id") or value.get("media_id")
+                if image_id is not None:
+                    url_id_map[url] = str(image_id)
+                return
+
+        keys = (
+            "customer_img_url",
+            "customer_img_urls",
+            "customer_img_path",
+            "customer_img_paths",
+            "image_url",
+        )
+
+        for key in keys:
+            _ingest(metadata.get(key))
+
+        customer_paths = metadata.get("customer_paths")
+        if isinstance(customer_paths, dict):
+            for key in keys:
+                _ingest(customer_paths.get(key))
+
+        return url_id_map
+
     # Extract flattened source image URLs (handles customer_paths.* as needed)
     urls, _ = extract_source_image_urls(normalized)
+    url_id_map = _extract_url_id_map(normalized)
 
     # Detect operation/create_mode hints (e.g., transition, fusion, i2v).
     create_mode = normalized.get("create_mode")
@@ -237,17 +282,6 @@ def build_embedded_from_pixverse_metadata(
         fusion_meta["original_prompt"] = original_prompt
 
     items: List[Dict[str, Any]] = []
-    uuid_re = re.compile(
-        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-        re.IGNORECASE,
-    )
-
-    def _extract_uuid_from_url(url: str) -> Optional[str]:
-        match = uuid_re.search(url)
-        if match:
-            return match.group(0)
-        return None
-
     # VIDEO_EXTEND: add source video as embedded parent if available.
     if create_mode == "extend":
         parent_video_url = (
@@ -295,16 +329,22 @@ def build_embedded_from_pixverse_metadata(
             )
 
     for idx, u in enumerate(urls):
-        uuid_value = _extract_uuid_from_url(u)
-        provider_asset_id = uuid_value or f"{provider_video_id}_src_{idx}"
+        uuid_value = extract_uuid_from_url(u)
+        image_id = url_id_map.get(u)
+        provider_asset_id = image_id or uuid_value or f"{provider_video_id}_src_{idx}"
         item: Dict[str, Any] = {
             "type": "image",
             "media_type": "image",
             "remote_url": u,
             "provider_asset_id": provider_asset_id,
         }
-        if uuid_value:
-            item["media_metadata"] = {"pixverse_asset_uuid": uuid_value}
+        if uuid_value or image_id:
+            item_meta = item.get("media_metadata") or {}
+            if uuid_value:
+                item_meta["pixverse_asset_uuid"] = uuid_value
+            if image_id:
+                item_meta["pixverse_image_id"] = image_id
+            item["media_metadata"] = item_meta
 
         # If this looks like a transition, mark relation/operation hints
         # so lineage creation can classify correctly.

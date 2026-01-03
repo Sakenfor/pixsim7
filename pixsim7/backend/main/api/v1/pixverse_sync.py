@@ -15,6 +15,7 @@ from pixsim7.backend.main.domain import Asset, User
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+from pixsim7.backend.main.services.provider.adapters.pixverse_ids import collect_candidate_ids
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim_logging import get_logger
 
@@ -140,22 +141,22 @@ async def pixverse_sync_dry_run(
             detail=f"Failed to list Pixverse videos: {e}",
         )
 
-    # Extract video IDs
+    # Extract video IDs (including UUID candidates from payload/URL)
     video_items: List[Dict[str, Any]] = []
-    video_ids: List[str] = []
+    candidate_video_ids: set[str] = set()
     for v in videos:
         vid = _extract_video_id(v)
-        video_items.append({"video_id": vid, "raw": v})
-        if vid:
-            video_ids.append(vid)
+        candidates = collect_candidate_ids(v, vid, _extract_video_url(v))
+        video_items.append({"video_id": vid, "candidate_ids": candidates, "raw": v})
+        candidate_video_ids.update(candidates)
 
     # Look up existing video assets
     existing_video_ids: set[str] = set()
-    if video_ids:
+    if candidate_video_ids:
         stmt = select(Asset.provider_asset_id).where(
             Asset.user_id == current_user.id,
             Asset.provider_id == "pixverse",
-            Asset.provider_asset_id.in_(video_ids),
+            Asset.provider_asset_id.in_(candidate_video_ids),
         )
         result = await db.execute(stmt)
         existing_video_ids = {row[0] for row in result.fetchall()}
@@ -166,7 +167,9 @@ async def pixverse_sync_dry_run(
         "items": [
             {
                 "video_id": item["video_id"],
-                "already_imported": bool(item["video_id"] and item["video_id"] in existing_video_ids),
+                "already_imported": any(
+                    candidate in existing_video_ids for candidate in item["candidate_ids"]
+                ),
                 "raw": item["raw"],
             }
             for item in video_items
@@ -188,19 +191,19 @@ async def pixverse_sync_dry_run(
             images = []
 
         image_items: List[Dict[str, Any]] = []
-        image_ids: List[str] = []
+        candidate_image_ids: set[str] = set()
         for img in images:
             img_id = _extract_image_id(img)
-            image_items.append({"image_id": img_id, "raw": img})
-            if img_id:
-                image_ids.append(img_id)
+            candidates = collect_candidate_ids(img, img_id, _extract_image_url(img))
+            image_items.append({"image_id": img_id, "candidate_ids": candidates, "raw": img})
+            candidate_image_ids.update(candidates)
 
         existing_image_ids: set[str] = set()
-        if image_ids:
+        if candidate_image_ids:
             stmt = select(Asset.provider_asset_id).where(
                 Asset.user_id == current_user.id,
                 Asset.provider_id == "pixverse",
-                Asset.provider_asset_id.in_(image_ids),
+                Asset.provider_asset_id.in_(candidate_image_ids),
             )
             result = await db.execute(stmt)
             existing_image_ids = {row[0] for row in result.fetchall()}
@@ -211,7 +214,9 @@ async def pixverse_sync_dry_run(
             "items": [
                 {
                     "image_id": item["image_id"],
-                    "already_imported": bool(item["image_id"] and item["image_id"] in existing_image_ids),
+                    "already_imported": any(
+                        candidate in existing_image_ids for candidate in item["candidate_ids"]
+                    ),
                     "raw": item["raw"],
                 }
                 for item in image_items
@@ -279,24 +284,36 @@ async def sync_pixverse_assets(
             )
             videos = []
 
+        video_items: List[Dict[str, Any]] = []
+        candidate_video_ids: set[str] = set()
         for v in videos:
             vid = _extract_video_id(v)
             if not vid:
                 continue
+            candidates = collect_candidate_ids(v, vid, _extract_video_url(v))
+            if not candidates:
+                continue
+            video_items.append({"video_id": vid, "candidate_ids": candidates, "raw": v})
+            candidate_video_ids.update(candidates)
 
-            # Check if already exists
-            stmt = select(Asset.id).where(
+        existing_video_ids: set[str] = set()
+        if candidate_video_ids:
+            stmt = select(Asset.provider_asset_id).where(
                 Asset.user_id == current_user.id,
                 Asset.provider_id == "pixverse",
-                Asset.provider_asset_id == vid,
+                Asset.provider_asset_id.in_(candidate_video_ids),
             )
             result = await db.execute(stmt)
-            if result.scalar_one_or_none():
+            existing_video_ids = {row[0] for row in result.fetchall()}
+
+        for item in video_items:
+            if any(candidate in existing_video_ids for candidate in item["candidate_ids"]):
                 video_stats["skipped_existing"] += 1
                 continue
 
             # Create asset
-            remote_url = _extract_video_url(v)
+            vid = item["video_id"]
+            remote_url = _extract_video_url(item["raw"])
 
             if not remote_url:
                 logger.warning(
@@ -315,11 +332,11 @@ async def sync_pixverse_assets(
                 provider_account_id=account.id,
                 remote_url=remote_url,
                 sync_status=SyncStatus.REMOTE,
-                media_metadata=v,  # Full Pixverse payload
+                media_metadata=item["raw"],  # Full Pixverse payload
             )
 
             # Enrich: extract embedded assets + create synthetic generation
-            await enrichment_service.enrich_synced_asset(asset, current_user, v)
+            await enrichment_service.enrich_synced_asset(asset, current_user, item["raw"])
 
             video_stats["created"] += 1
             logger.debug(
@@ -341,24 +358,36 @@ async def sync_pixverse_assets(
             )
             images = []
 
+        image_items: List[Dict[str, Any]] = []
+        candidate_image_ids: set[str] = set()
         for img in images:
             img_id = _extract_image_id(img)
             if not img_id:
                 continue
+            candidates = collect_candidate_ids(img, img_id, _extract_image_url(img))
+            if not candidates:
+                continue
+            image_items.append({"image_id": img_id, "candidate_ids": candidates, "raw": img})
+            candidate_image_ids.update(candidates)
 
-            # Check if already exists
-            stmt = select(Asset.id).where(
+        existing_image_ids: set[str] = set()
+        if candidate_image_ids:
+            stmt = select(Asset.provider_asset_id).where(
                 Asset.user_id == current_user.id,
                 Asset.provider_id == "pixverse",
-                Asset.provider_asset_id == img_id,
+                Asset.provider_asset_id.in_(candidate_image_ids),
             )
             result = await db.execute(stmt)
-            if result.scalar_one_or_none():
+            existing_image_ids = {row[0] for row in result.fetchall()}
+
+        for item in image_items:
+            if any(candidate in existing_image_ids for candidate in item["candidate_ids"]):
                 image_stats["skipped_existing"] += 1
                 continue
 
             # Create asset
-            remote_url = _extract_image_url(img)
+            img_id = item["image_id"]
+            remote_url = _extract_image_url(item["raw"])
             if not remote_url:
                 logger.warning(
                     "pixverse_image_no_url",
@@ -376,7 +405,7 @@ async def sync_pixverse_assets(
                 provider_account_id=account.id,
                 remote_url=remote_url,
                 sync_status=SyncStatus.REMOTE,
-                media_metadata=img,  # Full Pixverse payload
+                media_metadata=item["raw"],  # Full Pixverse payload
             )
             image_stats["created"] += 1
             logger.debug(
@@ -453,7 +482,7 @@ async def sync_single_pixverse_asset(
     # Clean the URL (remove processing params)
     clean_url = media_url.split('?')[0] if media_url else media_url
 
-    # Check if already exists
+    # Check if already exists (by provided UUID)
     stmt = select(Asset).where(
         Asset.user_id == current_user.id,
         Asset.provider_id == "pixverse",
@@ -518,6 +547,40 @@ async def sync_single_pixverse_asset(
                 asset_id=asset_id,
                 error=str(e),
             )
+
+    # If we have metadata, check for existing assets by any candidate ID
+    if pixverse_metadata:
+        if media_type == MediaType.IMAGE:
+            primary_id = pixverse_metadata.get("image_id") or asset_id
+        else:
+            primary_id = pixverse_metadata.get("video_id") or pixverse_metadata.get("id") or asset_id
+
+        candidate_ids = collect_candidate_ids(pixverse_metadata, str(primary_id), clean_url)
+        if asset_id not in candidate_ids:
+            candidate_ids.append(asset_id)
+
+        if candidate_ids:
+            stmt = select(Asset).where(
+                Asset.user_id == current_user.id,
+                Asset.provider_id == "pixverse",
+                Asset.provider_asset_id.in_(candidate_ids),
+            )
+            result = await db.execute(stmt)
+            existing = result.scalar_one_or_none()
+            if existing:
+                logger.debug(
+                    "pixverse_single_sync_exists_candidate",
+                    asset_id=asset_id,
+                    candidate_ids=candidate_ids,
+                    local_asset_id=existing.id,
+                )
+                return SyncSingleAssetResponse(
+                    asset_id=existing.id,
+                    existed=True,
+                    provider_asset_id=existing.provider_asset_id,
+                    media_type=existing.media_type.value,
+                    remote_url=existing.remote_url or clean_url,
+                )
 
     # Build metadata - use fetched metadata or fallback to basic info
     if pixverse_metadata:
