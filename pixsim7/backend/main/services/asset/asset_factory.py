@@ -330,7 +330,11 @@ async def create_lineage_links_with_metadata(
     from pixsim7.backend.main.services.generation.creation import get_relation_type_for_role
 
     created_count = 0
+    updated_count = 0
     operation_type = normalize_enum(operation_type, OperationType)
+
+    parsed_inputs: List[Dict[str, Any]] = []
+    parent_ids: set[int] = set()
 
     for input_entry in parent_inputs:
         # Extract asset ID from "asset:123" format
@@ -365,6 +369,58 @@ async def create_lineage_links_with_metadata(
         # Get frame metadata
         frame = input_entry.get("frame")
 
+        parsed_inputs.append(
+            {
+                "parent_id": parent_id,
+                "relation_type": relation_type,
+                "sequence_order": sequence_order,
+                "start_time": start_time,
+                "end_time": end_time,
+                "frame": frame,
+            }
+        )
+        parent_ids.add(parent_id)
+
+    if not parsed_inputs:
+        return 0
+
+    result = await db.execute(
+        select(AssetLineage).where(
+            AssetLineage.child_asset_id == child_asset_id,
+            AssetLineage.parent_asset_id.in_(parent_ids),
+        )
+    )
+    existing_rows = result.scalars().all()
+    existing_map = {
+        (row.parent_asset_id, row.relation_type, row.sequence_order): row
+        for row in existing_rows
+    }
+
+    for entry in parsed_inputs:
+        parent_id = entry["parent_id"]
+        relation_type = entry["relation_type"]
+        sequence_order = entry["sequence_order"]
+        start_time = entry["start_time"]
+        end_time = entry["end_time"]
+        frame = entry["frame"]
+
+        key = (parent_id, relation_type, sequence_order)
+        existing = existing_map.get(key)
+        if existing:
+            updated = False
+            if existing.parent_start_time is None and start_time is not None:
+                existing.parent_start_time = start_time
+                updated = True
+            if existing.parent_end_time is None and end_time is not None:
+                existing.parent_end_time = end_time
+                updated = True
+            if existing.parent_frame is None and frame is not None:
+                existing.parent_frame = frame
+                updated = True
+            if updated:
+                updated_count += 1
+            continue
+
         db.add(
             AssetLineage(
                 child_asset_id=child_asset_id,
@@ -379,7 +435,7 @@ async def create_lineage_links_with_metadata(
         )
         created_count += 1
 
-    if created_count > 0:
+    if created_count > 0 or updated_count > 0:
         await db.commit()
 
     return created_count

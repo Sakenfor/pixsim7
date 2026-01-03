@@ -25,11 +25,11 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
-from pixsim7.backend.main.services.asset.asset_hasher import compute_image_phash
 from pixsim_logging import get_logger
 
 # Shared helper (used by this module and sub-modules)
 from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with_tags
+from pixsim7.backend.main.api.v1.assets_upload_helper import prepare_upload
 
 # Sub-routers for modular organization
 from pixsim7.backend.main.api.v1 import assets_maintenance
@@ -812,159 +812,64 @@ async def upload_asset_to_provider(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {e}")
 
-    # Compute SHA256 for deduplication (best-effort, reuse AssetService helper)
-    sha256: Optional[str] = None
-    try:
-        sha256 = asset_service._compute_sha256(tmp_path)
-    except Exception as e:
-        logger.warning(
-            "asset_sha256_compute_failed",
-            error=str(e),
-            detail="Continuing upload without sha256 deduplication",
+    ext = os.path.splitext(file.filename or "upload.bin")[1] or (
+        ".mp4" if media_type == MediaType.VIDEO else ".jpg"
+    )
+    prep = await prepare_upload(
+        tmp_path=tmp_path,
+        user_id=user.id,
+        media_type=media_type,
+        asset_service=asset_service,
+        provider_id=provider_id,
+        file_ext=ext,
+    )
+
+    sha256 = prep.sha256
+    image_hash = prep.image_hash
+    phash64 = prep.phash64
+    width = prep.width
+    height = prep.height
+    stored_key = prep.stored_key
+    local_path = prep.local_path
+    existing = prep.existing_asset
+
+    if existing and prep.dedup_note and "already on" in prep.dedup_note:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+        existing_external = existing.remote_url
+        if not existing_external or not (
+            isinstance(existing_external, str)
+            and (existing_external.startswith("http://") or existing_external.startswith("https://"))
+        ):
+            existing_external = f"/api/v1/assets/{existing.id}/file"
+
+        provider_specific_id = existing.provider_uploads.get(provider_id) if existing.provider_uploads else None
+        if not provider_specific_id:
+            provider_specific_id = existing.provider_asset_id
+
+        return UploadAssetResponse(
+            provider_id=provider_id,
+            media_type=existing.media_type,
+            external_url=existing_external,
+            provider_asset_id=provider_specific_id,
+            note=prep.dedup_note,
         )
 
-    # Compute phash for images (near-duplicate detection)
-    image_hash: Optional[str] = None
-    phash64: Optional[int] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    if media_type == MediaType.IMAGE:
-        try:
-            from PIL import Image
-            with Image.open(tmp_path) as img:
-                width, height = img.size
-            image_hash, phash64 = compute_image_phash(tmp_path)
-        except Exception as e:
-            logger.warning(
-                "asset_phash_compute_failed",
-                error=str(e),
-                detail="Continuing without image_hash/phash64",
-            )
-
-    # If we have a hash, try to deduplicate before uploading to provider
-    if sha256:
-        try:
-            existing = await asset_service.find_asset_by_hash(sha256, user.id)
-        except Exception as e:
-            existing = None
-            logger.warning(
-                "asset_dedup_lookup_failed",
-                error=str(e),
-                detail="Failed to check for existing asset by hash; continuing with new upload",
-            )
-        else:
-            if existing:
-                # Check if already uploaded to THIS provider
-                already_on_provider = (
-                    existing.provider_id == provider_id or
-                    provider_id in (existing.provider_uploads or {})
-                )
-
-                if already_on_provider:
-                    # Already exists on this provider - reuse without re-uploading
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
-
-                    existing_external = existing.remote_url
-                    if not existing_external or not (
-                        isinstance(existing_external, str)
-                        and (existing_external.startswith("http://") or existing_external.startswith("https://"))
-                    ):
-                        existing_external = f"/api/v1/assets/{existing.id}/file"
-
-                    # Get provider-specific asset ID
-                    provider_specific_id = existing.provider_uploads.get(provider_id) if existing.provider_uploads else None
-                    if not provider_specific_id:
-                        provider_specific_id = existing.provider_asset_id
-
-                    return UploadAssetResponse(
-                        provider_id=provider_id,
-                        media_type=existing.media_type,
-                        external_url=existing_external,
-                        provider_asset_id=provider_specific_id,
-                        note=f"Reused existing asset (deduplicated by sha256, already on {provider_id})",
-                    )
-                else:
-                    # Exists but NOT on this provider - upload to new provider and update provider_uploads
-                    logger.info(
-                        "asset_cross_provider_upload",
-                        asset_id=existing.id,
-                        original_provider=existing.provider_id,
-                        target_provider=provider_id,
-                        detail="Uploading duplicate asset to additional provider",
-                    )
-                    # Continue with upload, will update provider_uploads map below
-
-    # Phash-based near-duplicate detection for images (if no sha256 match found)
-    if phash64 is not None and not existing:
-        try:
-            similar = await asset_service.find_similar_asset_by_phash(phash64, user.id, max_distance=5)
-        except Exception as e:
-            similar = None
-            logger.warning(
-                "asset_phash_lookup_failed",
-                error=str(e),
-                detail="Failed to check for similar asset by phash; continuing with new asset",
-            )
-        else:
-            if similar:
-                # Check if already on this provider
-                already_on_provider = (
-                    similar.provider_id == provider_id or
-                    provider_id in (similar.provider_uploads or {})
-                )
-                if already_on_provider:
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
-                    existing_external = similar.remote_url
-                    if not existing_external or not (
-                        existing_external.startswith("http://") or existing_external.startswith("https://")
-                    ):
-                        existing_external = f"/api/v1/assets/{similar.id}/file"
-                    provider_specific_id = similar.provider_uploads.get(provider_id) if similar.provider_uploads else None
-                    if not provider_specific_id:
-                        provider_specific_id = similar.provider_asset_id
-                    return UploadAssetResponse(
-                        provider_id=provider_id,
-                        media_type=similar.media_type,
-                        external_url=existing_external,
-                        provider_asset_id=provider_specific_id,
-                        note=f"Reused existing asset (phash match, already on {provider_id})",
-                    )
-                else:
-                    # Similar exists but not on this provider - use it as base
-                    existing = similar
-
-    # Store file in CAS before uploading to provider (ensures local copy exists)
-    stored_key: Optional[str] = None
-    local_path: Optional[str] = None
-    if sha256:
-        try:
-            from pixsim7.backend.main.services.storage.storage_service import get_storage_service
-            storage_service = get_storage_service()
-            ext = os.path.splitext(file.filename or "upload.bin")[1] or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
-            stored_key = await storage_service.store_from_path_with_hash(
-                user_id=user.id,
-                sha256=sha256,
-                source_path=tmp_path,
-                extension=ext
-            )
-            local_path = storage_service.get_path(stored_key)
+    if existing:
+        already_on_provider = (
+            existing.provider_id == provider_id or
+            provider_id in (existing.provider_uploads or {})
+        )
+        if not already_on_provider:
             logger.info(
-                "file_stored_content_addressed",
-                user_id=user.id,
-                sha256=sha256[:16],
-                stored_key=stored_key,
-            )
-        except Exception as e:
-            logger.warning(
-                "cas_storage_failed",
-                error=str(e),
-                detail="Continuing with provider upload only",
+                "asset_cross_provider_upload",
+                asset_id=existing.id,
+                original_provider=existing.provider_id,
+                target_provider=provider_id,
+                detail="Uploading duplicate asset to additional provider",
             )
 
     # Use UploadService
@@ -1238,11 +1143,9 @@ async def upload_asset_from_url(
     # This ensures the asset is always accessible even if provider upload fails
 
     import shutil
-    from PIL import Image
 
     # Step 1: Save to temporary file for processing
     ext = mimetypes.guess_extension(content_type) or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
-    temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
     temp_local_path = tempfile.mktemp(suffix=ext)
 
     # Step 2: Save to temp location and compute metadata
@@ -1250,29 +1153,27 @@ async def upload_asset_from_url(
         shutil.copy2(tmp_path, temp_local_path)
         file_size_bytes = os.path.getsize(temp_local_path)
 
-        # Compute SHA256 for deduplication (reuse helper)
-        try:
-            sha256 = asset_service._compute_sha256(temp_local_path)
-        except Exception as e:
-            logger.warning(
-                "asset_sha256_compute_failed",
-                error=str(e),
-                detail="Continuing upload-from-url without sha256 deduplication",
-            )
-            sha256 = None
+        prep = await prepare_upload(
+            tmp_path=temp_local_path,
+            user_id=user.id,
+            media_type=media_type,
+            asset_service=asset_service,
+            provider_id=request.provider_id,
+            file_ext=ext,
+        )
 
-        # Deduplication: reuse existing asset with same hash for this user
-        try:
-            existing = await asset_service.find_asset_by_hash(sha256, user.id)
-        except Exception as e:
-            existing = None
-            logger.warning(
-                "asset_dedup_lookup_failed",
-                error=str(e),
-                detail="Failed to check for existing asset by hash; continuing with new asset",
-            )
+        sha256 = prep.sha256
+        width = prep.width
+        height = prep.height
+        image_hash = prep.image_hash
+        phash64 = prep.phash64
+        stored_key = prep.stored_key
+        final_local_path = prep.local_path
 
-        if existing:
+        if not sha256:
+            raise ValueError("Failed to compute sha256 for upload")
+
+        if prep.existing_asset:
             # Clean up temp files since we're reusing an existing asset
             try:
                 os.unlink(tmp_path)
@@ -1284,78 +1185,31 @@ async def upload_asset_from_url(
             except Exception:
                 pass
 
-            # Build external URL from existing asset (prefer remote_url, fallback to file endpoint)
+            existing = prep.existing_asset
             existing_external = existing.remote_url
             if not existing_external or not (
                 existing_external.startswith("http://") or existing_external.startswith("https://")
             ):
                 existing_external = f"/api/v1/assets/{existing.id}/file"
 
+            provider_specific_id = existing.provider_uploads.get(request.provider_id) if existing.provider_uploads else None
+            if not provider_specific_id:
+                provider_specific_id = existing.provider_asset_id
+
+            note = "Reused existing asset (deduplicated by sha256)"
+            if prep.dedup_note and "phash" in prep.dedup_note:
+                note = "Reused existing asset (phash match)"
+
             return UploadAssetResponse(
                 provider_id=request.provider_id,
                 media_type=existing.media_type,
                 external_url=existing_external,
-                provider_asset_id=existing.provider_asset_id,
-                note="Reused existing asset (deduplicated by sha256)",
+                provider_asset_id=provider_specific_id,
+                note=note,
             )
 
-        # Extract image dimensions if it's an image and compute perceptual hash
-        width = height = None
-        image_hash: Optional[str] = None
-        phash64: Optional[int] = None
-        if media_type == MediaType.IMAGE:
-            try:
-                with Image.open(temp_local_path) as img:
-                    width, height = img.size
-                # Compute simple perceptual hash
-                try:
-                    image_hash, phash64 = compute_image_phash(temp_local_path)
-                except Exception as e:
-                    logger.warning(
-                        "asset_phash_compute_failed",
-                        error=str(e),
-                        detail="Continuing without image_hash/phash64",
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to extract image dimensions: {e}")
-
-        # Phash-based near-duplicate detection for images
-        if phash64 is not None:
-            try:
-                similar = await asset_service.find_similar_asset_by_phash(phash64, user.id, max_distance=5)
-            except Exception as e:
-                similar = None
-                logger.warning(
-                    "asset_phash_lookup_failed",
-                    error=str(e),
-                    detail="Failed to check for similar asset by phash; continuing with new asset",
-                )
-            else:
-                if similar:
-                    # Clean up temp files since we're reusing an existing asset
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
-                    try:
-                        if os.path.exists(temp_local_path):
-                            os.unlink(temp_local_path)
-                    except Exception:
-                        pass
-
-                    existing_external = similar.remote_url
-                    if not existing_external or not (
-                        existing_external.startswith("http://") or existing_external.startswith("https://")
-                    ):
-                        existing_external = f"/api/v1/assets/{similar.id}/file"
-
-                    return UploadAssetResponse(
-                        provider_id=request.provider_id,
-                        media_type=similar.media_type,
-                        external_url=existing_external,
-                        provider_asset_id=similar.provider_asset_id,
-                        note="Reused existing asset (phash match)",
-                    )
+        if not stored_key or not final_local_path:
+            raise ValueError("Failed to store file")
 
         # Extract video duration if it's a video
         duration_sec = None
@@ -1377,42 +1231,7 @@ async def upload_asset_from_url(
             pass
         raise HTTPException(status_code=500, detail=f"Failed to save to local storage: {e}")
 
-    # Step 3: Store file using content-addressed storage
-    # This ensures files with identical content are stored only once
-    from pixsim7.backend.main.services.storage.storage_service import get_storage_service
-    storage_service = get_storage_service()
-
-    try:
-        # Store file using SHA256-based key (automatic deduplication)
-        stored_key = await storage_service.store_from_path_with_hash(
-            user_id=user.id,
-            sha256=sha256,
-            source_path=temp_local_path,
-            extension=ext
-        )
-
-        # Get local path for the stored file
-        final_local_path = storage_service.get_path(stored_key)
-
-        logger.info(
-            "file_stored_content_addressed",
-            user_id=user.id,
-            sha256=sha256[:16],
-            stored_key=stored_key,
-            local_path=final_local_path
-        )
-
-    except Exception as e:
-        # Clean up temp files on storage failure
-        try:
-            os.unlink(tmp_path)
-            if os.path.exists(temp_local_path):
-                os.unlink(temp_local_path)
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=f"Failed to store file: {e}")
-
-    # Step 4: Create asset in database with content-addressed storage key
+    # Step 3: Create asset in database with content-addressed storage key
     placeholder_provider_asset_id = f"local_{sha256[:16]}"
 
     # Build upload context metadata for extension uploads
@@ -1475,7 +1294,7 @@ async def upload_asset_from_url(
         except Exception:
             pass
 
-    # Step 5: Try to upload to provider (BEST-EFFORT, non-blocking)
+    # Step 4: Try to upload to provider (BEST-EFFORT, non-blocking)
     # If this fails, the asset is still accessible via local storage
     provider_upload_result = None
     provider_upload_note = None
@@ -1824,4 +1643,3 @@ async def enrich_asset(
         generation_id=generation.id if generation else None,
         message="Asset enriched successfully" if generation else "Enriched but no generation created"
     )
-
