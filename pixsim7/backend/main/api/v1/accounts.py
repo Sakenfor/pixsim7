@@ -462,3 +462,172 @@ async def cleanup_account_states(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             f"Failed to cleanup account states: {str(e)}"
         )
+
+
+@router.get("/accounts/duplicates")
+async def find_duplicate_accounts(
+    user: CurrentUser,
+    db: DatabaseSession,
+    provider_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Find duplicate accounts (same email + provider, different user_id).
+
+    Duplicates can cause session conflicts when logging in because both
+    accounts may have the same credentials but different session data.
+
+    Returns:
+        List of duplicate groups with account details
+    """
+    from sqlalchemy import func, text
+
+    try:
+        # Find emails that appear more than once for the same provider
+        query = text("""
+            SELECT
+                email,
+                provider_id,
+                COUNT(*) as count,
+                STRING_AGG(
+                    id::text || ':user=' || COALESCE(user_id::text, 'NULL') || ':' || status || ':last=' || COALESCE(last_used::text, 'never'),
+                    ' | '
+                    ORDER BY COALESCE(last_used, '1970-01-01'::timestamp) DESC
+                ) as entries
+            FROM provider_accounts
+            WHERE (:provider_id IS NULL OR provider_id = :provider_id)
+            GROUP BY email, provider_id
+            HAVING COUNT(*) > 1
+            ORDER BY COUNT(*) DESC
+        """)
+
+        result = await db.execute(query, {"provider_id": provider_id})
+        rows = result.fetchall()
+
+        duplicates = []
+        for row in rows:
+            duplicates.append({
+                "email": row.email,
+                "provider_id": row.provider_id,
+                "count": row.count,
+                "entries": row.entries,
+            })
+
+        return {
+            "success": True,
+            "provider_id": provider_id or "all",
+            "duplicate_count": len(duplicates),
+            "duplicates": duplicates,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to find duplicate accounts: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Failed to find duplicate accounts: {str(e)}"
+        )
+
+
+@router.post("/accounts/deduplicate")
+async def deduplicate_accounts(
+    user: CurrentUser,
+    db: DatabaseSession,
+    provider_id: Optional[str] = None,
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """
+    Remove duplicate accounts, keeping the one with most recent activity.
+
+    Handles two types of duplicates:
+    1. Exact duplicates: same email + provider
+    2. Username-vs-email duplicates: "john_doe" and "john_doe@gmail.com"
+       (created when cookie import falls back to username as email)
+
+    For each duplicate group:
+    - Prefers accounts with proper email (contains @) over malformed ones
+    - Then keeps the account with most recent last_used timestamp
+    - If tie, keeps the one with highest ID (most recently created)
+    - Deletes the others
+
+    Args:
+        provider_id: Optional provider filter
+        dry_run: If True (default), only report what would be deleted
+
+    Returns:
+        Statistics and list of affected accounts
+    """
+    from sqlalchemy import text
+
+    try:
+        # Find accounts to delete (all but the "best" one per normalized email+provider)
+        # Normalization: extract username part (before @) for grouping
+        # This groups "john_doe" with "john_doe@gmail.com"
+        # Ranking prefers: has @ > most recent last_used > highest ID
+        find_query = text("""
+            SELECT id, email, provider_id, user_id, status, last_used
+            FROM (
+                SELECT
+                    id, email, provider_id, user_id, status, last_used,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY
+                            LOWER(SPLIT_PART(email, '@', 1)),
+                            provider_id
+                        ORDER BY
+                            (CASE WHEN email LIKE '%@%' THEN 0 ELSE 1 END),
+                            last_used DESC NULLS LAST,
+                            id DESC
+                    ) as rn
+                FROM provider_accounts
+                WHERE (:provider_id IS NULL OR provider_id = :provider_id)
+            ) ranked
+            WHERE rn > 1
+            ORDER BY email, provider_id
+        """)
+
+        result = await db.execute(find_query, {"provider_id": provider_id})
+        to_delete = result.fetchall()
+
+        accounts_to_delete = [
+            {
+                "id": row.id,
+                "email": row.email,
+                "provider_id": row.provider_id,
+                "user_id": row.user_id,
+                "status": row.status,
+                "last_used": str(row.last_used) if row.last_used else None,
+            }
+            for row in to_delete
+        ]
+
+        deleted_count = 0
+        if not dry_run and accounts_to_delete:
+            # Actually delete the duplicates
+            ids_to_delete = [a["id"] for a in accounts_to_delete]
+            delete_query = text("""
+                DELETE FROM provider_accounts
+                WHERE id = ANY(:ids)
+            """)
+            await db.execute(delete_query, {"ids": ids_to_delete})
+            await db.commit()
+            deleted_count = len(ids_to_delete)
+            logger.info(f"Deleted {deleted_count} duplicate accounts")
+
+        return {
+            "success": True,
+            "provider_id": provider_id or "all",
+            "dry_run": dry_run,
+            "would_delete" if dry_run else "deleted": len(accounts_to_delete),
+            "accounts": accounts_to_delete,
+            "message": (
+                f"{'Would delete' if dry_run else 'Deleted'} {len(accounts_to_delete)} duplicate account(s). "
+                f"{'Set dry_run=false to actually delete.' if dry_run else 'Duplicates removed.'}"
+            ),
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to deduplicate accounts: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Failed to deduplicate accounts: {str(e)}"
+        )
+
+

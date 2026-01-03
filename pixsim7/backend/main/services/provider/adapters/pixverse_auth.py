@@ -472,7 +472,7 @@ class PixverseAuthMixin:
                 logger.error(f"[Pixverse] JWT parsing also failed: {jwt_error}", exc_info=True)
 
         if not email:
-            if fallback_email:
+            if fallback_email and '@' in fallback_email:
                 logger.info(
                     "pixverse_using_fallback_email",
                     fallback_email=fallback_email,
@@ -480,14 +480,8 @@ class PixverseAuthMixin:
                     has_account_id=bool(account_id),
                 )
                 email = fallback_email
-            elif username:
-                # Username can be used for auth too!
-                logger.info(
-                    "pixverse_using_username_as_email",
-                    username=username,
-                    has_account_id=bool(account_id),
-                )
-                email = username
+            # Note: Don't use username as email - it creates malformed accounts without @
+            # that break presets and relogin functionality
             else:
                 log_provider_error(
                     provider_id="pixverse",
