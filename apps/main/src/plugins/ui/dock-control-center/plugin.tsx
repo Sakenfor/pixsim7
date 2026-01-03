@@ -6,7 +6,6 @@
  */
 
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@lib/plugins/controlCenterPlugin';
-import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 import { ControlCenterDock } from '@features/controlCenter/components/ControlCenterDock';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
@@ -69,5 +68,7 @@ export const plugin: ControlCenterPlugin = {
   },
 };
 
-// Auto-register when imported
-controlCenterRegistry.register(manifest, plugin);
+export async function registerDockControlCenter(): Promise<void> {
+  const { controlCenterRegistry } = await import('@lib/plugins/controlCenterPlugin');
+  controlCenterRegistry.register(manifest, plugin);
+}

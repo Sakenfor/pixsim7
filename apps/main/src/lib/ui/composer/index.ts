@@ -40,7 +40,7 @@ export {
   type BlockProps,
   type BlockConfigSchema,
   type WidgetDefinition,
-  WidgetRegistry,
+  type WidgetRegistry,
   widgetRegistry,
 } from './blockRegistry';
 

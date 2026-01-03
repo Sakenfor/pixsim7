@@ -11,10 +11,9 @@ import {
   validateFamilyMetadata,
   type UnifiedPluginOrigin,
 } from './types';
-import {
-  pluginCatalog,
-  type ExtendedPluginMetadata,
-  type PluginCapabilityHints,
+import type {
+  ExtendedPluginMetadata,
+  PluginCapabilityHints,
 } from './pluginSystem';
 
 /**
@@ -145,17 +144,19 @@ class ControlCenterRegistry {
       consumesActions,
       consumesState,
     };
-    pluginCatalog.register(metadata);
+    void import('./pluginSystem').then(({ pluginCatalog }) => {
+      pluginCatalog.register(metadata);
 
-    // Validate and log warnings
-    const descriptor = fromPluginSystemMetadata(metadata);
-    const validation = validateFamilyMetadata(descriptor);
-    if (!validation.valid) {
-      console.error(`[ControlCenter] Plugin ${manifest.id} has validation errors:`, validation.errors);
-    }
-    if (validation.warnings.length > 0) {
-      console.warn(`[ControlCenter] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
-    }
+      // Validate and log warnings
+      const descriptor = fromPluginSystemMetadata(metadata);
+      const validation = validateFamilyMetadata(descriptor);
+      if (!validation.valid) {
+        console.error(`[ControlCenter] Plugin ${manifest.id} has validation errors:`, validation.errors);
+      }
+      if (validation.warnings.length > 0) {
+        console.warn(`[ControlCenter] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
+      }
+    });
 
     console.log(`[ControlCenter] Registered: ${manifest.controlCenter.displayName}`);
     this.notify();
@@ -171,7 +172,9 @@ class ControlCenterRegistry {
       this.controlCenters.delete(id);
 
       // Also unregister from unified catalog
-      pluginCatalog.unregister(entry.manifest.id);
+      void import('./pluginSystem').then(({ pluginCatalog }) => {
+        pluginCatalog.unregister(entry.manifest.id);
+      });
 
       if (this.activeId === id) {
         this.activeId = this.defaultId;

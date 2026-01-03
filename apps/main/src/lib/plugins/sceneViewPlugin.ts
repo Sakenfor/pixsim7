@@ -5,10 +5,9 @@ import {
   validateFamilyMetadata,
   type UnifiedPluginOrigin,
 } from './types';
-import {
-  pluginCatalog,
-  type ExtendedPluginMetadata,
-  type PluginCapabilityHints,
+import type {
+  ExtendedPluginMetadata,
+  PluginCapabilityHints,
 } from './pluginSystem';
 import type {
   SceneMetaComicPanel,
@@ -107,17 +106,19 @@ class SceneViewRegistry {
       providesFeatures,
       consumesFeatures,
     };
-    pluginCatalog.register(metadata);
+    void import('./pluginSystem').then(({ pluginCatalog }) => {
+      pluginCatalog.register(metadata);
 
-    // Validate and log warnings
-    const descriptor = fromPluginSystemMetadata(metadata);
-    const validation = validateFamilyMetadata(descriptor);
-    if (!validation.valid) {
-      console.error(`[SceneViewRegistry] Plugin ${manifest.id} has validation errors:`, validation.errors);
-    }
-    if (validation.warnings.length > 0) {
-      console.warn(`[SceneViewRegistry] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
-    }
+      // Validate and log warnings
+      const descriptor = fromPluginSystemMetadata(metadata);
+      const validation = validateFamilyMetadata(descriptor);
+      if (!validation.valid) {
+        console.error(`[SceneViewRegistry] Plugin ${manifest.id} has validation errors:`, validation.errors);
+      }
+      if (validation.warnings.length > 0) {
+        console.warn(`[SceneViewRegistry] Plugin ${manifest.id} has validation warnings:`, validation.warnings);
+      }
+    });
 
     console.info(`[SceneViewRegistry] Registered scene view "${viewId}"`);
   }
@@ -130,7 +131,9 @@ class SceneViewRegistry {
       }
       // Also unregister from unified catalog
       if (entry) {
-        pluginCatalog.unregister(entry.manifest.id);
+        void import('./pluginSystem').then(({ pluginCatalog }) => {
+          pluginCatalog.unregister(entry.manifest.id);
+        });
       }
       console.info(`[SceneViewRegistry] Unregistered scene view "${id}"`);
     }

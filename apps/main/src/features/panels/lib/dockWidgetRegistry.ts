@@ -6,6 +6,14 @@
  */
 
 import { getPanelsForScope } from "./panelRegistry";
+import {
+  getDockZone,
+  getDockZoneByDockviewId,
+  getDockZonePanelIds as libGetPanelIds,
+  registerDockZone,
+  registerDefaultDockZones,
+} from "@lib/dockview";
+import type { DockZoneDefinition } from "@lib/dockview";
 
 // Re-export from lib
 export {
@@ -24,9 +32,23 @@ export {
 } from "@lib/dockview";
 
 export type { DockZoneDefinition, PresetScope } from "@lib/dockview";
+export type DockWidgetDefinition = DockZoneDefinition;
 
 // @deprecated - Use dockZoneRegistry instead
 export { dockZoneRegistry as dockWidgetRegistry } from "@lib/dockview";
+export function registerDockWidget(definition: DockZoneDefinition): void {
+  registerDockZone(definition);
+}
+
+export function getDockWidget(id: string): DockZoneDefinition | undefined {
+  return getDockZone(id);
+}
+
+export function getDockWidgetByDockviewId(
+  dockviewId: string | undefined,
+): DockZoneDefinition | undefined {
+  return getDockZoneByDockviewId(dockviewId);
+}
 
 /**
  * Get panel IDs for a dockview with scope-based filtering.
@@ -34,14 +56,8 @@ export { dockZoneRegistry as dockWidgetRegistry } from "@lib/dockview";
  * This extends the lib's getDockZonePanelIds by adding
  * support for panelScope-based filtering using the panel registry.
  */
-import {
-  getDockZoneByDockviewId as libGetZone,
-  getDockZonePanelIds as libGetPanelIds,
-  registerDefaultDockZones,
-} from "@lib/dockview";
-
 export function getDockWidgetPanelIds(dockviewId: string | undefined): string[] {
-  const zone = libGetZone(dockviewId);
+  const zone = getDockZoneByDockviewId(dockviewId);
   if (!zone) return [];
 
   // First try allowedPanels (explicit allowlist)

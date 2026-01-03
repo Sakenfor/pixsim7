@@ -27,6 +27,7 @@ import type { SceneViewPluginManifest, SceneViewPlugin } from './sceneViewPlugin
 import { controlCenterRegistry } from './controlCenterPlugin';
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from './controlCenterPlugin';
 import { pluginCatalog } from './pluginSystem';
+import type { PluginRegistration } from './registration';
 import type {
   ExtendedPluginMetadata,
   PluginFamily,
@@ -35,6 +36,7 @@ import type {
 } from './pluginSystem';
 import type { PluginManifest } from './types';
 import {
+  bundleFamilyToUnified,
   fromPluginSystemMetadata,
   validateFamilyMetadata,
   isBundleFamily,
@@ -493,6 +495,45 @@ async function loadBundle(bundle: DiscoveredBundle): Promise<BundleLoadResult> {
 }
 
 // ===== Public API =====
+
+/**
+ * Discover plugin bundles and return deferred registrations.
+ *
+ * This separates discovery from registration to allow orchestration/deduping.
+ */
+export async function discoverBundleRegistrations(
+  options: LoadPluginBundlesOptions = {}
+): Promise<PluginRegistration[]> {
+  const {
+    baseDir = DEFAULT_BUNDLE_DIR,
+    verbose = false,
+    families = PLUGIN_FAMILIES,
+  } = options;
+
+  let discovered = await discoverBundles();
+  const publicBundles = await discoverBundlesFromPublic(baseDir);
+  discovered = [...discovered, ...publicBundles];
+
+  discovered = discovered.filter((bundle) => families.includes(bundle.family));
+
+  if (verbose) {
+    console.log(`[ManifestLoader] Discovered ${discovered.length} plugin bundle(s)`);
+  }
+
+  return discovered.map((bundle) => ({
+    id: bundle.manifest.id,
+    family: bundleFamilyToUnified(bundle.family),
+    origin: 'ui-bundle',
+    source: 'bundle',
+    label: bundle.manifest.name,
+    register: async () => {
+      const result = await loadBundle(bundle);
+      if (!result.success) {
+        throw new Error(result.error || `Failed to load bundle ${result.pluginId}`);
+      }
+    },
+  }));
+}
 
 /**
  * Load all plugin bundles from the configured directory

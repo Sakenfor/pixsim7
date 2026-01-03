@@ -4,7 +4,7 @@
  * Entry point for the comic panel scene view plugin. This module:
  * - Exports the plugin manifest for discovery
  * - Creates the plugin instance
- * - Registers with the scene view registry on import
+ * - Registers with the scene view registry via an explicit register function
  *
  * The plugin renders scene content as sequential comic frames with:
  * - Multiple layout modes (single, strip, grid)
@@ -15,15 +15,15 @@
  * @example
  * ```typescript
  * // Bootstrap loads this module automatically
- * await import('@plugins/scene/comic-panel-view');
+ * await registerComicPanelView();
  *
  * // Or manually register
- * import { manifest, plugin } from '@plugins/scene/comic-panel-view';
- * sceneViewRegistry.register(manifest, plugin);
+ * import { registerComicPanelView } from '@plugins/scene/comic-panel-view';
+ * await registerComicPanelView();
  * ```
  */
 
-import { sceneViewRegistry, type SceneViewPlugin } from '@lib/plugins/sceneViewPlugin';
+import type { SceneViewPlugin } from '@lib/plugins/sceneViewPlugin';
 import { manifest } from './manifest';
 import { ComicPanelSceneView } from './PluginSceneView';
 
@@ -36,8 +36,10 @@ export const plugin: SceneViewPlugin = {
   },
 };
 
-// Auto-register on import
-sceneViewRegistry.register(manifest, plugin);
+export async function registerComicPanelView(): Promise<void> {
+  const { sceneViewRegistry } = await import('@lib/plugins/sceneViewPlugin');
+  sceneViewRegistry.register(manifest, plugin);
+}
 
 // Re-export for manual usage
 export { manifest };

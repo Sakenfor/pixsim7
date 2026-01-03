@@ -1,24 +1,46 @@
+import type { PluginRegistration } from './registration';
+
 /**
  * Scene View Plugin Bootstrap
  *
  * Loads built-in scene view plugins on application startup.
  * Scene view plugins provide different presentation modes for scene content
  * (e.g., comic panels, visual novel views, etc.).
- *
- * Each plugin self-registers with the sceneViewRegistry on import.
  */
-export async function bootstrapSceneViewPlugins(): Promise<void> {
+export async function discoverSceneViewRegistrations(): Promise<PluginRegistration[]> {
+  const registrations: PluginRegistration[] = [];
+
   try {
-    console.info('[SceneView] Bootstrapping scene view plugins...');
+    const module = await import('../../plugins/scene/comic-panel-view');
+    const manifest = module.manifest;
+    const register = module.registerComicPanelView;
 
-    // Load comic panel view plugin (default scene view)
-    await import('../../plugins/scene/comic-panel-view');
-    console.info('[SceneView] Loaded Comic Panel view');
-
-    // Future scene view plugins can be loaded here:
-    // await import('../../plugins/scene/visual-novel-view');
-    // await import('../../plugins/scene/slideshow-view');
+    if (manifest && typeof register === 'function') {
+      registrations.push({
+        id: manifest.id,
+        family: 'scene-view',
+        origin: 'builtin',
+        source: 'source',
+        label: manifest.name,
+        register,
+      });
+    } else {
+      console.warn('[SceneView] Comic panel view plugin missing manifest or register function');
+    }
   } catch (error) {
-    console.error('[SceneView] Failed to bootstrap scene view plugins', error);
+    console.error('[SceneView] Failed to discover Comic Panel view plugin', error);
   }
+
+  return registrations;
+}
+
+export async function bootstrapSceneViewPlugins(): Promise<void> {
+  console.info('[SceneView] Bootstrapping scene view plugins...');
+
+  const registrations = await discoverSceneViewRegistrations();
+  for (const registration of registrations) {
+    await registration.register();
+  }
+
+  console.info(`[SceneView] Loaded ${registrations.length} scene view plugin(s)`);
 }

@@ -1,9 +1,10 @@
 import type { Module } from '../types';
 import { pluginManager, bootstrapExamplePlugins } from '@lib/plugins';
 import { loadAllPlugins } from '@lib/plugins/loader';
-import { loadPluginBundles } from '@lib/plugins/manifestLoader';
-import { bootstrapControlCenters } from '@lib/plugins/bootstrapControlCenters';
-import { bootstrapSceneViewPlugins } from '@lib/plugins/bootstrapSceneViews';
+import { discoverBundleRegistrations } from '@lib/plugins/manifestLoader';
+import { discoverControlCenterRegistrations } from '@lib/plugins/bootstrapControlCenters';
+import { discoverSceneViewRegistrations } from '@lib/plugins/bootstrapSceneViews';
+import type { PluginRegistration } from '@lib/plugins/registration';
 
 /**
  * Plugin Bootstrap Module
@@ -28,23 +29,27 @@ export const pluginBootstrapModule: Module = {
     // Bootstrap plugins (re-enables previously enabled plugins)
     await bootstrapExamplePlugins();
 
-    // Bootstrap control center implementations (dock, cubes v1, cubes v2)
-    await bootstrapControlCenters();
+    // Discover plugin registrations from source + bundles, then dedupe and register once.
+    const [sourceControlCenters, sourceSceneViews, bundleRegistrations] = await Promise.all([
+      discoverControlCenterRegistrations(),
+      discoverSceneViewRegistrations(),
+      discoverBundleRegistrations({ verbose: true, strict: false }),
+    ]);
 
-    // Bootstrap scene view plugins (comic panel view, etc.)
-    // This loads the hardcoded plugin imports for backward compatibility
-    await bootstrapSceneViewPlugins();
+    const allRegistrations = [
+      ...sourceControlCenters,
+      ...sourceSceneViews,
+      ...bundleRegistrations,
+    ];
 
-    // Load plugin bundles from manifest files (bundle-driven system)
-    // This discovers and loads plugins from dist/plugins/**/manifest.json
-    // The manifest loader is additive - it won't duplicate already-registered plugins
-    try {
-      await loadPluginBundles({
-        verbose: true,
-        strict: false,
-      });
-    } catch (error) {
-      console.warn('[PluginBootstrap] Failed to load plugin bundles:', error);
+    const preferSource = import.meta.env.DEV || bundleRegistrations.length === 0;
+    const selected = selectRegistrations(allRegistrations, preferSource ? 'source' : 'bundle');
+
+    await registerSelectedPlugins(selected, { strict: false, verbose: true });
+
+    if (selected.some((registration) => registration.family === 'control-center')) {
+      const { controlCenterRegistry } = await import('@lib/plugins/controlCenterPlugin');
+      controlCenterRegistry.loadPreference();
     }
 
     // Load all sandboxed plugins (node types, helpers, interactions) from plugins directory
@@ -58,3 +63,51 @@ export const pluginBootstrapModule: Module = {
     });
   },
 };
+
+function selectRegistrations(
+  registrations: PluginRegistration[],
+  preferredSource: PluginRegistration['source'],
+): PluginRegistration[] {
+  const preferred = registrations.filter((r) => r.source === preferredSource);
+  const fallback = registrations.filter((r) => r.source !== preferredSource);
+  const ordered = [...preferred, ...fallback];
+  const selected = new Map<string, PluginRegistration>();
+
+  for (const registration of ordered) {
+    if (selected.has(registration.id)) {
+      const existing = selected.get(registration.id);
+      console.warn(
+        `[PluginBootstrap] Skipping duplicate plugin "${registration.id}" from ${registration.source} (already using ${existing?.source}).`
+      );
+      continue;
+    }
+    selected.set(registration.id, registration);
+  }
+
+  return Array.from(selected.values());
+}
+
+async function registerSelectedPlugins(
+  registrations: PluginRegistration[],
+  options: { strict: boolean; verbose: boolean },
+): Promise<void> {
+  const { strict, verbose } = options;
+
+  if (verbose) {
+    console.info(`[PluginBootstrap] Registering ${registrations.length} plugin(s)...`);
+  }
+
+  for (const registration of registrations) {
+    try {
+      await registration.register();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const label = registration.label ? ` (${registration.label})` : '';
+      const details = `${registration.id}${label} from ${registration.source}`;
+      if (strict) {
+        throw new Error(`[PluginBootstrap] Failed to register ${details}: ${message}`);
+      }
+      console.warn(`[PluginBootstrap] Failed to register ${details}: ${message}`);
+    }
+  }
+}
