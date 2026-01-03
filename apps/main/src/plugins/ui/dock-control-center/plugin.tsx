@@ -6,6 +6,7 @@
  */
 
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@lib/plugins/controlCenterPlugin';
+
 import { ControlCenterDock } from '@features/controlCenter/components/ControlCenterDock';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 

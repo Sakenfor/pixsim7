@@ -3,12 +3,10 @@ import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
 import { debugFlags } from '../lib/debugFlags';
-import type { OperationType } from '../types/operations';
 import type { GenerationSessionFields, GenerationSessionActions } from '@features/generation/stores/generationSessionStore';
 import { DEFAULT_SESSION_FIELDS } from '@features/generation/stores/generationSessionStore';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
-export type ControlCenterMode = 'dock' | 'cubes';
 export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
 export type LayoutBehavior = 'overlay' | 'push';
 
@@ -40,7 +38,6 @@ export type TimelineAsset = {
  */
 export interface ControlCenterState extends GenerationSessionFields {
   // UI state specific to ControlCenter
-  mode: ControlCenterMode;  // 'dock' or 'cubes' mode
   dockPosition: DockPosition; // where the dock is positioned
   layoutBehavior: LayoutBehavior; // 'overlay' (float over content) or 'push' (resize content)
   conformToOtherPanels: boolean; // if true, adjusts layout when other panels (like Media Viewer) are open
@@ -63,8 +60,6 @@ export interface ControlCenterState extends GenerationSessionFields {
  */
 export interface ControlCenterActions extends GenerationSessionActions {
   // UI actions specific to ControlCenter
-  setMode: (mode: ControlCenterMode) => void;
-  toggleMode: () => void;
   setDockPosition: (position: DockPosition) => void;
   setLayoutBehavior: (behavior: LayoutBehavior) => void;
   setConformToOtherPanels: (conform: boolean) => void;
@@ -92,7 +87,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         // Spread shared generation session defaults
         ...DEFAULT_SESSION_FIELDS,
         // UI-specific defaults
-        mode: 'dock',
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
         conformToOtherPanels: false,
@@ -105,121 +99,114 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         enabledModules: {},
         assets: [],
         panelLayoutResetTrigger: 0,
-      setMode: (mode) => {
-        if (get().mode === mode) return;
-        set({ mode });
-      },
-      toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
-      setLayoutBehavior: (behavior) => {
-        if (get().layoutBehavior === behavior) return;
-        set({ layoutBehavior: behavior });
-      },
-      setConformToOtherPanels: (conform) => {
-        if (get().conformToOtherPanels === conform) return;
-        set({ conformToOtherPanels: conform });
-      },
-      setDockPosition: (position) => {
-        if (get().dockPosition === position) return;
-        const currentPosition = get().dockPosition;
-        const wasFloating = currentPosition === 'floating';
+        setLayoutBehavior: (behavior) => {
+          if (get().layoutBehavior === behavior) return;
+          set({ layoutBehavior: behavior });
+        },
+        setConformToOtherPanels: (conform) => {
+          if (get().conformToOtherPanels === conform) return;
+          set({ conformToOtherPanels: conform });
+        },
+        setDockPosition: (position) => {
+          if (get().dockPosition === position) return;
+          const currentPosition = get().dockPosition;
+          const wasFloating = currentPosition === 'floating';
 
-        // Adjust default size based on position (increased defaults)
-        const isVertical = position === 'left' || position === 'right';
-        const newHeight = isVertical ? 450 : 300; // Increased from 320/180
+          // Adjust default size based on position (increased defaults)
+          const isVertical = position === 'left' || position === 'right';
+          const newHeight = isVertical ? 450 : 300; // Increased from 320/180
 
-        // When switching modes, keep panel open for better UX
-        const updates: any = { dockPosition: position, height: newHeight };
+          // When switching positions, keep panel open for better UX
+          const updates: any = { dockPosition: position, height: newHeight };
 
-        // Keep panel open when:
-        // 1. Switching to floating mode
-        // 2. Switching from floating to docked (transitioning back)
-        if (position === 'floating' || wasFloating) {
-          updates.open = true;
-          // When switching from floating to docked, also pin it so it stays visible
-          if (wasFloating && position !== 'floating') {
-            updates.pinned = true;
+          // Keep panel open when:
+          // 1. Switching to floating mode
+          // 2. Switching from floating to docked (transitioning back)
+          if (position === 'floating' || wasFloating) {
+            updates.open = true;
+            // When switching from floating to docked, also pin it so it stays visible
+            if (wasFloating && position !== 'floating') {
+              updates.pinned = true;
+            }
           }
-        }
 
-        set(updates);
-      },
-      toggleOpen: () => set((s) => ({ open: !s.open })),
-      setOpen: (v) => {
-        if (get().open === v) return;
-        set({ open: v });
-      },
-      setPinned: (v) => {
-        if (get().pinned === v) return;
-        set({ pinned: v });
-      },
-      setHeight: (px) => {
-        const pos = get().dockPosition;
-        const isVertical = pos === 'left' || pos === 'right';
-        const min = isVertical ? 300 : 200; // Increased minimums
-        const max = isVertical ? 700 : 500; // Increased maximums
-        const next = Math.max(min, Math.min(max, px));
-        if (get().height === next) return;
-        set({ height: next });
-      },
-      setFloatingPosition: (x, y) => set({ floatingPosition: { x, y } }),
-      setFloatingSize: (width, height) => set({ floatingSize: { width, height } }),
-      setActiveModule: (m) => {
-        if (get().activeModule === m) return;
-        set({ activeModule: m });
-      },
-      setModuleEnabled: (moduleId, enabled) => {
-        set((s) => ({
-          enabledModules: { ...s.enabledModules, [moduleId]: enabled }
-        }));
-      },
-      setOperationType: (op) => {
-        if (get().operationType === op) return;
-        set({ operationType: op });
-      },
-      setPrompt: (value) => {
-        if (get().prompt === value) return;
-        set({ prompt: value });
-      },
-      setProvider: (id) => {
-        if (get().providerId === id) return;
-        set({ providerId: id });
-      },
-      setPreset: (id) => {
-        if (get().presetId === id) return;
-        set({ presetId: id });
-      },
-      setPresetParams: (params) => set({ presetParams: params }),
-      setAssets: (assets) => set({ assets }),
-      setGenerating: (v) => {
-        if (get().generating === v) return;
-        set({ generating: v });
-      },
-      triggerPanelLayoutReset: () => set({ panelLayoutResetTrigger: Date.now() }),
-      reset: () => set({
-        // Spread shared generation session defaults
-        ...DEFAULT_SESSION_FIELDS,
-        // UI-specific defaults
-        mode: 'dock',
-        dockPosition: 'bottom',
-        layoutBehavior: 'overlay',
-        conformToOtherPanels: false,
-        open: false,
-        pinned: false,
-        height: 300,
-        floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
-        floatingSize: { width: 700, height: 600 },
-        activeModule: 'quickGenerate',
-        enabledModules: {},
-        assets: [],
-      })
-    };
-  },
+          set(updates);
+        },
+        toggleOpen: () => set((s) => ({ open: !s.open })),
+        setOpen: (v) => {
+          if (get().open === v) return;
+          set({ open: v });
+        },
+        setPinned: (v) => {
+          if (get().pinned === v) return;
+          set({ pinned: v });
+        },
+        setHeight: (px) => {
+          const pos = get().dockPosition;
+          const isVertical = pos === 'left' || pos === 'right';
+          const min = isVertical ? 300 : 200; // Increased minimums
+          const max = isVertical ? 700 : 500; // Increased maximums
+          const next = Math.max(min, Math.min(max, px));
+          if (get().height === next) return;
+          set({ height: next });
+        },
+        setFloatingPosition: (x, y) => set({ floatingPosition: { x, y } }),
+        setFloatingSize: (width, height) => set({ floatingSize: { width, height } }),
+        setActiveModule: (m) => {
+          if (get().activeModule === m) return;
+          set({ activeModule: m });
+        },
+        setModuleEnabled: (moduleId, enabled) => {
+          set((s) => ({
+            enabledModules: { ...s.enabledModules, [moduleId]: enabled }
+          }));
+        },
+        setOperationType: (op) => {
+          if (get().operationType === op) return;
+          set({ operationType: op });
+        },
+        setPrompt: (value) => {
+          if (get().prompt === value) return;
+          set({ prompt: value });
+        },
+        setProvider: (id) => {
+          if (get().providerId === id) return;
+          set({ providerId: id });
+        },
+        setPreset: (id) => {
+          if (get().presetId === id) return;
+          set({ presetId: id });
+        },
+        setPresetParams: (params) => set({ presetParams: params }),
+        setAssets: (assets) => set({ assets }),
+        setGenerating: (v) => {
+          if (get().generating === v) return;
+          set({ generating: v });
+        },
+        triggerPanelLayoutReset: () => set({ panelLayoutResetTrigger: Date.now() }),
+        reset: () => set({
+          // Spread shared generation session defaults
+          ...DEFAULT_SESSION_FIELDS,
+          // UI-specific defaults
+          dockPosition: 'bottom',
+          layoutBehavior: 'overlay',
+          conformToOtherPanels: false,
+          open: false,
+          pinned: false,
+          height: 300,
+          floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
+          floatingSize: { width: 700, height: 600 },
+          activeModule: 'quickGenerate',
+          enabledModules: {},
+          assets: [],
+        })
+      };
+    },
     {
       name: STORAGE_KEY,
       storage: createBackendStorage('controlCenter'),
       skipHydration: false,
       partialize: (s) => ({
-        mode: s.mode,
         dockPosition: s.dockPosition,
         layoutBehavior: s.layoutBehavior,
         conformToOtherPanels: s.conformToOtherPanels,
@@ -294,7 +281,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
 
             if (state) {
               debugFlags.log('rehydration', '[ControlCenterStore] ✅ Rehydration complete! State received:', {
-                mode: state.mode,
                 dockPosition: state.dockPosition,
                 open: state.open,
                 pinned: state.pinned,

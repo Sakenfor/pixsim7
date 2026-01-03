@@ -39,8 +39,6 @@ interface DockToolbarProps {
   pinned: boolean;
   /** Callback to toggle pinned state */
   onPinnedToggle: () => void;
-  /** Callback to toggle mode (dock/cubes) */
-  onModeToggle: () => void;
   /** Navigation function */
   navigate: (path: string) => void;
   /** Quick navigation items (defaults to DEFAULT_QUICK_NAV) */
@@ -54,7 +52,6 @@ export function DockToolbar({
   onDockPositionChange,
   pinned,
   onPinnedToggle,
-  onModeToggle,
   navigate,
   quickNavItems = DEFAULT_QUICK_NAV,
   showQuickNav = true,
@@ -155,13 +152,6 @@ export function DockToolbar({
 
       {/* Inline Quick Actions */}
       <div className="flex items-center gap-1">
-        <button
-          onClick={onModeToggle}
-          className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
-          title="Switch Mode"
-        >
-          🎲
-        </button>
         <button
           onClick={onPinnedToggle}
           className={clsx(
@@ -287,3 +277,4 @@ function PositionButton({
     </button>
   );
 }
+

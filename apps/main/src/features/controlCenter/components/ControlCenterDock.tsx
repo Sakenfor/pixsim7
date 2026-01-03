@@ -46,7 +46,6 @@ export function ControlCenterDock() {
   const setDockPosition = useControlCenterStore(s => s.setDockPosition);
   const setFloatingPosition = useControlCenterStore(s => s.setFloatingPosition);
   const setFloatingSize = useControlCenterStore(s => s.setFloatingSize);
-  const toggleMode = useControlCenterStore(s => s.toggleMode);
 
   // Asset viewer state for conformToOtherPanels behavior
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
@@ -180,7 +179,6 @@ export function ControlCenterDock() {
           onDockPositionChange={setDockPosition}
           pinned={pinned}
           onPinnedToggle={() => setPinned(!pinned)}
-          onModeToggle={toggleMode}
           navigate={navigate}
         />
 
