@@ -5,7 +5,6 @@
  * Adds scope-based panel filtering which requires access to the panel registry.
  */
 
-import { getPanelsForScope } from "./panelRegistry";
 import {
   getDockZone,
   getDockZoneByDockviewId,
@@ -14,6 +13,8 @@ import {
   registerDefaultDockZones,
 } from "@lib/dockview";
 import type { DockZoneDefinition } from "@lib/dockview";
+
+import { getPanelsForScope } from "./panelRegistry";
 
 // Re-export from lib
 export {

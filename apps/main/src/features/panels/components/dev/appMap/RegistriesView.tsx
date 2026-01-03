@@ -15,6 +15,7 @@ import { worldToolRegistry } from '@features/worldTools/lib/types';
 // Surface registries
 import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
 import { gizmoSurfaceRegistry } from '@features/gizmos/lib/core/surfaceRegistry';
+import { mediaOverlayRegistry, type MediaOverlayTool } from '@/components/media/viewer/overlays';
 
 // Interaction registry (dynamically loaded plugin interactions)
 import { interactionRegistry } from '@lib/game/interactions/types';
@@ -75,6 +76,16 @@ const REGISTRIES: RegistryInfo[] = [
     getItems: () => worldToolRegistry.getAll(),
     subscribe: (cb) => worldToolRegistry.subscribe(cb),
     renderItem: (item) => <WorldToolItem tool={item as WorldToolPlugin} />,
+  },
+  {
+    id: 'media-overlays',
+    name: 'Media Overlays',
+    description: 'Overlay tools available in the media viewer',
+    icon: 'OV',
+    category: 'tools',
+    getItems: () => mediaOverlayRegistry.getSorted(),
+    subscribe: (cb) => mediaOverlayRegistry.subscribe(cb),
+    renderItem: (item) => <MediaOverlayItem overlay={item as MediaOverlayTool} />,
   },
   {
     id: 'gallery-surfaces',
@@ -450,6 +461,63 @@ function WorldToolItem({ tool }: { tool: WorldToolPlugin }) {
           <div>
             <span className="text-neutral-500 dark:text-neutral-400">Visibility: </span>
             {tool.whenVisible ? 'Conditional' : 'Always'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MediaOverlayItem({ overlay }: { overlay: MediaOverlayTool }) {
+  const [expanded, setExpanded] = useState(false);
+  const uiParts = [
+    overlay.Main ? 'main' : null,
+    overlay.Toolbar ? 'toolbar' : null,
+    overlay.Sidebar ? 'sidebar' : null,
+  ].filter(Boolean).join(', ');
+
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-lg">OV</span>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-neutral-900 dark:text-neutral-100">
+              {overlay.label}
+            </div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              {overlay.id}
+            </div>
+          </div>
+          {overlay.shortcut && (
+            <span className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs rounded">
+              {overlay.shortcut}
+            </span>
+          )}
+          <span className="text-neutral-400">{expanded ? 'Г-м' : 'Г-'}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700 text-sm space-y-2">
+          {overlay.description && (
+            <div className="text-neutral-700 dark:text-neutral-300">
+              {overlay.description}
+            </div>
+          )}
+          <div>
+            <span className="text-neutral-500 dark:text-neutral-400">Tone: </span>
+            {overlay.tone ?? 'default'}
+          </div>
+          <div>
+            <span className="text-neutral-500 dark:text-neutral-400">Priority: </span>
+            {overlay.priority ?? 100}
+          </div>
+          <div>
+            <span className="text-neutral-500 dark:text-neutral-400">UI parts: </span>
+            {uiParts || 'none'}
           </div>
         </div>
       )}

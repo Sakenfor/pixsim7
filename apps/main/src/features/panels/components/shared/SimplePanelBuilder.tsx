@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { widgetRegistry } from "@lib/ui/composer/widgetRegistry";
+import { widgetRegistry } from "@lib/ui/composer";
 import {
   createComposition,
   addWidget,

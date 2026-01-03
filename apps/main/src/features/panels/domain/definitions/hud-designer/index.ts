@@ -1,5 +1,5 @@
 import { definePanel } from '../../../lib/definePanel';
-import { HudDesignerPanel } from '../../components/HudDesignerPanel';
+import { HudDesignerPanel } from '../../../components/HudDesignerPanel';
 
 export default definePanel({
   id: 'hud-designer',
