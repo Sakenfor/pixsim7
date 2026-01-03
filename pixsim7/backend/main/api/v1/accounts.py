@@ -150,8 +150,10 @@ async def _find_duplicate_accounts(
     """
     Find duplicate accounts to delete.
 
-    Groups by username prefix (before @) to catch both exact duplicates
-    and username-vs-email duplicates ("john_doe" vs "john_doe@gmail.com").
+    Groups by (in order of precedence):
+    1. provider_user_id (if available) - same Pixverse account ID means same account
+       e.g., "holyfruit" and "holy_fruit_92" with same provider_user_id
+    2. username prefix (before @) - catches "john_doe" vs "john_doe@gmail.com"
 
     For each group, keeps the "best" account:
     - Prefers accounts with proper email (contains @)
@@ -165,14 +167,19 @@ async def _find_duplicate_accounts(
     # Build query with optional provider filter (avoid IS NULL ambiguity)
     provider_filter = "provider_id = :provider_id" if provider_id else "1=1"
 
+    # Use COALESCE to group by provider_user_id first, then fall back to username prefix
+    # This catches cases like "holyfruit" and "holy_fruit_92" with same provider_user_id
     find_query = text(f"""
-        SELECT id, email, provider_id, user_id, status, last_used
+        SELECT id, email, provider_id, user_id, status, last_used, provider_user_id
         FROM (
             SELECT
-                id, email, provider_id, user_id, status, last_used,
+                id, email, provider_id, user_id, status, last_used, provider_user_id,
                 ROW_NUMBER() OVER (
                     PARTITION BY
-                        LOWER(SPLIT_PART(email, '@', 1)),
+                        COALESCE(
+                            provider_user_id,
+                            LOWER(SPLIT_PART(email, '@', 1))
+                        ),
                         provider_id
                     ORDER BY
                         (CASE WHEN email LIKE '%@%' THEN 0 ELSE 1 END),
@@ -198,6 +205,7 @@ async def _find_duplicate_accounts(
             "user_id": row.user_id,
             "status": row.status,
             "last_used": str(row.last_used) if row.last_used else None,
+            "provider_user_id": row.provider_user_id,
         }
         for row in rows
     ]
@@ -332,16 +340,18 @@ async def deduplicate_accounts(
             ids_to_delete = [a["id"] for a in accounts_to_delete]
 
             # Build CTE to find primary account for each duplicate group
+            # Uses same COALESCE logic: provider_user_id first, then username prefix
             provider_filter = "provider_id = :provider_id" if provider_id else "1=1"
             duplicate_accounts_cte = f"""
                 WITH primary_accounts AS (
-                    SELECT id, LOWER(SPLIT_PART(email, '@', 1)) as username_prefix, provider_id
+                    SELECT id, group_key, provider_id
                     FROM (
                         SELECT
-                            id, email, provider_id,
+                            id, provider_id,
+                            COALESCE(provider_user_id, LOWER(SPLIT_PART(email, '@', 1))) as group_key,
                             ROW_NUMBER() OVER (
                                 PARTITION BY
-                                    LOWER(SPLIT_PART(email, '@', 1)),
+                                    COALESCE(provider_user_id, LOWER(SPLIT_PART(email, '@', 1))),
                                     provider_id
                                 ORDER BY
                                     (CASE WHEN email LIKE '%@%' THEN 0 ELSE 1 END),
@@ -359,7 +369,7 @@ async def deduplicate_accounts(
                         p.id as primary_id
                     FROM provider_accounts pa
                     JOIN primary_accounts p
-                        ON LOWER(SPLIT_PART(pa.email, '@', 1)) = p.username_prefix
+                        ON COALESCE(pa.provider_user_id, LOWER(SPLIT_PART(pa.email, '@', 1))) = p.group_key
                         AND pa.provider_id = p.provider_id
                     WHERE pa.id = ANY(:ids_to_delete)
                 )

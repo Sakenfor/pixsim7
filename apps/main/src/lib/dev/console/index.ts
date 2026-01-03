@@ -51,8 +51,6 @@ export { registerStatsOps } from './registerStatsOps';
 
 import { createPixsimNamespace, initializeNamespace } from './namespace';
 import { moduleRegistry } from './moduleRegistry';
-import { defaultModules } from './modules';
-import { statsModule } from './modules/stats';
 import { getEditorContextSnapshot } from './getEditorContextSnapshot';
 
 /** Global pixsim namespace instance */
@@ -77,29 +75,36 @@ export function initializeConsole(additionalModules?: import('./moduleRegistry')
     console.warn('[Console] Already initialized');
     return;
   }
+  initialized = true;
 
   // Initialize namespace with snapshot-based context getter
   initializeNamespace(getEditorContextSnapshot);
 
-  // Register default modules (in dependency order)
-  moduleRegistry.registerAll(defaultModules);
+  void import('./modules')
+    .then(({ defaultModules }) => {
+      // Register default modules (in dependency order)
+      moduleRegistry.registerAll(defaultModules);
+      return import('./modules/stats');
+    })
+    .then(({ statsModule }) => {
+      // Register stats module (our addition)
+      moduleRegistry.register(statsModule);
 
-  // Register stats module (our addition)
-  moduleRegistry.register(statsModule);
+      // Register any additional modules
+      if (additionalModules) {
+        moduleRegistry.registerAll(additionalModules);
+      }
 
-  // Register any additional modules
-  if (additionalModules) {
-    moduleRegistry.registerAll(additionalModules);
-  }
-
-  initialized = true;
-
-  const moduleCount = moduleRegistry.keys().length;
-  console.log(
-    `%c🎮 pixsim console ready %c ${moduleCount} modules loaded. Type pixsim.help() for usage`,
-    'color: #7c3aed; font-weight: bold;',
-    'color: #888;'
-  );
+      const moduleCount = moduleRegistry.keys().length;
+      console.log(
+        `%cdYZr pixsim console ready %c ${moduleCount} modules loaded. Type pixsim.help() for usage`,
+        'color: #7c3aed; font-weight: bold;',
+        'color: #888;'
+      );
+    })
+    .catch((error) => {
+      console.error('[Console] Failed to initialize modules:', error);
+    });
 }
 
 /**
