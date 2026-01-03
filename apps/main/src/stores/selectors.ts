@@ -4,7 +4,7 @@
  * when underlying values haven't changed.
  */
 
-import type { ControlCenterState } from './controlCenterStore';
+import type { ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Control Center Selectors

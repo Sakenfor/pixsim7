@@ -11,7 +11,7 @@
 
 import type { MenuAction, MenuActionContext } from '../types';
 import type { LayoutPreset } from '@features/workspace/stores/workspaceStore';
-import { resolvePresetScope, type PresetScope } from '../../widgetRegistry';
+import { resolvePresetScope, type PresetScope } from '../../dockZoneRegistry';
 
 // Re-export types for convenience
 export type { LayoutPreset, PresetScope };

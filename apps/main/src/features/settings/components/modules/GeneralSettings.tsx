@@ -7,11 +7,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { panelActionRegistry } from '@features/panels';
 import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 import { settingsRegistry } from '../../lib/core/registry';
+import { useSettingsUiStore } from '../../stores/settingsUiStore';
 
 export function GeneralSettings() {
   const [controlCenters, setControlCenters] = useState(() => controlCenterRegistry.getAll());
   const [activeControlCenterId, setActiveControlCenterId] = useState(() => controlCenterRegistry.getActiveId());
   const [switchMessage, setSwitchMessage] = useState('');
+  const setActiveTabId = useSettingsUiStore((state) => state.setActiveTabId);
 
   // Update control centers when they change
   useEffect(() => {
@@ -130,7 +132,7 @@ export function GeneralSettings() {
           Cube System
         </h2>
         <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-          Adjust how control cubes behave and how connections between cubes are created.
+          Overview of cube actions and shortcuts. Panel behavior and layout live under Panels settings.
         </p>
 
         <div className="mt-2 space-y-2 border border-neutral-200 dark:border-neutral-800 rounded-md p-3 bg-neutral-50/60 dark:bg-neutral-900/40">
@@ -157,6 +159,14 @@ export function GeneralSettings() {
             )}
           </div>
         </div>
+
+        <button
+          type="button"
+          className="inline-flex items-center px-2.5 py-1.5 rounded border border-blue-500/70 text-[11px] font-medium text-blue-600 dark:text-blue-300 bg-blue-50/60 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          onClick={() => setActiveTabId('panels')}
+        >
+          Open Panels Settings
+        </button>
       </section>
 
       <section className="space-y-2">

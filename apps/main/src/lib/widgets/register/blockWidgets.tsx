@@ -9,10 +9,10 @@ import { registerWidget } from '../widgetRegistry';
 import type { WidgetDefinition, WidgetComponentProps } from '../types';
 
 // Block components
-import { TextWidget } from '@components/widgets/TextWidget';
-import { MetricWidget } from '@components/widgets/MetricWidget';
-import { ListWidget } from '@components/widgets/ListWidget';
-import { GalleryGridWidget } from '@components/widgets/GalleryGridWidget';
+import { TextWidget } from '@/components/widgets/TextWidget';
+import { MetricWidget } from '@/components/widgets/MetricWidget';
+import { ListWidget } from '@/components/widgets/ListWidget';
+import { GalleryGridWidget } from '@/components/widgets/GalleryGridWidget';
 
 // ============================================================================
 // Helper: Wrap block component for unified API

@@ -24,6 +24,7 @@
  */
 
 import type { SceneViewPlugin } from '@lib/plugins/sceneViewPlugin';
+
 import { manifest } from './manifest';
 import { ComicPanelSceneView } from './PluginSceneView';
 

@@ -21,7 +21,7 @@ import {
   getDominantStat,
   getActiveStats,
   getStatReactionLevel,
-} from '@features/gizmos/lib/core';
+} from '@features/gizmos/lib/core/interactionStats';
 
 interface InteractionStatsState {
   /** Current stat values (0-1 for each) */

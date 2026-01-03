@@ -10,7 +10,7 @@ import {
   getPendingDialogue,
   executePendingDialogue,
   clearPendingDialogue,
-} from '../api/interactions';
+} from '@lib/api/interactions';
 
 export interface PendingDialogueRequest {
   requestId: string;
