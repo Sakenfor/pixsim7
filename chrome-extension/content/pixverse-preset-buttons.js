@@ -55,6 +55,9 @@
   let assetsTotalCount = 0;
   let assetsLoadedCount = 0;
   let assetsNextCursor = null;
+  let assetsCurrentPage = 1;
+  let assetsTotalPages = 1;
+  const ASSETS_PAGE_SIZE = 50; // Smaller page size for true pagination
   let adStatusCache = new Map();
   // Cache TTL in milliseconds (5 minutes to match backend cache)
   const AD_STATUS_CACHE_TTL = 5 * 60 * 1000;
@@ -64,7 +67,13 @@
     storage.state.presetsCache = presetsCache;
     storage.state.accountsCache = accountsCache;
     imagePicker.setAssetsCache(assetsCache);
-    imagePicker.setAssetsCounts(assetsLoadedCount, assetsTotalCount);
+    imagePicker.setAssetsPagination({
+      loaded: assetsLoadedCount,
+      total: assetsTotalCount,
+      page: assetsCurrentPage,
+      totalPages: assetsTotalPages,
+      pageSize: ASSETS_PAGE_SIZE,
+    });
   }
 
   // ===== Data Loading =====
@@ -205,36 +214,37 @@
   // Track current search query for pagination
   let assetsCurrentQuery = '';
 
-  async function loadAssets(forceRefresh = false, append = false, options = {}) {
-    const { q } = options;
+  /**
+   * Load assets with true pagination (page replacement, not append)
+   * @param {Object} options
+   * @param {number} options.page - Page number to load (1-based)
+   * @param {string} options.q - Search query
+   * @param {boolean} options.forceRefresh - Force reload even if cached
+   */
+  async function loadAssets(options = {}) {
+    const { page = 1, q, forceRefresh = false } = options;
 
-    // If query changed, treat as fresh load
+    // If query changed, reset to page 1
     const queryChanged = q !== undefined && q !== assetsCurrentQuery;
     if (queryChanged) {
-      forceRefresh = true;
-      append = false;
       assetsCurrentQuery = q || '';
     }
 
-    if (assetsCache.length > 0 && !forceRefresh && !append) {
+    // Check cache - only use if same page and query and not forcing refresh
+    if (!forceRefresh && !queryChanged && assetsCache.length > 0 && assetsCurrentPage === page) {
       return assetsCache;
     }
-    try {
-      const limit = 100;
 
-      // Build request params - use cursor for pagination if appending
+    try {
+      const limit = ASSETS_PAGE_SIZE;
+      const offset = (page - 1) * limit;
+
+      // Build request params - use offset for page jumping
       const params = {
         action: 'getAssets',
-        limit: limit
+        limit: limit,
+        offset: offset
       };
-
-      if (append && assetsNextCursor) {
-        // Use cursor for next page
-        params.cursor = assetsNextCursor;
-      } else if (!append) {
-        // Fresh load - start from beginning
-        params.offset = 0;
-      }
 
       // Include search query if set
       if (assetsCurrentQuery) {
@@ -249,26 +259,24 @@
 
       debugLog('Raw backend response:', {
         success: res.success,
+        page,
+        offset,
         dataType: Array.isArray(res.data) ? 'array' : typeof res.data,
         dataKeys: res.data && typeof res.data === 'object' ? Object.keys(res.data) : null,
-        hasNextCursor: res.data?.next_cursor ? true : false
       });
 
       // Handle different response formats
       let items = res.data;
       let total = null;
-      let nextCursor = null;
 
       if (items && !Array.isArray(items)) {
         total = items.total || items.count || items.totalCount || items.total_count || null;
-        nextCursor = items.next_cursor || items.nextCursor || items.cursor || null;
         items = items.items || items.assets || items.data || items.results || [];
       }
 
       debugLog('Parsed response:', {
         itemsCount: items?.length,
         total,
-        nextCursor: nextCursor ? 'exists' : 'null',
         isArray: Array.isArray(items)
       });
 
@@ -276,8 +284,8 @@
         return [];
       }
 
-      // Filter to only images
-      const newImages = items.filter(a => {
+      // Filter to only images (keep all for now since we want images for picker)
+      const pageImages = items.filter(a => {
         if (a.media_type === 'image') return true;
         if (a.type === 'image') return true;
         const path = a.file_path || a.file_url || a.external_url || a.remote_url || a.url || '';
@@ -287,40 +295,38 @@
         return false;
       });
 
-      if (append) {
-        assetsCache = [...assetsCache, ...newImages];
+      // Replace cache with current page (not append)
+      assetsCache = pageImages;
+      assetsCurrentPage = page;
+      assetsLoadedCount = pageImages.length;
+
+      // Calculate total pages
+      // Note: Backend currently returns total = len(current_page), not total items
+      // So we use "got full page" heuristic to detect if there are more
+      const gotFullPage = pageImages.length >= limit;
+
+      // If total is significantly larger than limit, it's a real total count
+      // Otherwise assume it's just the page count and use heuristic
+      const isRealTotal = total !== null && total > limit;
+
+      if (isRealTotal) {
+        assetsTotalCount = total;
+        assetsTotalPages = Math.ceil(total / limit);
+      } else if (gotFullPage) {
+        // Got full page, assume there's more
+        assetsTotalCount = offset + pageImages.length + limit; // Estimate
+        assetsTotalPages = page + 1; // At least one more page
       } else {
-        assetsCache = newImages;
+        // Got partial page, this is the last page
+        assetsTotalCount = offset + pageImages.length;
+        assetsTotalPages = page;
       }
 
-      // Store the next cursor for pagination (or clear if no more pages)
-      assetsNextCursor = nextCursor || null;
-
-      assetsLoadedCount = assetsCache.length;
-
-      // For cursor-based pagination, we don't know the true total
-      // Only hide "Load More" when we're CERTAIN there are no more items:
-      // - We got fewer items than requested (limit), AND
-      // - No next_cursor was returned
-      // This prevents the button from disappearing prematurely
-      const gotFullPage = newImages.length >= limit;
-      const definitelyNoMore = !gotFullPage && !nextCursor;
-
-      if (definitelyNoMore) {
-        assetsTotalCount = assetsLoadedCount; // No more to load
-      } else {
-        assetsTotalCount = assetsLoadedCount + 1; // Signal there might be more
-      }
-
-      debugLog('Loaded assets:', {
-        newCount: newImages.length,
-        totalInCache: assetsCache.length,
-        assetsLoadedCount,
-        assetsTotalCount,
-        hasNextCursor: !!assetsNextCursor,
-        gotFullPage,
-        definitelyNoMore,
-        append
+      debugLog('Loaded assets page:', {
+        page,
+        pageCount: pageImages.length,
+        totalCount: assetsTotalCount,
+        totalPages: assetsTotalPages,
       });
 
       return assetsCache;
@@ -883,7 +889,7 @@
         assetsBtn.classList.add('loading');
         const origText = assetsBtn.textContent;
         assetsBtn.textContent = '...';
-        await loadAssets();
+        await loadAssets({ page: 1 });
         assetsBtn.classList.remove('loading');
         assetsBtn.textContent = origText;
       }
@@ -896,8 +902,9 @@
       const defaultTab = recentImages.length > 0 ? 'page' : 'assets';
 
       // Pass loadAssets wrapper that syncs after loading
-      const loadAssetsWrapper = async (forceRefresh = false, append = false, options = {}) => {
-        await loadAssets(forceRefresh, append, options);
+      // New signature: loadAssets({ page, q, forceRefresh })
+      const loadAssetsWrapper = async (options = {}) => {
+        await loadAssets(options);
         syncModuleCaches();
       };
 
@@ -909,6 +916,14 @@
     });
 
     assetsBtn.addEventListener('wheel', handleAccountWheel);
+
+    // Double-click to reset picker position
+    assetsBtn.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      imagePicker.resetPosition();
+      showToast('Picker position reset', true);
+    });
 
     // Run button - shows selected preset, click to run
     const runBtn = document.createElement('button');
@@ -1035,8 +1050,9 @@
 
     // Create and store loadAssets wrapper early so it's available for image picker
     // even if opened via restore panel before Assets button is clicked
-    const loadAssetsWrapper = async (forceRefresh = false, append = false, options = {}) => {
-      await loadAssets(forceRefresh, append, options);
+    // New signature: loadAssets({ page, q, forceRefresh })
+    const loadAssetsWrapper = async (options = {}) => {
+      await loadAssets(options);
       syncModuleCaches();
     };
     imagePicker.setLoadAssetsFunction(loadAssetsWrapper);
@@ -1045,7 +1061,7 @@
     Promise.all([
       loadPresets(),
       loadAccounts(),
-      loadAssets()
+      loadAssets({ page: 1 })
     ]).then(() => {
       syncModuleCaches();
       updateAllAccountButtons();

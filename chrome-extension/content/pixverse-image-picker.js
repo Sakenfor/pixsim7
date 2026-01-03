@@ -47,6 +47,9 @@ window.PXS7 = window.PXS7 || {};
   let assetsCache = [];
   let assetsTotalCount = 0;
   let assetsLoadedCount = 0;
+  let assetsCurrentPage = 1;
+  let assetsTotalPages = 1;
+  let assetsPageSize = 50;
   let loadAssetsFunction = null;
   let assetsSearchQuery = '';
   let activePickerPanel = null;
@@ -350,57 +353,6 @@ window.PXS7 = window.PXS7 || {};
     }
     // 'default' keeps original order
 
-    // Search bar
-    const searchRow = document.createElement('div');
-    searchRow.style.cssText = 'margin-bottom: 8px;';
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.placeholder = 'Search description, tags...';
-    searchInput.value = assetsSearchQuery;
-    searchInput.style.cssText = `
-      width: 100%; padding: 6px 10px; font-size: 11px;
-      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
-      border-radius: 4px; color: ${COLORS.text}; outline: none;
-      box-sizing: border-box;
-    `;
-
-    // Filter row
-    const filterRow = document.createElement('div');
-    filterRow.style.cssText = 'display: flex; gap: 6px; margin-bottom: 8px;';
-
-    // Provider filter
-    const providerSelect = document.createElement('select');
-    providerSelect.style.cssText = `
-      flex: 1; padding: 4px 8px; font-size: 10px;
-      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
-      border-radius: 4px; color: ${COLORS.text}; outline: none;
-    `;
-    providerSelect.innerHTML = `
-      <option value="all">All Providers</option>
-      <option value="pixverse">Pixverse</option>
-      <option value="runway">Runway</option>
-      <option value="pika">Pika</option>
-      <option value="sora">Sora</option>
-    `;
-    providerSelect.value = assetsFilterProvider;
-
-    // Media type filter
-    const mediaTypeSelect = document.createElement('select');
-    mediaTypeSelect.style.cssText = `
-      flex: 1; padding: 4px 8px; font-size: 10px;
-      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
-      border-radius: 4px; color: ${COLORS.text}; outline: none;
-    `;
-    mediaTypeSelect.innerHTML = `
-      <option value="all">All Types</option>
-      <option value="image">Images</option>
-      <option value="video">Videos</option>
-    `;
-    mediaTypeSelect.value = assetsFilterMediaType;
-
-    filterRow.appendChild(providerSelect);
-    filterRow.appendChild(mediaTypeSelect);
-
     // Grid container for live updates
     const gridContainer = document.createElement('div');
     gridContainer.id = 'pxs7-assets-grid-container';
@@ -417,14 +369,6 @@ window.PXS7 = window.PXS7 || {};
       } else {
         const { grid } = createImageGrid(displayUrls, (item) => item.thumb, (item) => item.full, (item) => item.name, (item) => item.fallback, (item) => item.mediaType);
         gridContainer.appendChild(grid);
-      }
-
-      // Update count
-      const countEl = container.querySelector('.pxs7-assets-count');
-      if (countEl) {
-        const moreAvailable = assetsTotalCount > assetsLoadedCount;
-        const searchText = assetsSearchQuery.trim() ? ' (search)' : '';
-        countEl.textContent = `${displayUrls.length}${moreAvailable ? '+' : ''}${searchText}`;
       }
     };
 
@@ -445,19 +389,11 @@ window.PXS7 = window.PXS7 || {};
 
       try {
         if (loadAssets) {
-          // Call loadAssets with search query - this triggers server-side search
-          await loadAssets(true, false, { q: query });
+          // Call loadAssets with search query - resets to page 1
+          await loadAssets({ page: 1, q: query });
         }
-        // Re-render with updated cache (urls reference will be stale, need fresh)
-        const freshUrls = assetsCache.map(a => ({
-          thumb: a.thumbnail_url || a.file_url,
-          full: a.file_url || a.external_url || a.remote_url || a.url,
-          name: a.description || a.file_name || a.name || '',
-          fallback: a.external_url || a.remote_url || a.url,
-          mediaType: a.media_type
-        })).filter(u => u.thumb || u.full);
-
-        renderGrid(freshUrls);
+        // Re-render entire tab to update pagination
+        renderTabContent('assets', container, panel, loadAssets);
       } catch (e) {
         console.warn('[PixSim7] Search failed:', e);
         gridContainer.innerHTML = `
@@ -470,31 +406,7 @@ window.PXS7 = window.PXS7 || {};
       }
     };
 
-    searchInput.addEventListener('input', (e) => {
-      assetsSearchQuery = e.target.value;
-      clearTimeout(searchDebounce);
-      // Debounce server search (longer delay for network)
-      searchDebounce = setTimeout(() => {
-        performSearch(assetsSearchQuery);
-      }, 400);
-    });
-    searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        assetsSearchQuery = '';
-        searchInput.value = '';
-        clearTimeout(searchDebounce);
-        performSearch(''); // Clear search, reload all
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        clearTimeout(searchDebounce);
-        performSearch(assetsSearchQuery);
-      }
-    });
-    searchRow.appendChild(searchInput);
-    container.appendChild(searchRow);
-
-    // Add filter change handlers
+    // Filter handler
     const applyFilters = () => {
       let filtered = urls;
       if (assetsFilterProvider !== 'all') {
@@ -509,30 +421,162 @@ window.PXS7 = window.PXS7 || {};
       renderGrid(filtered);
     };
 
+    // === ROW 1: Search + Pagination (compact) ===
+    const searchPaginationRow = document.createElement('div');
+    searchPaginationRow.style.cssText = 'display: flex; gap: 4px; margin-bottom: 6px; align-items: center;';
+
+    // Search input (flex grow)
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search...';
+    searchInput.value = assetsSearchQuery;
+    searchInput.style.cssText = `
+      flex: 1; min-width: 80px; padding: 5px 8px; font-size: 10px;
+      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
+      border-radius: 3px; color: ${COLORS.text}; outline: none;
+    `;
+    searchInput.addEventListener('input', (e) => {
+      assetsSearchQuery = e.target.value;
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => performSearch(assetsSearchQuery), 400);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        assetsSearchQuery = '';
+        searchInput.value = '';
+        clearTimeout(searchDebounce);
+        performSearch('');
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(searchDebounce);
+        performSearch(assetsSearchQuery);
+      }
+    });
+
+    // Pagination: ‹ [1/15] › ↻
+    const hasMorePages = assetsTotalPages > 1 || assetsLoadedCount >= assetsPageSize;
+    const canGoPrev = assetsCurrentPage > 1;
+    const canGoNext = hasMorePages && (assetsTotalPages > assetsCurrentPage || assetsLoadedCount >= assetsPageSize);
+
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '‹';
+    prevBtn.title = 'Previous page';
+    prevBtn.disabled = !canGoPrev;
+    prevBtn.style.cssText = `
+      padding: 3px 6px; font-size: 12px; font-weight: bold;
+      background: transparent; border: 1px solid ${COLORS.border};
+      border-radius: 3px; cursor: ${canGoPrev ? 'pointer' : 'not-allowed'};
+      color: ${canGoPrev ? COLORS.text : COLORS.border};
+      opacity: ${canGoPrev ? '1' : '0.4'};
+    `;
+    prevBtn.addEventListener('click', async () => {
+      if (!canGoPrev || !loadAssets) return;
+      prevBtn.textContent = '...';
+      await loadAssets({ page: assetsCurrentPage - 1 });
+      renderTabContent('assets', container, panel, loadAssets);
+    });
+
+    // Page indicator: [1]/[15] (compact)
+    const pageLabel = document.createElement('span');
+    pageLabel.style.cssText = `font-size: 10px; color: ${COLORS.text}; white-space: nowrap;`;
+    pageLabel.textContent = `${assetsCurrentPage}/${assetsTotalPages > 1 ? assetsTotalPages : '?'}`;
+    pageLabel.title = 'Click to enter page number';
+    pageLabel.style.cursor = 'pointer';
+    pageLabel.addEventListener('click', () => {
+      const targetPage = prompt(`Go to page (1-${assetsTotalPages}):`, assetsCurrentPage);
+      if (targetPage) {
+        const page = parseInt(targetPage, 10);
+        if (!isNaN(page) && page >= 1 && loadAssets) {
+          loadAssets({ page }).then(() => renderTabContent('assets', container, panel, loadAssets));
+        }
+      }
+    });
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = '›';
+    nextBtn.title = 'Next page';
+    nextBtn.disabled = !canGoNext;
+    nextBtn.style.cssText = `
+      padding: 3px 6px; font-size: 12px; font-weight: bold;
+      background: transparent; border: 1px solid ${COLORS.border};
+      border-radius: 3px; cursor: ${canGoNext ? 'pointer' : 'not-allowed'};
+      color: ${canGoNext ? COLORS.text : COLORS.border};
+      opacity: ${canGoNext ? '1' : '0.4'};
+    `;
+    nextBtn.addEventListener('click', async () => {
+      if (!canGoNext || !loadAssets) return;
+      nextBtn.textContent = '...';
+      await loadAssets({ page: assetsCurrentPage + 1 });
+      renderTabContent('assets', container, panel, loadAssets);
+    });
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = '↻';
+    refreshBtn.title = 'Refresh';
+    refreshBtn.style.cssText = `
+      padding: 3px 5px; font-size: 10px;
+      background: transparent; border: 1px solid ${COLORS.border};
+      border-radius: 3px; color: ${COLORS.textMuted}; cursor: pointer;
+    `;
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.textContent = '...';
+      if (loadAssets) await loadAssets({ page: assetsCurrentPage, forceRefresh: true });
+      renderTabContent('assets', container, panel, loadAssets);
+    });
+
+    // Build row 1
+    searchPaginationRow.appendChild(searchInput);
+    searchPaginationRow.appendChild(prevBtn);
+    searchPaginationRow.appendChild(pageLabel);
+    searchPaginationRow.appendChild(nextBtn);
+    searchPaginationRow.appendChild(refreshBtn);
+    container.appendChild(searchPaginationRow);
+
+    // === ROW 2: Filters + Sort ===
+    const filterSortRow = document.createElement('div');
+    filterSortRow.style.cssText = 'display: flex; gap: 4px; margin-bottom: 6px; align-items: center;';
+
+    // Provider filter
+    const providerSelect = document.createElement('select');
+    providerSelect.style.cssText = `
+      flex: 1; padding: 3px 4px; font-size: 9px;
+      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
+      border-radius: 3px; color: ${COLORS.text}; outline: none;
+    `;
+    providerSelect.innerHTML = `
+      <option value="all">All</option>
+      <option value="pixverse">Pixverse</option>
+      <option value="runway">Runway</option>
+      <option value="pika">Pika</option>
+    `;
+    providerSelect.value = assetsFilterProvider;
     providerSelect.addEventListener('change', () => {
       assetsFilterProvider = providerSelect.value;
       applyFilters();
     });
 
+    // Media type filter
+    const mediaTypeSelect = document.createElement('select');
+    mediaTypeSelect.style.cssText = `
+      flex: 1; padding: 3px 4px; font-size: 9px;
+      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
+      border-radius: 3px; color: ${COLORS.text}; outline: none;
+    `;
+    mediaTypeSelect.innerHTML = `
+      <option value="all">All</option>
+      <option value="image">Img</option>
+      <option value="video">Vid</option>
+    `;
+    mediaTypeSelect.value = assetsFilterMediaType;
     mediaTypeSelect.addEventListener('change', () => {
       assetsFilterMediaType = mediaTypeSelect.value;
       applyFilters();
     });
 
-    container.appendChild(filterRow);
-
-    const headerRow = document.createElement('div');
-    headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px;';
-
-    const countLabel = document.createElement('span');
-    countLabel.className = 'pxs7-assets-count';
-    countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
-    const moreAvailable = assetsTotalCount > assetsLoadedCount;
-    countLabel.textContent = urls.length > 0 ? `${urls.length}${moreAvailable ? '+' : ''}` : '';
-
     // Sort buttons
     const sortGroup = document.createElement('div');
-    sortGroup.style.cssText = 'display: flex; gap: 2px;';
+    sortGroup.style.cssText = 'display: flex; gap: 1px;';
     const sortOpts = [
       { id: 'recent', label: '🕐', title: 'Recently used first' },
       { id: 'name', label: 'AZ', title: 'Sort by name' },
@@ -544,10 +588,10 @@ window.PXS7 = window.PXS7 || {};
       btn.title = opt.title;
       const isActive = assetsSortBy === opt.id;
       btn.style.cssText = `
-        padding: 3px 6px; font-size: 9px;
+        padding: 2px 4px; font-size: 9px;
         background: ${isActive ? COLORS.accent : 'transparent'};
         border: 1px solid ${isActive ? COLORS.accent : COLORS.border};
-        border-radius: 3px; cursor: pointer;
+        border-radius: 2px; cursor: pointer;
         color: ${isActive ? 'white' : COLORS.textMuted};
       `;
       btn.addEventListener('click', () => {
@@ -557,26 +601,12 @@ window.PXS7 = window.PXS7 || {};
       sortGroup.appendChild(btn);
     });
 
-    const refreshBtn = document.createElement('button');
-    refreshBtn.textContent = '↻';
-    refreshBtn.title = 'Refresh';
-    refreshBtn.style.cssText = `
-      padding: 3px 6px; font-size: 10px;
-      background: transparent; border: 1px solid ${COLORS.border};
-      border-radius: 3px; color: ${COLORS.textMuted}; cursor: pointer;
-    `;
-    refreshBtn.addEventListener('click', async () => {
-      refreshBtn.textContent = '...';
-      if (loadAssets) await loadAssets(true, false);
-      renderTabContent('assets', container, panel, loadAssets);
-    });
+    filterSortRow.appendChild(providerSelect);
+    filterSortRow.appendChild(mediaTypeSelect);
+    filterSortRow.appendChild(sortGroup);
+    container.appendChild(filterSortRow);
 
-    headerRow.appendChild(countLabel);
-    headerRow.appendChild(sortGroup);
-    headerRow.appendChild(refreshBtn);
-    container.appendChild(headerRow);
-
-    // Add grid container and render initial grid
+    // Add grid container and render
     container.appendChild(gridContainer);
 
     if (urls.length === 0) {
@@ -590,30 +620,7 @@ window.PXS7 = window.PXS7 || {};
         </div>
       `;
     } else {
-      // Initial grid render
       renderGrid(urls);
-    }
-
-    // Show Load More button if there are more assets to load
-    if (moreAvailable && loadAssets) {
-      const loadMoreBtn = document.createElement('button');
-      loadMoreBtn.textContent = `Load More (${assetsLoadedCount} loaded)`;
-      loadMoreBtn.style.cssText = `
-        width: 100%; padding: 8px; margin-top: 10px;
-        font-size: 11px; font-weight: 600;
-        background: ${COLORS.accent}; border: none;
-        border-radius: 4px; color: white;
-        cursor: pointer; transition: opacity 0.2s;
-      `;
-      loadMoreBtn.addEventListener('mouseover', () => loadMoreBtn.style.opacity = '0.8');
-      loadMoreBtn.addEventListener('mouseout', () => loadMoreBtn.style.opacity = '1');
-      loadMoreBtn.addEventListener('click', async () => {
-        loadMoreBtn.disabled = true;
-        loadMoreBtn.textContent = 'Loading...';
-        await loadAssets(false, true);
-        renderTabContent('assets', container, panel, loadAssets);
-      });
-      container.appendChild(loadMoreBtn);
     }
   }
 
@@ -645,42 +652,118 @@ window.PXS7 = window.PXS7 || {};
     const allRecent = new Set([...recentSiteImages, ...pageImages]);
     recentSiteImages = Array.from(allRecent);
 
-    // Load saved panel size from localStorage
-    const savedSize = localStorage.getItem('pxs7_picker_size');
-    let panelWidth = '320px';
-    let panelHeight = '480px';
-    if (savedSize) {
-      try {
-        const size = JSON.parse(savedSize);
-        if (size.width) panelWidth = size.width;
-        if (size.height) panelHeight = size.height;
-      } catch (e) {
-        debugLog('Failed to parse saved picker size:', e);
+    // Default panel dimensions
+    const defaultWidth = '320px';
+    const defaultHeight = '480px';
+
+    // Load saved panel state (position, size, minimized)
+    let savedState = {};
+    try {
+      savedState = JSON.parse(localStorage.getItem('pxs7_picker_state') || '{}');
+    } catch (e) {
+      debugLog('Failed to parse saved picker state:', e);
+    }
+    const savedPos = savedState.position || {};
+    const savedSize = savedState.size || {};
+    const savedMinimized = savedState.minimized || false;
+    const panelWidth = savedSize.width || defaultWidth;
+    const panelHeight = savedSize.height || defaultHeight;
+
+    // Check if saved position is off-screen and reset if needed
+    const checkBounds = (top, left, right) => {
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+      const panelW = parseInt(panelWidth) || 320;
+      const panelH = parseInt(panelHeight) || 480;
+
+      let topVal = parseInt(top) || 80;
+      let leftVal = left ? parseInt(left) : null;
+      let rightVal = right ? parseInt(right) : 20;
+
+      // If using left positioning
+      if (leftVal !== null) {
+        // Check if panel is mostly off-screen
+        if (leftVal < -panelW + 50 || leftVal > screenW - 50) {
+          return { reset: true };
+        }
+      } else {
+        // Using right positioning
+        if (rightVal < -panelW + 50 || rightVal > screenW - 50) {
+          return { reset: true };
+        }
       }
+
+      // Check vertical bounds
+      if (topVal < -panelH + 50 || topVal > screenH - 50) {
+        return { reset: true };
+      }
+
+      return { reset: false };
+    };
+
+    const boundsCheck = checkBounds(savedPos.top, savedPos.left, savedPos.right);
+    const useDefaults = boundsCheck.reset;
+
+    if (useDefaults) {
+      debugLog('Panel position was off-screen, resetting to defaults');
     }
 
     const panel = document.createElement('div');
     panel.className = 'pxs7-image-picker';
     panel.style.cssText = `
-      position: fixed; top: 80px; right: 20px; z-index: ${Z_INDEX_PICKER};
+      position: fixed;
+      top: ${useDefaults ? '80px' : (savedPos.top || '80px')};
+      ${useDefaults ? 'right: 20px;' : (savedPos.left ? `left: ${savedPos.left};` : `right: ${savedPos.right || '20px'};`)}
+      z-index: ${Z_INDEX_PICKER};
       background: ${COLORS.bg}; border: 1px solid ${COLORS.border};
-      border-radius: 8px; width: ${panelWidth}; max-height: ${panelHeight};
+      border-radius: 8px;
+      width: ${savedMinimized ? 'auto' : (savedSize.width || panelWidth)};
+      max-height: ${savedMinimized ? 'auto' : (savedSize.height || panelHeight)};
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      display: flex; flex-direction: column; resize: both; overflow: hidden;
+      display: flex; flex-direction: column; overflow: hidden;
     `;
     activePickerPanel = panel;
 
-    // Save panel size when resized
+    // Reset position function
+    const resetPosition = () => {
+      panel.style.top = '80px';
+      panel.style.right = '20px';
+      panel.style.left = 'auto';
+      panel.style.width = defaultWidth;
+      panel.style.maxHeight = defaultHeight;
+      localStorage.removeItem('pxs7_picker_state');
+      debugLog('Panel position reset');
+    };
+
+    // Save panel state helper
+    const saveState = () => {
+      const state = {
+        position: {
+          top: panel.style.top,
+          left: panel.style.left || null,
+          right: panel.style.left ? null : panel.style.right,
+        },
+        size: {
+          width: panel.style.width,
+          height: panel.style.maxHeight,
+        },
+        minimized: panel.dataset.minimized === 'true',
+      };
+      localStorage.setItem('pxs7_picker_state', JSON.stringify(state));
+    };
+
+    // Save panel size when resized (debounced)
     let resizeTimeout = null;
     const resizeObserver = new ResizeObserver(() => {
+      if (panel.dataset.minimized === 'true') return; // Don't save size when minimized
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
-        const width = panel.style.width || panel.offsetWidth + 'px';
-        const height = panel.style.maxHeight || panel.offsetHeight + 'px';
-        localStorage.setItem('pxs7_picker_size', JSON.stringify({ width, height }));
-        debugLog('Saved picker size:', { width, height });
-      }, 500); // Debounce 500ms
+        panel.style.width = panel.offsetWidth + 'px';
+        panel.style.maxHeight = panel.offsetHeight + 'px';
+        saveState();
+        debugLog('Saved picker size');
+      }, 500);
     });
     resizeObserver.observe(panel);
 
@@ -710,13 +793,14 @@ window.PXS7 = window.PXS7 || {};
       }
     });
 
-    let isMinimized = false;
+    let isMinimized = savedMinimized;
+    panel.dataset.minimized = isMinimized ? 'true' : 'false';
 
     const header = document.createElement('div');
     header.style.cssText = `
       display: flex; justify-content: space-between; align-items: center;
       padding: 8px 12px; cursor: move; background: rgba(0,0,0,0.2);
-      border-radius: 8px 8px 0 0; user-select: none;
+      border-radius: 8px 8px 0 0; user-select: none; flex-shrink: 0;
     `;
 
     const title = document.createElement('span');
@@ -727,20 +811,34 @@ window.PXS7 = window.PXS7 || {};
     const btnGroup = document.createElement('div');
     btnGroup.style.cssText = 'display: flex; gap: 8px;';
 
+    // Reset position button
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = '⌂';
+    resetBtn.title = 'Reset position (or double-click header)';
+    resetBtn.style.cssText = `
+      background: none; border: none; color: ${COLORS.textMuted};
+      font-size: 12px; cursor: pointer; padding: 0; line-height: 1; width: 20px;
+    `;
+    resetBtn.addEventListener('click', resetPosition);
+    btnGroup.appendChild(resetBtn);
+
     const minBtn = document.createElement('button');
-    minBtn.textContent = '−';
-    minBtn.title = 'Minimize';
+    minBtn.textContent = isMinimized ? '+' : '−';
+    minBtn.title = isMinimized ? 'Expand' : 'Minimize';
     minBtn.style.cssText = `
       background: none; border: none; color: ${COLORS.textMuted};
       font-size: 16px; cursor: pointer; padding: 0; line-height: 1; width: 20px;
     `;
     minBtn.addEventListener('click', () => {
       isMinimized = !isMinimized;
+      panel.dataset.minimized = isMinimized ? 'true' : 'false';
       panelBody.style.display = isMinimized ? 'none' : 'flex';
+      resizeHandle.style.display = isMinimized ? 'none' : 'block';
       panel.style.maxHeight = isMinimized ? 'auto' : panelHeight;
       panel.style.width = isMinimized ? 'auto' : panelWidth;
       minBtn.textContent = isMinimized ? '+' : '−';
       minBtn.title = isMinimized ? 'Expand' : 'Minimize';
+      saveState();
     });
     btnGroup.appendChild(minBtn);
 
@@ -774,28 +872,80 @@ window.PXS7 = window.PXS7 || {};
     header.appendChild(btnGroup);
     panel.appendChild(header);
 
-    // Make draggable
+    // Make draggable (header only)
     let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
     header.addEventListener('mousedown', (e) => {
-      if (e.target === minBtn || e.target === closeBtn || e.target === syncBtn) return;
+      if (e.target === minBtn || e.target === closeBtn || e.target === syncBtn || e.target === resetBtn) return;
       isDragging = true;
       dragOffsetX = e.clientX - panel.offsetLeft;
       dragOffsetY = e.clientY - panel.offsetTop;
       panel.style.transition = 'none';
+      e.preventDefault(); // Prevent text selection
     });
     document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
-      panel.style.left = (e.clientX - dragOffsetX) + 'px';
-      panel.style.top = (e.clientY - dragOffsetY) + 'px';
+      // Clamp position to keep at least 50px on screen
+      const newLeft = e.clientX - dragOffsetX;
+      const newTop = e.clientY - dragOffsetY;
+      const clampedLeft = Math.max(-panel.offsetWidth + 50, Math.min(window.innerWidth - 50, newLeft));
+      const clampedTop = Math.max(0, Math.min(window.innerHeight - 50, newTop));
+      panel.style.left = clampedLeft + 'px';
+      panel.style.top = clampedTop + 'px';
       panel.style.right = 'auto';
     });
     document.addEventListener('mouseup', () => {
-      isDragging = false;
-      panel.style.transition = '';
+      if (isDragging) {
+        isDragging = false;
+        panel.style.transition = '';
+        saveState(); // Save position after drag
+      }
     });
 
+    // Double-click header to reset position
+    header.addEventListener('dblclick', (e) => {
+      if (e.target === minBtn || e.target === closeBtn || e.target === syncBtn || e.target === resetBtn) return;
+      resetPosition();
+    });
+
+    // Custom resize handle (bottom-right corner)
+    const resizeHandle = document.createElement('div');
+    resizeHandle.style.cssText = `
+      position: absolute; bottom: 0; right: 0;
+      width: 16px; height: 16px; cursor: se-resize;
+      background: linear-gradient(135deg, transparent 50%, ${COLORS.border} 50%);
+      border-radius: 0 0 8px 0;
+    `;
+    resizeHandle.style.display = isMinimized ? 'none' : 'block';
+
+    let isResizing = false, resizeStartX = 0, resizeStartY = 0, startWidth = 0, startHeight = 0;
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      resizeStartX = e.clientX;
+      resizeStartY = e.clientY;
+      startWidth = panel.offsetWidth;
+      startHeight = panel.offsetHeight;
+      panel.style.transition = 'none';
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const newWidth = Math.max(200, startWidth + (e.clientX - resizeStartX));
+      const newHeight = Math.max(150, startHeight + (e.clientY - resizeStartY));
+      panel.style.width = newWidth + 'px';
+      panel.style.maxHeight = newHeight + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        panel.style.transition = '';
+        saveState(); // Save size after resize
+      }
+    });
+    panel.appendChild(resizeHandle);
+
     const panelBody = document.createElement('div');
-    panelBody.style.cssText = 'display: flex; flex-direction: column; flex: 1; overflow: hidden;';
+    panelBody.style.cssText = `display: ${isMinimized ? 'none' : 'flex'}; flex-direction: column; flex: 1; overflow: hidden;`;
 
     const tabBar = document.createElement('div');
     tabBar.style.cssText = `display: flex; border-bottom: 1px solid ${COLORS.border}; margin: 8px 12px 0;`;
@@ -860,10 +1010,28 @@ window.PXS7 = window.PXS7 || {};
     showUnifiedImagePicker,
     // State setters for main file
     setAssetsCache: (cache) => { assetsCache = cache; },
-    setAssetsCounts: (loaded, total) => { assetsLoadedCount = loaded; assetsTotalCount = total; },
+    setAssetsPagination: ({ loaded, total, page, totalPages, pageSize }) => {
+      assetsLoadedCount = loaded;
+      assetsTotalCount = total;
+      assetsCurrentPage = page;
+      assetsTotalPages = totalPages;
+      assetsPageSize = pageSize;
+    },
     setLoadAssetsFunction: (fn) => { loadAssetsFunction = fn; },
     getRecentImages: () => recentSiteImages,
     setRecentImages: (images) => { recentSiteImages = images; },
+    // Reset picker position (can call from console: PXS7.imagePicker.resetPosition())
+    resetPosition: () => {
+      localStorage.removeItem('pxs7_picker_state');
+      if (activePickerPanel) {
+        activePickerPanel.style.top = '80px';
+        activePickerPanel.style.right = '20px';
+        activePickerPanel.style.left = 'auto';
+        activePickerPanel.style.width = '320px';
+        activePickerPanel.style.maxHeight = '480px';
+      }
+      debugLog('Picker position reset');
+    },
   };
 
 })();
