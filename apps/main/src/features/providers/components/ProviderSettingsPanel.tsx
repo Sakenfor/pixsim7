@@ -1,15 +1,19 @@
-import { useState, useMemo, useEffect } from 'react';
 import { Button, FormField, Input, useToast } from '@pixsim7/shared.ui';
+import { useState, useMemo, useEffect } from 'react';
+
+import { apiClient } from '@lib/api/client';
+
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
-import { useProviders } from '../hooks/useProviders';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
+import { useProviders } from '../hooks/useProviders';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
 import type { UpdateAccountRequest } from '../lib/api/accounts';
-import { apiClient } from '@lib/api/client';
-import { EditAccountModal } from './EditAccountModal';
-import { DeleteConfirmModal } from './DeleteConfirmModal';
-import { CompactAccountCard } from './CompactAccountCard';
+
+
 import { AIProviderSettings } from './AIProviderSettings';
+import { CompactAccountCard } from './CompactAccountCard';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { EditAccountModal } from './EditAccountModal';
 
 interface ProviderSettings {
   provider_id: string;
@@ -433,7 +437,7 @@ export function ProviderSettingsPanel() {
                           variant: 'info',
                         });
                         const response = await apiClient.post(`/accounts/cleanup?provider_id=${activeProvider}`);
-                        const { stats, message } = response.data;
+                        const { message } = response.data;
                         toast?.({
                           title: 'Cleanup complete',
                           description: message,
@@ -496,8 +500,66 @@ export function ProviderSettingsPanel() {
                   >
                     Sync All Credits
                   </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Preview duplicates (GET = dry run)
+                        toast?.({
+                          title: 'Checking for duplicates...',
+                          description: 'Scanning for duplicate account entries',
+                          variant: 'info',
+                        });
+
+                        const checkRes = await apiClient.get(`/accounts/deduplicate?provider_id=${activeProvider}`);
+                        const { duplicate_count, accounts } = checkRes.data;
+
+                        if (duplicate_count === 0) {
+                          toast?.({
+                            title: 'No duplicates found',
+                            description: 'All accounts are unique',
+                            variant: 'success',
+                          });
+                          return;
+                        }
+
+                        // Show accounts to be deleted
+                        const emailList = accounts.map((a: { email: string }) => a.email).join('\n- ');
+
+                        const confirmed = window.confirm(
+                          `Found ${duplicate_count} duplicate account(s) to remove:\n\n- ${emailList}\n\n` +
+                          `The most recently used account for each email will be kept.\n\n` +
+                          `Continue with deduplication?`
+                        );
+
+                        if (!confirmed) return;
+
+                        // Run deduplication (POST = actually delete)
+                        const dedupeRes = await apiClient.post(
+                          `/accounts/deduplicate?provider_id=${activeProvider}`
+                        );
+                        const { deleted } = dedupeRes.data;
+
+                        toast?.({
+                          title: 'Deduplication complete',
+                          description: `Removed ${deleted} duplicate account(s)`,
+                          variant: 'success',
+                        });
+                        setRefreshKey(prev => prev + 1);
+                      } catch (error) {
+                        console.error('Deduplication failed:', error);
+                        toast?.({
+                          title: 'Deduplication failed',
+                          description: 'Failed to remove duplicate accounts',
+                          variant: 'error',
+                        });
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                  >
+                    Find Duplicates
+                  </button>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 ml-auto">
-                    Use these tools to fix account states and refresh credit balances
+                    Use these tools to fix account states, sync credits, and remove duplicates
                   </div>
                 </div>
 

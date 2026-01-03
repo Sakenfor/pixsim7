@@ -7,7 +7,7 @@ import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from pixsim7.backend.main.domain import (
     Asset,
@@ -573,9 +573,9 @@ class AssetCoreService:
             ]
 
             # Add prompt search via JSON extraction (prompt_analysis->>'prompt')
-            # This extracts the 'prompt' key from the JSON as text for ILIKE search
+            # Use json_extract_path_text to get text value from JSON column
             search_conditions.append(
-                Asset.prompt_analysis['prompt'].astext.ilike(like)
+                func.json_extract_path_text(Asset.prompt_analysis, 'prompt').ilike(like)
             )
 
             # Also search Generation.final_prompt for assets with source_generation_id
@@ -585,8 +585,17 @@ class AssetCoreService:
 
             query = query.where(or_(*search_conditions))
 
+        # Handle deduplication when joins cause row multiplication
+        # Can't use DISTINCT on JSON columns, so use subquery for distinct IDs
         if tag_joined:
-            query = query.distinct()
+            # Get distinct asset IDs from filtered query
+            id_subquery = (
+                query.with_only_columns(Asset.id)
+                .distinct()
+                .subquery()
+            )
+            # Build fresh query selecting full Assets by those IDs
+            query = select(Asset).where(Asset.id.in_(select(id_subquery.c.id)))
 
         # Sorting - validate sort_by before using
         if sort_by and sort_by in ('created_at', 'file_size_bytes'):
