@@ -56,6 +56,13 @@ window.PXS7 = window.PXS7 || {};
   let assetsFilterProvider = 'all'; // 'all', 'pixverse', 'runway', etc.
   let assetsFilterMediaType = 'all'; // 'all', 'image', 'video'
   let assetsFilterUploadMethod = 'all'; // 'all', 'extension', 'local_folders', 'generated', 'api'
+  let assetsFilterOptions = {
+    provider_id: null,
+    media_type: null,
+    upload_method: null,
+  };
+  let assetsFilterOptionsLoaded = false;
+  let assetsFilterOptionsLoading = false;
 
   // Persistence keys
   const ASSETS_STATE_KEY = 'pxs7_assets_state';
@@ -93,6 +100,40 @@ window.PXS7 = window.PXS7 || {};
 
   // Load state on module init
   loadAssetsState();
+
+  async function loadAssetFilterOptions() {
+    if (assetsFilterOptionsLoading || assetsFilterOptionsLoaded) {
+      return assetsFilterOptionsLoaded;
+    }
+    if (!sendMessageWithTimeout) {
+      return false;
+    }
+
+    assetsFilterOptionsLoading = true;
+    try {
+      const res = await sendMessageWithTimeout(
+        {
+          action: 'apiRequest',
+          path: '/assets/filter-metadata?include=provider_id,media_type,upload_method',
+        },
+        5000
+      );
+
+      if (res?.success && res.data?.options) {
+        assetsFilterOptions = {
+          provider_id: res.data.options.provider_id || null,
+          media_type: res.data.options.media_type || null,
+          upload_method: res.data.options.upload_method || null,
+        };
+        assetsFilterOptionsLoaded = true;
+      }
+    } catch (e) {
+      debugLog('Failed to load filter metadata', e);
+    } finally {
+      assetsFilterOptionsLoading = false;
+    }
+    return assetsFilterOptionsLoaded;
+  }
 
   // Z-index constants for picker UI
   const Z_INDEX_PICKER = 9999;
@@ -349,6 +390,13 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function renderAssetsTab(container, panel, loadAssets) {
+    if (!assetsFilterOptionsLoaded && !assetsFilterOptionsLoading) {
+      loadAssetFilterOptions().then((loaded) => {
+        if (loaded) {
+          renderTabContent('assets', container, panel, loadAssets);
+        }
+      });
+    }
     // Make container a flex column so we can have fixed header + scrollable grid
     container.style.cssText = 'display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 0;';
 
@@ -600,13 +648,24 @@ window.PXS7 = window.PXS7 || {};
       background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
       border-radius: 3px; color: ${COLORS.text}; outline: none;
     `;
-    providerSelect.innerHTML = `
-      <option value="all">All</option>
-      <option value="pixverse">Pixverse</option>
-      <option value="runway">Runway</option>
-      <option value="pika">Pika</option>
-    `;
+    if (Array.isArray(assetsFilterOptions.provider_id) && assetsFilterOptions.provider_id.length > 0) {
+      const providerOptions = assetsFilterOptions.provider_id
+        .map(o => `<option value="${o.value}">${o.label || o.value}</option>`)
+        .join('');
+      providerSelect.innerHTML = `<option value="all">All</option>${providerOptions}`;
+    } else {
+      providerSelect.innerHTML = `
+        <option value="all">All</option>
+        <option value="pixverse">Pixverse</option>
+        <option value="runway">Runway</option>
+        <option value="pika">Pika</option>
+      `;
+    }
     providerSelect.value = assetsFilterProvider;
+    if (!providerSelect.querySelector(`option[value="${assetsFilterProvider}"]`)) {
+      assetsFilterProvider = 'all';
+      providerSelect.value = 'all';
+    }
     providerSelect.addEventListener('change', () => {
       assetsFilterProvider = providerSelect.value;
       saveAssetsState();
@@ -620,12 +679,23 @@ window.PXS7 = window.PXS7 || {};
       background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
       border-radius: 3px; color: ${COLORS.text}; outline: none;
     `;
-    mediaTypeSelect.innerHTML = `
-      <option value="all">All</option>
-      <option value="image">Img</option>
-      <option value="video">Vid</option>
-    `;
+    if (Array.isArray(assetsFilterOptions.media_type) && assetsFilterOptions.media_type.length > 0) {
+      const mediaOptions = assetsFilterOptions.media_type
+        .map(o => `<option value="${o.value}">${o.label || o.value}</option>`)
+        .join('');
+      mediaTypeSelect.innerHTML = `<option value="all">All</option>${mediaOptions}`;
+    } else {
+      mediaTypeSelect.innerHTML = `
+        <option value="all">All</option>
+        <option value="image">Img</option>
+        <option value="video">Vid</option>
+      `;
+    }
     mediaTypeSelect.value = assetsFilterMediaType;
+    if (!mediaTypeSelect.querySelector(`option[value="${assetsFilterMediaType}"]`)) {
+      assetsFilterMediaType = 'all';
+      mediaTypeSelect.value = 'all';
+    }
     mediaTypeSelect.addEventListener('change', () => {
       assetsFilterMediaType = mediaTypeSelect.value;
       saveAssetsState();
@@ -639,14 +709,25 @@ window.PXS7 = window.PXS7 || {};
       background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
       border-radius: 3px; color: ${COLORS.text}; outline: none;
     `;
-    uploadMethodSelect.innerHTML = `
-      <option value="all">Source</option>
-      <option value="extension">Ext</option>
-      <option value="local_folders">Local</option>
-      <option value="generated">Gen</option>
-      <option value="api">API</option>
-    `;
+    if (Array.isArray(assetsFilterOptions.upload_method) && assetsFilterOptions.upload_method.length > 0) {
+      const uploadOptions = assetsFilterOptions.upload_method
+        .map(o => `<option value="${o.value}">${o.label || o.value}</option>`)
+        .join('');
+      uploadMethodSelect.innerHTML = `<option value="all">Source</option>${uploadOptions}`;
+    } else {
+      uploadMethodSelect.innerHTML = `
+        <option value="all">Source</option>
+        <option value="extension">Ext</option>
+        <option value="local_folders">Local</option>
+        <option value="generated">Gen</option>
+        <option value="api">API</option>
+      `;
+    }
     uploadMethodSelect.value = assetsFilterUploadMethod;
+    if (!uploadMethodSelect.querySelector(`option[value="${assetsFilterUploadMethod}"]`)) {
+      assetsFilterUploadMethod = 'all';
+      uploadMethodSelect.value = 'all';
+    }
     uploadMethodSelect.addEventListener('change', () => {
       assetsFilterUploadMethod = uploadMethodSelect.value;
       saveAssetsState();

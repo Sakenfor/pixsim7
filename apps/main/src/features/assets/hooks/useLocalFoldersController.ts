@@ -441,6 +441,11 @@ export function useLocalFoldersController(): LocalFoldersController {
       if (asset.relativePath) {
         form.append('source_relative_path', asset.relativePath);
       }
+      form.append('upload_method', 'local_folders');
+      form.append(
+        'upload_context',
+        JSON.stringify({ client: 'web_app', feature: 'local_folders' })
+      );
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
       // Get auth token

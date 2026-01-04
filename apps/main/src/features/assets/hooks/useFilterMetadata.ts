@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { getFilterMetadata } from '../lib/api';
-import type { FilterMetadataResponse } from '../lib/api';
+import type { FilterMetadataQueryOptions, FilterMetadataResponse } from '../lib/api';
 
 /**
  * Hook to fetch and cache filter metadata from backend.
  * Returns filter definitions and available options for enum filters.
  */
-export function useFilterMetadata(options?: { includeCounts?: boolean }) {
+export function useFilterMetadata(options?: FilterMetadataQueryOptions) {
   const [metadata, setMetadata] = useState<FilterMetadataResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export function useFilterMetadata(options?: { includeCounts?: boolean }) {
       try {
         setLoading(true);
         setError(null);
-        const data = await getFilterMetadata(options?.includeCounts ?? false);
+        const data = await getFilterMetadata(options);
         if (!cancelled) {
           setMetadata(data);
         }
@@ -38,7 +38,7 @@ export function useFilterMetadata(options?: { includeCounts?: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [options?.includeCounts]);
+  }, [options?.includeCounts, options?.include?.join(',')]);
 
   return { metadata, loading, error };
 }

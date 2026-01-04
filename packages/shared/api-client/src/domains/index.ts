@@ -44,6 +44,7 @@ export type {
   ListAssetsQuery,
   FilterDefinition,
   FilterMetadataResponse,
+  FilterMetadataQueryOptions,
   FilterOptionValue,
 } from './assets';
 

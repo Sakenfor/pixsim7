@@ -34,6 +34,11 @@ export async function uploadPoseSnapshot({
   const form = new FormData();
   form.append('file', blob, filename);
   form.append('provider_id', providerId);
+  form.append('upload_method', 'web');
+  form.append(
+    'upload_context',
+    JSON.stringify({ client: 'web_app', feature: 'poseboard' })
+  );
 
   const token = authService.getStoredToken();
   const headers: HeadersInit = {};

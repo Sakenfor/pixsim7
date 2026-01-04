@@ -31,6 +31,11 @@ export interface FilterMetadataResponse {
   options: Record<string, FilterOptionValue[]>;
 }
 
+export interface FilterMetadataQueryOptions {
+  includeCounts?: boolean;
+  include?: string[];
+}
+
 export function getAssetDownloadUrl(asset: AssetResponse): string {
   return asset.remote_url || asset.file_url || `/assets/${asset.id}/file`;
 }
@@ -73,9 +78,16 @@ export function createAssetsApi(client: PixSimApiClient) {
       await client.post<void>(`/assets/${assetId}/reupload`, payload);
     },
 
-    async getFilterMetadata(includeCounts = false): Promise<FilterMetadataResponse> {
+    async getFilterMetadata(options?: FilterMetadataQueryOptions): Promise<FilterMetadataResponse> {
+      const params: Record<string, unknown> = {};
+      if (options?.includeCounts) {
+        params.include_counts = true;
+      }
+      if (options?.include && options.include.length > 0) {
+        params.include = options.include;
+      }
       return client.get<FilterMetadataResponse>('/assets/filter-metadata', {
-        params: includeCounts ? { include_counts: true } : undefined,
+        params: Object.keys(params).length ? params : undefined,
       });
     },
 
@@ -88,4 +100,3 @@ export function createAssetsApi(client: PixSimApiClient) {
     },
   };
 }
-

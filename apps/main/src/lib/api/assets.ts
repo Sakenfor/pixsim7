@@ -13,6 +13,7 @@ import type {
   ExtractFrameRequest,
   FilterDefinition,
   FilterMetadataResponse,
+  FilterMetadataQueryOptions,
   FilterOptionValue,
   ListAssetsQuery,
   ReuploadAssetRequest,
@@ -28,6 +29,7 @@ export type {
   FilterDefinition,
   FilterOptionValue,
   FilterMetadataResponse,
+  FilterMetadataQueryOptions,
 } from '@pixsim7/api-client/domains';
 
 const assetsApi = createAssetsApi(pixsimClient);
@@ -69,7 +71,9 @@ export const enrichAsset = assetsApi.enrichAsset;
  * Get available filter definitions and options for the assets gallery.
  * Returns filter schema + available values for enum types.
  */
-export const getFilterMetadata: (includeCounts?: boolean) => Promise<FilterMetadataResponse> =
+export const getFilterMetadata: (
+  options?: FilterMetadataQueryOptions
+) => Promise<FilterMetadataResponse> =
   assetsApi.getFilterMetadata;
 
 export async function downloadAsset(asset: AssetResponse): Promise<void> {

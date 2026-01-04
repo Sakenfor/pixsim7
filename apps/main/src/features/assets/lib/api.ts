@@ -14,6 +14,7 @@ export type {
   ExtractFrameRequest,
   FilterDefinition,
   FilterMetadataResponse,
+  FilterMetadataQueryOptions,
   FilterOptionValue,
   ListAssetsQuery,
   AssetListResponse,

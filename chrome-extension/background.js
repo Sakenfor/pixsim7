@@ -486,6 +486,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // Default to true to preserve existing semantics for callers that
               // don't specify ensureAsset (local asset even if provider fails).
               ensure_asset: ensureAsset === false ? false : true,
+              upload_method: 'extension',
+              upload_context: {
+                client: 'chrome_extension',
+              },
               // Include source tracking for extension uploads
               source_url: sourceUrl,
               source_site: sourceSite,
@@ -565,7 +569,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${settings.pixsim7Token}`,
           },
-          body: JSON.stringify({ url: imageUrl, provider_id: providerId || settings.defaultUploadProvider || 'pixverse' }),
+          body: JSON.stringify({
+            url: imageUrl,
+            provider_id: providerId || settings.defaultUploadProvider || 'pixverse',
+            upload_method: 'extension',
+            upload_context: {
+              client: 'chrome_extension',
+              feature: 'quick_generate',
+            },
+          }),
         });
         if (!uploadResp.ok) {
           const txt = await uploadResp.text();

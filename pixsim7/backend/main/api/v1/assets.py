@@ -20,11 +20,17 @@ from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary, AssignTa
 from pixsim7.backend.main.services.tag_service import TagService
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, ContentDomain
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
+import json
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
+from pixsim7.backend.main.domain.assets.upload_attribution import (
+    build_upload_attribution_context,
+    infer_upload_method,
+)
+from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
 from pixsim_logging import get_logger
 
 # Shared helper (used by this module and sub-modules)
@@ -59,7 +65,7 @@ async def list_assets(
     sync_status: SyncStatus | None = Query(None, description="Filter by sync status"),
     provider_id: str | None = Query(None, description="Filter by provider"),
     provider_status: str | None = Query(None, description="Filter by provider status (ok, local_only, flagged, unknown)"),
-    upload_method: str | None = Query(None, description="Filter by upload method (extension, local_folders, api, generated)"),
+    upload_method: str | None = Query(None, description="Filter by upload method"),
     tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
     q: str | None = Query(None, description="Full-text search over description/tags"),
     include_archived: bool = Query(False, description="Include archived assets (default: false)"),
@@ -188,6 +194,10 @@ async def get_filter_metadata(
     user: CurrentUser,
     db: DatabaseSession,
     include_counts: bool = Query(False, description="Include asset counts per option (slower)"),
+    include: list[str] | None = Query(
+        None,
+        description="Optional filter keys to include (repeat or comma-separated)",
+    ),
 ):
     """
     Get available filter definitions and options for the assets gallery.
@@ -203,105 +213,31 @@ async def get_filter_metadata(
     - search: Free-text search input
     - autocomplete: Async search (use /tags endpoint for values)
     """
-    from sqlalchemy import select, func, distinct
-    from pixsim7.backend.main.domain.assets.models import Asset
+    include_keys = None
+    if include:
+        include_keys = []
+        for entry in include:
+            if not entry:
+                continue
+            include_keys.extend([key for key in entry.split(",") if key])
 
-    # Define available filters (schema-driven)
     filters = [
-        FilterDefinition(key="media_type", type="enum", label="Media Type"),
-        FilterDefinition(key="provider_id", type="enum", label="Provider"),
-        FilterDefinition(key="upload_method", type="enum", label="Source"),
-        FilterDefinition(key="include_archived", type="boolean", label="Show Archived"),
-        FilterDefinition(key="tag", type="autocomplete", label="Tag"),
-        FilterDefinition(key="q", type="search", label="Search"),
+        FilterDefinition(key=spec.key, type=spec.type, label=spec.label)
+        for spec in asset_filter_registry.list_filters(include=include_keys)
     ]
 
-    options: dict[str, List[FilterOptionValue]] = {}
-
     try:
-        # Get distinct media_types for current user
-        if include_counts:
-            media_type_query = (
-                select(Asset.media_type, func.count(Asset.id).label("count"))
-                .where(Asset.user_id == user.id, Asset.is_archived == False)
-                .group_by(Asset.media_type)
-            )
-            result = await db.execute(media_type_query)
-            options["media_type"] = [
-                FilterOptionValue(value=row.media_type.value, label=row.media_type.value.title(), count=row.count)
-                for row in result.all()
-            ]
-        else:
-            media_type_query = (
-                select(distinct(Asset.media_type))
-                .where(Asset.user_id == user.id, Asset.is_archived == False)
-            )
-            result = await db.execute(media_type_query)
-            options["media_type"] = [
-                FilterOptionValue(value=mt.value, label=mt.value.title())
-                for mt in result.scalars().all()
-            ]
-
-        # Get distinct provider_ids for current user
-        if include_counts:
-            provider_query = (
-                select(Asset.provider_id, func.count(Asset.id).label("count"))
-                .where(Asset.user_id == user.id, Asset.is_archived == False)
-                .group_by(Asset.provider_id)
-            )
-            result = await db.execute(provider_query)
-            options["provider_id"] = [
-                FilterOptionValue(value=row.provider_id, label=row.provider_id.title(), count=row.count)
-                for row in result.all()
-            ]
-        else:
-            provider_query = (
-                select(distinct(Asset.provider_id))
-                .where(Asset.user_id == user.id, Asset.is_archived == False)
-            )
-            result = await db.execute(provider_query)
-            options["provider_id"] = [
-                FilterOptionValue(value=pid, label=pid.title())
-                for pid in result.scalars().all()
-            ]
-
-        # Get distinct upload_methods for current user
-        # Labels map for user-friendly display
-        upload_method_labels = {
-            "extension": "Chrome Extension",
-            "local_folders": "Local Folders",
-            "api": "API Upload",
-            "generated": "Generated",
-            "web": "Web Upload",
-            "mobile": "Mobile Upload",
-        }
-        if include_counts:
-            upload_method_query = (
-                select(Asset.upload_method, func.count(Asset.id).label("count"))
-                .where(Asset.user_id == user.id, Asset.is_archived == False, Asset.upload_method.isnot(None))
-                .group_by(Asset.upload_method)
-            )
-            result = await db.execute(upload_method_query)
-            options["upload_method"] = [
-                FilterOptionValue(
-                    value=row.upload_method,
-                    label=upload_method_labels.get(row.upload_method, row.upload_method.title()),
-                    count=row.count
-                )
-                for row in result.all()
-            ]
-        else:
-            upload_method_query = (
-                select(distinct(Asset.upload_method))
-                .where(Asset.user_id == user.id, Asset.is_archived == False, Asset.upload_method.isnot(None))
-            )
-            result = await db.execute(upload_method_query)
-            options["upload_method"] = [
-                FilterOptionValue(
-                    value=um,
-                    label=upload_method_labels.get(um, um.title())
-                )
-                for um in result.scalars().all()
+        options_raw = await asset_filter_registry.build_options(
+            db,
+            user=user,
+            include_counts=include_counts,
+            include=include_keys,
+        )
+        options: dict[str, List[FilterOptionValue]] = {}
+        for key, values in options_raw.items():
+            options[key] = [
+                FilterOptionValue(value=value, label=label, count=count)
+                for value, label, count in values
             ]
 
         return FilterMetadataResponse(filters=filters, options=options)
@@ -828,6 +764,14 @@ async def upload_asset_to_provider(
     provider_id: str = Form(...),
     source_folder_id: Optional[str] = Form(None),
     source_relative_path: Optional[str] = Form(None),
+    upload_method: Optional[str] = Form(
+        None,
+        description="Upload method identifier (e.g., extension, local_folders)",
+    ),
+    upload_context: Optional[str] = Form(
+        None,
+        description="Optional JSON-encoded upload context",
+    ),
 ):
     """
     Upload media to the specified provider (no cross-provider Pixverse override).
@@ -838,6 +782,8 @@ async def upload_asset_to_provider(
     Optional source tracking fields:
     - source_folder_id: ID of local folder if uploaded from Local Folders panel
     - source_relative_path: Relative path within folder if uploaded from Local Folders
+    - upload_method: Explicit upload method override (e.g., extension, api)
+    - upload_context: JSON-encoded object with additional context
     """
     content_type = file.content_type or ""
     media_type = MediaType.IMAGE if content_type.startswith("image/") else MediaType.VIDEO if content_type.startswith("video/") else None
@@ -934,18 +880,37 @@ async def upload_asset_to_provider(
             provider_asset_id = f"upload_{digest}"
 
         # Determine upload method (canonical source)
-        upload_method = "local_folders" if source_folder_id else "api"
+        upload_method = infer_upload_method(
+            upload_method=upload_method,
+            source_folder_id=source_folder_id,
+        )
 
-        # Build upload context metadata (rich context only, no redundant 'source')
-        upload_context = {}
-        if source_folder_id:
-            upload_context["source_folder_id"] = source_folder_id
-        if source_relative_path:
-            upload_context["source_relative_path"] = source_relative_path
+        # Parse optional upload context (JSON-encoded)
+        upload_context_payload = None
+        if upload_context:
+            try:
+                upload_context_payload = json.loads(upload_context)
+            except json.JSONDecodeError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"upload_context must be valid JSON: {e}",
+                )
+            if not isinstance(upload_context_payload, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail="upload_context must be a JSON object",
+                )
+
+        # Build upload attribution metadata (rich context only)
+        upload_attribution = build_upload_attribution_context(
+            upload_context=upload_context_payload,
+            source_folder_id=source_folder_id,
+            source_relative_path=source_relative_path,
+        )
 
         media_metadata = {}
-        if upload_context:
-            media_metadata["upload_history"] = upload_context
+        if upload_attribution:
+            media_metadata["upload_attribution"] = upload_attribution
 
         try:
             # Check if we're updating an existing asset (cross-provider upload)
@@ -1020,7 +985,7 @@ async def upload_asset_to_provider(
                             provider_id=provider_id,
                             status='success',
                             method='upload_to_provider',
-                            context={'source': source_folder_id or 'direct_upload'},
+                            context={"upload_method": upload_method},
                         )
                     except Exception as e:
                         logger.warning(
@@ -1082,6 +1047,14 @@ class UploadFromUrlRequest(BaseModel):
     source_site: Optional[str] = Field(
         default=None,
         description="Hostname/domain of source site (e.g., twitter.com)"
+    )
+    upload_method: Optional[str] = Field(
+        default=None,
+        description="Upload method identifier (e.g., extension, api, local_folders)",
+    )
+    upload_context: Optional[dict] = Field(
+        default=None,
+        description="Optional upload context (free-form)",
     )
 
 
@@ -1279,18 +1252,22 @@ async def upload_asset_from_url(
     placeholder_provider_asset_id = f"local_{sha256[:16]}"
 
     # Determine upload method (canonical source)
-    upload_method = "extension" if (request.source_url or request.source_site) else "api"
+    upload_method = infer_upload_method(
+        upload_method=request.upload_method,
+        source_url=request.source_url,
+        source_site=request.source_site,
+    )
 
-    # Build upload context metadata (rich context only, no redundant 'source')
-    upload_context = {}
-    if request.source_url:
-        upload_context["source_url"] = request.source_url
-    if request.source_site:
-        upload_context["source_site"] = request.source_site
+    # Build upload attribution metadata (rich context only)
+    upload_attribution = build_upload_attribution_context(
+        upload_context=request.upload_context,
+        source_url=request.source_url,
+        source_site=request.source_site,
+    )
 
     media_metadata = {}
-    if upload_context:
-        media_metadata["upload_history"] = upload_context
+    if upload_attribution:
+        media_metadata["upload_attribution"] = upload_attribution
 
     try:
         asset = await add_asset(

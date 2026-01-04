@@ -173,7 +173,7 @@ class Asset(SQLModel, table=True):
     upload_method: Optional[str] = Field(
         default=None,
         max_length=32,
-        description="How uploaded: 'extension', 'api', 'web', 'mobile'"
+        description="How uploaded: 'extension', 'local_folders', 'api', 'generated', etc."
     )
 
     # ===== GENERIC OVERFLOW METADATA =====
