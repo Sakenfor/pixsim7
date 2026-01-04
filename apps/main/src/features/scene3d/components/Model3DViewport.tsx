@@ -134,7 +134,6 @@ function SceneContent() {
           <ModelLoader
             url={modelUrl}
             wireframe={renderMode === 'wireframe'}
-            showZones={mode === 'zones' || renderMode === 'zones'}
           />
           {(mode === 'zones' || renderMode === 'zones') && (
             <ZoneHighlighter />

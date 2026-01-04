@@ -19,8 +19,6 @@ export interface ModelLoaderProps {
   url: string;
   /** Show wireframe overlay */
   wireframe?: boolean;
-  /** Show zone highlights */
-  showZones?: boolean;
 }
 
 /**

@@ -1,6 +1,7 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import path from 'node:path';
+
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -63,6 +64,9 @@ export default defineConfig({
       { find: '@features/settings', replacement: path.resolve(__dirname, './src/features/settings') },
       { find: '@features/gallery', replacement: path.resolve(__dirname, './src/features/gallery') },
       { find: '@features/scene', replacement: path.resolve(__dirname, './src/features/scene') },
+      { find: '@features/scene3d', replacement: path.resolve(__dirname, './src/features/scene3d') },
+      { find: '@features/sceneComposer3d', replacement: path.resolve(__dirname, './src/features/sceneComposer3d') },
+      { find: '@features/scenePreview3d', replacement: path.resolve(__dirname, './src/features/scenePreview3d') },
       { find: '@features/hud', replacement: path.resolve(__dirname, './src/features/hud') },
       { find: '@features/worldTools', replacement: path.resolve(__dirname, './src/features/worldTools') },
       { find: '@features/brainTools', replacement: path.resolve(__dirname, './src/features/brainTools') },
