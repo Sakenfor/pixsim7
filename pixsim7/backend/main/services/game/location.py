@@ -42,8 +42,8 @@ class GameLocationService:
         Replace all hotspots for a location with the provided list.
 
         Each hotspot dict should contain:
-          - object_name: str
           - hotspot_id: str
+          - target: Optional[dict]
           - action: Optional[dict]
           - meta: Optional[dict]
         """
@@ -55,9 +55,10 @@ class GameLocationService:
         created: List[GameHotspot] = []
         for h in hotspots:
             hotspot = GameHotspot(
+                scope="location",
                 location_id=location_id,
-                object_name=h["object_name"],
                 hotspot_id=h["hotspot_id"],
+                target=h.get("target"),
                 action=h.get("action"),
                 meta=h.get("meta"),
             )

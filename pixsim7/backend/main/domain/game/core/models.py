@@ -186,16 +186,25 @@ class NpcExpression(SQLModel, table=True):
 
 class GameHotspot(SQLModel, table=True):
     """
-    Clickable hotspot within a GameLocation.
+    Interactive trigger used across 2D/3D runtimes.
 
-    Links a glTF object (by name) to a logical hotspot_id and a structured action
-    (play scene, change location, npc talk, etc.).
+    Targets can be meshes, 2D rects, zones, or event hooks, with a shared action payload.
     """
     __tablename__ = "game_hotspots"
     id: Optional[int] = Field(default=None, primary_key=True)
-    location_id: int = Field(foreign_key="game_locations.id", index=True)
-    object_name: str = Field(max_length=128, description="Exact node/mesh name in glTF")
-    hotspot_id: str = Field(max_length=128, description="Canonical hotspot identifier (e.g., couch-kiss)")
+    scope: str = Field(
+        max_length=32,
+        description="Trigger scope (location, world, scene, asset, etc.)",
+    )
+    world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
+    location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id", index=True)
+    scene_id: Optional[int] = Field(default=None, foreign_key="game_scenes.id", index=True)
+    hotspot_id: str = Field(max_length=128, description="Canonical trigger identifier (e.g., couch-kiss)")
+    target: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Target definition (mesh, rect2d, zone3d, event, etc.)",
+    )
     action: Optional[Dict[str, Any]] = Field(
         default=None,
         sa_column=Column(JSON),

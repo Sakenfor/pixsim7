@@ -205,7 +205,7 @@ The portrait is recomputed whenever:
 The **Game World editor** (`GameWorld.tsx`) exposes:
 
 - Existing fields per hotspot:
-  - `object_name`,
+  - `target` (e.g., `target.mesh.object_name`, `target.rect2d`),
   - `hotspot_id`,
   - `meta` (raw JSON).
 

@@ -22,7 +22,7 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
 - `apps/main/src/routes/GameWorld.tsx`
   - Lists locations via `/game/locations`.
   - For a selected location, edits its **hotspots**:
-    - `object_name`, `hotspot_id`, `action`, `meta`.
+    - `target`, `hotspot_id`, `action`, `meta`.
   - Has structured controls for `action`:
     - `type: 'play_scene' | 'change_location' | 'npc_talk'`
     - `scene_id`, `target_location_id`, `npc_id`.
@@ -42,7 +42,7 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
 - `apps/main/src/routes/Game2D.tsx`
   - 2D game preview:
     - Shows background image/video for `GameLocation`.
-    - Renders hotspots on top via `meta.rect2d` and `action`.
+    - Renders hotspots on top via `target.rect2d` and `action`.
     - Uses `GameWorld`/NPC APIs plus `getNpcPresence` to drive portraits.
 
 Right now, there is **no editor UI** for:

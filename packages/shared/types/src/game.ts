@@ -463,6 +463,8 @@ export interface GameLocationSummary {
 
 export type HotspotActionType = 'play_scene' | 'change_location' | 'npc_talk';
 
+export type HotspotScope = 'location' | 'world' | 'scene' | 'asset' | string;
+
 export interface PlaySceneAction {
   type: 'play_scene';
   scene_id?: number | string | null;
@@ -480,10 +482,31 @@ export interface NpcTalkAction {
 
 export type HotspotAction = PlaySceneAction | ChangeLocationAction | NpcTalkAction;
 
+export interface HotspotTargetMesh {
+  object_name: string;
+}
+
+export interface HotspotTargetRect2d {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface HotspotTarget {
+  mesh?: HotspotTargetMesh | null;
+  rect2d?: HotspotTargetRect2d | null;
+  [key: string]: unknown;
+}
+
 export interface GameHotspotDTO {
   id?: number | null;
-  object_name: string;
+  scope?: HotspotScope | null;
+  world_id?: number | null;
+  location_id?: number | null;
+  scene_id?: number | null;
   hotspot_id: string;
+  target?: HotspotTarget | null;
   action?: HotspotAction | null;
   meta?: Record<string, unknown> | null;
 }

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any, Annotated, Union, Literal
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameLocationSvc
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
+from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO
 
 
 router = APIRouter()
@@ -24,39 +25,6 @@ class GameLocationSummary(BaseModel):
         validation_alias=AliasChoices("asset", "asset_id"),
     )
     default_spawn: Optional[str] = None
-
-
-class PlaySceneAction(BaseModel):
-    type: Literal["play_scene"]
-    scene_id: Optional[int] = None
-
-
-class ChangeLocationAction(BaseModel):
-    type: Literal["change_location"]
-    target_location_id: Optional[int] = None
-
-
-class NpcTalkAction(BaseModel):
-    type: Literal["npc_talk"]
-    npc_id: Optional[int] = None
-
-
-HotspotAction = Annotated[
-    Union[PlaySceneAction, ChangeLocationAction, NpcTalkAction],
-    Field(discriminator="type"),
-]
-
-
-class GameHotspotDTO(BaseModel):
-    """A hotspot within a game location."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: Optional[int] = None
-    object_name: str
-    hotspot_id: str
-    action: Optional[HotspotAction] = None
-    meta: Optional[Dict[str, Any]] = None
 
 
 class GameLocationDetail(BaseModel):
@@ -121,8 +89,12 @@ async def get_location(
         hotspots=[
             GameHotspotDTO(
                 id=h.id,
-                object_name=h.object_name,
+                scope=h.scope,
+                world_id=h.world_id,
+                location_id=h.location_id,
+                scene_id=h.scene_id,
                 hotspot_id=h.hotspot_id,
+                target=h.target,
                 action=h.action,
                 meta=h.meta,
             )
@@ -144,7 +116,7 @@ async def replace_hotspots(
     Body shape:
       {
         "hotspots": [
-          { "object_name": "...", "hotspot_id": "...", "action": {...}, "meta": {...} },
+          { "hotspot_id": "...", "target": {...}, "action": {...}, "meta": {...} },
           ...
         ]
       }
@@ -171,8 +143,12 @@ async def replace_hotspots(
         hotspots=[
             GameHotspotDTO(
                 id=h.id,
-                object_name=h.object_name,
+                scope=h.scope,
+                world_id=h.world_id,
+                location_id=h.location_id,
+                scene_id=h.scene_id,
                 hotspot_id=h.hotspot_id,
+                target=h.target,
                 action=h.action,
                 meta=h.meta,
             )

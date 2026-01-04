@@ -7,8 +7,12 @@ export interface GameLocationSummary {
 
 export interface GameHotspotDTO {
   id?: number
-  object_name: string
+  scope?: import('@pixsim7/shared.types').HotspotScope | null
+  world_id?: number | null
+  location_id?: number | null
+  scene_id?: number | null
   hotspot_id: string
+  target?: import('@pixsim7/shared.types').HotspotTarget | null
   action?: import('@pixsim7/shared.types').HotspotAction | null
   meta?: Record<string, unknown> | null
 }

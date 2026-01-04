@@ -84,6 +84,19 @@ export function GameWorld() {
     setDetail({ ...detail, hotspots: nextHotspots });
   };
 
+  const handleMeshTargetChange = (index: number, value: string) => {
+    if (!detail) return;
+    const h = detail.hotspots[index];
+    const nextTarget = { ...(h.target ?? {}) };
+    if (value) {
+      nextTarget.mesh = { object_name: value };
+    } else {
+      delete (nextTarget as any).mesh;
+    }
+    const hasTarget = Object.keys(nextTarget).length > 0;
+    handleHotspotChange(index, { target: hasTarget ? nextTarget : undefined });
+  };
+
   const handleActionChange = (
     index: number,
     field: 'type' | 'scene_id' | 'target_location_id' | 'npc_id',
@@ -122,7 +135,7 @@ export function GameWorld() {
       ...detail,
       hotspots: [
         ...detail.hotspots,
-        { object_name: '', hotspot_id: '', action: undefined, meta: {} },
+        { hotspot_id: '', target: {}, action: undefined, meta: {} },
       ],
     });
   };
@@ -140,7 +153,9 @@ export function GameWorld() {
     setIsLoading(true);
     setError(null);
     try {
-      const cleaned = detail.hotspots.filter(h => h.object_name && h.hotspot_id);
+      const cleaned = detail.hotspots.filter(
+        h => h.hotspot_id && h.target && Object.keys(h.target).length > 0,
+      );
       const saved = await saveGameLocationHotspots(detail.id, cleaned);
       setDetail(saved);
     } catch (e: any) {
@@ -261,11 +276,11 @@ export function GameWorld() {
                   >
                     {/* Basic Hotspot Info */}
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <Input
-                        placeholder="object_name (from glTF)"
-                        value={h.object_name}
-                        onChange={(e: any) => handleHotspotChange(idx, { object_name: e.target.value })}
-                      />
+                    <Input
+                      placeholder="mesh name (from glTF)"
+                      value={h.target?.mesh?.object_name ?? ''}
+                      onChange={(e: any) => handleMeshTargetChange(idx, e.target.value)}
+                    />
                       <Input
                         placeholder="hotspot_id"
                         value={h.hotspot_id}
@@ -353,6 +368,23 @@ export function GameWorld() {
                       </button>
                       {showAdvanced[idx] && (
                         <div className="mt-2">
+                          <Input
+                            placeholder="Raw target JSON (mesh, rect2d, zone3d)"
+                            value={h.target ? JSON.stringify(h.target) : ''}
+                            onChange={(e: any) => {
+                              const v = e.target.value.trim();
+                              let parsed: Record<string, unknown> | undefined;
+                              if (v) {
+                                try {
+                                  parsed = JSON.parse(v);
+                                } catch {
+                                  parsed = h.target ?? {};
+                                }
+                              }
+                              handleHotspotChange(idx, { target: parsed });
+                            }}
+                            className="font-mono text-xs mb-2"
+                          />
                           <Input
                             placeholder="Raw meta JSON (for advanced use)"
                             value={h.meta ? JSON.stringify(h.meta) : ''}

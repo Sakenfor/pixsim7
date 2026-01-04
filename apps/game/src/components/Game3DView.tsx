@@ -72,7 +72,10 @@ export function Game3DView({ locationId, authToken, hotspots, onHotspotClick }: 
         // Simple hotspot highlighting via mesh metadata
         const hotspotsByName = new Map<string, GameHotspotDTO>()
         for (const h of hotspots) {
-          hotspotsByName.set(h.object_name, h)
+          const meshName = h.target?.mesh?.object_name
+          if (meshName) {
+            hotspotsByName.set(meshName, h)
+          }
         }
 
         scene!.meshes.forEach((mesh) => {
@@ -126,4 +129,3 @@ export function Game3DView({ locationId, authToken, hotspots, onHotspotClick }: 
     </div>
   )
 }
-

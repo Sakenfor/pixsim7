@@ -266,11 +266,12 @@ POST /api/v1/game-locations/
 
 **Hotspot Creation:**
 ```http
-POST /api/v1/game-hotspots/
+POST /api/v1/game/triggers
 {
+  "scope": "location",
   "location_id": 1,
-  "object_name": "tavern_door",
   "hotspot_id": "enter_tavern",
+  "target": { "mesh": { "object_name": "tavern_door" } },
   "action": { "type": "play_scene", "scene_id": 3 },
   "meta": { "prompt_text": "Enter the tavern?" }
 }

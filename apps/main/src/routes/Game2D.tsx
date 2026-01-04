@@ -905,9 +905,9 @@ export function Game2D() {
                   playsInline
                 />
               )}
-                  {/* rect2d overlays from hotspot meta */}
+                  {/* rect2d overlays from hotspot targets */}
                   {locationDetail.hotspots.map((h) => {
-                    const rect = (h.meta && (h.meta as any).rect2d) || null;
+                    const rect = h.target?.rect2d || null;
                     if (!rect || rect.w == null || rect.h == null) return null;
                     const x = Number(rect.x ?? 0);
                     const y = Number(rect.y ?? 0);
@@ -921,6 +921,7 @@ export function Game2D() {
                     } as React.CSSProperties;
                     const action = parseHotspotAction(h.action);
                     const isActionable = Boolean(action);
+                    const label = h.hotspot_id || h.target?.mesh?.object_name || 'hotspot';
                     return (
                       <button
                         key={`hs-rect-${h.id ?? h.hotspot_id}`}
@@ -928,9 +929,9 @@ export function Game2D() {
                         style={style}
                         disabled={!isActionable || isLoadingScene}
                         onClick={() => handlePlayHotspot(h)}
-                        title={h.hotspot_id || h.object_name}
+                        title={label}
                       >
-                        {h.hotspot_id || h.object_name}
+                        {label}
                       </button>
                     );
                   })}
@@ -989,15 +990,16 @@ export function Game2D() {
                     const action = parseHotspotAction(h.action);
                     const isPlayable = action?.type === 'play_scene' && action.scene_id != null;
                     const isActionable = Boolean(action);
+                    const label = h.hotspot_id || h.target?.mesh?.object_name || 'hotspot';
                     return (
                       <Button
-                        key={h.id ?? `${h.object_name}-${h.hotspot_id}`}
+                        key={h.id ?? `${label}-${h.hotspot_id}`}
                         size="sm"
                         variant={isPlayable ? 'primary' : 'secondary'}
                         disabled={!isActionable || isLoadingScene}
                         onClick={() => handlePlayHotspot(h)}
                       >
-                        {h.hotspot_id || h.object_name}
+                        {label}
                         {isPlayable && (
                           <span className="ml-1 text-[10px] opacity-70">#{action?.scene_id}</span>
                         )}

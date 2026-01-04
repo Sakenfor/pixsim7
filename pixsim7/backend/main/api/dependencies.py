@@ -25,7 +25,12 @@ from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
 from pixsim7.backend.main.services.analysis import AnalysisService
-from pixsim7.backend.main.services.game import GameSessionService, GameLocationService, GameWorldService
+from pixsim7.backend.main.services.game import (
+    GameSessionService,
+    GameLocationService,
+    GameWorldService,
+    GameTriggerService,
+)
 from pixsim7.backend.main.services.npc import NpcExpressionService
 from pixsim7.backend.main.services.plugin import PluginCatalogService
 from pixsim7.backend.main.services.refs import EntityRefResolver
@@ -113,6 +118,11 @@ async def get_game_session_service(
 def get_game_location_service(db: AsyncSession = Depends(get_database)) -> GameLocationService:
     """Get GameLocationService instance"""
     return GameLocationService(db)
+
+
+def get_game_trigger_service(db: AsyncSession = Depends(get_database)) -> GameTriggerService:
+    """Get GameTriggerService instance"""
+    return GameTriggerService(db)
 
 
 def get_npc_expression_service(db: AsyncSession = Depends(get_database)) -> NpcExpressionService:
@@ -361,6 +371,7 @@ AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 AnalysisSvc = Annotated[AnalysisService, Depends(get_analysis_service)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
+GameTriggerSvc = Annotated[GameTriggerService, Depends(get_game_trigger_service)]
 NpcExpressionSvc = Annotated[NpcExpressionService, Depends(get_npc_expression_service)]
 GameWorldSvc = Annotated[GameWorldService, Depends(get_game_world_service)]
 PluginCatalogSvc = Annotated[PluginCatalogService, Depends(get_plugin_catalog_service)]
