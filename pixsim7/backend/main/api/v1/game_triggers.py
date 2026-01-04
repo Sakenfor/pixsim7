@@ -4,7 +4,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameTriggerSvc
-from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO, HotspotAction, HotspotTarget
+from pixsim7.backend.main.api.v1.game_hotspots import (
+    GameHotspotDTO,
+    HotspotAction,
+    HotspotTarget,
+    to_hotspot_dto,
+    validate_scope_binding,
+)
 
 
 router = APIRouter()
@@ -36,16 +42,6 @@ class GameTriggerUpdate(BaseModel):
     meta: Optional[Dict[str, Any]] = None
 
 
-def validate_scope_binding(payload: Dict[str, Any]) -> None:
-    scope = payload.get("scope")
-    if scope == "location" and payload.get("location_id") is None:
-        raise HTTPException(status_code=400, detail="location_id is required for location scope")
-    if scope == "world" and payload.get("world_id") is None:
-        raise HTTPException(status_code=400, detail="world_id is required for world scope")
-    if scope == "scene" and payload.get("scene_id") is None:
-        raise HTTPException(status_code=400, detail="scene_id is required for scene scope")
-
-
 @router.get("/", response_model=List[GameHotspotDTO])
 async def list_triggers(
     game_trigger_service: GameTriggerSvc,
@@ -61,20 +57,7 @@ async def list_triggers(
         location_id=location_id,
         scene_id=scene_id,
     )
-    return [
-        GameHotspotDTO(
-            id=t.id,
-            scope=t.scope,
-            world_id=t.world_id,
-            location_id=t.location_id,
-            scene_id=t.scene_id,
-            hotspot_id=t.hotspot_id,
-            target=t.target,
-            action=t.action,
-            meta=t.meta,
-        )
-        for t in triggers
-    ]
+    return [to_hotspot_dto(t) for t in triggers]
 
 
 @router.get("/{trigger_id}", response_model=GameHotspotDTO)
@@ -86,17 +69,7 @@ async def get_trigger(
     trigger = await game_trigger_service.get_trigger(trigger_id)
     if not trigger:
         raise HTTPException(status_code=404, detail="Trigger not found")
-    return GameHotspotDTO(
-        id=trigger.id,
-        scope=trigger.scope,
-        world_id=trigger.world_id,
-        location_id=trigger.location_id,
-        scene_id=trigger.scene_id,
-        hotspot_id=trigger.hotspot_id,
-        target=trigger.target,
-        action=trigger.action,
-        meta=trigger.meta,
-    )
+    return to_hotspot_dto(trigger)
 
 
 @router.post("/", response_model=GameHotspotDTO)
@@ -108,17 +81,7 @@ async def create_trigger(
     payload_dict = payload.model_dump(exclude_none=True)
     validate_scope_binding(payload_dict)
     trigger = await game_trigger_service.create_trigger(payload_dict)
-    return GameHotspotDTO(
-        id=trigger.id,
-        scope=trigger.scope,
-        world_id=trigger.world_id,
-        location_id=trigger.location_id,
-        scene_id=trigger.scene_id,
-        hotspot_id=trigger.hotspot_id,
-        target=trigger.target,
-        action=trigger.action,
-        meta=trigger.meta,
-    )
+    return to_hotspot_dto(trigger)
 
 
 @router.patch("/{trigger_id}", response_model=GameHotspotDTO)
@@ -129,22 +92,18 @@ async def update_trigger(
     user: CurrentUser,
 ) -> GameHotspotDTO:
     payload_dict = payload.model_dump(exclude_none=True)
-    if "scope" in payload_dict:
-        validate_scope_binding(payload_dict)
-    trigger = await game_trigger_service.update_trigger(trigger_id, payload_dict)
-    if not trigger:
+    existing = await game_trigger_service.get_trigger(trigger_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Trigger not found")
-    return GameHotspotDTO(
-        id=trigger.id,
-        scope=trigger.scope,
-        world_id=trigger.world_id,
-        location_id=trigger.location_id,
-        scene_id=trigger.scene_id,
-        hotspot_id=trigger.hotspot_id,
-        target=trigger.target,
-        action=trigger.action,
-        meta=trigger.meta,
-    )
+    merged = {
+        "scope": payload_dict.get("scope", existing.scope),
+        "world_id": payload_dict.get("world_id", existing.world_id),
+        "location_id": payload_dict.get("location_id", existing.location_id),
+        "scene_id": payload_dict.get("scene_id", existing.scene_id),
+    }
+    validate_scope_binding(merged)
+    trigger = await game_trigger_service.update_trigger(trigger_id, payload_dict)
+    return to_hotspot_dto(trigger)
 
 
 @router.delete("/{trigger_id}", response_model=Dict[str, Any])

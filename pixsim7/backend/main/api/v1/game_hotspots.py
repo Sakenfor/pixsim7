@@ -1,5 +1,8 @@
 from typing import Optional, Dict, Any, Annotated, Union, Literal
 
+from fastapi import HTTPException
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -7,10 +10,22 @@ class PlaySceneAction(BaseModel):
     type: Literal["play_scene"]
     scene_id: Optional[int] = None
 
+    @model_validator(mode="after")
+    def require_scene_id(self) -> "PlaySceneAction":
+        if self.scene_id is None:
+            raise ValueError("scene_id is required for play_scene action")
+        return self
+
 
 class ChangeLocationAction(BaseModel):
     type: Literal["change_location"]
     target_location_id: Optional[int] = None
+
+    @model_validator(mode="after")
+    def require_target_location_id(self) -> "ChangeLocationAction":
+        if self.target_location_id is None:
+            raise ValueError("target_location_id is required for change_location action")
+        return self
 
 
 class NpcTalkAction(BaseModel):
@@ -41,6 +56,13 @@ class HotspotTarget(BaseModel):
     mesh: Optional[HotspotTargetMesh] = None
     rect2d: Optional[HotspotTargetRect2d] = None
 
+    @model_validator(mode="after")
+    def require_target(self) -> "HotspotTarget":
+        has_extra = bool(getattr(self, "__pydantic_extra__", None))
+        if self.mesh is None and self.rect2d is None and not has_extra:
+            raise ValueError("At least one target field is required")
+        return self
+
 
 class GameHotspotDTO(BaseModel):
     """A shared trigger/hotspot definition used by 2D and 3D runtimes."""
@@ -56,3 +78,27 @@ class GameHotspotDTO(BaseModel):
     target: Optional[HotspotTarget] = None
     action: Optional[HotspotAction] = None
     meta: Optional[Dict[str, Any]] = None
+
+
+def validate_scope_binding(payload: Dict[str, Any]) -> None:
+    scope = payload.get("scope")
+    if scope == "location" and payload.get("location_id") is None:
+        raise HTTPException(status_code=400, detail="location_id is required for location scope")
+    if scope == "world" and payload.get("world_id") is None:
+        raise HTTPException(status_code=400, detail="world_id is required for world scope")
+    if scope == "scene" and payload.get("scene_id") is None:
+        raise HTTPException(status_code=400, detail="scene_id is required for scene scope")
+
+
+def to_hotspot_dto(h: Any) -> GameHotspotDTO:
+    return GameHotspotDTO.model_construct(
+        id=h.id,
+        scope=h.scope,
+        world_id=h.world_id,
+        location_id=h.location_id,
+        scene_id=h.scene_id,
+        hotspot_id=h.hotspot_id,
+        target=h.target,
+        action=h.action,
+        meta=h.meta,
+    )

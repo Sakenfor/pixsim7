@@ -43,7 +43,7 @@ TypeScript schema (canonical in `@pixsim7/game.engine`):
   ```ts
   {
     type: 'play_scene';
-    scene_id?: number | string | null;
+    scene_id: number | string;
   }
   ```
 
@@ -51,7 +51,7 @@ TypeScript schema (canonical in `@pixsim7/game.engine`):
   ```ts
   {
     type: 'change_location';
-    target_location_id?: number | string | null; // GameLocation.id
+    target_location_id: number | string; // GameLocation.id
   }
   ```
 

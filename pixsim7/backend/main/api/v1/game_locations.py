@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameLocationSvc
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
-from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO
+from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO, to_hotspot_dto
 
 
 router = APIRouter()
@@ -40,6 +40,10 @@ class GameLocationDetail(BaseModel):
     )
     default_spawn: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
+    hotspots: List[GameHotspotDTO]
+
+
+class ReplaceHotspotsPayload(BaseModel):
     hotspots: List[GameHotspotDTO]
 
 
@@ -86,27 +90,14 @@ async def get_location(
         asset_id=loc.asset_id,
         default_spawn=loc.default_spawn,
         meta=loc.meta,
-        hotspots=[
-            GameHotspotDTO(
-                id=h.id,
-                scope=h.scope,
-                world_id=h.world_id,
-                location_id=h.location_id,
-                scene_id=h.scene_id,
-                hotspot_id=h.hotspot_id,
-                target=h.target,
-                action=h.action,
-                meta=h.meta,
-            )
-            for h in hotspots
-        ],
+        hotspots=[to_hotspot_dto(h) for h in hotspots],
     )
 
 
 @router.put("/{location_id}/hotspots", response_model=GameLocationDetail)
 async def replace_hotspots(
     location_id: int,
-    payload: Dict[str, Any],
+    payload: ReplaceHotspotsPayload,
     game_location_service: GameLocationSvc,
     user: CurrentUser,
 ) -> GameLocationDetail:
@@ -125,9 +116,10 @@ async def replace_hotspots(
     if not loc:
         raise HTTPException(status_code=404, detail="Location not found")
 
-    hotspots_payload = payload.get("hotspots") or []
-    if not isinstance(hotspots_payload, list):
-        raise HTTPException(status_code=400, detail="hotspots must be a list")
+    hotspots_payload = [
+        h.model_dump(exclude_none=True)
+        for h in payload.hotspots
+    ]
 
     created = await game_location_service.replace_hotspots(
         location_id=location_id,
@@ -140,18 +132,5 @@ async def replace_hotspots(
         asset_id=loc.asset_id,
         default_spawn=loc.default_spawn,
         meta=loc.meta,
-        hotspots=[
-            GameHotspotDTO(
-                id=h.id,
-                scope=h.scope,
-                world_id=h.world_id,
-                location_id=h.location_id,
-                scene_id=h.scene_id,
-                hotspot_id=h.hotspot_id,
-                target=h.target,
-                action=h.action,
-                meta=h.meta,
-            )
-            for h in created
-        ],
+        hotspots=[to_hotspot_dto(h) for h in created],
     )
