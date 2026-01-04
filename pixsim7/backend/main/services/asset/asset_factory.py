@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from urllib.parse import unquote, urlparse, urlunparse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -18,6 +19,55 @@ from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, normalize_enum
 from pixsim7.backend.main.domain.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
+
+
+def _normalize_remote_url(url: Optional[str]) -> Optional[str]:
+    """
+    Normalize a remote URL for consistent deduplication.
+
+    - Unquotes URL-encoded characters
+    - Strips whitespace
+    - Normalizes relative pixverse paths to full URLs
+    - Removes trailing slashes from path (but not query strings)
+
+    This ensures that the same logical URL matches regardless of encoding
+    differences between direct sync and embedded extraction.
+    """
+    if not url:
+        return None
+
+    # Unquote and strip
+    url = unquote(url.strip())
+
+    # Handle relative pixverse paths (same logic as _coerce_pixverse_url)
+    if not url.startswith(("http://", "https://")):
+        if url.startswith("/"):
+            url = url[1:]
+        if url.startswith(("pixverse/", "upload/")):
+            url = f"https://media.pixverse.ai/{url}"
+        elif url.startswith(("openapi/", "openapi\\")):
+            url = f"https://media.pixverse.ai/{url.replace(chr(92), '/')}"
+        elif url.startswith("media.pixverse.ai/"):
+            url = f"https://{url}"
+
+    # Parse and normalize
+    try:
+        parsed = urlparse(url)
+        # Remove trailing slash from path (but preserve root /)
+        path = parsed.path.rstrip("/") if parsed.path != "/" else parsed.path
+        # Reconstruct with normalized path
+        url = urlunparse((
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            path,
+            parsed.params,
+            parsed.query,
+            "",  # Remove fragment
+        ))
+    except Exception:
+        pass  # Keep original if parsing fails
+
+    return url
 
 
 async def add_asset(
@@ -56,6 +106,10 @@ async def add_asset(
     2) sha256 (if provided)
     3) remote_url + provider_id + user_id (best-effort)
     """
+
+    # Normalize remote_url for consistent deduplication
+    # This ensures embedded extraction URLs (normalized) match direct sync URLs (raw)
+    remote_url = _normalize_remote_url(remote_url) or remote_url
 
     # Track which dedup strategy matched for conflict detection
     dedup_strategy = None
@@ -100,8 +154,12 @@ async def add_asset(
             existing = existing_by_sha256
             dedup_strategy = "sha256"
 
-    # 3) remote_url
+    # 3) remote_url - use LIKE for case-insensitive matching with URL variants
     if not existing and remote_url:
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
+        # First try exact match with normalized URL
         result = await db.execute(
             select(Asset).where(
                 Asset.remote_url == remote_url,
@@ -110,6 +168,44 @@ async def add_asset(
             )
         )
         existing_by_url = result.scalar_one_or_none()
+
+        # Fallback: try case-insensitive match on the URL path
+        # This handles old assets with different casing or URL encoding
+        if not existing_by_url:
+            # Extract the unique identifier from the URL (usually the filename/UUID part)
+            # and do a LIKE match to find the asset regardless of encoding
+            try:
+                parsed = urlparse(remote_url)
+                # Get the last path segment (usually the file identifier)
+                path_parts = [p for p in parsed.path.split("/") if p]
+                if path_parts:
+                    file_identifier = path_parts[-1]
+                    # Remove extension for more flexible matching
+                    if "." in file_identifier:
+                        file_identifier = file_identifier.rsplit(".", 1)[0]
+                    if len(file_identifier) >= 8:  # Only if it looks like a real ID
+                        result = await db.execute(
+                            select(Asset).where(
+                                Asset.remote_url.ilike(f"%{file_identifier}%"),
+                                Asset.provider_id == provider_id,
+                                Asset.user_id == user_id,
+                            )
+                        )
+                        existing_by_url = result.scalar_one_or_none()
+                        if existing_by_url:
+                            logger.info(
+                                "asset_dedup_url_fallback_match",
+                                user_id=user_id,
+                                provider_id=provider_id,
+                                incoming_url=remote_url,
+                                existing_url=existing_by_url.remote_url,
+                                existing_asset_id=existing_by_url.id,
+                                file_identifier=file_identifier,
+                                detail="Found existing asset via URL ILIKE fallback",
+                            )
+            except Exception:
+                pass  # Fall through if URL parsing fails
+
         if existing_by_url:
             existing = existing_by_url
             dedup_strategy = "remote_url"
