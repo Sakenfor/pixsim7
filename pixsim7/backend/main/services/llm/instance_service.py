@@ -2,14 +2,18 @@
 LLM Provider Instance Service
 
 Manages CRUD operations for LLM provider instances and resolves
-instance configuration for provider adapters.
+instance configuration for provider adapters. Uses the shared
+ProviderInstanceConfig table with kind=LLM.
 """
 import logging
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.providers import LlmProviderInstance
+from pixsim7.backend.main.domain.providers import (
+    ProviderInstanceConfig,
+    ProviderInstanceConfigKind,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +131,8 @@ class LlmInstanceService:
         description: str | None = None,
         enabled: bool = True,
         priority: int = 0,
-    ) -> LlmProviderInstance:
+        owner_user_id: int | None = None,
+    ) -> ProviderInstanceConfig:
         """
         Create a new provider instance.
 
@@ -138,6 +143,7 @@ class LlmInstanceService:
             description: Optional description
             enabled: Whether instance is active
             priority: Display priority (higher = first)
+            owner_user_id: Owner user ID (null = global)
 
         Returns:
             Created instance
@@ -148,13 +154,15 @@ class LlmInstanceService:
         # Validate config for this provider type
         validate_instance_config(provider_id, config)
 
-        instance = LlmProviderInstance(
+        instance = ProviderInstanceConfig(
+            kind=ProviderInstanceConfigKind.LLM,
             provider_id=provider_id,
             label=label,
             config=config,
             description=description,
             enabled=enabled,
             priority=priority,
+            owner_user_id=owner_user_id,
         )
         self.session.add(instance)
         await self.session.flush()
@@ -166,11 +174,14 @@ class LlmInstanceService:
         )
         return instance
 
-    async def get_instance(self, instance_id: int) -> LlmProviderInstance | None:
-        """Get instance by ID."""
-        return await self.session.get(LlmProviderInstance, instance_id)
+    async def get_instance(self, instance_id: int) -> ProviderInstanceConfig | None:
+        """Get LLM instance by ID."""
+        instance = await self.session.get(ProviderInstanceConfig, instance_id)
+        if not instance or instance.kind != ProviderInstanceConfigKind.LLM:
+            return None
+        return instance
 
-    async def get_instance_by_id(self, instance_id: int) -> LlmProviderInstance | None:
+    async def get_instance_by_id(self, instance_id: int) -> ProviderInstanceConfig | None:
         """Alias for get_instance."""
         return await self.get_instance(instance_id)
 
@@ -178,34 +189,41 @@ class LlmInstanceService:
         self,
         provider_id: str | None = None,
         enabled_only: bool = True,
-    ) -> list[LlmProviderInstance]:
+        owner_user_id: int | None = None,
+    ) -> list[ProviderInstanceConfig]:
         """
         List provider instances.
 
         Args:
             provider_id: Filter by provider (optional)
             enabled_only: Only return enabled instances (default True)
+            owner_user_id: Filter by owner (optional, None = any)
 
         Returns:
             List of instances, ordered by priority (desc) then label
         """
-        stmt = select(LlmProviderInstance)
+        stmt = select(ProviderInstanceConfig).where(
+            ProviderInstanceConfig.kind == ProviderInstanceConfigKind.LLM
+        )
 
         if provider_id:
-            stmt = stmt.where(LlmProviderInstance.provider_id == provider_id)
+            stmt = stmt.where(ProviderInstanceConfig.provider_id == provider_id)
 
         if enabled_only:
-            stmt = stmt.where(LlmProviderInstance.enabled == True)
+            stmt = stmt.where(ProviderInstanceConfig.enabled == True)
+
+        if owner_user_id is not None:
+            stmt = stmt.where(ProviderInstanceConfig.owner_user_id == owner_user_id)
 
         stmt = stmt.order_by(
-            LlmProviderInstance.priority.desc(),
-            LlmProviderInstance.label
+            ProviderInstanceConfig.priority.desc(),
+            ProviderInstanceConfig.label
         )
 
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_all_instances(self) -> list[LlmProviderInstance]:
+    async def list_all_instances(self) -> list[ProviderInstanceConfig]:
         """List all instances (including disabled)."""
         return await self.list_instances(enabled_only=False)
 
@@ -213,7 +231,7 @@ class LlmInstanceService:
         self,
         instance_id: int,
         **updates,
-    ) -> LlmProviderInstance | None:
+    ) -> ProviderInstanceConfig | None:
         """
         Update an instance.
 
@@ -337,7 +355,7 @@ def resolve_command_config_from_instance(
     Extract command config from instance config dict.
 
     Args:
-        instance_config: Config dict from LlmProviderInstance
+        instance_config: Config dict from ProviderInstanceConfig
 
     Returns:
         Tuple of (command, args, timeout) - values are None if not in config

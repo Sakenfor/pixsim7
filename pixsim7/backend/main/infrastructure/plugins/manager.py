@@ -373,6 +373,11 @@ class PluginManager:
         # ownership metadata if needed.
         plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=plugin_id)
         plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=plugin_id)
+        plugin_hooks.emit_sync(
+            PluginEvents.ANALYZERS_REGISTER,
+            plugin_id=plugin_id,
+            plugin=self.plugins[plugin_id],
+        )
 
         # Emit event (sync context)
         plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, plugin_id)
@@ -439,17 +444,20 @@ class PluginManager:
                 }
                 return False
 
-            if not hasattr(module, 'router'):
-                logger.error(f"Plugin {plugin_name} missing 'router'")
-                self.failed_plugins[plugin_name] = {
-                    'error': "Module missing 'router' export",
-                    'required': False,
-                    'manifest': None
-                }
-                return False
-
             manifest: PluginManifest = module.manifest
-            router: APIRouter = module.router
+
+            if not hasattr(module, 'router'):
+                if manifest.router_required:
+                    logger.error(f"Plugin {plugin_name} missing 'router'")
+                    self.failed_plugins[plugin_name] = {
+                        'error': "Module missing 'router' export",
+                        'required': False,
+                        'manifest': None
+                    }
+                    return False
+                router = APIRouter(tags=[manifest.id])
+            else:
+                router: APIRouter = module.router
 
             # Validate manifest ID matches directory name (security: prevent ID spoofing)
             if manifest.id != plugin_name:
@@ -566,6 +574,11 @@ class PluginManager:
             # ownership metadata if needed.
             plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=manifest.id)
             plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=manifest.id)
+            plugin_hooks.emit_sync(
+                PluginEvents.ANALYZERS_REGISTER,
+                plugin_id=manifest.id,
+                plugin=self.plugins[manifest.id],
+            )
 
             # Emit event (sync context)
             plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, manifest.id)

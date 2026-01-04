@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, useMemo } from 'react';
 import { useProviders } from '@features/providers';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
@@ -23,12 +22,10 @@ interface RemoteGallerySourceProps {
 export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: RemoteGallerySourceProps) {
   const controller = useAssetsController();
   const { providers } = useProviders();
-  const location = useLocation();
   const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
 
   // Layout settings (gaps)
-  const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
-  const [showLayoutSettings, setShowLayoutSettings] = useState(false);
+  const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [showToolsPanel, setShowToolsPanel] = useState(false);
 
   // Get overlay configuration from preset
@@ -37,50 +34,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
     const preset = getMediaCardPreset(overlayPresetId);
     return preset?.configuration;
   }, [overlayPresetId]);
-
-  // Infinite scroll sentinel ref
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  // Store controller in ref so observer always has latest values
-  const controllerRef = useRef(controller);
-  controllerRef.current = controller;
-
-  // Infinite scroll: auto-load more when sentinel comes into view
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) {
-      console.log('[InfiniteScroll] No sentinel element');
-      return;
-    }
-
-    console.log('[InfiniteScroll] Setting up observer');
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const ctrl = controllerRef.current;
-        console.log('[InfiniteScroll] Intersection event:', {
-          isIntersecting: entries[0].isIntersecting,
-          hasMore: ctrl.hasMore,
-          loading: ctrl.loading,
-        });
-        if (entries[0].isIntersecting && ctrl.hasMore && !ctrl.loading) {
-          console.log('[InfiniteScroll] Triggering loadMore()');
-          ctrl.loadMore();
-        }
-      },
-      {
-        rootMargin: '200px', // Start loading 200px before reaching the sentinel
-        threshold: 0.1
-      }
-    );
-
-    observer.observe(sentinel);
-
-    return () => {
-      console.log('[InfiniteScroll] Cleaning up observer');
-      observer.disconnect();
-    };
-  }, []); // Empty deps OK - uses ref for latest controller values
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
@@ -241,21 +194,42 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               />
             </div>
 
-            {/* Pagination controls */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {/* Page-based pagination controls */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => controller.goToPage(controller.currentPage - 1)}
+                disabled={controller.loading || controller.currentPage <= 1}
+                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Previous page"
+              >
+                ‹
+              </button>
+              <button
+                onClick={() => {
+                  const targetPage = prompt(`Go to page (1-${controller.totalPages}+):`, String(controller.currentPage));
+                  if (targetPage) {
+                    const page = parseInt(targetPage, 10);
+                    if (!isNaN(page) && page >= 1) {
+                      controller.goToPage(page);
+                    }
+                  }
+                }}
+                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors min-w-[60px] text-center"
+                title="Click to jump to page"
+              >
+                {controller.loading ? '...' : `${controller.currentPage}/${controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}`}
+              </button>
+              <button
+                onClick={() => controller.goToPage(controller.currentPage + 1)}
+                disabled={controller.loading || !controller.hasMore}
+                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Next page"
+              >
+                ›
+              </button>
+              <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
                 {controller.assets.length} items
               </span>
-              {controller.hasMore && (
-                <button
-                  onClick={() => controller.loadMore()}
-                  disabled={controller.loading}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-50 transition-colors"
-                  title="Load more assets"
-                >
-                  {controller.loading ? '...' : 'More'}
-                </button>
-              )}
             </div>
 
             {/* Divider */}
@@ -348,23 +322,27 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             {cardItems}
           </div>
         )}
-        {/* Infinite scroll sentinel and loading indicator */}
+        {/* Bottom pagination controls (duplicate of top for convenience) */}
         <div className="pt-4 pb-8 flex justify-center">
-          {controller.hasMore && (
-            <div ref={sentinelRef} className="text-sm text-neutral-500">
-              {controller.loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                  <span>Loading more assets...</span>
-                </div>
-              ) : (
-                <span className="text-neutral-400">Scroll for more</span>
-              )}
-            </div>
-          )}
-          {!controller.hasMore && controller.assets.length > 0 && (
-            <div className="text-sm text-neutral-500">No more assets</div>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => controller.goToPage(controller.currentPage - 1)}
+              disabled={controller.loading || controller.currentPage <= 1}
+              className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ← Prev
+            </button>
+            <span className="text-sm text-neutral-600 dark:text-neutral-400 px-2">
+              Page {controller.currentPage} of {controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}
+            </span>
+            <button
+              onClick={() => controller.goToPage(controller.currentPage + 1)}
+              disabled={controller.loading || !controller.hasMore}
+              className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next →
+            </button>
+          </div>
         </div>
       </div>
     </div>

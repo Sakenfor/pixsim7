@@ -9,6 +9,9 @@ export interface AnalyzerInfo {
   description: string;
   kind: AnalyzerKind;
   target: AnalyzerTarget;
+  provider_id?: string | null;
+  model_id?: string | null;
+  source_plugin_id?: string | null;
   enabled: boolean;
   is_default: boolean;
 }
@@ -16,6 +19,45 @@ export interface AnalyzerInfo {
 export interface AnalyzersListResponse {
   analyzers: AnalyzerInfo[];
   default_id: string;
+}
+
+export interface AnalyzerInstance {
+  id: number;
+  analyzer_id: string;
+  provider_id: string;
+  model_id?: string | null;
+  label: string;
+  description?: string | null;
+  config: Record<string, any>;
+  enabled: boolean;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnalyzerInstanceListResponse {
+  instances: AnalyzerInstance[];
+}
+
+export interface CreateAnalyzerInstanceRequest {
+  analyzer_id: string;
+  provider_id?: string;
+  model_id?: string;
+  label: string;
+  description?: string | null;
+  config?: Record<string, any>;
+  enabled?: boolean;
+  priority?: number;
+}
+
+export interface UpdateAnalyzerInstanceRequest {
+  provider_id?: string;
+  model_id?: string;
+  label?: string;
+  description?: string | null;
+  config?: Record<string, any>;
+  enabled?: boolean;
+  priority?: number;
 }
 
 export interface ListAnalyzersOptions {
@@ -45,6 +87,38 @@ export function createAnalyzersApi(client: PixSimApiClient) {
     async getAnalyzer(analyzerId: string): Promise<AnalyzerInfo> {
       return client.get<AnalyzerInfo>(`/analyzers/${analyzerId}`);
     },
+
+    async listAnalyzerInstances(
+      params?: {
+        analyzer_id?: string;
+        provider_id?: string;
+        include_disabled?: boolean;
+      }
+    ): Promise<AnalyzerInstanceListResponse> {
+      return client.get<AnalyzerInstanceListResponse>('/analyzer-instances', {
+        params,
+      });
+    },
+
+    async createAnalyzerInstance(
+      payload: CreateAnalyzerInstanceRequest
+    ): Promise<AnalyzerInstance> {
+      return client.post<AnalyzerInstance>('/analyzer-instances', payload);
+    },
+
+    async getAnalyzerInstance(instanceId: number): Promise<AnalyzerInstance> {
+      return client.get<AnalyzerInstance>(`/analyzer-instances/${instanceId}`);
+    },
+
+    async updateAnalyzerInstance(
+      instanceId: number,
+      payload: UpdateAnalyzerInstanceRequest
+    ): Promise<AnalyzerInstance> {
+      return client.patch<AnalyzerInstance>(`/analyzer-instances/${instanceId}`, payload);
+    },
+
+    async deleteAnalyzerInstance(instanceId: number): Promise<void> {
+      await client.delete(`/analyzer-instances/${instanceId}`);
+    },
   };
 }
-

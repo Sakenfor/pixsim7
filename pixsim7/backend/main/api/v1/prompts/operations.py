@@ -418,6 +418,10 @@ class AnalyzePromptRequest(BaseModel):
     """Request for prompt analysis preview."""
     text: str = Field(..., min_length=1, max_length=10000, description="Prompt text to analyze")
     analyzer_id: Optional[str] = Field(None, description="Analyzer ID (default: prompt:simple)")
+    analyzer_instance_id: Optional[int] = Field(
+        None,
+        description="Analyzer instance ID for provider/model overrides",
+    )
     pack_ids: Optional[List[str]] = Field(
         None,
         description="Semantic pack IDs to extend role registry and parser hints",
@@ -456,9 +460,32 @@ async def analyze_prompt(
     service = PromptAnalysisService(db)
 
     analyzer_id = request.analyzer_id or "prompt:simple"
+    provider_id = None
+    model_id = None
+    instance_config = None
+
+    if request.analyzer_instance_id is not None:
+        from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
+            AnalyzerInstanceService,
+        )
+        instance_service = AnalyzerInstanceService(db)
+        instance = await instance_service.get_instance_for_user(
+            instance_id=request.analyzer_instance_id,
+            owner_user_id=user.id,
+        )
+        if not instance:
+            raise HTTPException(status_code=404, detail="Analyzer instance not found")
+
+        analyzer_id = instance.analyzer_id or analyzer_id
+        provider_id = instance.provider_id
+        model_id = instance.model_id
+        instance_config = instance.config
     analysis = await service.analyze(
         request.text,
         analyzer_id,
+        provider_id=provider_id,
+        model_id=model_id,
+        instance_config=instance_config,
         pack_ids=request.pack_ids,
     )
 

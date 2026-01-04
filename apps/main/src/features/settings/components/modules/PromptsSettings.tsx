@@ -11,15 +11,48 @@ import { registerPromptSettings } from '../../lib/schemas/prompts.settings';
 // Auto-register schema-based settings when module loads
 registerPromptSettings();
 
-export function PromptsSettings() {
-  return <DynamicSettingsPanel categoryId="prompts" />;
+/** Analysis settings tab */
+function PromptsAnalysisSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="prompts" tabId="analysis" />
+    </div>
+  );
 }
 
-// Register this module
+/** Block extraction settings tab */
+function PromptsExtractionSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="prompts" tabId="extraction" />
+    </div>
+  );
+}
+
+/** Default component - shows analysis settings */
+export function PromptsSettings() {
+  return <PromptsAnalysisSettings />;
+}
+
+// Register this module with sub-sections
 settingsRegistry.register({
   id: 'prompts',
   label: 'Prompts',
   icon: '📝',
   component: PromptsSettings,
-  order: 35, // After General (10), UI (20), Panels (30)
+  order: 35,
+  subSections: [
+    {
+      id: 'analysis',
+      label: 'Analysis',
+      icon: '🔍',
+      component: PromptsAnalysisSettings,
+    },
+    {
+      id: 'extraction',
+      label: 'Block Extraction',
+      icon: '📦',
+      component: PromptsExtractionSettings,
+    },
+  ],
 });

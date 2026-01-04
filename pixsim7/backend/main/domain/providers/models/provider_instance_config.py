@@ -1,40 +1,76 @@
 """
-LLM Provider Instance model - configurable provider profiles
+Provider Instance Config model - shared configuration profiles for providers.
 
-Allows multiple named configurations per LLM provider type.
-For example, multiple cmd-llm instances pointing to different backends
-(Claude CLI, Ollama, Codex, etc.)
+This is a generic base for provider configuration instances, with kind
+scoping (LLM, analyzer, etc.) so multiple instance types can share a table.
 """
 from datetime import datetime
+from enum import Enum
 from typing import Optional, Dict, Any
+
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON, DateTime, func
 
+from pixsim7.backend.main.domain.enums import enum_column
 
-class LlmProviderInstance(SQLModel, table=True):
+
+class ProviderInstanceConfigKind(str, Enum):
+    """Kinds of provider instance configs supported by the system."""
+    LLM = "llm"
+    ANALYZER = "analyzer"
+
+
+class ProviderInstanceConfig(SQLModel, table=True):
     """
-    A named configuration instance for an LLM provider.
+    Named configuration instance for a provider.
 
     Instances allow:
-    - Multiple configurations per provider type (e.g., different cmd-llm backends)
-    - Per-instance settings (command, API keys, base URLs, etc.)
-    - Model binding (AI models can target specific instances)
-
-    Examples:
-        - "Claude CLI" (cmd-llm) -> command: "claude", args: ["--format", "json"]
-        - "Local Ollama" (cmd-llm) -> command: "ollama", args: ["run", "llama2"]
-        - "Azure OpenAI" (openai-llm) -> base_url: "https://mycompany.openai.azure.com"
+    - Multiple configurations per provider type
+    - Per-instance settings (API keys, base URLs, params, etc.)
+    - Scoped ownership (global vs per-user)
     """
-    __tablename__ = "llm_provider_instances"
+    __tablename__ = "provider_instance_configs"
 
     # Primary key
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    # Provider this instance belongs to (e.g., "cmd-llm", "openai-llm")
+    # Kind of instance (e.g., llm, analyzer)
+    kind: ProviderInstanceConfigKind = Field(
+        sa_column=enum_column(
+            ProviderInstanceConfigKind,
+            "provider_instance_config_kind",
+            index=True,
+        )
+    )
+
+    # Provider this instance configures (e.g., "cmd-llm", "openai-llm")
     provider_id: str = Field(
         max_length=50,
         index=True,
         description="Provider ID this instance configures"
+    )
+
+    # Analyzer-specific binding (optional)
+    analyzer_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        index=True,
+        description="Analyzer ID this instance targets (for analyzer kind)"
+    )
+
+    # Optional model override (shared across kinds)
+    model_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Model identifier override"
+    )
+
+    # Optional ownership (null = global/system)
+    owner_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+        index=True,
+        description="Owner user ID (null = global instance)"
     )
 
     # Human-readable label for this instance
@@ -51,9 +87,6 @@ class LlmProviderInstance(SQLModel, table=True):
     )
 
     # Provider-specific configuration (JSON blob)
-    # For cmd-llm: {"command": "...", "args": [...], "timeout": 60}
-    # For openai-llm: {"base_url": "...", "api_key": "..."}
-    # For anthropic-llm: {"api_key": "..."}
     config: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON, nullable=False),
@@ -94,9 +127,11 @@ class LlmProviderInstance(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return (
-            f"<LlmProviderInstance("
+            f"<ProviderInstanceConfig("
             f"id={self.id}, "
+            f"kind={self.kind.value}, "
             f"provider_id={self.provider_id}, "
+            f"analyzer_id={self.analyzer_id}, "
             f"label={self.label}, "
             f"enabled={self.enabled})>"
         )

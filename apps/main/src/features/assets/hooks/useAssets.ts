@@ -46,15 +46,21 @@ export type AssetFilters = {
   sort_dir?: 'asc' | 'desc';
 };
 
-export function useAssets(options?: { limit?: number; filters?: AssetFilters }) {
+export function useAssets(options?: { limit?: number; filters?: AssetFilters; paginationMode?: 'infinite' | 'page' }) {
   const limit = options?.limit ?? 20;
   const filters = options?.filters ?? {};
+  // paginationMode reserved for future use
 
   const [items, setItems] = useState<AssetModel[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+
+  // Page-based pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
   // Guard to avoid duplicate initial loads in React StrictMode
   const initialLoadRequestedRef = useRef(false);
   // Request ID to ignore stale responses after filter changes
@@ -111,6 +117,43 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
 
+  // Build query params helper
+  const buildQueryParams = useCallback((currentFilters: typeof filterParams, offset?: number, currentCursor?: string | null) => {
+    return {
+      limit,
+      offset: offset !== undefined ? offset : undefined,
+      cursor: offset === undefined ? (currentCursor || undefined) : undefined,
+      // Basic filters
+      q: currentFilters.q || undefined,
+      tag: currentFilters.tag || undefined,
+      provider_id: currentFilters.provider_id || undefined,
+      provider_status: currentFilters.provider_status || undefined,
+      media_type: currentFilters.media_type || undefined,
+      include_archived: currentFilters.include_archived || undefined,
+      // Date range filters
+      created_from: currentFilters.created_from || undefined,
+      created_to: currentFilters.created_to || undefined,
+      // Dimension filters
+      min_width: currentFilters.min_width,
+      max_width: currentFilters.max_width,
+      min_height: currentFilters.min_height,
+      max_height: currentFilters.max_height,
+      // Content filters
+      content_domain: currentFilters.content_domain || undefined,
+      content_category: currentFilters.content_category || undefined,
+      content_rating: currentFilters.content_rating || undefined,
+      searchable: currentFilters.searchable,
+      // Lineage filters
+      source_generation_id: currentFilters.source_generation_id,
+      operation_type: currentFilters.operation_type || undefined,
+      has_parent: currentFilters.has_parent,
+      has_children: currentFilters.has_children,
+      // Sort options
+      sort_by: currentFilters.sort_by || undefined,
+      sort_dir: currentFilters.sort_dir || undefined,
+    };
+  }, [limit]);
+
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
     setLoading(true);
@@ -123,40 +166,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       const currentFilters = filterParamsRef.current;
       const currentCursor = cursorRef.current;
 
-      // Build query params for API call
-      const queryParams: Record<string, any> = {
-        limit,
-        cursor: currentCursor || undefined,
-        // Basic filters
-        q: currentFilters.q || undefined,
-        tag: currentFilters.tag || undefined,
-        provider_id: currentFilters.provider_id || undefined,
-        provider_status: currentFilters.provider_status || undefined,
-        media_type: currentFilters.media_type || undefined,
-        include_archived: currentFilters.include_archived || undefined,
-        // Date range filters
-        created_from: currentFilters.created_from || undefined,
-        created_to: currentFilters.created_to || undefined,
-        // Dimension filters
-        min_width: currentFilters.min_width,
-        max_width: currentFilters.max_width,
-        min_height: currentFilters.min_height,
-        max_height: currentFilters.max_height,
-        // Content filters
-        content_domain: currentFilters.content_domain || undefined,
-        content_category: currentFilters.content_category || undefined,
-        content_rating: currentFilters.content_rating || undefined,
-        searchable: currentFilters.searchable,
-        // Lineage filters
-        source_generation_id: currentFilters.source_generation_id,
-        operation_type: currentFilters.operation_type || undefined,
-        has_parent: currentFilters.has_parent,
-        has_children: currentFilters.has_children,
-        // Sort options
-        sort_by: currentFilters.sort_by || undefined,
-        sort_dir: currentFilters.sort_dir || undefined,
-      };
-
+      const queryParams = buildQueryParams(currentFilters, undefined, currentCursor);
       const data: AssetListResponse = await listAssets(queryParams);
 
       // Ignore stale response if filters changed during request
@@ -191,7 +201,71 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
         setLoading(false);
       }
     }
-  }, [loading, hasMore, limit]);
+  }, [loading, hasMore, buildQueryParams]);
+
+  // Page-based navigation (replaces content instead of appending)
+  const goToPage = useCallback(async (page: number) => {
+    if (loading || page < 1) return;
+    setLoading(true);
+    setError(null);
+
+    // Capture request ID to detect stale responses
+    requestIdRef.current += 1;
+    const thisRequestId = requestIdRef.current;
+
+    try {
+      const currentFilters = filterParamsRef.current;
+      const offset = (page - 1) * limit;
+
+      const queryParams = buildQueryParams(currentFilters, offset);
+      const data: AssetListResponse = await listAssets(queryParams);
+
+      // Ignore stale response if filters changed during request
+      if (thisRequestId !== requestIdRef.current) {
+        return;
+      }
+
+      // Replace items (page mode)
+      const newModels = fromAssetResponses(data.assets);
+      setItems(newModels);
+      setCurrentPage(page);
+
+      // Estimate total pages based on heuristics
+      // If we got a full page, assume there are more
+      const gotFullPage = newModels.length === limit;
+      if (gotFullPage) {
+        // At least one more page exists
+        setTotalPages(prev => Math.max(prev, page + 1));
+        setHasMore(true);
+      } else if (newModels.length > 0) {
+        // Partial page = this is the last page
+        setTotalPages(page);
+        setHasMore(false);
+      } else if (page > 1) {
+        // Empty page and not first page = went too far
+        setTotalPages(page - 1);
+        setHasMore(false);
+      } else {
+        // Empty first page = no results
+        setTotalPages(1);
+        setHasMore(false);
+      }
+
+      // Clear cursor since we're in page mode
+      setCursor(null);
+    } catch (e: unknown) {
+      // Ignore errors from stale requests
+      if (thisRequestId !== requestIdRef.current) {
+        return;
+      }
+      setError(e instanceof Error ? e.message : 'Failed to load assets');
+    } finally {
+      // Only update loading state if this is still the current request
+      if (thisRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [loading, limit, buildQueryParams]);
 
   const reset = useCallback(() => {
     // Increment request ID to invalidate any in-flight requests
@@ -201,6 +275,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     setHasMore(true);
     setError(null);
     setLoading(false); // Also reset loading state
+    setCurrentPage(1);
+    setTotalPages(1);
     initialLoadRequestedRef.current = false;
   }, []);
 
@@ -292,5 +368,18 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     }
   }, [items.length, loading, loadMore]);
 
-  return { items, loadMore, loading, error, hasMore, reset, removeAsset };
+  return {
+    items,
+    loadMore,
+    loading,
+    error,
+    hasMore,
+    reset,
+    removeAsset,
+    // Page-based pagination
+    currentPage,
+    totalPages,
+    goToPage,
+    pageSize: limit,
+  };
 }

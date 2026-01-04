@@ -7,9 +7,13 @@ registerContextSettings();
 settingsRegistry.register({
   id: 'context',
   label: 'Context',
-  icon: 'dY"?',
+  icon: '🔗',
   order: 60,
   component: function ContextSettings() {
-    return <DynamicSettingsPanel categoryId="context" />;
+    return (
+      <div className="flex-1 overflow-auto p-4">
+        <DynamicSettingsPanel categoryId="context" />
+      </div>
+    );
   },
 });

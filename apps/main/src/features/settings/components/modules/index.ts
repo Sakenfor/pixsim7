@@ -14,6 +14,7 @@ import './ProfilesSettings';
 import './LibrarySettings'; // Unified library settings (replaces Assets, Media, Gallery)
 import './GenerationSettings';
 import './PluginsSettings';
+import './AnalyzersSettings'; // Analyzer instance management
 import './DebugSettings';
 import './ContextSettings';
 import './WidgetPresetsSettings';

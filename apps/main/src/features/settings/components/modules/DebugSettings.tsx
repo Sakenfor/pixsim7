@@ -33,11 +33,11 @@ const DEBUG_CATEGORIES: DebugCategory[] = [
   { id: 'worker', label: 'Worker Jobs', description: 'Job processing and status polling', location: 'backend' },
 ];
 
-export function DebugSettings() {
+/** Shared hook for debug state management */
+function useDebugState() {
   const [debugStates, setDebugStates] = useState<DebugPreferences>({});
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load debug states from user preferences
   useEffect(() => {
     getUserPreferences()
       .then(prefs => {
@@ -56,7 +56,6 @@ export function DebugSettings() {
     const newValue = !debugStates[categoryId];
     const newStates = { ...debugStates, [categoryId]: newValue };
 
-    // Optimistic update
     setDebugStates(newStates);
     debugFlags.updateFromPreferences(newStates);
 
@@ -64,11 +63,112 @@ export function DebugSettings() {
       await updatePreferenceKey('debug', newStates);
     } catch (err) {
       console.error('Failed to save debug preference:', err);
-      // Revert on error
       setDebugStates(debugStates);
       debugFlags.updateFromPreferences(debugStates);
     }
   };
+
+  return { debugStates, isLoading, handleToggle };
+}
+
+/** Debug category toggle list */
+function DebugCategoryList({
+  categories,
+  debugStates,
+  onToggle,
+}: {
+  categories: DebugCategory[];
+  debugStates: DebugPreferences;
+  onToggle: (id: keyof DebugPreferences) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {categories.map(category => (
+        <div
+          key={category.id}
+          className="flex items-center justify-between p-3 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40"
+        >
+          <div className="flex-1">
+            <div className="text-[11px] font-semibold text-neutral-800 dark:text-neutral-100">
+              {category.label}
+            </div>
+            <div className="text-[10px] text-neutral-600 dark:text-neutral-400">
+              {category.description}
+            </div>
+          </div>
+
+          <label className="flex items-center cursor-pointer ml-4">
+            <input
+              type="checkbox"
+              checked={debugStates[category.id] ?? false}
+              onChange={() => onToggle(category.id)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
+          </label>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Frontend debug settings */
+function DebugFrontendSettings() {
+  const { debugStates, isLoading, handleToggle } = useDebugState();
+  const frontendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'frontend');
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500 dark:text-neutral-400">
+        Loading debug preferences...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
+      <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+        Logs appear in browser console (F12). Useful for debugging UI, stores, and client-side logic.
+      </p>
+      <DebugCategoryList
+        categories={frontendCategories}
+        debugStates={debugStates}
+        onToggle={handleToggle}
+      />
+    </div>
+  );
+}
+
+/** Backend debug settings */
+function DebugBackendSettings() {
+  const { debugStates, isLoading, handleToggle } = useDebugState();
+  const backendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'backend');
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500 dark:text-neutral-400">
+        Loading debug preferences...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
+      <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+        Logs appear in backend/worker console. Check terminal where backend is running.
+      </p>
+      <DebugCategoryList
+        categories={backendCategories}
+        debugStates={debugStates}
+        onToggle={handleToggle}
+      />
+    </div>
+  );
+}
+
+/** Default component - shows all debug settings */
+export function DebugSettings() {
+  const { debugStates, isLoading, handleToggle } = useDebugState();
 
   const frontendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'frontend');
   const backendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'backend');
@@ -97,33 +197,12 @@ export function DebugSettings() {
         <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
           Logs appear in browser console (F12). Useful for debugging UI, stores, and client-side logic.
         </p>
-
-        <div className="mt-3 space-y-2">
-          {frontendCategories.map(category => (
-            <div
-              key={category.id}
-              className="flex items-center justify-between p-3 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40"
-            >
-              <div className="flex-1">
-                <div className="text-[11px] font-semibold text-neutral-800 dark:text-neutral-100">
-                  {category.label}
-                </div>
-                <div className="text-[10px] text-neutral-600 dark:text-neutral-400">
-                  {category.description}
-                </div>
-              </div>
-
-              <label className="flex items-center cursor-pointer ml-4">
-                <input
-                  type="checkbox"
-                  checked={debugStates[category.id] ?? false}
-                  onChange={() => handleToggle(category.id)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
-              </label>
-            </div>
-          ))}
+        <div className="mt-3">
+          <DebugCategoryList
+            categories={frontendCategories}
+            debugStates={debugStates}
+            onToggle={handleToggle}
+          />
         </div>
       </section>
 
@@ -135,33 +214,12 @@ export function DebugSettings() {
         <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
           Logs appear in backend/worker console. Check terminal where backend is running.
         </p>
-
-        <div className="mt-3 space-y-2">
-          {backendCategories.map(category => (
-            <div
-              key={category.id}
-              className="flex items-center justify-between p-3 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40"
-            >
-              <div className="flex-1">
-                <div className="text-[11px] font-semibold text-neutral-800 dark:text-neutral-100">
-                  {category.label}
-                </div>
-                <div className="text-[10px] text-neutral-600 dark:text-neutral-400">
-                  {category.description}
-                </div>
-              </div>
-
-              <label className="flex items-center cursor-pointer ml-4">
-                <input
-                  type="checkbox"
-                  checked={debugStates[category.id] ?? false}
-                  onChange={() => handleToggle(category.id)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
-              </label>
-            </div>
-          ))}
+        <div className="mt-3">
+          <DebugCategoryList
+            categories={backendCategories}
+            debugStates={debugStates}
+            onToggle={handleToggle}
+          />
         </div>
       </section>
     </div>
@@ -173,7 +231,22 @@ if (import.meta.env.DEV) {
   settingsRegistry.register({
     id: 'debug',
     label: 'Debug',
+    icon: '🐛',
     component: DebugSettings,
     order: 90,
+    subSections: [
+      {
+        id: 'frontend',
+        label: 'Frontend',
+        icon: '🖥️',
+        component: DebugFrontendSettings,
+      },
+      {
+        id: 'backend',
+        label: 'Backend',
+        icon: '🖧',
+        component: DebugBackendSettings,
+      },
+    ],
   });
 }

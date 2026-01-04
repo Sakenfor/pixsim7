@@ -13,6 +13,14 @@ import { getUserPreferences, updatePreferenceKey, type DebugPreferences } from '
 
 type DebugCategory = keyof DebugPreferences;
 
+/**
+ * Check if there's an auth token (quick check without validating)
+ */
+function hasAuthToken(): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  return !!localStorage.getItem('access_token');
+}
+
 class DebugFlags {
   private flags: DebugPreferences = {};
   private initialized = false;
@@ -26,6 +34,13 @@ class DebugFlags {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
+      // Skip API call if not authenticated (prevents 401 spam)
+      if (!hasAuthToken()) {
+        this.flags = {};
+        this.initialized = true;
+        return;
+      }
+
       try {
         const prefs = await getUserPreferences();
         this.flags = prefs.debug || {};
@@ -53,6 +68,10 @@ class DebugFlags {
    */
   async enable(category: DebugCategory): Promise<void> {
     this.flags[category] = true;
+    if (!hasAuthToken()) {
+      if (import.meta.env.DEV) console.log(`✅ Debug enabled for: ${category} (local only)`);
+      return;
+    }
     try {
       await updatePreferenceKey('debug', this.flags);
       if (import.meta.env.DEV) {
@@ -68,6 +87,10 @@ class DebugFlags {
    */
   async disable(category: DebugCategory): Promise<void> {
     this.flags[category] = false;
+    if (!hasAuthToken()) {
+      if (import.meta.env.DEV) console.log(`❌ Debug disabled for: ${category} (local only)`);
+      return;
+    }
     try {
       await updatePreferenceKey('debug', this.flags);
       if (import.meta.env.DEV) {
@@ -84,6 +107,10 @@ class DebugFlags {
   async toggle(category: DebugCategory): Promise<boolean> {
     const newValue = !this.flags[category];
     this.flags[category] = newValue;
+    if (!hasAuthToken()) {
+      if (import.meta.env.DEV) console.log(`${newValue ? '✅' : '❌'} Debug ${newValue ? 'enabled' : 'disabled'} for: ${category} (local only)`);
+      return newValue;
+    }
     try {
       await updatePreferenceKey('debug', this.flags);
       if (import.meta.env.DEV) {

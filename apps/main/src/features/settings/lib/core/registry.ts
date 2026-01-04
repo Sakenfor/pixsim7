@@ -10,6 +10,18 @@ import { type ComponentType, type ReactNode } from 'react';
 
 import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
 
+/** Sub-section within a settings module */
+export interface SettingsSubSection {
+  /** Unique identifier for the sub-section (scoped to parent module) */
+  id: string;
+  /** Display label for the sub-section */
+  label: string;
+  /** Optional icon */
+  icon?: ReactNode;
+  /** React component to render the sub-section content */
+  component: ComponentType;
+}
+
 export interface SettingsModule extends Identifiable {
   /** Unique identifier for the settings module */
   id: string;
@@ -17,10 +29,12 @@ export interface SettingsModule extends Identifiable {
   label: string;
   /** Optional icon (React node) */
   icon?: ReactNode;
-  /** React component to render the settings content */
+  /** React component to render the settings content (used when no subSections or as default) */
   component: ComponentType;
   /** Sort order (lower = earlier) */
   order?: number;
+  /** Optional sub-sections that appear as expandable items under this module */
+  subSections?: SettingsSubSection[];
 }
 
 class SettingsRegistry extends BaseRegistry<SettingsModule> {

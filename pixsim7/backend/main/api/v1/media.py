@@ -260,10 +260,127 @@ async def process_pending_batch(
 
 # ===== MEDIA SERVING =====
 
+# Track in-flight regenerations to avoid duplicate work
+_regeneration_in_progress: set[str] = set()
+
+
+async def _try_regenerate_derivative(
+    db,
+    background_tasks: BackgroundTasks,
+    user_id: int,
+    key: str,
+) -> bool:
+    """
+    Try to regenerate a missing thumbnail or preview.
+
+    Looks up the asset by thumbnail_key or preview_key and queues
+    regeneration if the source file exists.
+
+    Returns True if regeneration was queued, False otherwise.
+    """
+    from sqlalchemy import select, or_
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    # Avoid duplicate regeneration requests
+    if key in _regeneration_in_progress:
+        return True  # Already in progress
+
+    try:
+        # Find asset by thumbnail_key or preview_key
+        is_thumbnail = "/thumbnails/" in key
+        is_preview = "/previews/" in key
+
+        if is_thumbnail:
+            result = await db.execute(
+                select(Asset).where(
+                    Asset.user_id == user_id,
+                    Asset.thumbnail_key == key,
+                )
+            )
+        elif is_preview:
+            result = await db.execute(
+                select(Asset).where(
+                    Asset.user_id == user_id,
+                    Asset.preview_key == key,
+                )
+            )
+        else:
+            return False
+
+        asset = result.scalar_one_or_none()
+        if not asset:
+            logger.debug(
+                "regenerate_derivative_no_asset",
+                key=key,
+                user_id=user_id,
+            )
+            return False
+
+        # Check if source file exists
+        if not asset.local_path or not os.path.exists(asset.local_path):
+            logger.debug(
+                "regenerate_derivative_no_source",
+                asset_id=asset.id,
+                local_path=asset.local_path,
+            )
+            return False
+
+        # Mark as in-progress
+        _regeneration_in_progress.add(key)
+
+        # Queue background regeneration
+        async def regenerate():
+            try:
+                service = AssetIngestionService(db)
+                await service.ingest_asset(
+                    asset.id,
+                    force=False,
+                    store_for_serving=False,
+                    extract_metadata=False,
+                    generate_thumbnails=is_thumbnail,
+                    generate_previews=is_preview,
+                )
+                logger.info(
+                    "derivative_regenerated",
+                    asset_id=asset.id,
+                    key=key,
+                    type="thumbnail" if is_thumbnail else "preview",
+                )
+            except Exception as e:
+                logger.warning(
+                    "derivative_regeneration_failed",
+                    asset_id=asset.id,
+                    key=key,
+                    error=str(e),
+                )
+            finally:
+                _regeneration_in_progress.discard(key)
+
+        background_tasks.add_task(regenerate)
+
+        logger.info(
+            "derivative_regeneration_queued",
+            asset_id=asset.id,
+            key=key,
+            type="thumbnail" if is_thumbnail else "preview",
+        )
+        return True
+
+    except Exception as e:
+        logger.warning(
+            "regenerate_derivative_error",
+            key=key,
+            error=str(e),
+        )
+        return False
+
+
 @router.get("/media/{key:path}")
 async def serve_media(
     key: str,
     user: CurrentUser,
+    db: DatabaseSession,
+    background_tasks: BackgroundTasks,
     response: Response,
 ):
     """
@@ -276,6 +393,9 @@ async def serve_media(
 
     Security: Files are served only if they belong to the authenticated user.
     The key format is "u/{user_id}/..." so we validate ownership.
+
+    Auto-regeneration: If a thumbnail/preview is missing, automatically
+    queues regeneration in background and returns 202 Accepted.
     """
     storage = get_storage_service()
     settings = get_media_settings()
@@ -288,6 +408,17 @@ async def serve_media(
 
     # Check if file exists
     if not await storage.exists(key):
+        # Auto-regenerate missing thumbnails/previews
+        if "/thumbnails/" in key or "/previews/" in key:
+            regenerated = await _try_regenerate_derivative(
+                db, background_tasks, user.id, key
+            )
+            if regenerated:
+                # Return 202 Accepted - client should retry
+                raise HTTPException(
+                    status_code=202,
+                    detail="Thumbnail regeneration queued, retry in a few seconds"
+                )
         raise HTTPException(status_code=404, detail="File not found")
 
     # Get file metadata

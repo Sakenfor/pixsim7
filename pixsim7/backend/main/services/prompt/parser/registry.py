@@ -9,9 +9,12 @@ Analyzer ID convention:
 - asset:faces, asset:scene, asset:motion       → media analysis (future)
 """
 
+import logging
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class AnalyzerKind(str, Enum):
@@ -36,6 +39,7 @@ class AnalyzerInfo(BaseModel):
     target: AnalyzerTarget = AnalyzerTarget.PROMPT
     provider_id: Optional[str] = None  # For LLM/vision analyzers
     model_id: Optional[str] = None     # Default model
+    source_plugin_id: Optional[str] = None  # Plugin that registered this analyzer
     enabled: bool = True
     is_default: bool = False
     is_legacy: bool = False  # Legacy aliases
@@ -54,6 +58,7 @@ class AnalyzerRegistry:
 
     def __init__(self):
         self._analyzers: Dict[str, AnalyzerInfo] = {}
+        self._by_plugin: Dict[str, set[str]] = {}
         self._register_builtins()
 
     def _register_builtins(self) -> None:
@@ -65,6 +70,7 @@ class AnalyzerRegistry:
             description="Fast, keyword-based parser with ontology matching",
             kind=AnalyzerKind.PARSER,
             target=AnalyzerTarget.PROMPT,
+            source_plugin_id="core",
             enabled=True,
             is_default=True,
         ))
@@ -78,6 +84,7 @@ class AnalyzerRegistry:
             target=AnalyzerTarget.PROMPT,
             provider_id="anthropic-llm",
             model_id="claude-sonnet-4-20250514",
+            source_plugin_id="core",
             enabled=True,
         ))
 
@@ -90,6 +97,7 @@ class AnalyzerRegistry:
             target=AnalyzerTarget.PROMPT,
             provider_id="openai-llm",
             model_id="gpt-4",
+            source_plugin_id="core",
             enabled=True,
         ))
 
@@ -100,6 +108,7 @@ class AnalyzerRegistry:
             description="Alias for prompt:simple",
             kind=AnalyzerKind.PARSER,
             target=AnalyzerTarget.PROMPT,
+            source_plugin_id="core",
             is_legacy=True,
         ))
         self.register(AnalyzerInfo(
@@ -109,6 +118,7 @@ class AnalyzerRegistry:
             kind=AnalyzerKind.LLM,
             target=AnalyzerTarget.PROMPT,
             provider_id="anthropic-llm",
+            source_plugin_id="core",
             is_legacy=True,
         ))
         self.register(AnalyzerInfo(
@@ -118,16 +128,34 @@ class AnalyzerRegistry:
             kind=AnalyzerKind.LLM,
             target=AnalyzerTarget.PROMPT,
             provider_id="openai-llm",
+            source_plugin_id="core",
             is_legacy=True,
         ))
 
     def register(self, analyzer: AnalyzerInfo) -> None:
         """Register an analyzer."""
+        existing = self._analyzers.get(analyzer.id)
+        if existing and existing.source_plugin_id != analyzer.source_plugin_id:
+            logger.warning(
+                "analyzer_registry_overwrite",
+                analyzer_id=analyzer.id,
+                previous_plugin=existing.source_plugin_id,
+                new_plugin=analyzer.source_plugin_id,
+            )
+            if existing.source_plugin_id:
+                self._by_plugin.get(existing.source_plugin_id, set()).discard(analyzer.id)
+
         self._analyzers[analyzer.id] = analyzer
+
+        if analyzer.source_plugin_id:
+            self._by_plugin.setdefault(analyzer.source_plugin_id, set()).add(analyzer.id)
 
     def unregister(self, analyzer_id: str) -> bool:
         """Unregister an analyzer. Returns True if found."""
         if analyzer_id in self._analyzers:
+            existing = self._analyzers[analyzer_id]
+            if existing.source_plugin_id:
+                self._by_plugin.get(existing.source_plugin_id, set()).discard(analyzer_id)
             del self._analyzers[analyzer_id]
             return True
         return False
@@ -194,6 +222,41 @@ class AnalyzerRegistry:
             "llm:openai": "prompt:openai",
         }
         return legacy_map.get(analyzer_id, analyzer_id)
+
+    def register_plugin_analyzer(self, plugin_id: str, analyzer: AnalyzerInfo) -> None:
+        """Register a single analyzer on behalf of a plugin."""
+        if analyzer.source_plugin_id and analyzer.source_plugin_id != plugin_id:
+            logger.warning(
+                "analyzer_registry_plugin_mismatch",
+                analyzer_id=analyzer.id,
+                provided_plugin=analyzer.source_plugin_id,
+                expected_plugin=plugin_id,
+            )
+        analyzer_with_source = analyzer.model_copy(
+            update={"source_plugin_id": plugin_id}
+        )
+        self.register(analyzer_with_source)
+
+    def register_plugin_analyzers(
+        self,
+        plugin_id: str,
+        analyzers: List[AnalyzerInfo],
+    ) -> None:
+        """Register a list of analyzers for a plugin."""
+        for analyzer in analyzers:
+            self.register_plugin_analyzer(plugin_id, analyzer)
+
+    def list_by_plugin(self, plugin_id: str) -> List[AnalyzerInfo]:
+        """List analyzers registered by a specific plugin."""
+        ids = self._by_plugin.get(plugin_id, set())
+        return [self._analyzers[analyzer_id] for analyzer_id in ids]
+
+    def unregister_by_plugin(self, plugin_id: str) -> int:
+        """Unregister all analyzers registered by a plugin."""
+        analyzer_ids = list(self._by_plugin.get(plugin_id, set()))
+        for analyzer_id in analyzer_ids:
+            self.unregister(analyzer_id)
+        return len(analyzer_ids)
 
 
 # Global singleton

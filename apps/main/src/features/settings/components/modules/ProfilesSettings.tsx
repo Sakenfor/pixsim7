@@ -14,6 +14,7 @@ export function ProfilesSettings() {
 settingsRegistry.register({
   id: 'profiles',
   label: 'Profiles',
+  icon: '👤',
   component: ProfilesSettings,
-  order: 30,
+  order: 40,
 });

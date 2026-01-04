@@ -32,6 +32,7 @@ class BackfillSHAResponse(BaseModel):
     processed: int
     updated: int
     skipped: int
+    duplicates: int = 0
     errors: int
 
 
@@ -159,10 +160,23 @@ async def backfill_sha_hashes(
         )
         assets = result.scalars().all()
 
+        # Get existing SHA256s for this user to avoid constraint violations
+        existing_result = await db.execute(
+            select(Asset.sha256).where(
+                Asset.user_id == admin.id,
+                Asset.sha256.isnot(None)
+            )
+        )
+        existing_sha256s = set(row[0] for row in existing_result.fetchall())
+
         processed = 0
         updated = 0
         skipped = 0
+        duplicates = 0
         errors = 0
+
+        # Track SHA256s we're adding in this batch to avoid intra-batch conflicts
+        batch_sha256s: dict[str, int] = {}  # sha256 -> first asset id in batch
 
         for asset in assets:
             processed += 1
@@ -175,7 +189,28 @@ async def backfill_sha_hashes(
             try:
                 # Compute SHA256
                 sha256 = asset_service._compute_sha256(asset.local_path)
+
+                # Check for duplicates - either existing in DB or earlier in this batch
+                if sha256 in existing_sha256s:
+                    logger.info(
+                        "sha_backfill_duplicate_existing",
+                        asset_id=asset.id,
+                        sha256=sha256[:16]
+                    )
+                    duplicates += 1
+                    continue
+                elif sha256 in batch_sha256s:
+                    logger.info(
+                        "sha_backfill_duplicate_batch",
+                        asset_id=asset.id,
+                        original_id=batch_sha256s[sha256],
+                        sha256=sha256[:16]
+                    )
+                    duplicates += 1
+                    continue
+
                 asset.sha256 = sha256
+                batch_sha256s[sha256] = asset.id
                 updated += 1
             except Exception as e:
                 logger.warning(
@@ -192,6 +227,7 @@ async def backfill_sha_hashes(
             processed=processed,
             updated=updated,
             skipped=skipped,
+            duplicates=duplicates,
             errors=errors
         )
 
@@ -514,4 +550,124 @@ async def backfill_content_blobs(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to backfill content blobs: {str(exc)}"
+        )
+
+
+# ===== THUMBNAIL BACKFILL =====
+
+class BackfillThumbnailsResponse(BaseModel):
+    """Response from thumbnail backfill operation"""
+    success: bool
+    processed: int
+    generated: int
+    skipped: int
+    errors: int
+    error_ids: list[int] = []
+
+
+@router.post("/backfill-thumbnails", response_model=BackfillThumbnailsResponse)
+async def backfill_thumbnails(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    limit: int = Query(50, ge=1, le=200, description="Max assets to process"),
+    missing_only: bool = Query(True, description="Only process assets with missing thumbnail files"),
+):
+    """
+    Regenerate missing thumbnails for assets.
+
+    Finds assets where the thumbnail file doesn't exist on disk and regenerates them.
+    Useful after storage cleanup or migration.
+    """
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
+    from pixsim7.backend.main.services.storage import get_storage_service
+    import os
+
+    try:
+        storage = get_storage_service()
+        service = AssetIngestionService(db)
+
+        # Find assets with thumbnail_key set
+        result = await db.execute(
+            select(Asset).where(
+                Asset.user_id == admin.id,
+                Asset.thumbnail_key.isnot(None),
+                Asset.local_path.isnot(None),
+            ).limit(limit * 2)  # Fetch more since we'll filter
+        )
+        assets = result.scalars().all()
+
+        processed = 0
+        generated = 0
+        skipped = 0
+        errors = 0
+        error_ids: list[int] = []
+
+        for asset in assets:
+            if processed >= limit:
+                break
+
+            # Check if thumbnail file exists
+            if missing_only:
+                thumb_path = storage.get_path(asset.thumbnail_key)
+                if os.path.exists(thumb_path):
+                    continue  # Skip - thumbnail exists
+
+            processed += 1
+
+            # Check if source file exists
+            if not asset.local_path or not os.path.exists(asset.local_path):
+                logger.warning(
+                    "thumbnail_backfill_no_source",
+                    asset_id=asset.id,
+                    local_path=asset.local_path,
+                )
+                skipped += 1
+                continue
+
+            try:
+                # Regenerate thumbnail only
+                await service.ingest_asset(
+                    asset.id,
+                    force=False,
+                    store_for_serving=False,
+                    extract_metadata=False,
+                    generate_thumbnails=True,
+                    generate_previews=False,
+                )
+                generated += 1
+                logger.info(
+                    "thumbnail_backfill_success",
+                    asset_id=asset.id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "thumbnail_backfill_failed",
+                    asset_id=asset.id,
+                    error=str(exc),
+                )
+                errors += 1
+                error_ids.append(asset.id)
+
+        await db.commit()
+
+        return BackfillThumbnailsResponse(
+            success=True,
+            processed=processed,
+            generated=generated,
+            skipped=skipped,
+            errors=errors,
+            error_ids=error_ids[:20],  # Limit to first 20 errors
+        )
+
+    except Exception as exc:
+        logger.error(
+            "thumbnail_backfill_error",
+            error=str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to backfill thumbnails: {str(exc)}"
         )

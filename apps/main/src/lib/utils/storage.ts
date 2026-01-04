@@ -3,6 +3,14 @@ import { getUserPreferences, updatePreferenceKey } from '../api/userPreferences'
 import { debugFlags } from './debugFlags';
 
 /**
+ * Check if there's an auth token (quick check without validating)
+ */
+function hasAuthToken(): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  return !!localStorage.getItem('access_token');
+}
+
+/**
  * Backend-synced storage for Zustand persist middleware
  *
  * This storage implementation:
@@ -37,20 +45,22 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
           return localValue;
         }
 
-        // If no localStorage value, try backend as fallback
-        debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] No localStorage, trying backend...`);
-        try {
-          const prefs = await getUserPreferences();
-          const backendValue = prefs[preferenceKey];
+        // If no localStorage value, try backend as fallback (only if authenticated)
+        if (hasAuthToken()) {
+          debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] No localStorage, trying backend...`);
+          try {
+            const prefs = await getUserPreferences();
+            const backendValue = prefs[preferenceKey];
 
-          if (backendValue) {
-            const serialized = JSON.stringify(backendValue);
-            debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] Got value from backend, saving to localStorage`);
-            localStorage.setItem(localStorageKey, serialized);
-            return serialized;
+            if (backendValue) {
+              const serialized = JSON.stringify(backendValue);
+              debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] Got value from backend, saving to localStorage`);
+              localStorage.setItem(localStorageKey, serialized);
+              return serialized;
+            }
+          } catch (error) {
+            debugFlags.warn('persistence', `[BackendStorage:${preferenceKey}] Backend fetch failed:`, error);
           }
-        } catch (error) {
-          debugFlags.warn('persistence', `[BackendStorage:${preferenceKey}] Backend fetch failed:`, error);
         }
 
         debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] No value found anywhere, returning null`);
@@ -87,12 +97,22 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
       // Always save to localStorage immediately (for offline access and fast reads)
       localStorage.setItem(localStorageKey, stringValue);
 
-      // Debounce backend sync to avoid excessive API calls
+      // Debounce backend sync to avoid excessive API calls (only if authenticated)
+      if (!hasAuthToken()) {
+        debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] Skipping backend sync (not authenticated)`);
+        return;
+      }
+
       if (saveTimeout) {
         clearTimeout(saveTimeout);
       }
 
       saveTimeout = setTimeout(async () => {
+        // Re-check auth before sync (token may have expired during debounce)
+        if (!hasAuthToken()) {
+          debugFlags.log('backend', `[BackendStorage:${preferenceKey}] Skipping sync (auth expired)`);
+          return;
+        }
         debugFlags.log('backend', `[BackendStorage:${preferenceKey}] Syncing to backend after debounce`);
         try {
           // Parse the stringValue to get the object for backend storage
@@ -112,11 +132,12 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
       }, SAVE_DEBOUNCE_MS);
     },
 
-    removeItem: async (name: string): Promise<void> => {
+    removeItem: async (): Promise<void> => {
       // Remove from localStorage
       localStorage.removeItem(localStorageKey);
 
-      // Clear from backend
+      // Clear from backend (only if authenticated)
+      if (!hasAuthToken()) return;
       try {
         await updatePreferenceKey(preferenceKey, null as any);
       } catch (error) {

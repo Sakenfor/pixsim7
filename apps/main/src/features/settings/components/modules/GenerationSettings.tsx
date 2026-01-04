@@ -19,8 +19,8 @@ export function GenerationSettings() {
 settingsRegistry.register({
   id: 'generation',
   label: 'Generation',
-  icon: 'dY>',
+  icon: '⚡',
   component: GenerationSettings,
-  order: 30, // Between UI (15/20) and Prompts/Media (35/40)
+  order: 32,
 });
 

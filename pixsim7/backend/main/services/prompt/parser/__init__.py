@@ -24,6 +24,7 @@ from .registry import (
     AnalyzerKind,
     AnalyzerTarget,
 )
+from .analyzer_plugins import setup_analyzer_plugin_hooks
 from .dsl_adapter import (
     analyze_prompt,
     parse_prompt_to_segments,
@@ -53,6 +54,7 @@ __all__ = [
     "AnalyzerInfo",
     "AnalyzerKind",
     "AnalyzerTarget",
+    "setup_analyzer_plugin_hooks",
     # DSL Adapter
     "analyze_prompt",
     "parse_prompt_to_segments",

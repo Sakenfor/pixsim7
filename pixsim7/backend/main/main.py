@@ -88,6 +88,7 @@ async def lifespan(app: FastAPI):
         setup_redis,
         setup_providers,
         setup_ai_models,
+        setup_analyzer_plugins,
         setup_event_handlers,
         setup_ecs_components,
         setup_stat_packages,
@@ -127,6 +128,7 @@ async def lifespan(app: FastAPI):
     # Setup providers, AI models, events, and ECS
     setup_providers()
     setup_ai_models()
+    setup_analyzer_plugins()
     setup_event_handlers()
     event_bridge = await start_event_bus_bridge(role="api")
     app.state.event_bridge = event_bridge

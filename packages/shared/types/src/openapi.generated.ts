@@ -1721,6 +1721,58 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/analyzer-instances": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Analyzer Instances
+         * @description List analyzer instances for the current user.
+         */
+        readonly get: operations["list_analyzer_instances_api_v1_analyzer_instances_get"];
+        readonly put?: never;
+        /**
+         * Create Analyzer Instance
+         * @description Create a new analyzer instance (per-user).
+         */
+        readonly post: operations["create_analyzer_instance_api_v1_analyzer_instances_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/analyzer-instances/{instance_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Analyzer Instance
+         * @description Get a specific analyzer instance.
+         */
+        readonly get: operations["get_analyzer_instance_api_v1_analyzer_instances__instance_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete Analyzer Instance
+         * @description Delete an analyzer instance.
+         */
+        readonly delete: operations["delete_analyzer_instance_api_v1_analyzer_instances__instance_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Analyzer Instance
+         * @description Update an analyzer instance.
+         */
+        readonly patch: operations["update_analyzer_instance_api_v1_analyzer_instances__instance_id__patch"];
+        readonly trace?: never;
+    };
     readonly "/api/v1/analyzers": {
         readonly parameters: {
             readonly query?: never;
@@ -2137,6 +2189,29 @@ export interface paths {
          *     before SHA hashing was implemented.
          */
         readonly post: operations["backfill_sha_hashes_api_v1_assets_backfill_sha_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/backfill-thumbnails": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Backfill Thumbnails
+         * @description Regenerate missing thumbnails for assets.
+         *
+         *     Finds assets where the thumbnail file doesn't exist on disk and regenerates them.
+         *     Useful after storage cleanup or migration.
+         */
+        readonly post: operations["backfill_thumbnails_api_v1_assets_backfill_thumbnails_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -10365,7 +10440,7 @@ export interface components {
             readonly provider_id?: string | null;
             /**
              * Provider Instance Id
-             * @description Optional provider instance ID for using a specific configuration
+             * @description Optional provider instance config ID for using a specific configuration
              */
             readonly provider_instance_id?: number | null;
         };
@@ -10480,6 +10555,90 @@ export interface components {
             readonly analyzer_id: string;
         };
         /**
+         * AnalyzerInstanceCreate
+         * @description Create a new analyzer instance.
+         */
+        readonly AnalyzerInstanceCreate: {
+            /** Analyzer Id */
+            readonly analyzer_id: string;
+            /** Config */
+            readonly config?: Record<string, unknown>;
+            /** Description */
+            readonly description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            readonly enabled: boolean;
+            /** Label */
+            readonly label: string;
+            /** Model Id */
+            readonly model_id?: string | null;
+            /**
+             * Priority
+             * @default 0
+             */
+            readonly priority: number;
+            /** Provider Id */
+            readonly provider_id?: string | null;
+        };
+        /**
+         * AnalyzerInstanceListResponse
+         * @description List analyzer instances.
+         */
+        readonly AnalyzerInstanceListResponse: {
+            /** Instances */
+            readonly instances: readonly components["schemas"]["AnalyzerInstanceResponse"][];
+        };
+        /**
+         * AnalyzerInstanceResponse
+         * @description Analyzer instance response.
+         */
+        readonly AnalyzerInstanceResponse: {
+            /** Analyzer Id */
+            readonly analyzer_id: string;
+            /** Config */
+            readonly config: Record<string, unknown>;
+            /** Created At */
+            readonly created_at: string;
+            /** Description */
+            readonly description: string | null;
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Id */
+            readonly id: number;
+            /** Label */
+            readonly label: string;
+            /** Model Id */
+            readonly model_id: string | null;
+            /** Priority */
+            readonly priority: number;
+            /** Provider Id */
+            readonly provider_id: string;
+            /** Updated At */
+            readonly updated_at: string;
+        };
+        /**
+         * AnalyzerInstanceUpdate
+         * @description Update an analyzer instance.
+         */
+        readonly AnalyzerInstanceUpdate: {
+            /** Config */
+            readonly config?: Record<string, unknown> | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Enabled */
+            readonly enabled?: boolean | null;
+            /** Label */
+            readonly label?: string | null;
+            /** Model Id */
+            readonly model_id?: string | null;
+            /** Priority */
+            readonly priority?: number | null;
+            /** Provider Id */
+            readonly provider_id?: string | null;
+        };
+        /**
          * AnalyzerResponse
          * @description Response schema for analyzer info.
          */
@@ -10494,8 +10653,14 @@ export interface components {
             readonly is_default: boolean;
             /** Kind */
             readonly kind: string;
+            /** Model Id */
+            readonly model_id?: string | null;
             /** Name */
             readonly name: string;
+            /** Provider Id */
+            readonly provider_id?: string | null;
+            /** Source Plugin Id */
+            readonly source_plugin_id?: string | null;
             /** Target */
             readonly target: string;
         };
@@ -10995,6 +11160,11 @@ export interface components {
          * @description Response from SHA backfill operation
          */
         readonly BackfillSHAResponse: {
+            /**
+             * Duplicates
+             * @default 0
+             */
+            readonly duplicates: number;
             /** Errors */
             readonly errors: number;
             /** Processed */
@@ -11005,6 +11175,27 @@ export interface components {
             readonly success: boolean;
             /** Updated */
             readonly updated: number;
+        };
+        /**
+         * BackfillThumbnailsResponse
+         * @description Response from thumbnail backfill operation
+         */
+        readonly BackfillThumbnailsResponse: {
+            /**
+             * Error Ids
+             * @default []
+             */
+            readonly error_ids: readonly number[];
+            /** Errors */
+            readonly errors: number;
+            /** Generated */
+            readonly generated: number;
+            /** Processed */
+            readonly processed: number;
+            /** Skipped */
+            readonly skipped: number;
+            /** Success */
+            readonly success: boolean;
         };
         /**
          * BatchCheckByHashRequest
@@ -14533,6 +14724,11 @@ export interface components {
              * @description Analyzer ID (default: prompt:simple)
              */
             readonly analyzer_id?: string | null;
+            /**
+             * Analyzer Instance Id
+             * @description Analyzer instance ID for provider/model overrides
+             */
+            readonly analyzer_instance_id?: number | null;
             /**
              * Pack Ids
              * @description Semantic pack IDs to extend role registry and parser hints
@@ -20192,6 +20388,177 @@ export interface operations {
             };
         };
     };
+    readonly list_analyzer_instances_api_v1_analyzer_instances_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly analyzer_id?: string | null;
+                readonly include_disabled?: boolean;
+                readonly provider_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerInstanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_analyzer_instance_api_v1_analyzer_instances_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerInstanceCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_analyzer_instance_api_v1_analyzer_instances__instance_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_analyzer_instance_api_v1_analyzer_instances__instance_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_analyzer_instance_api_v1_analyzer_instances__instance_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly instance_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerInstanceUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerInstanceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_analyzers_api_v1_analyzers_get: {
         readonly parameters: {
             readonly query?: {
@@ -20852,6 +21219,42 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BackfillSHAResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly backfill_thumbnails_api_v1_assets_backfill_thumbnails_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Max assets to process */
+                readonly limit?: number;
+                /** @description Only process assets with missing thumbnail files */
+                readonly missing_only?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BackfillThumbnailsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.prompt import PromptVersion
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry
+from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerKind
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.semantic_context import (
     PromptSemanticContext,
@@ -52,6 +52,9 @@ class PromptAnalysisService:
         text: str,
         analyzer_id: Optional[str] = None,
         *,
+        provider_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+        instance_config: Optional[Dict[str, Any]] = None,
         pack_ids: Optional[List[str]] = None,
         semantic_context: Optional[PromptSemanticContext] = None,
     ) -> Dict[str, Any]:
@@ -91,6 +94,9 @@ class PromptAnalysisService:
             normalized,
             analyzer_id,
             role_registry=role_registry,
+            provider_id=provider_id,
+            model_id=model_id,
+            instance_config=instance_config,
         )
 
         # Ensure analyzer_id is in result
@@ -279,6 +285,9 @@ class PromptAnalysisService:
         analyzer_id: str,
         *,
         role_registry: Optional[PromptRoleRegistry] = None,
+        provider_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+        instance_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Run the specified analyzer on text.
@@ -286,13 +295,15 @@ class PromptAnalysisService:
         Dispatches to appropriate adapter based on analyzer_id.
         """
         # Check if analyzer exists
+        analyzer_id = analyzer_registry.resolve_legacy(analyzer_id)
         analyzer_info = analyzer_registry.get(analyzer_id)
         if not analyzer_info:
             logger.warning(f"Unknown analyzer {analyzer_id}, falling back to prompt:simple")
             analyzer_id = "prompt:simple"
+            analyzer_info = analyzer_registry.get(analyzer_id)
 
         # Dispatch based on analyzer kind
-        if analyzer_id == "prompt:simple" or analyzer_id == "parser:simple":
+        if analyzer_info and analyzer_info.kind == AnalyzerKind.PARSER:
             # Use simple parser adapter
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt
             return await analyze_prompt(
@@ -301,7 +312,7 @@ class PromptAnalysisService:
                 role_registry=role_registry,
             )  # adapter handles internally
 
-        elif analyzer_id.startswith("prompt:") or analyzer_id.startswith("llm:"):
+        elif analyzer_info and analyzer_info.kind == AnalyzerKind.LLM:
             # Use LLM analyzer
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt_with_llm
 
@@ -312,12 +323,19 @@ class PromptAnalysisService:
                 "llm:claude": "anthropic-llm",
                 "llm:openai": "openai-llm",
             }
-            provider_id = provider_map.get(analyzer_id, "anthropic-llm")
+            resolved_provider = (
+                provider_id
+                or analyzer_info.provider_id
+                or provider_map.get(analyzer_id, "anthropic-llm")
+            )
+            resolved_model = model_id or analyzer_info.model_id
 
             return await analyze_prompt_with_llm(
                 text=text,
-                provider_id=provider_id,
+                provider_id=resolved_provider,
+                model_id=resolved_model,
                 role_registry=role_registry,
+                instance_config=instance_config,
             )
 
         else:

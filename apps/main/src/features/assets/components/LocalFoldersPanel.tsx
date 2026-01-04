@@ -42,10 +42,76 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     (asset: LocalAsset) => (asset.kind === 'video' ? 'video' : 'image') as const,
     []
   );
-  const getDescription = useCallback((asset: LocalAsset) => asset.name, []);
+  // Build a map of SHA → count for duplicate detection
+  const shaDuplicates = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const asset of controller.assets) {
+      if (asset.sha256) {
+        counts.set(asset.sha256, (counts.get(asset.sha256) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [controller.assets]);
+
+  const getDescription = useCallback((asset: LocalAsset) => {
+    const parts = [asset.name];
+
+    // Add file size inline
+    if (asset.size) {
+      const sizeKB = asset.size / 1024;
+      const sizeMB = sizeKB / 1024;
+      const sizeStr = sizeMB >= 1
+        ? `${sizeMB.toFixed(1)}MB`
+        : `${Math.round(sizeKB)}KB`;
+      parts.push(`(${sizeStr})`);
+    }
+
+    // Add SHA prefix if available
+    if (asset.sha256) {
+      parts.push(`• #${asset.sha256.slice(0, 6)}`);
+    }
+
+    return parts.join(' ');
+  }, []);
   const getTags = useCallback(
-    (asset: LocalAsset) => [asset.relativePath.split('/').slice(0, -1).join('/')],
-    []
+    (asset: LocalAsset) => {
+      const tags: string[] = [];
+
+      // Folder path (if in subdirectory)
+      const folderPath = asset.relativePath.split('/').slice(0, -1).join('/');
+      if (folderPath) {
+        tags.push(`📁 ${folderPath}`);
+      }
+
+      // File size
+      if (asset.size) {
+        const sizeKB = asset.size / 1024;
+        const sizeMB = sizeKB / 1024;
+        const sizeStr = sizeMB >= 1
+          ? `${sizeMB.toFixed(1)} MB`
+          : `${Math.round(sizeKB)} KB`;
+        tags.push(sizeStr);
+      }
+
+      // SHA256 prefix (if computed) + duplicate indicator
+      if (asset.sha256) {
+        const dupCount = shaDuplicates.get(asset.sha256) || 1;
+        if (dupCount > 1) {
+          tags.push(`⚠️ ${dupCount} copies`);
+        }
+        tags.push(`#${asset.sha256.slice(0, 8)}`);
+      }
+
+      // Upload status
+      if (asset.last_upload_status === 'success') {
+        tags.push('✓ uploaded');
+      } else if (asset.last_upload_asset_id) {
+        tags.push(`→ asset:${asset.last_upload_asset_id}`);
+      }
+
+      return tags;
+    },
+    [shaDuplicates]
   );
   const getCreatedAt = useCallback(
     (asset: LocalAsset) => new Date(asset.lastModified || Date.now()).toISOString(),

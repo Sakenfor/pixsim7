@@ -443,6 +443,18 @@ class AssetIngestionService:
             Path to downloaded file
         """
         url = asset.remote_url
+        if not url:
+            raise ValueError(f"Asset {asset.id} has no remote_url")
+
+        # Auto-fix Pixverse relative URLs (e.g., "openapi/..." or "pixverse/...")
+        if not url.startswith(("http://", "https://")):
+            if url.startswith(("openapi/", "pixverse/", "upload/")):
+                url = f"https://media.pixverse.ai/{url}"
+                asset.remote_url = url  # Update asset for persistence
+                logger.warning("download_url_fixed", asset_id=asset.id, fixed_url=url[:100])
+            else:
+                raise ValueError(f"Asset {asset.id} has invalid remote_url (missing protocol): {url[:100]}")
+
         max_size = self.settings.max_download_size_mb * 1024 * 1024
         storage = get_storage_service()
 
@@ -700,6 +712,9 @@ class AssetIngestionService:
 
         thumb_size = self.settings.thumbnail_size
         thumb_quality = self.settings.thumbnail_quality
+        thumb_key = self._get_thumbnail_key(asset)
+        thumb_path = self.storage.get_path(thumb_key)
+        Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
 
         with Image.open(local_path) as img:
             # Handle EXIF orientation
@@ -711,20 +726,6 @@ class AssetIngestionService:
 
             # Create thumbnail (maintains aspect ratio)
             img.thumbnail(thumb_size, Image.Resampling.LANCZOS)
-
-            # Save to storage using content-addressed key (based on asset SHA)
-            # Use asset SHA for thumbnail key so duplicate assets share thumbnails
-            if asset.sha256:
-                # Hash-based naming (deduplication-friendly)
-                hash_prefix = asset.sha256[:2]
-                thumb_key = f"u/{asset.user_id}/thumbnails/{hash_prefix}/{asset.sha256}.jpg"
-            else:
-                # Fallback to asset ID if SHA not available (shouldn't happen with new system)
-                thumb_key = f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
-
-            thumb_path = self.storage.get_path(thumb_key)
-            Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
-
             img.save(thumb_path, "JPEG", quality=thumb_quality, optimize=True)
 
         asset.thumbnail_key = thumb_key
@@ -743,33 +744,12 @@ class AssetIngestionService:
         # Extract frame at 1 second (or middle if shorter)
         timestamp = min(1.0, (asset.duration_sec or 0) / 2)
 
-        # Use content-addressed key (based on asset SHA) for deduplication
-        if asset.sha256:
-            # Hash-based naming (deduplication-friendly)
-            hash_prefix = asset.sha256[:2]
-            thumb_key = f"u/{asset.user_id}/thumbnails/{hash_prefix}/{asset.sha256}.jpg"
-        else:
-            # Fallback to asset ID if SHA not available
-            thumb_key = f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
-
+        thumb_key = self._get_thumbnail_key(asset)
         thumb_path = self.storage.get_path(thumb_key)
         Path(thumb_path).parent.mkdir(parents=True, exist_ok=True)
 
         thumb_size = self.settings.thumbnail_size
-
-        rotation = None
-        if asset.media_metadata and isinstance(asset.media_metadata, dict):
-            rotation = (
-                asset.media_metadata.get("video_info", {}) or {}
-            ).get("rotation")
-
-        vf_parts = []
-        if rotation in (90, -270):
-            vf_parts.append("transpose=1")
-        elif rotation in (-90, 270):
-            vf_parts.append("transpose=2")
-        elif rotation in (180, -180):
-            vf_parts.append("hflip,vflip")
+        vf_parts = self._get_video_rotation_filters(asset)
         vf_parts.append(
             f"scale={thumb_size[0]}:{thumb_size[1]}:force_original_aspect_ratio=decrease"
         )
@@ -921,19 +901,7 @@ class AssetIngestionService:
         # Quality 92 -> qscale 2, Quality 75 -> qscale 5
         qscale = max(2, min(31, int(2 + (100 - preview_quality) / 10)))
 
-        rotation = None
-        if asset.media_metadata and isinstance(asset.media_metadata, dict):
-            rotation = (
-                asset.media_metadata.get("video_info", {}) or {}
-            ).get("rotation")
-
-        vf_parts = []
-        if rotation in (90, -270):
-            vf_parts.append("transpose=1")
-        elif rotation in (-90, 270):
-            vf_parts.append("transpose=2")
-        elif rotation in (180, -180):
-            vf_parts.append("hflip,vflip")
+        vf_parts = self._get_video_rotation_filters(asset)
         vf_parts.append(
             f"scale={preview_size[0]}:{preview_size[1]}:force_original_aspect_ratio=decrease"
         )
@@ -1000,6 +968,42 @@ class AssetIngestionService:
             return ".jpg"
         else:
             return ".bin"
+
+    def _get_thumbnail_key(self, asset: Asset) -> str:
+        """
+        Get the storage key for an asset's thumbnail.
+
+        Uses SHA256-based naming for deduplication when available,
+        falls back to asset ID for legacy assets.
+        """
+        if asset.sha256:
+            hash_prefix = asset.sha256[:2]
+            return f"u/{asset.user_id}/thumbnails/{hash_prefix}/{asset.sha256}.jpg"
+        else:
+            return f"u/{asset.user_id}/thumbnails/{asset.id}.jpg"
+
+    def _get_video_rotation_filters(self, asset: Asset) -> list[str]:
+        """
+        Get ffmpeg video filter parts for rotation correction.
+
+        Reads rotation from asset.media_metadata.video_info.rotation
+        and returns appropriate transpose/flip filters.
+        """
+        rotation = None
+        if asset.media_metadata and isinstance(asset.media_metadata, dict):
+            rotation = (
+                asset.media_metadata.get("video_info", {}) or {}
+            ).get("rotation")
+
+        filters = []
+        if rotation in (90, -270):
+            filters.append("transpose=1")
+        elif rotation in (-90, 270):
+            filters.append("transpose=2")
+        elif rotation in (180, -180):
+            filters.append("hflip,vflip")
+
+        return filters
 
     def _compute_sha256(self, file_path: str) -> str:
         """Compute SHA256 hash of file."""

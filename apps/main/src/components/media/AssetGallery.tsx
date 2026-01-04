@@ -254,8 +254,7 @@ function uploadStateToProviderStatus(
 /**
  * Internal component for a single gallery item with lazy loading.
  */
-function GalleryItem<T>({
-  asset,
+function GalleryItem({
   previewUrl,
   loadPreview,
   mediaType,
@@ -274,7 +273,6 @@ function GalleryItem<T>({
   actions,
   overlayPresetId,
 }: {
-  asset: T;
   previewUrl: string | undefined;
   loadPreview: () => Promise<void>;
   mediaType: 'video' | 'image' | 'audio' | '3d_model';
@@ -299,6 +297,9 @@ function GalleryItem<T>({
 
   const providerStatus = uploadStateToProviderStatus(uploadState);
 
+  // Convert string tags to MediaCard's expected format
+  const tagObjects = tags.map(tag => ({ slug: tag, display_name: tag }));
+
   return (
     <div ref={ref}>
       <MediaCard
@@ -310,7 +311,7 @@ function GalleryItem<T>({
         remoteUrl={previewUrl || ''}
         width={width}
         height={height}
-        tags={tags}
+        tags={tagObjects}
         description={description}
         createdAt={createdAt}
         onOpen={onOpen ? () => onOpen() : undefined}
@@ -356,7 +357,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     initialDisplayLimit = 50,
     loadMoreIncrement = 50,
     lazyLoadRootMargin = '400px',
-    groupBy,
+    // groupBy - reserved for future use
     badgeConfig,
     actions,
     overlayPresetId,
@@ -416,7 +417,6 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       return (
         <GalleryItem
           key={key}
-          asset={asset}
           previewUrl={previewUrl}
           loadPreview={() => loadPreview(asset)}
           mediaType={mediaType}

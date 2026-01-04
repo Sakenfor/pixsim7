@@ -431,7 +431,7 @@ class CommandLlmProvider:
         Get command parts from instance config, with fallback to defaults.
 
         Args:
-            instance_config: Config from LlmProviderInstance (optional)
+            instance_config: Config from ProviderInstanceConfig (optional)
 
         Returns:
             List of command parts ready for subprocess
@@ -456,7 +456,7 @@ class CommandLlmProvider:
         Get timeout from instance config, with fallback to defaults.
 
         Args:
-            instance_config: Config from LlmProviderInstance (optional)
+            instance_config: Config from ProviderInstanceConfig (optional)
 
         Returns:
             Timeout in seconds
@@ -491,7 +491,7 @@ class CommandLlmProvider:
             prompt_before: Original prompt to edit
             context: Optional context dict
             account: Optional account (not used by command provider)
-            instance_config: Optional config from LlmProviderInstance
+            instance_config: Optional config from ProviderInstanceConfig
 
         Returns:
             Edited prompt text from command output

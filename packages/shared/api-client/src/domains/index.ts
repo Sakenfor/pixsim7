@@ -26,6 +26,10 @@ export type {
 
 export type {
   AnalyzerInfo,
+  AnalyzerInstance,
+  AnalyzerInstanceListResponse,
+  CreateAnalyzerInstanceRequest,
+  UpdateAnalyzerInstanceRequest,
   AnalyzerKind,
   AnalyzerTarget,
   AnalyzersListResponse,

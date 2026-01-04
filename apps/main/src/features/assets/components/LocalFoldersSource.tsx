@@ -1,5 +1,11 @@
 import { LocalFoldersPanel } from './LocalFoldersPanel';
 
+interface LocalFoldersSourceProps {
+  layout?: 'masonry' | 'grid';
+  cardSize?: number;
+  overlayPresetId?: string;
+}
+
 /**
  * Local Folders Asset Source
  *
@@ -7,6 +13,6 @@ import { LocalFoldersPanel } from './LocalFoldersPanel';
  * The actual logic lives in useLocalFoldersController which already implements
  * the source controller pattern from types/localSources.ts
  */
-export function LocalFoldersSource() {
-  return <LocalFoldersPanel />;
+export function LocalFoldersSource({ layout, cardSize }: LocalFoldersSourceProps) {
+  return <LocalFoldersPanel layout={layout} cardSize={cardSize} />;
 }

@@ -52,6 +52,7 @@ async def analyze_prompt_with_llm(
     text: str,
     model_id: Optional[str] = None,
     provider_id: Optional[str] = None,
+    instance_config: Optional[Dict[str, Any]] = None,
     role_registry: Optional[PromptRoleRegistry] = None,
 ) -> Dict[str, Any]:
     """
@@ -61,6 +62,7 @@ async def analyze_prompt_with_llm(
         text: Prompt text to analyze
         model_id: LLM model to use (e.g., "claude-sonnet-4", "gpt-4")
         provider_id: Provider ID (e.g., "anthropic-llm", "openai-llm")
+        instance_config: Optional provider instance config override
 
     Returns:
         Dict with same format as analyze_prompt():
@@ -102,7 +104,8 @@ Return the analysis as JSON following the specified schema."""
             model_id=model_id,
             prompt_before=full_prompt,
             context={"mode": "prompt_analysis"},
-            account=None
+            account=None,
+            instance_config=instance_config,
         )
 
         cleaned = _clean_json_response(response_text)

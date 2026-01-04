@@ -49,6 +49,7 @@ PluginProvides = Literal[
     "content_packs",        # Provides content data (archetypes, activities)
     "external_services",    # Integrates external services
     "composition_packages", # Registers composition role packages
+    "analyzers",            # Registers prompt/asset analyzers
 ]
 
 # Load order priority (lower = earlier)
@@ -418,6 +419,9 @@ class PluginEvents:
 
     # NPC Surface system
     NPC_SURFACES_REGISTER = "npc:surfaces_register"
+
+    # Analyzer system
+    ANALYZERS_REGISTER = "analyzers:register"
 
     # System events
     APP_STARTUP = "app:startup"

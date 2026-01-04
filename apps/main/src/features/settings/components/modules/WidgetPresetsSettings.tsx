@@ -290,7 +290,7 @@ export function WidgetPresetsSettings() {
 settingsRegistry.register({
   id: "widget-presets",
   label: "UI Presets",
-  icon: "layout",
+  icon: "🎭",
   component: WidgetPresetsSettings,
   order: 18,
 });

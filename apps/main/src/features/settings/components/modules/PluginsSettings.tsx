@@ -204,6 +204,7 @@ export function PluginsSettings() {
 settingsRegistry.register({
   id: 'plugins',
   label: 'Plugins',
+  icon: '🧩',
   component: PluginsSettings,
   order: 80,
 });

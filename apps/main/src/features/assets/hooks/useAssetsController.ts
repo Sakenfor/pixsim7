@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAssets, type AssetFilters, type AssetModel } from './useAssets';
+import { useAssets, type AssetModel } from './useAssets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
@@ -56,8 +56,20 @@ export function useAssetsController() {
     },
   });
 
-  // Data loading
-  const { items, loadMore, loading, error, hasMore, reset, removeAsset } = useAssets({ filters });
+  // Data loading with page-based pagination support
+  const {
+    items,
+    loadMore,
+    loading,
+    error,
+    hasMore,
+    reset,
+    removeAsset,
+    currentPage,
+    totalPages,
+    goToPage,
+    pageSize,
+  } = useAssets({ filters, limit: 50 });
 
   // Viewer state
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
@@ -266,6 +278,12 @@ export function useAssetsController() {
     error,
     hasMore,
     reset,
+
+    // Page-based pagination
+    currentPage,
+    totalPages,
+    goToPage,
+    pageSize,
 
     // Selection mode (asset picker)
     isSelectionMode,

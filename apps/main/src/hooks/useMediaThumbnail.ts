@@ -93,10 +93,11 @@ export function useMediaThumbnailFull(
     ? previewUrl
     : (thumbUrl || previewUrl);
 
-  // Retry state for CDN propagation delays
+  // Retry state for CDN propagation delays and thumbnail regeneration
   const retryCountRef = useRef(0);
   const MAX_RETRIES = 6;
   const RETRY_DELAY_MS = 5000; // 5 seconds between retries, total 30 seconds
+  const REGEN_RETRY_DELAY_MS = 2000; // Shorter delay for 202 (regeneration in progress)
 
   // Manual retry function
   const retry = useCallback(() => {
@@ -207,11 +208,32 @@ export function useMediaThumbnailFull(
     }
 
     // Fetch with authorization and create blob URL
-    (async () => {
+    const fetchWithRetry = async () => {
       try {
         const res = await fetch(fullUrl, {
           headers: { Authorization: `Bearer ${token}` },
         });
+
+        // Handle 202 Accepted (thumbnail regeneration in progress)
+        if (res.status === 202 && retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current++;
+          console.log(`[useMediaThumbnail] 202 for ${fullUrl}, thumbnail regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
+          setTimeout(() => {
+            if (!cancelled) fetchWithRetry();
+          }, REGEN_RETRY_DELAY_MS);
+          return;
+        }
+
+        // Handle 404 (retry for CDN propagation)
+        if (res.status === 404 && retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current++;
+          console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
+          setTimeout(() => {
+            if (!cancelled) fetchWithRetry();
+          }, RETRY_DELAY_MS);
+          return;
+        }
+
         if (!res.ok) {
           // Fall back to remote URL if backend thumbnail is unavailable
           if (!cancelled) {
@@ -236,7 +258,8 @@ export function useMediaThumbnailFull(
           setLoading(false);
         }
       }
-    })();
+    };
+    fetchWithRetry();
 
     return () => {
       cancelled = true;

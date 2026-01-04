@@ -191,6 +191,19 @@ def setup_ai_models() -> None:
     logger.info("ai_models_registered")
 
 
+def setup_analyzer_plugins() -> None:
+    """
+    Register plugin hooks for analyzer discovery.
+
+    Must run before plugins load so analyzers are registered during load.
+    """
+    from pixsim7.backend.main.services.prompt.parser.analyzer_plugins import (
+        setup_analyzer_plugin_hooks,
+    )
+    setup_analyzer_plugin_hooks()
+    logger.info("analyzer_plugin_hooks_registered")
+
+
 def setup_event_handlers() -> None:
     """
     Register event handlers and WebSocket handlers.

@@ -10,7 +10,6 @@
  *
  * Replaces the separate Assets, Media, and Gallery settings modules.
  */
-import { useState } from 'react';
 import { settingsRegistry } from '../../lib/core/registry';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 import { registerLibrarySettings } from '../../lib/schemas/library.settings';
@@ -19,54 +18,84 @@ import { LibrarySyncSection } from './LibrarySyncSection';
 // Auto-register schema-based settings when module loads
 registerLibrarySettings();
 
-type LibraryView = 'settings' | 'sync';
-
-export function LibrarySettings() {
-  const [view, setView] = useState<LibraryView>('settings');
-
+/** Browser settings tab */
+function LibraryBrowserSettings() {
   return (
-    <div className="flex flex-col h-full">
-      {/* View toggle */}
-      <div className="flex gap-2 px-4 pt-4 pb-2">
-        <button
-          onClick={() => setView('settings')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            view === 'settings'
-              ? 'bg-blue-600 text-white'
-              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-          }`}
-        >
-          Settings
-        </button>
-        <button
-          onClick={() => setView('sync')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            view === 'sync'
-              ? 'bg-blue-600 text-white'
-              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-          }`}
-        >
-          Provider Sync
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
-        {view === 'settings' ? (
-          <DynamicSettingsPanel categoryId="library" />
-        ) : (
-          <LibrarySyncSection />
-        )}
-      </div>
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="library" tabId="browser" />
     </div>
   );
 }
 
-// Register this module
+/** Downloads settings tab */
+function LibraryDownloadsSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="library" tabId="downloads" />
+    </div>
+  );
+}
+
+/** Storage settings tab */
+function LibraryStorageSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="library" tabId="storage" />
+    </div>
+  );
+}
+
+/** Maintenance settings tab */
+function LibraryMaintenanceSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="library" tabId="maintenance" />
+    </div>
+  );
+}
+
+/** Default component - shows browser settings */
+export function LibrarySettings() {
+  return <LibraryBrowserSettings />;
+}
+
+// Register this module with sub-sections for each tab
 settingsRegistry.register({
   id: 'library',
   label: 'Library',
   icon: '📚',
   component: LibrarySettings,
   order: 35,
+  subSections: [
+    {
+      id: 'browser',
+      label: 'Browser',
+      icon: '🌐',
+      component: LibraryBrowserSettings,
+    },
+    {
+      id: 'downloads',
+      label: 'Downloads',
+      icon: '📥',
+      component: LibraryDownloadsSettings,
+    },
+    {
+      id: 'storage',
+      label: 'Storage',
+      icon: '💾',
+      component: LibraryStorageSettings,
+    },
+    {
+      id: 'maintenance',
+      label: 'Maintenance',
+      icon: '🔧',
+      component: LibraryMaintenanceSettings,
+    },
+    {
+      id: 'sync',
+      label: 'Provider Sync',
+      icon: '🔄',
+      component: LibrarySyncSection,
+    },
+  ],
 });

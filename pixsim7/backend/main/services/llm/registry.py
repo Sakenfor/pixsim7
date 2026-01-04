@@ -44,7 +44,7 @@ class LlmProvider(Protocol):
             prompt_before: Original prompt to edit
             context: Optional context (generation metadata, user preferences, etc.)
             account: Optional provider account with credentials
-            instance_config: Optional config from LlmProviderInstance for
+            instance_config: Optional config from ProviderInstanceConfig for
                 provider-specific settings (command, API key override, etc.)
 
         Returns:
