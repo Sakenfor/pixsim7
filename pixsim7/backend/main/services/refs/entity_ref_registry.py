@@ -15,14 +15,14 @@ Usage:
     # Lookup entity type for a field
     registry = get_entity_ref_registry()
     entity_type = registry.get_entity_type("asset_id")  # -> "asset"
-    entity_type = registry.get_entity_type("linked_scene_id", model="GameHotspotDTO")  # -> "scene"
+    # entity_type = registry.get_entity_type("scene_id")  # -> "scene"
 
 Adding new mappings:
     # Global mapping (applies everywhere)
     registry.register("asset_id", "asset")
 
     # Model-specific mapping (overrides global for specific DTO)
-    registry.register("linked_scene_id", "scene", model="GameHotspotDTO")
+    # registry.register("scene_id", "scene", model="GameHotspotDTO")
 
     # Pattern-based mapping (regex)
     registry.register_pattern(r".*_asset_id$", "asset")
@@ -53,7 +53,7 @@ class EntityRefRegistry:
 
     Supports:
     - Exact field name matching: "asset_id" -> "asset"
-    - Model-scoped overrides: "GameHotspotDTO.linked_scene_id" -> "scene"
+    - Model-scoped overrides: "GameHotspotDTO.scene_id" -> "scene"
     - Pattern matching: "*_asset_id" -> "asset"
 
     Priority order:
@@ -84,7 +84,7 @@ class EntityRefRegistry:
 
         Example:
             registry.register("asset_id", "asset")
-            registry.register("linked_scene_id", "scene", model="GameHotspotDTO")
+            registry.register("scene_id", "scene", model="GameHotspotDTO")
         """
         config = FieldRefConfig(entity_type=entity_type, description=description)
         if model:
@@ -278,12 +278,12 @@ def register_default_ref_mappings() -> None:
     registry.register("world_id", "world", description="Reference to game_worlds table")
 
     # Model-specific overrides
-    registry.register(
-        "linked_scene_id",
-        "scene",
-        model="GameHotspotDTO",
-        description="Hotspot's linked scene",
-    )
+    # registry.register(
+    #     "scene_id",
+    #     "scene",
+    #     model="GameHotspotDTO",
+    #     description="Hotspot action scene reference",
+    # )
 
     # Pattern-based mappings for less common fields
     registry.register_pattern(r".*_asset_id$", "asset")

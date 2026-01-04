@@ -105,11 +105,11 @@ Map all existing systems that implement “interactions with NPCs” so the new 
 #### A. Hotspot-Based Interactions (`packages/game/engine/src/interactions/hotspot.ts`)
 
 **Types:**
-- `play_scene`: Triggers a scene via `GameHotspot.linked_scene_id` or explicit `scene_id`
+- `play_scene`: Triggers a scene via `GameHotspot.action` with `scene_id`
 - `change_location`: Moves player to a different `GameLocation`
 - `npc_talk`: Initiates conversation with an NPC (placeholder implementation)
 
-**Schema:** Stored in `GameHotspot.meta.action` as untyped JSON, parsed on the client.
+**Schema:** Stored in `GameHotspot.action` as untyped JSON, parsed on the client.
 
 **Limitations:**
 - No relationship/intimacy gating

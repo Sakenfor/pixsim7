@@ -237,7 +237,7 @@ Add **World Manifest Builder** UI:
         "trade": {
           "gating": { "min_affinity": 10, "location": ["market"] },
           "type": "scene_triggered",
-          "linked_scene_id": 5,
+          "action": { "type": "play_scene", "scene_id": 5 },
           "prompt_template": "The merchant eyes you warily. 'Looking to trade?'"
         }
       }
@@ -271,7 +271,7 @@ POST /api/v1/game-hotspots/
   "location_id": 1,
   "object_name": "tavern_door",
   "hotspot_id": "enter_tavern",
-  "linked_scene_id": 3,
+  "action": { "type": "play_scene", "scene_id": 3 },
   "meta": { "prompt_text": "Enter the tavern?" }
 }
 ```

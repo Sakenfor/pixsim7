@@ -17,8 +17,8 @@
 This document describes the **frontend-only** schema used by the 2D game UI
 for interpreting hotspot actions and scene playback phases. The backend
 models (`GameLocation`, `GameHotspot`, `GameScene`, `GameNPC`, `NpcExpression`)
-remain generic; only the **JSON stored in `meta`** and the TypeScript helpers
-define this behavior.
+remain generic; only the **JSON stored in `GameHotspot.action`** and the
+TypeScript helpers define this behavior.
 
 Relevant code:
 - `@pixsim7/game.engine` (hotspot actions and playback helpers)
@@ -32,7 +32,7 @@ Relevant code:
 
 Hotspot actions live in:
 
-- `GameHotspot.meta.action` (arbitrary JSON in the backend),
+- `GameHotspot.action` (structured JSON in the backend),
 - parsed and enforced in the frontend by `parseHotspotAction`.
 
 TypeScript schema (canonical in `@pixsim7/game.engine`):
@@ -43,7 +43,7 @@ TypeScript schema (canonical in `@pixsim7/game.engine`):
   ```ts
   {
     type: 'play_scene';
-    scene_id?: number | string | null; // optional; fallback to linked_scene_id
+    scene_id?: number | string | null;
   }
   ```
 
@@ -81,8 +81,7 @@ type HotspotAction =
   - `'change_location'`,
   - `'npc_talk'`.
 - Returns a typed `HotspotAction` or `null` if unknown / malformed.
-- Callers treat `null` as “no structured action”; they can still fall back
-  to existing fields like `linked_scene_id`.
+- Callers treat `null` as “no structured action”.
 
 This keeps the backend free of new enums while giving the frontend a small,
 well-defined action vocabulary.
@@ -95,8 +94,7 @@ In `Game2D` (`Game2D.tsx`), `handlePlayHotspot` applies the schema:
 
 1. **Parse action**
    ```ts
-   const rawAction = (hotspot.meta as any)?.action ?? null;
-   const action = parseHotspotAction(rawAction);
+   const action = parseHotspotAction(hotspot.action);
    ```
 
 2. **`change_location`**
@@ -107,19 +105,16 @@ In `Game2D` (`Game2D.tsx`), `handlePlayHotspot` applies the schema:
    - Currently: logs to the console (`npc_talk action triggered`).
    - Reserved for future conversational UI (dialogue box, etc.).
 
-4. **`play_scene` + backwards compatibility**
-   - Computes the scene id with fallback:
+4. **`play_scene`**
+   - Uses the explicit scene id:
      ```ts
-     const sceneId =
-       (action && 'scene_id' in action ? action.scene_id : null) ??
-       hotspot.linked_scene_id;
+     const sceneId = action?.type === 'play_scene' ? action.scene_id : null;
      ```
    - If no id is found → no-op.
    - Otherwise fetches the scene via `/game/scenes/:id` and opens `ScenePlayer`
      full-screen.
 
-This preserves existing behavior (`linked_scene_id`) while allowing richer
-actions in `meta.action`.
+This keeps hotspot behavior explicit in `GameHotspot.action`.
 
 ---
 
@@ -212,7 +207,6 @@ The **Game World editor** (`GameWorld.tsx`) exposes:
 - Existing fields per hotspot:
   - `object_name`,
   - `hotspot_id`,
-  - `linked_scene_id`,
   - `meta` (raw JSON).
 
 - Additional convenience inputs for the action schema:
@@ -220,8 +214,8 @@ The **Game World editor** (`GameWorld.tsx`) exposes:
   - `action.scene_id`,
   - `action.target_location_id`.
 
-These inputs simply manipulate `hotspot.meta.action` as JSON; the backend still
-stores a generic `meta` object.
+These inputs manipulate `hotspot.action` directly; `meta` remains generic
+for layout and UI hints.
 
 This keeps the **2D interaction model** fully frontend-driven while allowing
 world authors to define structured behaviors from the editor UI.

@@ -91,22 +91,29 @@ export function GameWorld() {
   ) => {
     if (!detail) return;
     const h = detail.hotspots[index];
-    const meta: any = { ...(h.meta || {}) };
-    const action: any = { ...(meta.action || {}) };
+    const action: any = { ...(h.action || {}) };
 
     if (field === 'type') {
       // When changing type, reset action to only have the new type
-      meta.action = { type: value || undefined };
+      if (value) {
+        handleHotspotChange(index, { action: { type: value } as any });
+      } else {
+        handleHotspotChange(index, { action: undefined });
+      }
+      return;
     } else {
       action[field] = value || undefined;
       // Clean up undefined values
       if (!action[field]) {
         delete action[field];
       }
-      meta.action = action;
+      if (!action.type) {
+        handleHotspotChange(index, { action: undefined });
+        return;
+      }
     }
 
-    handleHotspotChange(index, { meta });
+    handleHotspotChange(index, { action });
   };
 
   const handleAddHotspot = () => {
@@ -115,7 +122,7 @@ export function GameWorld() {
       ...detail,
       hotspots: [
         ...detail.hotspots,
-        { object_name: '', hotspot_id: '', linked_scene_id: undefined, meta: {} },
+        { object_name: '', hotspot_id: '', action: undefined, meta: {} },
       ],
     });
   };
@@ -244,8 +251,7 @@ export function GameWorld() {
                 </div>
                 <div className="space-y-3">
               {detail.hotspots.map((h, idx) => {
-                const meta: any = h.meta || {};
-                const action: any = meta.action || {};
+                const action: any = h.action || {};
                 const actionType: HotspotActionType | '' = action.type ?? '';
 
                 return (
@@ -254,7 +260,7 @@ export function GameWorld() {
                     className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700 space-y-2"
                   >
                     {/* Basic Hotspot Info */}
-                    <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
                       <Input
                         placeholder="object_name (from glTF)"
                         value={h.object_name}
@@ -264,16 +270,6 @@ export function GameWorld() {
                         placeholder="hotspot_id"
                         value={h.hotspot_id}
                         onChange={(e: any) => handleHotspotChange(idx, { hotspot_id: e.target.value })}
-                      />
-                      <Input
-                        placeholder="linked_scene_id (fallback)"
-                        value={h.linked_scene_id ?? ''}
-                        onChange={(e: any) => {
-                          const v = e.target.value.trim();
-                          handleHotspotChange(idx, {
-                            linked_scene_id: v ? Number(v) : undefined,
-                          });
-                        }}
                       />
                     </div>
 
@@ -310,9 +306,6 @@ export function GameWorld() {
                                 handleActionChange(idx, 'scene_id', v ? Number(v) : null);
                               }}
                             />
-                            <p className="text-xs text-neutral-500 mt-0.5">
-                              Leave empty to use linked_scene_id
-                            </p>
                           </div>
                         )}
 

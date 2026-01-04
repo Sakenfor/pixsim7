@@ -10,7 +10,7 @@ This directory contains TypeScript modules for game logic, schemas, and helpers 
 
 - **`HotspotAction`** types: `play_scene`, `change_location`, `npc_talk`
   - Defines the frontend schema for hotspot actions
-  - Parsed from `GameHotspot.meta.action` JSON
+  - Parsed from `GameHotspot.action` JSON
 
 - **`parseHotspotAction(raw)`** – Validates and parses hotspot action JSON
   - Returns typed `HotspotAction` or `null` if unknown/malformed
@@ -23,7 +23,7 @@ This directory contains TypeScript modules for game logic, schemas, and helpers 
   - Based on current node type (`choice` → `awaiting_input`, `end` → `completed`, etc.)
 
 **See:**
-- `docs/HOTSPOT_ACTIONS_2D.md` – Complete hotspot action schema and playback phase details
+- `docs/game-systems/HOTSPOT_ACTIONS_2D.md` – Complete hotspot action schema and playback phase details
 - `docs/SYSTEM_OVERVIEW.md` – High-level overview of game systems
 
 ---
@@ -79,5 +79,5 @@ This ensures consistent session logic across all frontends (React/3D/CLI) and ke
 
 - These modules define **frontend-only schemas** on top of generic backend JSON fields
 - Backend models remain generic; TypeScript types and helpers enforce conventions
-- When adding new action types or playback rules, update the hotspot helpers in `@pixsim7/game.engine` (re-exported via `interactionSchema.ts`) and document in `HOTSPOT_ACTIONS_2D.md`
+- When adding new action types or playback rules, update the hotspot helpers in `@pixsim7/game.engine` (re-exported via `interactionSchema.ts`) and document in `docs/game-systems/HOTSPOT_ACTIONS_2D.md`
 - When adding new session state patterns, update `session.ts` helpers and document in `RELATIONSHIPS_AND_ARCS.md`

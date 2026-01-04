@@ -1,42 +1,29 @@
-import type { Scene, SceneRuntimeState } from '@pixsim7/shared.types';
+import type {
+  Scene,
+  SceneRuntimeState,
+  HotspotAction,
+  HotspotActionType,
+  PlaySceneAction,
+  ChangeLocationAction,
+  NpcTalkAction,
+} from '@pixsim7/shared.types';
 
 /**
  * Frontend-only hotspot action schema for 2D interactions.
  *
- * These actions live inside `GameHotspot.meta.action` on the backend as
- * arbitrary JSON, but are interpreted here by the 2D client.
+ * These actions are authored as structured JSON in `GameHotspot.action`,
+ * but are still parsed defensively on the client.
  */
-export type HotspotActionType = 'play_scene' | 'change_location' | 'npc_talk';
-
-export interface PlaySceneAction {
-  type: 'play_scene';
-  /**
-   * Optional explicit scene id to play.
-   * If omitted, the client should fall back to `linked_scene_id`.
-   */
-  scene_id?: number | string | null;
-}
-
-export interface ChangeLocationAction {
-  type: 'change_location';
-  /**
-   * Target `GameLocation.id` to move the player to.
-   */
-  target_location_id?: number | string | null;
-}
-
-export interface NpcTalkAction {
-  type: 'npc_talk';
-  /**
-   * Target `GameNPC.id` that this interaction should talk to.
-   */
-  npc_id?: number | string | null;
-}
-
-export type HotspotAction = PlaySceneAction | ChangeLocationAction | NpcTalkAction;
+export type {
+  HotspotActionType,
+  HotspotAction,
+  PlaySceneAction,
+  ChangeLocationAction,
+  NpcTalkAction,
+};
 
 /**
- * Parse a loose `meta.action` value into a typed `HotspotAction`.
+ * Parse a loose action value into a typed `HotspotAction`.
  * Unknown or malformed actions return `null` so callers can safely ignore them.
  */
 export function parseHotspotAction(raw: unknown): HotspotAction | null {

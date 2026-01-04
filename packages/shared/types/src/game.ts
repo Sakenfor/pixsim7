@@ -452,9 +452,50 @@ export function isTriggerObject(obj: GameObject): obj is TriggerObject {
 // Location Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export type GameLocationSummary = ApiComponents['schemas']['GameLocationSummary'];
-export type GameLocationDetail = ApiComponents['schemas']['GameLocationDetail'];
-export type GameHotspotDTO = ApiComponents['schemas']['GameHotspotDTO'];
+type EntityRef = ApiComponents['schemas']['EntityRef'];
+
+export interface GameLocationSummary {
+  id: number;
+  name: string;
+  asset?: EntityRef | null;
+  default_spawn?: string | null;
+}
+
+export type HotspotActionType = 'play_scene' | 'change_location' | 'npc_talk';
+
+export interface PlaySceneAction {
+  type: 'play_scene';
+  scene_id?: number | string | null;
+}
+
+export interface ChangeLocationAction {
+  type: 'change_location';
+  target_location_id?: number | string | null;
+}
+
+export interface NpcTalkAction {
+  type: 'npc_talk';
+  npc_id?: number | string | null;
+}
+
+export type HotspotAction = PlaySceneAction | ChangeLocationAction | NpcTalkAction;
+
+export interface GameHotspotDTO {
+  id?: number | null;
+  object_name: string;
+  hotspot_id: string;
+  action?: HotspotAction | null;
+  meta?: Record<string, unknown> | null;
+}
+
+export interface GameLocationDetail {
+  id: number;
+  name: string;
+  asset?: EntityRef | null;
+  default_spawn?: string | null;
+  meta?: Record<string, unknown> | null;
+  hotspots: GameHotspotDTO[];
+}
 
 // ----- Frontend-only interaction config types -----
 

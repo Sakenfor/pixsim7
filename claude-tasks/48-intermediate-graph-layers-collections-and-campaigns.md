@@ -49,7 +49,7 @@ interface WorldManifest {
 
 // Hotspots already reference scenes
 interface GameHotspotDTO {
-  linked_scene_id?: number | null;  // Location-based scene triggers
+  action?: { type: "play_scene"; scene_id: number } | null;  // Location-based scene triggers
 }
 
 // World has temporal tracking

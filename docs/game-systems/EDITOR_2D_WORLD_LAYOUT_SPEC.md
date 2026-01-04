@@ -22,8 +22,8 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
 - `apps/main/src/routes/GameWorld.tsx`
   - Lists locations via `/game/locations`.
   - For a selected location, edits its **hotspots**:
-    - `object_name`, `hotspot_id`, `linked_scene_id`, `meta`.
-  - Has structured controls for `meta.action`:
+    - `object_name`, `hotspot_id`, `action`, `meta`.
+  - Has structured controls for `action`:
     - `type: 'play_scene' | 'change_location' | 'npc_talk'`
     - `scene_id`, `target_location_id`, `npc_id`.
 
@@ -42,7 +42,7 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
 - `apps/main/src/routes/Game2D.tsx`
   - 2D game preview:
     - Shows background image/video for `GameLocation`.
-    - Renders hotspots on top via `meta.rect2d` and `linked_scene_id` / `meta.action`.
+    - Renders hotspots on top via `meta.rect2d` and `action`.
     - Uses `GameWorld`/NPC APIs plus `getNpcPresence` to drive portraits.
 
 Right now, there is **no editor UI** for:
@@ -209,7 +209,7 @@ For each slot in the 2D layout view:
 - Show an “Interactions” panel:
   - Checkbox `Talk` → config for `npcTalk`:
     - NPC ID (optional; defaults to assigned NPC),
-    - Scene ID (optional; fallback to `hotspot.meta.action.type = "npc_talk"`).
+    - Scene ID (optional; fallback to `hotspot.action.type = "npc_talk"`).
   - Checkbox `Pickpocket` → config for `pickpocket` probabilities and flags.
   - Future checkboxes (e.g. “Flirt”, “Give Item”) can be added as new keys
     under `interactions` following the same pattern.

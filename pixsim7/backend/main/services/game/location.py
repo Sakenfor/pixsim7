@@ -44,7 +44,7 @@ class GameLocationService:
         Each hotspot dict should contain:
           - object_name: str
           - hotspot_id: str
-          - linked_scene_id: Optional[int]
+          - action: Optional[dict]
           - meta: Optional[dict]
         """
         # Delete existing hotspots for location
@@ -58,7 +58,7 @@ class GameLocationService:
                 location_id=location_id,
                 object_name=h["object_name"],
                 hotspot_id=h["hotspot_id"],
-                linked_scene_id=h.get("linked_scene_id"),
+                action=h.get("action"),
                 meta=h.get("meta"),
             )
             self.db.add(hotspot)
@@ -68,4 +68,3 @@ class GameLocationService:
         for h in created:
             await self.db.refresh(h)
         return created
-

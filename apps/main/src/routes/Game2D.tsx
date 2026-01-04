@@ -601,8 +601,7 @@ export function Game2D() {
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
-    const rawAction = (hotspot.meta as any)?.action ?? null;
-    const action: HotspotAction | null = parseHotspotAction(rawAction);
+    const action: HotspotAction | null = parseHotspotAction(hotspot.action);
 
     // Change location
     if (action?.type === 'change_location') {
@@ -624,8 +623,8 @@ export function Game2D() {
       return;
     }
 
-    // Default: play scene (from action.scene_id or linked_scene_id)
-    const sceneId = (action && 'scene_id' in action ? action.scene_id : null) ?? hotspot.linked_scene_id;
+    // Default: play scene
+    const sceneId = action?.type === 'play_scene' ? action.scene_id : null;
     if (!sceneId) return;
 
     setIsLoadingScene(true);
@@ -920,13 +919,14 @@ export function Game2D() {
                       width: `${w * 100}%`,
                       height: `${hH * 100}%`,
                     } as React.CSSProperties;
-                    const canPlay = Boolean(h.linked_scene_id);
+                    const action = parseHotspotAction(h.action);
+                    const isActionable = Boolean(action);
                     return (
                       <button
                         key={`hs-rect-${h.id ?? h.hotspot_id}`}
                         className={`absolute border-2 rounded-sm border-blue-400/70 hover:border-blue-600 bg-blue-500/10 hover:bg-blue-500/20 text-[10px] text-white flex items-center justify-center`}
                         style={style}
-                        disabled={!canPlay || isLoadingScene}
+                        disabled={!isActionable || isLoadingScene}
                         onClick={() => handlePlayHotspot(h)}
                         title={h.hotspot_id || h.object_name}
                       >
@@ -985,20 +985,25 @@ export function Game2D() {
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  {locationDetail.hotspots.map((h) => (
-                    <Button
-                      key={h.id ?? `${h.object_name}-${h.hotspot_id}`}
-                      size="sm"
-                      variant={h.linked_scene_id ? 'primary' : 'secondary'}
-                      disabled={!h.linked_scene_id || isLoadingScene}
-                      onClick={() => handlePlayHotspot(h)}
-                    >
-                      {h.hotspot_id || h.object_name}
-                      {h.linked_scene_id && (
-                        <span className="ml-1 text-[10px] opacity-70">#{h.linked_scene_id}</span>
-                      )}
-                    </Button>
-                  ))}
+                  {locationDetail.hotspots.map((h) => {
+                    const action = parseHotspotAction(h.action);
+                    const isPlayable = action?.type === 'play_scene' && action.scene_id != null;
+                    const isActionable = Boolean(action);
+                    return (
+                      <Button
+                        key={h.id ?? `${h.object_name}-${h.hotspot_id}`}
+                        size="sm"
+                        variant={isPlayable ? 'primary' : 'secondary'}
+                        disabled={!isActionable || isLoadingScene}
+                        onClick={() => handlePlayHotspot(h)}
+                      >
+                        {h.hotspot_id || h.object_name}
+                        {isPlayable && (
+                          <span className="ml-1 text-[10px] opacity-70">#{action?.scene_id}</span>
+                        )}
+                      </Button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

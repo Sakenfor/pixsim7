@@ -38,8 +38,8 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 **`GameHotspot`** represents an interactable object or trigger:
 - Lives inside a `GameLocation`
-- Triggers actions via `meta.action` (see `HotspotAction` schema in `HOTSPOT_ACTIONS_2D.md`)
-- Can reference a `GameScene` via `linked_scene_id`
+- Triggers actions via `action` (see `HotspotAction` schema in `HOTSPOT_ACTIONS_2D.md`)
+- Can reference a `GameScene` via `action.type = "play_scene"`
 - Can specify display modes for 2D/3D presentation (see `GAME_WORLD_DISPLAY_MODES.md`)
 
 **Backend:**
@@ -149,7 +149,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 **`apps/main/src/routes/Game2D.tsx`** – Playtest environment for 2D gameplay:
 - Renders a location's background and hotspots
 - Handles hotspot clicks via `handlePlayHotspot`:
-  - Parses `meta.action` using `parseHotspotAction` (from `@pixsim7/game.engine`)
+  - Parses `action` using `parseHotspotAction` (from `@pixsim7/game.engine`)
   - Supports: `play_scene`, `change_location`, `npc_talk`
 - Opens `ScenePlayer` full-screen for scenes
 - Displays NPC portraits based on scene playback phase and `NpcExpression` states
@@ -247,7 +247,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 **Key constraints:**
 - Don't change database schemas; use `meta`, `flags`, `relationships` instead
-- Hotspot actions live in `meta.action` as JSON, validated by frontend
+- Hotspot actions live in `action` as JSON, validated by frontend
 - Scene playback phases are derived from runtime state, not stored
 
 ---

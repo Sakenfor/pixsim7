@@ -21,7 +21,7 @@ baseline in `NODE_EDITOR_DEVELOPMENT.md` is already in place.
 The goal is to make the editor aware of:
 - Worlds (`GameWorld` + `GameWorldState`),
 - World sessions (`GameSession` with `world_time` and flags),
-- 2D actions (`GameHotspot.meta.action`),
+- 2D actions (`GameHotspot.action`),
 - NPC expressions + presence,
 while keeping the scene graph (`Scene`, `SceneNode`, `SceneEdge`) backend‑agnostic.
 
@@ -139,18 +139,18 @@ hard‑wiring world IDs into scene schemas.
 ## Phase 2 – Hotspot Actions + Scene Linking in the Editor
 
 **Goal:** Make the editor aware of 2D hotspot actions so creators don’t have
-to hand‑edit `meta.action` JSON or remember action types.
+to hand‑edit `action` JSON or remember action types.
 
 **Tasks:**
 - Extend `GameWorld` editor (`apps/main/src/routes/GameWorld.tsx`):
-  - Replace the current raw `meta` JSON input with a **structured view** for `meta.action` based on `HotspotAction`:
+  - Replace the current raw `meta` JSON input with a **structured view** for `action` based on `HotspotAction`:
     - `type: 'play_scene' | 'change_location' | 'npc_talk'`
     - `scene_id`, `target_location_id`, `npc_id`
   - Keep a “raw meta JSON” field for advanced use, but make action fields the primary controls.
-  - Ensure the values are written back into `meta.action` in a way compatible with `parseHotspotAction`.
+  - Ensure the values are written back into `action` in a way compatible with `parseHotspotAction`.
 - Add a **“Link Scene” helper**:
-  - In `GameWorld`, allow picking a `GameScene` for `linked_scene_id` from a dropdown (simple `/game/scenes` list or a typeahead stub).
-  - Show a quick link (“Open in Scene Editor”) next to each `linked_scene_id` that navigates to the scene editor with the same world/location context.
+  - In `GameWorld`, allow picking a `GameScene` for `action.type = "play_scene"` from a dropdown (simple `/game/scenes` list or a typeahead stub).
+  - Show a quick link (“Open in Scene Editor”) next to each `action.scene_id` that navigates to the scene editor with the same world/location context.
 
 **Acceptance:**
 - For any hotspot, you can set `type: play_scene/change_location/npc_talk` and relevant IDs via form inputs.

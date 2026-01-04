@@ -30,7 +30,7 @@ Follow these rules when working on game features:
 
 4. **Frontend-driven schemas**
    - Backend stores generic JSON; frontend validates and interprets via TypeScript types
-   - Hotspot actions live in `meta.action` and are validated by `parseHotspotAction`
+   - Hotspot actions live in `action` and are validated by `parseHotspotAction`
    - Scene playback phases are derived from runtime state, not stored
    - Relationship tiers/scales are defined per-world in `GameWorld.meta`, not hard-coded
 

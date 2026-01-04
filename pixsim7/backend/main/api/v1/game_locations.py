@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Annotated, Union, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameLocationSvc
-from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef, SceneRef
+from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
 
 
 router = APIRouter()
@@ -26,6 +26,27 @@ class GameLocationSummary(BaseModel):
     default_spawn: Optional[str] = None
 
 
+class PlaySceneAction(BaseModel):
+    type: Literal["play_scene"]
+    scene_id: Optional[int] = None
+
+
+class ChangeLocationAction(BaseModel):
+    type: Literal["change_location"]
+    target_location_id: Optional[int] = None
+
+
+class NpcTalkAction(BaseModel):
+    type: Literal["npc_talk"]
+    npc_id: Optional[int] = None
+
+
+HotspotAction = Annotated[
+    Union[PlaySceneAction, ChangeLocationAction, NpcTalkAction],
+    Field(discriminator="type"),
+]
+
+
 class GameHotspotDTO(BaseModel):
     """A hotspot within a game location."""
 
@@ -34,10 +55,7 @@ class GameHotspotDTO(BaseModel):
     id: Optional[int] = None
     object_name: str
     hotspot_id: str
-    linked_scene: Optional[SceneRef] = Field(
-        default=None,
-        validation_alias=AliasChoices("linked_scene", "linked_scene_id"),
-    )
+    action: Optional[HotspotAction] = None
     meta: Optional[Dict[str, Any]] = None
 
 
@@ -105,7 +123,7 @@ async def get_location(
                 id=h.id,
                 object_name=h.object_name,
                 hotspot_id=h.hotspot_id,
-                linked_scene_id=h.linked_scene_id,
+                action=h.action,
                 meta=h.meta,
             )
             for h in hotspots
@@ -126,7 +144,7 @@ async def replace_hotspots(
     Body shape:
       {
         "hotspots": [
-          { "object_name": "...", "hotspot_id": "...", "linked_scene_id": 123, "meta": {...} },
+          { "object_name": "...", "hotspot_id": "...", "action": {...}, "meta": {...} },
           ...
         ]
       }
@@ -155,10 +173,9 @@ async def replace_hotspots(
                 id=h.id,
                 object_name=h.object_name,
                 hotspot_id=h.hotspot_id,
-                linked_scene_id=h.linked_scene_id,
+                action=h.action,
                 meta=h.meta,
             )
             for h in created
         ],
     )
-

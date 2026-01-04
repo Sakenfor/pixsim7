@@ -279,7 +279,7 @@ export default function App() {
             hotspots={hotspots}
             onHotspotClick={async (h) => {
               if (!authToken) return
-              const action = (h.meta as any)?.action || null
+              const action = h.action || null
 
               // Change location action
               if (action?.type === 'change_location' && action.target_location_id) {
@@ -290,8 +290,8 @@ export default function App() {
                 return
               }
 
-              // Default: play scene (from action.scene_id or linked_scene_id)
-              const sceneId = action?.scene_id ?? h.linked_scene_id
+              // Default: play scene
+              const sceneId = action?.type === 'play_scene' ? action.scene_id : null
               if (!sceneId) return
               try {
                 const scene = await fetchSceneById({

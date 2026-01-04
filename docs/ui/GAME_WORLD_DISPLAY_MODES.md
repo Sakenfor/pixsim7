@@ -265,7 +265,7 @@ Client behavior:
 
 Each `GameHotspot` can point to either:
 
-- A **full Scene** (graph) via `linked_scene_id` (current design), or
+- A **full Scene** (graph) via `action: { "type": "play_scene", "scene_id": ... }`, or
 - A **single video Asset** via `meta.asset_id` (ambient or simple loops).
 
 Suggested convention in `GameHotspot`:
@@ -273,7 +273,7 @@ Suggested convention in `GameHotspot`:
 ```jsonc
 {
   "hotspot_id": "couch-kiss",
-  "linked_scene_id": 42,
+  "action": { "type": "play_scene", "scene_id": 42 },
   "meta": {
     "asset_id": 123,               // optional: direct video asset
     "display": { ... },            // display spec from above
@@ -284,7 +284,7 @@ Suggested convention in `GameHotspot`:
 
 Client logic:
 
-- If `linked_scene_id` is present → load scene via `/api/v1/game/scenes/:id` and drive `ScenePlayer`.
+- If `action.type === "play_scene"` → load scene via `/api/v1/game/scenes/:id` and drive `ScenePlayer`.
 - Else if `meta.asset_id` is present → load video asset and play it according to `display`.
 
 This keeps:
@@ -345,4 +345,3 @@ This structure means:
   - defining new `kind` values for display spaces, and
   - defining new `display.mode` variants,
 not changing core domain models or scene types.
-

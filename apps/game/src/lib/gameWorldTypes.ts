@@ -9,7 +9,7 @@ export interface GameHotspotDTO {
   id?: number
   object_name: string
   hotspot_id: string
-  linked_scene_id?: number | null
+  action?: import('@pixsim7/shared.types').HotspotAction | null
   meta?: Record<string, unknown> | null
 }
 
@@ -21,4 +21,3 @@ export interface GameLocationDetail {
   meta?: Record<string, unknown> | null
   hotspots: GameHotspotDTO[]
 }
-
