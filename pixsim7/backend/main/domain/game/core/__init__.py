@@ -1,5 +1,15 @@
 """Core game models and state management"""
 
+from .actions import (
+    GameActionMeta,
+    GameActionRegistry,
+    GameActionType,
+    GameActionSurface,
+    GameActionTypeInfo,
+    GameActionTypesResponse,
+    game_action_registry,
+)
+
 from .models import (
     GameWorld,
     GameWorldState,
@@ -61,6 +71,14 @@ from .game_state import (
 )
 
 __all__ = [
+    # Actions
+    "GameActionMeta",
+    "GameActionRegistry",
+    "GameActionType",
+    "GameActionSurface",
+    "GameActionTypeInfo",
+    "GameActionTypesResponse",
+    "game_action_registry",
     # Models
     "GameWorld",
     "GameWorldState",

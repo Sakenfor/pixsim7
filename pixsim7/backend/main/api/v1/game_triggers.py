@@ -10,6 +10,7 @@ from pixsim7.backend.main.api.v1.game_hotspots import (
     HotspotTarget,
     to_hotspot_dto,
     validate_scope_binding,
+    validate_action,
 )
 
 
@@ -80,6 +81,7 @@ async def create_trigger(
 ) -> GameHotspotDTO:
     payload_dict = payload.model_dump(exclude_none=True)
     validate_scope_binding(payload_dict)
+    validate_action(payload.action)
     trigger = await game_trigger_service.create_trigger(payload_dict)
     return to_hotspot_dto(trigger)
 
@@ -102,6 +104,8 @@ async def update_trigger(
         "scene_id": payload_dict.get("scene_id", existing.scene_id),
     }
     validate_scope_binding(merged)
+    if payload.action is not None:
+        validate_action(payload.action)
     trigger = await game_trigger_service.update_trigger(trigger_id, payload_dict)
     return to_hotspot_dto(trigger)
 

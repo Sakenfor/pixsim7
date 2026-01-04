@@ -465,19 +465,31 @@ export type HotspotActionType = 'play_scene' | 'change_location' | 'npc_talk';
 
 export type HotspotScope = 'location' | 'world' | 'scene' | 'asset' | string;
 
+/**
+ * Action to play a scene with an NPC.
+ * scene_id is validated as required by the backend.
+ */
 export interface PlaySceneAction {
   type: 'play_scene';
-  scene_id?: number | string | null;
+  scene_id: number | string;
 }
 
+/**
+ * Action to navigate to a different location.
+ * target_location_id is validated as required by the backend.
+ */
 export interface ChangeLocationAction {
   type: 'change_location';
-  target_location_id?: number | string | null;
+  target_location_id: number | string;
 }
 
+/**
+ * Action to start a conversation with an NPC.
+ * npc_id is validated as required by the backend.
+ */
 export interface NpcTalkAction {
   type: 'npc_talk';
-  npc_id?: number | string | null;
+  npc_id: number | string;
 }
 
 export type HotspotAction = PlaySceneAction | ChangeLocationAction | NpcTalkAction;

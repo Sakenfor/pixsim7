@@ -15,6 +15,7 @@ import type {
   InteractionSurface,
 } from '@pixsim7/shared.types';
 import type { HotspotAction } from './hotspot';
+import { gameActionRegistry } from './actionRegistry';
 
 /**
  * Menu item that can come from any source
@@ -91,34 +92,13 @@ export function hotspotActionToMenuItem(
   priority: number = 0
 ): UnifiedMenuItem {
   const { type } = action;
-
-  let label = 'Interact';
-  let icon: string | undefined;
-  let surface: InteractionSurface = 'inline';
-
-  switch (type) {
-    case 'play_scene':
-      label = 'Start Scene';
-      icon = '🎬';
-      surface = 'scene';
-      break;
-    case 'change_location':
-      label = 'Go';
-      icon = '🚪';
-      surface = 'inline';
-      break;
-    case 'npc_talk':
-      label = 'Talk';
-      icon = '💬';
-      surface = 'dialogue';
-      break;
-  }
+  const meta = gameActionRegistry.get(type);
 
   return {
     id: `hotspot:${hotspotId}:${type}`,
-    label,
-    icon,
-    surface,
+    label: meta.label,
+    icon: meta.icon,
+    surface: meta.surface,
     priority,
     available: true,
     source: 'hotspot',

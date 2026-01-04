@@ -8,6 +8,14 @@ import type {
   NpcTalkAction,
 } from '@pixsim7/shared.types';
 
+// Re-export from registry
+export {
+  gameActionRegistry,
+  parseHotspotAction,
+  validateAction,
+  type GameActionMeta,
+} from './actionRegistry';
+
 /**
  * Frontend-only hotspot action schema for 2D interactions.
  *
@@ -21,30 +29,6 @@ export type {
   ChangeLocationAction,
   NpcTalkAction,
 };
-
-/**
- * Parse a loose action value into a typed `HotspotAction`.
- * Unknown or malformed actions return `null` so callers can safely ignore them.
- */
-export function parseHotspotAction(raw: unknown): HotspotAction | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const anyRaw = raw as any;
-  const type = anyRaw.type as HotspotActionType | undefined;
-  if (type !== 'play_scene' && type !== 'change_location' && type !== 'npc_talk') {
-    return null;
-  }
-
-  switch (type) {
-    case 'play_scene':
-      return { type, scene_id: anyRaw.scene_id ?? null };
-    case 'change_location':
-      return { type, target_location_id: anyRaw.target_location_id ?? null };
-    case 'npc_talk':
-      return { type, npc_id: anyRaw.npc_id ?? null };
-    default:
-      return null;
-  }
-}
 
 /**
  * Coarse scene playback phases exposed to the 2D UI.
