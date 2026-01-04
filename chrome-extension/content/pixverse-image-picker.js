@@ -55,6 +55,44 @@ window.PXS7 = window.PXS7 || {};
   let activePickerPanel = null;
   let assetsFilterProvider = 'all'; // 'all', 'pixverse', 'runway', etc.
   let assetsFilterMediaType = 'all'; // 'all', 'image', 'video'
+  let assetsFilterUploadMethod = 'all'; // 'all', 'extension', 'local_folders', 'generated', 'api'
+
+  // Persistence keys
+  const ASSETS_STATE_KEY = 'pxs7_assets_state';
+
+  // Load persisted assets state (page, search, filters)
+  function loadAssetsState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(ASSETS_STATE_KEY) || '{}');
+      if (saved.page) assetsCurrentPage = saved.page;
+      if (saved.search) assetsSearchQuery = saved.search;
+      if (saved.filterProvider) assetsFilterProvider = saved.filterProvider;
+      if (saved.filterMediaType) assetsFilterMediaType = saved.filterMediaType;
+      if (saved.filterUploadMethod) assetsFilterUploadMethod = saved.filterUploadMethod;
+      debugLog('Loaded assets state:', saved);
+    } catch (e) {
+      debugLog('Failed to load assets state:', e);
+    }
+  }
+
+  // Save assets state to localStorage
+  function saveAssetsState() {
+    try {
+      const state = {
+        page: assetsCurrentPage,
+        search: assetsSearchQuery,
+        filterProvider: assetsFilterProvider,
+        filterMediaType: assetsFilterMediaType,
+        filterUploadMethod: assetsFilterUploadMethod,
+      };
+      localStorage.setItem(ASSETS_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+      debugLog('Failed to save assets state:', e);
+    }
+  }
+
+  // Load state on module init
+  loadAssetsState();
 
   // Z-index constants for picker UI
   const Z_INDEX_PICKER = 9999;
@@ -311,6 +349,9 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function renderAssetsTab(container, panel, loadAssets) {
+    // Make container a flex column so we can have fixed header + scrollable grid
+    container.style.cssText = 'display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 0;';
+
     // For thumbnails: prefer backend thumbnail_url (local control, consistent sizing)
     // HTTP URLs are automatically proxied through background script to avoid mixed content issues
     // Once backend has HTTPS, proxy is bypassed automatically
@@ -331,7 +372,12 @@ window.PXS7 = window.PXS7 || {};
       createdAt: a.created_at || a.createdAt || '',
       mediaType: a.media_type || a.mediaType || null,
       providerId: a.provider_id || null,
+      uploadMethod: a.upload_method || null,
     })).filter(u => u.thumb);
+
+    // Fixed header for search/filters (doesn't scroll)
+    const headerSection = document.createElement('div');
+    headerSection.style.cssText = 'flex-shrink: 0; padding: 10px 12px 0;';
 
     // Sort assets based on current sort preference
     if (assetsSortBy === 'recent') {
@@ -418,6 +464,9 @@ window.PXS7 = window.PXS7 || {};
           return mediaType === assetsFilterMediaType;
         });
       }
+      if (assetsFilterUploadMethod !== 'all') {
+        filtered = filtered.filter(u => u.uploadMethod === assetsFilterUploadMethod);
+      }
       renderGrid(filtered);
     };
 
@@ -437,6 +486,7 @@ window.PXS7 = window.PXS7 || {};
     `;
     searchInput.addEventListener('input', (e) => {
       assetsSearchQuery = e.target.value;
+      saveAssetsState();
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => performSearch(assetsSearchQuery), 400);
     });
@@ -445,6 +495,7 @@ window.PXS7 = window.PXS7 || {};
         e.preventDefault();
         assetsSearchQuery = '';
         searchInput.value = '';
+        saveAssetsState();
         clearTimeout(searchDebounce);
         performSearch('');
       } else if (e.key === 'Enter') {
@@ -474,6 +525,7 @@ window.PXS7 = window.PXS7 || {};
       if (!canGoPrev || !loadAssets) return;
       prevBtn.textContent = '...';
       await loadAssets({ page: assetsCurrentPage - 1 });
+      saveAssetsState();
       renderTabContent('assets', container, panel, loadAssets);
     });
 
@@ -488,7 +540,10 @@ window.PXS7 = window.PXS7 || {};
       if (targetPage) {
         const page = parseInt(targetPage, 10);
         if (!isNaN(page) && page >= 1 && loadAssets) {
-          loadAssets({ page }).then(() => renderTabContent('assets', container, panel, loadAssets));
+          loadAssets({ page }).then(() => {
+            saveAssetsState();
+            renderTabContent('assets', container, panel, loadAssets);
+          });
         }
       }
     });
@@ -508,6 +563,7 @@ window.PXS7 = window.PXS7 || {};
       if (!canGoNext || !loadAssets) return;
       nextBtn.textContent = '...';
       await loadAssets({ page: assetsCurrentPage + 1 });
+      saveAssetsState();
       renderTabContent('assets', container, panel, loadAssets);
     });
 
@@ -531,7 +587,7 @@ window.PXS7 = window.PXS7 || {};
     searchPaginationRow.appendChild(pageLabel);
     searchPaginationRow.appendChild(nextBtn);
     searchPaginationRow.appendChild(refreshBtn);
-    container.appendChild(searchPaginationRow);
+    headerSection.appendChild(searchPaginationRow);
 
     // === ROW 2: Filters + Sort ===
     const filterSortRow = document.createElement('div');
@@ -553,6 +609,7 @@ window.PXS7 = window.PXS7 || {};
     providerSelect.value = assetsFilterProvider;
     providerSelect.addEventListener('change', () => {
       assetsFilterProvider = providerSelect.value;
+      saveAssetsState();
       applyFilters();
     });
 
@@ -571,6 +628,28 @@ window.PXS7 = window.PXS7 || {};
     mediaTypeSelect.value = assetsFilterMediaType;
     mediaTypeSelect.addEventListener('change', () => {
       assetsFilterMediaType = mediaTypeSelect.value;
+      saveAssetsState();
+      applyFilters();
+    });
+
+    // Upload method filter (Source)
+    const uploadMethodSelect = document.createElement('select');
+    uploadMethodSelect.style.cssText = `
+      flex: 1; padding: 3px 4px; font-size: 9px;
+      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
+      border-radius: 3px; color: ${COLORS.text}; outline: none;
+    `;
+    uploadMethodSelect.innerHTML = `
+      <option value="all">Source</option>
+      <option value="extension">Ext</option>
+      <option value="local_folders">Local</option>
+      <option value="generated">Gen</option>
+      <option value="api">API</option>
+    `;
+    uploadMethodSelect.value = assetsFilterUploadMethod;
+    uploadMethodSelect.addEventListener('change', () => {
+      assetsFilterUploadMethod = uploadMethodSelect.value;
+      saveAssetsState();
       applyFilters();
     });
 
@@ -603,11 +682,18 @@ window.PXS7 = window.PXS7 || {};
 
     filterSortRow.appendChild(providerSelect);
     filterSortRow.appendChild(mediaTypeSelect);
+    filterSortRow.appendChild(uploadMethodSelect);
     filterSortRow.appendChild(sortGroup);
-    container.appendChild(filterSortRow);
+    headerSection.appendChild(filterSortRow);
 
-    // Add grid container and render
-    container.appendChild(gridContainer);
+    // Add header section to container (fixed, non-scrolling)
+    container.appendChild(headerSection);
+
+    // Scrollable section for the grid only
+    const scrollSection = document.createElement('div');
+    scrollSection.style.cssText = 'flex: 1; overflow-y: auto; padding: 0 12px 10px;';
+    scrollSection.appendChild(gridContainer);
+    container.appendChild(scrollSection);
 
     if (urls.length === 0) {
       gridContainer.innerHTML = `
@@ -1020,6 +1106,9 @@ window.PXS7 = window.PXS7 || {};
     setLoadAssetsFunction: (fn) => { loadAssetsFunction = fn; },
     getRecentImages: () => recentSiteImages,
     setRecentImages: (images) => { recentSiteImages = images; },
+    // Expose saved state for initial load
+    getSavedPage: () => assetsCurrentPage,
+    getSavedSearch: () => assetsSearchQuery,
     // Reset picker position (can call from console: PXS7.imagePicker.resetPosition())
     resetPosition: () => {
       localStorage.removeItem('pxs7_picker_state');

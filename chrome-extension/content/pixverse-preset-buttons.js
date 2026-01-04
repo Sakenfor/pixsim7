@@ -889,7 +889,10 @@
         assetsBtn.classList.add('loading');
         const origText = assetsBtn.textContent;
         assetsBtn.textContent = '...';
-        await loadAssets({ page: 1 });
+        // Use saved page/search from image picker if available
+        const savedPage = imagePicker.getSavedPage?.() || 1;
+        const savedSearch = imagePicker.getSavedSearch?.() || '';
+        await loadAssets({ page: savedPage, q: savedSearch || undefined });
         assetsBtn.classList.remove('loading');
         assetsBtn.textContent = origText;
       }
@@ -1058,10 +1061,13 @@
     imagePicker.setLoadAssetsFunction(loadAssetsWrapper);
 
     // Load data in background (don't block)
+    // Use saved page/search from image picker for assets
+    const savedPage = imagePicker.getSavedPage?.() || 1;
+    const savedSearch = imagePicker.getSavedSearch?.() || '';
     Promise.all([
       loadPresets(),
       loadAccounts(),
-      loadAssets({ page: 1 })
+      loadAssets({ page: savedPage, q: savedSearch || undefined })
     ]).then(() => {
       syncModuleCaches();
       updateAllAccountButtons();

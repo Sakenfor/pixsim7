@@ -745,7 +745,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getAssets') {
     (async () => {
       try {
-        const { providerId, limit, offset, cursor, q, mediaType } = message;
+        const { providerId, limit, offset, cursor, q, mediaType, uploadMethod } = message;
         let endpoint = '/api/v1/assets?';
         const params = [];
         if (providerId) params.push(`provider_id=${encodeURIComponent(providerId)}`);
@@ -756,6 +756,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (q && q.trim()) params.push(`q=${encodeURIComponent(q.trim())}`);
         // Media type filter
         if (mediaType) params.push(`media_type=${encodeURIComponent(mediaType)}`);
+        // Upload method filter (source)
+        if (uploadMethod) params.push(`upload_method=${encodeURIComponent(uploadMethod)}`);
         endpoint += params.join('&');
 
         const data = await backendRequest(endpoint);

@@ -97,6 +97,7 @@ async def add_asset(
     image_hash: Optional[str] = None,
     phash64: Optional[int] = None,
     operation_type: Optional[OperationType] = None,
+    upload_method: Optional[str] = None,
 ) -> Asset:
     """
     Create or upsert an Asset record with sensible deduplication.
@@ -313,6 +314,7 @@ async def add_asset(
         media_metadata=media_metadata,
         image_hash=image_hash,
         phash64=phash64,
+        upload_method=upload_method,
         created_at=datetime.utcnow(),
     )
     db.add(asset)

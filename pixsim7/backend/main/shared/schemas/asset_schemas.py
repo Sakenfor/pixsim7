@@ -98,6 +98,9 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
+    # Upload method (source): 'extension', 'local_folders', 'api', 'generated', etc.
+    upload_method: Optional[str] = None
+
     # Cross-provider upload mapping (provider_id -> uploaded asset URL/ID)
     # Used by frontend to get provider-specific URLs for operations like IMAGE_TO_IMAGE
     provider_uploads: Optional[Dict[str, str]] = None

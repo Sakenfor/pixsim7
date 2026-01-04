@@ -366,6 +366,7 @@ class AssetCoreService:
         sync_status: Optional[SyncStatus] = None,
         provider_id: Optional[str] = None,
         provider_status: Optional[str] = None,
+        upload_method: Optional[str] = None,
         *,
         tag: Optional[str] = None,
         q: Optional[str] = None,
@@ -473,6 +474,10 @@ class AssetCoreService:
                 query = query.where(literal(False))
             else:
                 query = query.where(provider_status_expr == provider_status)
+
+        # Upload method filter
+        if upload_method:
+            query = query.where(Asset.upload_method == upload_method)
 
         # Date range filters
         if created_from is not None:
