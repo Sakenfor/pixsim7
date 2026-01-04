@@ -128,7 +128,7 @@ export {
   selectHasAnimations,
   selectZoneIds,
   selectSelectedZoneConfig,
-} from "./stores/model3DStore";
+} from "@features/scene3d/stores/model3DStore";
 
 // Re-export lib index for convenience
 export * from "./lib";

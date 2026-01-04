@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+
 import type {
   InspectorMode,
   RenderMode,
@@ -15,7 +16,7 @@ import type {
   AnimationClipInfo,
   ModelParseResult,
 } from '@lib/models/types';
-import { DEFAULT_ZONE_PROPERTIES } from '@lib/models/types';
+import { DEFAULT_ZONE_PROPERTIES, getZoneColor } from '@lib/models/types';
 
 /**
  * Settings persisted to localStorage.
@@ -199,7 +200,6 @@ export const useModel3DStore = create<Model3DState>()(
         // Initialize zone configs with defaults
         const zoneConfigs: Record<string, ZoneProperties> = {};
         result.zoneIds.forEach((zoneId, index) => {
-          const { getZoneColor } = require('@/lib/models/types');
           zoneConfigs[zoneId] = {
             ...DEFAULT_ZONE_PROPERTIES,
             highlightColor: getZoneColor(index),
@@ -303,7 +303,8 @@ export const useModel3DStore = create<Model3DState>()(
           const zone = state.zoneConfigs[zoneId];
           if (!zone || !zone.statModifiers) return state;
 
-          const { [statName]: _, ...remainingModifiers } = zone.statModifiers;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { [statName]: _omitted, ...remainingModifiers } = zone.statModifiers;
           return {
             zoneConfigs: {
               ...state.zoneConfigs,
@@ -322,7 +323,6 @@ export const useModel3DStore = create<Model3DState>()(
       resetZone: (zoneId) => {
         set((state) => {
           const index = state.parseResult?.zoneIds.indexOf(zoneId) || 0;
-          const { getZoneColor } = require('@/lib/models/types');
 
           return {
             zoneConfigs: {

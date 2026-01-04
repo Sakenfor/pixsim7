@@ -5,10 +5,10 @@
  * Displays available animation clips and allows play/pause/seek operations.
  */
 
-import { useCallback, useRef, useState, useEffect } from 'react';
-import { Button, Select } from '@pixsim7/shared.ui';
-import { useModel3DStore } from '@features/panels/stores/model3DStore';
-import type { AnimationClipInfo } from '@lib/models/types';
+import { Select } from '@pixsim7/shared.ui';
+import { useCallback, useRef, useState } from 'react';
+
+import { useModel3DStore } from '../stores/model3DStore';
 
 /**
  * Format seconds to MM:SS display.

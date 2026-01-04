@@ -73,6 +73,10 @@
       "@features/mediaViewer": ["./src/features/mediaViewer/index.ts"],
       "@features/poseBoard/*": ["./src/features/poseBoard/*"],
       "@features/poseBoard": ["./src/features/poseBoard/index.ts"],
+      "@features/scene3d/*": ["./src/features/scene3d/*"],
+      "@features/scene3d": ["./src/features/scene3d/index.ts"],
+      "@features/sceneComposer3d": ["./src/features/sceneComposer3d/index.ts"],
+      "@features/scenePreview3d": ["./src/features/scenePreview3d/index.ts"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],

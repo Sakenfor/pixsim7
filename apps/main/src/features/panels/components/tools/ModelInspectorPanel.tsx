@@ -11,10 +11,9 @@ import { useCallback, useRef, useState } from "react";
 import type { InspectorMode, RenderMode } from "@lib/models";
 import { formatZoneLabel } from "@lib/models";
 
-import { AnimationTimeline } from "@/components/3d/AnimationTimeline";
-import { Model3DViewport } from "@/components/3d/Model3DViewport";
-
-import { useModel3DStore } from "../../stores/model3DStore";
+import { AnimationTimeline } from "@features/scene3d/components/AnimationTimeline";
+import { Model3DViewport } from "@features/scene3d/components/Model3DViewport";
+import { useModel3DStore } from "@features/scene3d/stores/model3DStore";
 
 /**
  * Collapsible section component.

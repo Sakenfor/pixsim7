@@ -5,8 +5,6 @@
  * Handles camera, lighting, and environment setup.
  */
 
-import { Suspense, useRef, useEffect, useCallback } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import {
   OrbitControls,
   Grid,
@@ -14,10 +12,13 @@ import {
   GizmoHelper,
   GizmoViewport,
   Center,
-  PerspectiveCamera,
 } from '@react-three/drei';
+import { Canvas, useThree } from '@react-three/fiber';
+import { Suspense, useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
-import { useModel3DStore } from '@features/panels/stores/model3DStore';
+
+import { useModel3DStore } from '../stores/model3DStore';
+
 import { ModelLoader } from './ModelLoader';
 import { ZoneHighlighter } from './ZoneHighlighter';
 
@@ -83,14 +84,13 @@ function SceneHelpers() {
  * Camera controller that responds to model bounding box.
  */
 function CameraController() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
   const parseResult = useModel3DStore((s) => s.parseResult);
 
   useEffect(() => {
     if (parseResult && controlsRef.current) {
-      const { center, size } = parseResult.boundingBox;
-      const maxDim = Math.max(size[0], size[1], size[2]);
-      const distance = maxDim * 2.5;
+      const { center } = parseResult.boundingBox;
 
       // Set target to model center
       controlsRef.current.target.set(center[0], center[1], center[2]);

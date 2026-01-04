@@ -5,12 +5,14 @@
  * Extracts zones from mesh names and handles model parsing.
  */
 
-import { useEffect, useRef, useMemo } from 'react';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import { useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
-import { useModel3DStore } from '@features/panels/stores/model3DStore';
+
 import { parseModelForZones } from '@lib/models/zoneUtils';
+
+import { useModel3DStore } from '../stores/model3DStore';
 
 export interface ModelLoaderProps {
   /** URL to the glTF/GLB model */
@@ -24,7 +26,7 @@ export interface ModelLoaderProps {
 /**
  * glTF model loader with animation and zone detection.
  */
-export function ModelLoader({ url, wireframe = false, showZones = false }: ModelLoaderProps) {
+export function ModelLoader({ url, wireframe = false }: ModelLoaderProps) {
   const groupRef = useRef<THREE.Group>(null);
 
   // Load glTF model

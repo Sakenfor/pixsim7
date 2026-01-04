@@ -5,11 +5,13 @@
  * Highlights selected and hovered zones with distinct colors.
  */
 
-import { useEffect, useState, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
+import { useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three';
-import { useModel3DStore } from '@features/panels/stores/model3DStore';
+
 import { ZONE_PREFIX, createZoneHighlightMaterial } from '@lib/models/zoneUtils';
+
+import { useModel3DStore } from '../stores/model3DStore';
 
 /**
  * Interface for zone mesh data.
@@ -75,7 +77,7 @@ export function ZoneHighlighter() {
 
   // Apply highlights to zone meshes
   useEffect(() => {
-    zoneMeshes.forEach(({ zoneId, mesh, originalMaterial }) => {
+    zoneMeshes.forEach(({ zoneId, mesh }) => {
       const zoneMats = materials[zoneId];
       if (!zoneMats) return;
 
