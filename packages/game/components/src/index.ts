@@ -13,6 +13,9 @@
 export { ScenePlayer } from './components/ScenePlayer';
 export type { ScenePlayerProps } from './components/ScenePlayer';
 
+export { useSceneRuntime, createSceneRuntimeState } from './runtime/sceneRuntime';
+export type { UseSceneRuntimeOptions, UseSceneRuntimeReturn } from './runtime/sceneRuntime';
+
 // Mini-games
 export { ReflexMiniGame } from './components/minigames/ReflexMiniGame';
 export { MiniGameHost } from './components/minigames/MiniGameHost';
