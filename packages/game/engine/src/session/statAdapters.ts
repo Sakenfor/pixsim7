@@ -59,6 +59,21 @@ export interface SessionStatAdapter extends HelperAdapter {
    * Used by session adapter to build optimistic update payload
    */
   getSessionPath?: (entityId?: number) => string;
+
+  /**
+   * Build session patch for optimistic updates.
+   *
+   * Transforms the high-level patch (e.g., { values: { affinity: 10 } })
+   * into the storage shape (e.g., { affinity: 10 }) for the given session path.
+   *
+   * This ensures optimistic payloads match the actual storage format used by set().
+   * If not implemented, the raw patch is used directly.
+   *
+   * @param patch - High-level patch object
+   * @param entityId - Optional entity ID
+   * @returns Storage-shaped patch for optimistic update
+   */
+  buildSessionPatch?: (patch: unknown, entityId?: number) => unknown;
 }
 
 // =============================================================================
@@ -143,6 +158,33 @@ const relationshipsAdapter: SessionStatAdapter = {
   getSessionPath: (entityId) => {
     if (entityId === undefined) return 'stats.relationships';
     return `stats.relationships.npc:${entityId}`;
+  },
+
+  buildSessionPatch: (patch, _entityId) => {
+    // Transform high-level NpcRelationshipState patch into storage shape.
+    // Storage shape flattens values into axis keys at the relationship level.
+    // Input:  { values: { affinity: 10, trust: 5 }, flags: [...] }
+    // Output: { affinity: 10, trust: 5, flags: [...] }
+    const relPatch = patch as Partial<NpcRelationshipState> | undefined;
+    if (!relPatch) return {};
+
+    const storagePatch: Record<string, unknown> = {};
+
+    // Flatten values into individual axis keys
+    if (relPatch.values) {
+      for (const [axis, value] of Object.entries(relPatch.values)) {
+        if (value !== undefined) {
+          storagePatch[axis] = value;
+        }
+      }
+    }
+
+    // Copy flags directly
+    if (relPatch.flags !== undefined) {
+      storagePatch.flags = relPatch.flags;
+    }
+
+    return storagePatch;
   },
 };
 
