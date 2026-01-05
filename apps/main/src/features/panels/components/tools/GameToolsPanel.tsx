@@ -1,14 +1,17 @@
 import { useMemo, useState, useEffect } from "react";
-import { panelRegistry } from "@features/panels";
-import { widgetRegistry } from "@lib/ui/composer";
-import { worldToolRegistry } from "@features/worldTools";
-import { interactionRegistry } from "@lib/registries";
-import { pluginCatalog } from "@lib/plugins/pluginSystem";
+
 import {
   useEditorContext,
   type EditorPrimaryView,
   type EditorMode,
-} from "@lib/context/editorContext";
+} from "@lib/context";
+import { pluginCatalog } from "@lib/plugins/pluginSystem";
+import { interactionRegistry } from "@lib/registries";
+import { widgetRegistry } from "@lib/ui/composer";
+
+import { panelRegistry } from "@features/panels";
+import { worldToolRegistry } from "@features/worldTools";
+
 
 type CategoryFilter =
   | "all"

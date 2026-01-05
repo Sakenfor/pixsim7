@@ -1,9 +1,19 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Ref } from '@pixsim7/shared.types';
+import { PromptInput } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
-import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+
+import { useDockviewId } from '@lib/dockview';
+
+import {
+  CAP_GENERATION_CONTEXT,
+  CAP_GENERATION_WIDGET,
+  useProvideCapability,
+  type GenerationContextSummary,
+  type GenerationWidgetContext,
+} from '@features/contextHub';
 import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
-import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 import {
   useGenerationWebSocket,
   useGenerationWorkbench,
@@ -14,19 +24,6 @@ import {
   resolveInputMode,
   resolveDisplayAssets,
 } from '@features/generation';
-import { useQuickGenerateController } from '@features/prompts';
-import { type QuickGenPanelContext } from './QuickGeneratePanels';
-import { CompactAssetCard } from './CompactAssetCard';
-import { OPERATION_METADATA } from '@/types/operations';
-import { PromptInput } from '@pixsim7/shared.ui';
-import {
-  CAP_GENERATION_CONTEXT,
-  CAP_GENERATION_WIDGET,
-  useProvideCapability,
-  type GenerationContextSummary,
-  type GenerationWidgetContext,
-} from '@features/contextHub';
-import { Ref } from '@pixsim7/shared.types';
 import {
   ScopeModeSelect,
   getInstanceId,
@@ -36,8 +33,15 @@ import {
   usePanelInstanceSettingsStore,
   type PanelSettingsScopeMode,
 } from '@features/panels';
+import { useQuickGenerateController } from '@features/prompts';
 import type { PanelId } from '@features/workspace';
-import { useDockviewId } from '@lib/dockview/contextMenu';
+
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
+
+import { CompactAssetCard } from './CompactAssetCard';
+import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
+import { type QuickGenPanelContext } from './QuickGeneratePanels';
+
 
 /** Operation type categories for layout and behavior */
 const OPERATION_CONFIG = {
@@ -152,7 +156,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     generating,
     prompt,
     setProvider,
-    setOperationType,
     setPrompt,
     error,
     generationId,
@@ -161,7 +164,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     mainQueueIndex,
     multiAssetQueue,
     removeFromQueue,
-    clearMultiAssetQueue,
     prompts,
     setPrompts,
     transitionDurations,
@@ -181,7 +183,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
 
   // Resolve input mode using shared utility
-  const { inputMode, isInMultiMode, isOptionalMultiAsset } = resolveInputMode({
+  const { inputMode, isInMultiMode } = resolveInputMode({
     operationType,
     multiAssetQueueLength: multiAssetQueue.length,
     operationInputModePrefs,
@@ -292,10 +294,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     inputMode,
   });
 
-  const isSingleAssetOperation = OPERATION_CONFIG.singleAsset.has(operationType);
-  const isFlexibleOperation = OPERATION_CONFIG.flexible.has(operationType);
-  const showAssetPanel = isSingleAssetOperation || isFlexibleOperation;
-
   const handleTransitionDurationChange = (segmentIndex: number, seconds: number) => {
     setTransitionDurations(prev => {
       const next = [...prev];
@@ -334,67 +332,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
 
     return workbench.paramSpecs.filter(p => !hideParams.has(p.name));
   }, [operationType, workbench.paramSpecs]);
-
-  // Advanced params: those not shown in the main settings panel
-  const advancedParams = useMemo(() => {
-    const PRIMARY_PARAMS = ['model', 'quality', 'duration', 'aspect_ratio', 'motion_mode', 'camera_movement'];
-    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets'];
-
-    return filteredParamSpecs.filter(p => {
-      // Skip primary params shown inline
-      if (PRIMARY_PARAMS.includes(p.name)) return false;
-      // Skip internal/hidden params
-      if (HIDDEN_PARAMS.includes(p.name)) return false;
-      // Include everything else (seed, negative_prompt, style, booleans like audio/multi_shot/off_peak)
-      return true;
-    });
-  }, [filteredParamSpecs]);
-
-  // Get duration presets from param specs metadata (per-model presets)
-  const durationOptions = useMemo(() => {
-    const spec = workbench.paramSpecs.find((p) => p.name === 'duration');
-    const metadata = spec?.metadata;
-    if (!metadata) return null;
-
-    const normalizeList = (values: unknown): number[] => {
-      if (!Array.isArray(values)) return [];
-      const unique = new Set<number>();
-      for (const v of values) {
-        const num = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : null;
-        if (num !== null && Number.isFinite(num)) unique.add(num);
-      }
-      return Array.from(unique).sort((a, b) => a - b);
-    };
-
-    const basePresets = normalizeList(
-      metadata.presets ?? metadata.duration_presets ?? metadata.options
-    );
-
-    if (!basePresets.length && !metadata.per_model_presets && !metadata.perModelPresets) {
-      return null;
-    }
-
-    let options = basePresets;
-    const perModelPresets =
-      (metadata.per_model_presets as Record<string, unknown[]>) ||
-      (metadata.perModelPresets as Record<string, unknown[]>);
-
-    const modelValue = workbench.dynamicParams?.model;
-    if (perModelPresets && typeof modelValue === 'string') {
-      const normalizedModel = modelValue.toLowerCase();
-      const matchEntry = Object.entries(perModelPresets).find(
-        ([key]) => key.toLowerCase() === normalizedModel
-      );
-      if (matchEntry) {
-        const perModelOptions = normalizeList(matchEntry[1]);
-        if (perModelOptions.length) {
-          options = perModelOptions;
-        }
-      }
-    }
-
-    return options.length > 0 ? options : null;
-  }, [workbench.paramSpecs, workbench.dynamicParams?.model]);
 
   // Get quality options filtered by model (for image operations)
   const getQualityOptionsForModel = useMemo(() => {

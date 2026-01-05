@@ -6,6 +6,14 @@
  */
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+
+import { authService } from '@lib/auth';
+
+import { usePersistentState } from '@/hooks/usePersistentState';
+import { useViewer } from '@/hooks/useViewer';
+import { computeFileSha256 } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
+
 import {
   useLocalFolders,
   getLocalThumbnailBlob,
@@ -13,12 +21,7 @@ import {
   generateThumbnail,
   type LocalAsset,
 } from '../stores/localFoldersStore';
-import { useAuthStore } from '@/stores/authStore';
-import { computeFileSha256 } from '@/lib/utils';
-import { usePersistentState } from '@/hooks/usePersistentState';
-import { useViewer } from '@/hooks/useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
-import { authService } from '@lib/auth/authService';
 
 const LOCAL_SOURCE: SourceInfo = {
   id: 'local-fs',

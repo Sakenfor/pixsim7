@@ -8,11 +8,15 @@
  */
 
 import { useState } from 'react';
-import { useHudLayoutStore } from '../stores/hudLayoutStore';
+
+import { addWidget } from '@lib/ui/composer';
 import { blockWidgets } from '@lib/widgets';
-import { addWidget } from '@lib/ui/composer/panelComposer';
-import type { HudRegionId } from '@features/hud';
 import type { WidgetDefinition } from '@lib/widgets';
+
+import type { HudRegionId } from '@features/hud';
+
+
+import { useHudLayoutStore } from '../stores/hudLayoutStore';
 
 export interface HudWidgetLibraryProps {
   layoutId: string;

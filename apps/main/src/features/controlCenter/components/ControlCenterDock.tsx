@@ -1,15 +1,18 @@
-import { useRef, useMemo, useCallback } from 'react';
 import clsx from 'clsx';
-import { Rnd } from 'react-rnd';
 import type { DockviewApi } from 'dockview-core';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useRef, useMemo, useCallback } from 'react';
+import { Rnd } from 'react-rnd';
 import { useNavigate } from 'react-router-dom';
-import { useDockBehavior } from './hooks/useDockBehavior';
-import { DockToolbar } from './DockToolbar';
-import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
+
+import { SmartDockview } from '@lib/dockview';
+
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
-import { SmartDockview } from '@lib/dockview/SmartDockview';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { getPanelsForScope, type PanelDefinition } from '@features/panels';
+
+import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
+import { DockToolbar } from './DockToolbar';
+import { useDockBehavior } from './hooks/useDockBehavior';
 
 /**
  * Get enabled control center panels based on user preferences.

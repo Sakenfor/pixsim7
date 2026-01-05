@@ -15,14 +15,15 @@
  *
  * For direct use of the generic pattern:
  * ```tsx
- * import { useContextMenuItem } from '@lib/dockview/contextMenu';
+ * import { useContextMenuItem } from '@lib/dockview';
  *
  * const ctxProps = useContextMenuItem('asset', asset.id, { ... }, [deps]);
  * return <div {...ctxProps}>...</div>;
  * ```
  */
 
-import { useContextMenuItem, type ContextMenuAttrs } from '@lib/dockview/contextMenu';
+import { useContextMenuItem, type ContextMenuAttrs } from '@lib/dockview';
+
 import type { AssetModel } from '../models/asset';
 
 /**

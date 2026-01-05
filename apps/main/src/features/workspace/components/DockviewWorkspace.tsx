@@ -1,10 +1,15 @@
-import { useRef, useEffect, useMemo } from "react";
 import type { DockviewReadyEvent } from "dockview-core";
-import { useWorkspaceStore } from "../stores/workspaceStore";
-import { initializePanels, panelRegistry, type PanelDefinition } from "@features/panels";
-import { registerAllWidgets } from "@lib/widgets";
+import { useRef, useEffect, useMemo } from "react";
+
+
 import { SmartDockview } from "@lib/dockview";
-import { resolvePanelDefinitionId } from "@lib/dockview/panelAdd";
+import { resolvePanelDefinitionId } from "@lib/dockview";
+import { registerAllWidgets } from "@lib/widgets";
+
+import { initializePanels } from "@features/panels";
+
+import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 // Watermark component for empty workspace
 function WorkspaceWatermark() {
@@ -13,44 +18,6 @@ function WorkspaceWatermark() {
       Pixsim7 Workspace
     </div>
   );
-}
-
-const defaultWorkspacePanels: string[] = ["gallery", "health", "graph", "inspector", "game"];
-
-function resolveTitle(panelId: string, panelDefs?: PanelDefinition[]) {
-  const fromResolved = panelDefs?.find((p) => p.id === panelId)?.title;
-  if (fromResolved) return fromResolved;
-  return panelRegistry.get(panelId)?.title ?? panelId;
-}
-
-export function createDefaultLayout(api: DockviewReadyEvent["api"], panelDefs: PanelDefinition[] = []) {
-  const addPanel = (
-    id: string,
-    position?: { direction: "left" | "right" | "below" | "above"; referencePanel?: string }
-  ) => {
-    if (!panelRegistry.get(id)) return;
-    api.addPanel({
-      id,
-      component: id,
-      title: resolveTitle(id, panelDefs),
-      position,
-    });
-  };
-
-  // Gallery stack on the left
-  addPanel("gallery", { direction: "left" });
-  addPanel("health", { direction: "below", referencePanel: "gallery" });
-
-  // Graph + inspector on the right
-  addPanel("graph", { direction: "right" });
-  addPanel("inspector", { direction: "right", referencePanel: "graph" });
-  addPanel("game", { direction: "below", referencePanel: "inspector" });
-
-  // If any of the default panels are missing, add remaining known defaults as tabs
-  defaultWorkspacePanels.forEach((panelId) => {
-    if (api.panels.find((p) => p.id === panelId)) return;
-    addPanel(panelId, { direction: "right", referencePanel: "graph" });
-  });
 }
 
 export function DockviewWorkspace() {

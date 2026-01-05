@@ -12,3 +12,4 @@ export * from './VideoScrubWidget';
 export * from './ProgressWidget';
 export * from './UploadWidget';
 export * from './TooltipWidget';
+export * from './SceneViewHost';

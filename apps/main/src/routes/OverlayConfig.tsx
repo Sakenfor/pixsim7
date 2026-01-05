@@ -6,15 +6,17 @@
  * Future: VideoPlayer, HUD, Canvas overlays, etc.
  */
 
+import { Button, Select, Panel } from '@pixsim7/shared.ui';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { OverlayEditor } from '@/components/overlay-editor';
-import { MediaCard } from '@/components/media/MediaCard';
+
 import type { OverlayConfiguration } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
-import { LocalStoragePresetStorage } from '@lib/ui/overlay/presets/presetManager';
-import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay/presets/storage';
-import { Button, Select, Panel } from '@pixsim7/shared.ui';
+import { LocalStoragePresetStorage } from '@lib/ui/overlay';
+import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay';
+
+import { MediaCard } from '@/components/media/MediaCard';
+import { OverlayEditor } from '@/components/overlay-editor';
 
 // Component type configurations
 type ComponentType = 'mediaCard' | 'videoPlayer' | 'hud';

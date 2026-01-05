@@ -5,8 +5,6 @@
  * Allows designers to customize UI appearance and behavior per world.
  */
 
-import { useState, useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@lib/registries';
 import {
   getWorldUiConfig,
   setWorldUiConfig,
@@ -23,8 +21,11 @@ import {
   loadUserPreferences,
   type WorldUiThemePreset,
 } from '@pixsim7/game.engine';
-import { Button, Select, Badge, Panel, Modal, FormField, Input } from '@pixsim7/shared.ui';
-import { getViewModeOptions } from '@lib/theming/useViewMode';
+import { Button, Select, Badge, Modal, FormField, Input } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@lib/registries';
+import { getViewModeOptions } from '@lib/theming';
 
 interface WorldThemeEditorProps {
   worldDetail: GameWorldDetail;

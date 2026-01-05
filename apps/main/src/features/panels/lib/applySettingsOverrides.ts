@@ -4,8 +4,9 @@
  * Utilities for applying user settings overrides to panel metadata.
  */
 
+import type { PanelInteractionSettingsState } from '@features/settings';
+
 import type { PanelMetadata } from './types';
-import type { PanelInteractionSettingsState } from '@features/settings/stores/panelInteractionSettingsStore';
 
 /**
  * Apply user settings overrides to panel metadata

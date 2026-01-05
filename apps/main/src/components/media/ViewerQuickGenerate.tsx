@@ -13,19 +13,11 @@
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useQuickGenerateController } from '@features/prompts';
 import { Icon } from '@lib/icons';
-import {
-  GenerationScopeProvider,
-  GenerationSourceToggle,
-  ViewerAssetInputProvider,
-  QuickGenPanelHost,
-  QUICKGEN_PRESETS,
-} from '@features/generation';
+import { Ref } from '@pixsim7/shared.types';
+import { useState, useEffect, useMemo } from 'react';
+
 import type { ViewerAsset } from '@features/assets';
-import type { OperationType } from '@/types/operations';
 import {
   CAP_GENERATION_CONTEXT,
   useProvideCapability,
@@ -35,7 +27,19 @@ import {
   type GenerationSourceMode,
   type GenerationSourceContext,
 } from '@features/contextHub';
-import { Ref } from '@pixsim7/shared.types';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import {
+  GenerationScopeProvider,
+  GenerationSourceToggle,
+  ViewerAssetInputProvider,
+  QuickGenPanelHost,
+  QUICKGEN_PRESETS,
+} from '@features/generation';
+import { useQuickGenerateController } from '@features/prompts';
+
+import type { OperationType } from '@/types/operations';
+
+
 
 const VIEWER_SCOPE_ID = 'viewerQuickGenerate';
 
@@ -124,23 +128,27 @@ function ViewerQuickGenerateContent({
 
   // Control Center controller (reads from current scope)
   const controller = useQuickGenerateController();
+  const { setOperationType, setDynamicParams } = controller;
 
   // Auto-set operation type based on asset type (when in user mode)
   useEffect(() => {
     if (mode === 'user') {
       const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
-      controller.setOperationType(targetOp);
+      setOperationType(targetOp);
     }
-  }, [asset.type, controller, mode]);
+  }, [asset.type, setOperationType, mode]);
 
   // Auto-set dynamic params from viewed asset
   useEffect(() => {
     if (!asset.id) return;
-    controller.setDynamicParams((prev: Record<string, unknown>) => {
-      const { video_url, image_url, ...rest } = prev;
-      return { ...rest, source_asset_id: asset.id };
+    setDynamicParams((prev: Record<string, unknown>) => {
+      const next = { ...prev };
+      delete next.video_url;
+      delete next.image_url;
+      next.source_asset_id = asset.id;
+      return next;
     });
-  }, [asset.id, asset.type, controller]);
+  }, [asset.id, asset.type, setDynamicParams]);
 
   return (
     <div className="space-y-2">

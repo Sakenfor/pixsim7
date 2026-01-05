@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+
 import { createBackendStorage } from '@lib/backendStorage';
+import { createComposition } from '@lib/ui/composer';
+
 import type { WorldHudLayout, HudRegionLayout, HudPreset } from '@features/hud';
-import { createComposition } from '@lib/ui/composer/panelComposer';
 
 /**
  * HUD Layout Store
@@ -191,7 +193,8 @@ export const useHudLayoutStore = create<HudLayoutState & HudLayoutActions>()(
 
       deleteLayout: (layoutId) => {
         set((state) => {
-          const { [layoutId]: _, ...remainingLayouts } = state.layouts;
+          const remainingLayouts = { ...state.layouts };
+          delete remainingLayouts[layoutId];
           return { layouts: remainingLayouts };
         });
       },

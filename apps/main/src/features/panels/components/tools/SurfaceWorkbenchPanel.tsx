@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
 import clsx from "clsx";
+import { useMemo, useState } from "react";
+
+import { useEditorContext } from "@lib/context";
+
 import {
   SurfaceWorkbench,
   type SurfaceWorkbenchStatus,
 } from "@/components/surface-workbench";
-import { useEditorContext } from "@lib/context/editorContext";
 import {
   gizmoSurfaceRegistry,
   type GizmoSurfaceContext,

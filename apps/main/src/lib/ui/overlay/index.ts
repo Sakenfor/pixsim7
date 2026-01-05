@@ -79,6 +79,7 @@ export {
   createProgressWidget,
   createUploadWidget,
   createTooltipWidget,
+  createSceneViewHost,
 } from './widgets';
 
 export type {
@@ -93,6 +94,7 @@ export type {
   UploadState,
   TooltipWidgetConfig,
   TooltipContent,
+  SceneViewHostConfig,
 } from './widgets';
 
 // Utilities
@@ -187,6 +189,8 @@ export {
   toUnifiedSurfaceConfig,
   fromUnifiedSurfaceConfig,
   fromUnifiedWidget,
+  fromUnifiedPosition,
+  fromUnifiedVisibility,
   isOverlayConfig,
   buildOverlayConfigFromUnified,
 } from './overlayConfig';

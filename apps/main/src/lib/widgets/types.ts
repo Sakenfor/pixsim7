@@ -10,6 +10,7 @@
  */
 
 import type { ComponentType } from 'react';
+
 import type { CapabilityDeclaration } from '@features/contextHub/types';
 
 // Re-export editing-core types for surfaces that need them
@@ -22,7 +23,7 @@ export type {
   UnifiedAnchor,
   UnifiedRegion,
   PositionMode,
-} from '@lib/editing-core/unifiedConfig';
+} from '@lib/editing-core';
 
 // ============================================================================
 // Surface Types
@@ -187,7 +188,7 @@ export interface WidgetFactoryOptions {
  * Factory function for creating widget instances (editing-core pattern).
  */
 export type WidgetFactory<TWidget = unknown> = (
-  config: import('@lib/editing-core/unifiedConfig').UnifiedWidgetConfig,
+  config: import('@lib/editing-core').UnifiedWidgetConfig,
   options?: WidgetFactoryOptions
 ) => TWidget;
 
@@ -260,7 +261,7 @@ export interface WidgetDefinition<TSettings = Record<string, unknown>, TWidget =
    * Default config for editing-core surfaces.
    * Used when creating new overlay/hud widgets.
    */
-  defaultConfig?: Partial<import('@lib/editing-core/unifiedConfig').UnifiedWidgetConfig>;
+  defaultConfig?: Partial<import('@lib/editing-core').UnifiedWidgetConfig>;
 
   /** Config schema for validation/editors */
   configSchema?: unknown;
@@ -392,7 +393,7 @@ export interface WidgetInstance<TSettings = Record<string, unknown>> {
    * Full editing-core config for overlay/hud surfaces.
    * Generated from placement + widget definition when rendering.
    */
-  config?: import('@lib/editing-core/unifiedConfig').UnifiedWidgetConfig;
+  config?: import('@lib/editing-core').UnifiedWidgetConfig;
 
   /** Creation timestamp */
   createdAt?: number;

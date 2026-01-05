@@ -14,17 +14,16 @@
  * @see claude-tasks/109-intimacy-and-content-gating-stat-integration.md
  */
 
-import type { GatingPlugin, RelationshipState, GatingResult, GateRequirements } from '../types';
 import {
-  deriveIntimacyBand,
   supportsContentRating,
   canAttemptSeduction,
   canAttemptSensualTouch,
   getContentRatingRequirements,
-  type IntimacyBand,
   type ContentRating,
   type IntimacyGatingConfig,
-} from '@features/intimacy/lib/intimacyGating';
+} from '@features/intimacy';
+
+import type { GatingPlugin, RelationshipState, GatingResult, GateRequirements } from '../types';
 
 /**
  * Map gate type strings to content rating types

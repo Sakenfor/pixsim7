@@ -1,10 +1,11 @@
+import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@features/intimacy';
+
 import type {
   InteractionPlugin,
   BaseInteractionConfig,
   InteractionContext,
   InteractionResult,
 } from './types';
-import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@features/intimacy/lib/intimacyGating';
 
 /**
  * Sensual Touch interaction config

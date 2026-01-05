@@ -4,9 +4,10 @@
  * Registers the cube overlay as a widget in the unified widget system.
  */
 
-import { registerWidget } from '@lib/widgets/widgetRegistry';
+import type { OverlayWidget, OverlayWidgetPosition, OverlayWidgetVisibility } from '@lib/ui/overlay';
 import type { WidgetDefinition } from '@lib/widgets/types';
-import type { OverlayWidget, OverlayWidgetPosition, OverlayWidgetVisibility } from '@lib/ui/overlay/types';
+import { registerWidget } from '@lib/widgets/widgetRegistry';
+
 import {
   getCubesVisibility,
   getFormation,
@@ -46,7 +47,7 @@ function createCubeOverlayWidget(config?: {
     visibility: config?.visibility || { mode: 'always' },
     priority: 100, // High priority - always on top
 
-    render: (ctx) => {
+    render: () => {
       if (!visible) return null;
 
       // Return a render descriptor for the cube overlay
@@ -91,7 +92,7 @@ export const cubeOverlayWidget: WidgetDefinition = {
       defaultAnchor: 'center',
     },
   },
-  factory: (config, runtimeOptions) => {
+  factory: (config) => {
     return createCubeOverlayWidget({
       id: config.id,
     });

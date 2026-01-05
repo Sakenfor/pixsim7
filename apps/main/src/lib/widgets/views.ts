@@ -15,9 +15,10 @@
  *   - views that filter by surface/domain
  */
 
-import { widgetRegistry, canRenderOnSurface } from './widgetRegistry';
+import type { UnifiedWidgetConfig } from '@lib/editing-core';
+
 import type { WidgetDefinition, WidgetSurface } from './types';
-import type { UnifiedWidgetConfig } from '@lib/editing-core/unifiedConfig';
+import { widgetRegistry, canRenderOnSurface } from './widgetRegistry';
 
 // ============================================================================
 // Overlay/HUD View (replaces editing-core registry)

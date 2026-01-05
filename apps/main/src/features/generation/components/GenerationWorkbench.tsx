@@ -9,7 +9,7 @@
  * PromptCompanionHost:
  *
  * ```tsx
- * import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
+ * import { PromptCompanionHost } from '@lib/ui';
  *
  * <GenerationWorkbench
  *   // ... other props
@@ -24,10 +24,11 @@
  * ```
  */
 
-import React from 'react';
-import clsx from 'clsx';
 import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';
 import { ThemedIcon } from '@lib/icons';
+import clsx from 'clsx';
+import React from 'react';
+
 import { useGenerationsStore, type GenerationModel } from '@features/generation';
 
 /**
@@ -221,7 +222,6 @@ export function GenerationWorkbench({
 
   // Styling
   className,
-  compact = false,
 }: GenerationWorkbenchProps) {
   const generationsStore = useGenerationsStore((state) => state.generations);
   const context: WorkbenchRenderContext = {

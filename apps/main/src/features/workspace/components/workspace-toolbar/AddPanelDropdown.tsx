@@ -1,10 +1,13 @@
-import { useMemo, useState, useEffect } from "react";
-import { type PanelId } from "../../stores/workspaceStore";
 import { Icon } from "@lib/icons";
+import { useState, useEffect } from "react";
+
+import { resolvePanelDefinitionId } from "@lib/dockview";
+
 import { panelRegistry } from "@features/panels";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
-import { resolvePanelDefinitionId } from "@lib/dockview/panelAdd";
+
 import { getWorkspaceDockviewApi } from "../../lib/getWorkspaceDockviewApi";
+import { type PanelId } from "../../stores/workspaceStore";
 
 interface AddPanelDropdownProps {
   onRestorePanel: (panelId: PanelId) => void;

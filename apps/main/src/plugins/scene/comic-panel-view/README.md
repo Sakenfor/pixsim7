@@ -52,7 +52,7 @@ sceneViewRegistry.register(manifest, plugin);
 The plugin is used via the `SceneViewHost` overlay widget:
 
 ```typescript
-import { createSceneViewHost } from '@lib/ui/overlay/widgets/SceneViewHost';
+import { createSceneViewHost } from '@lib/ui/overlay';
 
 const widget = createSceneViewHost({
   id: 'my-comic-view',

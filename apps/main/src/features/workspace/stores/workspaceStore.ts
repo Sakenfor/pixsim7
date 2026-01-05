@@ -1,9 +1,11 @@
+import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+
+import { addDockviewPanel, focusPanel } from "@lib/dockview";
+
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
-import type { DockviewApi } from "dockview-core";
-import { addDockviewPanel, focusPanel } from "@lib/dockview/panelAdd";
 
 export type PanelId =
   | "assetViewer"

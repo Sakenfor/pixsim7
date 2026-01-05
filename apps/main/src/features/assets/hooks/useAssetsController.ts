@@ -1,19 +1,24 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAssets, type AssetModel } from './useAssets';
-import { useAsset } from './useAsset';
-import { useAssetPickerStore } from '../stores/assetPickerStore';
-import { useAssetDetailStore } from '../stores/assetDetailStore';
-import { useWorkspaceStore } from '@features/workspace';
-import { useMediaGenerationActions } from '@features/generation';
-import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
+
 import { BACKEND_BASE } from '@lib/api/client';
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { authService } from '@lib/auth';
+
+import { useMediaGenerationActions } from '@features/generation';
+import { useWorkspaceStore } from '@features/workspace';
+
 import { useFilterPersistence } from '@/hooks/useFilterPersistence';
 import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
+
+import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { createAssetActions } from '../lib/assetCardActions';
+import { useAssetDetailStore } from '../stores/assetDetailStore';
+import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useAssetSettingsStore } from '../stores/assetSettingsStore';
-import { authService } from '@lib/auth/authService';
+
+import { useAsset } from './useAsset';
+import { useAssets, type AssetModel } from './useAssets';
 
 const SESSION_KEY = 'assets_filters';
 

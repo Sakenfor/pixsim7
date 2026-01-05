@@ -5,7 +5,8 @@
  */
 
 import { API_BASE_URL } from '@lib/api';
-import { authService } from '@lib/auth/authService';
+import { authService } from '@lib/auth';
+
 
 export const POSE_SNAPSHOT_TAG = 'poseboard:snapshot';
 

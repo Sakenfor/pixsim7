@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+
 import { widgetRegistry } from "@lib/ui/composer";
 import {
   createComposition,
@@ -14,19 +15,16 @@ import {
   exportComposition,
   importComposition,
   type PanelComposition,
-} from "@lib/ui/composer/panelComposer";
+} from "@lib/ui/composer";
 import { ComposedPanel } from "@lib/ui/composer";
 import {
-  demoCompositions,
   getDemoComposition,
-  getDemoCompositionIds,
-} from "@lib/ui/composer/demoCompositions";
+} from "@lib/ui/composer";
 
 export function SimplePanelBuilder() {
   const [composition, setComposition] = useState<PanelComposition>(() =>
     createComposition("demo-panel", "Demo Panel", 12, 8),
   );
-  const [selectedWidget, setSelectedWidget] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showDemoPicker, setShowDemoPicker] = useState(false);
 

@@ -1,7 +1,9 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useWorkspaceStore, type PanelId } from '@features/workspace';
+
+import { resolvePanelDefinitionId } from '@lib/dockview';
+
 import { panelRegistry } from '@features/panels';
-import { resolvePanelDefinitionId } from '@lib/dockview/panelAdd';
+import { useWorkspaceStore, type PanelId } from '@features/workspace';
 import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
 
 export function PanelLauncherModule() {

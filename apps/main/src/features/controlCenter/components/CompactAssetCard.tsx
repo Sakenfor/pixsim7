@@ -1,10 +1,15 @@
+import { ThemedIcon } from '@lib/icons';
 import { useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ThemedIcon } from '@lib/icons';
+
+import { useAssetAutoContextMenu } from '@lib/dockview';
+
+import type { AssetModel } from '@features/assets';
+
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
-import { useAssetAutoContextMenu } from '@lib/dockview/contextMenu';
-import type { AssetModel } from '@features/assets';
+
+
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -53,8 +58,6 @@ export function CompactAssetCard({
   label,
   lockedTimestamp,
   onLockTimestamp,
-  selected = false,
-  onSelect,
   hideFooter = false,
   fillHeight = false,
   currentIndex,

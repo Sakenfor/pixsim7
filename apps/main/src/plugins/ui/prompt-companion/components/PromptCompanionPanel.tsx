@@ -5,17 +5,20 @@
  * Provides quick actions for prompt analysis, variant suggestions, and pack hints.
  */
 
-import { useState, useCallback } from 'react';
-import clsx from 'clsx';
-import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
-import type { PromptCompanionContext } from '@lib/ui/promptCompanionSlot';
-import { usePromptCompanionEvents } from '@lib/ui/promptCompanionSlot';
+import { Button } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
+import { useState, useCallback } from 'react';
+
+import type { PromptCompanionContext } from '@lib/ui';
+import { usePromptCompanionEvents } from '@lib/ui';
+
 import { useApi } from '@/hooks/useApi';
+
 import { BlockBreakdownDrawer } from './BlockBreakdownDrawer';
-import { VariantSuggestionsDrawer } from './VariantSuggestionsDrawer';
-import { PackHintsDrawer } from './PackHintsDrawer';
 import { BlockBuilderModal } from './BlockBuilderModal';
+import { PackHintsDrawer } from './PackHintsDrawer';
+import { VariantSuggestionsDrawer } from './VariantSuggestionsDrawer';
 
 // ============================================================================
 // Types

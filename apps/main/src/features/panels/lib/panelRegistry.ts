@@ -5,15 +5,18 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
-import type { PanelId } from "../../stores/workspaceStore";
 import type { ComponentType } from "react";
+import type { z } from "zod";
+
+import type { SettingGroup, SettingTab } from "@features/settings";
+
 import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 import type { EditorContext } from "../../context/editorContext";
+import type { PanelId } from "../../stores/workspaceStore";
+
 import type { PanelCategory } from "./panelConstants";
-import type { SettingGroup, SettingTab } from "@features/settings/lib/core/types";
-import type { z } from "zod";
-import type { PanelMetadata } from "./types";
 import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "./panelTypes";
+import type { PanelMetadata } from "./types";
 
 // Re-export PanelCategory for backwards compatibility
 export type { PanelCategory } from "./panelConstants";

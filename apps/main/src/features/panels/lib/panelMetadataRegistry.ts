@@ -6,9 +6,9 @@
  * Metadata now pulls from the panel registry to keep sources in sync.
  */
 
-import type { PanelMetadata } from './types';
-import { panelRegistry } from './panelRegistry';
 import { arePanelsInitialized, initializePanels } from './initializePanels';
+import { panelRegistry } from './panelRegistry';
+import type { PanelMetadata } from './types';
 
 
 function getRegistryPanelMetadata(): PanelMetadata[] {
@@ -56,7 +56,7 @@ export async function registerAllPanels(applySettings = true) {
     if (applySettings) {
       try {
         const { usePanelInteractionSettingsStore } = await import(
-          '@features/settings/stores/panelInteractionSettingsStore'
+          '@features/settings'
         );
         const { applySettingsOverridesToAll } = await import('./applySettingsOverrides');
 
@@ -87,7 +87,7 @@ export async function reloadPanelsWithSettings() {
   try {
     const { panelManager } = await import('./PanelManager');
     const { usePanelInteractionSettingsStore } = await import(
-      '@features/settings/stores/panelInteractionSettingsStore'
+      '@features/settings'
     );
     const { applySettingsOverridesToAll } = await import('./applySettingsOverrides');
 

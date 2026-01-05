@@ -6,9 +6,65 @@
  */
 
 import React, { useState } from 'react';
+
 import type { NpcInteractionDefinition } from '@lib/registries';
+
 import { InteractionEditor, TemplateSelector } from '@features/interactions';
 import './InteractionStudio.css';
+
+const getRelationshipGateSummary = (interaction: NpcInteractionDefinition): string | null => {
+  const statGating = interaction.gating?.statGating;
+  if (!statGating) {
+    return null;
+  }
+
+  const gates = [...(statGating.allOf || []), ...(statGating.anyOf || [])];
+  const relationshipGates = gates.filter((gate) => gate.definitionId === 'relationships');
+  if (!relationshipGates.length) {
+    return null;
+  }
+
+  const affinityGate = relationshipGates.find((gate) => gate.axis === 'affinity');
+  if (affinityGate?.minValue !== undefined) {
+    return `${affinityGate.minValue}+ affinity`;
+  }
+  if (affinityGate?.minTierId) {
+    return `${affinityGate.minTierId} tier`;
+  }
+
+  return 'relationship';
+};
+
+const getRelationshipDeltaSummary = (interaction: NpcInteractionDefinition): string | null => {
+  const deltas = interaction.outcome?.statDeltas;
+  if (!deltas) {
+    return null;
+  }
+
+  const relationshipDeltas = deltas.filter(
+    (delta) =>
+      delta.packageId === 'core.relationships' &&
+      (!delta.definitionId || delta.definitionId === 'relationships')
+  );
+
+  if (!relationshipDeltas.length) {
+    return null;
+  }
+
+  const axes = relationshipDeltas.reduce<Record<string, number>>((acc, delta) => {
+    for (const [axis, value] of Object.entries(delta.axes)) {
+      acc[axis] = (acc[axis] || 0) + value;
+    }
+    return acc;
+  }, {});
+
+  const summary = Object.entries(axes)
+    .filter(([, v]) => v !== undefined && v !== 0)
+    .map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${k}`)
+    .join(', ');
+
+  return summary || null;
+};
 
 /**
  * Interaction Studio page
@@ -67,7 +123,7 @@ export function InteractionStudio() {
       try {
         const imported = JSON.parse(e.target?.result as string);
         setInteractions(imported);
-      } catch (error) {
+      } catch {
         alert('Failed to import: Invalid JSON');
       }
     };
@@ -165,22 +221,16 @@ export function InteractionStudio() {
                 </div>
 
                 <div className="item-details">
-                  {interaction.gating?.relationship && (
+                  {getRelationshipGateSummary(interaction) && (
                     <div className="detail">
                       <span className="detail-icon">💕</span>
-                      Requires: {interaction.gating.relationship.minAffinity
-                        ? `${interaction.gating.relationship.minAffinity}+ affinity`
-                        : 'relationship'}
+                      Requires: {getRelationshipGateSummary(interaction)}
                     </div>
                   )}
-                  {interaction.outcome?.relationshipDeltas && (
+                  {getRelationshipDeltaSummary(interaction) && (
                     <div className="detail">
                       <span className="detail-icon">📈</span>
-                      Grants:{' '}
-                      {Object.entries(interaction.outcome.relationshipDeltas)
-                        .filter(([_, v]) => v !== undefined)
-                        .map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${k}`)
-                        .join(', ')}
+                      Grants: {getRelationshipDeltaSummary(interaction)}
                     </div>
                   )}
                 </div>

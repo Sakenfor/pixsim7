@@ -9,14 +9,15 @@
  * - PromptBlock = stored entity in database (NOT used here)
  */
 
-import { useMemo, useState } from 'react';
-import clsx from 'clsx';
-import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
+import { Button } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
+import { useMemo, useState } from 'react';
+
 import {
   PromptInlineViewer,
   type PromptSegmentDisplay,
-} from '@features/prompts/components/PromptInlineViewer';
+} from '@features/prompts';
 
 // ============================================================================
 // Types

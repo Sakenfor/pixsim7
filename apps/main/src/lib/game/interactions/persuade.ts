@@ -11,13 +11,14 @@
  * - Consent checks for seduction (respects NPC boundaries)
  * - Integrates with session state and relationship system
  */
+import { canAttemptSeduction, type IntimacyGatingConfig } from '@features/intimacy';
+
 import type {
   InteractionPlugin,
   BaseInteractionConfig,
   InteractionContext,
   InteractionResult,
 } from './types';
-import { canAttemptSeduction, type IntimacyGatingConfig } from '@features/intimacy/lib/intimacyGating';
 
 /**
  * Persuade/Seduce interaction config

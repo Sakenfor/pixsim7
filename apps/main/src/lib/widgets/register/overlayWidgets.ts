@@ -5,23 +5,23 @@
  * Replaces the legacy editing-core/registry/widgetRegistry registration.
  */
 
-import { registerWidget } from '../widgetRegistry';
-import type { WidgetDefinition } from '../types';
-import type { UnifiedWidgetConfig } from '@lib/editing-core/unifiedConfig';
-import type { OverlayWidget } from '@lib/ui/overlay/types';
-import { fromUnifiedPosition, fromUnifiedVisibility } from '@lib/ui/overlay/overlayConfig';
+import type { UnifiedWidgetConfig } from '@lib/editing-core';
 import { createBindingFromValue, type DataBinding } from '@lib/editing-core';
+import { fromUnifiedPosition, fromUnifiedVisibility } from '@lib/ui/overlay';
 
 // Widget creators
-import { createBadgeWidget, type BadgeWidgetConfig } from '@lib/ui/overlay/widgets/BadgeWidget';
-import { createPanelWidget, type PanelWidgetConfig } from '@lib/ui/overlay/widgets/PanelWidget';
-import { createUploadWidget, type UploadWidgetConfig } from '@lib/ui/overlay/widgets/UploadWidget';
-import { createButtonWidget, type ButtonWidgetConfig } from '@lib/ui/overlay/widgets/ButtonWidget';
-import { createMenuWidget, type MenuWidgetConfig } from '@lib/ui/overlay/widgets/MenuWidget';
-import { createTooltipWidget, type TooltipWidgetConfig } from '@lib/ui/overlay/widgets/TooltipWidget';
-import { createVideoScrubWidget, type VideoScrubWidgetConfig } from '@lib/ui/overlay/widgets/VideoScrubWidget';
-import { createProgressWidget, type ProgressWidgetConfig } from '@lib/ui/overlay/widgets/ProgressWidget';
-import { createSceneViewHost, type SceneViewHostConfig } from '@lib/ui/overlay/widgets/SceneViewHost';
+import { createBadgeWidget, type BadgeWidgetConfig } from '@lib/ui/overlay';
+import { createPanelWidget, type PanelWidgetConfig } from '@lib/ui/overlay';
+import { createUploadWidget, type UploadWidgetConfig } from '@lib/ui/overlay';
+import { createButtonWidget, type ButtonWidgetConfig } from '@lib/ui/overlay';
+import { createMenuWidget, type MenuWidgetConfig } from '@lib/ui/overlay';
+import { createTooltipWidget, type TooltipWidgetConfig } from '@lib/ui/overlay';
+import { createVideoScrubWidget, type VideoScrubWidgetConfig } from '@lib/ui/overlay';
+import { createProgressWidget, type ProgressWidgetConfig } from '@lib/ui/overlay';
+import { createSceneViewHost, type SceneViewHostConfig } from '@lib/ui/overlay';
+
+import type { WidgetDefinition } from '../types';
+import { registerWidget } from '../widgetRegistry';
 
 // ============================================================================
 // Helper
@@ -241,7 +241,7 @@ export const menuWidget: WidgetDefinition = {
       defaultOffset: { x: -8, y: 8 },
     },
   },
-  factory: (config, runtimeOptions) => {
+  factory: (config) => {
     const menuConfig: MenuWidgetConfig = {
       id: config.id,
       position: fromUnifiedPosition(config.position),
@@ -287,7 +287,7 @@ export const tooltipWidget: WidgetDefinition = {
       defaultOffset: { x: 8, y: 8 },
     },
   },
-  factory: (config, runtimeOptions) => {
+  factory: (config) => {
     const tooltipConfig: TooltipWidgetConfig = {
       id: config.id,
       position: fromUnifiedPosition(config.position),
@@ -386,7 +386,7 @@ export const progressWidget: WidgetDefinition = {
       defaultOffset: { x: 0, y: -8 },
     },
   },
-  factory: (config, runtimeOptions) => {
+  factory: (config) => {
     const progressConfig: ProgressWidgetConfig = {
       id: config.id,
       position: fromUnifiedPosition(config.position),

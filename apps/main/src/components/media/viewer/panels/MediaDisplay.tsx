@@ -5,9 +5,12 @@
  */
 
 import { useRef } from 'react';
+
+import { useAutoContextMenu } from '@lib/dockview';
+
 import type { ViewerAsset } from '@features/assets';
+
 import type { ViewerSettings } from '../types';
-import { useAutoContextMenu } from '@lib/dockview/contextMenu';
 
 export type FitMode = 'contain' | 'cover' | 'actual' | 'fill';
 

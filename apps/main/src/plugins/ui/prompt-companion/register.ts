@@ -4,10 +4,11 @@
  * Registers the prompt companion toolbar with the slot system.
  */
 
-import { promptCompanionRegistry } from '@lib/ui/promptCompanionSlot';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
-import { promptCompanionManifest } from './manifest';
+import { promptCompanionRegistry } from '@lib/ui';
+
 import { PromptCompanionPanel } from './components/PromptCompanionPanel';
+import { promptCompanionManifest } from './manifest';
 
 /**
  * Register the Prompt Companion plugin

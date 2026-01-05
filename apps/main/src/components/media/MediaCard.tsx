@@ -21,8 +21,11 @@
  * - [ ] Multi-provider support in UI
  */
 
+import { ThemedIcon } from '@lib/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
+
+import { useContextMenuOptional } from '@lib/dockview';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -30,13 +33,15 @@ import {
   mergeConfigurations,
 } from '@lib/ui/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
-import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
-import { ThemedIcon } from '@lib/icons';
-import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
-import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
-import { useContextMenuOptional } from '@lib/dockview/contextMenu';
+
 import type { AssetModel } from '@features/assets';
 import { useContextHubSettingsStore } from '@features/contextHub';
+
+import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
+
+import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
+
+
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
@@ -145,8 +150,6 @@ export function MediaCard(props: MediaCardProps) {
     createdAt,
     onOpen,
     providerStatus,
-    actions,
-    badgeConfig,
     overlayConfig: customOverlayConfig,
     customWidgets = [],
     overlayPresetId,
@@ -156,7 +159,6 @@ export function MediaCard(props: MediaCardProps) {
     contextMenuSelection,
   } = props;
 
-  const [isHovered, setIsHovered] = useState(false);
   const contextMenu = useContextMenuOptional();
   const enableMediaCardContextMenu = useContextHubSettingsStore(
     (state) => state.enableMediaCardContextMenu,
@@ -164,7 +166,6 @@ export function MediaCard(props: MediaCardProps) {
   const {
     src: thumbSrc,
     failed: thumbFailed,
-    loading: thumbLoading,
     retry: retryThumb,
   } = useMediaThumbnailFull(thumbUrl, previewUrl, mediaType === 'video' ? undefined : remoteUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -211,24 +212,6 @@ export function MediaCard(props: MediaCardProps) {
 
     return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
   }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio]);
-
-  // Resolve badge configuration
-  const badges = useMemo(
-    () => resolveMediaBadgeConfig(mediaType, providerStatus, tags),
-    [mediaType, providerStatus, tags]
-  );
-
-  // Badge visibility with defaults
-  const visibility = {
-    showPrimaryIcon: badgeConfig?.showPrimaryIcon ?? true,
-    showStatusIcon: badgeConfig?.showStatusIcon ?? true,
-    showTagsInOverlay: badgeConfig?.showTagsInOverlay ?? true,
-    showFooterProvider: badgeConfig?.showFooterProvider ?? true,
-    showFooterDate: badgeConfig?.showFooterDate ?? true,
-    showGenerationBadge: badgeConfig?.showGenerationBadge ?? true,
-    showGenerationOnHoverOnly: badgeConfig?.showGenerationOnHoverOnly ?? true,
-    enableBadgePulse: badgeConfig?.enableBadgePulse ?? false,
-  };
 
   // Partition tags
   const { displayTags } = useMemo(() => {
@@ -421,8 +404,6 @@ export function MediaCard(props: MediaCardProps) {
     <div
       className="group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition overflow-hidden relative"
       data-pixsim7="media-card"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >
       <OverlayContainer

@@ -9,7 +9,7 @@
  * import { SceneManagementPanel, SceneLibraryPanel, PlaybackTimeline } from '@features/scene';
  *
  * // Or import specific modules
- * import { ScenePlaybackPanel } from '@features/scene/components/panels/ScenePlaybackPanel';
+ * import { ScenePlaybackPanel } from '@features/scene';
  * ```
  */
 

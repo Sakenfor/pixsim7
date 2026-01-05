@@ -9,16 +9,16 @@
  * Consolidates the previous OverlayConfig page with support for all widget surfaces.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import { Button, Panel } from '@pixsim7/shared.ui';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { OverlayEditor } from '@/components/overlay-editor';
-import { MediaCard } from '@/components/media/MediaCard';
+
+import { dockZoneRegistry } from '@lib/dockview';
+import { useUndoRedo } from '@lib/editing-core';
 import type { OverlayConfiguration } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
-import { LocalStoragePresetStorage } from '@lib/ui/overlay/presets/presetManager';
-import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay/presets/storage';
-import { Button, Select, Panel } from '@pixsim7/shared.ui';
-import { SurfaceWorkbench } from '@/components/surface-workbench';
+import { LocalStoragePresetStorage } from '@lib/ui/overlay';
+import { IndexedDBPresetStorage } from '@lib/ui/overlay';
 import {
   widgetRegistry,
   overlayWidgets,
@@ -26,18 +26,14 @@ import {
   chromeWidgets,
   type WidgetDefinition,
   type WidgetInstance,
-  type WidgetPlacement,
 } from '@lib/widgets';
-import {
-  dockZoneRegistry,
-  type DockZoneDefinition,
-} from '@lib/dockview';
-import {
-  panelRegistry,
-  getPanelsForScope,
-  type PanelDefinition,
-} from '@features/panels/lib';
-import { useUndoRedo } from '@lib/editing-core';
+
+import { panelRegistry, getPanelsForScope } from '@features/panels/lib';
+
+import { MediaCard } from '@/components/media/MediaCard';
+import { OverlayEditor } from '@/components/overlay-editor';
+import { SurfaceWorkbench } from '@/components/surface-workbench';
+
 
 // ============================================================================
 // Types
@@ -989,7 +985,7 @@ export function WidgetBuilderRoute() {
   const overlayConfig = OVERLAY_COMPONENTS[overlayComponent];
 
   // Storage selection
-  const [storageType, setStorageType] = useState<StorageType>(
+  const [storageType] = useState<StorageType>(
     () => (localStorage.getItem('widgetBuilderStorageType') as StorageType) || 'localStorage'
   );
 

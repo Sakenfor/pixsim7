@@ -10,7 +10,7 @@
  * import { IntimacySceneComposer, deriveIntimacyBand } from '@features/intimacy';
  *
  * // Or import specific modules
- * import { validateTemplate } from '@features/intimacy/lib/templateValidation';
+ * import { validateTemplate } from '@features/intimacy';
  * ```
  */
 

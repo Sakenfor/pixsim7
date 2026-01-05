@@ -7,7 +7,8 @@
  * This allows a single placement model to drive all surface renderers.
  */
 
-import type { UnifiedWidgetConfig, UnifiedPosition, UnifiedAnchor, UnifiedRegion } from '@lib/editing-core/unifiedConfig';
+import type { UnifiedWidgetConfig, UnifiedPosition } from '@lib/editing-core';
+
 import type { WidgetPlacement, WidgetSurface, WidgetDefinition } from './types';
 
 // ============================================================================

@@ -5,14 +5,21 @@
  * Brings together prompt inspection, import tools, and family/version browsing.
  */
 
-import { useState, useEffect } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
-import { Icon } from '../lib/icons';
-import { DevPromptImporter } from './DevPromptImporter';
-import { PromptSegmentsViewer, type PromptSegment } from '@features/prompts';
+import { useState, useEffect } from 'react';
+
+import { PromptCompanionHost } from '@lib/ui';
+
 import { PromptBlockGraphSurface } from '@features/graph';
+import { PromptSegmentsViewer, type PromptSegment } from '@features/prompts';
+
 import { useApi } from '../hooks/useApi';
-import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
+import { Icon } from '../lib/icons';
+
+import { DevPromptImporter } from './DevPromptImporter';
+
+
+
 
 // ===== Types =====
 

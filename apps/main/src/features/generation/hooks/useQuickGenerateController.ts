@@ -1,13 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
+
+import { extractErrorMessage } from '@lib/api/errorHandling';
+import { logEvent } from '@lib/utils/logging';
+
+import { extractFrame, fromAssetResponse } from '@features/assets';
+import { generateAsset } from '@features/controlCenter/lib/api';
 import { useGenerationsStore, useGenerationQueueStore, createPendingGeneration, resolveInputMode } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
-import { generateAsset } from '@features/controlCenter/lib/api';
-import { extractFrame, fromAssetResponse } from '@features/assets';
-import { logEvent } from '@lib/utils/logging';
-import { buildGenerationRequest } from '../lib/quickGenerateLogic';
-import { useQuickGenerateBindings } from '@features/prompts/hooks/useQuickGenerateBindings';
-import { extractErrorMessage } from '@lib/api/errorHandling';
+import { useQuickGenerateBindings } from '@features/prompts';
+
 import { getFallbackOperation } from '@/types/operations';
+
+import { buildGenerationRequest } from '../lib/quickGenerateLogic';
+
+
 
 /**
  * Hook: useQuickGenerateController
@@ -45,7 +51,6 @@ export function useQuickGenerateController() {
   const [generationId, setGenerationId] = useState<number | null>(null);
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore(s => s.setWatchingGeneration);
-  const generations = useGenerationsStore(s => s.generations);
 
   // Watch for generation failures and display error in prompt box
   // Use selector to only get the specific generation we're watching
@@ -149,8 +154,9 @@ export function useQuickGenerateController() {
       });
 
       if (inputMode !== 'multi' && 'source_asset_ids' in modifiedDynamicParams) {
-        const { source_asset_ids, ...rest } = modifiedDynamicParams;
-        modifiedDynamicParams = rest;
+        const nextParams = { ...modifiedDynamicParams };
+        delete nextParams.source_asset_ids;
+        modifiedDynamicParams = nextParams;
       }
 
       const sourceAssetIds = inputMode === 'multi' && Array.isArray(modifiedDynamicParams.source_asset_ids)
