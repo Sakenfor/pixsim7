@@ -1,4 +1,14 @@
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents } from '@pixsim7/shared.types';
+
+// ============================================================================
+// OpenAPI-generated types
+// ============================================================================
+
+export type ConceptKindInfo = ApiComponents['schemas']['ConceptKindInfo'];
+export type ConceptKindsResponse = ApiComponents['schemas']['ConceptKindsResponse'];
+export type ConceptResponse = ApiComponents['schemas']['ConceptResponse'];
+export type ConceptsListResponse = ApiComponents['schemas']['ConceptsListResponse'];
 
 // ============================================================================
 // Concept Kind Types (Option B: Known + Extensible)
@@ -7,6 +17,7 @@ import type { PixSimApiClient } from '../client';
 /**
  * Known concept kinds with autocomplete support.
  * These are the kinds that ship with the core system.
+ * [frontend-only] UX helper for autocomplete, not from OpenAPI.
  */
 export const KNOWN_KINDS = ['role', 'part', 'pose', 'influence_region'] as const;
 
@@ -26,76 +37,6 @@ export type ConceptKind = KnownConceptKind | (string & {});
  */
 export function isKnownConceptKind(kind: string): kind is KnownConceptKind {
   return (KNOWN_KINDS as readonly string[]).includes(kind);
-}
-
-// ============================================================================
-// Concept Kind Metadata
-// ============================================================================
-
-/**
- * Metadata about a concept kind from the API.
- */
-export interface ConceptKindInfo {
-  /** Concept kind identifier */
-  kind: string;
-  /** Display name for UI grouping */
-  group_name: string;
-  /** Whether this kind supports package filtering */
-  supports_packages: boolean;
-  /** Whether to include in label autocomplete suggestions */
-  include_in_labels: boolean;
-}
-
-/**
- * Response from GET /concepts listing available kinds.
- */
-export interface ConceptKindsResponse {
-  kinds: ConceptKindInfo[];
-}
-
-// ============================================================================
-// Generic Concept Types
-// ============================================================================
-
-/**
- * Generic concept response from the /concepts/{kind} API.
- *
- * All concept kinds share this base structure with kind-specific
- * metadata in the `metadata` field.
- */
-export interface ConceptResponse {
-  /** Concept kind (role, part, pose, influence_region, etc.) */
-  kind: string;
-  /** Concept ID (unique within kind) */
-  id: string;
-  /** Canonical reference format (kind:id) */
-  ref: string;
-  /** Human-readable display label */
-  label: string;
-  /** Longer description */
-  description: string;
-  /** Tailwind color name for UI */
-  color: string;
-  /** UI grouping category */
-  group: string;
-  /** Tags for filtering/matching */
-  tags: string[];
-  /** Kind-specific additional metadata */
-  metadata: Record<string, unknown>;
-}
-
-/**
- * Generic response for listing concepts of a specific kind.
- */
-export interface ConceptsListResponse {
-  /** The concept kind returned */
-  kind: string;
-  /** List of concepts */
-  concepts: ConceptResponse[];
-  /** Priority ordering of concept IDs (if applicable) */
-  priority: string[];
-  /** Display name for this kind's group */
-  group_name: string;
 }
 
 // ============================================================================

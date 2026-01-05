@@ -1,69 +1,47 @@
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents } from '@pixsim7/shared.types';
 
+// ============================================================================
+// OpenAPI-generated types
+// ============================================================================
+
+export type AnalyzerResponse = ApiComponents['schemas']['AnalyzerResponse'];
+export type AnalyzersListResponse = ApiComponents['schemas']['AnalyzersListResponse'];
+export type AnalyzerInstanceResponse = ApiComponents['schemas']['AnalyzerInstanceResponse'];
+export type AnalyzerInstanceListResponse = ApiComponents['schemas']['AnalyzerInstanceListResponse'];
+export type CreateAnalyzerInstanceRequest = ApiComponents['schemas']['CreateAnalyzerInstanceRequest'];
+export type UpdateAnalyzerInstanceRequest = ApiComponents['schemas']['UpdateAnalyzerInstanceRequest'];
+
+// ============================================================================
+// Frontend-only types (UX helpers, not in OpenAPI)
+// ============================================================================
+
+/**
+ * Analyzer kind enum.
+ * [frontend-only] Backend returns string; this provides autocomplete.
+ * TODO: Define as enum in backend for strict OpenAPI typing.
+ */
 export type AnalyzerKind = 'parser' | 'llm' | 'vision';
+
+/**
+ * Analyzer target enum.
+ * [frontend-only] Backend returns string; this provides autocomplete.
+ * TODO: Define as enum in backend for strict OpenAPI typing.
+ */
 export type AnalyzerTarget = 'prompt' | 'asset';
 
-export interface AnalyzerInfo {
-  id: string;
-  name: string;
-  description: string;
-  kind: AnalyzerKind;
-  target: AnalyzerTarget;
-  provider_id?: string | null;
-  model_id?: string | null;
-  source_plugin_id?: string | null;
-  enabled: boolean;
-  is_default: boolean;
-}
-
-export interface AnalyzersListResponse {
-  analyzers: AnalyzerInfo[];
-  default_id: string;
-}
-
-export interface AnalyzerInstance {
-  id: number;
-  analyzer_id: string;
-  provider_id: string;
-  model_id?: string | null;
-  label: string;
-  description?: string | null;
-  config: Record<string, any>;
-  enabled: boolean;
-  priority: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AnalyzerInstanceListResponse {
-  instances: AnalyzerInstance[];
-}
-
-export interface CreateAnalyzerInstanceRequest {
-  analyzer_id: string;
-  provider_id?: string;
-  model_id?: string;
-  label: string;
-  description?: string | null;
-  config?: Record<string, any>;
-  enabled?: boolean;
-  priority?: number;
-}
-
-export interface UpdateAnalyzerInstanceRequest {
-  provider_id?: string;
-  model_id?: string;
-  label?: string;
-  description?: string | null;
-  config?: Record<string, any>;
-  enabled?: boolean;
-  priority?: number;
-}
-
+/**
+ * Options for listing analyzers.
+ * [frontend-only] Query parameter helper.
+ */
 export interface ListAnalyzersOptions {
   target?: AnalyzerTarget;
   include_legacy?: boolean;
 }
+
+// Backward compatibility alias
+export type AnalyzerInfo = AnalyzerResponse;
+export type AnalyzerInstance = AnalyzerInstanceResponse;
 
 export function createAnalyzersApi(client: PixSimApiClient) {
   return {

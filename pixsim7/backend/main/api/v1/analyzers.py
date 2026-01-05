@@ -9,7 +9,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
+from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget, AnalyzerKind
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
     AnalyzerInstanceService,
     AnalyzerInstanceConfigError,
@@ -23,8 +23,8 @@ class AnalyzerResponse(BaseModel):
     id: str
     name: str
     description: str
-    kind: str
-    target: str
+    kind: AnalyzerKind
+    target: AnalyzerTarget
     provider_id: Optional[str] = None
     model_id: Optional[str] = None
     source_plugin_id: Optional[str] = None
@@ -123,8 +123,8 @@ async def list_analyzers(
                 id=a.id,
                 name=a.name,
                 description=a.description,
-                kind=a.kind.value,
-                target=a.target.value,
+                kind=a.kind,
+                target=a.target,
                 provider_id=a.provider_id,
                 model_id=a.model_id,
                 source_plugin_id=a.source_plugin_id,
@@ -150,8 +150,8 @@ async def get_analyzer(analyzer_id: str):
         id=analyzer.id,
         name=analyzer.name,
         description=analyzer.description,
-        kind=analyzer.kind.value,
-        target=analyzer.target.value,
+        kind=analyzer.kind,
+        target=analyzer.target,
         provider_id=analyzer.provider_id,
         model_id=analyzer.model_id,
         source_plugin_id=analyzer.source_plugin_id,

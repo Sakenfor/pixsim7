@@ -1,4 +1,5 @@
-import { apiClient } from './client';
+import { IDs, ApiComponents } from '@shared/types';
+
 import type {
   Scene,
   GameLocationSummary,
@@ -26,7 +27,14 @@ import type {
   ResolveBatchResponse,
   TemplateKind,
 } from '@lib/registries';
-import { IDs } from '@shared/types';
+
+import { apiClient } from './client';
+
+// OpenAPI-generated types
+export type PaginatedWorldsResponse = ApiComponents['schemas']['PaginatedWorldsResponse'];
+export type WorldConfigResponse = ApiComponents['schemas']['WorldConfigResponse'];
+export type InventoryStatsResponse = ApiComponents['schemas']['InventoryStatsResponse'];
+export type MessageResponse = ApiComponents['schemas']['MessageResponse'];
 
 // Re-export types for backward compatibility
 export type {
@@ -214,13 +222,6 @@ export async function updateGameSession(
   }
 }
 
-interface PaginatedWorldsResponse {
-  worlds: GameWorldSummary[];
-  total: number;
-  offset: number;
-  limit: number;
-}
-
 export async function listGameWorlds(): Promise<GameWorldSummary[]> {
   const res = await apiClient.get<PaginatedWorldsResponse>('/game/worlds');
   return res.data.worlds;
@@ -237,22 +238,6 @@ export async function createGameWorld(
 export async function getGameWorld(worldId: number): Promise<GameWorldDetail> {
   const res = await apiClient.get<GameWorldDetail>(`/game/worlds/${worldId}`);
   return res.data;
-}
-
-/**
- * World config response from /worlds/{id}/config endpoint.
- * Contains merged stat definitions and pre-computed ordering.
- */
-export interface WorldConfigResponse {
-  schema_version: number;
-  stats_config: {
-    version: number;
-    definitions: Record<string, import('@pixsim7/shared.types').StatDefinition>;
-  };
-  manifest: import('@pixsim7/shared.types').WorldManifestParsed;
-  intimacy_gating: import('@pixsim7/shared.types').IntimacyGatingConfig;
-  tier_order: string[];
-  level_order: string[];
 }
 
 /**
@@ -451,8 +436,8 @@ export async function removeInventoryItem(
   sessionId: number,
   itemId: string,
   quantity: number = 1
-): Promise<{ message: string }> {
-  const res = await apiClient.delete<{ message: string }>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
+): Promise<MessageResponse> {
+  const res = await apiClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
     data: { quantity },
   });
   return res.data;
@@ -471,13 +456,13 @@ export async function updateInventoryItem(
   return res.data;
 }
 
-export async function clearInventory(sessionId: number): Promise<{ message: string }> {
-  const res = await apiClient.delete<{ message: string }>(`/game/inventory/sessions/${sessionId}/clear`);
+export async function clearInventory(sessionId: number): Promise<MessageResponse> {
+  const res = await apiClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/clear`);
   return res.data;
 }
 
-export async function getInventoryStats(sessionId: number): Promise<{ unique_items: number; total_quantity: number }> {
-  const res = await apiClient.get<{ unique_items: number; total_quantity: number }>(`/game/inventory/sessions/${sessionId}/stats`);
+export async function getInventoryStats(sessionId: number): Promise<InventoryStatsResponse> {
+  const res = await apiClient.get<InventoryStatsResponse>(`/game/inventory/sessions/${sessionId}/stats`);
   return res.data;
 }
 

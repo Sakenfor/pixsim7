@@ -4,12 +4,19 @@
  * Typed API client for /api/v1/accounts endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { pixsimClient } from './client';
-import { logEvent } from '@lib/utils/logging';
 import { createAccountsApi } from '@pixsim7/api-client/domains';
 import type { AccountResponse, AccountStatus, AccountUpdate, CreateApiKeyResponse } from '@pixsim7/api-client/domains';
+import type { ApiComponents } from '@shared/types';
+
+import { logEvent } from '@lib/utils/logging';
+
+import { pixsimClient } from './client';
 
 export type { AccountResponse, AccountUpdate, AccountStatus, CreateApiKeyResponse } from '@pixsim7/api-client/domains';
+
+// OpenAPI-generated types
+export type AccountStatsResponse = ApiComponents['schemas']['AccountStatsResponse'];
+export type InvitedAccountsResponse = ApiComponents['schemas']['InvitedAccountsResponse'];
 
 const accountsApi = createAccountsApi(pixsimClient);
 
@@ -126,9 +133,9 @@ export async function createApiKey(
 export async function getAccountStats(
   accountId: number,
   force = false
-): Promise<{ invited_count: number; user_info: Record<string, any> }> {
+): Promise<AccountStatsResponse> {
   const params = force ? '?force=true' : '';
-  const response = await pixsimClient.get(`/accounts/${accountId}/stats${params}`);
+  const response = await pixsimClient.get<AccountStatsResponse>(`/accounts/${accountId}/stats${params}`);
   return response.data;
 }
 
@@ -147,22 +154,11 @@ export async function getInvitedAccounts(
   accountId: number,
   pageSize = 20,
   offset = 0
-): Promise<{
-  items: Array<{
-    account_id: number;
-    account_avatar: string;
-    nick_name: string;
-    user_name: string;
-    register_at: string;
-    followed: boolean;
-  }>;
-  total: number;
-  next_offset: number;
-}> {
+): Promise<InvitedAccountsResponse> {
   const params = new URLSearchParams({
     page_size: pageSize.toString(),
     offset: offset.toString(),
   });
-  const response = await pixsimClient.get(`/accounts/${accountId}/invited-accounts?${params}`);
+  const response = await pixsimClient.get<InvitedAccountsResponse>(`/accounts/${accountId}/invited-accounts?${params}`);
   return response.data;
 }
