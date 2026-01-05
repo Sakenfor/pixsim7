@@ -335,7 +335,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         return {
             "success": result.success,
             "message": result.message,
-            "relationship_deltas": result.relationshipDeltas.dict() if result.relationshipDeltas else None,
+            "stat_deltas": [delta.dict() for delta in result.statDeltas] if result.statDeltas else None,
             # ... more fields
         }
 ```

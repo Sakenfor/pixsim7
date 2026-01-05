@@ -50,7 +50,7 @@ NPC cognitive modeling:
 
 ### Interactions (`interactions/`)
 NPC interaction mechanics:
-- **npc_interactions.py**: Interaction types (RelationshipDelta, StatDelta, etc.)
+- **npc_interactions.py**: Interaction types (StatDelta, etc.)
 - **interaction_execution.py**: Application logic
 
 ## Import Patterns

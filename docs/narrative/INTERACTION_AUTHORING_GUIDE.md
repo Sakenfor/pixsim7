@@ -21,8 +21,8 @@ NPC interactions are the primary way players engage with characters in Pixsim7. 
 
 - **Unified framework** for all interaction types
 - **Template library** for common patterns
-- **Flexible gating** based on relationships, time, flags, etc.
-- **Rich outcomes** including relationship changes, dialogue, scenes, and more
+- **Flexible gating** based on stats, time, flags, etc.
+- **Rich outcomes** including stat changes, dialogue, scenes, and more
 - **Multiple surfaces** for different UI contexts
 
 ## Quick Start
@@ -169,21 +169,28 @@ const customInteraction: NpcInteractionDefinition = {
 
 Gating controls when interactions are available.
 
-### Relationship Gating
+### Stat Gating (Relationships)
 
 ```typescript
 gating: {
-  relationship: {
-    // Tier requirements
-    minTier: 'friend',           // Requires at least 'friend' tier
-    maxTier: 'close_friend',     // Requires at most 'close_friend'
+  statGating: {
+    allOf: [
+      // Tier requirements
+      {
+        definitionId: 'relationships',
+        axis: 'affinity',
+        minTierId: 'friend',        // Requires at least 'friend' tier
+        maxTierId: 'close_friend',  // Requires at most 'close_friend'
+        entityType: 'npc',
+      },
 
-    // Metric requirements (0-100)
-    minAffinity: 40,             // Requires affinity >= 40
-    minTrust: 30,                // Requires trust >= 30
-    minChemistry: 50,            // Requires chemistry >= 50
-    maxTension: 20,              // Requires tension <= 20
-  }
+      // Metric requirements (0-100)
+      { definitionId: 'relationships', axis: 'affinity', minValue: 40, entityType: 'npc' },
+      { definitionId: 'relationships', axis: 'trust', minValue: 30, entityType: 'npc' },
+      { definitionId: 'relationships', axis: 'chemistry', minValue: 50, entityType: 'npc' },
+      { definitionId: 'relationships', axis: 'tension', maxValue: 20, entityType: 'npc' },
+    ],
+  },
 }
 ```
 
@@ -255,16 +262,23 @@ gating: {
 
 Outcomes define what happens when an interaction executes.
 
-### Relationship Changes
+### Stat Deltas (Relationships)
 
 ```typescript
 outcome: {
-  relationshipDeltas: {
-    affinity: 5,                 // +5 affinity
-    trust: 3,                    // +3 trust
-    chemistry: 2,                // +2 chemistry
-    tension: -1,                 // -1 tension
-  },
+  statDeltas: [
+    {
+      packageId: 'core.relationships',
+      definitionId: 'relationships',
+      entityType: 'npc',
+      axes: {
+        affinity: 5,             // +5 affinity
+        trust: 3,                // +3 trust
+        chemistry: 2,            // +2 chemistry
+        tension: -1,             // -1 tension
+      },
+    },
+  ],
 }
 ```
 
@@ -466,7 +480,7 @@ Dedicated menu/panel (detailed).
 ### DO:
 
 ✅ Use templates for common patterns
-✅ Keep relationship deltas small (-5 to +5)
+✅ Keep relationship stat deltas small (-5 to +5)
 ✅ Add helpful success messages
 ✅ Use appropriate surfaces for context
 ✅ Add cooldowns to repeatable interactions
@@ -587,8 +601,10 @@ const customInteraction: NpcInteractionDefinition = {
   priority: 80,
 
   gating: {
-    relationship: {
-      minAffinity: 30, // Some popularity needed
+    statGating: {
+      allOf: [
+        { definitionId: 'relationships', axis: 'affinity', minValue: 30, entityType: 'npc' },
+      ],
     },
     timeOfDay: {
       periods: ['evening', 'night'], // Only during tavern hours
@@ -603,9 +619,16 @@ const customInteraction: NpcInteractionDefinition = {
   outcome: {
     successMessage: 'Your performance captivates the tavern!',
 
-    relationshipDeltas: {
-      affinity: 3, // Gain affinity with all tavern NPCs
-    },
+    statDeltas: [
+      {
+        packageId: 'core.relationships',
+        definitionId: 'relationships',
+        entityType: 'npc',
+        axes: {
+          affinity: 3, // Gain affinity with all tavern NPCs
+        },
+      },
+    ],
 
     flagChanges: {
       increment: {

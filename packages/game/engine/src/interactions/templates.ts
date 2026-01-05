@@ -11,7 +11,9 @@ import type {
   InteractionSurface,
   InteractionGating,
   InteractionOutcome,
-  RelationshipDelta,
+  StatDelta,
+  StatAxisGate,
+  StatGating,
   FlagChanges,
   InventoryChanges,
 } from '@pixsim7/shared.types';
@@ -56,6 +58,23 @@ export interface TemplateOptions {
   [key: string]: any;
 }
 
+const buildRelationshipStatGating = (
+  gates: Array<Omit<StatAxisGate, 'definitionId' | 'entityType' | 'npcId'>>
+): StatGating => ({
+  allOf: gates.map((gate) => ({
+    definitionId: 'relationships',
+    entityType: 'npc',
+    ...gate,
+  })),
+});
+
+const relationshipStatDelta = (axes: Record<string, number>): StatDelta => ({
+  packageId: 'core.relationships',
+  definitionId: 'relationships',
+  axes,
+  entityType: 'npc',
+});
+
 // =============================================================================
 // SOCIAL TEMPLATES
 // =============================================================================
@@ -82,10 +101,12 @@ export const greetingTemplate: InteractionTemplate = {
     },
     outcome: {
       successMessage: `You greet ${options.npcName || 'them'} warmly.`,
-      relationshipDeltas: {
-        affinity: 2,
-        trust: 1,
-      },
+      statDeltas: [
+        relationshipStatDelta({
+          affinity: 2,
+          trust: 1,
+        }),
+      ],
       generationLaunch: {
         dialogueRequest: {
           programId: 'casual_greeting',
@@ -114,18 +135,20 @@ export const complimentTemplate: InteractionTemplate = {
     priority: 80,
     targetNpcIds: options.targetNpcIds,
     gating: {
-      relationship: {
-        minAffinity: 20,
-      },
+      statGating: buildRelationshipStatGating([
+        { axis: 'affinity', minValue: 20 },
+      ]),
       cooldownSeconds: 7200, // 2 hours
       ...options.gating,
     },
     outcome: {
       successMessage: `${options.npcName || 'They'} smile at your compliment.`,
-      relationshipDeltas: {
-        affinity: 3,
-        chemistry: 2,
-      },
+      statDeltas: [
+        relationshipStatDelta({
+          affinity: 3,
+          chemistry: 2,
+        }),
+      ],
       npcEffects: {
         triggerEmotion: {
           emotion: 'happy',
@@ -160,18 +183,20 @@ export const askAboutDayTemplate: InteractionTemplate = {
     priority: 70,
     targetNpcIds: options.targetNpcIds,
     gating: {
-      relationship: {
-        minAffinity: 10,
-      },
+      statGating: buildRelationshipStatGating([
+        { axis: 'affinity', minValue: 10 },
+      ]),
       cooldownSeconds: 14400, // 4 hours
       ...options.gating,
     },
     outcome: {
       successMessage: `${options.npcName || 'They'} share how their day went.`,
-      relationshipDeltas: {
-        trust: 1,
-        affinity: 1,
-      },
+      statDeltas: [
+        relationshipStatDelta({
+          trust: 1,
+          affinity: 1,
+        }),
+      ],
       npcEffects: {
         createMemory: {
           topic: 'daily_conversation',
@@ -217,17 +242,19 @@ export const giftGivingTemplate: InteractionTemplate = {
       targetNpcIds: options.targetNpcIds,
       gating: {
         requiredFlags: [`has_item:${itemId}`],
-        relationship: {
-          minAffinity: 15,
-        },
+        statGating: buildRelationshipStatGating([
+          { axis: 'affinity', minValue: 15 },
+        ]),
         ...options.gating,
       },
       outcome: {
         successMessage: `${options.npcName || 'They'} gratefully accept${options.npcName ? 's' : ''} your ${itemName}.`,
-        relationshipDeltas: {
-          affinity: affinityBoost,
-          trust: 2,
-        },
+        statDeltas: [
+          relationshipStatDelta({
+            affinity: affinityBoost,
+            trust: 2,
+          }),
+        ],
         inventoryChanges: {
           remove: [{ itemId, quantity: 1 }],
         },
@@ -319,9 +346,9 @@ export const questStartTemplate: InteractionTemplate = {
       priority: 95,
       targetNpcIds: options.targetNpcIds,
       gating: {
-        relationship: {
-          minAffinity: 25,
-        },
+        statGating: buildRelationshipStatGating([
+          { axis: 'affinity', minValue: 25 },
+        ]),
         forbiddenFlags: [`quest:${questId}:started`],
         ...options.gating,
       },
@@ -335,9 +362,11 @@ export const questStartTemplate: InteractionTemplate = {
             [`quest:${questId}:started`]: true,
           },
         },
-        relationshipDeltas: {
-          trust: 3,
-        },
+        statDeltas: [
+          relationshipStatDelta({
+            trust: 3,
+          }),
+        ],
         npcEffects: {
           createMemory: {
             topic: 'quest_given',
@@ -400,10 +429,12 @@ export const questCompleteTemplate: InteractionTemplate = {
               add: [{ itemId: rewardItemId, quantity: 1 }],
             }
           : undefined,
-        relationshipDeltas: {
-          affinity: 5,
-          trust: 5,
-        },
+        statDeltas: [
+          relationshipStatDelta({
+            affinity: 5,
+            trust: 5,
+          }),
+        ],
         npcEffects: {
           createMemory: {
             topic: 'quest_completed',
@@ -462,10 +493,12 @@ export const storyBeatTemplate: InteractionTemplate = {
           },
           triggerEvents: [`${arcId}:${nextStage}`],
         },
-        relationshipDeltas: {
-          affinity: 3,
-          trust: 2,
-        },
+        statDeltas: [
+          relationshipStatDelta({
+            affinity: 3,
+            trust: 2,
+          }),
+        ],
         sceneLaunch: {
           sceneIntentId: `${arcId}_${nextStage}`,
         },
@@ -496,19 +529,21 @@ export const flirtTemplate: InteractionTemplate = {
     priority: 85,
     targetNpcIds: options.targetNpcIds,
     gating: {
-      relationship: {
-        minAffinity: 40,
-        minChemistry: 20,
-      },
+      statGating: buildRelationshipStatGating([
+        { axis: 'affinity', minValue: 40 },
+        { axis: 'chemistry', minValue: 20 },
+      ]),
       cooldownSeconds: 3600,
       ...options.gating,
     },
     outcome: {
       successMessage: `${options.npcName || 'They'} respond${options.npcName ? 's' : ''} playfully to your flirting.`,
-      relationshipDeltas: {
-        chemistry: 3,
-        affinity: 2,
-      },
+      statDeltas: [
+        relationshipStatDelta({
+          chemistry: 3,
+          affinity: 2,
+        }),
+      ],
       npcEffects: {
         triggerEmotion: {
           emotion: 'excited',
@@ -543,11 +578,10 @@ export const dateInvitationTemplate: InteractionTemplate = {
     priority: 90,
     targetNpcIds: options.targetNpcIds,
     gating: {
-      relationship: {
-        minAffinity: 60,
-        minChemistry: 50,
-        minTier: 'friend',
-      },
+      statGating: buildRelationshipStatGating([
+        { axis: 'affinity', minValue: 60, minTierId: 'friend' },
+        { axis: 'chemistry', minValue: 50 },
+      ]),
       timeOfDay: {
         periods: ['afternoon', 'evening'],
       },
@@ -556,11 +590,13 @@ export const dateInvitationTemplate: InteractionTemplate = {
     },
     outcome: {
       successMessage: `${options.npcName || 'They'} agree${options.npcName ? 's' : ''} to go on a date with you!`,
-      relationshipDeltas: {
-        chemistry: 5,
-        affinity: 3,
-        trust: 2,
-      },
+      statDeltas: [
+        relationshipStatDelta({
+          chemistry: 5,
+          affinity: 3,
+          trust: 2,
+        }),
+      ],
       flagChanges: {
         set: {
           [`date_with:${options.npcName}:scheduled`]: true,
@@ -599,11 +635,13 @@ export const insultTemplate: InteractionTemplate = {
     },
     outcome: {
       successMessage: `${options.npcName || 'They'} look${options.npcName ? 's' : ''} offended.`,
-      relationshipDeltas: {
-        affinity: -3,
-        trust: -2,
-        tension: 2,
-      },
+      statDeltas: [
+        relationshipStatDelta({
+          affinity: -3,
+          trust: -2,
+          tension: 2,
+        }),
+      ],
       npcEffects: {
         triggerEmotion: {
           emotion: 'angry',

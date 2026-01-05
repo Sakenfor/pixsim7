@@ -21,7 +21,7 @@ The **interaction contract** lives in `@shared/types/interactions.ts` (not here)
 export type NpcInteractionSurface = 'inline' | 'dialogue' | 'scene' | ...;
 export type NpcInteractionBranchIntent = 'escalate' | 'cool_down' | ...;
 export interface NpcInteractionDefinition { /* ... */ }
-export interface RelationshipGating { /* ... */ }
+export interface StatGating { /* ... */ }
 ```
 
 Think of it like `game.ts` (API DTOs) or `brain.ts` (state model) - it defines **what an interaction IS**, not how to display it.

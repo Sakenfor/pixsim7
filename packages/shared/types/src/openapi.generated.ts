@@ -2544,6 +2544,8 @@ export interface paths {
          *     Optional source tracking fields:
          *     - source_folder_id: ID of local folder if uploaded from Local Folders panel
          *     - source_relative_path: Relative path within folder if uploaded from Local Folders
+         *     - upload_method: Explicit upload method override (e.g., extension, api)
+         *     - upload_context: JSON-encoded object with additional context
          */
         readonly post: operations["upload_asset_to_provider_api_v1_assets_upload_post"];
         readonly delete?: never;
@@ -5229,6 +5231,35 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/actions/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Action Types
+         * @description Get all available game action types.
+         *
+         *     Returns metadata for each action type including:
+         *     - type: Action type identifier (e.g., 'play_scene')
+         *     - label: Human-readable label for UI
+         *     - icon: Emoji/icon for display
+         *     - surface: Interaction surface (scene, world, dialogue)
+         *     - required_field: Field that must be present in action
+         *
+         *     This endpoint enables dynamic UI generation for action builders.
+         */
+        readonly get: operations["list_action_types_api_v1_game_actions__get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/dialogue/actions/blocks": {
         readonly parameters: {
             readonly query?: never;
@@ -5882,7 +5913,7 @@ export interface paths {
          *     Body shape:
          *       {
          *         "hotspots": [
-         *           { "object_name": "...", "hotspot_id": "...", "linked_scene_id": 123, "meta": {...} },
+         *           { "hotspot_id": "...", "target": {...}, "action": {...}, "meta": {...} },
          *           ...
          *         ]
          *       }
@@ -6433,6 +6464,43 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/triggers/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Triggers */
+        readonly get: operations["list_triggers_api_v1_game_triggers__get"];
+        readonly put?: never;
+        /** Create Trigger */
+        readonly post: operations["create_trigger_api_v1_game_triggers__post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/triggers/{trigger_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Trigger */
+        readonly get: operations["get_trigger_api_v1_game_triggers__trigger_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Trigger */
+        readonly delete: operations["delete_trigger_api_v1_game_triggers__trigger_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Update Trigger */
+        readonly patch: operations["update_trigger_api_v1_game_triggers__trigger_id__patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/game/worlds/": {
@@ -7709,6 +7777,9 @@ export interface paths {
          *
          *     Security: Files are served only if they belong to the authenticated user.
          *     The key format is "u/{user_id}/..." so we validate ownership.
+         *
+         *     Auto-regeneration: If a thumbnail/preview is missing, automatically
+         *     queues regeneration in background and returns 202 Accepted.
          */
         readonly get: operations["serve_media_api_v1_media__key__get"];
         readonly put?: never;
@@ -10439,10 +10510,10 @@ export interface components {
              */
             readonly provider_id?: string | null;
             /**
-             * Provider Instance Id
+             * Provider Instance Config Id
              * @description Optional provider instance config ID for using a specific configuration
              */
-            readonly provider_instance_id?: number | null;
+            readonly provider_instance_config_id?: number | null;
         };
         /**
          * AiModelCapability
@@ -11019,6 +11090,8 @@ export interface components {
             readonly thumbnail_key?: string | null;
             /** Thumbnail Url */
             readonly thumbnail_url?: string | null;
+            /** Upload Method */
+            readonly upload_method?: string | null;
             /** User Id */
             readonly user_id: number;
             /** Version Family Id */
@@ -11544,6 +11617,16 @@ export interface components {
             readonly source_folder_id?: string | null;
             /** Source Relative Path */
             readonly source_relative_path?: string | null;
+            /**
+             * Upload Context
+             * @description Optional JSON-encoded upload context
+             */
+            readonly upload_context?: string | null;
+            /**
+             * Upload Method
+             * @description Upload method identifier (e.g., extension, local_folders)
+             */
+            readonly upload_method?: string | null;
         };
         /**
          * BulkDeleteRequest
@@ -11626,6 +11709,16 @@ export interface components {
              * @description Redis key pattern to match (e.g., 'npc:*', 'dialogue:*')
              */
             readonly pattern?: string | null;
+        };
+        /** ChangeLocationAction */
+        readonly ChangeLocationAction: {
+            /** Target Location Id */
+            readonly target_location_id?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "change_location";
         };
         /** CharacterDetailResponse */
         readonly CharacterDetailResponse: {
@@ -12823,7 +12916,7 @@ export interface components {
          * @description Why an interaction is unavailable
          * @enum {string}
          */
-        readonly DisabledReason: "relationship_too_low" | "relationship_too_high" | "mood_incompatible" | "npc_unavailable" | "npc_busy" | "time_incompatible" | "flag_required" | "flag_forbidden" | "cooldown_active" | "location_incompatible" | "custom";
+        readonly DisabledReason: "mood_incompatible" | "npc_unavailable" | "npc_busy" | "time_incompatible" | "flag_required" | "flag_forbidden" | "cooldown_active" | "location_incompatible" | "stat_gating_failed" | "custom";
         /**
          * DurationRuleSchema
          * @description Duration constraints for generated content
@@ -12938,7 +13031,8 @@ export interface components {
             readonly launchedSceneId?: number | null;
             /** Message */
             readonly message?: string | null;
-            readonly relationshipDeltas?: components["schemas"]["RelationshipDelta"] | null;
+            /** Statdeltas */
+            readonly statDeltas?: readonly components["schemas"]["StatDelta"][] | null;
             /** Success */
             readonly success: boolean;
             /** Timestamp */
@@ -13346,19 +13440,105 @@ export interface components {
             readonly name?: string | null;
         };
         /**
-         * GameHotspotDTO
-         * @description A hotspot within a game location.
+         * GameActionSurface
+         * @description Interaction surface for game actions.
+         * @enum {string}
          */
-        readonly GameHotspotDTO: {
+        readonly GameActionSurface: "scene" | "world" | "dialogue" | "inline";
+        /**
+         * GameActionTypeInfo
+         * @description API response model for game action type metadata.
+         */
+        readonly GameActionTypeInfo: {
+            /**
+             * Description
+             * @description Description for documentation
+             */
+            readonly description?: string | null;
+            /**
+             * Icon
+             * @description Emoji or icon identifier
+             */
+            readonly icon: string;
+            /**
+             * Label
+             * @description Human-readable label for UI
+             */
+            readonly label: string;
+            /**
+             * Required Field
+             * @description Field name that must be present
+             */
+            readonly required_field: string;
+            /** @description Interaction surface type */
+            readonly surface: components["schemas"]["GameActionSurface"];
+            /**
+             * Type
+             * @description Action type identifier
+             */
+            readonly type: string;
+        };
+        /**
+         * GameActionTypesResponse
+         * @description API response for listing all game action types.
+         */
+        readonly GameActionTypesResponse: {
+            /**
+             * Total
+             * @description Total count of action types
+             */
+            readonly total: number;
+            /**
+             * Types
+             * @description All registered action types
+             */
+            readonly types: readonly components["schemas"]["GameActionTypeInfo"][];
+        };
+        /**
+         * GameHotspotDTO
+         * @description A shared trigger/hotspot definition used by 2D and 3D runtimes.
+         */
+        readonly "GameHotspotDTO-Input": {
+            /** Action */
+            readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
             /** Hotspot Id */
             readonly hotspot_id: string;
             /** Id */
             readonly id?: number | null;
-            readonly linked_scene?: (components["schemas"]["EntityRef"] | null) | null;
+            /** Location Id */
+            readonly location_id?: number | null;
             /** Meta */
             readonly meta?: Record<string, unknown> | null;
-            /** Object Name */
-            readonly object_name: string;
+            /** Scene Id */
+            readonly scene_id?: number | null;
+            /** Scope */
+            readonly scope?: string | null;
+            readonly target?: components["schemas"]["HotspotTarget"] | null;
+            /** World Id */
+            readonly world_id?: number | null;
+        };
+        /**
+         * GameHotspotDTO
+         * @description A shared trigger/hotspot definition used by 2D and 3D runtimes.
+         */
+        readonly "GameHotspotDTO-Output": {
+            /** Action */
+            readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
+            /** Hotspot Id */
+            readonly hotspot_id: string;
+            /** Id */
+            readonly id?: number | null;
+            /** Location Id */
+            readonly location_id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Scene Id */
+            readonly scene_id?: number | null;
+            /** Scope */
+            readonly scope?: string | null;
+            readonly target?: components["schemas"]["HotspotTarget"] | null;
+            /** World Id */
+            readonly world_id?: number | null;
         };
         /**
          * GameLocationDetail
@@ -13369,7 +13549,7 @@ export interface components {
             /** Default Spawn */
             readonly default_spawn?: string | null;
             /** Hotspots */
-            readonly hotspots: readonly components["schemas"]["GameHotspotDTO"][];
+            readonly hotspots: readonly components["schemas"]["GameHotspotDTO-Output"][];
             /** Id */
             readonly id: number;
             /** Meta */
@@ -13410,6 +13590,45 @@ export interface components {
             readonly world_id?: number | null;
             /** World Time */
             readonly world_time: number;
+        };
+        /** GameTriggerCreate */
+        readonly GameTriggerCreate: {
+            /** Action */
+            readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
+            /** Hotspot Id */
+            readonly hotspot_id: string;
+            /** Location Id */
+            readonly location_id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Scene Id */
+            readonly scene_id?: number | null;
+            /**
+             * Scope
+             * @description Trigger scope (location, world, scene, etc.)
+             */
+            readonly scope: string;
+            readonly target?: components["schemas"]["HotspotTarget"] | null;
+            /** World Id */
+            readonly world_id?: number | null;
+        };
+        /** GameTriggerUpdate */
+        readonly GameTriggerUpdate: {
+            /** Action */
+            readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
+            /** Hotspot Id */
+            readonly hotspot_id?: string | null;
+            /** Location Id */
+            readonly location_id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Scene Id */
+            readonly scene_id?: number | null;
+            /** Scope */
+            readonly scope?: string | null;
+            readonly target?: components["schemas"]["HotspotTarget"] | null;
+            /** World Id */
+            readonly world_id?: number | null;
         };
         /** GameWorldDetail */
         readonly GameWorldDetail: {
@@ -13737,6 +13956,32 @@ export interface components {
              */
             readonly status: "healthy" | "degraded";
         };
+        /** HotspotTarget */
+        readonly HotspotTarget: {
+            readonly mesh?: components["schemas"]["HotspotTargetMesh"] | null;
+            readonly rect2d?: components["schemas"]["HotspotTargetRect2d"] | null;
+        } & {
+            readonly [key: string]: unknown;
+        };
+        /** HotspotTargetMesh */
+        readonly HotspotTargetMesh: {
+            /**
+             * Object Name
+             * @description Exact node/mesh name in glTF
+             */
+            readonly object_name: string;
+        };
+        /** HotspotTargetRect2d */
+        readonly HotspotTargetRect2d: {
+            /** H */
+            readonly h: number;
+            /** W */
+            readonly w: number;
+            /** X */
+            readonly x: number;
+            /** Y */
+            readonly y: number;
+        };
         /** HTTPValidationError */
         readonly HTTPValidationError: {
             /** Detail */
@@ -13795,11 +14040,14 @@ export interface components {
             readonly locationId?: number | null;
             /** Moodtags */
             readonly moodTags?: readonly string[] | null;
-            readonly relationshipSnapshot?: components["schemas"]["RelationshipSnapshot"] | null;
             /** Sessionflags */
             readonly sessionFlags?: Record<string, unknown> | null;
             /** Statetags */
             readonly stateTags?: readonly string[] | null;
+            /** Statssnapshot */
+            readonly statsSnapshot?: {
+                readonly [key: string]: Record<string, unknown>;
+            } | null;
             /** Worldtime */
             readonly worldTime?: number | null;
         };
@@ -14524,6 +14772,16 @@ export interface components {
                 readonly [key: string]: Record<string, unknown>;
             };
         };
+        /** NpcTalkAction */
+        readonly NpcTalkAction: {
+            /** Npc Id */
+            readonly npc_id?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "npc_talk";
+        };
         /**
          * OntologyIdUsage
          * @description Usage statistics for a single ontology ID.
@@ -14906,6 +15164,16 @@ export interface components {
             readonly stats?: {
                 readonly [key: string]: number;
             } | null;
+        };
+        /** PlaySceneAction */
+        readonly PlaySceneAction: {
+            /** Scene Id */
+            readonly scene_id?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            readonly type: "play_scene";
         };
         /**
          * PresetExecutionMode
@@ -15647,42 +15915,6 @@ export interface components {
             readonly relevance_score: number;
         };
         /**
-         * RelationshipDelta
-         * @description Relationship changes as a result of interaction.
-         *
-         *     NOTE: This is a compatibility wrapper around StatDelta targeting the "core.relationships" package.
-         *     Prefer using StatDelta directly for new code, as it provides a generic interface for all stat systems.
-         *     RelationshipDelta will be preserved for backward compatibility with existing content and frontend code.
-         */
-        readonly RelationshipDelta: {
-            /** Affinity */
-            readonly affinity?: number | null;
-            /** Chemistry */
-            readonly chemistry?: number | null;
-            /** Tension */
-            readonly tension?: number | null;
-            /** Trust */
-            readonly trust?: number | null;
-        };
-        /**
-         * RelationshipSnapshot
-         * @description Relationship state snapshot
-         */
-        readonly RelationshipSnapshot: {
-            /** Affinity */
-            readonly affinity?: number | null;
-            /** Chemistry */
-            readonly chemistry?: number | null;
-            /** Intimacylevelid */
-            readonly intimacyLevelId?: string | null;
-            /** Tension */
-            readonly tension?: number | null;
-            /** Tierid */
-            readonly tierId?: string | null;
-            /** Trust */
-            readonly trust?: number | null;
-        };
-        /**
          * RelationshipValuesInput
          * @description Relationship values for mood computation.
          */
@@ -15717,6 +15949,11 @@ export interface components {
             readonly variable_defs?: Record<string, unknown> | null;
             /** Variables */
             readonly variables: Record<string, unknown>;
+        };
+        /** ReplaceHotspotsPayload */
+        readonly ReplaceHotspotsPayload: {
+            /** Hotspots */
+            readonly hotspots: readonly components["schemas"]["GameHotspotDTO-Input"][];
         };
         /**
          * ResolveBatchItem
@@ -16843,6 +17080,62 @@ export interface components {
             readonly tiers?: readonly components["schemas"]["StatTier"][];
         };
         /**
+         * StatDelta
+         * @description Generic stat delta for applying changes to any stat package.
+         *
+         *     This model provides a unified way to describe changes to stats across all stat packages,
+         *     replacing hardcoded stat math with abstract stat system routing through StatEngine.
+         *
+         *     Examples:
+         *         # Relationship stat delta (for "core.relationships" package)
+         *         StatDelta(
+         *             package_id="core.relationships",
+         *             definition_id="relationships",
+         *             axes={"affinity": +5.0, "trust": -3.0},
+         *             entity_type="npc",
+         *             npc_id=42
+         *         )
+         *
+         *         # Future: Resource stat delta (for "core.resources" package)
+         *         StatDelta(
+         *             package_id="core.resources",
+         *             definition_id="resources",
+         *             axes={"energy": -10.0, "stress": +5.0},
+         *             entity_type="session"
+         *         )
+         */
+        readonly StatDelta: {
+            /**
+             * Axes
+             * @description Map of axis_name -> delta_value (e.g., {'affinity': +5, 'trust': -3})
+             */
+            readonly axes: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Definitionid
+             * @description Stat definition ID within the package (e.g., 'relationships'). If omitted and the package defines a single definition, it is inferred.
+             */
+            readonly definitionId?: string | null;
+            /**
+             * Entitytype
+             * @description Entity scope for this stat delta
+             * @default npc
+             * @enum {string}
+             */
+            readonly entityType: "npc" | "session" | "world";
+            /**
+             * Npcid
+             * @description Required when entity_type == 'npc'. NPC ID to apply stats to.
+             */
+            readonly npcId?: number | null;
+            /**
+             * Packageid
+             * @description Stat package ID (e.g., 'core.relationships', 'core.resources')
+             */
+            readonly packageId: string;
+        };
+        /**
          * StatLevel
          * @description A level computed from multiple stat axes.
          *
@@ -17620,6 +17913,16 @@ export interface components {
              * @description Full page URL where asset was found (for extension uploads)
              */
             readonly source_url?: string | null;
+            /**
+             * Upload Context
+             * @description Optional upload context (free-form)
+             */
+            readonly upload_context?: Record<string, unknown> | null;
+            /**
+             * Upload Method
+             * @description Upload method identifier (e.g., extension, api, local_folders)
+             */
+            readonly upload_method?: string | null;
             /**
              * Url
              * @description Publicly accessible URL to image/video
@@ -20679,6 +20982,8 @@ export interface operations {
                 readonly sync_status?: components["schemas"]["SyncStatus"] | null;
                 /** @description Filter assets containing tag (slug) */
                 readonly tag?: string | null;
+                /** @description Filter by upload method */
+                readonly upload_method?: string | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -21549,6 +21854,8 @@ export interface operations {
     readonly get_filter_metadata_api_v1_assets_filter_metadata_get: {
         readonly parameters: {
             readonly query?: {
+                /** @description Optional filter keys to include (repeat or comma-separated) */
+                readonly include?: readonly string[] | null;
                 /** @description Include asset counts per option (slower) */
                 readonly include_counts?: boolean;
             };
@@ -25205,6 +25512,26 @@ export interface operations {
             };
         };
     };
+    readonly list_action_types_api_v1_game_actions__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameActionTypesResponse"];
+                };
+            };
+        };
+    };
     readonly list_action_blocks_api_v1_game_dialogue_actions_blocks_get: {
         readonly parameters: {
             readonly query?: {
@@ -26198,7 +26525,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": Record<string, unknown>;
+                readonly "application/json": components["schemas"]["ReplaceHotspotsPayload"];
             };
         };
         readonly responses: {
@@ -27026,6 +27353,180 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PickpocketResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_triggers_api_v1_game_triggers__get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly location_id?: number | null;
+                readonly scene_id?: number | null;
+                readonly scope?: string | null;
+                readonly world_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["GameHotspotDTO-Output"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_trigger_api_v1_game_triggers__post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GameTriggerCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameHotspotDTO-Output"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_trigger_api_v1_game_triggers__trigger_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly trigger_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameHotspotDTO-Output"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_trigger_api_v1_game_triggers__trigger_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly trigger_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_trigger_api_v1_game_triggers__trigger_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly trigger_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GameTriggerUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameHotspotDTO-Output"];
                 };
             };
             /** @description Validation Error */

@@ -1,11 +1,11 @@
 """
 NPC Interaction Execution Pipeline
 
-Phase 17.5: Apply interaction outcomes (relationships, flags, inventory, scenes, etc.)
+Phase 17.5: Apply interaction outcomes (stat deltas, flags, inventory, scenes, etc.)
 
 This module provides a unified execution pipeline that:
 - Validates interaction availability before execution
-- Applies all outcome effects (relationships, flags, inventory, NPC effects)
+- Applies all outcome effects (stat deltas, flags, inventory, NPC effects)
 - Launches scenes or generation flows
 - Tracks cooldowns
 - Provides consistent logging/telemetry
@@ -14,7 +14,6 @@ This module provides a unified execution pipeline that:
 from __future__ import annotations
 from typing import Dict, Any, List, Optional, Tuple
 import time
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.models import GameSession, GameWorld, GameNPC
 from .npc_interactions import (
     NpcInteractionDefinition,
-    InteractionOutcome,
-    RelationshipDelta,
     StatDelta,
     FlagChanges,
     InventoryChanges,
@@ -35,13 +32,73 @@ from .npc_interactions import (
 )
 from ..stats import (
     StatEngine,
-    get_default_relationship_definition,
+    get_stat_package,
+    get_merged_stats_config,
 )
 
 
 # ===================
 # Outcome Application
 # ===================
+
+def _resolve_stat_definition(
+    delta: StatDelta,
+    world: Optional[GameWorld] = None,
+) -> Tuple[str, "StatDefinition"]:
+    """
+    Resolve the stat definition for a delta using the package registry and world overrides.
+
+    Returns:
+        Tuple of (definition_id, StatDefinition)
+    """
+    pkg = get_stat_package(delta.package_id)
+    if not pkg:
+        raise ValueError(
+            f"Unknown stat package_id '{delta.package_id}'. "
+            "Register the package before applying stat deltas."
+        )
+
+    definition_id = delta.definition_id
+
+    if definition_id:
+        if definition_id not in pkg.definitions:
+            raise ValueError(
+                f"Stat package '{delta.package_id}' does not define '{definition_id}'."
+            )
+    else:
+        if len(pkg.definitions) == 1:
+            definition_id = next(iter(pkg.definitions.keys()))
+        else:
+            axis_keys = set(delta.axes.keys())
+            matches = []
+            for def_id, definition in pkg.definitions.items():
+                def_axes = {axis.name for axis in definition.axes}
+                if axis_keys.issubset(def_axes):
+                    matches.append(def_id)
+
+            if len(matches) == 1:
+                definition_id = matches[0]
+            elif not matches:
+                raise ValueError(
+                    f"Unable to infer stat definition for package '{delta.package_id}'. "
+                    "Provide definition_id on StatDelta."
+                )
+            else:
+                raise ValueError(
+                    f"Multiple stat definitions match delta axes for package '{delta.package_id}': {matches}. "
+                    "Provide definition_id on StatDelta."
+                )
+
+    stat_definition = pkg.definitions[definition_id]
+
+    if world and world.meta:
+        merged_config, _ = get_merged_stats_config(world.meta)
+        world_definition = merged_config.definitions.get(definition_id)
+        if world_definition is not None:
+            stat_definition = world_definition
+
+    return definition_id, stat_definition
+
 
 async def apply_stat_deltas(
     session: GameSession,
@@ -73,36 +130,9 @@ async def apply_stat_deltas(
         updated_stats = await apply_stat_deltas(session, delta, world)
         # updated_stats = {"affinity": 55.0, "trust": 47.0, "affinityTierId": "friend", ...}
 
-    NOTE: This function focuses on NPC-scoped stats for now. Session and world-scoped stats
-    are not yet implemented but the interface is designed to support them.
+    NOTE: Session/world scopes are stored under entity keys ("session", "world") in session.stats.
     """
-    # Resolve stat definition
-    # Prefer world-specific definition if available, otherwise use default
-    stat_definition = None
-    package_key = None
-
-    # For relationships package, derive package key and definition
-    if delta.package_id == "core.relationships":
-        package_key = "relationships"
-
-        # Try to get definition from world config first
-        if world and world.meta:
-            stats_config = world.meta.get("stats_config", {})
-            definitions = stats_config.get("definitions", {})
-            if package_key in definitions:
-                from pixsim7.backend.main.domain.game.stats import StatDefinition
-                stat_definition = StatDefinition(**definitions[package_key])
-
-        # Fall back to default relationship definition
-        if stat_definition is None:
-            stat_definition = get_default_relationship_definition()
-    else:
-        # For other packages, we'd need to implement package resolution here
-        # For now, raise an error for unsupported packages
-        raise ValueError(
-            f"Unsupported package_id '{delta.package_id}'. "
-            f"Only 'core.relationships' is currently supported."
-        )
+    definition_id, stat_definition = _resolve_stat_definition(delta, world)
 
     # Determine entity key based on entity_type
     if delta.entity_type == "npc":
@@ -110,22 +140,20 @@ async def apply_stat_deltas(
             raise ValueError("npc_id is required when entity_type is 'npc'")
         entity_key = f"npc:{delta.npc_id}"
     elif delta.entity_type == "session":
-        # Future: session-scoped stats (e.g., player resources)
         entity_key = "session"
-        raise NotImplementedError("Session-scoped stats not yet implemented")
     elif delta.entity_type == "world":
-        # Future: world-scoped stats (e.g., global reputation)
         entity_key = "world"
-        raise NotImplementedError("World-scoped stats not yet implemented")
     else:
         raise ValueError(f"Invalid entity_type: {delta.entity_type}")
 
-    # Ensure package exists in session.stats
-    if package_key not in session.stats:
-        session.stats[package_key] = {}
+    # Ensure definition exists in session.stats
+    if session.stats is None:
+        session.stats = {}
+    if definition_id not in session.stats:
+        session.stats[definition_id] = {}
 
     # Get current entity stats (or initialize with defaults)
-    stats_for_package = session.stats[package_key]
+    stats_for_package = session.stats[definition_id]
     entity_stats = stats_for_package.get(entity_key, {})
 
     # Extract current numeric axis values
@@ -154,92 +182,11 @@ async def apply_stat_deltas(
         entity_stats[axis_name] = clamped_value
 
     # Persist back to session
-    session.stats[package_key][entity_key] = entity_stats
+    session.stats[definition_id][entity_key] = entity_stats
 
     # TODO: Optionally normalize (compute tiers/levels) here
     # For now, we just apply and clamp. Normalization can be done separately
     # via StatEngine.normalize_entity_stats() if needed.
-
-    return entity_stats
-
-
-async def apply_relationship_deltas(
-    session: GameSession,
-    npc_id: int,
-    deltas: RelationshipDelta,
-    world_time: Optional[float] = None,
-    world: Optional[GameWorld] = None
-) -> Dict[str, Any]:
-    """
-    Apply relationship metric deltas to a session.
-
-    This is a compatibility wrapper around apply_stat_deltas for the "core.relationships" package.
-    Uses the abstract stat system (session.stats["relationships"]) and routes through StatEngine
-    for proper clamping according to the stat definition.
-
-    NOTE: Prefer using apply_stat_deltas directly for new code. This function is preserved
-    for backward compatibility with existing callers.
-
-    Args:
-        session: Game session to update
-        npc_id: Target NPC ID
-        deltas: Relationship deltas to apply
-        world_time: Optional world time (game seconds). If provided, used for lastInteractionAt.
-                    If not provided, falls back to real-time (for backward compatibility).
-        world: Optional GameWorld for resolving custom stat definitions
-
-    Returns:
-        Updated relationship data
-    """
-    # Build axes dict from RelationshipDelta
-    axes: Dict[str, float] = {}
-    if deltas.affinity is not None:
-        axes["affinity"] = deltas.affinity
-    if deltas.trust is not None:
-        axes["trust"] = deltas.trust
-    if deltas.chemistry is not None:
-        axes["chemistry"] = deltas.chemistry
-    if deltas.tension is not None:
-        axes["tension"] = deltas.tension
-
-    # If no axes to apply, just handle timestamp and return
-    if not axes:
-        npc_key = f"npc:{npc_id}"
-        if "relationships" not in session.stats:
-            session.stats["relationships"] = {}
-        rel = session.stats["relationships"].get(npc_key, {})
-
-        # Update timestamp
-        if world_time is not None:
-            rel["lastInteractionAt"] = world_time
-        else:
-            rel["lastInteractionAt"] = datetime.utcnow().isoformat()
-
-        session.stats["relationships"][npc_key] = rel
-        return rel
-
-    # Create StatDelta for relationships package
-    stat_delta = StatDelta(
-        package_id="core.relationships",
-        axes=axes,
-        entity_type="npc",
-        npc_id=npc_id,
-    )
-
-    # Apply stat deltas through the generic system
-    entity_stats = await apply_stat_deltas(session, stat_delta, world)
-
-    # Preserve timestamp behavior: update lastInteractionAt
-    if world_time is not None:
-        # Store world_time as float seconds for gameplay-based timing
-        entity_stats["lastInteractionAt"] = world_time
-    else:
-        # Legacy fallback: use real-time ISO format
-        entity_stats["lastInteractionAt"] = datetime.utcnow().isoformat()
-
-    # Re-persist the entity_stats with the timestamp
-    npc_key = f"npc:{npc_id}"
-    session.stats["relationships"][npc_key] = entity_stats
 
     return entity_stats
 
@@ -579,7 +526,7 @@ async def execute_interaction(
         )
 
     # Apply outcomes
-    relationship_deltas = None
+    stat_deltas = list(outcome.stat_deltas or [])
     flag_changes = None
     inventory_changes = None
     launched_scene_id = None
@@ -589,15 +536,17 @@ async def execute_interaction(
     # Use session.world_time if available, otherwise None (will fall back to real-time)
     world_time = getattr(session, 'world_time', None)
 
-    # 1. Relationship changes
-    if outcome.relationship_deltas:
-        updated_rel = await apply_relationship_deltas(
-            session,
-            npc_id,
-            outcome.relationship_deltas,
-            world_time=world_time
-        )
-        relationship_deltas = outcome.relationship_deltas
+    world = None
+    if session.world_id and stat_deltas:
+        world = await db.get(GameWorld, session.world_id)
+
+    # 1. Stat package changes
+    if stat_deltas:
+        for idx, delta in enumerate(stat_deltas):
+            if delta.entity_type == "npc" and delta.npc_id is None:
+                delta = delta.model_copy(update={"npc_id": npc_id})
+                stat_deltas[idx] = delta
+            await apply_stat_deltas(session, delta, world)
 
     # 2. Flag changes
     if outcome.flag_changes:
@@ -638,10 +587,8 @@ async def execute_interaction(
         from pixsim7.backend.main.domain.narrative.integration_helpers import (
             launch_narrative_program_from_interaction
         )
-        from ..core.models import GameWorld
-
-        # Load world
-        world = await db.get(GameWorld, session.world_id)
+        if not world and session.world_id:
+            world = await db.get(GameWorld, session.world_id)
         if world:
             narrative_program_result = await launch_narrative_program_from_interaction(
                 session=session,
@@ -668,7 +615,7 @@ async def execute_interaction(
     return ExecuteInteractionResponse(
         success=True,
         message=message,
-        relationshipDeltas=relationship_deltas,
+        statDeltas=stat_deltas or None,
         flagChanges=flag_changes,
         inventoryChanges=inventory_changes,
         launchedSceneId=launched_scene_id,

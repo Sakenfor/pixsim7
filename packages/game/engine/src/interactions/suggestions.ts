@@ -56,6 +56,30 @@ export interface InteractionSuggestion {
   };
 }
 
+const getRelationshipDelta = (interaction: NpcInteractionInstance): Record<string, number> | null => {
+  const deltas = interaction.outcome?.statDeltas;
+  if (!deltas) {
+    return null;
+  }
+
+  const relationshipDeltas = deltas.filter(
+    (delta) =>
+      delta.packageId === 'core.relationships' &&
+      (!delta.definitionId || delta.definitionId === 'relationships')
+  );
+
+  if (!relationshipDeltas.length) {
+    return null;
+  }
+
+  return relationshipDeltas.reduce<Record<string, number>>((acc, delta) => {
+    for (const [axis, value] of Object.entries(delta.axes)) {
+      acc[axis] = (acc[axis] || 0) + value;
+    }
+    return acc;
+  }, {});
+};
+
 /**
  * Suggestion configuration
  */
@@ -193,13 +217,13 @@ export function generateSuggestions(
     }
 
     // Check if approaches relationship milestone
-    if (context.relationship && interaction.outcome?.relationshipDeltas) {
-      const deltas = interaction.outcome.relationshipDeltas;
+    const relationshipDeltas = getRelationshipDelta(interaction);
+    if (context.relationship && relationshipDeltas) {
       const currentAffinity = context.relationship.affinity;
       const nextTierAffinity = context.relationship.nextTierAffinity;
 
-      if (nextTierAffinity && deltas.affinity) {
-        const affinityAfter = currentAffinity + deltas.affinity;
+      if (nextTierAffinity && relationshipDeltas.affinity) {
+        const affinityAfter = currentAffinity + relationshipDeltas.affinity;
         const affinityNeeded = nextTierAffinity - currentAffinity;
 
         if (affinityNeeded > 0 && affinityNeeded <= 10) {
@@ -209,7 +233,7 @@ export function generateSuggestions(
           score += milestoneBoost + narrativeBonus;
           if (reason === 'contextual') {
             reason = 'relationship_milestone';
-            explanation = `Gain ${deltas.affinity} affinity (${affinityNeeded} needed for ${context.relationship.nextTier})`;
+            explanation = `Gain ${relationshipDeltas.affinity} affinity (${affinityNeeded} needed for ${context.relationship.nextTier})`;
             suggestionContext.tierProgress = {
               current: context.relationship.tier,
               next: context.relationship.nextTier!,
@@ -221,10 +245,11 @@ export function generateSuggestions(
     }
 
     // Check if high reward
-    if (interaction.outcome?.relationshipDeltas) {
-      const deltas = interaction.outcome.relationshipDeltas;
+    if (relationshipDeltas) {
       const totalDelta =
-        (deltas.affinity || 0) + (deltas.trust || 0) + (deltas.chemistry || 0);
+        (relationshipDeltas.affinity || 0) +
+        (relationshipDeltas.trust || 0) +
+        (relationshipDeltas.chemistry || 0);
 
       if (totalDelta >= 8) {
         score += 20;

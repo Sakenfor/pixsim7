@@ -5,9 +5,10 @@
  * No backend changes - everything stays in types + React.
  */
 
+import { validateInteraction } from '@pixsim7/game.engine';
 import React, { useState } from 'react';
+
 import type { NpcInteractionDefinition } from '@lib/registries';
-import { validateInteraction, formatValidationResult, getTemplate, getTemplatesByCategory } from '@pixsim7/game.engine';
 import './InteractionEditor.css';
 
 export interface InteractionEditorProps {
@@ -31,7 +32,7 @@ export function InteractionEditor({
   npcs = [],
   onSave,
   onCancel,
-  showTemplates = true,
+  // showTemplates - reserved for future template selector UI
 }: InteractionEditorProps) {
   const [interaction, setInteraction] = useState<Partial<NpcInteractionDefinition>>(
     initialInteraction || {
@@ -275,6 +276,48 @@ function GatingEditor({
   onChange: (updated: Partial<NpcInteractionDefinition>) => void;
 }) {
   const gating = interaction.gating || {};
+  const statGating = gating.statGating;
+
+  const getRelationshipGateValue = (axis: string): number | undefined => {
+    const gates = statGating?.allOf || [];
+    const gate = gates.find(
+      (entry) =>
+        entry.definitionId === 'relationships' &&
+        entry.axis === axis
+    );
+    return gate?.minValue;
+  };
+
+  const updateRelationshipGate = (axis: string, value?: number) => {
+    const existing = statGating?.allOf || [];
+    const filtered = existing.filter(
+      (entry) =>
+        !(
+          entry.definitionId === 'relationships' &&
+          entry.axis === axis
+        )
+    );
+    const nextAllOf = value !== undefined
+      ? [
+          ...filtered,
+          {
+            definitionId: 'relationships',
+            axis,
+            minValue: value,
+            entityType: 'npc' as const,
+          },
+        ]
+      : filtered;
+
+    const nextStatGating = nextAllOf.length
+      ? { ...statGating, allOf: nextAllOf }
+      : undefined;
+
+    onChange({
+      ...interaction,
+      gating: { ...gating, statGating: nextStatGating },
+    });
+  };
 
   const updateGating = (updates: Partial<typeof gating>) => {
     onChange({
@@ -292,14 +335,12 @@ function GatingEditor({
           type="number"
           min="0"
           max="100"
-          value={gating.relationship?.minAffinity || ''}
+          value={getRelationshipGateValue('affinity') || ''}
           onChange={(e) =>
-            updateGating({
-              relationship: {
-                ...gating.relationship,
-                minAffinity: e.target.value ? parseInt(e.target.value, 10) : undefined,
-              },
-            })
+            updateRelationshipGate(
+              'affinity',
+              e.target.value ? parseInt(e.target.value, 10) : undefined
+            )
           }
         />
       </div>
@@ -310,14 +351,12 @@ function GatingEditor({
           type="number"
           min="0"
           max="100"
-          value={gating.relationship?.minTrust || ''}
+          value={getRelationshipGateValue('trust') || ''}
           onChange={(e) =>
-            updateGating({
-              relationship: {
-                ...gating.relationship,
-                minTrust: e.target.value ? parseInt(e.target.value, 10) : undefined,
-              },
-            })
+            updateRelationshipGate(
+              'trust',
+              e.target.value ? parseInt(e.target.value, 10) : undefined
+            )
           }
         />
       </div>
@@ -397,6 +436,50 @@ function OutcomeEditor({
     });
   };
 
+  const getRelationshipDeltaValue = (axis: string): number | undefined => {
+    const delta = outcome.statDeltas?.find(
+      (entry) =>
+        entry.packageId === 'core.relationships' &&
+        (!entry.definitionId || entry.definitionId === 'relationships')
+    );
+    return delta?.axes?.[axis];
+  };
+
+  const updateRelationshipDelta = (axis: string, value?: number) => {
+    const existing = outcome.statDeltas || [];
+    const relationship = existing.find(
+      (entry) =>
+        entry.packageId === 'core.relationships' &&
+        (!entry.definitionId || entry.definitionId === 'relationships')
+    );
+    const otherDeltas = existing.filter((entry) => entry !== relationship);
+    const nextAxes = { ...(relationship?.axes || {}) };
+
+    if (value === undefined || Number.isNaN(value)) {
+      delete nextAxes[axis];
+    } else {
+      nextAxes[axis] = value;
+    }
+
+    const hasAxes = Object.keys(nextAxes).length > 0;
+    const nextRelationshipDelta = hasAxes
+      ? {
+          packageId: 'core.relationships',
+          definitionId: 'relationships',
+          axes: nextAxes,
+          entityType: 'npc' as const,
+        }
+      : null;
+
+    const nextStatDeltas = nextRelationshipDelta
+      ? [...otherDeltas, nextRelationshipDelta]
+      : otherDeltas;
+
+    updateOutcome({
+      statDeltas: nextStatDeltas.length > 0 ? nextStatDeltas : undefined,
+    });
+  };
+
   return (
     <div className="editor-section">
       <div className="form-group">
@@ -417,14 +500,12 @@ function OutcomeEditor({
             type="number"
             min="-20"
             max="20"
-            value={outcome.relationshipDeltas?.affinity || ''}
+            value={getRelationshipDeltaValue('affinity') || ''}
             onChange={(e) =>
-              updateOutcome({
-                relationshipDeltas: {
-                  ...outcome.relationshipDeltas,
-                  affinity: e.target.value ? parseInt(e.target.value, 10) : undefined,
-                },
-              })
+              updateRelationshipDelta(
+                'affinity',
+                e.target.value ? parseInt(e.target.value, 10) : undefined
+              )
             }
           />
         </div>
@@ -435,14 +516,12 @@ function OutcomeEditor({
             type="number"
             min="-20"
             max="20"
-            value={outcome.relationshipDeltas?.trust || ''}
+            value={getRelationshipDeltaValue('trust') || ''}
             onChange={(e) =>
-              updateOutcome({
-                relationshipDeltas: {
-                  ...outcome.relationshipDeltas,
-                  trust: e.target.value ? parseInt(e.target.value, 10) : undefined,
-                },
-              })
+              updateRelationshipDelta(
+                'trust',
+                e.target.value ? parseInt(e.target.value, 10) : undefined
+              )
             }
           />
         </div>
@@ -453,14 +532,12 @@ function OutcomeEditor({
             type="number"
             min="-20"
             max="20"
-            value={outcome.relationshipDeltas?.chemistry || ''}
+            value={getRelationshipDeltaValue('chemistry') || ''}
             onChange={(e) =>
-              updateOutcome({
-                relationshipDeltas: {
-                  ...outcome.relationshipDeltas,
-                  chemistry: e.target.value ? parseInt(e.target.value, 10) : undefined,
-                },
-              })
+              updateRelationshipDelta(
+                'chemistry',
+                e.target.value ? parseInt(e.target.value, 10) : undefined
+              )
             }
           />
         </div>

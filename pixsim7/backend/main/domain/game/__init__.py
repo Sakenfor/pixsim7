@@ -123,11 +123,9 @@ from .entities import (
 
 # Interactions
 from .interactions import (
-    RelationshipDelta,
     StatDelta,
     FlagChanges,
     InventoryChanges,
-    apply_relationship_deltas,
     apply_stat_deltas,
     apply_flag_changes,
     apply_inventory_changes,
@@ -257,11 +255,9 @@ __all__ = [
     "PersonalityEvolutionEvent",
     "DialogueAnalytics",
     # Interactions
-    "RelationshipDelta",
     "StatDelta",
     "FlagChanges",
     "InventoryChanges",
-    "apply_relationship_deltas",
     "apply_stat_deltas",
     "apply_flag_changes",
     "apply_inventory_changes",

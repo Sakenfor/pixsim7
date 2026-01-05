@@ -25,7 +25,6 @@ from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     ExecuteInteractionResponse,
     NpcInteractionInstance,
     InteractionContext,
-    RelationshipSnapshot,
     NpcInteractionDefinition,
 )
 from pixsim7.backend.main.domain.game.interactions.interaction_availability import (
@@ -110,28 +109,17 @@ def build_interaction_context(
     Build interaction context from session state.
 
     Args:
-        session: Session dict with flags and relationships (from capability API)
+        session: Session dict with flags and stats (from capability API)
         npc_id: Target NPC ID
         location_id: Optional location ID
 
     Returns:
         InteractionContext for gating checks
     """
-    # Extract relationship snapshot
-    npc_key = f"npc:{npc_id}"
-    relationships = session.get("relationships", {})
-    rel_data = relationships.get(npc_key, {})
-    relationship_snapshot = None
-    if rel_data:
-        relationship_snapshot = RelationshipSnapshot(
-            affinity=rel_data.get("affinity"),
-            trust=rel_data.get("trust"),
-            chemistry=rel_data.get("chemistry"),
-            tension=rel_data.get("tension"),
-            tierId=rel_data.get("tierId") or rel_data.get("tier_id"),
-            intimacyLevelId=rel_data.get("intimacyLevelId") or rel_data.get("intimacy_level_id")
-        )
+    # Extract stats snapshot
+    stats_snapshot = session.get("stats") or {}
 
+    npc_key = f"npc:{npc_id}"
     # Extract NPC state from session flags
     flags = session.get("flags", {})
     npc_flags = flags.get("npcs", {}).get(npc_key, {})
@@ -154,71 +142,31 @@ def build_interaction_context(
         currentActivityId=current_activity,
         stateTags=state_tags,
         moodTags=mood_tags,
-        relationshipSnapshot=relationship_snapshot,
+        statsSnapshot=stats_snapshot or None,
         worldTime=int(session.get("world_time", 0)),
         sessionFlags=flags,
         lastUsedAt=last_used_at
     )
 
 
-def get_world_tier_order(world: Dict[str, Any]) -> Optional[List[str]]:
+def get_world_stat_definitions(world: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Extract relationship tier ordering from world metadata.
+    Extract stat definitions from world metadata.
 
     Args:
         world: World dict with meta (from capability API)
 
     Returns:
-        List of tier IDs in order from lowest to highest (by min affinity value)
+        Raw stats_config.definitions dict or None
     """
     world_meta = world.get("meta") or {}
     if not world_meta:
         return None
 
-    # Look in stats_config.definitions.relationships.tiers
     stats_config = world_meta.get("stats_config") or {}
-    definitions = stats_config.get("definitions") or {}
-    relationships = definitions.get("relationships") or {}
-    tiers = relationships.get("tiers") or []
-
-    if tiers and isinstance(tiers, list):
-        # Sort by min value (ascending)
-        sorted_tiers = sorted(tiers, key=lambda t: t.get("min", 0))
-        return [tier.get("id") for tier in sorted_tiers if "id" in tier]
-
-    # Fallback: Legacy location in world_meta.relationships
-    if "relationships" in world_meta:
-        rel_schema = world_meta["relationships"]
-        if "tiers" in rel_schema and isinstance(rel_schema["tiers"], list):
-            return [tier.get("id") for tier in rel_schema["tiers"] if "id" in tier]
-
-    return None
-
-
-def get_world_intimacy_level_order(world: Dict[str, Any]) -> Optional[List[str]]:
-    """
-    Extract intimacy level ordering from world metadata.
-
-    Args:
-        world: World dict with meta (from capability API)
-
-    Returns:
-        List of level IDs in order from lowest to highest priority
-    """
-    world_meta = world.get("meta") or {}
-    if not world_meta:
-        return None
-
-    # Look in stats_config.definitions.relationships.levels
-    stats_config = world_meta.get("stats_config") or {}
-    definitions = stats_config.get("definitions") or {}
-    relationships = definitions.get("relationships") or {}
-    levels = relationships.get("levels") or []
-
-    if levels and isinstance(levels, list):
-        # Sort by priority (ascending)
-        sorted_levels = sorted(levels, key=lambda l: l.get("priority", 0))
-        return [level.get("id") for level in sorted_levels if "id" in level]
+    definitions = stats_config.get("definitions")
+    if isinstance(definitions, dict):
+        return definitions
 
     return None
 
@@ -298,9 +246,8 @@ async def list_npc_interactions(
     # Build context
     context = build_interaction_context(session, req.npc_id, req.location_id)
 
-    # Get world tier/level ordering for gating comparisons
-    tier_order = get_world_tier_order(world)
-    level_order = get_world_intimacy_level_order(world)
+    # Get world stat definitions for gating comparisons
+    stat_definitions = get_world_stat_definitions(world)
 
     # Evaluate each interaction
     instances = []
@@ -310,8 +257,8 @@ async def list_npc_interactions(
         available, disabled_reason, disabled_msg = evaluate_interaction_availability(
             defn,
             context,
-            tier_order,
-            level_order,
+            stat_definitions,
+            req.npc_id,
             current_time
         )
 
@@ -424,17 +371,16 @@ async def execute_npc_interaction(
     # Build context for availability check
     context = build_interaction_context(session, req.npc_id, req.context.get("locationId") if req.context else None)
 
-    # Get world tier/level ordering for gating comparisons
-    tier_order = get_world_tier_order(world)
-    level_order = get_world_intimacy_level_order(world)
+    # Get world stat definitions for gating comparisons
+    stat_definitions = get_world_stat_definitions(world)
 
     # Check availability before executing
     ctx.log.debug("Checking interaction availability")
     available, disabled_reason, disabled_msg = evaluate_interaction_availability(
         definition,
         context,
-        tier_order,
-        level_order,
+        stat_definitions,
+        req.npc_id,
         int(time.time())
     )
 
@@ -476,7 +422,7 @@ async def execute_npc_interaction(
     return ExecuteInteractionResponse(
         success=result_dict["success"],
         message=result_dict.get("message"),
-        relationshipDeltas=result_dict.get("relationship_deltas"),
+        statDeltas=result_dict.get("stat_deltas"),
         flagChanges=result_dict.get("flag_changes"),
         inventoryChanges=result_dict.get("inventory_changes"),
         launchedSceneId=result_dict.get("launched_scene_id"),

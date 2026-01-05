@@ -13,7 +13,7 @@ import type {
 } from '@pixsim7/shared.types';
 
 export interface ValidationError {
-  /** Field path (e.g., "gating.relationship.minAffinity") */
+  /** Field path (e.g., "gating.statGating.allOf[0].minValue") */
   field: string;
   /** Error message */
   message: string;
@@ -105,7 +105,7 @@ export function validateInteraction(
       field: 'outcome',
       message: 'Interaction has no outcome defined',
       severity: 'warning',
-      suggestion: 'Consider adding relationship changes, flag updates, or other effects',
+      suggestion: 'Consider adding stat deltas, flag updates, or other effects',
     });
   }
 
@@ -145,65 +145,43 @@ export function validateInteraction(
 function validateGating(gating: InteractionGating, interactionId: string): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  // Relationship gating
-  if (gating.relationship) {
-    const rel = gating.relationship;
+  // Stat gating
+  if (gating.statGating) {
+    const statGating = gating.statGating;
+    const allOf = statGating.allOf || [];
+    const anyOf = statGating.anyOf || [];
+    const gates = [...allOf, ...anyOf];
 
-    // Check for conflicting requirements
-    if (rel.minTier && rel.maxTier) {
+    if (gates.length === 0) {
       errors.push({
-        field: 'gating.relationship',
-        message: 'Both minTier and maxTier are specified',
+        field: 'gating.statGating',
+        message: 'statGating is defined but contains no gates',
         severity: 'warning',
-        suggestion: 'This will only show for a narrow tier range. Is this intentional?',
+        suggestion: 'Remove statGating or add at least one gate',
       });
     }
 
-    // Validate metric ranges
-    if (rel.minAffinity !== undefined && (rel.minAffinity < 0 || rel.minAffinity > 100)) {
-      errors.push({
-        field: 'gating.relationship.minAffinity',
-        message: 'Affinity must be between 0 and 100',
-        severity: 'error',
-        suggestion: `Current value: ${rel.minAffinity}`,
-      });
-    }
+    for (let i = 0; i < gates.length; i++) {
+      const gate = gates[i];
+      const gateField = `gating.statGating.${i < allOf.length ? `allOf[${i}]` : `anyOf[${i - allOf.length}]`}`;
 
-    if (rel.minTrust !== undefined && (rel.minTrust < 0 || rel.minTrust > 100)) {
-      errors.push({
-        field: 'gating.relationship.minTrust',
-        message: 'Trust must be between 0 and 100',
-        severity: 'error',
-        suggestion: `Current value: ${rel.minTrust}`,
-      });
-    }
+      if (!gate.definitionId) {
+        errors.push({
+          field: `${gateField}.definitionId`,
+          message: 'Stat gate is missing definitionId',
+          severity: 'error',
+          suggestion: 'Specify the stat definition ID (e.g., "relationships")',
+        });
+      }
 
-    if (rel.minChemistry !== undefined && (rel.minChemistry < 0 || rel.minChemistry > 100)) {
-      errors.push({
-        field: 'gating.relationship.minChemistry',
-        message: 'Chemistry must be between 0 and 100',
-        severity: 'error',
-        suggestion: `Current value: ${rel.minChemistry}`,
-      });
-    }
-
-    if (rel.maxTension !== undefined && (rel.maxTension < 0 || rel.maxTension > 100)) {
-      errors.push({
-        field: 'gating.relationship.maxTension',
-        message: 'Tension must be between 0 and 100',
-        severity: 'error',
-        suggestion: `Current value: ${rel.maxTension}`,
-      });
-    }
-
-    // Very high requirements warning
-    if (rel.minAffinity && rel.minAffinity > 80) {
-      errors.push({
-        field: 'gating.relationship.minAffinity',
-        message: 'Very high affinity requirement',
-        severity: 'info',
-        suggestion: 'This interaction will only be available late in the relationship',
-      });
+      if (gate.minValue !== undefined && gate.maxValue !== undefined && gate.minValue > gate.maxValue) {
+        errors.push({
+          field: gateField,
+          message: 'minValue is greater than maxValue',
+          severity: 'error',
+          suggestion: `Swap minValue (${gate.minValue}) and maxValue (${gate.maxValue})`,
+        });
+      }
     }
   }
 
@@ -289,46 +267,71 @@ function validateOutcome(
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  // Relationship deltas
-  if (outcome.relationshipDeltas) {
-    const deltas = outcome.relationshipDeltas;
+  // Stat deltas
+  if (outcome.statDeltas) {
+    for (let i = 0; i < outcome.statDeltas.length; i++) {
+      const delta = outcome.statDeltas[i];
+      const deltaField = `outcome.statDeltas[${i}]`;
 
-    // Check for very large changes
-    if (deltas.affinity && Math.abs(deltas.affinity) > 20) {
-      errors.push({
-        field: 'outcome.relationshipDeltas.affinity',
-        message: 'Very large affinity change',
-        severity: 'warning',
-        suggestion: `Change of ${deltas.affinity} may progress relationship too quickly`,
-      });
-    }
+      if (!delta.packageId) {
+        errors.push({
+          field: `${deltaField}.packageId`,
+          message: 'Stat delta is missing packageId',
+          severity: 'error',
+          suggestion: 'Specify the stat package ID (e.g., "core.relationships")',
+        });
+      }
 
-    if (deltas.trust && Math.abs(deltas.trust) > 20) {
-      errors.push({
-        field: 'outcome.relationshipDeltas.trust',
-        message: 'Very large trust change',
-        severity: 'warning',
-        suggestion: `Change of ${deltas.trust} may progress relationship too quickly`,
-      });
-    }
+      if (!delta.axes || Object.keys(delta.axes).length === 0) {
+        errors.push({
+          field: `${deltaField}.axes`,
+          message: 'Stat delta has no axes defined',
+          severity: 'warning',
+          suggestion: 'Provide at least one axis delta',
+        });
+      }
 
-    if (deltas.chemistry && Math.abs(deltas.chemistry) > 20) {
-      errors.push({
-        field: 'outcome.relationshipDeltas.chemistry',
-        message: 'Very large chemistry change',
-        severity: 'warning',
-        suggestion: `Change of ${deltas.chemistry} may progress relationship too quickly`,
-      });
-    }
+      if (delta.packageId === 'core.relationships') {
+        const affinity = delta.axes.affinity;
+        const trust = delta.axes.trust;
+        const chemistry = delta.axes.chemistry;
 
-    // Check for conflicting changes
-    if (deltas.affinity && deltas.affinity < 0 && deltas.chemistry && deltas.chemistry > 0) {
-      errors.push({
-        field: 'outcome.relationshipDeltas',
-        message: 'Affinity decreases but chemistry increases',
-        severity: 'info',
-        suggestion: 'This is unusual but valid for complex relationships',
-      });
+        if (affinity !== undefined && Math.abs(affinity) > 20) {
+          errors.push({
+            field: `${deltaField}.axes.affinity`,
+            message: 'Very large affinity change',
+            severity: 'warning',
+            suggestion: `Change of ${affinity} may progress relationship too quickly`,
+          });
+        }
+
+        if (trust !== undefined && Math.abs(trust) > 20) {
+          errors.push({
+            field: `${deltaField}.axes.trust`,
+            message: 'Very large trust change',
+            severity: 'warning',
+            suggestion: `Change of ${trust} may progress relationship too quickly`,
+          });
+        }
+
+        if (chemistry !== undefined && Math.abs(chemistry) > 20) {
+          errors.push({
+            field: `${deltaField}.axes.chemistry`,
+            message: 'Very large chemistry change',
+            severity: 'warning',
+            suggestion: `Change of ${chemistry} may progress relationship too quickly`,
+          });
+        }
+
+        if (affinity !== undefined && affinity < 0 && chemistry !== undefined && chemistry > 0) {
+          errors.push({
+            field: deltaField,
+            message: 'Affinity decreases but chemistry increases',
+            severity: 'info',
+            suggestion: 'This is unusual but valid for complex relationships',
+          });
+        }
+      }
     }
   }
 

@@ -5,7 +5,7 @@
  */
 
 import { createFromTemplate } from './templates';
-import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import type { NpcInteractionDefinition, StatDelta } from '@pixsim7/shared.types';
 import {
   createChain,
   createStep,
@@ -137,19 +137,40 @@ export function createRomanceChain(
       surface: 'scene',
       priority: 90,
       targetNpcIds: [npcId],
-      gating: {
-        relationship: {
-          minAffinity: stage.minAffinity,
-          minChemistry: stage.minChemistry,
-        },
-      },
+      gating: (() => {
+        const gates = [];
+        if (stage.minAffinity !== undefined) {
+          gates.push({
+            definitionId: 'relationships',
+            axis: 'affinity',
+            minValue: stage.minAffinity,
+            entityType: 'npc',
+          });
+        }
+        if (stage.minChemistry !== undefined) {
+          gates.push({
+            definitionId: 'relationships',
+            axis: 'chemistry',
+            minValue: stage.minChemistry,
+            entityType: 'npc',
+          });
+        }
+        return gates.length > 0 ? { statGating: { allOf: gates } } : undefined;
+      })(),
       outcome: {
         successMessage: `Your relationship with ${npcName} deepens...`,
-        relationshipDeltas: {
-          affinity: 5,
-          chemistry: 5,
-          trust: 3,
-        },
+        statDeltas: [
+          {
+            packageId: 'core.relationships',
+            definitionId: 'relationships',
+            axes: {
+              affinity: 5,
+              chemistry: 5,
+              trust: 3,
+            },
+            entityType: 'npc',
+          },
+        ],
         flagChanges: {
           arcStages: {
             [`romance:${npcId}`]: stage.stageId,
@@ -200,18 +221,39 @@ export function createFriendshipChain(
       surface: 'dialogue',
       priority: 85,
       targetNpcIds: [npcId],
-      gating: {
-        relationship: {
-          minAffinity: milestone.minAffinity,
-          minTrust: milestone.minTrust,
-        },
-      },
+      gating: (() => {
+        const gates = [];
+        if (milestone.minAffinity !== undefined) {
+          gates.push({
+            definitionId: 'relationships',
+            axis: 'affinity',
+            minValue: milestone.minAffinity,
+            entityType: 'npc',
+          });
+        }
+        if (milestone.minTrust !== undefined) {
+          gates.push({
+            definitionId: 'relationships',
+            axis: 'trust',
+            minValue: milestone.minTrust,
+            entityType: 'npc',
+          });
+        }
+        return gates.length > 0 ? { statGating: { allOf: gates } } : undefined;
+      })(),
       outcome: {
         successMessage: milestone.description,
-        relationshipDeltas: {
-          affinity: 3,
-          trust: 3,
-        },
+        statDeltas: [
+          {
+            packageId: 'core.relationships',
+            definitionId: 'relationships',
+            axes: {
+              affinity: 3,
+              trust: 3,
+            },
+            entityType: 'npc',
+          },
+        ],
         flagChanges: {
           set: {
             [`friendship:${npcId}:${milestone.milestoneId}`]: true,
@@ -314,11 +356,7 @@ export function createStoryArcChain(
     sceneIntentId?: string;
     requiredFlags?: string[];
     waitHours?: number;
-    relationshipDelta?: {
-      affinity?: number;
-      trust?: number;
-      chemistry?: number;
-    };
+    statDeltas?: StatDelta[];
   }>
 ): InteractionChain {
   const steps: InteractionChainStep[] = [];
@@ -337,7 +375,7 @@ export function createStoryArcChain(
       nextStage: nextBeat?.beatId || 'completed',
       successMessage: beat.description,
       outcome: {
-        relationshipDeltas: beat.relationshipDelta,
+        statDeltas: beat.statDeltas,
         sceneLaunch: beat.sceneIntentId
           ? {
               sceneIntentId: beat.sceneIntentId,
@@ -415,10 +453,17 @@ export function createDailyQuestChain(
     },
     outcome: {
       successMessage: `Completed daily quest: ${questName}`,
-      relationshipDeltas: {
-        affinity: 2,
-        trust: 1,
-      },
+      statDeltas: [
+        {
+          packageId: 'core.relationships',
+          definitionId: 'relationships',
+          axes: {
+            affinity: 2,
+            trust: 1,
+          },
+          entityType: 'npc',
+        },
+      ],
       inventoryChanges: {
         add: [{ itemId: rewardItemId, quantity: 1 }],
       },

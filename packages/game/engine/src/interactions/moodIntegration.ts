@@ -4,6 +4,8 @@
  * Integrates interaction system with NPC mood/emotion states.
  */
 
+import type { StatDelta } from '@pixsim7/shared.types';
+
 /**
  * General mood types (valence/arousal based)
  */
@@ -124,11 +126,7 @@ export function isMoodCompatible(
  */
 export function calculateMoodImpact(
   currentMood: MoodState,
-  relationshipDelta?: {
-    affinity?: number;
-    chemistry?: number;
-    tension?: number;
-  },
+  statDeltas?: StatDelta[],
   emotionTrigger?: MoodEffect
 ): {
   newValence: number;
@@ -141,6 +139,21 @@ export function calculateMoodImpact(
 } {
   let newValence = currentMood.general.valence;
   let newArousal = currentMood.general.arousal;
+
+  const relationshipDelta = statDeltas
+    ? statDeltas
+        .filter(
+          (delta) =>
+            delta.packageId === 'core.relationships' &&
+            (!delta.definitionId || delta.definitionId === 'relationships')
+        )
+        .reduce<Record<string, number>>((acc, delta) => {
+          for (const [axis, value] of Object.entries(delta.axes)) {
+            acc[axis] = (acc[axis] || 0) + value;
+          }
+          return acc;
+        }, {})
+    : null;
 
   // Relationship changes affect valence
   if (relationshipDelta) {

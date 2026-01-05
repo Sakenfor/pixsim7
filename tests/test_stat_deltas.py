@@ -10,13 +10,14 @@ import pytest
 from pixsim7.backend.main.domain.game.core.models import GameSession, GameWorld
 from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     StatDelta,
-    RelationshipDelta,
 )
 from pixsim7.backend.main.domain.game.interactions.interaction_execution import (
     apply_stat_deltas,
-    apply_relationship_deltas,
 )
-from pixsim7.backend.main.domain.game.stats import get_default_relationship_definition
+from pixsim7.backend.main.domain.game.stats import (
+    register_core_stat_packages,
+    clear_stat_packages,
+)
 
 
 def run_async(coro):
@@ -34,6 +35,14 @@ def session():
         stats={},
         flags={},
     )
+
+
+@pytest.fixture(autouse=True)
+def register_stat_packages():
+    """Ensure core stat packages are registered for each test."""
+    clear_stat_packages()
+    register_core_stat_packages()
+    yield
 
 
 @pytest.fixture
@@ -72,9 +81,6 @@ def test_apply_stat_deltas_basic(session, world):
 
 def test_apply_stat_deltas_clamping(session, world):
     """apply_stat_deltas should clamp values according to StatDefinition."""
-    # The default relationship definition has min=0, max=100 for all axes
-    definition = get_default_relationship_definition()
-
     # Create a delta that would exceed max
     delta = StatDelta(
         package_id="core.relationships",
@@ -173,95 +179,5 @@ def test_apply_stat_deltas_unsupported_package(session, world):
         npc_id=42,
     )
 
-    with pytest.raises(ValueError, match="Unsupported package_id"):
+    with pytest.raises(ValueError, match="Unknown stat package_id"):
         run_async(apply_stat_deltas(session, delta, world))
-
-
-def test_apply_relationship_deltas_delegates_to_apply_stat_deltas(session, world):
-    """apply_relationship_deltas should delegate to apply_stat_deltas."""
-    # Use the legacy RelationshipDelta interface
-    deltas = RelationshipDelta(
-        affinity=10.0,
-        trust=5.0,
-        chemistry=3.0,
-        tension=-2.0,
-    )
-
-    result = run_async(apply_relationship_deltas(session, npc_id=42, deltas=deltas, world=world))
-
-    # Should have applied all deltas
-    assert result["affinity"] == 10.0
-    assert result["trust"] == 5.0
-    assert result["chemistry"] == 3.0
-    # Tension starts at 0, -2 would clamp to 0
-    assert result["tension"] == 0.0
-
-    # Should have set lastInteractionAt timestamp
-    assert "lastInteractionAt" in result
-
-
-def test_apply_relationship_deltas_preserves_timestamp_behavior(session, world):
-    """apply_relationship_deltas should handle world_time vs real-time timestamps."""
-    deltas = RelationshipDelta(affinity=5.0)
-
-    # Test with world_time
-    result1 = run_async(apply_relationship_deltas(
-        session, npc_id=42, deltas=deltas, world_time=12345.0, world=world
-    ))
-    assert result1["lastInteractionAt"] == 12345.0
-
-    # Test without world_time (should use real-time ISO format)
-    result2 = run_async(apply_relationship_deltas(
-        session, npc_id=43, deltas=deltas, world=world
-    ))
-    # Should be an ISO format string
-    assert isinstance(result2["lastInteractionAt"], str)
-    assert "T" in result2["lastInteractionAt"]  # ISO format contains 'T'
-
-
-def test_apply_relationship_deltas_backward_compatible(session, world):
-    """apply_relationship_deltas should work without 'world' parameter."""
-    deltas = RelationshipDelta(affinity=10.0, trust=5.0)
-
-    # Call without world parameter (backward compatibility)
-    result = run_async(apply_relationship_deltas(session, npc_id=42, deltas=deltas))
-
-    # Should still work and apply deltas
-    assert result["affinity"] == 10.0
-    assert result["trust"] == 5.0
-    assert "lastInteractionAt" in result
-
-
-def test_apply_relationship_deltas_uses_stat_definition_ranges(session, world):
-    """apply_relationship_deltas should use StatDefinition ranges, not hardcoded 0-100."""
-    # Create initial high values
-    delta1 = RelationshipDelta(affinity=95.0, trust=95.0)
-    run_async(apply_relationship_deltas(session, npc_id=42, deltas=delta1, world=world))
-
-    # Apply delta that would exceed 100
-    delta2 = RelationshipDelta(affinity=10.0)
-    result = run_async(apply_relationship_deltas(session, npc_id=42, deltas=delta2, world=world))
-
-    # Should be clamped to the stat definition's max (100.0)
-    assert result["affinity"] == 100.0
-
-    # Apply delta that would go below 0
-    delta3 = RelationshipDelta(affinity=-200.0)
-    result2 = run_async(apply_relationship_deltas(session, npc_id=42, deltas=delta3, world=world))
-
-    # Should be clamped to the stat definition's min (0.0)
-    assert result2["affinity"] == 0.0
-
-
-def test_apply_relationship_deltas_empty_deltas(session, world):
-    """apply_relationship_deltas should handle empty deltas (just timestamp update)."""
-    # Create delta with no axes
-    deltas = RelationshipDelta()
-
-    result = run_async(apply_relationship_deltas(
-        session, npc_id=42, deltas=deltas, world_time=12345.0, world=world
-    ))
-
-    # Should just set timestamp, no stat changes
-    assert result["lastInteractionAt"] == 12345.0
-    assert "affinity" not in result  # No axes were set

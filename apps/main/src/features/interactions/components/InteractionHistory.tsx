@@ -5,9 +5,10 @@
  * when it happened, and what the outcomes were.
  */
 
+import type { StatDelta } from '@pixsim7/shared.types';
 import React, { useState, useEffect } from 'react';
+
 import type { ExecuteInteractionResponse } from '@lib/registries';
-import { formatCooldownSmart } from '@pixsim7/game.engine';
 import './InteractionHistory.css';
 
 export interface InteractionHistoryEntry {
@@ -25,13 +26,8 @@ export interface InteractionHistoryEntry {
   npcName?: string;
   /** Success message */
   message?: string;
-  /** Relationship changes */
-  relationshipDeltas?: {
-    affinity?: number;
-    trust?: number;
-    chemistry?: number;
-    tension?: number;
-  };
+  /** Stat deltas applied */
+  statDeltas?: StatDelta[];
   /** Flag changes count */
   flagChangesCount?: number;
   /** Inventory changes */
@@ -119,6 +115,36 @@ function formatRelationshipChanges(deltas?: {
   return changes.length > 0 ? changes.join(', ') : null;
 }
 
+function extractRelationshipDeltas(
+  statDeltas?: StatDelta[]
+): {
+  affinity?: number;
+  trust?: number;
+  chemistry?: number;
+  tension?: number;
+} | null {
+  if (!statDeltas) {
+    return null;
+  }
+
+  const relationshipDeltas = statDeltas.filter(
+    (delta) =>
+      delta.packageId === 'core.relationships' &&
+      (!delta.definitionId || delta.definitionId === 'relationships')
+  );
+
+  if (!relationshipDeltas.length) {
+    return null;
+  }
+
+  return relationshipDeltas.reduce<Record<string, number>>((acc, delta) => {
+    for (const [axis, value] of Object.entries(delta.axes)) {
+      acc[axis] = (acc[axis] || 0) + value;
+    }
+    return acc;
+  }, {});
+}
+
 /**
  * Individual history entry component
  */
@@ -131,7 +157,8 @@ function HistoryEntry({
   showRelativeTime: boolean;
   onClick?: () => void;
 }) {
-  const [currentTime, setCurrentTime] = useState(Math.floor(Date.now() / 1000));
+  // Force re-renders for relative time updates (value intentionally unused)
+  const [, setCurrentTime] = useState(Math.floor(Date.now() / 1000));
 
   // Update every minute for relative time
   useEffect(() => {
@@ -144,7 +171,9 @@ function HistoryEntry({
     return () => clearInterval(interval);
   }, [showRelativeTime]);
 
-  const relationshipSummary = formatRelationshipChanges(entry.relationshipDeltas);
+  const relationshipSummary = formatRelationshipChanges(
+    extractRelationshipDeltas(entry.statDeltas) || undefined
+  );
   const timeDisplay = showRelativeTime
     ? formatRelativeTime(entry.timestamp)
     : new Date(entry.timestamp * 1000).toLocaleString();
@@ -282,6 +311,7 @@ export function InteractionHistory({
 /**
  * Convert ExecuteInteractionResponse to history entry
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function responseToHistoryEntry(
   response: ExecuteInteractionResponse,
   interactionId: string,
@@ -298,7 +328,7 @@ export function responseToHistoryEntry(
     npcId,
     npcName,
     message: response.message,
-    relationshipDeltas: response.relationshipDeltas,
+    statDeltas: response.statDeltas,
     flagChangesCount: response.flagChanges ? response.flagChanges.length : undefined,
     inventoryChanges: response.inventoryChanges,
     launchedSceneId: response.launchedSceneId,

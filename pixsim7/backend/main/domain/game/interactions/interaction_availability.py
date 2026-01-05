@@ -2,7 +2,7 @@
 NPC Interaction Availability & Gating Logic
 
 Phase 17.3: Pure functions to evaluate interaction availability based on:
-- Relationship tiers/metrics
+- Stat tiers/metrics
 - Mood/emotions
 - NPC behavior state (activities, simulation tier)
 - Time of day
@@ -11,29 +11,27 @@ Phase 17.3: Pure functions to evaluate interaction availability based on:
 
 Design:
 - Pure, testable functions (no DB dependencies in core logic)
-- Integrates with existing relationship/mood/behavior systems
+- Integrates with stat packages, mood, and behavior systems
 - Clear disabled reasons for debugging
 - Supports both hard gating (not shown) and soft gating (shown but flagged)
 """
 
 from __future__ import annotations
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime
 import time
 
 from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     NpcInteractionDefinition,
     NpcInteractionInstance,
     InteractionContext,
-    RelationshipSnapshot,
-    InteractionSurface,
     DisabledReason,
-    InteractionGating,
-    RelationshipGating,
+    StatGating,
+    StatAxisGate,
     BehaviorGating,
     MoodGating,
     TimeOfDayConstraint,
 )
+from pixsim7.backend.main.domain.game.stats import StatDefinition, StatEngine
 
 
 # ===================
@@ -119,94 +117,210 @@ def check_time_gating(
     return True, None
 
 
-def check_relationship_gating(
-    gating: Optional[RelationshipGating],
-    relationship: Optional[RelationshipSnapshot],
-    world_tier_order: Optional[List[str]] = None,
-    world_intimacy_level_order: Optional[List[str]] = None
+def _get_stat_definition(
+    definition_id: str,
+    stat_definitions: Optional[Dict[str, Any]],
+) -> Optional[StatDefinition]:
+    if not stat_definitions or definition_id not in stat_definitions:
+        return None
+    try:
+        return StatDefinition.model_validate(stat_definitions[definition_id])
+    except Exception:
+        return None
+
+
+def _get_entity_key(entity_type: str, npc_id: Optional[int]) -> Optional[str]:
+    if entity_type == "npc":
+        if npc_id is None:
+            return None
+        return f"npc:{npc_id}"
+    if entity_type == "session":
+        return "session"
+    if entity_type == "world":
+        return "world"
+    return None
+
+
+def _get_entity_stats(
+    stats_snapshot: Optional[Dict[str, Dict[str, Any]]],
+    definition_id: str,
+    entity_type: str,
+    npc_id: Optional[int],
+) -> Optional[Dict[str, Any]]:
+    if not stats_snapshot:
+        return None
+
+    definition_stats = stats_snapshot.get(definition_id)
+    if not isinstance(definition_stats, dict):
+        return None
+
+    entity_key = _get_entity_key(entity_type, npc_id)
+    if not entity_key:
+        return None
+
+    return definition_stats.get(entity_key)
+
+
+def _get_tier_order(definition: Optional[StatDefinition], axis: Optional[str]) -> Optional[List[str]]:
+    if not definition or not axis:
+        return None
+    tiers = [tier for tier in definition.tiers if tier.axis_name == axis]
+    if not tiers:
+        return None
+    sorted_tiers = sorted(tiers, key=lambda tier: tier.min)
+    return [tier.id for tier in sorted_tiers]
+
+
+def _get_level_order(definition: Optional[StatDefinition]) -> Optional[List[str]]:
+    if not definition or not definition.levels:
+        return None
+    sorted_levels = sorted(definition.levels, key=lambda level: level.priority)
+    return [level.id for level in sorted_levels]
+
+
+def _resolve_current_tier(
+    entity_stats: Dict[str, Any],
+    axis: Optional[str],
+    definition: Optional[StatDefinition],
+) -> Optional[str]:
+    if not axis:
+        return None
+    tier_key = f"{axis}TierId"
+    if tier_key in entity_stats:
+        return entity_stats.get(tier_key)
+    if "tierId" in entity_stats:
+        return entity_stats.get("tierId")
+    if not definition:
+        return None
+    value = entity_stats.get(axis)
+    if not isinstance(value, (int, float)):
+        return None
+    return StatEngine.compute_tier(axis, float(value), definition.tiers)
+
+
+def _resolve_current_level(
+    entity_stats: Dict[str, Any],
+    definition: Optional[StatDefinition],
+) -> Optional[str]:
+    if "levelId" in entity_stats:
+        return entity_stats.get("levelId")
+    if not definition:
+        return None
+    axis_names = {axis.name for axis in definition.axes}
+    stat_values = {
+        name: value
+        for name, value in entity_stats.items()
+        if name in axis_names and isinstance(value, (int, float))
+    }
+    return StatEngine.compute_level(stat_values, definition.levels)
+
+
+def _check_stat_gate(
+    gate: StatAxisGate,
+    stats_snapshot: Optional[Dict[str, Dict[str, Any]]],
+    stat_definitions: Optional[Dict[str, Any]],
+    npc_id: Optional[int],
 ) -> Tuple[bool, Optional[str]]:
-    """
-    Check if relationship state passes gating requirements.
+    entity_stats = _get_entity_stats(
+        stats_snapshot,
+        gate.definition_id,
+        gate.entity_type,
+        gate.npc_id or npc_id,
+    )
 
-    Args:
-        gating: Relationship gating config
-        relationship: Current relationship state
-        world_tier_order: Ordered list of tier IDs from world schema (lowest to highest)
-        world_intimacy_level_order: Ordered list of intimacy level IDs (lowest to highest priority)
+    if not entity_stats:
+        return False, f"No {gate.definition_id} stats available"
 
-    Returns:
-        (passes, disabled_reason_message)
-    """
-    if not gating:
-        return True, None
+    definition = _get_stat_definition(gate.definition_id, stat_definitions)
 
-    if not relationship:
-        # No relationship data available, fail if any gating is specified
-        if gating.min_tier_id or gating.min_affinity or gating.min_trust or gating.min_chemistry:
-            return False, "No relationship established"
-        return True, None
+    if gate.axis:
+        value = entity_stats.get(gate.axis)
+        if value is None:
+            return False, f"Missing {gate.axis} for {gate.definition_id}"
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            return False, f"Invalid {gate.axis} value"
 
-    # Check tier gating
-    if gating.min_tier_id and relationship.tier_id:
-        if world_tier_order:
+        if gate.min_value is not None and numeric_value < gate.min_value:
+            return False, f"Requires {gate.axis} {gate.min_value}+ (current: {numeric_value:.0f})"
+        if gate.max_value is not None and numeric_value > gate.max_value:
+            return False, f"{gate.axis} too high (max: {gate.max_value}, current: {numeric_value:.0f})"
+
+    if gate.min_tier_id or gate.max_tier_id:
+        tier_id = _resolve_current_tier(entity_stats, gate.axis, definition)
+        if not tier_id:
+            return False, f"Missing tier for {gate.definition_id}"
+
+        tier_order = _get_tier_order(definition, gate.axis)
+        if tier_order:
             try:
-                current_idx = world_tier_order.index(relationship.tier_id)
-                required_idx = world_tier_order.index(gating.min_tier_id)
-                if current_idx < required_idx:
-                    return False, f"Requires {gating.min_tier_id} relationship or higher"
+                current_idx = tier_order.index(tier_id)
+                if gate.min_tier_id:
+                    required_idx = tier_order.index(gate.min_tier_id)
+                    if current_idx < required_idx:
+                        return False, f"Requires {gate.min_tier_id} tier or higher"
+                if gate.max_tier_id:
+                    max_idx = tier_order.index(gate.max_tier_id)
+                    if current_idx > max_idx:
+                        return False, f"Only available up to {gate.max_tier_id} tier"
             except ValueError:
-                # Tier not found in order, skip check
-                pass
-
-    if gating.max_tier_id and relationship.tier_id:
-        if world_tier_order:
-            try:
-                current_idx = world_tier_order.index(relationship.tier_id)
-                max_idx = world_tier_order.index(gating.max_tier_id)
-                if current_idx > max_idx:
-                    return False, f"Only available up to {gating.max_tier_id} relationship"
-            except ValueError:
-                pass
-
-    # Check metric minimums
-    if gating.min_affinity is not None and relationship.affinity is not None:
-        if relationship.affinity < gating.min_affinity:
-            return False, f"Requires affinity {gating.min_affinity}+ (current: {relationship.affinity:.0f})"
-
-    if gating.min_trust is not None and relationship.trust is not None:
-        if relationship.trust < gating.min_trust:
-            return False, f"Requires trust {gating.min_trust}+ (current: {relationship.trust:.0f})"
-
-    if gating.min_chemistry is not None and relationship.chemistry is not None:
-        if relationship.chemistry < gating.min_chemistry:
-            return False, f"Requires chemistry {gating.min_chemistry}+ (current: {relationship.chemistry:.0f})"
-
-    # Check tension maximum
-    if gating.max_tension is not None and relationship.tension is not None:
-        if relationship.tension > gating.max_tension:
-            return False, f"Tension too high (max: {gating.max_tension}, current: {relationship.tension:.0f})"
-
-    # Check intimacy level
-    if gating.min_intimacy_level:
-        if not relationship.intimacy_level_id:
-            return False, f"Requires {gating.min_intimacy_level} intimacy level"
-
-        if world_intimacy_level_order:
-            try:
-                current_idx = world_intimacy_level_order.index(relationship.intimacy_level_id)
-                required_idx = world_intimacy_level_order.index(gating.min_intimacy_level)
-                if current_idx < required_idx:
-                    return False, f"Requires {gating.min_intimacy_level} intimacy level or higher"
-            except ValueError:
-                # Level not found in order - fall back to exact match
-                if relationship.intimacy_level_id != gating.min_intimacy_level:
-                    return False, f"Requires {gating.min_intimacy_level} intimacy level"
+                return False, f"Tier {tier_id} not found in definition"
         else:
-            # No ordering provided - check exact match
-            if relationship.intimacy_level_id != gating.min_intimacy_level:
-                return False, f"Requires {gating.min_intimacy_level} intimacy level"
+            if gate.min_tier_id and tier_id != gate.min_tier_id:
+                return False, f"Requires {gate.min_tier_id} tier"
+            if gate.max_tier_id and tier_id != gate.max_tier_id:
+                return False, f"Only available up to {gate.max_tier_id} tier"
+
+    if gate.min_level_id:
+        level_id = _resolve_current_level(entity_stats, definition)
+        if not level_id:
+            return False, f"Missing level for {gate.definition_id}"
+
+        level_order = _get_level_order(definition)
+        if level_order:
+            try:
+                current_idx = level_order.index(level_id)
+                required_idx = level_order.index(gate.min_level_id)
+                if current_idx < required_idx:
+                    return False, f"Requires {gate.min_level_id} level or higher"
+            except ValueError:
+                return False, f"Level {level_id} not found in definition"
+        else:
+            if level_id != gate.min_level_id:
+                return False, f"Requires {gate.min_level_id} level"
 
     return True, None
+
+
+def check_stat_gating(
+    gating: Optional[StatGating],
+    stats_snapshot: Optional[Dict[str, Dict[str, Any]]],
+    stat_definitions: Optional[Dict[str, Any]],
+    npc_id: Optional[int],
+) -> Tuple[bool, Optional[str], Optional[StatAxisGate]]:
+    if not gating:
+        return True, None, None
+
+    if gating.all_of:
+        for gate in gating.all_of:
+            passes, msg = _check_stat_gate(gate, stats_snapshot, stat_definitions, npc_id)
+            if not passes:
+                return False, msg, gate
+
+    if gating.any_of:
+        any_pass = False
+        last_msg = None
+        for gate in gating.any_of:
+            passes, msg = _check_stat_gate(gate, stats_snapshot, stat_definitions, npc_id)
+            if passes:
+                any_pass = True
+                break
+            last_msg = msg
+        if not any_pass:
+            return False, last_msg or "No stat gate satisfied", gating.any_of[0]
+
+    return True, None, None
 
 
 def check_behavior_gating(
@@ -435,9 +549,9 @@ def check_cooldown(
 def evaluate_interaction_availability(
     definition: NpcInteractionDefinition,
     context: InteractionContext,
-    world_tier_order: Optional[List[str]] = None,
-    world_intimacy_level_order: Optional[List[str]] = None,
-    current_time: Optional[int] = None
+    stat_definitions: Optional[Dict[str, Any]] = None,
+    npc_id: Optional[int] = None,
+    current_time: Optional[int] = None,
 ) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
     """
     Evaluate whether an interaction is currently available.
@@ -445,18 +559,14 @@ def evaluate_interaction_availability(
     Args:
         definition: Interaction definition to evaluate
         context: Interaction context with NPC/session state
-        world_tier_order: Ordered list of relationship tier IDs (lowest to highest)
-        world_intimacy_level_order: Ordered list of intimacy level IDs (lowest to highest priority)
+        stat_definitions: World stat definitions (stats_config.definitions)
+        npc_id: NPC ID used for npc-scoped stat gating
         current_time: Current time for cooldown checks. Should be world_time for gameplay consistency.
                      Falls back to real-time if not provided (for backward compatibility).
 
     Note:
         For gameplay consistency, always pass world_time as current_time.
         This ensures cooldowns use game time, not real-world time.
-
-        To get tier/level ordering from world config:
-        - tier_order: sorted by tiers[].min value (ascending)
-        - level_order: sorted by levels[].priority value (ascending)
 
     Returns:
         (available, disabled_reason_enum, disabled_message)
@@ -471,21 +581,20 @@ def evaluate_interaction_availability(
         if not passes:
             return False, DisabledReason.TIME_INCOMPATIBLE, msg
 
-    # Check relationship
-    passes, msg = check_relationship_gating(
-        gating.relationship,
-        context.relationship_snapshot,
-        world_tier_order,
-        world_intimacy_level_order
+    # Check stat-based gating
+    passes, msg, _ = check_stat_gating(
+        gating.stat_gating,
+        context.stats_snapshot,
+        stat_definitions,
+        npc_id,
     )
     if not passes:
-        # Determine if too low or too high
-        if msg and "Only available up to" in msg:
-            return False, DisabledReason.RELATIONSHIP_TOO_HIGH, msg
-        return False, DisabledReason.RELATIONSHIP_TOO_LOW, msg
+        return False, DisabledReason.STAT_GATING_FAILED, msg
 
     # Check behavior state
-    npc_state = context.session_flags.get("npcs", {}).get(f"npc:{context.location_id}", {}).get("state") if context.session_flags else None
+    npc_state = None
+    if context.session_flags and npc_id is not None:
+        npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
     passes, msg = check_behavior_gating(gating.behavior, npc_state)
     if not passes:
         if msg and "busy" in msg.lower():

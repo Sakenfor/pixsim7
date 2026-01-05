@@ -7,13 +7,13 @@ Design Principles:
 - Mirror TypeScript types exactly for API compatibility
 - Use Pydantic for validation and serialization
 - Store in GameWorld.meta (no new DB tables)
-- Integrate with existing relationship, mood, and behavior systems
+- Integrate with stat packages, mood, and behavior systems
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Literal, Union
+from typing import Dict, Any, List, Optional, Literal
 from enum import Enum
-from pydantic import BaseModel, Field, validator, model_validator
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ===================
@@ -40,8 +40,6 @@ class BranchIntent(str, Enum):
 
 class DisabledReason(str, Enum):
     """Why an interaction is unavailable"""
-    RELATIONSHIP_TOO_LOW = "relationship_too_low"
-    RELATIONSHIP_TOO_HIGH = "relationship_too_high"
     MOOD_INCOMPATIBLE = "mood_incompatible"
     NPC_UNAVAILABLE = "npc_unavailable"
     NPC_BUSY = "npc_busy"
@@ -50,6 +48,7 @@ class DisabledReason(str, Enum):
     FLAG_FORBIDDEN = "flag_forbidden"
     COOLDOWN_ACTIVE = "cooldown_active"
     LOCATION_INCOMPATIBLE = "location_incompatible"
+    STAT_GATING_FAILED = "stat_gating_failed"
     CUSTOM = "custom"
 
 
@@ -63,15 +62,23 @@ class TimeOfDayConstraint(BaseModel):
     hour_ranges: Optional[List[Dict[str, int]]] = Field(None, alias="hourRanges")
 
 
-class RelationshipGating(BaseModel):
-    """Relationship gating constraints"""
+class StatAxisGate(BaseModel):
+    """Generic stat gating constraint"""
+    definition_id: str = Field(alias="definitionId")
+    axis: Optional[str] = None
+    min_value: Optional[float] = Field(None, alias="minValue")
+    max_value: Optional[float] = Field(None, alias="maxValue")
     min_tier_id: Optional[str] = Field(None, alias="minTierId")
     max_tier_id: Optional[str] = Field(None, alias="maxTierId")
-    min_affinity: Optional[float] = Field(None, ge=0, le=100, alias="minAffinity")
-    min_trust: Optional[float] = Field(None, ge=0, le=100, alias="minTrust")
-    min_chemistry: Optional[float] = Field(None, ge=0, le=100, alias="minChemistry")
-    max_tension: Optional[float] = Field(None, ge=0, le=100, alias="maxTension")
-    min_intimacy_level: Optional[str] = Field(None, alias="minIntimacyLevel")
+    min_level_id: Optional[str] = Field(None, alias="minLevelId")
+    entity_type: Literal["npc", "session", "world"] = Field(default="npc", alias="entityType")
+    npc_id: Optional[int] = Field(default=None, alias="npcId")
+
+
+class StatGating(BaseModel):
+    """Stat-based gating constraints (generic)"""
+    all_of: Optional[List[StatAxisGate]] = Field(None, alias="allOf")
+    any_of: Optional[List[StatAxisGate]] = Field(None, alias="anyOf")
 
 
 class BehaviorGating(BaseModel):
@@ -94,7 +101,7 @@ class MoodGating(BaseModel):
 
 class InteractionGating(BaseModel):
     """Unified gating configuration"""
-    relationship: Optional[RelationshipGating] = None
+    stat_gating: Optional[StatGating] = Field(None, alias="statGating")
     time_of_day: Optional[TimeOfDayConstraint] = Field(None, alias="timeOfDay")
     behavior: Optional[BehaviorGating] = None
     mood: Optional[MoodGating] = None
@@ -108,31 +115,18 @@ class InteractionGating(BaseModel):
 # Outcome Schema
 # ===================
 
-class RelationshipDelta(BaseModel):
-    """
-    Relationship changes as a result of interaction.
-
-    NOTE: This is a compatibility wrapper around StatDelta targeting the "core.relationships" package.
-    Prefer using StatDelta directly for new code, as it provides a generic interface for all stat systems.
-    RelationshipDelta will be preserved for backward compatibility with existing content and frontend code.
-    """
-    affinity: Optional[float] = None
-    trust: Optional[float] = None
-    chemistry: Optional[float] = None
-    tension: Optional[float] = None
-
-
 class StatDelta(BaseModel):
     """
     Generic stat delta for applying changes to any stat package.
 
     This model provides a unified way to describe changes to stats across all stat packages,
-    replacing hardcoded relationship math with abstract stat system routing through StatEngine.
+    replacing hardcoded stat math with abstract stat system routing through StatEngine.
 
     Examples:
         # Relationship stat delta (for "core.relationships" package)
         StatDelta(
             package_id="core.relationships",
+            definition_id="relationships",
             axes={"affinity": +5.0, "trust": -3.0},
             entity_type="npc",
             npc_id=42
@@ -141,31 +135,38 @@ class StatDelta(BaseModel):
         # Future: Resource stat delta (for "core.resources" package)
         StatDelta(
             package_id="core.resources",
+            definition_id="resources",
             axes={"energy": -10.0, "stress": +5.0},
             entity_type="session"
         )
     """
+    model_config = ConfigDict(populate_by_name=True)
+
     package_id: str = Field(
+        alias="packageId",
         description="Stat package ID (e.g., 'core.relationships', 'core.resources')"
+    )
+    definition_id: Optional[str] = Field(
+        default=None,
+        alias="definitionId",
+        description=(
+            "Stat definition ID within the package (e.g., 'relationships'). "
+            "If omitted and the package defines a single definition, it is inferred."
+        ),
     )
     axes: Dict[str, float] = Field(
         description="Map of axis_name -> delta_value (e.g., {'affinity': +5, 'trust': -3})"
     )
     entity_type: Literal["npc", "session", "world"] = Field(
         default="npc",
+        alias="entityType",
         description="Entity scope for this stat delta"
     )
     npc_id: Optional[int] = Field(
         default=None,
+        alias="npcId",
         description="Required when entity_type == 'npc'. NPC ID to apply stats to."
     )
-
-    @model_validator(mode='after')
-    def validate_npc_id_required(self):
-        """Ensure npc_id is provided when entity_type is 'npc'."""
-        if self.entity_type == "npc" and self.npc_id is None:
-            raise ValueError('npc_id is required when entity_type is "npc"')
-        return self
 
 
 class FlagChanges(BaseModel):
@@ -247,7 +248,7 @@ class GenerationLaunch(BaseModel):
 
 class InteractionOutcome(BaseModel):
     """Unified outcome configuration"""
-    relationship_deltas: Optional[RelationshipDelta] = Field(None, alias="relationshipDeltas")
+    stat_deltas: Optional[List[StatDelta]] = Field(None, alias="statDeltas")
     flag_changes: Optional[FlagChanges] = Field(None, alias="flagChanges")
     inventory_changes: Optional[InventoryChanges] = Field(None, alias="inventoryChanges")
     npc_effects: Optional[NpcEffects] = Field(None, alias="npcEffects")
@@ -283,23 +284,13 @@ class NpcInteractionDefinition(BaseModel):
     meta: Optional[Dict[str, Any]] = None
 
 
-class RelationshipSnapshot(BaseModel):
-    """Relationship state snapshot"""
-    affinity: Optional[float] = None
-    trust: Optional[float] = None
-    chemistry: Optional[float] = None
-    tension: Optional[float] = None
-    tier_id: Optional[str] = Field(None, alias="tierId")
-    intimacy_level_id: Optional[str] = Field(None, alias="intimacyLevelId")
-
-
 class InteractionContext(BaseModel):
     """Context snapshot for gating checks"""
     location_id: Optional[int] = Field(None, alias="locationId")
     current_activity_id: Optional[str] = Field(None, alias="currentActivityId")
     state_tags: Optional[List[str]] = Field(None, alias="stateTags")
     mood_tags: Optional[List[str]] = Field(None, alias="moodTags")
-    relationship_snapshot: Optional[RelationshipSnapshot] = Field(None, alias="relationshipSnapshot")
+    stats_snapshot: Optional[Dict[str, Dict[str, Any]]] = Field(None, alias="statsSnapshot")
     world_time: Optional[int] = Field(None, alias="worldTime")
     session_flags: Optional[Dict[str, Any]] = Field(None, alias="sessionFlags")
     last_used_at: Optional[Dict[str, int]] = Field(None, alias="lastUsedAt")
@@ -364,7 +355,7 @@ class ExecuteInteractionResponse(BaseModel):
     """Response from interaction execution"""
     success: bool
     message: Optional[str] = None
-    relationship_deltas: Optional[RelationshipDelta] = Field(None, alias="relationshipDeltas")
+    stat_deltas: Optional[List[StatDelta]] = Field(None, alias="statDeltas")
     flag_changes: Optional[List[str]] = Field(None, alias="flagChanges")
     inventory_changes: Optional[InventoryChangeSummary] = Field(None, alias="inventoryChanges")
     launched_scene_id: Optional[int] = Field(None, alias="launchedSceneId")
