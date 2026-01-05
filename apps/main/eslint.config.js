@@ -125,6 +125,11 @@ export default defineConfig([
               ],
               message: 'Import from @pixsim7/shared.assets-core instead of legacy @features/assets paths.',
             },
+            {
+              group: ['@features/contextHub/types'],
+              importNames: ['CapabilityKey', 'CapabilityProvider', 'CapabilitySnapshot', 'CapabilityScope'],
+              message: 'Import core capability types from @pixsim7/capabilities-core instead of @features/contextHub.',
+            },
           ],
         },
       ],
