@@ -8,9 +8,9 @@ import type {
   DerivedStatPreviewResult,
 } from './types';
 import {
-  getNpcRelationshipState,
-  setNpcRelationshipState,
-} from '../session/state';
+  getAdapterBySource,
+  type StatSource,
+} from '../session/statAdapters';
 
 /**
  * Simple typed event emitter
@@ -103,35 +103,49 @@ export class PixSim7Core implements IPixSim7Core {
   }
 
   /**
-   * Get NPC relationship state
+   * Get stat data using the stat adapter registry.
    */
-  getNpcRelationship(npcId: number): NpcRelationshipState | null {
+  getStat(source: StatSource, entityId?: number): unknown | null {
     if (!this.session) return null;
 
-    return getNpcRelationshipState(this.session, npcId);
+    const adapter = getAdapterBySource(source);
+    if (!adapter) {
+      console.warn(`[PixSim7Core] No adapter registered for source "${source}"`);
+      return null;
+    }
+
+    return adapter.get(this.session, entityId);
   }
 
   /**
-   * Update NPC relationship state
+   * Update stat data using the stat adapter registry.
    */
-  updateNpcRelationship(npcId: number, patch: Partial<NpcRelationshipState>): void {
+  updateStat(source: StatSource, entityId: number | undefined, patch: unknown): void {
     if (!this.session) {
       throw new Error('No session loaded');
     }
 
-    // Use the adapter to update relationship state (returns new session)
-    this.session = setNpcRelationshipState(this.session, npcId, patch);
+    const adapter = getAdapterBySource(source);
+    if (!adapter?.set) {
+      console.warn(`[PixSim7Core] Adapter for source "${source}" does not support writes`);
+      return;
+    }
 
-    // Invalidate brain cache for this NPC
-    this.brainCache.delete(npcId);
+    // Use the adapter to update (returns new session)
+    this.session = adapter.set(this.session, entityId, patch);
 
-    // Invalidate derived stats cache (relationship changes affect derived stats like mood)
-    this.derivedStatsCache.delete(npcId);
+    // Invalidate caches for this entity
+    if (entityId !== undefined) {
+      this.brainCache.delete(entityId);
+      this.derivedStatsCache.delete(entityId);
+    }
 
     // Emit events
-    const updatedRelationship = this.getNpcRelationship(npcId);
-    if (updatedRelationship) {
-      this.events.emit('relationshipChanged', { npcId, relationship: updatedRelationship });
+    if (source === 'session.relationships' && entityId !== undefined) {
+      const updatedRelationship = this.getStat('session.relationships', entityId) as NpcRelationshipState | null;
+      if (updatedRelationship) {
+        this.events.emit('relationshipChanged', { npcId: entityId, relationship: updatedRelationship });
+      }
     }
     this.events.emit('sessionUpdated', { session: this.session });
   }
@@ -229,7 +243,7 @@ export class PixSim7Core implements IPixSim7Core {
       return;
     }
 
-    const relationship = this.getNpcRelationship(npcId);
+    const relationship = this.getStat('session.relationships', npcId) as NpcRelationshipState | null;
     if (!relationship) {
       return;
     }
@@ -362,7 +376,7 @@ export class PixSim7Core implements IPixSim7Core {
   private buildBrainState(npcId: number): BrainState | null {
     if (!this.session) return null;
 
-    const relationship = this.getNpcRelationship(npcId);
+    const relationship = this.getStat('session.relationships', npcId) as NpcRelationshipState | null;
     const persona = this.personaCache.get(npcId);
     const flags = this.session.flags as Record<string, unknown>;
     const npcOverrides = (flags?.npcs as Record<string, unknown>)?.[`npc:${npcId}`] as Record<string, unknown> | undefined;

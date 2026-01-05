@@ -13,6 +13,7 @@ import type {
   DerivedBehaviorUrgency,
   BehaviorUrge,
 } from '@shared/types';
+import type { StatSource } from '@pixsim7/game.engine';
 
 export type {
   BrainState,
@@ -148,12 +149,18 @@ export interface PixSim7Core {
   loadSession(sessionId: number): Promise<void>;
   getSession(): GameSession | null;
 
-  // ===== Relationships =====
-  getNpcRelationship(npcId: number): NpcRelationshipState | null;
-  updateNpcRelationship(
-    npcId: number,
-    patch: Partial<NpcRelationshipState>
-  ): void;
+  // ===== Generic Stat Access =====
+  /**
+   * Get stat data using the stat adapter registry.
+   * @example const rel = core.getStat('session.relationships', npcId) as NpcRelationshipState | null;
+   */
+  getStat(source: StatSource, entityId?: number): unknown | null;
+
+  /**
+   * Update stat data using the stat adapter registry.
+   * @example core.updateStat('session.relationships', npcId, { values: { affinity: 50 } });
+   */
+  updateStat(source: StatSource, entityId: number | undefined, patch: unknown): void;
 
   // ===== NPC Brain Projection (data-driven BrainState) =====
   getNpcBrainState(npcId: number): BrainState | null;

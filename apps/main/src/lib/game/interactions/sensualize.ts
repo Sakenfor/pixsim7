@@ -1,5 +1,5 @@
 import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@features/intimacy';
-import { getNpcRelationshipState } from '@pixsim7/game.engine';
+import type { NpcRelationshipState } from '@pixsim7/game.engine';
 
 import type {
   InteractionPlugin,
@@ -144,8 +144,8 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
       return { success: false, message: 'No active game session' };
     }
 
-    // Get relationship state using shared helper
-    const relState = getNpcRelationshipState(gameSession, npcId);
+    // Get relationship state using generic getStat API
+    const relState = context.session.getStat('session.relationships', npcId) as NpcRelationshipState | null;
 
     // Build gating config from interaction config (for backwards compatibility)
     const gatingConfig: Partial<IntimacyGatingConfig> = {
@@ -229,8 +229,8 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
     const gameSession = context.state.gameSession;
     if (!gameSession) return false;
 
-    // Get relationship state using shared helper
-    const relState = getNpcRelationshipState(gameSession, npcId);
+    // Get relationship state using generic getStat API
+    const relState = context.session.getStat('session.relationships', npcId) as NpcRelationshipState | null;
 
     // Available if consent flag is set
     if (relState?.flags?.includes('romance:consented')) {

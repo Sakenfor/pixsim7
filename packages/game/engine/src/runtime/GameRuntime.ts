@@ -25,8 +25,10 @@ import type {
   InteractionExecutedEvent,
   RuntimeErrorEvent,
 } from './types';
-import type { NpcRelationshipState } from '../core/types';
-import { getNpcRelationshipState } from '../session/state';
+import {
+  getAdapterBySource,
+  type StatSource,
+} from '../session/statAdapters';
 
 /**
  * Simple typed event emitter (reused from PixSim7Core)
@@ -443,11 +445,18 @@ export class GameRuntime implements IGameRuntime {
   }
 
   /**
-   * Get NPC relationship state
+   * Get stat data using the stat adapter registry.
    */
-  getNpcRelationship(npcId: number): NpcRelationshipState | null {
+  getStat(source: StatSource, entityId?: number): unknown | null {
     if (!this.session) return null;
-    return getNpcRelationshipState(this.session, npcId);
+
+    const adapter = getAdapterBySource(source);
+    if (!adapter) {
+      this.log(`No adapter registered for source "${source}"`, 'warn');
+      return null;
+    }
+
+    return adapter.get(this.session, entityId);
   }
 
   /**

@@ -1,8 +1,8 @@
 import type { GameSessionDTO, SessionUpdatePayload, NpcPresenceDTO } from '../../api/game';
 import type {
   NpcSlotAssignment,
-  NpcRelationshipState,
   InventoryItem,
+  StatSource,
 } from '@pixsim7/game.engine';
 
 /**
@@ -31,7 +31,10 @@ export interface FormField {
 
 /**
  * Session helpers interface - provides clean API for session manipulation
- * Plugins can use this instead of importing from@pixsim7/game.engine
+ * Plugins can use this instead of importing from @pixsim7/game.engine
+ *
+ * Uses generic getStat/updateStat for extensibility - new stat packs
+ * just register an adapter, no interface changes needed.
  *
  * Methods that modify state use optimistic updates:
  * 1. Apply change immediately (instant UI feedback)
@@ -39,13 +42,33 @@ export interface FormField {
  * 3. Apply server truth or rollback on error
  */
 export interface SessionHelpers {
-  /** Get NPC relationship state */
-  getNpcRelationship: (npcId: number) => NpcRelationshipState | null;
+  /**
+   * Generic stat read - works with any registered stat adapter.
+   *
+   * @param source - Stat source type (e.g., 'session.relationships', 'session.stats')
+   * @param entityId - Optional entity ID (e.g., npcId for relationships)
+   * @returns Stat data or null if not found. Cast to expected type.
+   *
+   * @example
+   * const rel = session.getStat('session.relationships', npcId) as NpcRelationshipState | null;
+   */
+  getStat: (source: StatSource, entityId?: number) => unknown | null;
 
-  /** Update NPC relationship (optimistic, async validated) */
-  updateNpcRelationship: (
-    npcId: number,
-    patch: Partial<NpcRelationshipState>
+  /**
+   * Generic stat update - works with any registered stat adapter.
+   * New stat packs only need to register an adapter; no changes here.
+   *
+   * @param source - Stat source type (e.g., 'session.relationships', 'session.stats')
+   * @param entityId - Optional entity ID (e.g., npcId for relationships)
+   * @param patch - Partial data to merge (shape depends on adapter)
+   *
+   * @example
+   * await session.updateStat('session.relationships', npcId, { values: { affinity: 50 } });
+   */
+  updateStat: (
+    source: StatSource,
+    entityId: number | undefined,
+    patch: unknown
   ) => Promise<GameSessionDTO>;
 
   /** Get current inventory */

@@ -1,9 +1,12 @@
 /**
  * React hook for using PixSim7Core
+ *
+ * Uses generic getStat/updateStat API - no typed relationship helpers.
+ * Consumers use core.getStat('session.relationships', npcId) directly.
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { createPixSim7Core, type PixSim7Core, type NpcRelationshipState } from '@pixsim7/game.engine';
+import { createPixSim7Core, type PixSim7Core } from '@pixsim7/game.engine';
 import type { GameSessionDTO } from '@lib/registries';
 import { frontendApiClient, localStorageProvider } from './coreAdapter';
 
@@ -22,6 +25,10 @@ function getCoreInstance(): PixSim7Core {
 
 /**
  * Hook to access the PixSim7Core instance
+ *
+ * @example
+ * const { core, session } = usePixSim7Core();
+ * const rel = core.getStat('session.relationships', npcId) as NpcRelationshipState | null;
  */
 export function usePixSim7Core() {
   const [core] = useState<PixSim7Core>(() => getCoreInstance());
@@ -49,17 +56,9 @@ export function usePixSim7Core() {
     [core]
   );
 
-  const getNpcRelationship = useCallback(
-    (npcId: number): NpcRelationshipState | null => {
-      return core.getNpcRelationship(npcId);
-    },
-    [core]
-  );
-
   return {
     core,
     session,
     loadSession,
-    getNpcRelationship,
   };
 }

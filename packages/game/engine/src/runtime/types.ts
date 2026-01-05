@@ -17,7 +17,7 @@ import type {
   ResolveBatchResponse,
   TemplateKind,
 } from '@pixsim7/shared.types';
-import type { NpcRelationshipState } from '../core/types';
+import type { StatSource } from '../session/statAdapters';
 
 // ===================
 // API Client Interface
@@ -316,9 +316,9 @@ export interface GameRuntime {
   advanceWorldTime(deltaSeconds: number): Promise<void>;
 
   /**
-   * Get NPC relationship state
+   * Get stat data using the stat adapter registry.
    */
-  getNpcRelationship(npcId: number): NpcRelationshipState | null;
+  getStat(source: StatSource, entityId?: number): unknown | null;
 
   /**
    * Update session (manually)

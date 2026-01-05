@@ -4,8 +4,9 @@
  * Example of how easy it is to add a new interaction type.
  * Just define the config, fields, and execute logic.
  *
- * Note: Now uses context.session for cleaner API - no need to import game-core!
+ * Note: Uses generic session.getStat/updateStat API - no typed helpers needed!
  */
+import type { NpcRelationshipState } from '@pixsim7/game.engine';
 import type { InteractionPlugin, BaseInteractionConfig } from './types';
 
 export interface GiveItemConfig extends BaseInteractionConfig {
@@ -99,9 +100,9 @@ export const giveItemInteraction: InteractionPlugin<GiveItemConfig> = {
       };
     }
 
-    // Check relationship level using context.session helper
-    const relState = context.session.getNpcRelationship(state.assignment.npcId!);
-    const relationshipScore = relState?.affinity ?? 0;
+    // Check relationship level using generic getStat API
+    const relState = context.session.getStat('session.relationships', state.assignment.npcId!) as NpcRelationshipState | null;
+    const relationshipScore = relState?.values.affinity ?? 0;
 
     if (relationshipScore < config.requiredRelationship) {
       return {

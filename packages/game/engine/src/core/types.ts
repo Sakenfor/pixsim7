@@ -6,6 +6,7 @@ import type {
   RelationshipValues,
   WorldStatsConfig,
 } from '@pixsim7/shared.types';
+import type { StatSource } from '../session/statAdapters';
 
 /**
  * NPC persona type for personality and brain state integration.
@@ -250,12 +251,32 @@ export interface PixSim7Core {
   loadSession(sessionId: number): Promise<void>;
   getSession(): GameSessionDTO | null;
 
-  // relationships
-  getNpcRelationship(npcId: number): NpcRelationshipState | null;
-  updateNpcRelationship(
-    npcId: number,
-    patch: Partial<NpcRelationshipState>
-  ): void;
+  // generic stat access (extensible via stat adapter registry)
+  /**
+   * Get stat data for a source type.
+   * Uses statAdapterRegistry to look up the appropriate adapter.
+   *
+   * @param source - Stat source type (e.g., 'session.relationships')
+   * @param entityId - Optional entity ID (e.g., npcId)
+   * @returns Stat data or null. Cast to expected type.
+   *
+   * @example
+   * const rel = core.getStat('session.relationships', npcId) as NpcRelationshipState | null;
+   */
+  getStat(source: StatSource, entityId?: number): unknown | null;
+
+  /**
+   * Update stat data for a source type.
+   * Uses statAdapterRegistry to look up the appropriate adapter.
+   *
+   * @param source - Stat source type
+   * @param entityId - Optional entity ID
+   * @param patch - Partial data to merge
+   *
+   * @example
+   * core.updateStat('session.relationships', npcId, { values: { affinity: 50 } });
+   */
+  updateStat(source: StatSource, entityId: number | undefined, patch: unknown): void;
 
   // npc brain projection (data-driven BrainState)
   getNpcBrainState(npcId: number): BrainState | null;

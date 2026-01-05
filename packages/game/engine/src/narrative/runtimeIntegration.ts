@@ -539,7 +539,7 @@ export class NarrativeController implements GameRuntimePlugin {
 
     // Get current narrative state
     const narrativeState = getNarrativeState(session, npcId);
-    const relationship = this.runtime?.getNpcRelationship(npcId) ?? null;
+    const relationship = (this.runtime?.getStat('session.relationships', npcId) as NpcRelationshipState | null) ?? null;
 
     // Build resolution context
     const context: ProgramResolutionContext = {
@@ -598,7 +598,7 @@ export class NarrativeController implements GameRuntimePlugin {
 
     // Get narrative state
     const narrativeState = getNarrativeState(session, npcId);
-    const relationship = this.runtime?.getNpcRelationship(npcId) ?? null;
+    const relationship = (this.runtime?.getStat('session.relationships', npcId) as NpcRelationshipState | null) ?? null;
 
     // Build resolution context
     const context: ProgramResolutionContext = {

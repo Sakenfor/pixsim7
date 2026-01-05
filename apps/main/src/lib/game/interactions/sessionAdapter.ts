@@ -26,7 +26,7 @@ import {
   isEventActive,
   sessionHelperRegistry,
   getAdapterBySource,
-  type SessionStatAdapter,
+  type StatSource,
 } from '@pixsim7/game.engine';
 
 /** Maximum number of retry attempts for conflict resolution */
@@ -127,8 +127,8 @@ export function createSessionHelpers(
   // If no session, return no-op helpers
   if (!gameSession) {
     return {
-      getNpcRelationship: () => null,
-      updateNpcRelationship: async () => gameSession!,
+      getStat: () => null,
+      updateStat: async () => gameSession!,
       getInventory: () => [],
       addInventoryItem: async () => gameSession!,
       removeInventoryItem: async () => gameSession!,
@@ -198,7 +198,7 @@ export function createSessionHelpers(
             ...backendUpdate,
             // Extract only the fields we're updating from the resolved state
             ...(backendUpdate.flags && { flags: resolvedUpdate.flags }),
-            ...(backendUpdate.relationships && { relationships: resolvedUpdate.relationships }),
+            ...(backendUpdate.stats && { stats: resolvedUpdate.stats }),
             ...(backendUpdate.world_time && { world_time: resolvedUpdate.world_time }),
           };
 
@@ -244,34 +244,60 @@ export function createSessionHelpers(
   // Build dynamic helpers from registry (allows custom extensions)
   const dynamicHelpers = sessionHelperRegistry.buildHelpersObject(gameSession);
 
-  // Get relationship adapter from stat adapter registry
-  const relationshipAdapter = getAdapterBySource('session.relationships');
+  /**
+   * Generic stat update - works with any registered stat adapter.
+   * New stat packs only need to register an adapter; no changes here.
+   */
+  const updateStat = async (
+    source: StatSource,
+    entityId: number | undefined,
+    patch: unknown
+  ): Promise<GameSessionDTO> => {
+    const adapter = getAdapterBySource(source);
+
+    if (!adapter?.set) {
+      logger.warn(`Adapter for source "${source}" does not support writes`);
+      return gameSession;
+    }
+
+    // Build optimistic update payload using adapter's session path
+    const sessionPath = adapter.getSessionPath?.(entityId);
+
+    // Use buildSessionPatch to transform high-level patch into storage shape
+    // This ensures optimistic payload matches what set() actually stores
+    const storagePatch = adapter.buildSessionPatch
+      ? adapter.buildSessionPatch(patch, entityId)
+      : patch;
+
+    const optimisticPayload = sessionPath
+      ? buildOptimisticPayload(gameSession, sessionPath, storagePatch)
+      : { stats: gameSession.stats };
+
+    return applyOptimisticUpdate(
+      (session) => adapter.set!(session, entityId, patch),
+      optimisticPayload
+    );
+  };
+
+  /**
+   * Generic stat read - looks up adapter by source and calls get().
+   */
+  const getStat = (source: StatSource, entityId?: number): unknown | null => {
+    const adapter = getAdapterBySource(source);
+    if (!adapter) {
+      logger.warn(`No adapter registered for source "${source}"`);
+      return null;
+    }
+    return adapter.get(gameSession, entityId);
+  };
 
   // Return real helpers bound to this session
-  // Explicit typed helpers come first for IDE autocomplete
+  // Generic getStat/updateStat for extensibility
   // Dynamic helpers are spread at the end to allow custom extensions
   return {
-    getNpcRelationship: (npcId) => {
-      return relationshipAdapter?.get(gameSession, npcId) ?? null;
-    },
-
-    updateNpcRelationship: async (npcId, patch) => {
-      if (!relationshipAdapter?.set) {
-        logger.warn('Relationship adapter does not support writes');
-        return gameSession;
-      }
-
-      // Build optimistic update payload using adapter's session path
-      const sessionPath = relationshipAdapter.getSessionPath?.(npcId);
-      const optimisticPayload = sessionPath
-        ? buildOptimisticPayload(gameSession, sessionPath, patch)
-        : { stats: gameSession.stats };
-
-      return applyOptimisticUpdate(
-        (session) => relationshipAdapter.set!(session, npcId, patch),
-        optimisticPayload
-      );
-    },
+    // Generic stat read/write (extensible for new stat packs)
+    getStat,
+    updateStat,
 
     getInventory: () => getInventory(gameSession),
 
