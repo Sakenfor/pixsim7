@@ -4,9 +4,10 @@
  * Shows storage system status and allows bulk re-sync to content-addressed storage.
  */
 
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { authService } from '@lib/auth/authService';
+import { useState, useEffect } from 'react';
+
+import { authService } from '@lib/auth';
 
 interface StorageSyncStats {
   total_assets: number;

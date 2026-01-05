@@ -3,12 +3,16 @@
  *
  * Configure prompt analysis, block extraction, and curation workflows.
  */
+/* eslint-disable react-refresh/only-export-components */
 
 import { useEffect, useState } from 'react';
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
-import { usePromptSettingsStore } from '@features/prompts';
+
+import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers';
 import { listPromptAnalyzers, type AnalyzerInfo } from '@lib/api/analyzers';
-import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers/constants';
+
+import { usePromptSettingsStore } from '@features/prompts';
+
+import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
 /**
  * Custom component for analyzer selection (needs async data)

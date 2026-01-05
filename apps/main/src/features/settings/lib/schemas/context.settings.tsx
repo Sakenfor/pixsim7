@@ -4,13 +4,14 @@
  * Centralized settings for context capability routing and UI integration.
  */
 
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 import { useContextHubSettingsStore } from '@features/contextHub';
+
+import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
 const contextHubTab: SettingTab = {
   id: 'context-hub',
   label: 'Context Hub',
-  icon: 'dY"?',
+  icon: '🔗',
   groups: [
     {
       id: 'context-menu',
@@ -58,8 +59,8 @@ export function registerContextSettings(): () => void {
     categoryId: 'context',
     category: {
       label: 'Context',
-      icon: 'dY"?',
-      order: 24,
+      icon: '🔗',
+      order: 60,
     },
     tab: contextHubTab,
     useStore: useContextSettingsStore,

@@ -4,9 +4,10 @@
  * Displays stats about SHA256 hash coverage and allows backfilling missing hashes.
  */
 
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { authService } from '@lib/auth/authService';
+import { useState, useEffect } from 'react';
+
+import { authService } from '@lib/auth';
 
 interface SHAStats {
   total_assets: number;

@@ -5,18 +5,21 @@
  * This is a layout-only view today; future UI presets can extend this surface.
  */
 
+import type { DockviewApi } from "dockview-core";
 import { useEffect, useMemo, useState } from "react";
-import { settingsRegistry } from "../../lib/core/registry";
+
+import { getDockviewHost } from "@lib/dockview";
+
 import {
   dockWidgetRegistry,
   getDockWidgetPanelIds,
   type DockWidgetDefinition,
   panelRegistry,
 } from "@features/panels";
-import { getDockviewHost } from "@lib/dockview/hostRegistry";
 import { useWorkspaceStore } from "@features/workspace/stores/workspaceStore";
 import type { LayoutPreset } from "@features/workspace/stores/workspaceStore";
-import type { DockviewApi } from "dockview-core";
+
+import { settingsRegistry } from "../../lib/core/registry";
 
 type PresetScope = LayoutPreset["scope"];
 

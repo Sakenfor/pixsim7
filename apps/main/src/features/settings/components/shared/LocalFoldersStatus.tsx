@@ -5,12 +5,14 @@
  * Displays folder count, asset count, hash coverage.
  */
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { useLocalFolders, type LocalAsset } from '@/features/assets/stores/localFoldersStore';
-import { useAuthStore } from '@/stores/authStore';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+
+import { authService } from '@lib/auth';
+
+import { useLocalFolders } from '@/features/assets/stores/localFoldersStore';
 import { computeFileSha256 } from '@/lib/utils';
-import { authService } from '@lib/auth/authService';
+import { useAuthStore } from '@/stores/authStore';
 
 export function LocalFoldersStatus() {
   const supported = useLocalFolders((s) => s.supported);

@@ -1,5 +1,6 @@
+import { SettingsPanel } from '@features/settings';
+
 import { definePanel } from '../../../lib/definePanel';
-import { SettingsPanel } from '@features/settings/components/SettingsPanel';
 
 export default definePanel({
   id: 'settings',

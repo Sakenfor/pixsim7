@@ -4,9 +4,10 @@
  * Shows linkage stats for global content blobs and allows backfill.
  */
 
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { authService } from '@lib/auth/authService';
+import { useState, useEffect } from 'react';
+
+import { authService } from '@lib/auth';
 
 interface ContentBlobStats {
   total_assets: number;

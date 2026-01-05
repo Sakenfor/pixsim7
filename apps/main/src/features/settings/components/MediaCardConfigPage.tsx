@@ -5,14 +5,16 @@
  * Allows users to visually customize badge positioning, visibility, and styling.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { OverlayEditor } from '@/components/overlay-editor';
-import { MediaCard } from '@/components/media/MediaCard';
+import { Button, Select } from '@pixsim7/shared.ui';
+import React, { useState, useMemo } from 'react';
+
 import type { OverlayConfiguration } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
-import { LocalStoragePresetStorage } from '@lib/ui/overlay/presets/presetManager';
-import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay/presets/storage';
-import { Button, Select } from '@pixsim7/shared.ui';
+import { LocalStoragePresetStorage } from '@lib/ui/overlay';
+import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay';
+
+import { MediaCard } from '@/components/media/MediaCard';
+import { OverlayEditor } from '@/components/overlay-editor';
 
 // Sample media data for preview
 const SAMPLE_MEDIA = {

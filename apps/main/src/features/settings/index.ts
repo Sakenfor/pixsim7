@@ -59,5 +59,13 @@ export { registerPanelSettings } from './lib/schemas/panel.settings';
 // Stores - UI State
 // ============================================================================
 
+export {
+  usePanelInteractionSettingsStore,
+  usePanelSettings,
+  useInteractionOverride,
+  type PanelInteractionSettingsState,
+  type PanelInteractionSettings,
+  type PanelInteractionOverride,
+} from './stores/panelInteractionSettingsStore';
 export { usePanelSettingsUiStore } from './stores/panelSettingsUiStore';
 export { useSettingsUiStore } from './stores/settingsUiStore';
