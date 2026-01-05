@@ -12,7 +12,7 @@ These endpoints are stateless and do not mutate game sessions.
 
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -21,7 +21,12 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import get_database
 from pixsim7.backend.main.domain.game import GameWorld
-from pixsim7.backend.main.domain.game.stats import StatEngine, WorldStatsConfig
+from pixsim7.backend.main.domain.game.stats import (
+    StatEngine,
+    WorldStatsConfig,
+    get_derivation_engine,
+    register_core_stat_packages,
+)
 from pixsim7.backend.main.domain.game.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
@@ -47,6 +52,27 @@ class PreviewEntityStatsResponse(BaseModel):
 
     stat_definition_id: str
     normalized_stats: Dict[str, Any]  # Includes clamped values + computed tier/level IDs
+
+
+class PreviewDerivedStatsRequest(BaseModel):
+    """Request for previewing derived stat computation.
+
+    Uses the DerivationEngine to compute derived stats from input values
+    using semantic type mappings declared in stat packages.
+    """
+
+    world_id: int
+    target_stat_id: str  # The derived stat to compute (e.g., "mood")
+    input_values: Dict[str, Dict[str, float]]  # Map of stat_def_id -> {axis: value}
+    package_ids: Optional[List[str]] = None  # Optional explicit package IDs
+
+
+class PreviewDerivedStatsResponse(BaseModel):
+    """Response for derived stats preview."""
+
+    target_stat_id: str
+    derived_values: Dict[str, Any]  # The computed derived stat values
+    sources_used: List[str]  # Which source axes were used
 
 
 # ===== Endpoints =====
@@ -168,6 +194,148 @@ async def preview_entity_stats(
         return PreviewEntityStatsResponse(
             stat_definition_id=request.stat_definition_id,
             normalized_stats=normalized_stats,
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Invalid request", "details": str(e)},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Internal server error", "details": str(e)},
+        )
+
+
+@router.post("/preview-derived-stats", response_model=PreviewDerivedStatsResponse)
+async def preview_derived_stats(
+    request: PreviewDerivedStatsRequest, db: AsyncSession = Depends(get_database)
+):
+    """
+    Preview derived stat computation using semantic derivation.
+
+    This endpoint uses the DerivationEngine to compute derived stats
+    (like mood) from input stat values (like relationships) using the
+    semantic type mappings declared in registered stat packages.
+
+    This is stateless and does not modify any game sessions. It's the
+    authoritative way to preview what derived values the engine would
+    compute for given inputs.
+
+    Args:
+        request: Preview request with world_id, target stat, and input values
+        db: Database session (injected)
+
+    Returns:
+        Derived stat values computed by the DerivationEngine
+
+    Raises:
+        404: World not found
+        400: Invalid request or derivation not available
+
+    Example for mood derivation:
+        POST /preview-derived-stats
+        {
+            "world_id": 1,
+            "target_stat_id": "mood",
+            "input_values": {
+                "relationships": {
+                    "affinity": 75.0,
+                    "trust": 60.0,
+                    "chemistry": 70.0,
+                    "tension": 10.0
+                }
+            }
+        }
+
+        Response:
+        {
+            "target_stat_id": "mood",
+            "derived_values": {
+                "valence": 72.5,
+                "arousal": 60.0,
+                "label": "happy"
+            },
+            "sources_used": [
+                "core.relationships.relationships.affinity",
+                "core.relationships.relationships.chemistry"
+            ]
+        }
+    """
+    try:
+        # Ensure core packages are registered
+        register_core_stat_packages()
+
+        # Load world (for world-specific overrides, if any)
+        result = await db.execute(
+            select(GameWorld).where(GameWorld.id == request.world_id)
+        )
+        world = result.scalar_one_or_none()
+
+        if not world:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "World not found",
+                    "world_id": request.world_id,
+                },
+            )
+
+        # Determine package IDs
+        # Default to core packages that handle relationships -> mood derivation
+        package_ids = request.package_ids or [
+            "core.relationships",
+            "core.mood",
+            "core.personality",
+            "core.conversation_style",
+            "core.behavior_urgency",
+        ]
+
+        # Use derivation engine to compute derived stats
+        engine = get_derivation_engine()
+
+        # Compute all derivations
+        derived = engine.compute_derivations(
+            stat_values=request.input_values,
+            package_ids=package_ids,
+        )
+
+        # Check if target stat was derived
+        if request.target_stat_id not in derived:
+            # Try to find why derivation failed
+            available_inputs = list(request.input_values.keys())
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Derivation not available",
+                    "target_stat_id": request.target_stat_id,
+                    "available_inputs": available_inputs,
+                    "derived_stats": list(derived.keys()) if derived else [],
+                    "hint": (
+                        f"No derivation found for '{request.target_stat_id}' "
+                        f"from inputs: {available_inputs}. Ensure the required "
+                        "semantic types are available in the input stats."
+                    ),
+                },
+            )
+
+        # Extract sources used from the derivation result
+        # The DerivationEngine doesn't return sources in the dict, but we can infer
+        target_values = derived[request.target_stat_id]
+        sources_used: List[str] = []
+
+        # Infer sources from input stat definitions
+        for stat_id, values in request.input_values.items():
+            for axis_name in values.keys():
+                sources_used.append(f"input.{stat_id}.{axis_name}")
+
+        return PreviewDerivedStatsResponse(
+            target_stat_id=request.target_stat_id,
+            derived_values=target_values,
+            sources_used=sources_used,
         )
 
     except HTTPException:

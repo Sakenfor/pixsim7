@@ -138,6 +138,71 @@ export interface StatConfigProvider {
 }
 
 /**
+ * Result from derived stat preview
+ */
+export interface DerivedStatPreviewResult {
+  /** The target stat ID */
+  targetStatId: string;
+  /** The computed derived values (axis values + any transforms like label) */
+  derivedValues: Record<string, unknown>;
+  /** Which source axes contributed to the derivation */
+  sourcesUsed: string[];
+}
+
+/**
+ * Derived stat preview provider interface
+ *
+ * Allows PixSim7Core to call backend preview APIs for derived stat computation.
+ * The backend DerivationEngine is the single source of truth for derivations.
+ *
+ * **Usage Pattern:**
+ *
+ * Wire from stats-core previewClient in apps/main:
+ * ```ts
+ * import { previewDerivedStat } from '@pixsim7/shared.stats-core';
+ *
+ * const core = createPixSim7Core({
+ *   derivedStatPreviewProvider: {
+ *     async previewDerivedStat(worldId, targetStatId, inputValues) {
+ *       return previewDerivedStat({
+ *         worldId,
+ *         targetStatId,
+ *         inputValues,
+ *       });
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * 2. Preload derived stats before building brain state:
+ * ```ts
+ * await core.preloadDerivedStats(npcId);
+ * const brain = core.getNpcBrainState(npcId); // Uses preloaded derived stats
+ * ```
+ *
+ * **Implementation Notes:**
+ *
+ * - If not provided, derived stats return null (no local fallback)
+ * - Backend is authoritative for all derivation computations
+ * - Results are cached per NPC until relationship/session changes
+ */
+export interface DerivedStatPreviewProvider {
+  /**
+   * Preview derived stat computation using backend DerivationEngine
+   *
+   * @param worldId - World ID for context
+   * @param targetStatId - The derived stat to compute (e.g., "mood")
+   * @param inputValues - Input stat values: { statDefId: { axisName: value } }
+   * @returns Promise resolving to derived stat result, or null if not available
+   */
+  previewDerivedStat(
+    worldId: number,
+    targetStatId: string,
+    inputValues: Record<string, Record<string, number>>
+  ): Promise<DerivedStatPreviewResult | null>;
+}
+
+/**
  * NPC relationship state projection
  */
 export interface NpcRelationshipState {
@@ -170,6 +235,9 @@ export interface PixSim7CoreConfig {
   authProvider?: AuthProvider;
   npcPersonaProvider?: NpcPersonaProvider;
   statConfigProvider?: StatConfigProvider;
+  derivedStatPreviewProvider?: DerivedStatPreviewProvider;
+  /** World ID for backend preview calls */
+  worldId?: number;
 }
 
 /**
@@ -198,6 +266,11 @@ export interface PixSim7Core {
   preloadNpcPersona(npcId: number): Promise<void>;
   getCachedPersona(npcId: number): any | undefined;
   invalidatePersona(npcId: number): void;
+
+  // derived stats (backend-authoritative)
+  preloadDerivedStats(npcId: number): Promise<void>;
+  getCachedDerivedStats(npcId: number): Record<string, unknown> | undefined;
+  invalidateDerivedStats(npcId: number): void;
 
   // events
   on<K extends keyof CoreEventMap>(

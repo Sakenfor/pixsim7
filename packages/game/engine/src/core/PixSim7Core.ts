@@ -5,6 +5,7 @@ import type {
   PixSim7CoreConfig,
   CoreEventMap,
   NpcRelationshipState,
+  DerivedStatPreviewResult,
 } from './types';
 import {
   getNpcRelationshipState,
@@ -59,6 +60,10 @@ export class PixSim7Core implements IPixSim7Core {
   // Cache for NPC personas (fetched via NpcPersonaProvider)
   private personaCache = new Map<number, any>();
 
+  // Cache for derived stats (fetched via DerivedStatPreviewProvider)
+  // Key: npcId, Value: Map of targetStatId -> preview result
+  private derivedStatsCache = new Map<number, Map<string, DerivedStatPreviewResult>>();
+
   constructor(config: PixSim7CoreConfig = {}) {
     this.config = config;
   }
@@ -86,6 +91,7 @@ export class PixSim7Core implements IPixSim7Core {
     this.session = session;
     this.brainCache.clear();
     this.personaCache.clear(); // Clear persona cache on session load
+    this.derivedStatsCache.clear(); // Clear derived stats cache on session load
     this.events.emit('sessionLoaded', { session });
   }
 
@@ -193,6 +199,109 @@ export class PixSim7Core implements IPixSim7Core {
   }
 
   /**
+   * Preload derived stats for an NPC using the backend preview API
+   *
+   * This method calls the DerivedStatPreviewProvider to compute derived stats
+   * (like mood) from current relationship values. Results are cached for use
+   * by getNpcBrainState.
+   *
+   * Usage pattern:
+   * ```ts
+   * await core.preloadDerivedStats(npcId);
+   * const brain = core.getNpcBrainState(npcId); // Uses cached derived stats
+   * ```
+   *
+   * @param npcId - NPC ID to compute derived stats for
+   */
+  async preloadDerivedStats(npcId: number): Promise<void> {
+    if (!this.session) {
+      throw new Error('No session loaded');
+    }
+
+    if (!this.config.derivedStatPreviewProvider) {
+      // No provider configured - derived stats will be skipped
+      return;
+    }
+
+    const worldId = this.config.worldId ?? 0;
+    const relationship = this.getNpcRelationship(npcId);
+    if (!relationship) {
+      return;
+    }
+
+    // Build input values from relationship
+    const inputValues: Record<string, Record<string, number>> = {
+      relationships: relationship.values,
+    };
+
+    // Get stat definitions to find which stats need derivation
+    const statsConfig = this.getStatsConfig();
+    const derivedDefs = Object.entries(statsConfig.definitions).filter(
+      ([, def]) => def.source === 'derived'
+    );
+
+    if (derivedDefs.length === 0) {
+      return;
+    }
+
+    // Initialize cache for this NPC
+    if (!this.derivedStatsCache.has(npcId)) {
+      this.derivedStatsCache.set(npcId, new Map());
+    }
+    const npcCache = this.derivedStatsCache.get(npcId)!;
+
+    // Fetch each derived stat
+    for (const [defId] of derivedDefs) {
+      try {
+        const result = await this.config.derivedStatPreviewProvider.previewDerivedStat(
+          worldId,
+          defId,
+          inputValues
+        );
+        if (result) {
+          npcCache.set(defId, result);
+        }
+      } catch (error) {
+        // Log error but continue - derived stat will be skipped
+        console.warn(`Failed to preload derived stat '${defId}' for NPC ${npcId}:`, error);
+      }
+    }
+
+    // Invalidate brain cache so it rebuilds with new derived stats
+    this.brainCache.delete(npcId);
+  }
+
+  /**
+   * Get cached derived stats for an NPC (if available)
+   *
+   * @param npcId - NPC ID
+   * @returns Cached derived stats map or undefined
+   */
+  getCachedDerivedStats(npcId: number): Record<string, unknown> | undefined {
+    const npcCache = this.derivedStatsCache.get(npcId);
+    if (!npcCache || npcCache.size === 0) {
+      return undefined;
+    }
+
+    // Flatten to single record
+    const result: Record<string, unknown> = {};
+    for (const [statId, previewResult] of npcCache) {
+      result[statId] = previewResult.derivedValues;
+    }
+    return result;
+  }
+
+  /**
+   * Invalidate cached derived stats for an NPC
+   *
+   * @param npcId - NPC ID to invalidate derived stats for
+   */
+  invalidateDerivedStats(npcId: number): void {
+    this.derivedStatsCache.delete(npcId);
+    this.brainCache.delete(npcId);
+  }
+
+  /**
    * Get NPC brain state (data-driven BrainState)
    *
    * Builds a data-driven BrainState from session stats and relationships.
@@ -260,10 +369,12 @@ export class PixSim7Core implements IPixSim7Core {
     // Process each stat definition from config based on definition.source
     for (const [defId, definition] of Object.entries(statsConfig.definitions)) {
       const statSnapshot = this.buildStatSnapshot(
+        defId,
         definition,
         relationship,
         persona,
-        npcOverrides
+        npcOverrides,
+        npcId
       );
 
       if (statSnapshot) {
@@ -305,14 +416,16 @@ export class PixSim7Core implements IPixSim7Core {
    * Routes to appropriate builder based on definition.source:
    * - 'session.relationships': From session relationship state (backend-normalized)
    * - 'persona.traits': From persona provider + session overrides
-   * - 'derived': Computed from another stat using derivation config
+   * - 'derived': From cached preview API results (backend-authoritative)
    * - 'session.stats': From session.stats[defId]
    */
   private buildStatSnapshot(
+    defId: string,
     definition: StatDefinition,
     relationship: NpcRelationshipState | null,
     persona: any,
-    npcOverrides: Record<string, unknown> | undefined
+    npcOverrides: Record<string, unknown> | undefined,
+    npcId: number
   ): { snapshot: BrainStatSnapshot; sourcePackage: string; derived?: Record<string, unknown> } | null {
     const source = definition.source ?? 'session.stats';
 
@@ -324,7 +437,7 @@ export class PixSim7Core implements IPixSim7Core {
         return this.buildPersonalitySnapshot(definition, persona, npcOverrides);
 
       case 'derived':
-        return this.buildDerivedSnapshot(definition, relationship);
+        return this.buildDerivedSnapshot(defId, definition, npcId);
 
       case 'session.stats':
       default:
@@ -428,219 +541,61 @@ export class PixSim7Core implements IPixSim7Core {
   }
 
   /**
-   * Build derived stat snapshot using semantic type mapping
+   * Build derived stat snapshot from cached preview API results
    *
-   * Uses definition.derivation to determine the input stat and strategy.
-   * For 'semantic' strategy, uses semantic_type on input stat axes to determine
-   * which axes contribute to each derived axis.
+   * Uses preloaded derived stats from DerivedStatPreviewProvider.
+   * Backend DerivationEngine is the single source of truth for derivations.
    *
-   * This mirrors the backend's DerivationCapability approach.
+   * Returns null if:
+   * - No derivedStatPreviewProvider configured
+   * - No cached result for this stat (call preloadDerivedStats first)
    *
-   * TODO: Use backend preview API for authoritative computation
+   * No local fallback computation - backend is authoritative.
    */
   private buildDerivedSnapshot(
+    defId: string,
     definition: StatDefinition,
-    relationship: NpcRelationshipState | null
+    npcId: number
   ): { snapshot: BrainStatSnapshot; sourcePackage: string; derived?: Record<string, unknown> } | null {
-    const derivation = definition.derivation;
-    if (!derivation) return null;
+    // Get cached preview result for this NPC and stat
+    const npcCache = this.derivedStatsCache.get(npcId);
+    const previewResult = npcCache?.get(defId);
 
-    // Currently only 'semantic' strategy is supported
-    if (derivation.strategy !== 'semantic') return null;
-
-    // Get the input stat definition
-    const statsConfig = this.getStatsConfig();
-    const inputDef = statsConfig.definitions[derivation.input];
-    if (!inputDef) return null;
-
-    // Get input values based on input stat's source
-    let inputValues: Record<string, number> = {};
-    if (derivation.input === 'relationships' && relationship) {
-      inputValues = relationship.values;
-    } else {
-      // For other inputs, would need to look up from appropriate source
-      // Currently only relationship-based derivation is supported
+    if (!previewResult) {
+      // No cached result - derived stat will be skipped
+      // Caller should use preloadDerivedStats() first
       return null;
     }
 
-    // Build semantic type → input axes mapping
-    const semanticTypeToAxes = this.buildSemanticTypeMapping(inputDef);
+    const derivedValues = previewResult.derivedValues;
 
-    // Compute each derived axis dynamically from definition
+    // Extract axis values (numeric values from derived result)
     const axes: Record<string, number> = {};
     const tiers: Record<string, string> = {};
 
-    for (const derivedAxis of definition.axes) {
-      const axisName = derivedAxis.name;
-      const semanticType = derivedAxis.semantic_type;
-
-      // Find contributing input axes by semantic type
-      const value = this.computeDerivedAxisValue(
-        axisName,
-        semanticType,
-        semanticTypeToAxes,
-        inputValues,
-        derivedAxis.default_value ?? 50
-      );
-
-      axes[axisName] = value;
-      tiers[axisName] = this.computeTierFallback(value);
+    for (const axis of definition.axes) {
+      const value = derivedValues[axis.name];
+      if (typeof value === 'number') {
+        axes[axis.name] = value;
+        tiers[axis.name] = this.computeTierFallback(value);
+      }
     }
 
-    // Compute level using axes
-    const levelId = this.computeLevelFromAxes(axes, definition);
+    // Extract level ID from backend result
+    const levelId = typeof derivedValues.label === 'string'
+      ? derivedValues.label
+      : undefined;
 
     return {
       snapshot: { axes, tiers, levelId },
-      sourcePackage: `core.${definition.id}`,
+      sourcePackage: `backend.${defId}`,
       derived: {
-        [definition.id]: {
-          ...axes,
-          label: levelId,
-          source: 'semantic_derivation',
+        [defId]: {
+          ...derivedValues,
+          source: 'backend_derivation',
         },
       },
     };
-  }
-
-  /**
-   * Build mapping from semantic_type to relationship axes
-   */
-  private buildSemanticTypeMapping(
-    relationshipDef: StatDefinition | undefined
-  ): Map<string, { name: string; weight: number }[]> {
-    const mapping = new Map<string, { name: string; weight: number }[]>();
-
-    if (!relationshipDef?.axes) return mapping;
-
-    for (const axis of relationshipDef.axes) {
-      if (!axis.semantic_type) continue;
-
-      const existing = mapping.get(axis.semantic_type) || [];
-      existing.push({
-        name: axis.name,
-        weight: axis.semantic_weight ?? 1.0,
-      });
-      mapping.set(axis.semantic_type, existing);
-    }
-
-    return mapping;
-  }
-
-  /**
-   * Compute derived axis value from contributing relationship axes
-   *
-   * Uses semantic type to find contributors. Falls back to default if no match.
-   */
-  private computeDerivedAxisValue(
-    axisName: string,
-    semanticType: string | undefined,
-    semanticTypeToAxes: Map<string, { name: string; weight: number }[]>,
-    relationshipValues: Record<string, number>,
-    defaultValue: number
-  ): number {
-    // Try to find contributors by semantic type
-    if (semanticType) {
-      const contributors = semanticTypeToAxes.get(semanticType);
-      if (contributors && contributors.length > 0) {
-        return this.computeWeightedAverage(contributors, relationshipValues);
-      }
-    }
-
-    // Fallback: try common semantic type mappings for known mood axes
-    // This provides backward compatibility while config is being updated
-    // Matches backend mood_package.py: valence ← positive/negative sentiment, arousal ← arousal_source
-    const fallbackMappings: Record<string, string[]> = {
-      valence: ['positive_sentiment', 'negative_sentiment'],
-      arousal: ['arousal_source'],
-    };
-
-    const fallbackTypes = fallbackMappings[axisName];
-    if (fallbackTypes) {
-      const allContributors: { name: string; weight: number }[] = [];
-      for (const fallbackType of fallbackTypes) {
-        const contributors = semanticTypeToAxes.get(fallbackType);
-        if (contributors) {
-          allContributors.push(...contributors);
-        }
-      }
-      if (allContributors.length > 0) {
-        return this.computeWeightedAverage(allContributors, relationshipValues);
-      }
-    }
-
-    // No contributors found - return default
-    return defaultValue;
-  }
-
-  /**
-   * Compute weighted average from contributing axes
-   */
-  private computeWeightedAverage(
-    contributors: { name: string; weight: number }[],
-    values: Record<string, number>
-  ): number {
-    let weightedSum = 0;
-    let totalWeight = 0;
-
-    for (const contributor of contributors) {
-      const value = values[contributor.name] ?? 0;
-      weightedSum += value * contributor.weight;
-      totalWeight += contributor.weight;
-    }
-
-    if (totalWeight === 0) return 0;
-    return weightedSum / totalWeight;
-  }
-
-  /**
-   * Compute level from axes using definition levels
-   *
-   * Returns undefined if no matching level found.
-   */
-  private computeLevelFromAxes(
-    axes: Record<string, number>,
-    definition: StatDefinition
-  ): string | undefined {
-    // Try to match levels from definition (sorted by priority descending)
-    if (definition.levels && definition.levels.length > 0) {
-      const sortedLevels = [...definition.levels].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-
-      for (const level of sortedLevels) {
-        if (this.matchesLevelConditions(axes, level.conditions)) {
-          return level.id;
-        }
-      }
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Check if axes match level conditions
-   */
-  private matchesLevelConditions(
-    axes: Record<string, number>,
-    conditions: Record<string, { type: string; min_value?: number; max_value?: number }>
-  ): boolean {
-    for (const [axisName, condition] of Object.entries(conditions)) {
-      const value = axes[axisName];
-      if (value === undefined) return false;
-
-      switch (condition.type) {
-        case 'min':
-          if (condition.min_value !== undefined && value < condition.min_value) return false;
-          break;
-        case 'max':
-          if (condition.max_value !== undefined && value > condition.max_value) return false;
-          break;
-        case 'range':
-          if (condition.min_value !== undefined && value < condition.min_value) return false;
-          if (condition.max_value !== undefined && value > condition.max_value) return false;
-          break;
-      }
-    }
-    return true;
   }
 
   /**
