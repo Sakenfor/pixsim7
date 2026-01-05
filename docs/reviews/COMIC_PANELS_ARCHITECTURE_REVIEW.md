@@ -272,7 +272,7 @@ interface IAssetProvider {
 interface Asset {
   id: string;
   url: string;
-  type: AssetMediaType;
+  type: MediaType;
   source: AssetSource; // 'pre-made' | 'generated' | 'cached'
   metadata: AssetMetadata;
 }

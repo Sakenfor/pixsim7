@@ -67,3 +67,4 @@ The table below is auto-generated from `docs/app_map.sources.json`. Run `python 
 - [Repository Map](./repo-map.md) - Detailed codebase structure
 - [Architecture Overview](./architecture/) - System design documents
 - [Development Guide](../DEVELOPMENT_GUIDE.md) - Setup and workflow
+- [API Endpoints](./api/ENDPOINTS.md) - Generated API reference (run `pnpm docs:openapi`)
