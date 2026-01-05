@@ -38,6 +38,22 @@ export type { ConsoleEntry, ConsoleState, ConsoleActions } from './consoleStore'
 export { moduleRegistry } from './moduleRegistry';
 export type { ConsoleModule } from './moduleRegistry';
 
+// Manifest system exports
+export {
+  registerConsoleManifest,
+  registerConsoleManifests,
+  coreManifest,
+  statsManifest,
+  toolsManifest,
+} from './manifests';
+export type {
+  ConsoleManifest,
+  CategoryDeclaration,
+  OperationDeclaration,
+  OpsDeclaration,
+  ManifestRegistrationContext,
+} from './manifests';
+
 // Module exports (for custom registration)
 export { defaultModules, coreModule, workspaceModule, toolsModule } from './modules';
 export { statsModule } from './modules/stats';
@@ -49,9 +65,9 @@ export { registerCoreOps } from './registerCoreOps';
 export { registerToolOps } from './registerToolOps';
 export { registerStatsOps } from './registerStatsOps';
 
-import { createPixsimNamespace, initializeNamespace } from './namespace';
-import { moduleRegistry } from './moduleRegistry';
 import { getEditorContextSnapshot } from './getEditorContextSnapshot';
+import { moduleRegistry } from './moduleRegistry';
+import { createPixsimNamespace, initializeNamespace } from './namespace';
 
 /** Global pixsim namespace instance */
 export const pixsim = createPixsimNamespace();
