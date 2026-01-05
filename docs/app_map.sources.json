@@ -1,0 +1,319 @@
+{
+  "$schema": "./app_map.schema.json",
+  "version": "1.0.0",
+  "description": "App Map registry - source of truth for feature documentation and validation",
+  "entries": [
+    {
+      "id": "automation",
+      "label": "Browser Automation",
+      "docs": [
+        "docs/backend/automation.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/automation/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.automation",
+        "pixsim7.backend.main.api.v1.device_agents",
+        "pixsim7.backend.main.services.automation"
+      ],
+      "routes": [
+        "/automation"
+      ]
+    },
+    {
+      "id": "assets",
+      "label": "Asset Management",
+      "docs": [],
+      "frontend": [
+        "apps/main/src/features/assets/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.assets",
+        "pixsim7.backend.main.api.v1.assets_bulk",
+        "pixsim7.backend.main.api.v1.assets_tags",
+        "pixsim7.backend.main.api.v1.assets_versions",
+        "pixsim7.backend.main.api.v1.assets_maintenance",
+        "pixsim7.backend.main.services.asset"
+      ],
+      "routes": [
+        "/assets",
+        "/gallery"
+      ]
+    },
+    {
+      "id": "generation",
+      "label": "Image/Video Generation",
+      "docs": [
+        "docs/systems/generation/overview.md",
+        "docs/systems/generation/GENERATION_GUIDE.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/generation/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.generations",
+        "pixsim7.backend.main.services.generation"
+      ],
+      "routes": [
+        "/generate"
+      ]
+    },
+    {
+      "id": "game-worlds",
+      "label": "Game Worlds",
+      "docs": [
+        "docs/backend/game.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/worldTools/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.game_worlds",
+        "pixsim7.backend.main.api.v1.game_sessions",
+        "pixsim7.backend.main.domain.game"
+      ],
+      "routes": [
+        "/worlds",
+        "/simulation"
+      ]
+    },
+    {
+      "id": "interactions",
+      "label": "NPC Interactions",
+      "docs": [
+        "docs/narrative/INTERACTION_AUTHORING_GUIDE.md",
+        "docs/game/INTERACTION_PLUGIN_MANIFEST.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/interactions/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.npc_interactions",
+        "pixsim7.backend.main.api.v1.npc_state",
+        "pixsim7.backend.main.domain.game.interactions"
+      ],
+      "routes": [
+        "/interaction-studio"
+      ]
+    },
+    {
+      "id": "graph",
+      "label": "Scene/Arc Graphs",
+      "docs": [
+        "docs/game/NPC_RESPONSE_GRAPH_DESIGN.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/graph/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.action_blocks",
+        "pixsim7.backend.main.api.v1.game_scenes",
+        "pixsim7.backend.main.api.v1.character_graph"
+      ],
+      "routes": [
+        "/graph-editor"
+      ]
+    },
+    {
+      "id": "prompts",
+      "label": "Prompt System",
+      "docs": [
+        "docs/prompts/SEMANTIC_PACKS_IMPLEMENTATION.md",
+        "docs/prompts/PROMPT_SYSTEM_REVIEW.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/prompts/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.prompts",
+        "pixsim7.backend.main.api.v1.semantic_packs",
+        "pixsim7.backend.main.api.v1.dev_prompt_categories"
+      ],
+      "routes": [
+        "/prompt-lab"
+      ]
+    },
+    {
+      "id": "providers",
+      "label": "Provider Accounts",
+      "docs": [
+        "docs/systems/generation/provider-accounts.md",
+        "docs/systems/generation/provider-capabilities.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/providers/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.providers",
+        "pixsim7.backend.main.api.v1.accounts",
+        "pixsim7.backend.main.api.v1.accounts_credits",
+        "pixsim7.backend.main.services.provider"
+      ],
+      "routes": [
+        "/providers",
+        "/accounts"
+      ]
+    },
+    {
+      "id": "workspace",
+      "label": "Workspace/Dockview",
+      "docs": [
+        "docs/architecture/README.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/workspace/",
+        "apps/main/src/lib/dockview/"
+      ],
+      "backend": [],
+      "routes": []
+    },
+    {
+      "id": "panels",
+      "label": "Panel System",
+      "docs": [
+        "docs/frontend/COMPONENTS.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/panels/"
+      ],
+      "backend": [],
+      "routes": []
+    },
+    {
+      "id": "hud",
+      "label": "HUD System",
+      "docs": [
+        "docs/ui/HUD_LAYOUT_DESIGNER.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/hud/"
+      ],
+      "backend": [],
+      "routes": []
+    },
+    {
+      "id": "simulation",
+      "label": "Simulation Playground",
+      "docs": [
+        "docs/backend/simulation.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/simulation/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.services.simulation"
+      ],
+      "routes": [
+        "/simulation-playground"
+      ]
+    },
+    {
+      "id": "plugins",
+      "label": "Plugin System",
+      "docs": [
+        "docs/systems/plugins/PLUGIN_SYSTEM.md",
+        "docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/plugins/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.plugins",
+        "pixsim7.backend.main.infrastructure.plugins"
+      ],
+      "routes": [
+        "/plugins"
+      ]
+    },
+    {
+      "id": "narrative",
+      "label": "Narrative Engine",
+      "docs": [
+        "docs/narrative/ENGINE_SPECIFICATION.md",
+        "docs/narrative/ENGINE_USAGE.md",
+        "docs/narrative/RUNTIME.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/narrative/",
+        "packages/game/engine/src/narrative/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.services.narrative"
+      ],
+      "routes": []
+    },
+    {
+      "id": "control-center",
+      "label": "Control Center",
+      "docs": [
+        "docs/controls/CONTROL_CUBES.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/controlCenter/"
+      ],
+      "backend": [],
+      "routes": []
+    },
+    {
+      "id": "gallery",
+      "label": "Gallery",
+      "docs": [],
+      "frontend": [
+        "apps/main/src/features/gallery/"
+      ],
+      "backend": [],
+      "routes": [
+        "/gallery"
+      ]
+    },
+    {
+      "id": "gizmos",
+      "label": "Gizmo System",
+      "docs": [
+        "docs/ui/GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md"
+      ],
+      "frontend": [
+        "apps/main/src/features/gizmos/",
+        "apps/main/src/lib/game/gizmos/",
+        "packages/scene/gizmos/"
+      ],
+      "backend": [],
+      "routes": []
+    },
+    {
+      "id": "intimacy",
+      "label": "Intimacy System",
+      "docs": [],
+      "frontend": [
+        "apps/main/src/features/intimacy/"
+      ],
+      "backend": [],
+      "routes": []
+    },
+    {
+      "id": "scene",
+      "label": "Scene Management",
+      "docs": [],
+      "frontend": [
+        "apps/main/src/features/scene/"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.game_scenes"
+      ],
+      "routes": []
+    },
+    {
+      "id": "settings",
+      "label": "Settings",
+      "docs": [],
+      "frontend": [
+        "apps/main/src/features/settings/"
+      ],
+      "backend": [],
+      "routes": [
+        "/settings"
+      ]
+    }
+  ]
+}

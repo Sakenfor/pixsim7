@@ -801,6 +801,11 @@ conda activate pixsim7
 
 Documentation is a first-class concern in PixSim7. Follow these guidelines:
 
+#### **Documentation Tooling**
+
+- **Validate paths**: `python scripts/docs_check.py` - Checks all paths in docs exist
+- **Update App Map**: `python update_app_map.py` - Regenerates APP_MAP.md from registry
+
 #### **Understanding the Documentation Lifecycle**
 
 See `DOCUMENTATION_CHANGELOG.md` for complete lifecycle and taxonomy details. Quick reference:
