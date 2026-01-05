@@ -4,7 +4,7 @@
  * Pure helper functions for automation action handling.
  */
 
-import { ActionType, AutomationStatus } from '../types';
+import { ActionType } from '../types';
 import type { ActionDefinition, AutomationExecution } from '../types';
 import {
   NESTED_ACTION_TYPES,
@@ -157,7 +157,7 @@ export function getActionTestStatus(
   }
 
   // For FAILED status, check if this action matches the error path
-  if (execution.status === AutomationStatus.FAILED) {
+  if (execution.status === 'failed') {
     if (errorPath && errorPath.length > depth) {
       // Check if this action is in the error path
       // Adjust error path index relative to tested range
@@ -176,7 +176,7 @@ export function getActionTestStatus(
   }
 
   // For COMPLETED status - only mark tested actions as completed
-  if (execution.status === AutomationStatus.COMPLETED) {
+  if (execution.status === 'completed') {
     if (depth === 0) {
       return isInTestedRange(index, testedRange) ? 'completed' : 'idle';
     }
@@ -184,7 +184,7 @@ export function getActionTestStatus(
   }
 
   // For RUNNING status - only track at top level since we don't have nested progress
-  if (execution.status === AutomationStatus.RUNNING) {
+  if (execution.status === 'running') {
     if (depth === 0) {
       const currentIndex = execution.current_action_index ?? 0;
       // Adjust current index relative to tested range
@@ -198,7 +198,7 @@ export function getActionTestStatus(
     return 'idle';
   }
 
-  if (execution.status === AutomationStatus.PENDING) {
+  if (execution.status === 'pending') {
     if (depth === 0) {
       return isInTestedRange(index, testedRange) ? 'pending' : 'idle';
     }

@@ -1,4 +1,4 @@
-import { type AutomationExecution, AutomationStatus } from '../types';
+import { type AutomationExecution, type AutomationStatus } from '../types';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
 
 interface ExecutionCardProps {
@@ -7,19 +7,19 @@ interface ExecutionCardProps {
 }
 
 const statusColors: Record<AutomationStatus, 'blue' | 'green' | 'red' | 'gray' | 'purple'> = {
-  [AutomationStatus.PENDING]: 'gray',
-  [AutomationStatus.RUNNING]: 'blue',
-  [AutomationStatus.COMPLETED]: 'green',
-  [AutomationStatus.FAILED]: 'red',
-  [AutomationStatus.CANCELLED]: 'gray',
+  pending: 'gray',
+  running: 'blue',
+  completed: 'green',
+  failed: 'red',
+  cancelled: 'gray',
 };
 
 const statusIcons: Record<AutomationStatus, string> = {
-  [AutomationStatus.PENDING]: '⏳',
-  [AutomationStatus.RUNNING]: '▶️',
-  [AutomationStatus.COMPLETED]: '✅',
-  [AutomationStatus.FAILED]: '❌',
-  [AutomationStatus.CANCELLED]: '⏹️',
+  pending: '⏳',
+  running: '▶️',
+  completed: '✅',
+  failed: '❌',
+  cancelled: '⏹️',
 };
 
 export function ExecutionCard({ execution, onViewDetails }: ExecutionCardProps) {
@@ -61,7 +61,7 @@ export function ExecutionCard({ execution, onViewDetails }: ExecutionCardProps) 
       </div>
 
       {/* Progress */}
-      {execution.status === AutomationStatus.RUNNING && execution.total_actions && (
+      {execution.status === 'running' && execution.total_actions && (
         <div className="space-y-1">
           <div className="flex justify-between text-sm">
             <span className="text-gray-600 dark:text-gray-400">Progress</span>
@@ -79,7 +79,7 @@ export function ExecutionCard({ execution, onViewDetails }: ExecutionCardProps) 
       )}
 
       {/* Error Message */}
-      {execution.status === AutomationStatus.FAILED && execution.error_message && (
+      {execution.status === 'failed' && execution.error_message && (
         <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
           <span className="font-medium">Error:</span> {execution.error_message}
           {execution.error_action_index !== undefined && (

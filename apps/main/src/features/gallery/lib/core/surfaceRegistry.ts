@@ -14,6 +14,7 @@
 import type { ComponentType } from 'react';
 import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
 import type { MediaCardBadgeConfig } from '../../components/media/MediaCard';
+import type { ApiComponents } from '@pixsim7/shared.types';
 
 /**
  * Gallery surface identifier
@@ -36,9 +37,9 @@ export type GallerySurfaceCategory =
   | 'custom';
 
 /**
- * Media types supported by surfaces
+ * Media types supported by surfaces - imported from backend OpenAPI schema.
  */
-export type MediaType = 'image' | 'video' | 'audio' | '3d_model';
+export type MediaType = ApiComponents['schemas']['MediaType'];
 
 /**
  * Gallery surface definition

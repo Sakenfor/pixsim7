@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { type AutomationExecution, AutomationStatus } from '../types';
+import { type AutomationExecution, type AutomationStatus } from '../types';
 import { automationService } from '../lib/core';
 import { Button, Panel } from '@pixsim7/shared.ui';
 import { ExecutionCard } from './ExecutionCard';
@@ -44,7 +44,7 @@ export function ExecutionList() {
     // Auto-refresh every 5 seconds for running executions
     const interval = setInterval(() => {
       if (executionsRef.current.some(e =>
-        e.status === AutomationStatus.RUNNING || e.status === AutomationStatus.PENDING
+        e.status === 'running' || e.status === 'pending'
       )) {
         loadExecutions();
       }
@@ -59,20 +59,20 @@ export function ExecutionList() {
 
   const statusCounts = {
     total: executions.length,
-    pending: executions.filter(e => e.status === AutomationStatus.PENDING).length,
-    running: executions.filter(e => e.status === AutomationStatus.RUNNING).length,
-    completed: executions.filter(e => e.status === AutomationStatus.COMPLETED).length,
-    failed: executions.filter(e => e.status === AutomationStatus.FAILED).length,
-    cancelled: executions.filter(e => e.status === AutomationStatus.CANCELLED).length,
+    pending: executions.filter(e => e.status === 'pending').length,
+    running: executions.filter(e => e.status === 'running').length,
+    completed: executions.filter(e => e.status === 'completed').length,
+    failed: executions.filter(e => e.status === 'failed').length,
+    cancelled: executions.filter(e => e.status === 'cancelled').length,
   };
 
   const filterOptions: Array<{ label: string; value: AutomationStatus | 'ALL' }> = [
     { label: 'ALL', value: 'ALL' },
-    { label: 'PENDING', value: AutomationStatus.PENDING },
-    { label: 'RUNNING', value: AutomationStatus.RUNNING },
-    { label: 'COMPLETED', value: AutomationStatus.COMPLETED },
-    { label: 'FAILED', value: AutomationStatus.FAILED },
-    { label: 'CANCELLED', value: AutomationStatus.CANCELLED },
+    { label: 'PENDING', value: 'pending' },
+    { label: 'RUNNING', value: 'running' },
+    { label: 'COMPLETED', value: 'completed' },
+    { label: 'FAILED', value: 'failed' },
+    { label: 'CANCELLED', value: 'cancelled' },
   ];
 
   const handleViewDetails = (execution: AutomationExecution) => {
@@ -155,14 +155,14 @@ export function ExecutionList() {
                 Clear Completed & Failed ({statusCounts.completed + statusCounts.failed})
               </button>
               <button
-                onClick={() => handleClearExecutions(AutomationStatus.COMPLETED)}
+                onClick={() => handleClearExecutions('completed')}
                 disabled={clearing || statusCounts.completed === 0}
                 className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
               >
                 Clear Completed Only ({statusCounts.completed})
               </button>
               <button
-                onClick={() => handleClearExecutions(AutomationStatus.FAILED)}
+                onClick={() => handleClearExecutions('failed')}
                 disabled={clearing || statusCounts.failed === 0}
                 className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg text-sm"
               >

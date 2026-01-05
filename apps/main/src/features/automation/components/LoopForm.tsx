@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import {
   type ExecutionLoop,
-  ExecutionLoopStatus,
-  PresetExecutionMode,
-  AccountSelectionMode,
+  type PresetExecutionMode,
+  type LoopSelectionMode,
 } from '../types';
 import { Button, Panel, useToast } from '@pixsim7/shared.ui';
 
@@ -17,10 +16,10 @@ export function LoopForm({ loop, onSave, onCancel }: LoopFormProps) {
   const [name, setName] = useState(loop?.name ?? '');
   const [description, setDescription] = useState(loop?.description ?? '');
   const [presetExecutionMode, setPresetExecutionMode] = useState<PresetExecutionMode>(
-    loop?.preset_execution_mode ?? PresetExecutionMode.SINGLE
+    loop?.preset_execution_mode ?? 'SINGLE'
   );
-  const [selectionMode, setSelectionMode] = useState<AccountSelectionMode>(
-    loop?.selection_mode ?? AccountSelectionMode.ROUND_ROBIN
+  const [selectionMode, setSelectionMode] = useState<LoopSelectionMode>(
+    loop?.selection_mode ?? 'round_robin'
   );
   const [delayBetweenExecutions, setDelayBetweenExecutions] = useState(
     loop?.delay_between_executions ?? 60
@@ -60,7 +59,7 @@ export function LoopForm({ loop, onSave, onCancel }: LoopFormProps) {
         description: description.trim() || undefined,
         preset_execution_mode: presetExecutionMode,
         selection_mode: selectionMode,
-        status: loop?.status ?? ExecutionLoopStatus.PAUSED,
+        status: loop?.status ?? 'paused',
         is_enabled: loop?.is_enabled ?? true,
         delay_between_executions: delayBetweenExecutions,
         max_executions_per_day: maxExecutionsPerDay,
@@ -132,14 +131,14 @@ export function LoopForm({ loop, onSave, onCancel }: LoopFormProps) {
               onChange={(e) => setPresetExecutionMode(e.target.value as PresetExecutionMode)}
               className={inputClass}
             >
-              <option value={PresetExecutionMode.SINGLE}>Single - Always run one preset</option>
-              <option value={PresetExecutionMode.SHARED_LIST}>Shared List - Cycle through preset list</option>
-              <option value={PresetExecutionMode.PER_ACCOUNT}>Per Account - Different presets per account</option>
+              <option value="SINGLE">Single - Always run one preset</option>
+              <option value="SHARED_LIST">Shared List - Cycle through preset list</option>
+              <option value="PER_ACCOUNT">Per Account - Different presets per account</option>
             </select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {presetExecutionMode === PresetExecutionMode.SINGLE && 'Run the same preset for all accounts'}
-              {presetExecutionMode === PresetExecutionMode.SHARED_LIST && 'Cycle through a list of presets for all accounts'}
-              {presetExecutionMode === PresetExecutionMode.PER_ACCOUNT && 'Configure different preset lists for each account'}
+              {presetExecutionMode === 'SINGLE' && 'Run the same preset for all accounts'}
+              {presetExecutionMode === 'SHARED_LIST' && 'Cycle through a list of presets for all accounts'}
+              {presetExecutionMode === 'PER_ACCOUNT' && 'Configure different preset lists for each account'}
             </p>
           </div>
 
@@ -149,13 +148,13 @@ export function LoopForm({ loop, onSave, onCancel }: LoopFormProps) {
             </label>
             <select
               value={selectionMode}
-              onChange={(e) => setSelectionMode(e.target.value as AccountSelectionMode)}
+              onChange={(e) => setSelectionMode(e.target.value as LoopSelectionMode)}
               className={inputClass}
             >
-              <option value={AccountSelectionMode.MOST_CREDITS}>Most Credits - Select account with highest credits</option>
-              <option value={AccountSelectionMode.LEAST_CREDITS}>Least Credits - Select account with lowest credits</option>
-              <option value={AccountSelectionMode.ROUND_ROBIN}>Round Robin - Cycle through accounts by ID</option>
-              <option value={AccountSelectionMode.SPECIFIC_ACCOUNTS}>Specific Accounts - Choose from predefined list</option>
+              <option value="most_credits">Most Credits - Select account with highest credits</option>
+              <option value="least_credits">Least Credits - Select account with lowest credits</option>
+              <option value="round_robin">Round Robin - Cycle through accounts by ID</option>
+              <option value="specific_accounts">Specific Accounts - Choose from predefined list</option>
             </select>
           </div>
         </div>

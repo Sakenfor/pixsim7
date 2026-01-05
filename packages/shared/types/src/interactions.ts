@@ -12,31 +12,40 @@
  * - Extend BaseInteractionConfig with gating/outcome metadata
  * - Align with action block BranchIntent concept
  * - Store definitions in GameWorld.meta (no new DB tables)
+ *
+ * Type Alignment:
+ * - Backend source: pixsim7/backend/main/domain/game/interactions/npc_interactions.py
+ * - These types mirror the Python Pydantic models for API compatibility
+ * - OpenAPI types (ApiComponents['schemas']['InteractionSurface'] etc.) are auto-generated
+ *   but may be stale. Run `pnpm openapi:gen` to regenerate after backend changes.
+ * - Frontend extends backend types with 'ambient' surface (frontend-only)
  */
 
-import type { RelationshipDelta } from './game';
+import type { components } from './openapi.generated';
 
 // ===================
 // Core Enums
 // ===================
 
 /**
- * Interaction surface - where/how the interaction is presented
- * Aligns with existing plugin uiMode concept
+ * Backend interaction surface enum - from OpenAPI.
+ * Values: 'inline' | 'dialogue' | 'scene' | 'notification' | 'menu'
  */
-export type NpcInteractionSurface =
-  | 'inline'        // Small text/choice UI (e.g. 2D HUD notification)
-  | 'dialogue'      // Dialogue box / chat window (opens conversation)
-  | 'scene'         // Full scene transition (launches scene graph)
-  | 'notification'  // Off-screen ping, message queue
-  | 'menu'          // Context menu / action list
-  | 'ambient';      // Background/passive interaction
+export type InteractionSurface = components['schemas']['InteractionSurface'];
 
 /**
- * Branch intent - narrative direction control
- * Reused from action blocks system
+ * Extended interaction surface - includes frontend-only 'ambient' value.
+ * Use this type in frontend code that may need the ambient surface.
  */
-export type NpcInteractionBranchIntent =
+export type NpcInteractionSurface =
+  | InteractionSurface
+  | 'ambient';      // Background/passive interaction (frontend-only)
+
+/**
+ * Branch intent - narrative direction control.
+ * NOTE: Not yet exposed in OpenAPI. Manually defined to match backend BranchIntent enum.
+ */
+export type BranchIntent =
   | 'escalate'      // Increase intimacy/intensity
   | 'cool_down'     // Reduce tension/intensity
   | 'side_branch'   // Divergent event (interruption, etc.)
@@ -44,20 +53,17 @@ export type NpcInteractionBranchIntent =
   | 'resolve';      // Resolve tension/conflict
 
 /**
- * Interaction availability reason codes
+ * Branch intent alias for NPC interactions.
  */
-export type InteractionDisabledReason =
-  | 'relationship_too_low'
-  | 'relationship_too_high'
-  | 'mood_incompatible'
-  | 'npc_unavailable'      // Based on behavior/schedule
-  | 'npc_busy'             // Based on current activity
-  | 'time_incompatible'
-  | 'flag_required'
-  | 'flag_forbidden'
-  | 'cooldown_active'
-  | 'location_incompatible'
-  | 'custom';
+export type NpcInteractionBranchIntent = BranchIntent;
+
+/**
+ * Interaction availability reason codes - from OpenAPI.
+ * NOTE: OpenAPI may be stale. Backend source has: mood_incompatible, npc_unavailable,
+ * npc_busy, time_incompatible, flag_required, flag_forbidden, cooldown_active,
+ * location_incompatible, stat_gating_failed, custom
+ */
+export type InteractionDisabledReason = components['schemas']['DisabledReason'];
 
 // ===================
 // Gating Schema
@@ -80,34 +86,35 @@ export interface TimeOfDayConstraint {
 }
 
 /**
- * Relationship gating constraints
- * Uses world-defined tier IDs and metric thresholds
+ * Generic stat gating constraint
  */
-export interface RelationshipGating {
-  /** Minimum relationship tier (from world's tier schema) */
+export interface StatAxisGate {
+  /** Stat definition ID (e.g., "relationships") */
+  definitionId: string;
+  /** Stat axis name (e.g., "affinity") */
+  axis?: string;
+  /** Minimum numeric threshold */
+  minValue?: number;
+  /** Maximum numeric threshold */
+  maxValue?: number;
+  /** Minimum tier ID */
   minTierId?: string;
-  /** @deprecated Use minTierId */
-  minTier?: string;
-
-  /** Maximum relationship tier (interaction disabled if exceeded) */
+  /** Maximum tier ID */
   maxTierId?: string;
-  /** @deprecated Use maxTierId */
-  maxTier?: string;
+  /** Minimum level ID */
+  minLevelId?: string;
+  /** Entity scope */
+  entityType?: 'npc' | 'session' | 'world';
+  /** NPC ID when entityType is "npc" */
+  npcId?: number;
+}
 
-  /** Minimum affinity value (0-100) */
-  minAffinity?: number;
-
-  /** Minimum trust value (0-100) */
-  minTrust?: number;
-
-  /** Minimum chemistry value (0-100) */
-  minChemistry?: number;
-
-  /** Maximum tension value (0-100, interaction disabled if exceeded) */
-  maxTension?: number;
-
-  /** Minimum intimacy level (from world's intimacy schema) */
-  minIntimacyLevel?: string;
+/**
+ * Stat-based gating constraints
+ */
+export interface StatGating {
+  allOf?: StatAxisGate[];
+  anyOf?: StatAxisGate[];
 }
 
 /**
@@ -149,8 +156,8 @@ export interface MoodGating {
  * Unified gating configuration for an interaction
  */
 export interface InteractionGating {
-  /** Relationship constraints */
-  relationship?: RelationshipGating;
+  /** Stat-based constraints */
+  statGating?: StatGating;
 
   /** Time of day constraints */
   timeOfDay?: TimeOfDayConstraint;
@@ -178,7 +185,21 @@ export interface InteractionGating {
 // Outcome Schema
 // ===================
 
-// RelationshipDelta is exported from game.ts to avoid duplicate
+/**
+ * Generic stat delta applied by interactions
+ */
+export interface StatDelta {
+  /** Stat package ID (e.g., "core.relationships") */
+  packageId: string;
+  /** Stat definition ID within the package */
+  definitionId?: string;
+  /** Map of axis_name -> delta_value */
+  axes: Record<string, number>;
+  /** Entity scope for this stat delta */
+  entityType?: 'npc' | 'session' | 'world';
+  /** NPC ID when entityType is "npc" */
+  npcId?: number;
+}
 
 /**
  * Flag changes to apply to session
@@ -284,8 +305,8 @@ export interface GenerationLaunch {
  * Unified outcome configuration for an interaction
  */
 export interface InteractionOutcome {
-  /** Relationship metric changes */
-  relationshipDeltas?: RelationshipDelta;
+  /** Stat metric changes */
+  statDeltas?: StatDelta[];
 
   /** Session flag changes */
   flagChanges?: FlagChanges;
@@ -450,15 +471,8 @@ export interface InteractionContext {
   /** Mood tags */
   moodTags?: string[];
 
-  /** Relationship snapshot */
-  relationshipSnapshot?: {
-    affinity?: number;
-    trust?: number;
-    chemistry?: number;
-    tension?: number;
-    tierId?: string;
-    intimacyLevelId?: string;
-  };
+  /** Stat snapshot (definitionId -> entityKey -> stats) */
+  statsSnapshot?: Record<string, Record<string, unknown>>;
 
   /** Current world time (seconds) */
   worldTime?: number;
@@ -521,8 +535,8 @@ export interface ExecuteInteractionResponse {
   /** Result message */
   message?: string;
 
-  /** Relationship deltas applied */
-  relationshipDeltas?: RelationshipDelta;
+  /** Stat deltas applied */
+  statDeltas?: StatDelta[];
 
   /** Flag changes applied */
   flagChanges?: string[];
@@ -637,8 +651,9 @@ export interface NpcInteractionIntent {
 export type InteractionInbox = NpcInteractionIntent[];
 
 // ===================
-// Backwards Compatibility Aliases
+// Backwards Compatibility Notes
 // ===================
-
-/** @deprecated Use NpcInteractionSurface */
-export type InteractionSurface = NpcInteractionSurface;
+//
+// InteractionSurface is now the base OpenAPI type (backend values only).
+// NpcInteractionSurface extends it with frontend-only 'ambient' value.
+// Use NpcInteractionSurface when you need the full set including ambient.

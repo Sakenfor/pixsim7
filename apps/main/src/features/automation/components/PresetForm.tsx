@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, type AndroidDevice, AutomationStatus, ActionType, DeviceStatus } from '../types';
+import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, type AndroidDevice, ActionType } from '../types';
 import { Button, Panel, Modal, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';
@@ -7,7 +7,7 @@ import { getAccounts } from '@features/providers';
 import type { ProviderAccount } from '@features/providers';
 import { automationService } from '@features/automation';
 import { API_BASE_URL } from '@lib/api/client';
-import { authService } from '@lib/auth/authService';
+import { authService } from '@lib/auth';
 
 interface PresetFormProps {
   preset?: AppActionPreset;
@@ -62,7 +62,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
 
   // Poll for test execution status
   useEffect(() => {
-    if (!testExecution || testExecution.status === AutomationStatus.COMPLETED || testExecution.status === AutomationStatus.FAILED) {
+    if (!testExecution || testExecution.status === 'completed' || testExecution.status === 'failed') {
       return;
     }
 
@@ -70,10 +70,10 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
       try {
         const updated = await automationService.getExecution(testExecution.id);
         setTestExecution(updated);
-        if (updated.status === AutomationStatus.COMPLETED) {
+        if (updated.status === 'completed') {
           toast.success(`Test completed: ${updated.total_actions} actions executed`);
           setTesting(false);
-        } else if (updated.status === AutomationStatus.FAILED) {
+        } else if (updated.status === 'failed') {
           toast.error(`Test failed at action ${(updated.error_action_index ?? 0) + 1}: ${updated.error_message}`);
           setTesting(false);
         }
@@ -348,7 +348,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
               disabled={testing}
               title="Device to run test on"
             >
-              {devices.some(d => d.is_enabled && d.status === DeviceStatus.ONLINE) ? (
+              {devices.some(d => d.is_enabled && d.status === 'online') ? (
                 <option value="auto">📱 Auto (first available)</option>
               ) : (
                 <option value="auto" disabled>📱 None available</option>
@@ -359,11 +359,11 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
                   <option
                     key={device.id}
                     value={device.id}
-                    disabled={device.status !== DeviceStatus.ONLINE}
+                    disabled={device.status !== 'online'}
                   >
-                    {device.status === DeviceStatus.ONLINE ? '🟢' : device.status === DeviceStatus.BUSY ? '🟡' : '🔴'}{' '}
+                    {device.status === 'online' ? '🟢' : device.status === 'busy' ? '🟡' : '🔴'}{' '}
                     {device.name}
-                    {device.status !== DeviceStatus.ONLINE && ` (${device.status})`}
+                    {device.status !== 'online' && ` (${device.status})`}
                   </option>
                 ))}
             </select>
@@ -391,20 +391,20 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
             {testExecution && (
               <>
                 <span className={`text-xs px-2 py-1 rounded ${
-                  testExecution.status === AutomationStatus.RUNNING ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
-                  testExecution.status === AutomationStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
-                  testExecution.status === AutomationStatus.FAILED ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                  testExecution.status === 'running' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
+                  testExecution.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                  testExecution.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
                   'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
                 }`}>
-                  {testExecution.status === AutomationStatus.RUNNING
+                  {testExecution.status === 'running'
                     ? `Running: ${(testExecution.current_action_index ?? 0) + 1}/${testExecution.total_actions}`
-                    : testExecution.status === AutomationStatus.COMPLETED
+                    : testExecution.status === 'completed'
                       ? `✓ Completed (${testExecution.total_actions} actions)`
-                      : testExecution.status === AutomationStatus.FAILED
+                      : testExecution.status === 'failed'
                         ? `✕ Failed at #${(testExecution.error_action_index ?? 0) + 1}`
                         : testExecution.status}
                 </span>
-                {(testExecution.status === AutomationStatus.COMPLETED || testExecution.status === AutomationStatus.FAILED) && (
+                {(testExecution.status === 'completed' || testExecution.status === 'failed') && (
                   <button
                     type="button"
                     onClick={() => {
@@ -421,7 +421,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
             )}
           </div>
           {/* Error message display */}
-          {testExecution?.status === AutomationStatus.FAILED && testExecution.error_message && (
+          {testExecution?.status === 'failed' && testExecution.error_message && (
             <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300">
               <strong>Error at action {formatActionPath(testExecution.error_details?.action_path)}:</strong> {testExecution.error_message}
             </div>

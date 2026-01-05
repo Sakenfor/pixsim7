@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DeviceCard } from './DeviceCard';
-import { type AndroidDevice, DeviceStatus } from '../types';
+import { type AndroidDevice, type DeviceStatus } from '../types';
 import { automationService } from '../lib/core';
 import { logEvent } from '@lib/utils/logging';
 
@@ -82,10 +82,10 @@ export function DeviceList() {
 
   const deviceCounts = {
     total: devices.length,
-    online: devices.filter(d => d.status === DeviceStatus.ONLINE).length,
-    busy: devices.filter(d => d.status === DeviceStatus.BUSY).length,
-    offline: devices.filter(d => d.status === DeviceStatus.OFFLINE).length,
-    error: devices.filter(d => d.status === DeviceStatus.ERROR).length,
+    online: devices.filter(d => d.status === 'online').length,
+    busy: devices.filter(d => d.status === 'busy').length,
+    offline: devices.filter(d => d.status === 'offline').length,
+    error: devices.filter(d => d.status === 'error').length,
   };
 
   if (loading && devices.length === 0) {
@@ -218,7 +218,7 @@ export function DeviceList() {
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
         <div className="flex gap-2">
-          {(['ALL', DeviceStatus.ONLINE, DeviceStatus.BUSY, DeviceStatus.OFFLINE, DeviceStatus.ERROR] as const).map((status) => (
+          {(['ALL', 'online', 'busy', 'offline', 'error'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}

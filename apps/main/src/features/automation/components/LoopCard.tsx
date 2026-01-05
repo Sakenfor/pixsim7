@@ -1,4 +1,4 @@
-import { type ExecutionLoop, ExecutionLoopStatus } from '../types';
+import { type ExecutionLoop, type LoopStatus } from '../types';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
 
 interface LoopCardProps {
@@ -10,16 +10,16 @@ interface LoopCardProps {
   onRunNow?: (loop: ExecutionLoop) => void;
 }
 
-const statusColors: Record<ExecutionLoopStatus, 'blue' | 'green' | 'red' | 'gray' | 'purple'> = {
-  [ExecutionLoopStatus.ACTIVE]: 'green',
-  [ExecutionLoopStatus.PAUSED]: 'gray',
-  [ExecutionLoopStatus.STOPPED]: 'blue',
-  [ExecutionLoopStatus.ERROR]: 'red',
+const statusColors: Record<LoopStatus, 'blue' | 'green' | 'red' | 'gray' | 'purple'> = {
+  active: 'green',
+  paused: 'gray',
+  stopped: 'blue',
+  error: 'red',
 };
 
 export function LoopCard({ loop, onEdit, onDelete, onStart, onPause, onRunNow }: LoopCardProps) {
   const statusColor = statusColors[loop.status];
-  const isActive = loop.status === ExecutionLoopStatus.ACTIVE && loop.is_enabled;
+  const isActive = loop.status === 'active' && loop.is_enabled;
   const successRate = loop.total_executions > 0
     ? Math.round((loop.successful_executions / loop.total_executions) * 100)
     : 0;
@@ -130,7 +130,7 @@ export function LoopCard({ loop, onEdit, onDelete, onStart, onPause, onRunNow }:
 
       {/* Actions */}
       <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-        {loop.status === ExecutionLoopStatus.PAUSED && onStart && (
+        {loop.status === 'paused' && onStart && (
           <Button
             size="sm"
             variant="primary"
@@ -140,7 +140,7 @@ export function LoopCard({ loop, onEdit, onDelete, onStart, onPause, onRunNow }:
             ▶️ Start
           </Button>
         )}
-        {loop.status === ExecutionLoopStatus.ACTIVE && onPause && (
+        {loop.status === 'active' && onPause && (
           <Button
             size="sm"
             variant="secondary"

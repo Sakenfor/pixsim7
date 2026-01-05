@@ -6,7 +6,7 @@
  * Use these for documentation and optional dev-time validation only.
  */
 
-import type { CompositionAsset } from '@pixsim7/shared.types';
+import type { CompositionAsset, ApiComponents } from '@pixsim7/shared.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Common Parameter Types
@@ -119,7 +119,14 @@ export type OperationType = typeof OPERATION_TYPES[number];
 // Operation Metadata Registry
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type MediaType = 'image' | 'video';
+/**
+ * Media type enum - imported from backend OpenAPI schema.
+ * Full enum includes: 'video' | 'image' | 'audio' | '3d_model'
+ *
+ * Note: Operation metadata only uses 'image' | 'video' for input/output,
+ * but the full type is preserved for type safety with backend responses.
+ */
+export type MediaType = ApiComponents['schemas']['MediaType'];
 
 export type MultiAssetMode = 'single' | 'optional' | 'required';
 

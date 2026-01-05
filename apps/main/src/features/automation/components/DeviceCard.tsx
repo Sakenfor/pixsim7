@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type AndroidDevice, DeviceStatus, DeviceType } from '../types';
+import { type AndroidDevice, type DeviceStatus, type DeviceType } from '../types';
 import { automationService } from '../lib/core';
 
 interface DeviceCardProps {
@@ -8,22 +8,26 @@ interface DeviceCardProps {
 }
 
 const statusColors: Record<DeviceStatus, string> = {
-  [DeviceStatus.ONLINE]: 'bg-green-500',
-  [DeviceStatus.OFFLINE]: 'bg-gray-500',
-  [DeviceStatus.BUSY]: 'bg-yellow-500',
-  [DeviceStatus.ERROR]: 'bg-red-500',
+  online: 'bg-green-500',
+  offline: 'bg-gray-500',
+  busy: 'bg-yellow-500',
+  error: 'bg-red-500',
 };
 
 const statusLabels: Record<DeviceStatus, string> = {
-  [DeviceStatus.ONLINE]: 'Online',
-  [DeviceStatus.OFFLINE]: 'Offline',
-  [DeviceStatus.BUSY]: 'Busy',
-  [DeviceStatus.ERROR]: 'Error',
+  online: 'Online',
+  offline: 'Offline',
+  busy: 'Busy',
+  error: 'Error',
 };
 
-const typeIcons: Record<DeviceType, string> = {
-  [DeviceType.BLUESTACKS]: '💻',
-  [DeviceType.ADB]: '📱',
+const typeIcons: Partial<Record<DeviceType, string>> = {
+  bluestacks: '💻',
+  adb: '📱',
+  mumu: '💻',
+  nox: '💻',
+  ld: '💻',
+  genymotion: '💻',
 };
 
 export function DeviceCard({ device, onRefresh }: DeviceCardProps) {
@@ -118,7 +122,7 @@ export function DeviceCard({ device, onRefresh }: DeviceCardProps) {
       )}
 
       {/* Reset button for stuck BUSY devices */}
-      {device.status === DeviceStatus.BUSY && (
+      {device.status === 'busy' && (
         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={handleReset}

@@ -1,52 +1,56 @@
 // Automation-related types
+//
+// This file re-exports types from the backend OpenAPI schema for type safety.
+// DO NOT add manual type definitions here - add them to the backend instead.
 
-export enum DeviceType {
-  BLUESTACKS = 'bluestacks',
-  ADB = 'adb',
-}
+import type { ApiComponents } from '@pixsim7/shared.types';
 
-export enum ConnectionMethod {
-  ADB = 'adb',
-  UIAUTOMATOR2 = 'uiautomator2',
-}
+// =============================================================================
+// Backend Types (from OpenAPI)
+// =============================================================================
 
-export enum DeviceStatus {
-  ONLINE = 'online',
-  OFFLINE = 'offline',
-  BUSY = 'busy',
-  ERROR = 'error',
-}
+/** Device type: 'bluestacks' | 'mumu' | 'nox' | 'ld' | 'genymotion' | 'adb' */
+export type DeviceType = ApiComponents['schemas']['DeviceType'];
 
-export interface AndroidDevice {
-  id: number;
-  name: string;
-  adb_id: string;
-  device_type: DeviceType;
-  connection_method: ConnectionMethod;
-  status: DeviceStatus;
-  is_enabled: boolean;
-  agent_id?: number;
-  device_serial?: string;
-  instance_name?: string;
-  instance_port?: number;
-  assigned_account_id?: number;
-  assigned_at?: string;
-  primary_device_id?: number;
-  error_message?: string;
-  created_at?: string;
-  updated_at?: string;
-  last_seen?: string;
-  last_used_at?: string;
-}
+/** Connection method: 'adb' | 'uiautomator2' */
+export type ConnectionMethod = ApiComponents['schemas']['ConnectionMethod'];
 
-export enum AutomationStatus {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
-}
+/** Device status: 'online' | 'offline' | 'busy' | 'error' */
+export type DeviceStatus = ApiComponents['schemas']['DeviceStatus'];
 
+/** Automation status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' */
+export type AutomationStatus = ApiComponents['schemas']['AutomationStatus'];
+
+/** Loop status: 'active' | 'paused' | 'stopped' | 'error' */
+export type LoopStatus = ApiComponents['schemas']['LoopStatus'];
+
+/** Loop selection mode: 'most_credits' | 'least_credits' | 'round_robin' | 'specific_accounts' */
+export type LoopSelectionMode = ApiComponents['schemas']['LoopSelectionMode'];
+
+/** Preset execution mode: 'SINGLE' | 'SHARED_LIST' | 'PER_ACCOUNT' */
+export type PresetExecutionMode = ApiComponents['schemas']['PresetExecutionMode'];
+
+/** Android device */
+export type AndroidDevice = ApiComponents['schemas']['AndroidDevice'];
+
+/** App action preset */
+export type AppActionPreset = ApiComponents['schemas']['AppActionPreset'];
+
+/** Automation execution */
+export type AutomationExecution = ApiComponents['schemas']['AutomationExecution'];
+
+/** Execution loop */
+export type ExecutionLoop = ApiComponents['schemas']['ExecutionLoop'];
+
+// =============================================================================
+// Frontend-Only Types (not in backend)
+// These types are used only in the frontend and don't need backend alignment.
+// =============================================================================
+
+/**
+ * Action type enum for automation actions.
+ * NOTE: This is frontend-only - the backend uses dynamic action schemas.
+ */
 export enum ActionType {
   // Basic actions
   WAIT = 'wait',
@@ -119,112 +123,6 @@ export interface ActionDefinition {
   enabled?: boolean; // Default true - allows temporarily disabling actions
   continue_on_error?: boolean; // Default true - continue automation even if this action fails
   comment?: string; // Optional comment/note to describe what this action does
-}
-
-export interface AppActionPreset {
-  id: number;
-  name: string;
-  description?: string;
-  category?: string;
-  tags?: string[];
-  variables?: PresetVariable[];  // Reusable variables for this preset
-  actions: ActionDefinition[];
-  owner_id?: number;
-  is_shared: boolean;
-  is_system: boolean;
-  app_package?: string;
-  requires_password?: boolean;
-  requires_google_account?: boolean;
-  max_retries?: number;
-  retry_delay_seconds?: number;
-  timeout_seconds?: number;
-  continue_on_error?: boolean;
-  usage_count: number;
-  last_used?: string;
-  created_at?: string;
-  updated_at?: string;
-  cloned_from_id?: number;
-}
-
-export interface AutomationExecution {
-  id: number;
-  user_id: number;
-  preset_id: number;
-  account_id?: number;
-  device_id?: number;
-  loop_id?: number;
-  status: AutomationStatus;
-  current_action_index?: number;
-  total_actions?: number;
-  error_message?: string;
-  error_action_index?: number;
-  error_details?: Record<string, any>;
-  execution_context?: Record<string, any>;
-  retry_count: number;
-  max_retries: number;
-  task_id?: string;
-  created_at?: string;
-  started_at?: string;
-  completed_at?: string;
-}
-
-export enum ExecutionLoopStatus {
-  ACTIVE = 'active',
-  PAUSED = 'paused',
-  STOPPED = 'stopped',
-  ERROR = 'error',
-}
-
-export enum PresetExecutionMode {
-  SINGLE = 'SINGLE',
-  SHARED_LIST = 'SHARED_LIST',
-  PER_ACCOUNT = 'PER_ACCOUNT',
-}
-
-export enum AccountSelectionMode {
-  MOST_CREDITS = 'most_credits',
-  LEAST_CREDITS = 'least_credits',
-  ROUND_ROBIN = 'round_robin',
-  SPECIFIC_ACCOUNTS = 'specific_accounts',
-}
-
-export interface ExecutionLoop {
-  id: number;
-  user_id: number;
-  name: string;
-  description?: string;
-  preset_id?: number;
-  preset_execution_mode: PresetExecutionMode;
-  selection_mode: AccountSelectionMode;
-  status: ExecutionLoopStatus;
-  is_enabled: boolean;
-  delay_between_executions: number;
-  max_executions_per_day?: number;
-  max_consecutive_failures: number;
-  consecutive_failures: number;
-  min_credits?: number;
-  max_credits?: number;
-  require_online_device: boolean;
-  preferred_device_id?: number;
-  skip_accounts_already_ran_today: boolean;
-  skip_google_jwt_accounts: boolean;
-  last_execution_at?: string;
-  last_account_id?: number;
-  total_executions: number;
-  successful_executions: number;
-  failed_executions: number;
-  executions_today: number;
-  last_reset_date?: string;
-  created_at?: string;
-  updated_at?: string;
-  // Mode-specific data
-  shared_preset_ids?: number[];
-  current_preset_index?: number;
-  current_account_id?: number;
-  account_preset_config?: Record<string, number[]>;
-  default_preset_ids?: number[];
-  account_ids?: number[];
-  account_execution_state?: Record<string, any>;
 }
 
 export interface DeviceScanResult {

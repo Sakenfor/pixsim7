@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { type ExecutionLoop, ExecutionLoopStatus } from '../types';
+import { type ExecutionLoop, type LoopStatus } from '../types';
 import { automationService } from '../lib/core';
 import { Button, Panel, ConfirmModal, useToast } from '@pixsim7/shared.ui';
 import { LoopCard } from './LoopCard';
@@ -14,7 +14,7 @@ export function LoopList() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>('list');
   const [selectedLoop, setSelectedLoop] = useState<ExecutionLoop | null>(null);
-  const [filterStatus, setFilterStatus] = useState<ExecutionLoopStatus | 'ALL'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<LoopStatus | 'ALL'>('ALL');
   const loopsRef = useRef<ExecutionLoop[]>([]);
   const toast = useToast();
   const { confirm, isOpen: confirmOpen, options: confirmOptions, handleConfirm, handleCancel } = useConfirmModal();
@@ -42,7 +42,7 @@ export function LoopList() {
 
     // Auto-refresh every 10 seconds for active loops
     const interval = setInterval(() => {
-      if (loopsRef.current.some(l => l.status === ExecutionLoopStatus.ACTIVE && l.is_enabled)) {
+      if (loopsRef.current.some(l => l.status === 'active' && l.is_enabled)) {
         loadLoops();
       }
     }, 10000);
@@ -130,18 +130,18 @@ export function LoopList() {
 
   const statusCounts = {
     total: loops.length,
-    active: loops.filter(l => l.status === ExecutionLoopStatus.ACTIVE).length,
-    paused: loops.filter(l => l.status === ExecutionLoopStatus.PAUSED).length,
-    stopped: loops.filter(l => l.status === ExecutionLoopStatus.STOPPED).length,
-    error: loops.filter(l => l.status === ExecutionLoopStatus.ERROR).length,
+    active: loops.filter(l => l.status === 'active').length,
+    paused: loops.filter(l => l.status === 'paused').length,
+    stopped: loops.filter(l => l.status === 'stopped').length,
+    error: loops.filter(l => l.status === 'error').length,
   };
 
-  const filterOptions: Array<{ label: string; value: ExecutionLoopStatus | 'ALL' }> = [
+  const filterOptions: Array<{ label: string; value: LoopStatus | 'ALL' }> = [
     { label: 'ALL', value: 'ALL' },
-    { label: 'ACTIVE', value: ExecutionLoopStatus.ACTIVE },
-    { label: 'PAUSED', value: ExecutionLoopStatus.PAUSED },
-    { label: 'STOPPED', value: ExecutionLoopStatus.STOPPED },
-    { label: 'ERROR', value: ExecutionLoopStatus.ERROR },
+    { label: 'ACTIVE', value: 'active' },
+    { label: 'PAUSED', value: 'paused' },
+    { label: 'STOPPED', value: 'stopped' },
+    { label: 'ERROR', value: 'error' },
   ];
 
   if (view === 'create') {
