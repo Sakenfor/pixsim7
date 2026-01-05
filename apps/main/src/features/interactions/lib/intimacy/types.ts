@@ -9,7 +9,7 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md - Task roadmap
  */
 
-import type { GenerationSocialContext, GenerationNodeConfig } from '@features/generation';
+import type { GenerationSocialContext, GenerationNodeConfig } from '@pixsim7/shared.generation-core';
 
 // ============================================================================
 // Relationship Gates & Thresholds

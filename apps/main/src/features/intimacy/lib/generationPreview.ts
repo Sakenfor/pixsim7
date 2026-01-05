@@ -9,17 +9,20 @@
  * @see frontend/src/lib/api/generations.ts - API client
  */
 
+import { normalizeProviderParams } from '@pixsim7/shared.generation-core';
+
 import type {
   IntimacySceneConfig,
   GenerationSocialContext,
-  GenerateContentRequest,
   GeneratedContentPayload,
 } from '@lib/registries';
+
+import { fromGenerationResponse, type GenerationModel } from '@features/generation';
+
+import { createGeneration, getGeneration } from '../api/generations';
+
 import type { SimulatedRelationshipState } from './gateChecking';
 import { deriveSocialContext } from './socialContextDerivation';
-import { createGeneration, getGeneration, type GenerationResponse } from '../api/generations';
-import { fromGenerationResponse, type GenerationModel } from '@features/generation';
-import { normalizeProviderParams } from '@features/generation/normalizeProviderParams';
 
 /**
  * Preview generation request for intimacy scenes

@@ -1,8 +1,10 @@
+import { normalizeProviderParams } from '@pixsim7/shared.generation-core';
+
 import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import type { QueuedAsset } from '@features/generation';
-import { normalizeProviderParams } from '@features/generation/lib/core/normalizeProviderParams';
-import type { OperationType } from '@/types/operations';
+
 import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
+import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility
 export type { OperationType };
