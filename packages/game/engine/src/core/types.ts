@@ -3,6 +3,8 @@ import type {
   RelationshipTierId,
   IntimacyLevelId,
   BrainState,
+  RelationshipValues,
+  WorldStatsConfig,
 } from '@pixsim7/shared.types';
 
 /**
@@ -109,15 +111,45 @@ export interface NpcPersonaProvider {
 }
 
 /**
+ * Stat configuration provider interface
+ *
+ * Allows injecting world-specific stats configuration into PixSim7Core.
+ * This enables fully dynamic stat handling without hardcoding axis names.
+ *
+ * **Usage Pattern:**
+ *
+ * Wire from worldConfigStore in apps/main:
+ * ```ts
+ * const core = createPixSim7Core({
+ *   statConfigProvider: {
+ *     getStatsConfig: () => worldConfigStore.getState().statsConfig
+ *   }
+ * });
+ * ```
+ *
+ * **Implementation Notes:**
+ *
+ * - Returns a snapshot of WorldStatsConfig
+ * - Engine iterates over definitions dynamically instead of hardcoding stat names
+ * - If not provided, falls back to safe empty config (relationships-only default)
+ */
+export interface StatConfigProvider {
+  getStatsConfig(): WorldStatsConfig;
+}
+
+/**
  * NPC relationship state projection
  */
 export interface NpcRelationshipState {
-  affinity: number;
-  trust: number;
-  chemistry: number;
-  tension: number;
+  /** Axis values - known keys optional, extensible for custom axes */
+  values: RelationshipValues;
+  /** Per-axis tier IDs computed by backend (e.g., { affinity: "friend", trust: "trusted" }) */
+  tiers: Record<string, string>;
+  /** Relationship flags (e.g., "first_kiss", "saved_from_accident") */
   flags: string[];
+  /** Computed overall tier from backend - legacy, prefer using tiers */
   tierId?: RelationshipTierId;
+  /** Computed intimacy level from backend (e.g., "intimate", "light_flirt") */
   intimacyLevelId?: IntimacyLevelId | null;
   /**
    * True if tierId / intimacyLevelId were computed by the backend
@@ -125,6 +157,7 @@ export interface NpcRelationshipState {
    * derived locally as a fallback.
    */
   isNormalized?: boolean;
+  /** Raw data for debugging */
   raw?: Record<string, any>;
 }
 
@@ -136,6 +169,7 @@ export interface PixSim7CoreConfig {
   storageProvider?: StorageProvider;
   authProvider?: AuthProvider;
   npcPersonaProvider?: NpcPersonaProvider;
+  statConfigProvider?: StatConfigProvider;
 }
 
 /**
