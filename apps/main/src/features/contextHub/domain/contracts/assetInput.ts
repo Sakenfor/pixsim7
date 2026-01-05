@@ -1,7 +1,7 @@
+import { resolveMediaTypes } from "@pixsim7/shared.assets-core";
 import type { AssetRef } from "@pixsim7/shared.types";
 
 import type { ViewerAsset } from "@features/assets";
-import { resolveMediaTypes } from "@features/assets/lib/assetMediaType";
 
 import { CAP_ASSET_INPUT } from "../capabilityKeys";
 

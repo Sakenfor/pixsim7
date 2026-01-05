@@ -4,12 +4,16 @@
  * Simple, lightweight panel components for use in QuickGenerateModule's SmartDockview instance.
  * Panels receive context via SmartDockview's injected props.
  */
-import {
-  QUICKGEN_PROMPT_COMPONENT_ID,
-  QUICKGEN_SETTINGS_COMPONENT_ID,
-  QUICKGEN_PROMPT_DEFAULTS,
-  QUICKGEN_SETTINGS_DEFAULTS,
-} from '@features/controlCenter/lib/quickGenerateComponentSettings';
+import { resolveMediaTypes } from '@pixsim7/shared.assets-core';
+import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import { PromptInput } from '@pixsim7/shared.ui';
+import type { IDockviewPanelProps } from 'dockview-core';
+import { useRef, useEffect, useMemo } from 'react';
+
+import { useDockviewId } from '@lib/dockview';
+import { PromptCompanionHost } from '@lib/ui';
+
+import type { AssetModel } from '@features/assets';
 import {
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
@@ -20,16 +24,12 @@ import {
   type AssetInputContext,
   type GenerateActionContext,
 } from '@features/contextHub';
-import { Ref, type AssetRef } from '@pixsim7/shared.types';
-import { PromptInput } from '@pixsim7/shared.ui';
-import type { IDockviewPanelProps } from 'dockview-core';
-import { useRef, useEffect, useMemo } from 'react';
-
-import { useDockviewId } from '@lib/dockview';
-import { PromptCompanionHost } from '@lib/ui';
-
-import type { AssetModel } from '@features/assets';
-import { resolveMediaTypes } from '@features/assets/lib/assetMediaType';
+import {
+  QUICKGEN_PROMPT_COMPONENT_ID,
+  QUICKGEN_SETTINGS_COMPONENT_ID,
+  QUICKGEN_PROMPT_DEFAULTS,
+  QUICKGEN_SETTINGS_DEFAULTS,
+} from '@features/controlCenter/lib/quickGenerateComponentSettings';
 import {
   GenerationSettingsPanel,
   useGenerationScopeStores,
@@ -37,6 +37,7 @@ import {
 } from '@features/generation';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
+
 import type { OperationType } from '@/types/operations';
 import { OPERATION_METADATA } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';

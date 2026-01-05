@@ -12,9 +12,10 @@
  * - sceneContext: Active scene for "add to scene" actions
  */
 
+import { resolveMediaType } from '@pixsim7/shared.assets-core';
+
 import type { AssetModel } from '@features/assets';
 import { toViewerAsset, toSelectedAsset } from '@features/assets';
-import { resolveMediaType } from '@features/assets/lib/assetMediaType';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';

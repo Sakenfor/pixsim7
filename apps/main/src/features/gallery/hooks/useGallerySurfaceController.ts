@@ -1,8 +1,10 @@
+import { createAssetActions } from '@pixsim7/shared.assets-core';
 import { useState, useCallback, useMemo } from 'react';
+
 import { useAssets, useAsset, useAssetDetailStore, type AssetModel, type AssetFilters } from '@features/assets';
 import { useMediaGenerationActions } from '@features/generation';
+
 import { useSelection } from '@/hooks/useSelection';
-import { createAssetActions } from '@features/assets';
 
 export interface GallerySurfaceConfig {
   /**

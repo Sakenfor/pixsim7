@@ -7,9 +7,10 @@
  * Usage: Render inside a GenerationScopeProvider alongside panels that consume CAP_ASSET_INPUT.
  */
 
+import { resolveMediaType } from '@pixsim7/shared.assets-core';
 import { Ref, type AssetRef } from '@pixsim7/shared.types';
 
-import { resolveMediaType, type ViewerAsset } from '@features/assets';
+import type { ViewerAsset } from '@features/assets';
 import {
   CAP_ASSET_INPUT,
   useProvideCapability,
