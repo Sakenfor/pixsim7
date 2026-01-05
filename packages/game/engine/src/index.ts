@@ -41,21 +41,22 @@ export {
 
 // ===== Relationships =====
 
-// Deprecated: Use preview API instead for editor/tooling
+// Relationship value extraction (for session state access)
 export {
-  compute_relationship_tier,
-  compute_intimacy_level,
+  extractRelationshipData,
   extract_relationship_values,
+  type ExtractedRelationshipData,
 } from './relationships/computation';
 
 // Preview API (recommended for editor/tooling)
+// Re-exported from @pixsim7/shared.stats-core
 export {
   previewRelationshipTier,
   previewIntimacyLevel,
   configurePreviewApi,
   resetPreviewApiConfig,
   getPreviewApiConfig,
-} from './relationships/preview';
+} from '@pixsim7/shared.stats-core';
 
 // ===== Metrics Preview =====
 
@@ -474,6 +475,21 @@ export { registerBuiltinHelpers } from './session/builtinHelpers';
 export { generateHelper } from './session/helperBuilder';
 export type { HelperSchema } from './session/helperBuilder';
 export { generateHelperDocs } from './session/generateDocs';
+
+// ===== Session Stat Adapters =====
+export {
+  statAdapterRegistry,
+  registerStatAdapter,
+  getAdapterBySource,
+  getAdapterForDefinition,
+  getAllAdapters,
+  isWritableSource,
+} from './session/statAdapters';
+
+export type {
+  StatSource,
+  SessionStatAdapter,
+} from './session/statAdapters';
 
 // ===== Game State (Task 22) =====
 export {
