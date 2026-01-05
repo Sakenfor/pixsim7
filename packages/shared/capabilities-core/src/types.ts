@@ -128,6 +128,17 @@ export interface CapabilityRegistry {
    * Clear consumption records for a scope (cleanup on unmount).
    */
   clearConsumptionForScope(scopeId: string): void;
+
+  /**
+   * Set the consumption throttle interval for this registry.
+   * @param ms - Throttle interval in milliseconds (0 to disable throttling)
+   */
+  setConsumptionThrottleMs(ms: number): void;
+
+  /**
+   * Get the current consumption throttle interval.
+   */
+  getConsumptionThrottleMs(): number;
 }
 
 /**

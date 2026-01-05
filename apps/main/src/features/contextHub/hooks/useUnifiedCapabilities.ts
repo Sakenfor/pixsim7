@@ -1,3 +1,4 @@
+import type { CapabilityKey } from "@pixsim7/capabilities-core";
 import { useMemo, useSyncExternalStore } from "react";
 
 import type {
@@ -13,7 +14,6 @@ import {
   getCapabilityDescriptors,
   type CapabilityDescriptor,
 } from "../domain/descriptorRegistry";
-import type { CapabilityKey } from "../types";
 
 import { useContextHubState, type ContextHubState } from "./contextHubContext";
 

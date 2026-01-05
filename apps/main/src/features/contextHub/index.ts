@@ -69,12 +69,17 @@ export type {
   UnifiedCapabilityOptions,
 } from "./hooks";
 export { useUnifiedCapabilities, useUnifiedCapability } from "./hooks";
+// Re-export core types for convenience (prefer importing from @pixsim7/capabilities-core directly)
 export type {
   CapabilityKey,
   CapabilityProvider,
-  CapabilityRegistry,
   CapabilitySnapshot,
   CapabilityScope,
+} from "@pixsim7/capabilities-core";
+
+// UI-specific types
+export type {
+  CapabilityRegistry,
   CapabilityConsumption,
   EntityScopedCapability,
 } from "./types";

@@ -48,9 +48,7 @@ const DEFAULT_CONSUMPTION_THROTTLE_MS = 500;
 export function createCapabilityRegistry(
   options: CapabilityRegistryOptions = {}
 ): CapabilityRegistry {
-  const {
-    consumptionThrottleMs = DEFAULT_CONSUMPTION_THROTTLE_MS,
-  } = options;
+  let consumptionThrottleMs = options.consumptionThrottleMs ?? DEFAULT_CONSUMPTION_THROTTLE_MS;
 
   const providers = new Map<CapabilityKey, ProviderEntry[]>();
   const listeners = new Set<() => void>();
@@ -217,6 +215,14 @@ export function createCapabilityRegistry(
     notify();
   };
 
+  const setConsumptionThrottleMs = (ms: number): void => {
+    consumptionThrottleMs = Math.max(0, ms);
+  };
+
+  const getConsumptionThrottleMs = (): number => {
+    return consumptionThrottleMs;
+  };
+
   return {
     register,
     getBest,
@@ -230,5 +236,7 @@ export function createCapabilityRegistry(
     getConsumptionForScope,
     getAllConsumption,
     clearConsumptionForScope,
+    setConsumptionThrottleMs,
+    getConsumptionThrottleMs,
   };
 }

@@ -1,7 +1,7 @@
+import type { CapabilityKey } from "@pixsim7/capabilities-core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import type { CapabilityKey } from "../types";
 
 interface CapabilityOverride {
   preferredProviderId?: string;

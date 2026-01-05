@@ -1,4 +1,4 @@
-import type { CapabilityKey } from "../types";
+import type { CapabilityKey } from "@pixsim7/capabilities-core";
 
 /**
  * Kind of capability descriptor.

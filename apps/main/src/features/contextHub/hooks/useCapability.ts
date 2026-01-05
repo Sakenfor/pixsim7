@@ -1,14 +1,15 @@
-import type { DependencyList } from "react";
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-
-import { CAP_PANEL_CONTEXT } from "../domain/capabilityKeys";
-import { useContextHubOverridesStore } from "../stores/contextHubOverridesStore";
 import type {
   CapabilityKey,
   CapabilityProvider,
   CapabilitySnapshot,
   CapabilityScope,
-} from "../types";
+} from "@pixsim7/capabilities-core";
+import type { DependencyList } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+
+
+import { CAP_PANEL_CONTEXT } from "../domain/capabilityKeys";
+import { useContextHubOverridesStore } from "../stores/contextHubOverridesStore";
 
 import {
   useContextHubHostId,

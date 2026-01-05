@@ -1,3 +1,4 @@
+import type { CapabilityProvider } from "@pixsim7/capabilities-core";
 import { useEffect, useMemo, useRef } from "react";
 
 import {
@@ -15,7 +16,6 @@ import {
   unregisterCapabilityDescriptor,
 } from "../domain/descriptorRegistry";
 import { useContextHubState } from "../hooks/contextHubContext";
-import type { CapabilityProvider } from "../types";
 
 type ProviderDisposer = () => void;
 

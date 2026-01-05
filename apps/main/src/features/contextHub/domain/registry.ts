@@ -20,25 +20,31 @@ import type {
 } from "../types";
 
 // ============================================================================
-// Consumption Throttle Configuration
+// Consumption Throttle Configuration (deprecated - use registry methods)
 // ============================================================================
 
-/** Current throttle interval for consumption recording (ms) */
-let consumptionThrottleMs = 500;
+/** Default throttle interval for new registries (ms) */
+let defaultConsumptionThrottleMs = 500;
 
 /**
- * Set the consumption throttle interval.
+ * Set the default consumption throttle interval for newly created registries.
+ *
+ * @deprecated Use registry.setConsumptionThrottleMs() instead for per-registry control.
+ * This only affects registries created after the call.
+ *
  * @param ms - Throttle interval in milliseconds (0 to disable throttling)
  */
 export function setConsumptionThrottle(ms: number): void {
-  consumptionThrottleMs = Math.max(0, ms);
+  defaultConsumptionThrottleMs = Math.max(0, ms);
 }
 
 /**
- * Get the current consumption throttle interval.
+ * Get the default consumption throttle interval for new registries.
+ *
+ * @deprecated Use registry.getConsumptionThrottleMs() instead for per-registry control.
  */
 export function getConsumptionThrottle(): number {
-  return consumptionThrottleMs;
+  return defaultConsumptionThrottleMs;
 }
 
 /**
@@ -63,9 +69,9 @@ function adaptConsumption(core: CoreCapabilityConsumption): CapabilityConsumptio
  * - Adapting consumption records to UI format
  */
 export function createCapabilityRegistry(): CapabilityRegistry {
-  // Create core registry with current throttle setting
+  // Create core registry with current default throttle setting
   const core: CoreCapabilityRegistry = createCoreRegistry({
-    consumptionThrottleMs,
+    consumptionThrottleMs: defaultConsumptionThrottleMs,
   });
 
   // Return UI-adapted interface
@@ -77,6 +83,8 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     getKeys: core.getKeys,
     getExposedKeys: core.getExposedKeys,
     subscribe: core.subscribe,
+    setConsumptionThrottleMs: core.setConsumptionThrottleMs,
+    getConsumptionThrottleMs: core.getConsumptionThrottleMs,
 
     // Adapt consumption methods to use UI naming (hostId instead of scopeId)
     recordConsumption: (key, consumerHostId, provider) => {
