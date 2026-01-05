@@ -95,15 +95,35 @@ class EntityRef(BaseModel):
         if isinstance(value, str):
             if ":" not in value:
                 raise ValueError(
-                    f"Invalid EntityRef string format: '{value}'. Expected 'type:id'"
+                    f"Invalid EntityRef string format: '{value}'. Expected 'type:id' or 'type:subtype:id'"
                 )
-            parts = value.split(":", 1)
-            try:
-                return cls(type=parts[0], id=int(parts[1]))
-            except ValueError:
-                raise ValueError(
-                    f"Invalid EntityRef string format: '{value}'. ID must be integer"
-                )
+            parts = value.split(":")
+
+            # Handle 3-part format: scene:game:123 or scene:content:123
+            if len(parts) == 3 and parts[0] == "scene" and parts[1] in ("game", "content"):
+                try:
+                    return cls(
+                        type=parts[0],
+                        id=int(parts[2]),
+                        meta={"scene_type": parts[1]}
+                    )
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid EntityRef string format: '{value}'. ID must be integer"
+                    )
+
+            # Handle standard 2-part format: type:id
+            if len(parts) >= 2:
+                try:
+                    return cls(type=parts[0], id=int(parts[-1]))
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid EntityRef string format: '{value}'. ID must be integer"
+                    )
+
+            raise ValueError(
+                f"Invalid EntityRef string format: '{value}'. Expected 'type:id'"
+            )
 
         if isinstance(value, dict):
             # Allow both 'type' and 'entity_type' for flexibility
@@ -122,7 +142,12 @@ class EntityRef(BaseModel):
         raise ValueError(f"Cannot parse EntityRef from {type(value).__name__}: {value}")
 
     def to_string(self) -> str:
-        """Serialize to 'type:id' format."""
+        """Serialize to 'type:id' or 'type:subtype:id' format.
+
+        For scene refs with scene_type in meta, outputs 'scene:game:123' or 'scene:content:123'.
+        """
+        if self.type == "scene" and self.meta and "scene_type" in self.meta:
+            return f"scene:{self.meta['scene_type']}:{self.id}"
         return f"{self.type}:{self.id}"
 
     def __str__(self) -> str:

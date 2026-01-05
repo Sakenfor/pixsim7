@@ -102,6 +102,9 @@ importers:
       '@pixsim7/pixcubes':
         specifier: workspace:*
         version: link:../../packages/pixcubes
+      '@pixsim7/ref-core':
+        specifier: workspace:*
+        version: link:../../packages/shared/ref-core
       '@pixsim7/scene.gizmos':
         specifier: workspace:*
         version: link:../../packages/scene/gizmos
@@ -269,6 +272,12 @@ importers:
 
   packages/game/engine:
     dependencies:
+      '@pixsim7/ref-core':
+        specifier: workspace:*
+        version: link:../../shared/ref-core
+      '@pixsim7/shared.stats-core':
+        specifier: workspace:*
+        version: link:../../shared/stats-core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -433,8 +442,30 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/shared/ref-core:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@24.10.1)
+
+  packages/shared/stats-core:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/shared/types:
     dependencies:
+      '@pixsim7/ref-core':
+        specifier: workspace:*
+        version: link:../ref-core
       zod:
         specifier: ^3.23.8
         version: 3.25.76

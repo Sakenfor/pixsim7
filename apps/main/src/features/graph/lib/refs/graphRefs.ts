@@ -9,13 +9,8 @@
 
 /* eslint-disable import/no-unresolved -- @shared/types is a Vite alias not in tsconfig paths */
 
+// Ref logic from ref-core (pure TS, no DOM)
 import {
-  type NpcId,
-  type CharacterId,
-  type InstanceId,
-  type SceneId,
-  type LocationId,
-  type AssetId,
   type NpcRef,
   type CharacterRef,
   type InstanceRef,
@@ -24,12 +19,6 @@ import {
   type AssetRef,
   type EntityRef,
   type ParsedRef,
-  NpcId as toNpcId,
-  CharacterId as toCharacterId,
-  InstanceId as toInstanceId,
-  SceneId as toSceneId,
-  LocationId as toLocationId,
-  AssetId as toAssetId,
   Ref,
   parseRef,
   isUUID,
@@ -39,6 +28,22 @@ import {
   isSceneIdRef,
   isLocationRef,
   isAssetRef,
+} from '@pixsim7/ref-core';
+
+// ID branding from shared/types
+import {
+  type NpcId,
+  type CharacterId,
+  type InstanceId,
+  type SceneId,
+  type LocationId,
+  type AssetId,
+  NpcId as toNpcId,
+  CharacterId as toCharacterId,
+  InstanceId as toInstanceId,
+  SceneId as toSceneId,
+  LocationId as toLocationId,
+  AssetId as toAssetId,
 } from '@shared/types';
 
 // ============================================================================
@@ -448,16 +453,18 @@ export function normalizeRefBatch<T extends Record<string, unknown>>(
 }
 
 // ============================================================================
-// Re-exports from @shared/types for convenience
+// Re-exports for convenience
 // ============================================================================
 
 export {
+  // ID types from @shared/types
   type NpcId,
   type CharacterId,
   type InstanceId,
   type SceneId,
   type LocationId,
   type AssetId,
+  // Ref types from @pixsim7/ref-core
   type NpcRef,
   type CharacterRef,
   type InstanceRef,

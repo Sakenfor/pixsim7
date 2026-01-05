@@ -30,6 +30,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@pixsim7/ref-core": "workspace:*",
+    "@pixsim7/shared.stats-core": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {

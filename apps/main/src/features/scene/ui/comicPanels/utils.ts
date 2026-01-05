@@ -1,8 +1,5 @@
-import {
-  Ref,
-  isAssetRef,
-  type AssetRef,
-} from '@pixsim7/shared.types';
+import { Ref, isAssetRef } from '@pixsim7/ref-core';
+import type { AssetRef } from '@pixsim7/shared.types';
 
 const NUMERIC_ID_PATTERN = /^\d+$/;
 const ASSET_REF_PATTERN = /^asset:(\d+)$/;

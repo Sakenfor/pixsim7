@@ -9,7 +9,8 @@
  * avoiding new backend tables while maintaining clean semantics.
  */
 
-import { Ref, NpcId, NpcRef, extractNpcId } from '@pixsim7/shared.types';
+import { Ref, extractNpcId } from '@pixsim7/ref-core';
+import type { NpcId, NpcRef } from '@pixsim7/shared.types';
 
 // ===== Key Builders =====
 

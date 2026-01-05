@@ -12,7 +12,7 @@ import type {
   NarrativeProgramId,
   NodeId,
 } from '@pixsim7/shared.types';
-import { Ref } from '@pixsim7/shared.types';
+import { Ref } from '@pixsim7/ref-core';
 
 /**
  * Session flags structure (subset needed for narrative)
