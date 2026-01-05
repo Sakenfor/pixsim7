@@ -12,6 +12,18 @@ export { ModelLoader } from './components/ModelLoader';
 export { ZoneHighlighter, ZoneOutline } from './components/ZoneHighlighter';
 export { AnimationTimeline } from './components/AnimationTimeline';
 
+// Runtime integration
+export {
+  Model3DRuntimeProvider,
+  type Model3DRuntimeProviderProps,
+} from './components/Model3DRuntimeProvider';
+
+export {
+  inspectorModeToRuntime,
+  runtimeToInspectorMode,
+  type Model3DModeDetail,
+} from './lib/modeUtils';
+
 // Store
 export {
   useModel3DStore,
