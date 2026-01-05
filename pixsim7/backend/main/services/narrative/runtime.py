@@ -676,17 +676,23 @@ class NarrativeRuntimeEngine:
         """Apply state effects to session."""
         # Reuse existing interaction_execution logic via domain entry module
         from pixsim7.backend.game import (
-            apply_relationship_deltas,
+            apply_stat_deltas,
             apply_flag_changes,
             apply_inventory_changes,
-            RelationshipDelta,
+            StatDelta,
             FlagChanges,
             InventoryChanges,
         )
 
         if effects.relationship:
-            deltas = RelationshipDelta(**effects.relationship)
-            await apply_relationship_deltas(session, npc_id, deltas)
+            stat_delta = StatDelta(
+                package_id="core.relationships",
+                definition_id="relationships",
+                axes=effects.relationship,
+                entity_type="npc",
+                npc_id=npc_id,
+            )
+            await apply_stat_deltas(session, stat_delta)
 
         if effects.flags:
             changes = FlagChanges(**effects.flags)

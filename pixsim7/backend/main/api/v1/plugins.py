@@ -44,6 +44,33 @@ async def list_plugins(
     )
 
 
+# ===== GET ENABLED PLUGINS =====
+# NOTE: This must be defined BEFORE /plugins/{plugin_id} to avoid route conflict
+
+@router.get("/plugins/enabled/list", response_model=PluginListResponse)
+async def list_enabled_plugins(
+    user: CurrentUser,
+    plugin_service: PluginCatalogSvc,
+    family: Optional[str] = Query(None, description="Filter by plugin family"),
+):
+    """
+    List only enabled plugins for the current user
+
+    Convenience endpoint that returns just the plugins the user has enabled.
+    The frontend uses this to know which plugin bundles to load.
+    """
+    plugins = await plugin_service.get_enabled_plugins(user_id=user.id)
+
+    # Filter by family if specified
+    if family:
+        plugins = [p for p in plugins if p.family == family]
+
+    return PluginListResponse(
+        plugins=plugins,
+        total=len(plugins),
+    )
+
+
 # ===== GET SINGLE PLUGIN =====
 
 @router.get("/plugins/{plugin_id}", response_model=PluginResponse)
@@ -123,30 +150,4 @@ async def disable_plugin(
         plugin_id=plugin_id,
         is_enabled=False,
         message=f"Plugin '{plugin_id}' disabled successfully",
-    )
-
-
-# ===== GET ENABLED PLUGINS =====
-
-@router.get("/plugins/enabled/list", response_model=PluginListResponse)
-async def list_enabled_plugins(
-    user: CurrentUser,
-    plugin_service: PluginCatalogSvc,
-    family: Optional[str] = Query(None, description="Filter by plugin family"),
-):
-    """
-    List only enabled plugins for the current user
-
-    Convenience endpoint that returns just the plugins the user has enabled.
-    The frontend uses this to know which plugin bundles to load.
-    """
-    plugins = await plugin_service.get_enabled_plugins(user_id=user.id)
-
-    # Filter by family if specified
-    if family:
-        plugins = [p for p in plugins if p.family == family]
-
-    return PluginListResponse(
-        plugins=plugins,
-        total=len(plugins),
     )

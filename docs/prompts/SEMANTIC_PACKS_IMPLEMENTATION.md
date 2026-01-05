@@ -1,8 +1,8 @@
 # Semantic Packs Implementation Summary
 
-**Task:** 83 – Semantic Packs & Parser Hints (Shareable Prompt Semantics)
+**Task:** Semantic Packs & Parser Hints (Shareable Prompt Semantics)
 
-**Status:** ✅ Complete
+**Status:** Complete
 
 ---
 
@@ -14,7 +14,7 @@ This implementation introduces **Semantic Packs v1** - shareable, versioned bund
 
 ## Implementation Details
 
-### Task A: Schema Definition ✅
+### Task A: Schema Definition (Complete)
 
 **File:** `pixsim7/backend/main/shared/schemas/semantic_pack_schemas.py`
 
@@ -32,7 +32,7 @@ Implemented:
 - `SemanticPackPublishRequest` - Publishing workflow
 - `SemanticPackExportResponse` - Export with full content
 
-### Task B: Domain Model & Storage ✅
+### Task B: Domain Model & Storage (Complete)
 
 **File:** `pixsim7/backend/main/domain/semantic_pack.py`
 
@@ -55,7 +55,7 @@ Created:
 - GIN indexes for JSON search on tags and parser_hints
 - Standard indexes on status, author, created_at
 
-### Task C: API Endpoints ✅
+### Task C: API Endpoints (Complete)
 
 **File:** `pixsim7/backend/main/api/v1/semantic_packs.py`
 
@@ -70,29 +70,32 @@ Implemented endpoints:
 6. `DELETE /api/v1/semantic-packs/{pack_id}` - Delete draft pack
 7. `POST /api/v1/semantic-packs/{pack_id}/deprecate` - Deprecate published pack
 
+Note: export currently returns an empty `prompt_families` list until PromptFamily data is available.
+
 **Route Plugin:** `pixsim7/backend/main/routes/semantic_packs/`
 - Auto-discovery via plugin system
 - Registered under `/api/v1` prefix
 
-### Task D: Parser Hint Integration ✅
+### Task D: Parser Hint Integration (Complete)
 
-**File:** `pixsim7/backend/main/services/prompt_parser/hints.py`
+**File:** `pixsim7/backend/main/services/prompt/parser/hints.py`
 
 Implemented:
 - `ParserHintProvider` class with methods:
   - `get_active_packs()` - Fetch packs from database
   - `build_role_keyword_map()` - Merge hints from multiple packs
+  - `build_role_registry()` - Build a PromptRoleRegistry with pack roles + hints
   - `extract_role_hints()` - Extract keywords for specific role
   - `get_hints_for_packs()` - Convenience method for loading and building
-- Helper functions matching task spec signature
+- Convenience functions for keyword map building
 
-**Parser Integration:** `pixsim7/backend/main/services/prompt_parser/simple.py`
+**Parser Integration:** `pixsim7/backend/main/services/prompt/parser/simple.py`
 
 Modified:
-- `SimplePromptParser.__init__()` - Now accepts optional `hints` parameter
-- `SimplePromptParser._merge_hints()` - New method to merge pack hints into keywords
+- `SimplePromptParser.__init__()` - Accepts optional `hints` parameter
 - `SimplePromptParser.parse()` - Accepts optional `hints` parameter for runtime customization
 - Hints augment existing role keywords without replacing core vocabulary
+- Internally uses `PromptRoleRegistry.apply_hints()` from `pixsim7/backend/main/services/prompt/role_registry.py`
 
 ---
 
@@ -125,8 +128,8 @@ pack = SemanticPackDB(
 ### Using Parser Hints
 
 ```python
-from pixsim7.backend.main.services.prompt_parser.simple import SimplePromptParser
-from pixsim7.backend.main.services.prompt_parser.hints import ParserHintProvider
+from pixsim7.backend.main.services.prompt.parser.simple import SimplePromptParser
+from pixsim7.backend.main.services.prompt.parser.hints import ParserHintProvider
 
 # Load packs and build hints
 packs = await ParserHintProvider.get_active_packs(db, status="published")
@@ -159,7 +162,7 @@ curl -X POST http://localhost:8000/api/v1/semantic-packs \
 curl -X POST http://localhost:8000/api/v1/semantic-packs/my_pack/publish
 
 # Export pack with full content
-curl http://localhost:8000/api/v1/semantic-packs/my_pack/export
+curl -X POST http://localhost:8000/api/v1/semantic-packs/my_pack/export
 ```
 
 ---
@@ -208,17 +211,17 @@ As noted in the task spec, these are **non-goals** for now:
 
 ## Acceptance Criteria Status
 
-- ✅ `SemanticPackManifest` schema exists and describes parser hints + referenced content
-- ✅ `SemanticPackDB` table and migration exist
-- ✅ Semantic Packs API:
-  - ✅ `GET /api/v1/semantic-packs` lists packs with filters
-  - ✅ `GET /api/v1/semantic-packs/{pack_id}` returns a pack manifest
-  - ✅ `POST /api/v1/semantic-packs` can create/update a manifest
-  - ✅ `POST /api/v1/semantic-packs/{pack_id}/publish` updates status to published
-- ✅ Parser hint integration:
-  - ✅ `ParserHintProvider` can merge hints from one or more packs
-  - ✅ Native parser accepts optional hints and uses them for classification
-- ⏭️ (Optional) Prompt Lab has a read-only view - **Skipped** (no existing UI found)
+- Done: `SemanticPackManifest` schema exists and describes parser hints + referenced content
+- Done: `SemanticPackDB` table and migration exist
+- Done: Semantic Packs API:
+  - Done: `GET /api/v1/semantic-packs` lists packs with filters
+  - Done: `GET /api/v1/semantic-packs/{pack_id}` returns a pack manifest
+  - Done: `POST /api/v1/semantic-packs` can create/update a manifest
+  - Done: `POST /api/v1/semantic-packs/{pack_id}/publish` updates status to published
+- Done: Parser hint integration:
+  - Done: `ParserHintProvider` can merge hints from one or more packs
+  - Done: Native parser accepts optional hints and uses them for classification
+- Optional: Prompt Lab has a read-only view - Skipped (no existing UI found)
 
 ---
 
@@ -231,12 +234,12 @@ As noted in the task spec, these are **non-goals** for now:
 4. `pixsim7/backend/main/api/v1/semantic_packs.py`
 5. `pixsim7/backend/main/routes/semantic_packs/__init__.py`
 6. `pixsim7/backend/main/routes/semantic_packs/manifest.py`
-7. `pixsim7/backend/main/services/prompt_parser/hints.py`
+7. `pixsim7/backend/main/services/prompt/parser/hints.py`
 8. `test_semantic_packs.py`
 9. `SEMANTIC_PACKS_IMPLEMENTATION.md` (this file)
 
 ### Modified:
-1. `pixsim7/backend/main/services/prompt_parser/simple.py` - Added hint support
+1. `pixsim7/backend/main/services/prompt/parser/simple.py` - Added hint support
 
 ---
 

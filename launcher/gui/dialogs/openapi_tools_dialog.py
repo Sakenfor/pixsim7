@@ -47,6 +47,8 @@ class OpenApiWorker(QThread):
                 result = self._generate_types()
             elif self.operation == "check_uptodate":
                 result = self._check_uptodate()
+            elif self.operation == "generate_docs":
+                result = self._generate_docs()
             else:
                 result = (False, f"Unknown operation: {self.operation}")
 
@@ -117,6 +119,28 @@ class OpenApiWorker(QThread):
             return (True, f"✓ Types generated successfully!\n\n{output_msg}")
         else:
             return (False, f"Generation failed (exit code {code}):\n\n{output_msg}")
+
+    def _generate_docs(self):
+        """Generate API endpoint documentation from OpenAPI spec."""
+        check_result = self._check_backend()
+        if not check_result[0]:
+            return check_result
+
+        code, out, err = self._run_pnpm([
+            "-s", "docs:openapi", "--", "--url", self.openapi_url
+        ], timeout=120)
+
+        output_msg = ""
+        if out:
+            output_msg += f"stdout:\n{out}\n"
+        if err:
+            output_msg += f"stderr:\n{err}\n"
+
+        if code == 0:
+            output_msg += "\nGenerated docs/api/ENDPOINTS.md\n"
+            return (True, f"Docs generated successfully!\n\n{output_msg}")
+
+        return (False, f"Docs generation failed (exit code {code}):\n\n{output_msg}")
 
     def _check_uptodate(self):
         """Check if generated types are up-to-date."""
@@ -322,6 +346,24 @@ def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str =
     gen_layout.addLayout(gen_buttons_row2)
     layout.addWidget(gen_group)
 
+    # Documentation Generation Section
+    docs_group = QGroupBox("API Documentation")
+    docs_layout = QVBoxLayout(docs_group)
+
+    docs_info = QLabel("Generate docs/api/ENDPOINTS.md from the running OpenAPI spec:")
+    docs_info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-bottom: 4px;")
+    docs_layout.addWidget(docs_info)
+
+    docs_buttons_row = QHBoxLayout()
+
+    btn_generate_docs = QPushButton("Generate API Docs")
+    btn_generate_docs.setToolTip("Run pnpm docs:openapi to generate endpoint documentation")
+    btn_generate_docs.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+    docs_buttons_row.addWidget(btn_generate_docs)
+
+    docs_layout.addLayout(docs_buttons_row)
+    layout.addWidget(docs_group)
+
     # Output Section
     output_group = QGroupBox("Output / Logs")
     output_layout = QVBoxLayout(output_group)
@@ -350,6 +392,7 @@ def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str =
         btn_check.setEnabled(enabled)
         btn_reveal.setEnabled(enabled)
         btn_refresh.setEnabled(enabled)
+        btn_generate_docs.setEnabled(enabled)
 
     def on_worker_finished(success, message):
         """Handle worker completion."""
@@ -420,6 +463,7 @@ def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str =
     btn_generate.clicked.connect(lambda: run_operation("generate"))
     btn_check.clicked.connect(lambda: run_operation("check_uptodate"))
     btn_refresh.clicked.connect(lambda: run_operation("check"))
+    btn_generate_docs.clicked.connect(lambda: run_operation("generate_docs"))
     btn_reveal.clicked.connect(reveal_file)
     btn_close.clicked.connect(dlg.accept)
 

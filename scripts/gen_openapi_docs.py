@@ -2,12 +2,14 @@
 """
 Generate API endpoint documentation from OpenAPI spec.
 
-Reads the OpenAPI JSON from the backend (default: http://localhost:8000/openapi.json)
-or from a local file, and generates a markdown reference document.
+Reads the OpenAPI JSON from a local file (default: pixsim7/backend/main/openapi.json),
+from a file provided via --input, or from a URL via --url, and generates a markdown
+reference document.
 
 Usage:
-    python scripts/gen_openapi_docs.py                    # Fetch from running backend
-    python scripts/gen_openapi_docs.py --input spec.json # Use local file
+    python scripts/gen_openapi_docs.py                     # Use default local OpenAPI JSON
+    python scripts/gen_openapi_docs.py --input spec.json  # Use local file
+    python scripts/gen_openapi_docs.py --url http://localhost:8000/openapi.json
 
 Output: docs/api/ENDPOINTS.md
 
@@ -19,31 +21,14 @@ Exit codes:
 import argparse
 import json
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
-from typing import Any
 
 
+DEFAULT_INPUT = "pixsim7/backend/main/openapi.json"
 DEFAULT_URL = "http://localhost:8000/openapi.json"
 DEFAULT_OUTPUT = "docs/api/ENDPOINTS.md"
-
-
-def fetch_openapi_from_url(url: str) -> dict:
-    """Fetch OpenAPI spec from a URL."""
-    try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as e:
-        print(f"Error: Could not fetch OpenAPI spec from {url}")
-        print(f"  {e}")
-        print()
-        print("Make sure the backend is running:")
-        print("  PYTHONPATH=. uvicorn pixsim7.backend.main.main:app --port 8000")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON from {url}: {e}")
-        sys.exit(1)
 
 
 def load_openapi_from_file(path: Path) -> dict:
@@ -60,13 +45,27 @@ def load_openapi_from_file(path: Path) -> dict:
         sys.exit(1)
 
 
-def get_auth_requirement(operation: dict) -> str:
+def fetch_openapi_from_url(url: str) -> dict:
+    """Fetch OpenAPI spec from a URL."""
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        print(f"Error: Could not fetch OpenAPI spec from {url}")
+        print(f"  {e}")
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON from {url}: {e}")
+        sys.exit(1)
+
+
+def get_auth_requirement(spec: dict, operation: dict) -> str:
     """Determine if endpoint requires authentication."""
-    security = operation.get("security", [])
-    if security:
-        # Has security requirements
-        return "Yes"
-    return "No"
+    if "security" in operation:
+        security = operation.get("security", [])
+    else:
+        security = spec.get("security", [])
+    return "Yes" if security else "No"
 
 
 def generate_endpoint_docs(spec: dict) -> str:
@@ -82,7 +81,6 @@ def generate_endpoint_docs(spec: dict) -> str:
 
     # Info section
     info = spec.get("info", {})
-    title = info.get("title", "API")
     version = info.get("version", "")
     if version:
         lines.append(f"**API Version:** {version}")
@@ -106,7 +104,7 @@ def generate_endpoint_docs(spec: dict) -> str:
                 "summary": operation.get("summary", ""),
                 "operation_id": operation.get("operationId", ""),
                 "description": operation.get("description", ""),
-                "auth": get_auth_requirement(operation),
+                "auth": get_auth_requirement(spec, operation),
                 "deprecated": operation.get("deprecated", False),
             }
 
@@ -173,7 +171,12 @@ def main():
     parser.add_argument(
         "--input",
         type=str,
-        help=f"Path to OpenAPI JSON file (default: fetch from {DEFAULT_URL})",
+        help=f"Path to OpenAPI JSON file (default: {DEFAULT_INPUT})",
+    )
+    parser.add_argument(
+        "--url",
+        type=str,
+        help=f"OpenAPI URL to fetch (default: {DEFAULT_URL})",
     )
     parser.add_argument(
         "--output",
@@ -186,16 +189,27 @@ def main():
     # Get project root
     project_root = Path(__file__).parent.parent
 
-    # Load OpenAPI spec
+    # Resolve input path
     if args.input:
         input_path = Path(args.input)
         if not input_path.is_absolute():
             input_path = project_root / input_path
+        if not input_path.exists():
+            print(f"Error: OpenAPI file not found: {input_path}")
+            sys.exit(1)
         print(f"Loading OpenAPI spec from: {input_path}")
         spec = load_openapi_from_file(input_path)
+    elif args.url:
+        print(f"Fetching OpenAPI spec from: {args.url}")
+        spec = fetch_openapi_from_url(args.url)
     else:
-        print(f"Fetching OpenAPI spec from: {DEFAULT_URL}")
-        spec = fetch_openapi_from_url(DEFAULT_URL)
+        input_path = project_root / DEFAULT_INPUT
+        if not input_path.exists():
+            print(f"Error: Default OpenAPI file not found: {input_path}")
+            print("Provide --input or --url to generate docs.")
+            sys.exit(1)
+        print(f"Loading OpenAPI spec from: {input_path}")
+        spec = load_openapi_from_file(input_path)
 
     # Generate documentation
     print("Generating endpoint documentation...")

@@ -1,7 +1,7 @@
 """
 Session Capability APIs
 
-Provides read and write access to session state (flags, relationships).
+Provides read and write access to session state (flags, relationships, stats).
 """
 
 from typing import Optional, Any
@@ -36,7 +36,7 @@ class SessionReadAPI(BaseCapabilityAPI):
         Get session state by ID.
 
         Returns:
-            Session data (id, world_id, flags, relationships) or None
+            Session data (id, world_id, flags, relationships, stats, world_time) or None
         """
         if not self._check_permission(
             PluginPermission.SESSION_READ.value,
@@ -69,6 +69,8 @@ class SessionReadAPI(BaseCapabilityAPI):
             "world_id": session.world_id,
             "flags": session.flags or {},
             "relationships": stats.get("relationships", {}),
+            "stats": stats,
+            "world_time": session.world_time,
         }
 
     async def get_session_flag(self, session_id: int, flag_key: str) -> Optional[Any]:
@@ -273,7 +275,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         Execute an NPC interaction and apply all outcomes.
 
         This is a high-level method that wraps the domain execution logic,
-        applying relationship deltas, flag changes, inventory changes, etc.
+        applying stat deltas, flag changes, inventory changes, etc.
 
         Args:
             session_id: Session ID
@@ -331,13 +333,14 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             response_dict = {
                 "success": result.success,
                 "message": result.message,
-                "relationship_deltas": result.relationshipDeltas.dict() if result.relationshipDeltas else None,
+                "stat_deltas": [delta.dict() for delta in result.statDeltas] if result.statDeltas else None,
                 "flag_changes": result.flagChanges,
                 "inventory_changes": result.inventoryChanges.dict() if result.inventoryChanges else None,
                 "launched_scene_id": result.launchedSceneId,
                 "generation_request_id": result.generationRequestId,
                 "updated_session": {
                     "relationships": orm_session.stats.get("relationships", {}),
+                    "stats": orm_session.stats or {},
                     "flags": orm_session.flags,
                 },
                 "timestamp": result.timestamp,
