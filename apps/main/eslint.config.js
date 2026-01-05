@@ -93,11 +93,13 @@ export default defineConfig([
       'import/no-cycle': ['warn', { maxDepth: 10 }],
 
       // Ensure imports resolve (but allow type imports to be unresolved for now)
-      'import/no-unresolved': ['error', { ignore: ['^@types/'] }],
+      // NOTE: Downgraded to warn due to path alias resolution issues in lint-staged
+      'import/no-unresolved': ['warn', { ignore: ['^@types/'] }],
 
       // Enforce specific import aliases (Phase 1: Import Standardization)
+      // NOTE: Downgraded to warn to allow gradual migration
       'no-restricted-imports': [
-        'error',
+        'warn',
         {
           patterns: [
             {
