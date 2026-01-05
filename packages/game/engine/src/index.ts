@@ -376,8 +376,9 @@ export {
 // ===== NPCs =====
 export type { NpcPersona } from './core/types';
 
-// ===== Scene Runtime =====
+// ===== Scene Module =====
 export {
+  // Runtime helpers
   evaluateEdgeConditions,
   applyEdgeEffects,
   getPlayableEdges,
@@ -385,11 +386,20 @@ export {
   advanceProgression,
   selectMediaSegment,
   getDefaultNextEdge,
-} from './scene/runtime';
+  // Call stack
+  callStackManager,
+  bindParameters,
+  // Scene executor
+  SceneExecutor,
+  createSceneExecutor,
+  createSceneRuntimeState,
+} from './scene';
 
-// ===== Scene Call Stack =====
-export { callStackManager, bindParameters } from './scene/callStack';
-export type { CallStackManager } from './scene/callStack';
+export type {
+  CallStackManager,
+  SceneExecutorOptions,
+  SceneExecutorEvents,
+} from './scene';
 
 // ===== Session State (Immutable API) =====
 export {
@@ -507,6 +517,9 @@ export type {
   GameInputIntent,
   GameController as IGameController,
 } from './runtime';
+
+// ===== Plugins System =====
+export * from './plugins';
 
 // ===== Blanket re-exports for anything missed above =====
 export * from './interactions/validation';

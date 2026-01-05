@@ -93,6 +93,9 @@ importers:
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../packages/game/engine
+      '@pixsim7/game.react':
+        specifier: workspace:*
+        version: link:../../packages/game/react
       '@pixsim7/pixcubes':
         specifier: workspace:*
         version: link:../../packages/pixcubes
@@ -273,6 +276,44 @@ importers:
       vitest:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@24.10.1)
+
+  packages/game/react:
+    dependencies:
+      '@pixsim7/game.engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+      zustand:
+        specifier: '>=4'
+        version: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/game/runtime:
+    dependencies:
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+      zustand:
+        specifier: '>=4'
+        version: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/pixcubes:
     dependencies:
@@ -7014,5 +7055,11 @@ snapshots:
   zustand@5.0.9(@types/react@18.3.27)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)):
     optionalDependencies:
       '@types/react': 18.3.27
+      react: 19.2.0
+      use-sync-external-store: 1.6.0(react@19.2.0)
+
+  zustand@5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)):
+    optionalDependencies:
+      '@types/react': 19.2.6
       react: 19.2.0
       use-sync-external-store: 1.6.0(react@19.2.0)

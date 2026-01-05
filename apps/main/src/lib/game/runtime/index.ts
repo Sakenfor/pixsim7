@@ -38,8 +38,8 @@
 export { useGameRuntime } from './useGameRuntime';
 export type { UseGameRuntimeReturn, AdvanceTimeOptions } from './useGameRuntime';
 
-export { useSceneRuntime, createSceneRuntimeState } from '@pixsim7/game.components';
-export type { UseSceneRuntimeOptions, UseSceneRuntimeReturn } from '@pixsim7/game.components';
+export { useSceneRuntime, createSceneRuntimeState } from '@pixsim7/game.react';
+export type { UseSceneRuntimeOptions, UseSceneRuntimeReturn } from '@pixsim7/game.react';
 
 export { useActorPresence } from './useActorPresence';
 export type {

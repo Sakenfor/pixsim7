@@ -1,0 +1,50 @@
+{
+  "name": "@pixsim7/game.react",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./hooks": {
+      "import": "./src/hooks/index.ts",
+      "require": "./src/hooks/index.ts",
+      "types": "./src/hooks/index.ts"
+    },
+    "./viewport": {
+      "import": "./src/viewport/index.ts",
+      "require": "./src/viewport/index.ts",
+      "types": "./src/viewport/index.ts"
+    },
+    "./providers": {
+      "import": "./src/providers/index.ts",
+      "require": "./src/providers/index.ts",
+      "types": "./src/providers/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@pixsim7/game.engine": "workspace:*",
+    "@pixsim7/shared.types": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "zustand": ">=4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "typescript": "^5.4.0"
+  }
+}

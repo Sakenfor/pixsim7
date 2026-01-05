@@ -1,5 +1,5 @@
 /**
- * @pixsim7/game-ui - Shared game UI components
+ * @pixsim7/game.components - Shared game UI components
  *
  * This package contains reusable game UI components and utilities
  * that can be used in both the editor and standalone game player.
@@ -8,13 +8,12 @@
  * - This package provides GENERIC, reusable UI components
  * - Application-specific components (like gizmo renderers) belong in the consuming app
  * - No imports from parent applications (maintains clean package boundaries)
+ *
+ * Note: Scene runtime hooks have moved to @pixsim7/game.react
  */
 
 export { ScenePlayer } from './components/ScenePlayer';
 export type { ScenePlayerProps } from './components/ScenePlayer';
-
-export { useSceneRuntime, createSceneRuntimeState } from './runtime/sceneRuntime';
-export type { UseSceneRuntimeOptions, UseSceneRuntimeReturn } from './runtime/sceneRuntime';
 
 // Mini-games
 export { ReflexMiniGame } from './components/minigames/ReflexMiniGame';

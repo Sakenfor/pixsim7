@@ -4,7 +4,7 @@
  * Helpers to map between InspectorMode and the generic runtime mode system.
  */
 
-import type { BaseMode } from '@pixsim7/game.runtime';
+import type { BaseMode } from '@pixsim7/game.react';
 
 /**
  * Mode detail options for 3D model inspector
