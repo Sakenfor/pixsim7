@@ -325,8 +325,6 @@ export class PixSim7Core implements IPixSim7Core {
     persona: any,
     npcOverrides: Record<string, unknown> | undefined
   ): { snapshot: BrainStatSnapshot; sourcePackage: string; derived?: Record<string, unknown> } | null {
-    const axisNames = definition.axes.map(a => a.name);
-
     // Handle known stat types
     switch (defId) {
       case 'relationships':
@@ -548,9 +546,10 @@ export class PixSim7Core implements IPixSim7Core {
 
     // Fallback: try common semantic type mappings for known mood axes
     // This provides backward compatibility while config is being updated
+    // Matches backend mood_package.py: valence ← positive/negative sentiment, arousal ← arousal_source
     const fallbackMappings: Record<string, string[]> = {
-      valence: ['positive_sentiment', 'arousal_source'],
-      arousal: ['arousal_source', 'negative_sentiment'],
+      valence: ['positive_sentiment', 'negative_sentiment'],
+      arousal: ['arousal_source'],
     };
 
     const fallbackTypes = fallbackMappings[axisName];
