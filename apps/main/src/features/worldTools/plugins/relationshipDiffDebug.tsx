@@ -42,7 +42,7 @@ export const relationshipDiffDebugTool: WorldToolPlugin = {
       chemistry: number;
       tension: number;
       tierId: string | null;
-      intimacyLevelId: string | null;
+      levelId: string | null;
       flags: Record<string, unknown>;
     }> = [];
 
@@ -58,7 +58,7 @@ export const relationshipDiffDebugTool: WorldToolPlugin = {
           chemistry: relState.chemistry,
           tension: relState.tension,
           tierId: relState.tierId,
-          intimacyLevelId: relState.intimacyLevelId,
+          levelId: relState.levelId,
           flags: relState.flags || {},
         });
       }
@@ -97,7 +97,7 @@ interface RelationshipDiffCardProps {
     chemistry: number;
     tension: number;
     tierId: string | null;
-    intimacyLevelId: string | null;
+    levelId: string | null;
     flags: Record<string, unknown>;
   };
 }
@@ -111,7 +111,7 @@ function RelationshipDiffCard({ relationship }: RelationshipDiffCardProps) {
     tension: number;
   } | null>(null);
 
-  const { npcId, affinity, trust, chemistry, tension, tierId, intimacyLevelId, flags } = relationship;
+  const { npcId, affinity, trust, chemistry, tension, tierId, levelId, flags } = relationship;
 
   // Track previous values to detect changes
   useEffect(() => {
@@ -154,7 +154,7 @@ function RelationshipDiffCard({ relationship }: RelationshipDiffCardProps) {
         <div className="flex items-center gap-2">
           <span className="font-semibold text-sm">NPC #{npcId}</span>
           {tierId && <Badge color="purple">{tierId}</Badge>}
-          {intimacyLevelId && <Badge color="pink">{intimacyLevelId}</Badge>}
+          {levelId && <Badge color="pink">{levelId}</Badge>}
         </div>
         <span className="text-neutral-500">{expanded ? '▼' : '▶'}</span>
       </button>

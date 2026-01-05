@@ -43,8 +43,8 @@ function buildSimpleBrainState(
     levelId: relState.tierId,
   };
 
-  if (relState.intimacyLevelId) {
-    derived['intimacy_level'] = relState.intimacyLevelId;
+  if (relState.levelId) {
+    derived['intimacy_level'] = relState.levelId;
   }
 
   // Derive simple mood

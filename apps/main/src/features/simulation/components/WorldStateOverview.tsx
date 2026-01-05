@@ -26,8 +26,9 @@ export function WorldStateOverview({
   selectedNpcIds,
 }: WorldStateOverviewProps) {
   const stats = useMemo(() => {
-    const relationshipCount = gameSession?.relationships
-      ? Object.keys(gameSession.relationships).length
+    const relationships = gameSession?.stats?.relationships as Record<string, unknown> | undefined;
+    const relationshipCount = relationships
+      ? Object.keys(relationships).length
       : 0;
 
     const flagCount = gameSession?.flags ? Object.keys(gameSession.flags).length : 0;

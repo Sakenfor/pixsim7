@@ -556,7 +556,7 @@ async function executeSeduce(
   const affinity = relState.affinity ?? 0;
   const chemistry = relState.chemistry ?? 0;
   const trust = relState.trust ?? 50;
-  const intimacyLevel = relState.intimacyLevelId;
+  const intimacyLevel = relState.levelId;
 
   // Build gating config from interaction config (for backwards compatibility)
   const gatingConfig: Partial<IntimacyGatingConfig> = {
@@ -578,7 +578,7 @@ async function executeSeduce(
       affinity,
       chemistry,
       trust,
-      intimacyLevelId: intimacyLevel,
+      levelId: intimacyLevel,
     },
     gatingConfig
   );
@@ -614,7 +614,7 @@ async function executeSeduce(
     // Advance intimacy level
     if (config.advanceIntimacyOnSuccess) {
       const newIntimacyLevel = advanceIntimacyLevel(intimacyLevel);
-      updates.intimacyLevelId = newIntimacyLevel;
+      updates.levelId = newIntimacyLevel;
     }
 
     await context.session.updateNpcRelationship(npcId, updates);
@@ -628,7 +628,7 @@ async function executeSeduce(
     }
 
     const intimacyMsg = config.advanceIntimacyOnSuccess
-      ? ` Intimacy advanced to: ${updates.intimacyLevelId}.`
+      ? ` Intimacy advanced to: ${updates.levelId}.`
       : '';
     const message = `💋 Seduction succeeded!${intimacyMsg} (${Math.round(successChance * 100)}% chance, rolled ${Math.round(roll * 100)})`;
     context.onSuccess(message);
@@ -646,7 +646,7 @@ async function executeSeduce(
         successChance,
         affinityChange: config.seductionAffinityReward,
         chemistryChange: config.seductionChemistryReward,
-        newIntimacyLevel: updates.intimacyLevelId,
+        newIntimacyLevel: updates.levelId,
       },
     };
   } else {

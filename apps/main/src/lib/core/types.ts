@@ -117,9 +117,9 @@ export interface NpcRelationshipState {
   tension: number; // 0-100
   flags: string[]; // e.g., ["saved_from_accident", "first_kiss"]
   tierId?: string; // e.g., "friend", "close_friend", "lover"
-  intimacyLevelId?: string | null; // e.g., "light_flirt", "intimate"
+  levelId?: string | null; // e.g., "light_flirt", "intimate"
   /**
-   * True if tierId / intimacyLevelId were computed by the backend and
+   * True if tierId / levelId were computed by the backend and
    * stored in GameSession.relationships, false if they were derived
    * locally as a fallback.
    */

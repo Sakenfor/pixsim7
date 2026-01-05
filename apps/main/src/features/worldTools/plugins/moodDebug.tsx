@@ -138,7 +138,7 @@ function NpcMoodCard({ npcMood }: NpcMoodCardProps) {
           tension: relationship.tension,
         }
       : undefined,
-    intimacyLevelId: relationship?.intimacyLevelId ?? null,
+    levelId: relationship?.levelId ?? null,
   });
 
   const getMoodColor = (label?: string): 'blue' | 'green' | 'yellow' | 'red' | 'gray' => {

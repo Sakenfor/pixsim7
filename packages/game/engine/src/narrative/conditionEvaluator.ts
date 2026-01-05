@@ -99,12 +99,12 @@ export function buildEvalContext(
   }
 
   return {
-    affinity: relationship?.affinity ?? 0,
-    trust: relationship?.trust ?? 0,
-    chemistry: relationship?.chemistry ?? 0,
-    tension: relationship?.tension ?? 0,
+    affinity: relationship?.values.affinity ?? 0,
+    trust: relationship?.values.trust ?? 0,
+    chemistry: relationship?.values.chemistry ?? 0,
+    tension: relationship?.values.tension ?? 0,
     tier: relationship?.tierId ?? 'stranger',
-    intimacyLevel: relationship?.intimacyLevelId ?? null,
+    intimacyLevel: relationship?.levelId ?? null,
     relationshipFlags: new Set(relationship?.flags ?? []),
     flags,
     arcs,

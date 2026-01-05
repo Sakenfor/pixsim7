@@ -163,11 +163,11 @@ export function buildGenerationSocialContext(
       continue;
     }
 
-    const { intimacyLevelId, tierId } = relState;
+    const { levelId, tierId } = relState;
 
     // Map intimacy to band
-    const band = INTIMACY_BAND_MAP[intimacyLevelId || ''] || 'none';
-    const rating = INTIMACY_RATING_MAP[intimacyLevelId || ''] || 'sfw';
+    const band = INTIMACY_BAND_MAP[levelId || ''] || 'none';
+    const rating = INTIMACY_RATING_MAP[levelId || ''] || 'sfw';
 
     // Track highest values
     if (band !== 'none') {
@@ -179,7 +179,7 @@ export function buildGenerationSocialContext(
       ];
       if (bandHierarchy.indexOf(band) > bandHierarchy.indexOf(highestIntimacyBand)) {
         highestIntimacyBand = band;
-        highestIntimacy = intimacyLevelId ?? null;
+        highestIntimacy = levelId ?? null;
         highestTier = tierId;
       }
     }

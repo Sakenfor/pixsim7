@@ -125,6 +125,9 @@ export class PixSim7Core implements IPixSim7Core {
     // Invalidate brain cache for this NPC
     this.brainCache.delete(npcId);
 
+    // Invalidate derived stats cache (relationship changes affect derived stats like mood)
+    this.derivedStatsCache.delete(npcId);
+
     // Emit events
     const updatedRelationship = this.getNpcRelationship(npcId);
     if (updatedRelationship) {
@@ -205,6 +208,9 @@ export class PixSim7Core implements IPixSim7Core {
    * (like mood) from current relationship values. Results are cached for use
    * by getNpcBrainState.
    *
+   * If no provider is configured, silently returns (derived stats skipped).
+   * worldId=0 is valid for editor mode (backend uses default packages).
+   *
    * Usage pattern:
    * ```ts
    * await core.preloadDerivedStats(npcId);
@@ -219,15 +225,17 @@ export class PixSim7Core implements IPixSim7Core {
     }
 
     if (!this.config.derivedStatPreviewProvider) {
-      // No provider configured - derived stats will be skipped
+      // No provider configured - derived stats will be skipped silently
       return;
     }
 
-    const worldId = this.config.worldId ?? 0;
     const relationship = this.getNpcRelationship(npcId);
     if (!relationship) {
       return;
     }
+
+    // worldId 0 is valid for editor mode - backend handles it
+    const worldId = this.config.worldId ?? 0;
 
     // Build input values from relationship
     const inputValues: Record<string, Record<string, number>> = {
@@ -250,7 +258,7 @@ export class PixSim7Core implements IPixSim7Core {
     }
     const npcCache = this.derivedStatsCache.get(npcId)!;
 
-    // Fetch each derived stat
+    // Fetch each derived stat - silently skip on errors (no noisy warnings)
     for (const [defId] of derivedDefs) {
       try {
         const result = await this.config.derivedStatPreviewProvider.previewDerivedStat(
@@ -261,9 +269,8 @@ export class PixSim7Core implements IPixSim7Core {
         if (result) {
           npcCache.set(defId, result);
         }
-      } catch (error) {
-        // Log error but continue - derived stat will be skipped
-        console.warn(`Failed to preload derived stat '${defId}' for NPC ${npcId}:`, error);
+      } catch {
+        // Silently skip - derived stat will be omitted from brain state
       }
     }
 
@@ -470,8 +477,8 @@ export class PixSim7Core implements IPixSim7Core {
     }
 
     const derived: Record<string, unknown> = {};
-    if (relationship.intimacyLevelId) {
-      derived['intimacy_level'] = relationship.intimacyLevelId;
+    if (relationship.levelId) {
+      derived['intimacy_level'] = relationship.levelId;
     }
     derived['relationship_is_normalized'] = relationship.isNormalized ?? false;
 
@@ -479,8 +486,8 @@ export class PixSim7Core implements IPixSim7Core {
       snapshot: {
         axes,
         tiers,
-        levelId: relationship.intimacyLevelId ?? relationship.tierId ?? undefined,
-        levelIds: relationship.intimacyLevelId ? [relationship.intimacyLevelId] : [],
+        levelId: relationship.levelId ?? relationship.tierId ?? undefined,
+        levelIds: relationship.levelId ? [relationship.levelId] : [],
       },
       sourcePackage: `core.${definition.id}`,
       derived,
@@ -571,15 +578,15 @@ export class PixSim7Core implements IPixSim7Core {
 
     // Extract axis values (numeric values from derived result)
     const axes: Record<string, number> = {};
-    const tiers: Record<string, string> = {};
-
     for (const axis of definition.axes) {
       const value = derivedValues[axis.name];
       if (typeof value === 'number') {
         axes[axis.name] = value;
-        tiers[axis.name] = this.computeTierFallback(value);
       }
     }
+
+    // Use backend-computed tiers (don't compute locally)
+    const tiers = previewResult.tiers || {};
 
     // Extract level ID from backend result
     const levelId = typeof derivedValues.label === 'string'

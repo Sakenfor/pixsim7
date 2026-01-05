@@ -55,7 +55,7 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
           tension: relState.tension,
           flags: relState.flags,
           tier: relState.tierId || 'stranger',
-          intimacyLevel: relState.intimacyLevelId || null,
+          intimacyLevel: relState.levelId || null,
         });
       }
     }

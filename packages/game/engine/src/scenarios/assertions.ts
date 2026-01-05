@@ -178,7 +178,8 @@ export function assertIntimacyLevel(
       const npcKey = `npc:${npcId}`;
       const npcData = session.stats?.relationships?.[npcKey] as any;
 
-      return npcData?.intimacyLevelId === expectedLevelId;
+      // Check both levelId (new) and intimacyLevelId (legacy) for backwards compat
+      return (npcData?.levelId ?? npcData?.intimacyLevelId) === expectedLevelId;
     },
   };
 }
@@ -204,7 +205,8 @@ export function assertNoIntimateSceneWithoutConsent(
         if (!key.startsWith('npc:')) continue;
 
         const npcData = data as any;
-        const intimacyId = npcData?.intimacyLevelId;
+        // Check both levelId (new) and intimacyLevelId (legacy)
+        const intimacyId = npcData?.levelId ?? npcData?.intimacyLevelId;
         const hasConsent = npcData?.consentGiven === true;
 
         // If intimacy is at or beyond threshold and no consent, fail

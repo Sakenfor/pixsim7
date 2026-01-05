@@ -12,7 +12,7 @@ interface UseUnifiedMoodArgs {
     chemistry: number;
     tension: number;
   };
-  intimacyLevelId?: string | null;
+  levelId?: string | null;
 }
 
 interface UseUnifiedMoodResult {
@@ -32,7 +32,7 @@ export function useUnifiedMood(args: UseUnifiedMoodArgs): UseUnifiedMoodResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const { worldId, npcId, sessionId, relationshipValues, intimacyLevelId } = args;
+  const { worldId, npcId, sessionId, relationshipValues, levelId } = args;
 
   useEffect(() => {
     // Require at least world + npc + session to run
@@ -53,7 +53,7 @@ export function useUnifiedMood(args: UseUnifiedMoodArgs): UseUnifiedMoodResult {
       npcId,
       sessionId,
       relationshipValues,
-      intimacyLevelId: intimacyLevelId ?? undefined,
+      levelId: levelId ?? undefined,
     })
       .then((result) => {
         if (!cancelled) {
@@ -82,7 +82,7 @@ export function useUnifiedMood(args: UseUnifiedMoodArgs): UseUnifiedMoodResult {
     relationshipValues?.trust,
     relationshipValues?.chemistry,
     relationshipValues?.tension,
-    intimacyLevelId,
+    levelId,
   ]);
 
   return { data, loading, error };

@@ -291,7 +291,7 @@ export function supportsContentRating(
     trust: state.metrics.trust,
     chemistry: state.metrics.chemistry,
     tension: state.metrics.tension,
-    intimacyLevelId: state.intimacyLevel,
+    levelId: state.intimacyLevel,
     relationshipTierId: state.tier,
   };
 

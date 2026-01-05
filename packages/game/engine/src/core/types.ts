@@ -143,10 +143,12 @@ export interface StatConfigProvider {
 export interface DerivedStatPreviewResult {
   /** The target stat ID */
   targetStatId: string;
-  /** The computed derived values (axis values + any transforms like label) */
+  /** The computed derived values (axis values + label/levelId) */
   derivedValues: Record<string, unknown>;
-  /** Which source axes contributed to the derivation */
-  sourcesUsed: string[];
+  /** Input axes that contributed to the derivation */
+  inputAxes: string[];
+  /** Per-axis tier IDs computed by backend */
+  tiers: Record<string, string>;
 }
 
 /**
@@ -214,10 +216,10 @@ export interface NpcRelationshipState {
   flags: string[];
   /** Computed overall tier from backend - legacy, prefer using tiers */
   tierId?: RelationshipTierId;
-  /** Computed intimacy level from backend (e.g., "intimate", "light_flirt") */
-  intimacyLevelId?: IntimacyLevelId | null;
+  /** Computed level from backend (e.g., "intimate", "light_flirt") */
+  levelId?: IntimacyLevelId | null;
   /**
-   * True if tierId / intimacyLevelId were computed by the backend
+   * True if tierId / levelId were computed by the backend
    * and stored in GameSession.relationships, false if they were
    * derived locally as a fallback.
    */

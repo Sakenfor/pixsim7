@@ -1,100 +1,104 @@
 /**
- * Client-side relationship computation helpers
- * Based on the backend logic from pixsim7/backend/main/domain/narrative/relationships.py
+ * Relationship value extraction helpers
  *
- * IMPORTANT: These functions mirror backend logic and are primarily for preview/offline tools.
- * At runtime, the backend's computed values in GameSession.stats.relationships are authoritative.
- * Frontends should prefer tierId/intimacyLevelId from the backend when available.
- */
-
-/**
- * Compute relationship tier based on affinity value.
- * Default tiers if no world schema is provided.
+ * Extracts relationship values from session.stats.relationships structure.
+ * For computing tiers/levels, use the preview API from @pixsim7/shared.stats-core.
  *
- * @deprecated Use `previewRelationshipTier()` from `./preview` instead.
- *   This function only supports hardcoded default tiers and does NOT respect
- *   world-specific schemas. The preview API calls the backend for schema-aware
- *   computation.
- *
- * @authority CLIENT_FALLBACK
+ * @use_cases Session state access, value extraction
  * @backend_authoritative Use session.stats.relationships["npc:X"].tierId at runtime
- * @use_cases Legacy fallback only - migrate to preview API
- *
- * NOTE: This is a fallback computation. The backend computes and stores tierId
- * in GameSession.stats.relationships["npc:ID"].tierId, which should be preferred at runtime.
- * For preview/editor use cases, use `previewRelationshipTier()` which calls the
- * backend preview API with world-specific schemas.
- *
- * @param affinity - The affinity value (typically 0-100)
- * @returns The tier ID (e.g., "friend", "lover")
  */
-export function compute_relationship_tier(affinity: number): string {
-  if (affinity >= 80) {
-    return 'lover';
-  } else if (affinity >= 60) {
-    return 'close_friend';
-  } else if (affinity >= 30) {
-    return 'friend';
-  } else if (affinity >= 10) {
-    return 'acquaintance';
-  } else {
-    return 'stranger';
-  }
+
+import type { RelationshipValues } from '@pixsim7/shared.types';
+
+/**
+ * Result of extracting relationship data from session
+ */
+export interface ExtractedRelationshipData {
+  /** Axis values (affinity, trust, chemistry, tension, plus any custom axes) */
+  values: RelationshipValues;
+  /** Per-axis tier IDs computed by backend (e.g., { affinity: "friend", trust: "trusted" }) */
+  tiers: Record<string, string>;
+  /** Relationship flags */
+  flags: string[];
+  /** Overall level ID computed by backend (e.g., "intimate") */
+  levelId: string | null;
+  /** Raw data for debugging */
+  raw: Record<string, any>;
 }
 
 /**
- * Compute intimacy level based on multiple relationship axes.
+ * Extract relationship data for a specific NPC from session.stats.relationships
  *
- * @deprecated Use `previewIntimacyLevel()` from `./preview` instead.
- *   This function only supports hardcoded default levels and does NOT respect
- *   world-specific schemas. The preview API calls the backend for schema-aware
- *   computation.
- *
- * @authority CLIENT_FALLBACK
- * @backend_authoritative Use session.stats.relationships["npc:X"].intimacyLevelId at runtime
- * @use_cases Legacy fallback only - migrate to preview API
- *
- * NOTE: This is a fallback computation. The backend computes and stores intimacyLevelId
- * in GameSession.stats.relationships["npc:ID"].intimacyLevelId, which should be preferred at runtime.
- * For preview/editor use cases, use `previewIntimacyLevel()` which calls the
- * backend preview API with world-specific schemas.
- *
- * @param relationshipValues - Object with affinity, trust, chemistry, tension values
- * @returns The intimacy level ID (e.g., "intimate", "light_flirt") or null
+ * @param relationshipsData - The relationships data object (from session.stats.relationships)
+ * @param npcId - The NPC ID
+ * @returns Extracted relationship data with values, flags, and raw
  */
-export function compute_intimacy_level(relationshipValues: {
-  affinity: number;
-  trust: number;
-  chemistry: number;
-  tension: number;
-}): string | null {
-  const { affinity, chemistry, trust } = relationshipValues;
+export function extractRelationshipData(
+  relationshipsData: Record<string, any>,
+  npcId: number
+): ExtractedRelationshipData {
+  const npcKey = `npc:${npcId}`;
 
-  // Very intimate: high on all positive axes
-  if (affinity >= 80 && chemistry >= 80 && trust >= 60) {
-    return 'very_intimate';
+  if (!(npcKey in relationshipsData)) {
+    return {
+      values: { affinity: 0, trust: 0, chemistry: 0, tension: 0 },
+      tiers: {},
+      flags: [],
+      levelId: null,
+      raw: {},
+    };
   }
 
-  // Intimate: good values across the board
-  if (affinity >= 60 && chemistry >= 60 && trust >= 40) {
-    return 'intimate';
+  const npcRel = relationshipsData[npcKey];
+  if (typeof npcRel !== 'object' || npcRel === null) {
+    return {
+      values: { affinity: 0, trust: 0, chemistry: 0, tension: 0 },
+      tiers: {},
+      flags: [],
+      levelId: null,
+      raw: {},
+    };
   }
 
-  // Deep flirt: some chemistry and affinity
-  if (affinity >= 40 && chemistry >= 40 && trust >= 20) {
-    return 'deep_flirt';
+  // Extract all numeric values as relationship axes
+  const values: RelationshipValues = {};
+  // Extract per-axis tier IDs (backend computes these as "{axis}TierId")
+  const tiers: Record<string, string> = {};
+
+  for (const [key, val] of Object.entries(npcRel)) {
+    if (typeof val === 'number') {
+      values[key] = val;
+    } else if (typeof val === 'string' && key.endsWith('TierId')) {
+      // Extract tier ID: "affinityTierId" -> tiers["affinity"] = val
+      const axisName = key.slice(0, -6); // Remove "TierId" suffix
+      tiers[axisName] = val;
+    }
   }
 
-  // Light flirt: minimal chemistry
-  if (affinity >= 20 && chemistry >= 20) {
-    return 'light_flirt';
-  }
+  // Ensure known axes have values (default to 0)
+  values.affinity = values.affinity ?? 0;
+  values.trust = values.trust ?? 0;
+  values.chemistry = values.chemistry ?? 0;
+  values.tension = values.tension ?? 0;
 
-  return null;
+  // Extract flags
+  const flags = Array.isArray(npcRel.flags) ? npcRel.flags : [];
+
+  // Extract overall level ID (backend computes this)
+  const levelId = typeof npcRel.levelId === 'string' ? npcRel.levelId : null;
+
+  return {
+    values,
+    tiers,
+    flags,
+    levelId,
+    raw: npcRel,
+  };
 }
 
 /**
- * Extract relationship values for a specific NPC from session.stats.relationships
+ * @deprecated Use extractRelationshipData() instead.
+ * This function returns a tuple for backwards compatibility during migration.
  *
  * @param relationshipsData - The relationships data object (from session.stats.relationships)
  * @param npcId - The NPC ID
@@ -104,22 +108,12 @@ export function extract_relationship_values(
   relationshipsData: Record<string, any>,
   npcId: number
 ): [number, number, number, number, any] {
-  const npcKey = `npc:${npcId}`;
-
-  if (!(npcKey in relationshipsData)) {
-    return [0, 0, 0, 0, {}];
-  }
-
-  const npcRel = relationshipsData[npcKey];
-  if (typeof npcRel !== 'object' || npcRel === null) {
-    return [0, 0, 0, 0, {}];
-  }
-
-  const affinity = Number(npcRel.affinity ?? 0);
-  const trust = Number(npcRel.trust ?? 0);
-  const chemistry = Number(npcRel.chemistry ?? 0);
-  const tension = Number(npcRel.tension ?? 0);
-  const flags = npcRel.flags ?? {};
-
-  return [affinity, trust, chemistry, tension, flags];
+  const { values, flags } = extractRelationshipData(relationshipsData, npcId);
+  return [
+    values.affinity ?? 0,
+    values.trust ?? 0,
+    values.chemistry ?? 0,
+    values.tension ?? 0,
+    flags,
+  ];
 }

@@ -3,8 +3,10 @@
  *
  * This file demonstrates and tests:
  * - Session helpers for flags/arcs/quests/inventory/events
- * - NPC brain state construction with persona merging
- * - Relationship computation and tier/intimacy logic
+ * - Relationship value extraction
+ *
+ * For tier/intimacy computation tests, see preview.test.ts which tests
+ * the @pixsim7/shared.stats-core preview API.
  */
 
 import type { GameSessionDTO } from '@pixsim7/shared.types';
@@ -25,8 +27,6 @@ import {
   isEventActive,
   // Relationships
   extract_relationship_values,
-  compute_relationship_tier,
-  compute_intimacy_level,
 } from '../index';
 
 // ===== Test Helpers =====
@@ -39,6 +39,7 @@ function createTestSession(): GameSessionDTO {
     current_node_id: 1,
     flags: {},
     relationships: {},
+    stats: {},
     world_time: 0,
   };
 }
@@ -109,57 +110,30 @@ export function testSessionHelpers() {
 }
 
 
-// ===== Relationship Computation Tests =====
+// ===== Relationship Extraction Tests =====
 
-export function testRelationshipComputation() {
-  console.log('=== Testing Relationship Computation ===\n');
+export function testRelationshipExtraction() {
+  console.log('=== Testing Relationship Extraction ===\n');
 
-  // Test tier computation
-  console.log('Testing relationship tiers...');
-  const tier1 = compute_relationship_tier(5);
-  const tier2 = compute_relationship_tier(35);
-  const tier3 = compute_relationship_tier(65);
-  const tier4 = compute_relationship_tier(85);
+  // Test extract_relationship_values
+  console.log('Testing relationship value extraction...');
+  const relationships = {
+    'npc:1': { affinity: 50, trust: 30, chemistry: 40, tension: 10, flags: ['met'] },
+    'npc:2': { affinity: 75, trust: 60, chemistry: 80, tension: 5 },
+  };
 
-  console.log(`  Affinity 5 -> ${tier1}`);
-  console.log(`  Affinity 35 -> ${tier2}`);
-  console.log(`  Affinity 65 -> ${tier3}`);
-  console.log(`  Affinity 85 -> ${tier4}`);
+  const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(relationships, 1);
+  console.log(`  NPC 1: affinity=${affinity}, trust=${trust}, chemistry=${chemistry}, tension=${tension}`);
+  console.assert(affinity === 50, 'Affinity should be 50');
+  console.assert(trust === 30, 'Trust should be 30');
+  console.assert(chemistry === 40, 'Chemistry should be 40');
+  console.assert(tension === 10, 'Tension should be 10');
+  console.assert(Array.isArray(flags), 'Flags should be an array');
 
-  console.assert(tier1 === 'stranger', 'Should be stranger');
-  console.assert(tier2 === 'friend', 'Should be friend');
-  console.assert(tier3 === 'close_friend', 'Should be close_friend');
-  console.assert(tier4 === 'lover', 'Should be lover');
-  console.log('✓ Tier computation works\n');
-
-  // Test intimacy computation
-  console.log('Testing intimacy levels...');
-  const intimacy1 = compute_intimacy_level({
-    affinity: 90,
-    trust: 70,
-    chemistry: 85,
-    tension: 5,
-  });
-  const intimacy2 = compute_intimacy_level({
-    affinity: 65,
-    trust: 50,
-    chemistry: 60,
-    tension: 10,
-  });
-  const intimacy3 = compute_intimacy_level({
-    affinity: 25,
-    trust: 15,
-    chemistry: 20,
-    tension: 30,
-  });
-
-  console.log(`  High values -> ${intimacy1}`);
-  console.log(`  Medium values -> ${intimacy2}`);
-  console.log(`  Low values -> ${intimacy3}`);
-
-  console.assert(intimacy1 === 'very_intimate', 'Should be very intimate');
-  console.assert(intimacy2 === 'intimate', 'Should be intimate');
-  console.log('✓ Intimacy computation works\n');
+  // Test missing NPC
+  const [a2, t2, c2, ten2] = extract_relationship_values(relationships, 999);
+  console.assert(a2 === 0, 'Missing NPC should return 0 affinity');
+  console.log('✓ Relationship extraction works\n');
 }
 
 // ===== Run All Tests =====
@@ -170,8 +144,7 @@ export function runAllTests() {
   console.log('╚════════════════════════════════════════╝\n');
 
   testSessionHelpers();
-  testNpcBrain();
-  testRelationshipComputation();
+  testRelationshipExtraction();
 
   console.log('╔════════════════════════════════════════╗');
   console.log('║  All tests completed successfully!    ║');

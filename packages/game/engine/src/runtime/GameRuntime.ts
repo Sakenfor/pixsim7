@@ -661,12 +661,12 @@ export class GameRuntime implements IGameRuntime {
     if (!oldState && !newState) return false;
 
     return (
-      oldState!.affinity !== newState!.affinity ||
-      oldState!.trust !== newState!.trust ||
-      oldState!.chemistry !== newState!.chemistry ||
-      oldState!.tension !== newState!.tension ||
+      oldState!.values.affinity !== newState!.values.affinity ||
+      oldState!.values.trust !== newState!.values.trust ||
+      oldState!.values.chemistry !== newState!.values.chemistry ||
+      oldState!.values.tension !== newState!.values.tension ||
       oldState!.tierId !== newState!.tierId ||
-      oldState!.intimacyLevelId !== newState!.intimacyLevelId ||
+      oldState!.levelId !== newState!.levelId ||
       JSON.stringify(oldState!.flags) !== JSON.stringify(newState!.flags)
     );
   }

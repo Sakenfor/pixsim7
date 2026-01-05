@@ -29,7 +29,7 @@ export interface RelationshipState {
   trust?: number;
   chemistry?: number;
   tension?: number;
-  intimacyLevelId?: string | null;
+  levelId?: string | null;
   relationshipTierId?: string | null;
 }
 
@@ -145,7 +145,7 @@ export function supportsContentRating(
 
   const chemistry = state.chemistry || 0;
   const affinity = state.affinity || 0;
-  const intimacyLevel = state.intimacyLevelId;
+  const intimacyLevel = state.levelId;
   const currentBand = deriveIntimacyBand(state, config);
 
   // Check band requirement
@@ -268,7 +268,7 @@ export function canAttemptSeduction(
 
   const affinity = state.affinity || 0;
   const chemistry = state.chemistry || 0;
-  const intimacyLevel = state.intimacyLevelId;
+  const intimacyLevel = state.levelId;
 
   // Check minimum affinity
   if (seductionConfig.minimumAffinity !== undefined && affinity < seductionConfig.minimumAffinity) {
@@ -328,7 +328,7 @@ export function canAttemptSensualTouch(
   }
 
   const affinity = state.affinity || 0;
-  const intimacyLevel = state.intimacyLevelId;
+  const intimacyLevel = state.levelId;
 
   // Check minimum affinity
   if (touchConfig.minimumAffinity !== undefined && affinity < touchConfig.minimumAffinity) {

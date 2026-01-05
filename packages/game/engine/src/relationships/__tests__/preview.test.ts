@@ -212,11 +212,15 @@ describe('Relationship Preview API', () => {
                 arousal,
                 label: valence >= 60 ? 'happy' : 'neutral',
               },
-              sources_used: [
-                'input.relationships.affinity',
-                'input.relationships.chemistry',
-                'input.relationships.tension',
+              input_axes: [
+                'relationships.affinity',
+                'relationships.chemistry',
+                'relationships.tension',
               ],
+              tiers: {
+                valence: valence >= 60 ? 'high' : 'moderate',
+                arousal: arousal >= 60 ? 'high' : 'moderate',
+              },
             }),
           };
         }
@@ -265,7 +269,7 @@ describe('Relationship Preview API', () => {
       });
     });
 
-    it('should return properly formatted response', async () => {
+    it('should return properly formatted response with tiers', async () => {
       const result = await previewDerivedStat({
         worldId: 1,
         targetStatId: 'mood',
@@ -283,7 +287,33 @@ describe('Relationship Preview API', () => {
       expect(typeof result.derivedValues.valence).toBe('number');
       expect(typeof result.derivedValues.arousal).toBe('number');
       expect(result.derivedValues.label).toBe('happy');
-      expect(result.sourcesUsed).toContain('input.relationships.affinity');
+      expect(result.inputAxes).toContain('relationships.affinity');
+      expect(result.tiers.valence).toBe('high');
+    });
+
+    it('should support editor mode (worldId=0)', async () => {
+      await previewDerivedStat({
+        worldId: 0,
+        targetStatId: 'mood',
+        inputValues: {
+          relationships: { affinity: 50 },
+        },
+      });
+
+      const body = JSON.parse(fetchCalls[0].options.body);
+      expect(body.world_id).toBe(0);
+    });
+
+    it('should default worldId to 0 when undefined', async () => {
+      await previewDerivedStat({
+        targetStatId: 'mood',
+        inputValues: {
+          relationships: { affinity: 50 },
+        },
+      });
+
+      const body = JSON.parse(fetchCalls[0].options.body);
+      expect(body.world_id).toBe(0);
     });
 
     it('should throw error on derivation not available', async () => {

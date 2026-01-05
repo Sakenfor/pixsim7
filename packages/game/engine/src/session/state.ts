@@ -7,21 +7,21 @@
  * @authority CLIENT_FALLBACK
  * These functions provide CLIENT-SIDE transformations for editor tools,
  * previews, and offline processing. The BACKEND is authoritative for all
- * runtime game state, including computed values like tierId and intimacyLevelId.
+ * runtime game state, including computed values like tierId and levelId.
  *
  * Follows conventions from RELATIONSHIPS_AND_ARCS.md:
  * - Relationships live in GameSession.relationships
  * - Arcs/quests/inventory/events live in GameSession.flags
- * - Backend-computed tierId/intimacyLevelId are authoritative
+ * - Backend-computed tierId/levelId are authoritative
  * - No database schema changes; everything via JSON
  *
  * @use_cases Editor tools, offline processing, tests, state transformations
  * @backend_authoritative Always trust backend responses over local computations
  */
 
-import type { GameSessionDTO } from '@pixsim7/shared.types';
+import type { GameSessionDTO, RelationshipValues } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
-import { extract_relationship_values } from '../relationships/computation';
+import { extractRelationshipData } from '../relationships/computation';
 
 // ===== Immutability Helpers =====
 
@@ -42,7 +42,7 @@ function cloneSession(session: GameSessionDTO): GameSessionDTO {
  * Get NPC relationship state from session
  *
  * Extracts numeric relationship values and flags for a specific NPC.
- * Uses backend-computed tierId and intimacyLevelId when available.
+ * Uses backend-computed tierId and levelId when available.
  * If backend hasn't computed these values, they remain undefined.
  *
  * Use the `isNormalized` field to check if backend computed the tier/level.
@@ -59,34 +59,33 @@ export function getNpcRelationshipState(
 ): NpcRelationshipState | null {
   const npcKey = `npc:${npcId}`;
   const relationships = session.stats?.relationships as Record<string, Record<string, any>> | undefined;
-  const raw = relationships?.[npcKey];
+  const rawData = relationships?.[npcKey];
 
-  if (!raw) {
+  if (!rawData) {
     return null;
   }
 
-  const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(
+  const { values, tiers, flags, levelId, raw } = extractRelationshipData(
     (session.stats?.relationships || {}) as Record<string, Record<string, any>>,
     npcId
   );
 
   // Use backend-computed values only (no fallback)
   // If backend didn't compute, values remain undefined
-  const tierId = typeof raw.tierId === 'string' ? raw.tierId : undefined;
-  const intimacyLevelId = raw.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
+  const tierId = typeof rawData.tierId === 'string' ? rawData.tierId : undefined;
+  // levelId is the backend's overall computed level (supports legacy intimacyLevelId field)
+  const resolvedLevelId = levelId ?? (rawData.intimacyLevelId !== undefined ? rawData.intimacyLevelId : undefined);
 
   // Marker indicating whether backend normalization ran
-  const isNormalized = tierId !== undefined || intimacyLevelId !== undefined;
+  const isNormalized = Object.keys(tiers).length > 0 || levelId !== null;
 
   return {
-    affinity,
-    trust,
-    chemistry,
-    tension,
-    flags: Array.isArray(flags) ? flags : [],
+    values,
+    tiers,
+    flags,
     isNormalized,
     tierId,
-    intimacyLevelId,
+    levelId: resolvedLevelId,
     raw,
   };
 }
@@ -98,7 +97,7 @@ export function getNpcRelationshipState(
  * Does not mutate the original session.
  *
  * Note: This updates local values only. Backend will recompute
- * tierId and intimacyLevelId on next session save/fetch.
+ * tierId and levelId on next session save/fetch.
  *
  * @param session - Game session to update
  * @param npcId - NPC ID to update relationship for
@@ -121,14 +120,19 @@ export function setNpcRelationshipState(
   const npcKey = `npc:${npcId}`;
   const current = relationships[npcKey] || {};
 
-  // Apply patches
-  if (patch.affinity !== undefined) current.affinity = patch.affinity;
-  if (patch.trust !== undefined) current.trust = patch.trust;
-  if (patch.chemistry !== undefined) current.chemistry = patch.chemistry;
-  if (patch.tension !== undefined) current.tension = patch.tension;
+  // Apply axis value patches
+  if (patch.values !== undefined) {
+    for (const [axis, value] of Object.entries(patch.values)) {
+      if (value !== undefined) {
+        current[axis] = value;
+      }
+    }
+  }
+
+  // Apply flag patches
   if (patch.flags !== undefined) current.flags = patch.flags;
 
-  // Note: Don't set tierId/intimacyLevelId here - backend is authoritative
+  // Note: Don't set tierId/levelId here - backend is authoritative
   // They will be recomputed by backend on next session update
 
   relationships[npcKey] = current;

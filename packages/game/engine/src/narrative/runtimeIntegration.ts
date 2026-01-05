@@ -290,7 +290,8 @@ export class DefaultSessionStateAdapter implements SessionStateAdapter {
       chemistry: npcRelationship.chemistry ?? 50,
       tension: npcRelationship.tension ?? 0,
       tier: npcRelationship.tierId,
-      intimacyLevel: npcRelationship.intimacyLevelId,
+      // Check both levelId (new) and intimacyLevelId (legacy)
+      intimacyLevel: npcRelationship.levelId ?? npcRelationship.intimacyLevelId,
 
       // NPC-specific flags
       ...npcData,

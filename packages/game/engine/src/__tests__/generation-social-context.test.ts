@@ -31,7 +31,7 @@ function createTestSession(relationships: Record<string, any> = {}): GameSession
     scene_id: 1,
     current_node_id: 1,
     flags: {},
-    relationships,
+    stats: { relationships },
     world_time: 0,
     version: 1,
   };
@@ -94,7 +94,7 @@ describe('buildGenerationSocialContext', () => {
         chemistry: 25,
         tension: 5,
         tierId: 'friend',
-        intimacyLevelId: 'light_flirt',
+        levelId: 'light_flirt',
       },
     });
 
@@ -114,7 +114,7 @@ describe('buildGenerationSocialContext', () => {
         chemistry: 65,
         tension: 10,
         tierId: 'close_friend',
-        intimacyLevelId: 'intimate',
+        levelId: 'intimate',
       },
     });
 
@@ -134,7 +134,7 @@ describe('buildGenerationSocialContext', () => {
         chemistry: 85,
         tension: 15,
         tierId: 'lover',
-        intimacyLevelId: 'very_intimate',
+        levelId: 'very_intimate',
       },
     });
 
@@ -148,7 +148,7 @@ describe('buildGenerationSocialContext', () => {
   it('should clamp rating by world maxContentRating', () => {
     const session = createTestSession({
       'npc:12': {
-        intimacyLevelId: 'very_intimate',
+        levelId: 'very_intimate',
         tierId: 'lover',
       },
     });
@@ -163,7 +163,7 @@ describe('buildGenerationSocialContext', () => {
   it('should reduce intensity when configured', () => {
     const session = createTestSession({
       'npc:12': {
-        intimacyLevelId: 'intimate',
+        levelId: 'intimate',
         tierId: 'close_friend',
       },
     });
@@ -179,11 +179,11 @@ describe('buildGenerationSocialContext', () => {
   it('should use highest intimacy level for multiple NPCs', () => {
     const session = createTestSession({
       'npc:12': {
-        intimacyLevelId: 'light_flirt',
+        levelId: 'light_flirt',
         tierId: 'friend',
       },
       'npc:13': {
-        intimacyLevelId: 'intimate',
+        levelId: 'intimate',
         tierId: 'close_friend',
       },
     });
@@ -313,7 +313,7 @@ describe('Regression Anchors', () => {
         chemistry: 70,
         tension: 15,
         tierId: 'close_friend',
-        intimacyLevelId: 'intimate',
+        levelId: 'intimate',
       },
     });
 
@@ -326,7 +326,7 @@ describe('Regression Anchors', () => {
 
   it('Anchor: World maxRating=romantic clamps mature_implied → romantic', () => {
     const session = createTestSession({
-      'npc:12': { intimacyLevelId: 'intimate' },
+      'npc:12': { levelId: 'intimate' },
     });
 
     const world = createTestWorld({ maxContentRating: 'romantic' });
@@ -337,7 +337,7 @@ describe('Regression Anchors', () => {
 
   it('Anchor: reduceIntensity=true reduces deep → light', () => {
     const session = createTestSession({
-      'npc:12': { intimacyLevelId: 'intimate' }, // Normally 'deep'
+      'npc:12': { levelId: 'intimate' }, // Normally 'deep'
     });
 
     const context = buildGenerationSocialContext(session, undefined, [12], {
