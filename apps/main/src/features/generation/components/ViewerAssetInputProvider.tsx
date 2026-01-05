@@ -7,14 +7,16 @@
  * Usage: Render inside a GenerationScopeProvider alongside panels that consume CAP_ASSET_INPUT.
  */
 
-import { useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
-import { resolveAssetMediaType, type ViewerAsset } from '@features/assets';
+import { Ref, type AssetRef } from '@pixsim7/shared.types';
+
+import { resolveMediaType, type ViewerAsset } from '@features/assets';
 import {
   CAP_ASSET_INPUT,
   useProvideCapability,
   type AssetInputContext,
 } from '@features/contextHub';
-import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import { useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
+
 
 export interface ViewerAssetInputProviderProps {
   /** The asset to provide as input */
@@ -45,7 +47,7 @@ export function ViewerAssetInputProvider({
         const id = asset ? Number(asset.id) : NaN;
         const ref = Number.isFinite(id) ? Ref.asset(id) : null;
         const refs = ref ? ([ref] as AssetRef[]) : [];
-        const resolvedType = resolveAssetMediaType(asset);
+        const resolvedType = resolveMediaType(asset);
         const types =
           resolvedType === 'image' || resolvedType === 'video'
             ? [resolvedType]

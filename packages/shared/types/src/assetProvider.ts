@@ -11,12 +11,13 @@
  */
 
 import type { GenerationStrategy } from './generation';
+import type { components } from './openapi.generated';
+
+type MediaType = components['schemas']['MediaType'];
 
 // ============================================================================
 // Asset Types
 // ============================================================================
-
-export type AssetMediaType = 'video' | 'image' | 'audio' | '3d_model';
 
 export type AssetSource = 'pre-made' | 'generated' | 'cached';
 
@@ -48,7 +49,7 @@ export interface Asset {
   /** URL to access the asset */
   url: string;
   /** Media type */
-  type: AssetMediaType;
+  type: MediaType;
   /** Where this asset came from */
   source: AssetSource;
   /** Additional metadata */

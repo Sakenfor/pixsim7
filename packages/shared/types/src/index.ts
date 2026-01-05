@@ -175,3 +175,13 @@ export type {
   components as ApiComponents,
   operations as ApiOperations,
 } from './openapi.generated';
+
+// ===================
+// OpenAPI Type Aliases
+// ===================
+// Common types exported directly for convenience
+
+import type { components } from './openapi.generated';
+
+/** Asset media type (video, image, audio, 3d_model) */
+export type MediaType = components['schemas']['MediaType'];

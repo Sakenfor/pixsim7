@@ -1,7 +1,10 @@
-import type { ViewerAsset } from "@features/assets";
 import type { AssetRef } from "@pixsim7/shared.types";
-import { resolveAssetMediaTypes } from "@features/assets/lib/assetMediaType";
+
+import type { ViewerAsset } from "@features/assets";
+import { resolveMediaTypes } from "@features/assets/lib/assetMediaType";
+
 import { CAP_ASSET_INPUT } from "../capabilityKeys";
+
 import type { CapabilityCompatibilityResult, CapabilityContract } from "./index";
 
 export type AssetInputSelection = {
@@ -37,7 +40,7 @@ export type AssetInputRequirement = {
 };
 
 function getAssetTypes(assets: ViewerAsset[]): Array<"image" | "video"> {
-  return resolveAssetMediaTypes(assets).filter(
+  return resolveMediaTypes(assets).filter(
     (type): type is "image" | "video" => type === "image" || type === "video",
   );
 }

@@ -12,18 +12,21 @@
  * - sceneContext: Active scene for "add to scene" actions
  */
 
-import type { MenuAction, MenuActionContext } from '../types';
 import type { AssetModel } from '@features/assets';
 import { toViewerAsset, toSelectedAsset } from '@features/assets';
-import { resolveAssetMediaType } from '@features/assets/lib/assetMediaType';
+import { resolveMediaType } from '@features/assets/lib/assetMediaType';
+import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
-import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
-import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import type { GenerationContextSummary, AssetSelection } from '@features/contextHub';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
+
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+
+
 import { getCapability } from '../capabilityHelpers';
+import type { MenuAction } from '../types';
 
 type AssetActionInput = {
   id: number;
@@ -64,7 +67,7 @@ function normalizeAsset(asset: AssetActionInput): AssetModel | null {
     return asset as AssetModel;
   }
 
-  const mediaType = resolveAssetMediaType(asset) ?? 'image';
+  const mediaType = resolveMediaType(asset) ?? 'image';
   const rawTags = asset.tags;
   const tags =
     Array.isArray(rawTags) && rawTags.length > 0 && typeof rawTags[0] === 'object'

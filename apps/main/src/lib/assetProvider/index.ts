@@ -53,12 +53,12 @@ export type {
   Asset,
   AssetRequest,
   AssetAvailability,
-  AssetMediaType,
   AssetSource,
   AssetMetadata,
   AssetStyle,
   AssetServiceConfig,
   IAssetProvider,
+  MediaType,
 } from '@pixsim7/shared.types';
 
 export {

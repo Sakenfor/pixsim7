@@ -1,14 +1,14 @@
-export type AssetMediaType = "image" | "video" | "audio" | "3d_model";
+import type { MediaType } from '@pixsim7/shared.types';
 
-type AssetMediaTypeLike = {
+type MediaTypeLike = {
   type?: string;
   media_type?: string;
   mediaType?: string;
 };
 
-export function resolveAssetMediaType(
-  asset: AssetMediaTypeLike | null | undefined,
-): AssetMediaType | null {
+export function resolveMediaType(
+  asset: MediaTypeLike | null | undefined,
+): MediaType | null {
   const rawType = asset?.type ?? asset?.media_type ?? asset?.mediaType;
   if (
     rawType === "image" ||
@@ -21,12 +21,12 @@ export function resolveAssetMediaType(
   return null;
 }
 
-export function resolveAssetMediaTypes(
-  assets: AssetMediaTypeLike[],
-): AssetMediaType[] {
-  const types = new Set<AssetMediaType>();
+export function resolveMediaTypes(
+  assets: MediaTypeLike[],
+): MediaType[] {
+  const types = new Set<MediaType>();
   assets.forEach((asset) => {
-    const resolved = resolveAssetMediaType(asset);
+    const resolved = resolveMediaType(asset);
     if (resolved) {
       types.add(resolved);
     }

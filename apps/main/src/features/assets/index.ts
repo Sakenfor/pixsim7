@@ -107,7 +107,6 @@ export {
   toViewerAsset,
   toViewerAssets,
   toSelectedAsset,
-  type AssetMediaType,
   type AssetSyncStatus,
   type AssetProviderStatus,
   type TagSummary,
@@ -118,7 +117,7 @@ export {
 // Lib - Asset Media Type
 // ============================================================================
 
-export { resolveAssetMediaType, resolveAssetMediaTypes } from './lib/assetMediaType';
+export { resolveMediaType, resolveMediaTypes } from './lib/assetMediaType';
 
 // ============================================================================
 // Lib - Asset Events

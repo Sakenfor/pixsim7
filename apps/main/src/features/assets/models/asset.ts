@@ -7,11 +7,11 @@
  */
 
 import type { AssetResponse } from '@pixsim7/api-client/domains';
-import type { ViewerAsset } from '../stores/assetViewerStore';
-import type { SelectedAsset } from '../stores/assetSelectionStore';
+import type { MediaType } from '@pixsim7/shared.types';
 
-// Re-export the media type for convenience
-export type AssetMediaType = 'video' | 'image' | 'audio' | '3d_model';
+import type { SelectedAsset } from '../stores/assetSelectionStore';
+import type { ViewerAsset } from '../stores/assetViewerStore';
+
 export type AssetSyncStatus = 'remote' | 'downloading' | 'downloaded' | 'error';
 export type AssetProviderStatus = 'ok' | 'local_only' | 'unknown' | 'flagged';
 
@@ -38,7 +38,7 @@ export interface AssetModel {
   isArchived: boolean;
   lastUploadStatusByProvider?: Record<string, 'success' | 'error'> | null;
   localPath?: string | null;
-  mediaType: AssetMediaType;
+  mediaType: MediaType;
   mimeType?: string | null;
   previewKey?: string | null;
   previewUrl?: string | null;

@@ -4,20 +4,6 @@
  * Simple, lightweight panel components for use in QuickGenerateModule's SmartDockview instance.
  * Panels receive context via SmartDockview's injected props.
  */
-import { useRef, useEffect, useMemo } from 'react';
-import type { IDockviewPanelProps } from 'dockview-core';
-import { PromptInput } from '@pixsim7/shared.ui';
-import { CompactAssetCard } from './CompactAssetCard';
-import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
-import { PromptCompanionHost } from '@lib/ui/promptCompanionSlot';
-import {
-  GenerationSettingsPanel,
-  useGenerationScopeStores,
-  resolveDisplayAssets,
-} from '@features/generation';
-import { useQuickGenerateController } from '@features/prompts';
-import { OPERATION_METADATA } from '@/types/operations';
-import type { OperationType } from '@/types/operations';
 import {
   QUICKGEN_PROMPT_COMPONENT_ID,
   QUICKGEN_SETTINGS_COMPONENT_ID,
@@ -35,11 +21,27 @@ import {
   type GenerateActionContext,
 } from '@features/contextHub';
 import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import { PromptInput } from '@pixsim7/shared.ui';
+import type { IDockviewPanelProps } from 'dockview-core';
+import { useRef, useEffect, useMemo } from 'react';
+
+import { useDockviewId } from '@lib/dockview';
+import { PromptCompanionHost } from '@lib/ui';
+
 import type { AssetModel } from '@features/assets';
-import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
+import { resolveMediaTypes } from '@features/assets/lib/assetMediaType';
+import {
+  GenerationSettingsPanel,
+  useGenerationScopeStores,
+  resolveDisplayAssets,
+} from '@features/generation';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
-import { useDockviewId } from '@lib/dockview/contextMenu';
-import { resolveAssetMediaTypes } from '@features/assets/lib/assetMediaType';
+import { useQuickGenerateController } from '@features/prompts';
+import type { OperationType } from '@/types/operations';
+import { OPERATION_METADATA } from '@/types/operations';
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
+
+import { CompactAssetCard } from './CompactAssetCard';
 
 // Panel IDs
 export type QuickGenPanelId =
@@ -154,7 +156,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
           operationType === "video_transition" ||
           (isFlexibleOperation && (displayAssets?.length ?? 0) > 1);
         const maxCount = isMultiAsset ? Math.max(refs.length, 1) : 1;
-        const types = resolveAssetMediaTypes(displayAssets ?? []).filter(
+        const types = resolveMediaTypes(displayAssets ?? []).filter(
           (type): type is "image" | "video" => type === "image" || type === "video",
         );
 
@@ -346,9 +348,10 @@ export function PromptPanel(props: QuickGenPanelProps) {
       lastSelectedAsset: controller.lastSelectedAsset,
       allowAnySelected,
     }),
-    isFlexibleOperation = FLEXIBLE_OPERATIONS.has(operationType),
+    isFlexibleOperation: _isFlexibleOperation = FLEXIBLE_OPERATIONS.has(operationType),
     error = controller.error,
   } = ctx || {};
+  void _isFlexibleOperation; // Used in PromptPanel for future capability hints
 
   const maxChars = resolvePromptLimitForModel(providerId, model, paramSpecs as any);
   const hasAsset = displayAssets.length > 0;
