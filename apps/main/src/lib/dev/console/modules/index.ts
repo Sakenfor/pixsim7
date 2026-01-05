@@ -19,7 +19,8 @@
  */
 
 export { coreModule } from './core';
-export { workspaceModule } from '@features/workspace/lib/consoleModule';
+export { workspaceModule } from './workspace';
+export { statsModule } from './stats';
 export { toolsModule, useToolConsoleStore } from './tools';
 
 // Inspector module system
@@ -42,8 +43,9 @@ export type { ConsoleModule } from '../moduleRegistry';
 
 // Default modules in dependency order
 import { coreModule } from './core';
-import { workspaceModule } from '@features/workspace/lib/consoleModule';
+import { statsModule } from './stats';
 import { toolsModule } from './tools';
+import { workspaceModule } from './workspace';
 
 /**
  * Default modules to register, in dependency order.
@@ -52,5 +54,6 @@ import { toolsModule } from './tools';
 export const defaultModules = [
   coreModule,
   workspaceModule,
+  statsModule,
   toolsModule,
 ];

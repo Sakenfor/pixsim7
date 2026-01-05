@@ -19,5 +19,6 @@ export { registerConsoleManifest, registerConsoleManifests } from './registerMan
 
 // Manifests
 export { coreManifest } from './core';
+export { workspaceManifest } from './workspace';
 export { statsManifest } from './stats';
 export { toolsManifest } from './tools';

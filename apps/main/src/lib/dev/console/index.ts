@@ -43,6 +43,7 @@ export {
   registerConsoleManifest,
   registerConsoleManifests,
   coreManifest,
+  workspaceManifest,
   statsManifest,
   toolsManifest,
 } from './manifests';
@@ -55,15 +56,8 @@ export type {
 } from './manifests';
 
 // Module exports (for custom registration)
-export { defaultModules, coreModule, workspaceModule, toolsModule } from './modules';
-export { statsModule } from './modules/stats';
+export { defaultModules, coreModule, workspaceModule, toolsModule, statsModule } from './modules';
 export { useToolConsoleStore } from './modules/tools';
-
-// Legacy exports (deprecated, use modules instead)
-export { registerCoreStores } from './registerCoreStores';
-export { registerCoreOps } from './registerCoreOps';
-export { registerToolOps } from './registerToolOps';
-export { registerStatsOps } from './registerStatsOps';
 
 import { getEditorContextSnapshot } from './getEditorContextSnapshot';
 import { moduleRegistry } from './moduleRegistry';
@@ -99,12 +93,8 @@ export function initializeConsole(additionalModules?: import('./moduleRegistry')
   void import('./modules')
     .then(({ defaultModules }) => {
       // Register default modules (in dependency order)
+      // Includes: core, workspace, stats, tools
       moduleRegistry.registerAll(defaultModules);
-      return import('./modules/stats');
-    })
-    .then(({ statsModule }) => {
-      // Register stats module (our addition)
-      moduleRegistry.register(statsModule);
 
       // Register any additional modules
       if (additionalModules) {
