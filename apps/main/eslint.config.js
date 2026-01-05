@@ -110,6 +110,21 @@ export default defineConfig([
               group: ['@/lib/*', '@/lib'],
               message: 'Use @lib/* instead of @/lib/*. Example: import { apiClient } from "@lib/api"',
             },
+            {
+              group: [
+                '@features/generation/lib/core/assetInputTypes',
+                '@features/generation/lib/core/normalizeProviderParams',
+                '@features/generation/lib/generationTypes',
+              ],
+              message: 'Import from @pixsim7/shared.generation-core instead of legacy @features/generation paths.',
+            },
+            {
+              group: [
+                '@features/assets/lib/assetMediaType',
+                '@features/assets/lib/assetCardActions',
+              ],
+              message: 'Import from @pixsim7/shared.assets-core instead of legacy @features/assets paths.',
+            },
           ],
         },
       ],
