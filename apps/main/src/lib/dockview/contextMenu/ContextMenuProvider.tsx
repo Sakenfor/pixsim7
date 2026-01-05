@@ -7,9 +7,9 @@
  * Services are injected via props to keep the system decoupled and testable.
  */
 
+import type { CapabilityKey, CapabilityProvider } from '@pixsim7/capabilities-core';
+import type { DockviewApi } from 'dockview-core';
 import {
-  createContext,
-  useContext,
   useState,
   useCallback,
   useMemo,
@@ -17,10 +17,10 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react';
-import type { DockviewApi } from 'dockview-core';
-import { contextMenuRegistry, type ContextMenuRegistry } from './ContextMenuRegistry';
-import type { MenuActionContext, PanelRegistryLike } from './types';
-import type { DockviewHost } from '../host';
+
+import { useContextHubOverridesStore, useContextHubState, type ContextHubState } from '@features/contextHub';
+
+import { createDockviewHost } from '../host';
 import {
   getDockviewHost as getHostFromRegistry,
   getDockviewApi as getApiFromRegistry,
@@ -30,9 +30,13 @@ import {
   unregisterDockviewHost as unregisterFromRegistry,
   type DockviewCapabilities,
 } from '../hostRegistry';
-import { createDockviewHost } from '../host';
-import { useContextHubOverridesStore, useContextHubState } from '@features/contextHub';
-import type { CapabilityKey, ContextHubState, CapabilityProvider } from '@features/contextHub';
+
+import { ContextMenuContext, type ContextMenuContextValue } from './ContextMenuContext';
+import { contextMenuRegistry } from './ContextMenuRegistry';
+import type { MenuActionContext, PanelRegistryLike } from './types';
+
+
+
 
 /** Dockview serialized layout type */
 export type DockviewLayout = ReturnType<DockviewApi['toJSON']>;
@@ -45,45 +49,10 @@ interface ContextMenuState {
 /** Services that can be injected into the context menu system */
 export interface ContextMenuServices {
   /** Workspace store for preset management */
-  workspaceStore?: any;
+  workspaceStore?: unknown;
   /** Panel registry for querying available panels */
   panelRegistry?: PanelRegistryLike;
 }
-
-interface ContextMenuContextValue {
-  /** Show context menu at position with given context */
-  showContextMenu: (partial: Partial<MenuActionContext>) => void;
-  /** Hide context menu */
-  hideContextMenu: () => void;
-  /** Context menu registry */
-  registry: ContextMenuRegistry;
-  /** Current menu state */
-  state: ContextMenuState;
-  /**
-   * Register a dockview instance with optional capabilities.
-   * Delegates to the central hostRegistry.
-   */
-  registerDockview: (
-    id: string,
-    api: DockviewApi,
-    capabilities?: DockviewCapabilities
-  ) => void;
-  /**
-   * Unregister a dockview instance.
-   * Delegates to the central hostRegistry.
-   */
-  unregisterDockview: (id: string) => void;
-  /** Get a dockview API by ID (delegates to hostRegistry) */
-  getDockviewApi: (id: string) => DockviewApi | undefined;
-  /** Get all registered dockview IDs (delegates to hostRegistry) */
-  getDockviewIds: () => string[];
-  /** Get a dockview host by ID (delegates to hostRegistry) */
-  getDockviewHost: (id: string) => DockviewHost | undefined;
-  /** Get all registered dockview host IDs (delegates to hostRegistry) */
-  getDockviewHostIds: () => string[];
-}
-
-const ContextMenuContext = createContext<ContextMenuContextValue | null>(null);
 
 interface ContextMenuProviderProps {
   children: ReactNode;
@@ -325,25 +294,4 @@ function sameValues(a: Record<string, unknown>, b: Record<string, unknown>) {
   return true;
 }
 
-/**
- * Hook to access context menu functionality
- *
- * @throws Error if used outside of ContextMenuProvider
- */
-export function useContextMenu() {
-  const context = useContext(ContextMenuContext);
-  if (!context) {
-    throw new Error('useContextMenu must be used within ContextMenuProvider');
-  }
-  return context;
-}
-
-/**
- * Hook to check if context menu is available (optional usage)
- *
- * Returns null if outside provider, allowing components to work
- * with or without context menu support.
- */
-export function useContextMenuOptional() {
-  return useContext(ContextMenuContext);
-}
+// Hooks are exported from ./useContextMenu.ts for fast-refresh compatibility

@@ -1,3 +1,4 @@
+import type { CapabilityKey, CapabilityProvider } from "@pixsim7/capabilities-core";
 import { Panel } from "@pixsim7/shared.ui";
 import { useMemo } from "react";
 
@@ -6,8 +7,6 @@ import {
   useCapability,
   useContextHubState,
   useContextHubOverridesStore,
-  type CapabilityKey,
-  type CapabilityProvider,
 } from "@features/contextHub";
 
 function summarizeProvider(provider: CapabilityProvider) {

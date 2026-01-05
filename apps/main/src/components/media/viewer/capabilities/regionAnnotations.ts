@@ -13,12 +13,13 @@
  * - Asset viewer panel context
  */
 
+import type { CapabilityProvider } from '@pixsim7/capabilities-core';
 import { useCallback, useMemo } from 'react';
+
 import {
   registerCapabilityDescriptor,
   useProvideCapability,
   useCapability,
-  type CapabilityProvider,
 } from '@features/contextHub';
 import {
   useAssetRegionStore,

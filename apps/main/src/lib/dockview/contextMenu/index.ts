@@ -6,7 +6,9 @@
 
 export * from './types';
 export * from './ContextMenuRegistry';
+export * from './ContextMenuContext';
 export * from './ContextMenuProvider';
+export * from './useContextMenu';
 export * from './DockviewContextMenu';
 export * from './PanelPropertiesPopup';
 export * from './CustomTabComponent';

@@ -8,18 +8,19 @@
  * provider selection. See types.ts for capability access pattern documentation.
  */
 
-import type { MenuAction, MenuActionContext } from "../types";
+import type { CapabilityKey, CapabilityProvider } from "@pixsim7/capabilities-core";
+
 import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/contextHub";
-import type { CapabilityKey, CapabilityProvider } from "@features/contextHub";
 import { panelRegistry } from "@features/panels";
 import { getCapabilityKeys } from "@features/panels/lib/panelTypes";
+
 import {
   getRegistryChain,
   getAllProviders,
   resolveProvider,
   hasLiveState,
-  type ProviderEntry,
 } from "../capabilityHelpers";
+import type { MenuAction, MenuActionContext } from "../types";
 
 /**
  * Get a human-readable label for a capability key.

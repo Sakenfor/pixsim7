@@ -46,10 +46,6 @@ export {
   clearCapabilityDescriptors,
   setDescriptorWarnOnOverwrite,
 } from "./domain/descriptorRegistry";
-export {
-  setConsumptionThrottle,
-  getConsumptionThrottle,
-} from "./domain/registry";
 export type {
   CapabilityContract,
   CapabilityCompatibilityResult,
@@ -69,15 +65,8 @@ export type {
   UnifiedCapabilityOptions,
 } from "./hooks";
 export { useUnifiedCapabilities, useUnifiedCapability } from "./hooks";
-// Re-export core types for convenience (prefer importing from @pixsim7/capabilities-core directly)
-export type {
-  CapabilityKey,
-  CapabilityProvider,
-  CapabilitySnapshot,
-  CapabilityScope,
-} from "@pixsim7/capabilities-core";
 
-// UI-specific types
+// UI-specific types only - import core types from @pixsim7/capabilities-core
 export type {
   CapabilityRegistry,
   CapabilityConsumption,

@@ -1,6 +1,7 @@
+import type { CapabilityScope } from "@pixsim7/capabilities-core";
 import type { ReactNode } from "react";
+
 import { BaseRegistry } from "@lib/core/BaseRegistry";
-import type { CapabilityScope } from "@features/contextHub";
 
 export type PanelSettingsScopeMode = "global" | "local";
 

@@ -19,33 +19,8 @@ import type {
   CapabilityConsumption,
 } from "../types";
 
-// ============================================================================
-// Consumption Throttle Configuration (deprecated - use registry methods)
-// ============================================================================
-
 /** Default throttle interval for new registries (ms) */
-let defaultConsumptionThrottleMs = 500;
-
-/**
- * Set the default consumption throttle interval for newly created registries.
- *
- * @deprecated Use registry.setConsumptionThrottleMs() instead for per-registry control.
- * This only affects registries created after the call.
- *
- * @param ms - Throttle interval in milliseconds (0 to disable throttling)
- */
-export function setConsumptionThrottle(ms: number): void {
-  defaultConsumptionThrottleMs = Math.max(0, ms);
-}
-
-/**
- * Get the default consumption throttle interval for new registries.
- *
- * @deprecated Use registry.getConsumptionThrottleMs() instead for per-registry control.
- */
-export function getConsumptionThrottle(): number {
-  return defaultConsumptionThrottleMs;
-}
+const DEFAULT_CONSUMPTION_THROTTLE_MS = 500;
 
 /**
  * Adapt a core consumption record to UI consumption record.
@@ -69,9 +44,8 @@ function adaptConsumption(core: CoreCapabilityConsumption): CapabilityConsumptio
  * - Adapting consumption records to UI format
  */
 export function createCapabilityRegistry(): CapabilityRegistry {
-  // Create core registry with current default throttle setting
   const core: CoreCapabilityRegistry = createCoreRegistry({
-    consumptionThrottleMs: defaultConsumptionThrottleMs,
+    consumptionThrottleMs: DEFAULT_CONSUMPTION_THROTTLE_MS,
   });
 
   // Return UI-adapted interface
