@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
 # Lint staged files
-cd apps/main && pnpm exec lint-staged
+cd apps/main && pnpm exec lint-staged --relative
 
 # OpenAPI types freshness check (warning only - requires running backend)
 # Uncomment the following to enable blocking check in CI:
