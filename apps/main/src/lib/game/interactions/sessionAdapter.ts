@@ -14,8 +14,6 @@
 import type { GameSessionDTO } from '../../api/game';
 import type { SessionHelpers, SessionAPI } from './types';
 import {
-  getNpcRelationshipState,
-  setNpcRelationshipState,
   getInventory,
   addInventoryItem as addInventoryItemCore,
   removeInventoryItem as removeInventoryItemCore,
@@ -27,6 +25,8 @@ import {
   endEvent as endEventCore,
   isEventActive,
   sessionHelperRegistry,
+  getAdapterBySource,
+  type SessionStatAdapter,
 } from '@pixsim7/game.engine';
 
 /** Maximum number of retry attempts for conflict resolution */
@@ -57,6 +57,60 @@ const logger = {
  * Sleep utility for exponential backoff
  */
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Build optimistic update payload from session path
+ *
+ * Takes a dot-notation path like "stats.relationships.npc:42" and builds
+ * a nested object structure for the optimistic update.
+ *
+ * @param session - Current session state
+ * @param path - Dot-notation path (e.g., "stats.relationships.npc:42")
+ * @param patch - Data to merge at the path
+ */
+function buildOptimisticPayload(
+  session: GameSessionDTO,
+  path: string,
+  patch: unknown
+): Partial<GameSessionDTO> {
+  const parts = path.split('.');
+  if (parts.length === 0) return {};
+
+  // Get current value at path
+  let current: any = session;
+  for (const part of parts) {
+    current = current?.[part];
+  }
+
+  // Build nested update object
+  const result: any = {};
+  let target = result;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    const sessionValue = getNestedValue(session, parts.slice(0, i + 1));
+    target[part] = { ...sessionValue };
+    target = target[part];
+  }
+
+  // Set the final value (merge with current)
+  const lastPart = parts[parts.length - 1];
+  target[lastPart] = { ...(current ?? {}), ...patch };
+
+  return result;
+}
+
+/**
+ * Get nested value from object using path parts
+ */
+function getNestedValue(obj: any, parts: string[]): any {
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return undefined;
+    current = current[part];
+  }
+  return current;
+}
 
 /**
  * Create session helpers bound to a specific game session
@@ -190,24 +244,32 @@ export function createSessionHelpers(
   // Build dynamic helpers from registry (allows custom extensions)
   const dynamicHelpers = sessionHelperRegistry.buildHelpersObject(gameSession);
 
+  // Get relationship adapter from stat adapter registry
+  const relationshipAdapter = getAdapterBySource('session.relationships');
+
   // Return real helpers bound to this session
   // Explicit typed helpers come first for IDE autocomplete
   // Dynamic helpers are spread at the end to allow custom extensions
   return {
-    getNpcRelationship: (npcId) => getNpcRelationshipState(gameSession, npcId),
+    getNpcRelationship: (npcId) => {
+      return relationshipAdapter?.get(gameSession, npcId) ?? null;
+    },
 
     updateNpcRelationship: async (npcId, patch) => {
+      if (!relationshipAdapter?.set) {
+        logger.warn('Relationship adapter does not support writes');
+        return gameSession;
+      }
+
+      // Build optimistic update payload using adapter's session path
+      const sessionPath = relationshipAdapter.getSessionPath?.(npcId);
+      const optimisticPayload = sessionPath
+        ? buildOptimisticPayload(gameSession, sessionPath, patch)
+        : { stats: gameSession.stats };
+
       return applyOptimisticUpdate(
-        (session) => setNpcRelationshipState(session, npcId, patch),
-        {
-          relationships: {
-            ...gameSession.relationships,
-            [`npc:${npcId}`]: {
-              ...(gameSession.relationships[`npc:${npcId}`] || {}),
-              ...patch,
-            },
-          },
-        }
+        (session) => relationshipAdapter.set!(session, npcId, patch),
+        optimisticPayload
       );
     },
 
