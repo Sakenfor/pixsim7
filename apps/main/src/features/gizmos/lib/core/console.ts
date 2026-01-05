@@ -65,8 +65,15 @@ type ConsoleOpsRegistry = {
   register: (categoryId: string, operation: Operation) => void;
 };
 
+// Use a duck-typed interface for DataRegistry to avoid circular imports
 type ConsoleDataRegistry = {
-  register: (id: string, data: unknown) => void;
+  register: (registration: {
+    id: string;
+    name: string;
+    description: string;
+    store: { getState: () => unknown };
+    readableKeys?: string[];
+  }) => void;
 };
 
 /**
@@ -453,16 +460,16 @@ function registerDataStore(dataRegistry: ConsoleDataRegistry): void {
     id: 'toolConsole',
     name: 'Tool Console State',
     description: 'Active tool and overrides for console control',
-    getSnapshot: () => useToolConsoleStore.getState(),
-    getKeys: () => ['activeToolId', 'overrides'],
+    store: useToolConsoleStore,
+    readableKeys: ['activeToolId', 'overrides'],
   });
 
   dataRegistry.register({
     id: 'toolConfig',
     name: 'Tool Configuration',
     description: 'Runtime tool parameter overrides with presets and history',
-    getSnapshot: () => useToolConfigStore.getState(),
-    getKeys: () => ['overrides', 'presets', 'activeToolId', 'history'],
+    store: useToolConfigStore,
+    readableKeys: ['overrides', 'presets', 'activeToolId', 'history'],
   });
 }
 

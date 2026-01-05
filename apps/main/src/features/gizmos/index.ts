@@ -8,6 +8,10 @@ export * from './lib/bodyMap/tracking';
 // Namespace export for body map types
 export * as BodyMap from './lib/bodyMap/zones';
 
+// Console Manifests (feature-owned)
+export { statsManifest } from './lib/consoleStatsManifest';
+export { toolsManifest } from './lib/consoleToolsManifest';
+
 // Stores
 export {
   useToolConfigStore,

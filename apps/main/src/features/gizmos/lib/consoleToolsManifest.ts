@@ -2,10 +2,11 @@
  * Tools Console Manifest
  *
  * Declares tool and gizmo operations.
- * Uses dynamic import to delegate to the gizmos feature.
+ * Feature-owned manifest for the gizmos feature.
+ * Uses dynamic import to delegate to the gizmos console registration.
  */
 
-import type { ConsoleManifest } from './types';
+import type { ConsoleManifest } from '@lib/dev/console/manifests/types';
 
 /**
  * Tools console manifest
@@ -24,7 +25,8 @@ export const toolsManifest: ConsoleManifest = {
 
   // Dynamic import to avoid circular dependency
   register: ({ opsRegistry, dataRegistry }) => {
-    import('@/gizmos/console').then(({ registerGizmoConsoleSync }) => {
+    // Import from local console.ts in the same feature
+    import('./core/console').then(({ registerGizmoConsoleSync }) => {
       registerGizmoConsoleSync(opsRegistry, dataRegistry);
     });
   },

@@ -5,14 +5,16 @@
  * Allows viewing, adjusting, and cheating stats for NPC interactions.
  */
 
-import { statsManifest, registerConsoleManifest } from '../manifests';
+import { statsManifest } from '@features/gizmos/lib/consoleStatsManifest';
+
+import { registerConsoleManifest } from '../manifests';
 import type { ConsoleModule } from '../moduleRegistry';
 
 /**
  * Stats console module
  *
  * Registers stats operations via manifest.
- * See manifests/stats.ts for the actual declarations.
+ * See features/gizmos/lib/consoleStatsManifest.ts for the actual declarations.
  *
  * Note: The interactionStats data store is registered by the core module.
  */

@@ -7,6 +7,16 @@
  * Usage: pixsim.ops.scene.create({ title: 'New Scene' })
  */
 
+/**
+ * Parameter definition for console operations
+ */
+export interface OperationParam {
+  name: string;
+  type: string;
+  required?: boolean;
+  description?: string;
+}
+
 export interface Operation {
   /** Unique identifier within category (e.g., 'create', 'delete') */
   id: string;
@@ -17,12 +27,7 @@ export interface Operation {
   /** The operation function */
   execute: (...args: unknown[]) => unknown;
   /** Parameter schema for autocomplete/validation (optional) */
-  params?: Array<{
-    name: string;
-    type: string;
-    required?: boolean;
-    description?: string;
-  }>;
+  params?: OperationParam[];
 }
 
 export interface OperationCategory {

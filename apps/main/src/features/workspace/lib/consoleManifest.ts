@@ -5,19 +5,18 @@
  * This is the single source of truth for workspace/selection console ops.
  */
 
-import { useSelectionStore } from '@features/graph';
-import { useWorkspaceStore } from '@features/workspace';
-import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
+import { categoryOps, param } from '@lib/dev/console/manifests/helpers';
+import type { ConsoleManifest } from '@lib/dev/console/manifests/types';
 
-import type { ConsoleManifest } from './types';
+import { useSelectionStore } from '@features/graph';
+
+
+import { useWorkspaceStore } from '../stores/workspaceStore';
+
+import { getWorkspaceDockviewApi } from './getWorkspaceDockviewApi';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
-
-/** Get the workspace dockview API */
-function getWorkspaceApi() {
-  return getWorkspaceDockviewApi();
-}
 
 /**
  * Workspace console manifest
@@ -47,16 +46,14 @@ export const workspaceManifest: ConsoleManifest = {
     ],
     operations: [
       // Workspace Operations
-      {
-        categoryId: 'workspace',
-        op: {
-          id: 'loadPreset',
+      ...categoryOps('workspace', {
+        loadPreset: {
           name: 'Load Preset',
           description: 'Load a workspace preset by ID',
           execute: (presetId: unknown) => {
             if (typeof presetId !== 'string') throw new Error('presetId must be a string');
 
-            const api = getWorkspaceApi();
+            const api = getWorkspaceDockviewApi();
             if (!api) throw new Error('Workspace dockview not available');
 
             const store = useWorkspaceStore.getState();
@@ -72,32 +69,24 @@ export const workspaceManifest: ConsoleManifest = {
             store.setActivePreset('workspace', presetId);
             return `Loaded preset: ${presetId}`;
           },
-          params: [{ name: 'presetId', type: 'string', required: true, description: 'Preset ID to load' }],
+          params: [param('presetId', 'string', true, 'Preset ID to load')],
         },
-      },
-      {
-        categoryId: 'workspace',
-        op: {
-          id: 'savePreset',
+        savePreset: {
           name: 'Save Preset',
           description: 'Save current layout as a new preset',
           execute: (name: unknown) => {
             if (typeof name !== 'string') throw new Error('name must be a string');
 
-            const api = getWorkspaceApi();
+            const api = getWorkspaceDockviewApi();
             if (!api) throw new Error('Workspace dockview not available');
 
             const layout = api.toJSON();
             useWorkspaceStore.getState().savePreset(name, 'workspace', layout);
             return `Saved preset: ${name}`;
           },
-          params: [{ name: 'name', type: 'string', required: true, description: 'Name for the new preset' }],
+          params: [param('name', 'string', true, 'Name for the new preset')],
         },
-      },
-      {
-        categoryId: 'workspace',
-        op: {
-          id: 'listPresets',
+        listPresets: {
           name: 'List Presets',
           description: 'List all available workspace presets',
           execute: () => {
@@ -105,11 +94,7 @@ export const workspaceManifest: ConsoleManifest = {
             return presets.map((p) => ({ id: p.id, name: p.name, icon: p.icon }));
           },
         },
-      },
-      {
-        categoryId: 'workspace',
-        op: {
-          id: 'toggleLock',
+        toggleLock: {
           name: 'Toggle Lock',
           description: 'Toggle workspace layout lock',
           execute: () => {
@@ -118,11 +103,7 @@ export const workspaceManifest: ConsoleManifest = {
             return `Workspace ${isLocked ? 'locked' : 'unlocked'}`;
           },
         },
-      },
-      {
-        categoryId: 'workspace',
-        op: {
-          id: 'reset',
+        reset: {
           name: 'Reset',
           description: 'Reset workspace to default',
           execute: () => {
@@ -130,12 +111,10 @@ export const workspaceManifest: ConsoleManifest = {
             return 'Workspace reset to default';
           },
         },
-      },
+      }),
       // Selection Operations
-      {
-        categoryId: 'selection',
-        op: {
-          id: 'clear',
+      ...categoryOps('selection', {
+        clear: {
           name: 'Clear Selection',
           description: 'Clear all selected nodes',
           execute: () => {
@@ -143,11 +122,7 @@ export const workspaceManifest: ConsoleManifest = {
             return 'Selection cleared';
           },
         },
-      },
-      {
-        categoryId: 'selection',
-        op: {
-          id: 'select',
+        select: {
           name: 'Select Nodes',
           description: 'Select nodes by ID',
           execute: (nodeIds: unknown) => {
@@ -155,20 +130,16 @@ export const workspaceManifest: ConsoleManifest = {
             useSelectionStore.getState().setSelectedNodeIds(nodeIds as string[]);
             return `Selected ${nodeIds.length} nodes`;
           },
-          params: [{ name: 'nodeIds', type: 'string[]', required: true, description: 'Array of node IDs' }],
+          params: [param('nodeIds', 'string[]', true, 'Array of node IDs')],
         },
-      },
-      {
-        categoryId: 'selection',
-        op: {
-          id: 'list',
+        list: {
           name: 'List Selected',
           description: 'Get currently selected node IDs',
           execute: () => {
             return useSelectionStore.getState().selectedNodeIds;
           },
         },
-      },
+      }),
     ],
   },
 };

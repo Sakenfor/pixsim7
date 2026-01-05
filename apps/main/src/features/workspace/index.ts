@@ -37,6 +37,7 @@ export { useWorkspacePresets } from "./hooks/useWorkspacePresets";
 
 // Console Module
 export { workspaceModule as workspaceConsoleModule } from "@lib/dev/console/modules/workspace";
+export { workspaceManifest } from "./lib/consoleManifest";
 
 // Capability Registration
 export { registerWorkspaceFeature } from "./lib/capabilities";

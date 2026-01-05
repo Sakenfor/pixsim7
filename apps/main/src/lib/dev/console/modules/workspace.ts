@@ -5,14 +5,16 @@
  * Provides workspace and selection operations.
  */
 
-import { workspaceManifest, registerConsoleManifest } from '../manifests';
+import { workspaceManifest } from '@features/workspace/lib/consoleManifest';
+
+import { registerConsoleManifest } from '../manifests';
 import type { ConsoleModule } from '../moduleRegistry';
 
 /**
  * Workspace console module
  *
  * Registers workspace and selection operations via manifest.
- * See manifests/workspace.ts for the actual declarations.
+ * See features/workspace/lib/consoleManifest.ts for the actual declarations.
  */
 export const workspaceModule: ConsoleModule = {
   id: workspaceManifest.id,
