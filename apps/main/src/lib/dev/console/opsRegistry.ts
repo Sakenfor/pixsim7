@@ -120,6 +120,7 @@ class OpsRegistry {
    * Create a proxy for a category that provides dynamic access to operations
    */
   private createCategoryProxy(categoryId: string): Record<string, unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- Proxy handlers need captured this
     const self = this;
     return new Proxy(
       {},
@@ -161,6 +162,7 @@ class OpsRegistry {
    * Create the top-level ops proxy
    */
   createProxy(): Record<string, unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- Proxy handlers need captured this
     const self = this;
     const categoryProxies = new Map<string, Record<string, unknown>>();
 

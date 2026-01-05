@@ -18,9 +18,10 @@
  *   pixsim.ops.scene.__keys__ - List operations in scene category
  */
 
+import type { EditorContext } from '@lib/context';
+
 import { dataRegistry } from './dataRegistry';
 import { opsRegistry } from './opsRegistry';
-import type { EditorContext } from '@lib/context/editorContext';
 
 /** Function to get current editor context (set during initialization) */
 let getEditorContext: (() => EditorContext) | null = null;

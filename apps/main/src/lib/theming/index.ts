@@ -5,5 +5,10 @@
  */
 
 export { useWorldTheme, generateThemeCSS } from './useWorldTheme';
-export { useViewMode, filterToolsByViewMode } from './useViewMode';
+export {
+  useViewMode,
+  filterToolsByViewMode,
+  getViewModeConfig,
+  getViewModeOptions,
+} from './useViewMode';
 export * from './scifi-tokens';

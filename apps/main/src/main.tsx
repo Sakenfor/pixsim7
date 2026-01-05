@@ -1,23 +1,28 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+
 import './index.css'
+import { registerQuickGenerateComponentSettings } from '@features/controlCenter/lib/registerQuickGenerateComponentSettings'
+import { registerGenerationScopes } from '@features/generation'
+import { registerPreviewScopes } from '@features/preview'
+
 import App from './App.tsx'
-import { initWebLogger, logEvent } from './lib/utils/logging'
-import { registerBuiltInMiniGames } from '@pixsim7/game.components'
 import { registerFrontendMiniGames } from './components/minigames/registry'
-import '@features/providers/lib/plugins' // Register provider generation UI plugins
-import '@lib/dockview/contextMenu/autoContextPresets' // Register auto-context menu presets
-import { registerDevTools } from './lib/dev/devtools/registerDevTools'
-import { registerGallerySurfaces } from './features/gallery/lib/core/registerGallerySurfaces'
-import { registerGalleryTools } from './features/gallery/lib/core/registerGalleryTools'
 import { registerBrainTools } from './features/brainTools/lib/registerBrainTools'
+import { registerGallerySurfaces } from './features/gallery/lib/core/registerGallerySurfaces'
+import { registerDevTools } from './lib/dev/devtools/registerDevTools'
+import { initWebLogger, logEvent } from './lib/utils/logging'
+
+import { registerBuiltInMiniGames } from '@pixsim7/game.components'
+
+import '@features/providers/lib/plugins' // Register provider generation UI plugins
+import '@lib/dockview' // Register auto-context menu presets
+import { registerGalleryTools } from './features/gallery/lib/core/registerGalleryTools'
 import { registerWorldTools } from './features/worldTools/lib/registerWorldTools'
 import { registerGizmoSurfaces } from './features/gizmos'
 import { DevToolProvider } from './lib/dev/devtools/devToolContext'
 import { registerPromptCompanion } from './plugins/ui/prompt-companion'
-import { registerGenerationScopes } from '@features/generation'
-import { registerPreviewScopes } from '@features/preview'
-import { registerQuickGenerateComponentSettings } from '@features/controlCenter/lib/registerQuickGenerateComponentSettings'
+
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
 import './lib/utils/debugFlags' // Debug flags system for toggleable logging
 import { initializeConsole } from './lib/dev/console'

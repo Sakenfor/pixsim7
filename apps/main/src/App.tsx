@@ -1,9 +1,11 @@
 import { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
 import { useAuthStore } from './stores/authStore';
-import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
+
+
 import { useToast } from '@pixsim7/shared.ui';
-import { registerModules, moduleRegistry } from '@app/modules';
+
 
 // Register modules synchronously at module load time (before any component renders)
 // This ensures routes are available on first render
@@ -15,10 +17,6 @@ function ensureModulesRegistered() {
   }
 }
 ensureModulesRegistered();
-import { Login } from './routes/Login';
-import { Register } from './routes/Register';
-import { Home } from './routes/Home';
-import { ProtectedRoute } from './routes/ProtectedRoute';
 // Static routes that need special handling (params, redirects, etc.)
 const AssetDetailRoute = lazy(() => import('./routes/AssetDetail').then(m => ({ default: m.AssetDetailRoute })));
 const PluginManagerUI = lazy(() => import('./components/PluginManager').then(m => ({ default: m.PluginManagerUI })));
@@ -29,23 +27,34 @@ const PromptLabDev = lazy(() => import('./routes/PromptLabDev').then(m => ({ def
 const ActionBlockGraphDev = lazy(() => import('./routes/ActionBlockGraphDev').then(m => ({ default: m.ActionBlockGraphDev })));
 const BlockFitDev = lazy(() => import('./routes/BlockFitDev').then(m => ({ default: m.BlockFitDev })));
 const TemplateAnalyticsDev = lazy(() => import('./routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev })));
-import { ControlCenterManager } from '@features/controlCenter';
-import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
-import { PluginOverlays } from './components/PluginOverlays';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
-import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
-import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
-import { useInitializePanelSystem, panelRegistry } from '@features/panels';
+
 import {
   ContextMenuProvider,
   ContextMenuPortal,
   registerContextMenuActions,
-} from '@lib/dockview/contextMenu';
-import { PanelPropertiesPopup } from '@lib/dockview/contextMenu';
-import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+} from '@lib/dockview';
+import { PanelPropertiesPopup } from '@lib/dockview';
+
 import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
+import { ControlCenterManager } from '@features/controlCenter';
+import { useInitializePanelSystem, panelRegistry } from '@features/panels';
+import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
+import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
+
+import { registerModules, moduleRegistry } from '@app/modules';
+
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
+import { PluginOverlays } from './components/PluginOverlays';
+import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
+import { Home } from './routes/Home';
+import { Login } from './routes/Login';
+import { ProtectedRoute } from './routes/ProtectedRoute';
+import { Register } from './routes/Register';
 
 /** Loading fallback for lazy-loaded routes */
 function RouteLoadingFallback() {

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BACKEND_BASE } from '../lib/api/client';
+
+import { authService } from '@lib/auth';
+
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
-import { authService } from '@lib/auth/authService';
+
+import { BACKEND_BASE } from '../lib/api/client';
+
 
 export interface UseMediaThumbnailOptions {
   /**

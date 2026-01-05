@@ -1,11 +1,17 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { useWorldContextStore } from '@features/scene';
+
+import { resolvePanelDefinitionId } from '@lib/dockview';
+
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@features/graph';
-import { useGameStateStore } from '@/stores/gameStateStore';
-import { useWorkspaceStore } from '@features/workspace';
 import { panelManager } from '@features/panels/lib/PanelManager';
-import { resolvePanelDefinitionId } from '@lib/dockview/panelAdd';
+import { useWorldContextStore } from '@features/scene';
+import { useWorkspaceStore } from '@features/workspace';
+
+import { useGameStateStore } from '@/stores/gameStateStore';
+
+
+
 import {
   derivePrimaryView,
   deriveEditorMode,

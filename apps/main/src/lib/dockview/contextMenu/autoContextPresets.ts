@@ -8,7 +8,7 @@
  * Usage:
  * ```ts
  * // In app init (e.g., main.tsx)
- * import '@lib/dockview/contextMenu/autoContextPresets';
+ * import '@lib/dockview';
  *
  * // Then in components - zero config needed:
  * const ctx = useAutoContextMenu('asset', asset);

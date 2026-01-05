@@ -15,8 +15,9 @@
  * - Switching servers triggers a page reload to refresh all data
  */
 
+import { authService } from '@lib/auth';
+
 import { useServerManagerStore } from '@/stores/serverManagerStore';
-import { authService } from '@lib/auth/authService';
 
 // =============================================================================
 // Types

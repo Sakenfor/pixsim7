@@ -4,20 +4,15 @@
  * Typed API client for /api/v1/assets endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { pixsimClient } from './client';
 import { createAssetsApi } from '@pixsim7/api-client/domains';
+// Only import types used in this file; others are re-exported below
 import type {
-  AssetListResponse,
   AssetResponse,
-  EnrichAssetResponse,
-  ExtractFrameRequest,
-  FilterDefinition,
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
-  FilterOptionValue,
-  ListAssetsQuery,
-  ReuploadAssetRequest,
 } from '@pixsim7/api-client/domains';
+
+import { pixsimClient } from './client';
 
 export type {
   AssetListResponse,

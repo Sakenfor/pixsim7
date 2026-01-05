@@ -38,6 +38,9 @@ export {
 } from './hostRegistry';
 export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
 
+// Context menu system
+export * from './contextMenu';
+
 // Dock Zone Registry (dockview container definitions)
 export {
   dockZoneRegistry,

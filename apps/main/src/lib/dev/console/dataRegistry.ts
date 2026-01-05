@@ -76,6 +76,7 @@ class DataRegistry {
    * Create a proxy that provides dynamic access to all stores
    */
   createProxy(): Record<string, unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- Proxy handlers need captured this
     const self = this;
     return new Proxy(
       {},
