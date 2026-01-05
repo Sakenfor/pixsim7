@@ -1,58 +1,58 @@
+/**
+ * Re-export core capability types from @pixsim7/capabilities-core.
+ * UI-specific types are defined below.
+ */
+import type {
+  CapabilityRegistry as CoreCapabilityRegistry,
+  CapabilityConsumption as CoreCapabilityConsumption,
+} from "@pixsim7/capabilities-core";
 import type { EntityRef } from "@pixsim7/shared.types";
 
-export type CapabilityKey = string;
+// Re-export all core types
+export type {
+  CapabilityKey,
+  CapabilityScope,
+  CapabilityProvider,
+  CapabilitySnapshot,
+  CapabilityRegistryOptions,
+} from "@pixsim7/capabilities-core";
 
+// Re-export registry factory
+export { createCapabilityRegistry } from "@pixsim7/capabilities-core";
+
+/**
+ * UI-specific: Entity-scoped capability that includes an optional entity reference.
+ */
 export type EntityScopedCapability<T, TRef extends EntityRef = EntityRef> = T & {
   ref?: TRef | null;
 };
 
-export interface CapabilityProvider<T = unknown> {
-  id?: string;
-  label?: string;
-  description?: string;
-  priority?: number;
-  exposeToContextMenu?: boolean;
-  isAvailable?: () => boolean;
-  getValue: () => T;
-}
+// Re-export panel-related capability types for convenience
+export type {
+  CapabilityDeclaration,
+  CapabilityDeclarationObject,
+} from "@features/panels/lib/panelTypes";
 
 /**
- * Scope for capability provision.
- * - "local": Only available within the current ContextHubHost
- * - "parent": Registered on the parent ContextHubHost
- * - "root": Registered on the root ContextHubHost
- * - Custom string: For extensibility (plugins can define their own scopes)
+ * Capability consumption record.
+ * Extends core type with UI-specific naming for backwards compatibility.
  */
-export type CapabilityScope = "local" | "parent" | "root" | (string & {});
-
-export interface CapabilitySnapshot<T = unknown> {
-  value: T | null;
-  provider: CapabilityProvider<T> | null;
-}
-
-/**
- * Tracks a capability consumption: which host consumed which capability from which provider.
- * Used for debugging and Properties popup visualization.
- */
-export interface CapabilityConsumption {
-  key: CapabilityKey;
+export interface CapabilityConsumption extends Omit<CoreCapabilityConsumption, "consumerScopeId"> {
+  /** @deprecated Use consumerScopeId from core - kept for backwards compatibility */
   consumerHostId: string;
-  providerId: string;
-  providerLabel?: string;
-  lastSeenAt: number;
 }
 
-export interface CapabilityRegistry {
-  register<T>(key: CapabilityKey, provider: CapabilityProvider<T>): () => void;
-  getBest<T>(key: CapabilityKey): CapabilityProvider<T> | null;
-  getAll<T>(key: CapabilityKey): CapabilityProvider<T>[];
-  getKeys(): CapabilityKey[];
-  getExposedKeys(): CapabilityKey[];
-  subscribe(listener: () => void): () => void;
-
-  // Consumption tracking (for debugging/visualization)
-  recordConsumption(key: CapabilityKey, consumerHostId: string, provider: CapabilityProvider | null): void;
-  getConsumers(key: CapabilityKey): CapabilityConsumption[];
+/**
+ * Capability registry interface.
+ * Extends core registry with UI-specific naming for backwards compatibility.
+ */
+export interface CapabilityRegistry extends Omit<
+  CoreCapabilityRegistry,
+  "getConsumptionForScope" | "clearConsumptionForScope" | "recordConsumption" | "getConsumers" | "getAllConsumption"
+> {
+  // Consumption tracking with UI-specific naming (backwards compatible)
+  recordConsumption(key: string, consumerHostId: string, provider: { id?: string; label?: string } | null): void;
+  getConsumers(key: string): CapabilityConsumption[];
   getConsumptionForHost(hostId: string): CapabilityConsumption[];
   getAllConsumption(): CapabilityConsumption[];
   clearConsumptionForHost(hostId: string): void;

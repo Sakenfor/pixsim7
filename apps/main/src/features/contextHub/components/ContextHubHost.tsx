@@ -3,6 +3,7 @@ import { useContext, useEffect, useMemo, useRef } from "react";
 
 import { createCapabilityRegistry } from "../domain/registry";
 import { ContextHubContext, type ContextHubState } from "../hooks/contextHubContext";
+import type { CapabilityRegistry } from "../types";
 
 export interface ContextHubHostProps {
   children: ReactNode;
