@@ -111,12 +111,45 @@ export const StatLevelSchema = z.object({
 export type StatLevel = z.infer<typeof StatLevelSchema>;
 
 /**
+ * Data source for a stat definition
+ *
+ * - session.relationships: NPC relationship state from GameSession
+ * - persona.traits: Personality traits from NpcPersonaProvider
+ * - session.stats: Generic stats stored in session.stats[defId]
+ * - derived: Computed from another stat using derivation config
+ */
+export const StatSourceSchema = z.enum([
+  'session.relationships',
+  'persona.traits',
+  'session.stats',
+  'derived',
+]);
+
+export type StatSource = z.infer<typeof StatSourceSchema>;
+
+/**
+ * Derivation configuration for derived stats
+ */
+export const StatDerivationSchema = z.object({
+  /** Stat definition ID to derive from (e.g., 'relationships') */
+  input: z.string(),
+  /** Derivation strategy */
+  strategy: z.enum(['semantic']),
+});
+
+export type StatDerivation = z.infer<typeof StatDerivationSchema>;
+
+/**
  * Complete definition of a stat system
  */
 export const StatDefinitionSchema = z.object({
   id: z.string().min(1),
   display_name: z.string().optional(),
   description: z.string().optional(),
+  /** Data source for this stat */
+  source: StatSourceSchema.default('session.stats'),
+  /** Derivation config (required when source is 'derived') */
+  derivation: StatDerivationSchema.optional(),
   axes: z.array(StatAxisSchema).min(1),
   tiers: z.array(StatTierSchema).default([]),
   levels: z.array(StatLevelSchema).default([]),
@@ -207,6 +240,7 @@ export const DEFAULT_RELATIONSHIP_DEFINITION: StatDefinition = {
   id: 'relationships',
   display_name: 'Relationships',
   description: 'NPC relationship tracking with affinity, trust, chemistry, and tension',
+  source: 'session.relationships',
   axes: [
     {
       name: 'affinity',
@@ -254,12 +288,105 @@ export const DEFAULT_RELATIONSHIP_DEFINITION: StatDefinition = {
 };
 
 /**
- * Default world stats config with relationships
+ * Default personality stat definition
+ */
+export const DEFAULT_PERSONALITY_DEFINITION: StatDefinition = {
+  id: 'personality',
+  display_name: 'Personality',
+  description: 'NPC personality traits from persona',
+  source: 'persona.traits',
+  axes: [
+    {
+      name: 'extraversion',
+      min_value: 0,
+      max_value: 100,
+      default_value: 50,
+      display_name: 'Extraversion',
+      description: 'Outgoing vs reserved',
+      semantic_type: 'social_energy',
+      semantic_weight: 1.0,
+    },
+    {
+      name: 'agreeableness',
+      min_value: 0,
+      max_value: 100,
+      default_value: 50,
+      display_name: 'Agreeableness',
+      description: 'Cooperative vs competitive',
+      semantic_type: 'cooperation',
+      semantic_weight: 1.0,
+    },
+    {
+      name: 'openness',
+      min_value: 0,
+      max_value: 100,
+      default_value: 50,
+      display_name: 'Openness',
+      description: 'Curious vs cautious',
+      semantic_type: 'curiosity',
+      semantic_weight: 1.0,
+    },
+  ],
+  tiers: [],
+  levels: [],
+};
+
+/**
+ * Default mood stat definition (derived from relationships)
+ */
+export const DEFAULT_MOOD_DEFINITION: StatDefinition = {
+  id: 'mood',
+  display_name: 'Mood',
+  description: 'NPC emotional state derived from relationship values',
+  source: 'derived',
+  derivation: {
+    input: 'relationships',
+    strategy: 'semantic',
+  },
+  axes: [
+    {
+      name: 'valence',
+      min_value: 0,
+      max_value: 100,
+      default_value: 50,
+      display_name: 'Valence',
+      description: 'Positive vs negative emotional state',
+      semantic_type: 'positive_sentiment',
+      semantic_weight: 1.0,
+    },
+    {
+      name: 'arousal',
+      min_value: 0,
+      max_value: 100,
+      default_value: 50,
+      display_name: 'Arousal',
+      description: 'High vs low energy emotional state',
+      semantic_type: 'arousal_source',
+      semantic_weight: 1.0,
+    },
+  ],
+  tiers: [],
+  levels: [
+    { id: 'excited', conditions: { valence: { type: 'min', min_value: 70 }, arousal: { type: 'min', min_value: 70 } }, priority: 8 },
+    { id: 'happy', conditions: { valence: { type: 'min', min_value: 60 }, arousal: { type: 'min', min_value: 50 } }, priority: 7 },
+    { id: 'content', conditions: { valence: { type: 'min', min_value: 70 }, arousal: { type: 'max', max_value: 30 } }, priority: 6 },
+    { id: 'calm', conditions: { valence: { type: 'min', min_value: 60 }, arousal: { type: 'max', max_value: 40 } }, priority: 5 },
+    { id: 'anxious', conditions: { valence: { type: 'max', max_value: 40 }, arousal: { type: 'min', min_value: 70 } }, priority: 4 },
+    { id: 'angry', conditions: { valence: { type: 'max', max_value: 30 }, arousal: { type: 'min', min_value: 80 } }, priority: 3 },
+    { id: 'sad', conditions: { valence: { type: 'max', max_value: 30 }, arousal: { type: 'max', max_value: 40 } }, priority: 2 },
+    { id: 'bored', conditions: { valence: { type: 'max', max_value: 40 }, arousal: { type: 'max', max_value: 30 } }, priority: 1 },
+  ],
+};
+
+/**
+ * Default world stats config with relationships, personality, and mood
  */
 export const DEFAULT_WORLD_STATS_CONFIG: WorldStatsConfig = {
   version: 1,
   definitions: {
     relationships: DEFAULT_RELATIONSHIP_DEFINITION,
+    personality: DEFAULT_PERSONALITY_DEFINITION,
+    mood: DEFAULT_MOOD_DEFINITION,
   },
 };
 

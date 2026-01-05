@@ -257,10 +257,9 @@ export class PixSim7Core implements IPixSim7Core {
 
     const statsConfig = this.getStatsConfig();
 
-    // Process each stat definition from config
+    // Process each stat definition from config based on definition.source
     for (const [defId, definition] of Object.entries(statsConfig.definitions)) {
       const statSnapshot = this.buildStatSnapshot(
-        defId,
         definition,
         relationship,
         persona,
@@ -290,16 +289,6 @@ export class PixSim7Core implements IPixSim7Core {
       derived['persona_tags'] = [...new Set(tags)];
     }
 
-    // Derive conversation style (still uses local fallback)
-    // TODO: Move to backend derivation engine
-    const conversationStyle = this.deriveConversationStyleFallback(
-      stats['personality']?.axes || {},
-      relationship
-    );
-    if (conversationStyle) {
-      derived['conversation_style'] = conversationStyle;
-    }
-
     return {
       npcId: NpcId(npcId),
       worldId: WorldId(0), // World ID not stored in session; would need to be passed in
@@ -313,32 +302,33 @@ export class PixSim7Core implements IPixSim7Core {
   /**
    * Build stat snapshot for a specific definition
    *
-   * Determines data source based on definition ID:
-   * - 'relationships': From session relationship state (backend-normalized)
-   * - 'personality': From persona provider + session overrides
-   * - Others: Try to extract from session.stats[defId] or use derivation
+   * Routes to appropriate builder based on definition.source:
+   * - 'session.relationships': From session relationship state (backend-normalized)
+   * - 'persona.traits': From persona provider + session overrides
+   * - 'derived': Computed from another stat using derivation config
+   * - 'session.stats': From session.stats[defId]
    */
   private buildStatSnapshot(
-    defId: string,
     definition: StatDefinition,
     relationship: NpcRelationshipState | null,
     persona: any,
     npcOverrides: Record<string, unknown> | undefined
   ): { snapshot: BrainStatSnapshot; sourcePackage: string; derived?: Record<string, unknown> } | null {
-    // Handle known stat types
-    switch (defId) {
-      case 'relationships':
+    const source = definition.source ?? 'session.stats';
+
+    switch (source) {
+      case 'session.relationships':
         return this.buildRelationshipSnapshot(definition, relationship);
 
-      case 'personality':
+      case 'persona.traits':
         return this.buildPersonalitySnapshot(definition, persona, npcOverrides);
 
-      case 'mood':
-        return this.buildMoodSnapshot(definition, relationship);
+      case 'derived':
+        return this.buildDerivedSnapshot(definition, relationship);
 
+      case 'session.stats':
       default:
-        // For unknown stat types, try to extract from session.stats
-        return this.buildGenericSnapshot(defId, definition);
+        return this.buildGenericSnapshot(definition);
     }
   }
 
@@ -438,60 +428,73 @@ export class PixSim7Core implements IPixSim7Core {
   }
 
   /**
-   * Build mood stat snapshot (derived from relationships using semantic types)
+   * Build derived stat snapshot using semantic type mapping
    *
-   * Uses semantic_type on relationship axes to determine which axes contribute
-   * to which mood axis. This mirrors the backend's DerivationCapability approach.
+   * Uses definition.derivation to determine the input stat and strategy.
+   * For 'semantic' strategy, uses semantic_type on input stat axes to determine
+   * which axes contribute to each derived axis.
    *
-   * Semantic type mappings (from backend mood_package.py):
-   * - positive_sentiment → contributes to valence (positive)
-   * - negative_sentiment → contributes to valence (negative)
-   * - arousal_source → contributes to arousal
+   * This mirrors the backend's DerivationCapability approach.
    *
-   * TODO: Use backend mood preview API for authoritative computation
+   * TODO: Use backend preview API for authoritative computation
    */
-  private buildMoodSnapshot(
+  private buildDerivedSnapshot(
     definition: StatDefinition,
     relationship: NpcRelationshipState | null
   ): { snapshot: BrainStatSnapshot; sourcePackage: string; derived?: Record<string, unknown> } | null {
-    if (!relationship) return null;
+    const derivation = definition.derivation;
+    if (!derivation) return null;
 
-    const rv = relationship.values;
+    // Currently only 'semantic' strategy is supported
+    if (derivation.strategy !== 'semantic') return null;
+
+    // Get the input stat definition
     const statsConfig = this.getStatsConfig();
-    const relationshipDef = statsConfig.definitions['relationships'];
+    const inputDef = statsConfig.definitions[derivation.input];
+    if (!inputDef) return null;
 
-    // Build semantic type → relationship axes mapping
-    const semanticTypeToAxes = this.buildSemanticTypeMapping(relationshipDef);
+    // Get input values based on input stat's source
+    let inputValues: Record<string, number> = {};
+    if (derivation.input === 'relationships' && relationship) {
+      inputValues = relationship.values;
+    } else {
+      // For other inputs, would need to look up from appropriate source
+      // Currently only relationship-based derivation is supported
+      return null;
+    }
 
-    // Compute each mood axis dynamically from definition
+    // Build semantic type → input axes mapping
+    const semanticTypeToAxes = this.buildSemanticTypeMapping(inputDef);
+
+    // Compute each derived axis dynamically from definition
     const axes: Record<string, number> = {};
     const tiers: Record<string, string> = {};
 
-    for (const moodAxis of definition.axes) {
-      const axisName = moodAxis.name;
-      const semanticType = moodAxis.semantic_type;
+    for (const derivedAxis of definition.axes) {
+      const axisName = derivedAxis.name;
+      const semanticType = derivedAxis.semantic_type;
 
-      // Find contributing relationship axes by semantic type
+      // Find contributing input axes by semantic type
       const value = this.computeDerivedAxisValue(
         axisName,
         semanticType,
         semanticTypeToAxes,
-        rv,
-        moodAxis.default_value ?? 50
+        inputValues,
+        derivedAxis.default_value ?? 50
       );
 
       axes[axisName] = value;
       tiers[axisName] = this.computeTierFallback(value);
     }
 
-    // Compute level (mood label) using axes
-    const levelId = this.computeMoodLevelFromAxes(axes, definition);
+    // Compute level using axes
+    const levelId = this.computeLevelFromAxes(axes, definition);
 
     return {
       snapshot: { axes, tiers, levelId },
       sourcePackage: `core.${definition.id}`,
       derived: {
-        mood: {
+        [definition.id]: {
           ...axes,
           label: levelId,
           source: 'semantic_derivation',
@@ -591,14 +594,14 @@ export class PixSim7Core implements IPixSim7Core {
   }
 
   /**
-   * Compute mood level from axes using definition levels
+   * Compute level from axes using definition levels
    *
-   * Falls back to simple label computation if no levels defined.
+   * Returns undefined if no matching level found.
    */
-  private computeMoodLevelFromAxes(
+  private computeLevelFromAxes(
     axes: Record<string, number>,
     definition: StatDefinition
-  ): string {
+  ): string | undefined {
     // Try to match levels from definition (sorted by priority descending)
     if (definition.levels && definition.levels.length > 0) {
       const sortedLevels = [...definition.levels].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
@@ -610,15 +613,7 @@ export class PixSim7Core implements IPixSim7Core {
       }
     }
 
-    // Fallback: use valence/arousal if present, else return 'neutral'
-    const valence = axes['valence'];
-    const arousal = axes['arousal'];
-
-    if (valence !== undefined && arousal !== undefined) {
-      return this.computeMoodLabelFallback(valence, arousal);
-    }
-
-    return 'neutral';
+    return undefined;
   }
 
   /**
@@ -652,7 +647,6 @@ export class PixSim7Core implements IPixSim7Core {
    * Build snapshot for generic stat types (from session.stats)
    */
   private buildGenericSnapshot(
-    defId: string,
     definition: StatDefinition
   ): { snapshot: BrainStatSnapshot; sourcePackage: string } | null {
     // Try to get from session.stats (future extension point)
@@ -673,44 +667,6 @@ export class PixSim7Core implements IPixSim7Core {
     if (value < 60) return 'moderate';
     if (value < 80) return 'high';
     return 'very_high';
-  }
-
-  /**
-   * @deprecated Use backend mood preview API: POST /stats/preview-mood
-   *
-   * Local fallback for mood label computation.
-   * Backend has proper derivation engine with world-specific formulas.
-   */
-  private computeMoodLabelFallback(valence: number, arousal: number): string {
-    if (valence >= 70 && arousal >= 70) return 'excited';
-    if (valence >= 70 && arousal < 30) return 'content';
-    if (valence >= 60 && arousal >= 50) return 'happy';
-    if (valence >= 60 && arousal < 40) return 'calm';
-    if (valence < 40 && arousal >= 70) return 'anxious';
-    if (valence < 30 && arousal >= 80) return 'angry';
-    if (valence < 30 && arousal < 40) return 'sad';
-    if (valence < 40 && arousal < 30) return 'bored';
-    return 'neutral';
-  }
-
-  /**
-   * @deprecated Use backend derivation engine for conversation style
-   *
-   * Local fallback for conversation style derivation.
-   * Backend can use world-specific formulas and semantic type mappings.
-   */
-  private deriveConversationStyleFallback(
-    traits: Record<string, number>,
-    relationship: NpcRelationshipState | null
-  ): string {
-    const extraversion = traits.extraversion ?? 50;
-    const agreeableness = traits.agreeableness ?? 50;
-    const affinity = relationship?.values.affinity ?? 50;
-
-    if (affinity >= 60 && agreeableness >= 60) return 'warm';
-    if (affinity >= 40 && extraversion >= 60) return 'friendly';
-    if (affinity < 30) return 'distant';
-    return 'neutral';
   }
 
   /**
