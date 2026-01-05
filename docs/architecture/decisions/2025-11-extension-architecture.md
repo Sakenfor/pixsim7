@@ -59,6 +59,7 @@ PixSim7 implements a **unified extension architecture** with multiple extension 
 2. **Backend Domain Plugins**
    - Location: `pixsim7/backend/main/domain_models/<feature>_models/manifest.py`
    - Purpose: Add new SQLModel domain types
+   - Registration: use explicit `models` or `source_modules` + `auto_discover`
    - Migrated via Alembic
    - Example: Extended game entities
 

@@ -9,23 +9,17 @@ Registers prompt versioning models with SQLModel:
 
 from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
 
-# Import models from existing domain module
-from pixsim7.backend.main.domain.prompt import (
-    PromptFamily,
-    PromptVersion,
-    PromptVariantFeedback,
-)
-
 # Manifest
 manifest = DomainModelManifest(
     id="prompt_models",
     name="Prompt Versioning Models",
     description="Git-like prompt versioning with feedback tracking",
-    models=[
-        "PromptFamily",
-        "PromptVersion",
-        "PromptVariantFeedback",
+    models=[],
+    source_modules=[
+        "pixsim7.backend.main.domain.prompt",
+        "pixsim7.backend.main.domain.semantic_pack",
     ],
+    auto_discover=True,
     enabled=True,
     dependencies=["core_models"],  # Depends on User, Asset, GenerationArtifact
 )

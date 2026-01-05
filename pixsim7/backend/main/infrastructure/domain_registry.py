@@ -6,9 +6,12 @@ Auto-discovers and registers SQLModel domain models for database schema creation
 
 import importlib
 import importlib.util
+import inspect
 from pathlib import Path
 from typing import Any, Optional, Type, List
 import structlog
+
+from sqlmodel import SQLModel
 
 from pixsim7.backend.main.lib.registry import (
     discover_manifests,
@@ -32,16 +35,20 @@ class DomainModelManifest:
         id: str,
         name: str,
         description: str,
-        models: List[str],  # List of model class names to import
+        models: Optional[List[str]] = None,  # List of model class names to import
         enabled: bool = True,
-        dependencies: List[str] = None,
+        dependencies: Optional[List[str]] = None,
+        source_modules: Optional[List[str]] = None,
+        auto_discover: bool = False,
     ):
         self.id = id
         self.name = name
         self.description = description
-        self.models = models
+        self.models = models or []
         self.enabled = enabled
         self.dependencies = dependencies or []
+        self.source_modules = source_modules or []
+        self.auto_discover = auto_discover
 
 
 class DomainModelRegistry:
@@ -173,19 +180,40 @@ class DomainModelRegistry:
 
                 # Get the models from the module
                 module = package['module']
+                resolved_models: list[str] = []
+                seen_names: set[str] = set()
+
+                if manifest.auto_discover:
+                    if not manifest.source_modules:
+                        raise ValueError(f"{package_id} has auto_discover enabled without source_modules")
+                    auto_models = self._discover_models(manifest.source_modules)
+                    for model_class in auto_models:
+                        model_name = model_class.__name__
+                        if model_name in seen_names:
+                            continue
+                        self.registered_models.append(model_class)
+                        resolved_models.append(model_name)
+                        seen_names.add(model_name)
+                        logger.debug(f"Registered model: {model_name} from {package_id} (auto)")
 
                 for model_name in manifest.models:
+                    if model_name in seen_names:
+                        continue
                     if hasattr(module, model_name):
                         model_class = getattr(module, model_name)
                         self.registered_models.append(model_class)
+                        resolved_models.append(model_name)
+                        seen_names.add(model_name)
                         logger.debug(f"Registered model: {model_name} from {package_id}")
                     else:
                         logger.warning(f"Model {model_name} not found in {package_id}")
 
+                package['resolved_models'] = resolved_models
+
                 logger.info(
                     f"Registered domain package: {manifest.name}",
                     package_id=package_id,
-                    model_count=len(manifest.models),
+                    model_count=len(resolved_models),
                 )
 
             return len(self.registered_models)
@@ -204,11 +232,25 @@ class DomainModelRegistry:
             {
                 'id': package_id,
                 'name': package['manifest'].name,
-                'model_count': len(package['manifest'].models),
+                'model_count': len(package.get('resolved_models', package['manifest'].models)),
                 'enabled': package['enabled'],
             }
             for package_id, package in self.packages.items()
         ]
+
+    @staticmethod
+    def _discover_models(source_modules: List[str]) -> list[Type]:
+        models: list[Type] = []
+        for module_path in source_modules:
+            module = importlib.import_module(module_path)
+            for _, obj in inspect.getmembers(module, inspect.isclass):
+                if (
+                    issubclass(obj, SQLModel)
+                    and obj is not SQLModel
+                    and getattr(obj, "__tablename__", None)
+                ):
+                    models.append(obj)
+        return models
 
 
 # Global domain model registry instance

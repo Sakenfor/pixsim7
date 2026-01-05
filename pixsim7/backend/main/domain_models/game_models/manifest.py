@@ -7,36 +7,16 @@ Includes scenes, sessions, NPCs, locations.
 
 from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
 
-# Import models directly (avoid importing pixsim7.backend.main.domain.game, which triggers
-# behavior/effect/scoring registration as an import-time side effect).
-from pixsim7.backend.main.domain.game.core.models import (
-    GameScene,
-    GameSceneNode,
-    GameSceneEdge,
-    GameSession,
-    GameSessionEvent,
-    GameLocation,
-    GameNPC,
-    NPCSchedule,
-    NPCState,
-)
-
 # Manifest
 manifest = DomainModelManifest(
     id="game_models",
     name="Game Domain Models",
     description="Game domain models (scenes, sessions, NPCs, locations)",
-    models=[
-        "GameScene",
-        "GameSceneNode",
-        "GameSceneEdge",
-        "GameSession",
-        "GameSessionEvent",
-        "GameLocation",
-        "GameNPC",
-        "NPCSchedule",
-        "NPCState",
+    models=[],
+    source_modules=[
+        "pixsim7.backend.main.domain.game.core.models",
     ],
+    auto_discover=True,
     enabled=True,
     dependencies=["core_models"],  # Game models may reference User, Asset
 )

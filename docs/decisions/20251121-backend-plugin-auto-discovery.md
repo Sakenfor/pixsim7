@@ -42,7 +42,9 @@ Key elements:
    - Folder: `pixsim7/backend/main/domain_models/<feature>_models/`
    - Manifest: `manifest.py` exporting a `DomainModelManifest` with:
      - `id`, `name`, `description`
-     - `models`: list of model names as strings
+     - `models`: optional list of model names as strings
+     - `source_modules`: optional list of module paths to scan
+     - `auto_discover: bool` to enable scanning `source_modules`
      - `dependencies`: e.g. `["core_models"]`
      - `enabled: bool`
    - Discovery: `init_domain_registry("pixsim7/backend/main/domain_models")` scans and registers models with SQLModel.
@@ -121,4 +123,3 @@ Mitigations:
   - `docs/EXTENSION_ARCHITECTURE.md`
   - `docs/APP_MAP.md`
   - `claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md`
-

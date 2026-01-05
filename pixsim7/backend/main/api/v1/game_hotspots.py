@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, Annotated, Union, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from pixsim7.backend.main.domain.game.core.actions import game_action_registry
 
@@ -10,10 +10,22 @@ class PlaySceneAction(BaseModel):
     type: Literal["play_scene"]
     scene_id: Optional[int] = None
 
+    @model_validator(mode="after")
+    def require_scene_id(self) -> "PlaySceneAction":
+        if self.scene_id is None:
+            raise ValueError("scene_id is required for play_scene action")
+        return self
+
 
 class ChangeLocationAction(BaseModel):
     type: Literal["change_location"]
     target_location_id: Optional[int] = None
+
+    @model_validator(mode="after")
+    def require_target_location_id(self) -> "ChangeLocationAction":
+        if self.target_location_id is None:
+            raise ValueError("target_location_id is required for change_location action")
+        return self
 
 
 class NpcTalkAction(BaseModel):

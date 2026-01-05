@@ -66,6 +66,7 @@ You need a new HTTP or WebSocket surface, not just an internal behavior change.
 - **Manifests:** `pixsim7/backend/main/domain_models/<feature>_models/manifest.py`
 - **Manifest type:** `DomainModelManifest`
 - **Discovery:** Auto‑loaded via `init_domain_registry(...)`.
+ - **Model registration:** either explicit `models` or `auto_discover=True` with `source_modules` (preferred to avoid import side effects).
 
 Constraints:
 
