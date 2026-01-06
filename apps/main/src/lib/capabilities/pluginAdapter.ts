@@ -13,6 +13,7 @@
  * ```
  */
 
+import type { ActionContext } from '@shared/types';
 import type {
   FeatureCapability,
   RouteCapability,
@@ -50,7 +51,7 @@ export interface PluginActionRegistration {
   description?: string;
   icon?: string;
   shortcut?: string;
-  execute: (...args: any[]) => void | Promise<void>;
+  execute: (ctx?: ActionContext) => void | Promise<void>;
   enabled?: () => boolean;
   category?: string;
 }

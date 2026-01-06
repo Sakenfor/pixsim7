@@ -322,6 +322,16 @@ export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
 
   // Actions
   registerAction: (action) => {
+    const existing = get().actions.get(action.id);
+    if (existing && (existing.name !== action.name || existing.featureId !== action.featureId)) {
+      logEvent('WARNING', 'capability_action_overwritten', {
+        actionId: action.id,
+        existingName: existing.name,
+        newName: action.name,
+        existingFeatureId: existing.featureId,
+        newFeatureId: action.featureId,
+      });
+    }
     set((state) => {
       const actions = new Map(state.actions);
       actions.set(action.id, action);
