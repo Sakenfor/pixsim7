@@ -2,12 +2,11 @@
 // Core and page modules are registered manually.
 // Feature modules are auto-discovered from features/[name]/module.ts
 
-import { moduleRegistry } from './types';
 import { registerDiscoveredFeatureModules } from './autoDiscover';
 
 // Core modules (must be manually imported - not in features/)
-import { pluginBootstrapModule } from './core/pluginBootstrapModule';
 import { gameSessionModule } from './core/gameSessionModule';
+import { pluginBootstrapModule } from './core/pluginBootstrapModule';
 
 // Page modules (navigation metadata only)
 import {
@@ -22,10 +21,14 @@ import {
   simulationModule,
   npcBrainLabModule,
   appMapModule as appMapPageModule,
+  pluginManagerModule,
   pluginWorkspaceModule,
   modulesDevModule,
   overlayConfigModule,
+  assetDetailModule,
+  generationPageModule,
 } from './pages';
+import { moduleRegistry } from './types';
 
 // Register all modules
 export function registerModules() {
@@ -53,6 +56,9 @@ export function registerModules() {
   moduleRegistry.register(simulationModule);
   moduleRegistry.register(npcBrainLabModule);
   moduleRegistry.register(appMapPageModule);
+  moduleRegistry.register(assetDetailModule);
+  moduleRegistry.register(generationPageModule);
+  moduleRegistry.register(pluginManagerModule);
   moduleRegistry.register(pluginWorkspaceModule);
   moduleRegistry.register(modulesDevModule);
   moduleRegistry.register(overlayConfigModule);

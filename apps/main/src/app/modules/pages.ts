@@ -11,5 +11,7 @@ export { gizmoLabModule } from '@features/gizmos/routes';
 export { interactionStudioModule, interactionDemoModule } from '@features/interactions/routes';
 export { healthModule, appMapModule, modulesDevModule } from '@features/devtools/routes';
 export { npcBrainLabModule } from '@features/brainTools/routes';
-export { pluginWorkspaceModule } from '@features/plugins/routes';
+export { pluginManagerModule, pluginWorkspaceModule } from '@features/plugins/routes';
 export { overlayConfigModule } from '@features/componentSettings/routes';
+export { assetDetailModule } from '@features/assets/routes';
+export { generationPageModule } from '@features/generation/routes';

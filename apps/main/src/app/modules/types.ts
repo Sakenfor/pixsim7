@@ -149,6 +149,11 @@ export interface Module {
      */
     featureId?: string;
     /**
+     * Marks this page as the primary source of feature metadata.
+     * Defaults to true when featureId matches module.id.
+     */
+    featurePrimary?: boolean;
+    /**
      * Capability category override (uses page category mapping by default).
      */
     capabilityCategory?: CapabilityCategory;
@@ -167,50 +172,52 @@ export interface Module {
 
 function registerModuleCapabilities(module: Module) {
   const page = module.page;
-  if (!page || !page.component || !page.featureId) {
+  if (!page || !page.featureId) {
     return;
   }
 
   const store = useCapabilityStore.getState();
   const featureId = page.featureId;
   const category = page.capabilityCategory ?? PAGE_CATEGORY_TO_CAPABILITY[page.category];
+  const isPrimary = page.featurePrimary ?? page.featureId === module.id;
 
-  const derivedFeature: FeatureCapability = {
-    id: featureId,
-    name: module.name,
-    description: page.description,
-    icon: page.icon,
-    category,
-    ...(module.priority !== undefined ? { priority: module.priority } : {}),
-  };
-
-  const existingFeature = store.getFeature(featureId);
-  const mergedFeature = existingFeature
-    ? {
-        ...derivedFeature,
-        ...existingFeature,
-      }
-    : derivedFeature;
-
-  store.registerFeature(mergedFeature);
-
-  const existingRoute = store.getRoute(page.route);
-  if (!existingRoute) {
-    const showInNav =
-      page.showInNav ?? (!page.hidden && page.category !== 'development');
-    const protectedRoute = page.protected ?? true;
-    store.registerRoute({
-      path: page.route,
+  if (isPrimary) {
+    const derivedFeature: FeatureCapability = {
+      id: featureId,
       name: module.name,
       description: page.description,
       icon: page.icon,
-      protected: protectedRoute,
-      showInNav,
-      featureId,
-    });
-  } else if (!existingRoute.featureId) {
-    store.registerRoute({ ...existingRoute, featureId });
+      category,
+      ...(module.priority !== undefined ? { priority: module.priority } : {}),
+    };
+
+    const existingFeature = store.getFeature(featureId);
+    const mergedFeature = existingFeature
+      ? {
+          ...existingFeature,
+          ...derivedFeature,
+        }
+      : derivedFeature;
+
+    if (existingFeature?.priority !== undefined && derivedFeature.priority === undefined) {
+      mergedFeature.priority = existingFeature.priority;
+    }
+
+    store.registerFeature(mergedFeature);
   }
+
+  const showInNav =
+    page.showInNav ?? (!page.hidden && page.category !== 'development');
+  const protectedRoute = page.protected ?? true;
+  store.registerRoute({
+    path: page.route,
+    name: module.name,
+    description: page.description,
+    icon: page.icon,
+    protected: protectedRoute,
+    showInNav,
+    featureId,
+  });
 }
 
 /**
