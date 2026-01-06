@@ -121,7 +121,9 @@
       "@lib/assetUrlResolver": ["./src/lib/assetUrlResolver.ts"],
 
       // Packages
-      "@pixsim7/types": ["../packages/types/dist"]
+      "@pixsim7/types": ["../packages/types/dist"],
+      "@shared/types": ["../../packages/shared/types/src"],
+      "@shared/types/*": ["../../packages/shared/types/src/*"]
     },
 
     /* Linting */

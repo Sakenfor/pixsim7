@@ -1,6 +1,23 @@
+import type { ActionDefinition } from '@shared/types';
 import { lazy } from 'react';
 
+import { navigateTo } from '@lib/capabilities/routeConstants';
+
 import type { Module } from '@app/modules/types';
+
+/** Open Plugin Manager action */
+const openPluginManagerAction: ActionDefinition = {
+  id: 'plugins.open',
+  featureId: 'plugins',
+  title: 'Open Plugin Manager',
+  description: 'Plugin management and installation',
+  icon: 'settings',
+  shortcut: 'Ctrl+Shift+P',
+  route: '/plugins',
+  execute: () => {
+    navigateTo('/plugins');
+  },
+};
 
 export const pluginManagerModule: Module = {
   id: 'plugin-manager',
@@ -15,6 +32,7 @@ export const pluginManagerModule: Module = {
     featurePrimary: true,
     protected: true,
     showInNav: true,
+    actions: [openPluginManagerAction],
   },
 };
 

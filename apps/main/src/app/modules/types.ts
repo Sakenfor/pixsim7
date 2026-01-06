@@ -1,3 +1,4 @@
+import type { ActionDefinition } from '@shared/types';
 import type { ComponentType, LazyExoticComponent } from 'react';
 
 import type { FeatureCapability } from '@lib/capabilities';
@@ -167,57 +168,96 @@ export interface Module {
      * Defaults to true for module pages.
      */
     protected?: boolean;
+
+    /**
+     * Actions provided by this module.
+     * Registered automatically via registerModuleCapabilities().
+     * Uses canonical ActionDefinition from @pixsim7/types.
+     */
+    actions?: ActionDefinition[];
   };
 }
 
 function registerModuleCapabilities(module: Module) {
   const page = module.page;
-  if (!page || !page.featureId) {
+  if (!page) {
     return;
   }
 
   const store = useCapabilityStore.getState();
-  const featureId = page.featureId;
-  const category = page.capabilityCategory ?? PAGE_CATEGORY_TO_CAPABILITY[page.category];
-  const isPrimary = page.featurePrimary ?? page.featureId === module.id;
+  if (page.featureId) {
+    const featureId = page.featureId;
+    const category = page.capabilityCategory ?? PAGE_CATEGORY_TO_CAPABILITY[page.category];
+    const isPrimary = page.featurePrimary ?? page.featureId === module.id;
 
-  if (isPrimary) {
-    const derivedFeature: FeatureCapability = {
-      id: featureId,
+    if (isPrimary) {
+      const derivedFeature: FeatureCapability = {
+        id: featureId,
+        name: module.name,
+        description: page.description,
+        icon: page.icon,
+        category,
+        ...(module.priority !== undefined ? { priority: module.priority } : {}),
+      };
+
+      const existingFeature = store.getFeature(featureId);
+      const mergedFeature = existingFeature
+        ? {
+            ...existingFeature,
+            ...derivedFeature,
+          }
+        : derivedFeature;
+
+      if (existingFeature?.priority !== undefined && derivedFeature.priority === undefined) {
+        mergedFeature.priority = existingFeature.priority;
+      }
+
+      store.registerFeature(mergedFeature);
+    }
+
+    const showInNav =
+      page.showInNav ?? (!page.hidden && page.category !== 'development');
+    const protectedRoute = page.protected ?? true;
+    store.registerRoute({
+      path: page.route,
       name: module.name,
       description: page.description,
       icon: page.icon,
-      category,
-      ...(module.priority !== undefined ? { priority: module.priority } : {}),
-    };
-
-    const existingFeature = store.getFeature(featureId);
-    const mergedFeature = existingFeature
-      ? {
-          ...existingFeature,
-          ...derivedFeature,
-        }
-      : derivedFeature;
-
-    if (existingFeature?.priority !== undefined && derivedFeature.priority === undefined) {
-      mergedFeature.priority = existingFeature.priority;
-    }
-
-    store.registerFeature(mergedFeature);
+      protected: protectedRoute,
+      showInNav,
+      featureId,
+    });
   }
 
-  const showInNav =
-    page.showInNav ?? (!page.hidden && page.category !== 'development');
-  const protectedRoute = page.protected ?? true;
-  store.registerRoute({
-    path: page.route,
-    name: module.name,
-    description: page.description,
-    icon: page.icon,
-    protected: protectedRoute,
-    showInNav,
-    featureId,
-  });
+  // Register module-defined actions
+  if (page.actions && page.actions.length > 0) {
+    if (!page.featureId) {
+      logEvent('WARNING', 'module_actions_missing_feature_id', {
+        moduleId: module.id,
+        moduleName: module.name,
+      });
+    }
+
+    for (const action of page.actions) {
+      // Convert ActionDefinition to ActionCapability
+      // ActionDefinition uses 'title', ActionCapability uses 'name'
+      store.registerAction({
+        id: action.id,
+        name: action.title,
+        description: action.description,
+        icon: action.icon,
+        shortcut: action.shortcut,
+        featureId: action.featureId,
+        category: action.category,
+        enabled: action.enabled,
+        execute: action.execute,
+      });
+      logEvent('DEBUG', 'module_action_registered', {
+        moduleId: module.id,
+        actionId: action.id,
+      });
+    }
+  }
 }
 
 /**

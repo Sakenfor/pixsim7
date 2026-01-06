@@ -1,6 +1,7 @@
+import type { ActionDefinition } from '@shared/types';
 import { lazy } from 'react';
 
-import { registerAutomationActions } from '@lib/capabilities/registerCoreFeatures';
+import { navigateTo } from '@lib/capabilities/routeConstants';
 
 import type { Module } from '@app/modules/types';
 
@@ -8,15 +9,25 @@ import type { Module } from '@app/modules/types';
  * Automation Module
  *
  * Manages workflow automation and scheduling capabilities.
- * Registers automation actions with the capability registry.
+ * Actions are registered automatically via page.actions.
  */
+
+/** Open Automation action - navigates to automation page */
+const openAutomationAction: ActionDefinition = {
+  id: 'automation.open',
+  featureId: 'automation',
+  title: 'Open Automation',
+  description: 'Manage Android devices and automation loops',
+  icon: 'bot',
+  route: '/automation',
+  execute: () => {
+    navigateTo('/automation');
+  },
+};
+
 export const automationModule: Module = {
   id: 'automation',
   name: 'Automation',
-
-  async initialize() {
-    registerAutomationActions();
-  },
 
   page: {
     route: '/automation',
@@ -26,5 +37,6 @@ export const automationModule: Module = {
     featureId: 'automation',
     featured: true,
     component: lazy(() => import('../../routes/Automation').then(m => ({ default: m.AutomationRoute }))),
+    actions: [openAutomationAction],
   },
 };

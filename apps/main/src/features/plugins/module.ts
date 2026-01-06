@@ -1,4 +1,3 @@
-import { registerPluginsActions } from '@lib/capabilities/registerCoreFeatures';
 import { pluginManager } from '@lib/plugins';
 import { syncCatalogFromRegistries } from '@lib/plugins/registryBridge';
 
@@ -10,14 +9,14 @@ import type { Module } from '@app/modules/types';
  * Plugins Module
  *
  * Manages plugin system capabilities and plugin manager.
- * Registers plugin actions with the capability registry.
+ * Plugin actions are now registered via pluginManagerModule.page.actions
+ * in routes/index.ts (Phase 0 action consolidation).
  */
 export const pluginsModule: Module = {
   id: 'plugins',
   name: 'Plugins Module',
 
   async initialize() {
-    registerPluginsActions();
     // Plugin manager is already initialized in App.tsx;
     // here we simply ensure the capability is registered.
     void pluginManager; // keep import used

@@ -111,6 +111,15 @@ export * from './narrative'
 export * from './brain'
 
 // ===================
+// Action Types
+// ===================
+
+export * from './actions'
+
+// Namespace export for organized access
+export * as Actions from './actions'
+
+// ===================
 // Asset Provider Types
 // ===================
 

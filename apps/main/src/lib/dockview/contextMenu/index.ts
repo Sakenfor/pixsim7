@@ -25,3 +25,6 @@ export * from './autoContextPresets';
 // Actions - import to register with the global registry
 export * from './actions';
 export { registerContextMenuActions } from './actions';
+
+// Action adapters for converting canonical ActionDefinition to MenuAction
+export { toMenuAction, toMenuActions } from './actionAdapters';

@@ -63,6 +63,9 @@ export {
 // Panel actions
 export * from "./actions";
 
+// Action adapters for converting canonical ActionDefinition to PanelAction
+export { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
+
 // Instance settings resolver
 export {
   resolveSettings,
