@@ -1,6 +1,6 @@
 import { lazy } from 'react';
 
-import { registerGameFeature } from '@lib/capabilities/registerCoreFeatures';
+import { registerGameActions } from '@lib/capabilities/registerCoreFeatures';
 
 import { worldToolRegistry } from '@features/worldTools';
 
@@ -10,14 +10,14 @@ import type { Module } from '@app/modules/types';
  * Game Module
  *
  * Manages interactive game world and NPC capabilities.
- * Registers game feature capabilities and ensures world tools are initialized.
+ * Registers game actions and ensures world tools are initialized.
  */
 export const gameModule: Module = {
   id: 'game',
   name: 'Game World',
 
   async initialize() {
-    registerGameFeature();
+    registerGameActions();
     // Importing worldToolRegistry ensures built-in world tools are registered.
     // The registry auto-registers built-in tools on import.
     void worldToolRegistry; // keep import used

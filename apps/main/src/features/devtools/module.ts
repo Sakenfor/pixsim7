@@ -1,5 +1,6 @@
+import { registerAppMapActions } from '@lib/capabilities/registerCoreFeatures';
+
 import type { Module } from '@app/modules/types';
-import { registerAppMapFeature } from '@lib/capabilities/registerCoreFeatures';
 
 /**
  * App Map Module
@@ -12,6 +13,6 @@ export const appMapModule: Module = {
   name: 'App Map Module',
 
   async initialize() {
-    registerAppMapFeature();
+    registerAppMapActions();
   },
 };

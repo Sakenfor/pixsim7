@@ -1,6 +1,6 @@
 import { lazy } from 'react';
 
-import { registerAutomationFeature } from '@lib/capabilities/registerCoreFeatures';
+import { registerAutomationActions } from '@lib/capabilities/registerCoreFeatures';
 
 import type { Module } from '@app/modules/types';
 
@@ -8,14 +8,14 @@ import type { Module } from '@app/modules/types';
  * Automation Module
  *
  * Manages workflow automation and scheduling capabilities.
- * Registers automation feature capabilities with the capability registry.
+ * Registers automation actions with the capability registry.
  */
 export const automationModule: Module = {
   id: 'automation',
   name: 'Automation',
 
   async initialize() {
-    registerAutomationFeature();
+    registerAutomationActions();
   },
 
   page: {

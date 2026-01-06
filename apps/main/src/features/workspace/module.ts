@@ -5,13 +5,13 @@ import { initializePanels } from "@features/panels";
 
 import type { Module } from "@app/modules/types";
 
-import { registerWorkspaceFeature } from "./lib/capabilities";
+import { registerWorkspaceActions } from "./lib/capabilities";
 
 /**
  * Workspace Module
  *
  * Manages scene building and timeline editing capabilities.
- * Registers workspace feature capabilities with the capability registry.
+ * Registers workspace actions with the capability registry.
  */
 export const workspaceModule: Module = {
   id: "workspace",
@@ -19,7 +19,7 @@ export const workspaceModule: Module = {
 
   async initialize() {
     // Register workspace capabilities (hotspots, scene builder, etc.)
-    registerWorkspaceFeature();
+    registerWorkspaceActions();
 
     // Ensure core panels (panel registry + auto-discovery) are initialized
     // even if the workspace route hasn't been visited yet. This allows
@@ -48,6 +48,7 @@ export const workspaceModule: Module = {
     icon: "palette",
     description: "Create and edit scenes with timeline",
     category: "creation",
+    capabilityCategory: "editing",
     featureId: "workspace",
     featured: true,
     component: lazy(() => import("./routes/Workspace").then(m => ({ default: m.WorkspaceRoute }))),
