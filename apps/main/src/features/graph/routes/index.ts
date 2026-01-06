@@ -1,6 +1,23 @@
+import type { ActionDefinition } from '@shared/types';
 import { lazy } from 'react';
 
+import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
+
 import type { Module } from '@app/modules/types';
+
+// === Graph Actions ===
+
+const openArcGraphAction: ActionDefinition = {
+  id: 'graph.open-arc-graph',
+  featureId: 'graph',
+  title: 'Open Arc Graph',
+  description: 'Open the arc graph editor',
+  icon: 'fileText',
+  route: ROUTES.ARC_GRAPH,
+  execute: () => {
+    navigateTo(ROUTES.ARC_GRAPH);
+  },
+};
 
 export const arcGraphModule: Module = {
   id: 'arc-graph',
@@ -15,6 +32,7 @@ export const arcGraphModule: Module = {
     featurePrimary: true,
     featured: true,
     component: lazy(() => import('../../../routes/ArcGraph').then(m => ({ default: m.ArcGraphRoute }))),
+    actions: [openArcGraphAction],
   },
 };
 

@@ -1,6 +1,23 @@
+import type { ActionDefinition } from '@shared/types';
 import { lazy } from 'react';
 
+import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
+
 import type { Module } from '@app/modules/types';
+
+// === Interactions Actions ===
+
+const openInteractionStudioAction: ActionDefinition = {
+  id: 'interactions.open-studio',
+  featureId: 'interactions',
+  title: 'Open Interaction Studio',
+  description: 'Open the interaction studio',
+  icon: 'sparkles',
+  route: ROUTES.INTERACTION_STUDIO,
+  execute: () => {
+    navigateTo(ROUTES.INTERACTION_STUDIO);
+  },
+};
 
 export const interactionStudioModule: Module = {
   id: 'interaction-studio',
@@ -14,6 +31,7 @@ export const interactionStudioModule: Module = {
     featureId: 'interactions',
     featurePrimary: true,
     component: lazy(() => import('../../../routes/InteractionStudio').then(m => ({ default: m.InteractionStudio }))),
+    actions: [openInteractionStudioAction],
   },
 };
 

@@ -1,6 +1,24 @@
+import type { ActionDefinition } from '@shared/types';
 import { lazy } from 'react';
 
+import { navigateTo } from '@lib/capabilities/routeConstants';
+
 import type { Module } from '@app/modules/types';
+
+// === App Map Actions ===
+
+const openAppMapAction: ActionDefinition = {
+  id: 'app-map.open',
+  featureId: 'app-map',
+  title: 'Open App Map',
+  description: 'View live app architecture and plugin ecosystem',
+  icon: 'map',
+  shortcut: 'Ctrl+Shift+M',
+  route: '/app-map',
+  execute: () => {
+    navigateTo('/app-map');
+  },
+};
 
 export const healthModule: Module = {
   id: 'health',
@@ -31,6 +49,7 @@ export const appMapModule: Module = {
     showInNav: true,
     hidden: true,
     component: lazy(() => import('../../../routes/AppMapDev').then(m => ({ default: m.AppMapDev }))),
+    actions: [openAppMapAction],
   },
 };
 

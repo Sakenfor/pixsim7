@@ -1,19 +1,13 @@
-import { registerGizmosActions } from '@lib/capabilities/registerCoreFeatures';
-
 import type { Module } from '@app/modules/types';
 
 /**
  * Gizmos Module
  *
- * Registers gizmos actions with the capability registry.
- * This module handles action registration during app initialization.
+ * Core gizmos system module. Actions are registered via gizmoLabModule.page.actions
+ * in routes/index.ts (Phase 1 action consolidation).
  */
 export const gizmosModule: Module = {
   id: 'gizmos',
   name: 'Gizmos',
   priority: 60,
-
-  async initialize() {
-    registerGizmosActions();
-  },
 };

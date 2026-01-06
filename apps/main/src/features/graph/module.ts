@@ -1,5 +1,3 @@
-import { registerGraphActions } from '@lib/capabilities/registerCoreFeatures';
-
 import { registerArcRenderers } from '@features/graph/lib/editor/arcRenderers';
 import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoRegisterRenderers';
 import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
@@ -17,6 +15,9 @@ import type { Module } from '@app/modules/types';
  * - Registering node renderers (built-in, arc, and plugin)
  * - Preloading high-priority renderers for performance
  * - Auto-registering renderers from node type definitions
+ *
+ * Note: Graph actions are registered via arcGraphModule.page.actions
+ * in routes/index.ts (Phase 1 action consolidation).
  */
 export const graphSystemModule: Module = {
   id: 'graph-system',
@@ -25,9 +26,6 @@ export const graphSystemModule: Module = {
   dependsOn: ['plugin-bootstrap'], // Needs plugins loaded first
 
   async initialize() {
-    // Register graph actions in the capability registry
-    registerGraphActions();
-
     // Register builtin node types
     // TODO: Implement registerBuiltinNodeTypes() and registerArcNodeTypes()
     // registerBuiltinNodeTypes();
