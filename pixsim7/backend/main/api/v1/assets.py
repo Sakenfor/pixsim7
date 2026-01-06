@@ -1076,22 +1076,36 @@ async def upload_asset_from_url(
     import httpx
     import mimetypes
     import tempfile
+    import base64
 
     url = request.url
-    if not (url.startswith("http://") or url.startswith("https://")):
-        raise HTTPException(status_code=400, detail="URL must be http(s)")
 
-    # Fetch remote content
-    try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={
-            "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)"
-        }) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            content = resp.content
-            content_type = resp.headers.get("content-type", "")
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {e}")
+    # Handle data URLs (from extension uploading local files)
+    if url.startswith("data:"):
+        try:
+            # Parse data URL: data:[<mediatype>][;base64],<data>
+            header, encoded = url.split(",", 1)
+            content_type = header.split(":")[1].split(";")[0] if ":" in header else ""
+            if ";base64" in header:
+                content = base64.b64decode(encoded)
+            else:
+                content = encoded.encode("utf-8")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid data URL: {e}")
+    elif url.startswith("http://") or url.startswith("https://"):
+        # Fetch remote content
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={
+                "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)"
+            }) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                content = resp.content
+                content_type = resp.headers.get("content-type", "")
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {e}")
+    else:
+        raise HTTPException(status_code=400, detail="URL must be http(s) or data:")
 
     # Infer media type
     media_type: MediaType | None = None

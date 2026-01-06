@@ -122,14 +122,130 @@
     });
   }
 
+  /**
+   * Convert blob: or file: URLs to data URLs that can cross context boundaries
+   * @param {string} url - Media URL
+   * @param {boolean} isVideo - Whether this is a video
+   * @param {HTMLImageElement|null} imgElement - Optional existing image element to use
+   */
+  async function resolveMediaUrl(url, isVideo = false, imgElement = null) {
+    // Blob URLs need to be converted to data URLs since they're context-specific
+    if (url.startsWith('blob:')) {
+      try {
+        console.log('[pxs7 badge] Converting blob URL to data URL...');
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to read blob'));
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        console.warn('[pxs7 badge] Failed to convert blob URL:', e);
+        throw new Error('Failed to convert blob URL: ' + e.message);
+      }
+    }
+
+    // file:// URLs can't be fetched, use canvas to convert image to data URL
+    if (url.startsWith('file://')) {
+      if (isVideo) {
+        throw new Error('Video upload from local files not yet supported');
+      }
+      try {
+        console.log('[pxs7 badge] Converting file:// URL to data URL via canvas...');
+
+        // Try to use the existing image element on the page first (already loaded)
+        // This works better than creating a new Image() for file:// URLs
+        let existingImg = imgElement || (currentImg && currentImg.src === url ? currentImg : null);
+
+        // Fallback: find img on page with matching src (for Chrome's native file viewer)
+        if (!existingImg) {
+          const allImgs = document.querySelectorAll('img');
+          for (const img of allImgs) {
+            if (img.src === url && img.complete && img.naturalWidth > 0) {
+              existingImg = img;
+              console.log('[pxs7 badge] Found img via querySelectorAll');
+              break;
+            }
+          }
+        }
+
+        return await new Promise((resolve, reject) => {
+          const convertToDataUrl = (imgEl) => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = imgEl.naturalWidth || imgEl.width;
+              canvas.height = imgEl.naturalHeight || imgEl.height;
+              console.log('[pxs7 badge] Canvas size:', canvas.width, 'x', canvas.height);
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(imgEl, 0, 0);
+              // Try PNG first, fall back to JPEG for large images
+              let dataUrl;
+              try {
+                dataUrl = canvas.toDataURL('image/png');
+              } catch (taintedErr) {
+                console.error('[pxs7 badge] toDataURL failed (tainted canvas?):', taintedErr);
+                reject(new Error('Canvas tainted - cannot export local file image. Try dragging the image to the PixSim7 app instead.'));
+                return;
+              }
+              // If PNG is too large (>5MB), use JPEG
+              if (dataUrl.length > 5 * 1024 * 1024) {
+                dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+              }
+              console.log('[pxs7 badge] Data URL generated, length:', dataUrl.length);
+              resolve(dataUrl);
+            } catch (e) {
+              console.error('[pxs7 badge] Canvas conversion error:', e);
+              reject(new Error('Canvas conversion failed: ' + e.message));
+            }
+          };
+
+          console.log('[pxs7 badge] existingImg:', existingImg, 'complete:', existingImg?.complete, 'naturalWidth:', existingImg?.naturalWidth);
+
+          if (existingImg && existingImg.complete && existingImg.naturalWidth > 0) {
+            // Use existing loaded image directly
+            console.log('[pxs7 badge] Using existing image element');
+            convertToDataUrl(existingImg);
+          } else {
+            // Create new image - don't set crossOrigin for file:// URLs
+            console.log('[pxs7 badge] Creating new Image() for:', url);
+            const img = new Image();
+            img.onload = () => {
+              console.log('[pxs7 badge] New image loaded:', img.naturalWidth, 'x', img.naturalHeight);
+              convertToDataUrl(img);
+            };
+            img.onerror = (e) => {
+              console.error('[pxs7 badge] Image load error:', e, 'src was:', url);
+              reject(new Error('Failed to load local image'));
+            };
+            img.src = url;
+          }
+        });
+      } catch (e) {
+        console.warn('[pxs7 badge] Failed to convert file:// URL:', e);
+        throw new Error('Failed to convert local file: ' + e.message);
+      }
+    }
+
+    // HTTP/HTTPS and data URLs can be passed through
+    return url;
+  }
+
   async function upload(mediaUrl, providerId, isVideo = false, options = {}) {
     try {
       const settings = await getSettings();
       if (!settings.pixsim7Token) { showToast('Login to PixSim7 first', false); return; }
+
+      // Convert blob/file URLs to data URLs first
+      // Pass the current image element for file:// URLs so we can use it directly
+      const imgElement = !isVideo ? currentImg : null;
+      const resolvedUrl = await resolveMediaUrl(mediaUrl, isVideo, imgElement);
+
       const provider = providerId || settings.defaultUploadProvider || 'pixverse';
       const res = await chrome.runtime.sendMessage({
         action: 'uploadMediaFromUrl',
-        mediaUrl,
+        mediaUrl: resolvedUrl,
         providerId: provider,
         // For backwards compatibility, callers that don't pass options will
         // get the default backend behavior (ensure_asset=True). Callers can
@@ -370,6 +486,9 @@
     const onPixverse = isPixverseSite();
     const isPixverseMedia = mediaSrc && isPixverseMediaUrl(mediaSrc);
     const assetInfo = isPixverseMedia ? extractPixverseAssetInfo(mediaSrc) : null;
+    const isBlobUrl = mediaSrc && mediaSrc.startsWith('blob:');
+    const isFileUrl = mediaSrc && mediaSrc.startsWith('file://');
+    const isLocalUrl = isBlobUrl || isFileUrl;
 
     if (onPixverse && assetInfo) {
       // Show sync icon for PixVerse images we can identify
@@ -377,10 +496,13 @@
       badgeEl.title = `Sync to PixSim7 (ID: ${assetInfo.uuid.slice(0, 8)}...)`;
     } else if (isVideo) {
       badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
-      badgeEl.title = 'Save video to PixSim7';
+      badgeEl.title = isLocalUrl ? 'Save video to PixSim7 (local file)' : 'Save video to PixSim7';
+    } else if (isFileUrl) {
+      badgeEl.innerHTML = '<span style="font-size:12px">📁</span><span>PixSim7</span>';
+      badgeEl.title = 'Upload local image to PixSim7';
     } else {
       badgeEl.innerHTML = '<span style="font-size:12px">⬆</span><span>PixSim7</span>';
-      badgeEl.title = 'Save image to PixSim7';
+      badgeEl.title = isBlobUrl ? 'Save image to PixSim7 (from blob)' : 'Save image to PixSim7';
     }
   }
 
