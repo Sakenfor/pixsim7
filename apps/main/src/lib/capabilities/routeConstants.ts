@@ -30,6 +30,16 @@ export const ROUTES = {
 
   // Plugins
   PLUGINS: '/plugins',
+
+  // Graph
+  ARC_GRAPH: '/arc-graph',
+  GRAPH_DETAIL: '/graph/:id',
+
+  // Interactions
+  INTERACTION_STUDIO: '/interaction-studio',
+
+  // Gizmos
+  GIZMO_LAB: '/gizmo-lab',
 } as const;
 
 /**

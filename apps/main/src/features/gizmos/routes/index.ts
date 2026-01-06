@@ -1,9 +1,17 @@
 import { lazy } from 'react';
+
+import { registerGizmosFeature } from '@lib/capabilities/registerCoreFeatures';
+
 import type { Module } from '@app/modules/types';
 
 export const gizmoLabModule: Module = {
   id: 'gizmo-lab',
   name: 'Gizmo Lab',
+
+  async initialize() {
+    registerGizmosFeature();
+  },
+
   page: {
     route: '/gizmo-lab',
     icon: 'sparkles',

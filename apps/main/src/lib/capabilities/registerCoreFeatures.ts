@@ -8,9 +8,11 @@
  * These functions are called by their respective modules during initialization.
  */
 
-import { registerCompleteFeature, useCapabilityStore } from './index';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+
 import { ROUTES, navigateTo } from './routeConstants';
+
+import { registerCompleteFeature } from './index';
 
 /**
  * Assets/Gallery Feature
@@ -328,6 +330,125 @@ export function registerAppMapFeature() {
         shortcut: 'Ctrl+Shift+M',
         execute: () => {
           navigateTo('/app-map');
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Graph Feature (Arc Graph + Graph Detail views)
+ */
+export function registerGraphFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'graph',
+      name: 'Graph',
+      description: 'Story arc management and asset graph visualization',
+      icon: '📊',
+      category: 'creation',
+      priority: 80,
+    },
+    routes: [
+      {
+        path: ROUTES.ARC_GRAPH,
+        name: 'Arc Graph',
+        description: 'Manage story arcs, quests, and narrative flow',
+        icon: '📝',
+        protected: true,
+        showInNav: true,
+      },
+      {
+        path: ROUTES.GRAPH_DETAIL,
+        name: 'Graph View',
+        description: 'Visualize asset dependencies and relationships',
+        icon: '📊',
+        protected: true,
+        showInNav: false,
+      },
+    ],
+    actions: [
+      {
+        id: 'graph.open-arc-graph',
+        name: 'Open Arc Graph',
+        description: 'Open the arc graph editor',
+        icon: '📝',
+        execute: () => {
+          navigateTo(ROUTES.ARC_GRAPH);
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Interactions Feature (Interaction Studio)
+ */
+export function registerInteractionsFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'interactions',
+      name: 'Interactions',
+      description: 'NPC interaction design and prototyping',
+      icon: '💬',
+      category: 'game',
+      priority: 75,
+    },
+    routes: [
+      {
+        path: ROUTES.INTERACTION_STUDIO,
+        name: 'Interaction Studio',
+        description: 'Design and prototype NPC interactions visually',
+        icon: '💬',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'interactions.open-studio',
+        name: 'Open Interaction Studio',
+        description: 'Open the interaction studio',
+        icon: '💬',
+        execute: () => {
+          navigateTo(ROUTES.INTERACTION_STUDIO);
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Gizmos Feature (Gizmo Lab)
+ */
+export function registerGizmosFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'gizmos',
+      name: 'Gizmos',
+      description: 'Interactive tools and gizmo exploration',
+      icon: '🔧',
+      category: 'utility',
+      priority: 55,
+    },
+    routes: [
+      {
+        path: ROUTES.GIZMO_LAB,
+        name: 'Gizmo Lab',
+        description: 'Explore and test gizmos and interactive tools',
+        icon: '🔧',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'gizmos.open-lab',
+        name: 'Open Gizmo Lab',
+        description: 'Open the gizmo lab',
+        icon: '🔧',
+        execute: () => {
+          navigateTo(ROUTES.GIZMO_LAB);
         },
       },
     ],

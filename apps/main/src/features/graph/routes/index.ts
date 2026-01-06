@@ -1,9 +1,17 @@
 import { lazy } from 'react';
+
+import { registerGraphFeature } from '@lib/capabilities/registerCoreFeatures';
+
 import type { Module } from '@app/modules/types';
 
 export const arcGraphModule: Module = {
   id: 'arc-graph',
   name: 'Arc Graph Editor',
+
+  async initialize() {
+    registerGraphFeature();
+  },
+
   page: {
     route: '/arc-graph',
     icon: 'fileText',

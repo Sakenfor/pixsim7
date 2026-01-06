@@ -1,9 +1,17 @@
 import { lazy } from 'react';
+
+import { registerInteractionsFeature } from '@lib/capabilities/registerCoreFeatures';
+
 import type { Module } from '@app/modules/types';
 
 export const interactionStudioModule: Module = {
   id: 'interaction-studio',
   name: 'Interaction Studio',
+
+  async initialize() {
+    registerInteractionsFeature();
+  },
+
   page: {
     route: '/interaction-studio',
     icon: 'sparkles',
