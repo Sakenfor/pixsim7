@@ -41,7 +41,13 @@ export function useRegisterPanelActions(config: PanelActionsConfig) {
   // Update actions if they change
   useEffect(() => {
     panelActionRegistry.update(config.panelId, config);
-  }, [config.actions, config.defaultFaces, config.panelName]);
+  }, [
+    config.actions,
+    config.defaultFaces,
+    config.panelName,
+    config.capabilityActionIds,
+    config.capabilityActionOptions,
+  ]);
 }
 
 /**

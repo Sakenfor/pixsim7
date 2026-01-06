@@ -7,6 +7,7 @@
 
 import type { ActionDefinition } from '@shared/types';
 
+import { useCapabilityStore, type ActionCapability } from '@lib/capabilities';
 import { BaseRegistry } from '@lib/core/BaseRegistry';
 
 import { toMenuAction, toMenuActions } from './actionAdapters';
@@ -44,6 +45,40 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   'zzz': 100,
 };
 
+function isContextMenuCapable(action: ActionCapability): boolean {
+  if (!action.contexts || action.contexts.length === 0) {
+    return false;
+  }
+
+  if (action.visibility === 'hidden' || action.visibility === 'commandPalette') {
+    return false;
+  }
+
+  return true;
+}
+
+function toMenuActionFromCapability(action: ActionCapability): MenuAction {
+  const availableIn = action.contexts as ContextMenuContext[] | undefined;
+
+  return {
+    id: action.id,
+    label: action.name,
+    icon: action.icon,
+    shortcut: action.shortcut,
+    category: action.category,
+    availableIn: availableIn ?? ['item'],
+    disabled: action.enabled ? () => !action.enabled!() : undefined,
+    execute: (ctx) => {
+      const actionCtx = {
+        source: 'contextMenu' as const,
+        event: undefined,
+        target: ctx,
+      };
+      return action.execute(actionCtx);
+    },
+  };
+}
+
 /**
  * Get priority for a category. Lower is higher priority.
  */
@@ -59,6 +94,15 @@ function getCategoryPriority(category: string | undefined): number {
  * Actions are filtered based on context type and visibility conditions.
  */
 export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
+  private includeCapabilityActions = true;
+
+  /**
+   * Enable or disable auto-inclusion of capability actions.
+   */
+  setIncludeCapabilityActions(enabled: boolean): void {
+    this.includeCapabilityActions = enabled;
+  }
+
   /**
    * Get actions available for a specific context
    *
@@ -72,7 +116,17 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
     contextType: ContextMenuContext,
     ctx: MenuActionContext
   ): MenuAction[] {
-    return this.getAll()
+    const registered = this.getAll();
+    const registeredIds = new Set(registered.map((action) => action.id));
+
+    const capabilityActions = this.includeCapabilityActions
+      ? Array.from(useCapabilityStore.getState().actions.values())
+          .filter(isContextMenuCapable)
+          .filter((action) => !registeredIds.has(action.id))
+          .map((action) => toMenuActionFromCapability(action))
+      : [];
+
+    return [...registered, ...capabilityActions]
       .filter(action => action.availableIn.includes(contextType))
       .filter(action => !action.visible || action.visible(ctx))
       .sort((a, b) => {

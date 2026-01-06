@@ -11,6 +11,8 @@ import React from "react";
 import type { ActionDefinition } from "@shared/types";
 import type { CubeFace } from "@pixsim7/pixcubes";
 
+import { useCapabilityStore, type ActionCapability } from "@lib/capabilities";
+
 import { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
 
 export interface PanelActionError {
@@ -37,6 +39,10 @@ export interface PanelActionsConfig {
   panelName: string;
   actions: PanelAction[];
   defaultFaces?: Partial<Record<CubeFace, string>>; // Map face to action ID
+  /** Optional actions derived from capability registry by ID */
+  capabilityActionIds?: string[];
+  /** Panel-specific options for capability-derived actions */
+  capabilityActionOptions?: Record<string, ToPanelActionOptions>;
 }
 
 class PanelActionRegistry {
@@ -44,6 +50,35 @@ class PanelActionRegistry {
   private listeners = new Set<() => void>();
   private errorListeners = new Set<(error: PanelActionError) => void>();
   private lastErrors: PanelActionError[] = [];
+
+  constructor() {
+    // Recompute panel actions when capability registry updates.
+    useCapabilityStore.subscribe(() => {
+      this.notifyListeners();
+    });
+  }
+
+  private resolveActions(config: PanelActionsConfig): PanelAction[] {
+    const baseActions = config.actions ?? [];
+    const ids = config.capabilityActionIds ?? [];
+    if (ids.length === 0) {
+      return baseActions;
+    }
+
+    const store = useCapabilityStore.getState();
+    const existingIds = new Set(baseActions.map(action => action.id));
+    const derived: PanelAction[] = [];
+
+    for (const id of ids) {
+      if (existingIds.has(id)) continue;
+      const action = store.getAction(id);
+      if (!action) continue;
+      const options = config.capabilityActionOptions?.[id];
+      derived.push(toPanelActionFromCapability(action, options));
+    }
+
+    return [...baseActions, ...derived];
+  }
 
   /**
    * Register a panel's available actions
@@ -76,7 +111,9 @@ class PanelActionRegistry {
    * Get actions for a specific panel
    */
   getActions(panelId: string): PanelAction[] {
-    return this.registrations.get(panelId)?.actions || [];
+    const config = this.registrations.get(panelId);
+    if (!config) return [];
+    return this.resolveActions(config);
   }
 
   /**
@@ -97,8 +134,7 @@ class PanelActionRegistry {
    * Get action by ID for a specific panel
    */
   getAction(panelId: string, actionId: string): PanelAction | undefined {
-    const config = this.registrations.get(panelId);
-    return config?.actions.find((a) => a.id === actionId);
+    return this.getActions(panelId).find((action) => action.id === actionId);
   }
 
   /**
@@ -215,6 +251,7 @@ class PanelActionRegistry {
       };
     }
 
+    const actions = this.resolveActions(config);
     const mappings: Record<CubeFace, PanelAction | null> = {
       front: null,
       back: null,
@@ -227,7 +264,7 @@ class PanelActionRegistry {
     // Apply default face mappings from config
     if (config.defaultFaces) {
       Object.entries(config.defaultFaces).forEach(([face, actionId]) => {
-        const action = config.actions.find((a) => a.id === actionId);
+        const action = actions.find((a) => a.id === actionId);
         if (action) {
           mappings[face as CubeFace] = action;
         }
@@ -235,7 +272,7 @@ class PanelActionRegistry {
     }
 
     // Apply preferred face from individual actions (overrides defaults)
-    config.actions.forEach((action) => {
+    actions.forEach((action) => {
       if (action.face && !mappings[action.face]) {
         mappings[action.face] = action;
       }
@@ -245,7 +282,7 @@ class PanelActionRegistry {
     const emptyFaces = (Object.keys(mappings) as CubeFace[]).filter(
       (face) => !mappings[face],
     );
-    const unassignedActions = config.actions.filter(
+    const unassignedActions = actions.filter(
       (action) => !Object.values(mappings).includes(action),
     );
 
@@ -309,10 +346,61 @@ class PanelActionRegistry {
       actions: panelActions,
     });
   }
+
+  /**
+   * Register panel actions sourced from capability action IDs.
+   *
+   * @param config - Panel configuration with action IDs from capability registry
+   *
+   * @example
+   * ```typescript
+   * panelActionRegistry.registerFromCapabilities({
+   *   panelId: 'my-panel',
+   *   panelName: 'My Panel',
+   *   actionIds: ['workspace.open', 'workspace.save'],
+   *   actionOptions: {
+   *     'workspace.save': { face: 'top' },
+   *   },
+   * });
+   * ```
+   */
+  registerFromCapabilities(
+    config: Omit<PanelActionsConfig, 'actions' | 'capabilityActionIds' | 'capabilityActionOptions'> & {
+      actionIds: string[];
+      actionOptions?: Record<string, ToPanelActionOptions>;
+      actions?: PanelAction[];
+    }
+  ): void {
+    this.register({
+      ...config,
+      actions: config.actions ?? [],
+      capabilityActionIds: config.actionIds,
+      capabilityActionOptions: config.actionOptions,
+    });
+  }
 }
 
 // Singleton instance
 export const panelActionRegistry = new PanelActionRegistry();
+
+function toPanelActionFromCapability(
+  action: ActionCapability,
+  options?: ToPanelActionOptions
+): PanelAction {
+  return {
+    id: action.id,
+    label: action.name,
+    icon: action.icon ?? "circle",
+    description: action.description,
+    shortcut: action.shortcut,
+    face: options?.face,
+    enabled: action.enabled,
+    onError: options?.onError,
+    execute: () => {
+      return action.execute({ source: "programmatic" });
+    },
+  };
+}
 
 /**
  * React hook for using panel actions in components

@@ -8,7 +8,12 @@
  * Inspired by VS Code's extension API and Eclipse's contribution model.
  */
 
-import type { ActionContext, ActionDefinition } from '@shared/types';
+import type {
+  ActionContext,
+  ActionDefinition,
+  ActionMenuContext,
+  ActionVisibility,
+} from '@shared/types';
 import * as React from 'react';
 import { create } from 'zustand';
 import { debugFlags } from '@lib/utils/debugFlags';
@@ -117,6 +122,12 @@ export interface ActionCapability {
    */
   execute: (ctx?: ActionContext) => void | Promise<void>;
 
+  /** Visibility hints for UI surfaces */
+  visibility?: ActionVisibility;
+
+  /** Context menu placement contexts (if applicable) */
+  contexts?: ActionMenuContext[];
+
   /** Whether action is currently enabled */
   enabled?: () => boolean;
 
@@ -154,6 +165,8 @@ export function toActionCapability(action: ActionDefinition): ActionCapability {
     featureId: action.featureId,
     category: action.category,
     enabled: action.enabled,
+    visibility: action.visibility,
+    contexts: action.contexts,
     execute: action.execute,
   };
 }
