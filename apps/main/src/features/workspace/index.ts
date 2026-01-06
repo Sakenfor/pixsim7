@@ -40,4 +40,4 @@ export { workspaceModule as workspaceConsoleModule } from "@lib/dev/console/modu
 export { workspaceManifest } from "./lib/consoleManifest";
 
 // Capability Registration
-export { registerWorkspaceFeature } from "./lib/capabilities";
+export { registerWorkspaceActions } from "./lib/capabilities";

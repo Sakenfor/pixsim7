@@ -1,338 +1,197 @@
 /**
- * Core Feature Registration
+ * Core Capability Registration
  *
- * Individual registration functions for core app features.
- * Each function registers a feature's capabilities (routes, actions, states)
- * in the capability registry so plugins can discover and interact with them.
- *
- * These functions are called by their respective modules during initialization.
+ * Registers actions and state capabilities for core features.
+ * Feature and route metadata are derived from module page definitions.
  */
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 import { ROUTES, navigateTo } from './routeConstants';
 
-import { registerCompleteFeature, useCapabilityStore } from './index';
+import { useCapabilityStore } from './index';
 
 /**
- * Assets/Gallery Feature
+ * Assets/Gallery Actions
  */
-export function registerAssetsFeature() {
-  registerCompleteFeature({
-    feature: {
-      id: 'assets',
-      name: 'Assets',
-      description: 'Asset library and media management',
-      icon: '📦',
-      category: 'management',
-      priority: 90,
-      enabled: () => true,
+export function registerAssetsActions() {
+  const store = useCapabilityStore.getState();
+
+  store.registerAction({
+    id: 'assets.open-gallery',
+    name: 'Open Gallery',
+    description: 'Open the asset gallery',
+    icon: '📦',
+    shortcut: 'Ctrl+Shift+A',
+    featureId: 'assets',
+    execute: () => {
+      navigateTo(ROUTES.ASSETS);
     },
-    routes: [
-      {
-        path: ROUTES.ASSETS,
-        name: 'Asset Gallery',
-        description: 'Browse all assets',
-        icon: '📦',
-        protected: true,
-        showInNav: true,
-      },
-      {
-        path: ROUTES.ASSET_DETAIL,
-        name: 'Asset Detail',
-        description: 'View asset details',
-        icon: '🔍',
-        protected: true,
-        showInNav: false,
-      },
-    ],
-    actions: [
-      {
-        id: 'assets.open-gallery',
-        name: 'Open Gallery',
-        description: 'Open the asset gallery',
-        icon: '📦',
-        shortcut: 'Ctrl+Shift+A',
-        execute: () => {
-          navigateTo(ROUTES.ASSETS);
-        },
-      },
-      {
-        id: 'assets.upload',
-        name: 'Upload Asset',
-        description: 'Upload a new asset',
-        icon: '📤',
-        execute: async () => {
-          // TODO: Open upload dialog
-          console.log('Upload asset');
-        },
-      },
-      {
-        id: 'assets.search',
-        name: 'Search Assets',
-        description: 'Search for assets',
-        icon: '🔍',
-        shortcut: 'Ctrl+K',
-        execute: () => {
-          // TODO: Open search
-          console.log('Search assets');
-        },
-      },
-    ],
-    states: [
-      {
-        id: 'assets.count',
-        name: 'Asset Count',
-        getValue: () => {
-          // TODO: Get from assets store
-          return 0;
-        },
-        readonly: true,
-      },
-    ],
+  });
+  store.registerAction({
+    id: 'assets.upload',
+    name: 'Upload Asset',
+    description: 'Upload a new asset',
+    icon: '📤',
+    featureId: 'assets',
+    execute: async () => {
+      // TODO: Open upload dialog
+      console.log('Upload asset');
+    },
+  });
+  store.registerAction({
+    id: 'assets.search',
+    name: 'Search Assets',
+    description: 'Search for assets',
+    icon: '🔍',
+    shortcut: 'Ctrl+K',
+    featureId: 'assets',
+    execute: () => {
+      // TODO: Open search
+      console.log('Search assets');
+    },
+  });
+
+  store.registerState({
+    id: 'assets.count',
+    name: 'Asset Count',
+    getValue: () => {
+      // TODO: Get from assets store
+      return 0;
+    },
+    readonly: true,
   });
 }
 
-// Workspace feature registration has been moved to @features/workspace
-export { registerWorkspaceFeature } from '@features/workspace';
+// Workspace capability registration has been moved to @features/workspace
+export { registerWorkspaceActions } from '@features/workspace';
 
 /**
- * Content Generation Feature
+ * Content Generation Actions
  */
-export function registerGenerationFeature() {
-  registerCompleteFeature({
-    feature: {
-      id: 'generation',
-      name: 'Generation',
-      description: 'AI-powered content generation',
-      icon: '✨',
-      category: 'creation',
-      priority: 100,
+export function registerGenerationActions() {
+  const store = useCapabilityStore.getState();
+
+  store.registerAction({
+    id: 'generation.quick-generate',
+    name: 'Quick Generate',
+    icon: '⚡',
+    shortcut: 'Ctrl+G',
+    featureId: 'generation',
+    execute: () => {
+      // Open quick generate in control center
+      useControlCenterStore.getState().setActiveModule('quickGenerate');
+      useControlCenterStore.getState().setOpen(true);
     },
-    routes: [
-      {
-        path: ROUTES.GENERATE,
-        name: 'Generate',
-        description: 'Quick generation interface',
-        icon: '✨',
-        protected: true,
-        showInNav: true,
-      },
-    ],
-    actions: [
-      {
-        id: 'generation.quick-generate',
-        name: 'Quick Generate',
-        icon: '⚡',
-        shortcut: 'Ctrl+G',
-        execute: () => {
-          // Open quick generate in control center
-          useControlCenterStore.getState().setActiveModule('quickGenerate');
-          useControlCenterStore.getState().setOpen(true);
-        },
-      },
-      {
-        id: 'generation.open-presets',
-        name: 'Open Presets',
-        icon: '🎨',
-        execute: () => {
-          useControlCenterStore.getState().setActiveModule('presets');
-          useControlCenterStore.getState().setOpen(true);
-        },
-      },
-      {
-        id: 'generation.select-provider',
-        name: 'Select Provider',
-        icon: '🌐',
-        execute: () => {
-          useControlCenterStore.getState().setActiveModule('providers');
-          useControlCenterStore.getState().setOpen(true);
-        },
-      },
-    ],
-    states: [
-      {
-        id: 'generation.active',
-        name: 'Generation Active',
-        getValue: () => {
-          return useControlCenterStore.getState().generating;
-        },
-        readonly: true,
-      },
-    ],
+  });
+  store.registerAction({
+    id: 'generation.open-presets',
+    name: 'Open Presets',
+    icon: '🎨',
+    featureId: 'generation',
+    execute: () => {
+      useControlCenterStore.getState().setActiveModule('presets');
+      useControlCenterStore.getState().setOpen(true);
+    },
+  });
+  store.registerAction({
+    id: 'generation.select-provider',
+    name: 'Select Provider',
+    icon: '🌐',
+    featureId: 'generation',
+    execute: () => {
+      useControlCenterStore.getState().setActiveModule('providers');
+      useControlCenterStore.getState().setOpen(true);
+    },
+  });
+
+  store.registerState({
+    id: 'generation.active',
+    name: 'Generation Active',
+    getValue: () => {
+      return useControlCenterStore.getState().generating;
+    },
+    readonly: true,
   });
 }
 
 /**
- * Game Features
+ * Game Actions
  */
-export function registerGameFeature() {
-  registerCompleteFeature({
-    feature: {
-      id: 'game',
-      name: 'Game',
-      description: 'Interactive game world and NPCs',
-      icon: '🎮',
-      category: 'game',
-      priority: 70,
+export function registerGameActions() {
+  const store = useCapabilityStore.getState();
+
+  store.registerAction({
+    id: 'game.enter-world',
+    name: 'Enter Game World',
+    icon: '🌍',
+    featureId: 'game',
+    execute: () => {
+      navigateTo(ROUTES.GAME_WORLD);
     },
-    routes: [
-      {
-        path: ROUTES.GAME_WORLD,
-        name: 'Game World',
-        icon: '🌍',
-        protected: true,
-        showInNav: true,
-      },
-      {
-        path: ROUTES.GAME_2D,
-        name: '2D Game',
-        icon: '🎮',
-        protected: true,
-        showInNav: true,
-      },
-      {
-        path: ROUTES.NPC_PORTRAITS,
-        name: 'NPC Portraits',
-        icon: '👤',
-        protected: true,
-        showInNav: true,
-      },
-      {
-        path: ROUTES.NPC_BRAIN_LAB,
-        name: 'NPC Brain Lab',
-        icon: '🧠',
-        protected: true,
-        showInNav: true,
-      },
-    ],
-    actions: [
-      {
-        id: 'game.enter-world',
-        name: 'Enter Game World',
-        icon: '🌍',
-        execute: () => {
-          navigateTo(ROUTES.GAME_WORLD);
-        },
-      },
-      {
-        id: 'game.npc-editor',
-        name: 'NPC Editor',
-        icon: '🧠',
-        execute: () => {
-          navigateTo(ROUTES.NPC_BRAIN_LAB);
-        },
-      },
-    ],
+  });
+  store.registerAction({
+    id: 'game.npc-editor',
+    name: 'NPC Editor',
+    icon: '🧠',
+    featureId: 'game',
+    execute: () => {
+      navigateTo(ROUTES.NPC_BRAIN_LAB);
+    },
   });
 }
 
 /**
- * Automation Feature
+ * Automation Actions
  */
-export function registerAutomationFeature() {
-  registerCompleteFeature({
-    feature: {
-      id: 'automation',
-      name: 'Automation',
-      description: 'Workflow automation and scheduling',
-      icon: '⚡',
-      category: 'utility',
-      priority: 60,
+export function registerAutomationActions() {
+  const store = useCapabilityStore.getState();
+
+  store.registerAction({
+    id: 'automation.open',
+    name: 'Open Automation',
+    icon: '⚡',
+    featureId: 'automation',
+    execute: () => {
+      navigateTo(ROUTES.AUTOMATION);
     },
-    routes: [
-      {
-        path: ROUTES.AUTOMATION,
-        name: 'Automation',
-        icon: '⚡',
-        protected: true,
-        showInNav: true,
-      },
-    ],
-    actions: [
-      {
-        id: 'automation.open',
-        name: 'Open Automation',
-        icon: '⚡',
-        execute: () => {
-          navigateTo(ROUTES.AUTOMATION);
-        },
-      },
-    ],
   });
 }
 
 /**
- * Plugin Manager Feature
+ * Plugin Manager Actions
  */
-export function registerPluginsFeature() {
-  registerCompleteFeature({
-    feature: {
-      id: 'plugins',
-      name: 'Plugins',
-      description: 'Plugin management and installation',
-      icon: '🔌',
-      category: 'utility',
-      priority: 50,
+export function registerPluginsActions() {
+  const store = useCapabilityStore.getState();
+
+  store.registerAction({
+    id: 'plugins.open',
+    name: 'Open Plugin Manager',
+    icon: '🔌',
+    shortcut: 'Ctrl+Shift+P',
+    featureId: 'plugins',
+    execute: () => {
+      navigateTo(ROUTES.PLUGINS);
     },
-    routes: [
-      {
-        path: ROUTES.PLUGINS,
-        name: 'Plugin Manager',
-        icon: '🔌',
-        protected: true,
-        showInNav: true,
-      },
-    ],
-    actions: [
-      {
-        id: 'plugins.open',
-        name: 'Open Plugin Manager',
-        icon: '🔌',
-        shortcut: 'Ctrl+Shift+P',
-        execute: () => {
-          navigateTo(ROUTES.PLUGINS);
-        },
-      },
-    ],
   });
 }
 
 /**
- * App Map Feature
+ * App Map Actions
  */
-export function registerAppMapFeature() {
-  registerCompleteFeature({
-    feature: {
-      id: 'app-map',
-      name: 'App Map',
-      description: 'Architecture visualization and dev tools',
-      icon: '🗺️',
-      category: 'utility',
-      priority: 40,
+export function registerAppMapActions() {
+  const store = useCapabilityStore.getState();
+
+  store.registerAction({
+    id: 'app-map.open',
+    name: 'Open App Map',
+    description: 'View live app architecture and plugin ecosystem',
+    icon: '🗺️',
+    shortcut: 'Ctrl+Shift+M',
+    featureId: 'app-map',
+    execute: () => {
+      navigateTo('/app-map');
     },
-    routes: [
-      {
-        path: '/app-map',
-        name: 'App Map',
-        description: 'View app architecture, features, and plugins',
-        icon: '🗺️',
-        protected: true,
-        showInNav: true,
-      },
-    ],
-    actions: [
-      {
-        id: 'app-map.open',
-        name: 'Open App Map',
-        description: 'View live app architecture and plugin ecosystem',
-        icon: '🗺️',
-        shortcut: 'Ctrl+Shift+M',
-        execute: () => {
-          navigateTo('/app-map');
-        },
-      },
-    ],
   });
 }
 
