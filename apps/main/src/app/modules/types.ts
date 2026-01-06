@@ -2,7 +2,7 @@ import type { ActionDefinition } from '@shared/types';
 import type { ComponentType, LazyExoticComponent } from 'react';
 
 import type { FeatureCapability } from '@lib/capabilities';
-import { useCapabilityStore } from '@lib/capabilities';
+import { toActionCapability, useCapabilityStore } from '@lib/capabilities';
 import { logEvent } from '@lib/utils';
 
 import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
@@ -239,19 +239,7 @@ function registerModuleCapabilities(module: Module) {
     }
 
     for (const action of page.actions) {
-      // Convert ActionDefinition to ActionCapability
-      // ActionDefinition uses 'title', ActionCapability uses 'name'
-      store.registerAction({
-        id: action.id,
-        name: action.title,
-        description: action.description,
-        icon: action.icon,
-        shortcut: action.shortcut,
-        featureId: action.featureId,
-        category: action.category,
-        enabled: action.enabled,
-        execute: action.execute,
-      });
+      store.registerAction(toActionCapability(action));
       logEvent('DEBUG', 'module_action_registered', {
         moduleId: module.id,
         actionId: action.id,

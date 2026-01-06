@@ -8,7 +8,10 @@ import React from "react";
  * which cube widgets can then expose on their faces when docked.
  */
 
+import type { ActionDefinition } from "@shared/types";
 import type { CubeFace } from "@pixsim7/pixcubes";
+
+import { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
 
 export interface PanelActionError {
   actionId: string;
@@ -276,6 +279,36 @@ class PanelActionRegistry {
     this.registrations.clear();
     this.notifyListeners();
   }
+
+  /**
+   * Register panel actions from canonical ActionDefinition format.
+   *
+   * This allows module-defined actions to be used in panel registries
+   * using the shared ActionDefinition type. The adapter converts them
+   * to PanelAction format automatically.
+   *
+   * @param config - Panel configuration with actions as ActionDefinition[]
+   * @param defaultOptions - Options applied to all converted actions
+   *
+   * @example
+   * ```typescript
+   * panelActionRegistry.registerFromDefinitions({
+   *   panelId: 'my-panel',
+   *   panelName: 'My Panel',
+   *   actions: [refreshAction, saveAction],
+   * }, { face: 'top' });
+   * ```
+   */
+  registerFromDefinitions(
+    config: Omit<PanelActionsConfig, 'actions'> & { actions: ActionDefinition[] },
+    defaultOptions?: ToPanelActionOptions
+  ): void {
+    const panelActions = toPanelActions(config.actions, defaultOptions);
+    this.register({
+      ...config,
+      actions: panelActions,
+    });
+  }
 }
 
 // Singleton instance
@@ -312,9 +345,6 @@ export function usePanelActions(panelId: string) {
     faceMappings: config ? panelActionRegistry.getFaceMappings(panelId) : null,
   };
 }
-
-// Export types
-export type { PanelAction, PanelActionsConfig };
 
 // Re-export singleton
 export { panelActionRegistry as default };

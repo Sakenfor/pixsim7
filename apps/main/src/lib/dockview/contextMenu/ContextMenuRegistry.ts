@@ -5,7 +5,11 @@
  * Extends BaseRegistry with context-aware filtering and MenuItem conversion.
  */
 
+import type { ActionDefinition } from '@shared/types';
+
 import { BaseRegistry } from '@lib/core/BaseRegistry';
+
+import { toMenuAction, toMenuActions } from './actionAdapters';
 import type {
   MenuAction,
   MenuItem,
@@ -159,6 +163,32 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
    */
   registerAll(actions: MenuAction[]): void {
     actions.forEach(action => this.register(action));
+  }
+
+  /**
+   * Register actions from canonical ActionDefinition format.
+   *
+   * This allows module-defined actions to be added to the context menu
+   * using the shared ActionDefinition type. The adapter converts them
+   * to MenuAction format automatically.
+   *
+   * @param actions - Array of ActionDefinition from module page.actions
+   * @param defaultOptions - Options applied to all converted actions
+   *
+   * @example
+   * ```typescript
+   * contextMenuRegistry.registerFromDefinitions(
+   *   [openGalleryAction, uploadAction],
+   *   { availableIn: ['asset', 'asset-card'] }
+   * );
+   * ```
+   */
+  registerFromDefinitions(
+    actions: ActionDefinition[],
+    defaultOptions?: Parameters<typeof toMenuAction>[1]
+  ): void {
+    const menuActions = toMenuActions(actions, defaultOptions);
+    this.registerAll(menuActions);
   }
 }
 

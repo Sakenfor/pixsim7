@@ -8,6 +8,7 @@
  * Inspired by VS Code's extension API and Eclipse's contribution model.
  */
 
+import type { ActionContext, ActionDefinition } from '@shared/types';
 import * as React from 'react';
 import { create } from 'zustand';
 import { debugFlags } from '@lib/utils/debugFlags';
@@ -110,8 +111,11 @@ export interface ActionCapability {
   /** Keyboard shortcut */
   shortcut?: string;
 
-  /** Execute function */
-  execute: (...args: any[]) => void | Promise<void>;
+  /**
+   * Execute function.
+   * Accepts optional ActionContext for standardized invocation.
+   */
+  execute: (ctx?: ActionContext) => void | Promise<void>;
 
   /** Whether action is currently enabled */
   enabled?: () => boolean;
@@ -121,6 +125,58 @@ export interface ActionCapability {
 
   /** Parent feature ID */
   featureId?: string;
+}
+
+/**
+ * Convert an ActionDefinition to an ActionCapability.
+ *
+ * This adapter allows module-defined actions (using the canonical ActionDefinition)
+ * to be registered with the capability store without ad-hoc conversions.
+ *
+ * @param action - Canonical ActionDefinition from module page.actions
+ * @returns ActionCapability for registration with useCapabilityStore
+ *
+ * @example
+ * ```typescript
+ * import { toActionCapability } from '@lib/capabilities';
+ *
+ * const capability = toActionCapability(openGalleryAction);
+ * useCapabilityStore.getState().registerAction(capability);
+ * ```
+ */
+export function toActionCapability(action: ActionDefinition): ActionCapability {
+  return {
+    id: action.id,
+    name: action.title,
+    description: action.description,
+    icon: action.icon,
+    shortcut: action.shortcut,
+    featureId: action.featureId,
+    category: action.category,
+    enabled: action.enabled,
+    execute: action.execute,
+  };
+}
+
+/**
+ * Register multiple ActionDefinitions with the capability store.
+ *
+ * Convenience function for bulk registration of module-defined actions.
+ *
+ * @param actions - Array of ActionDefinition from module page.actions
+ *
+ * @example
+ * ```typescript
+ * import { registerActionsFromDefinitions } from '@lib/capabilities';
+ *
+ * registerActionsFromDefinitions([openGalleryAction, uploadAssetAction]);
+ * ```
+ */
+export function registerActionsFromDefinitions(actions: ActionDefinition[]): void {
+  const store = useCapabilityStore.getState();
+  for (const action of actions) {
+    store.registerAction(toActionCapability(action));
+  }
 }
 
 /**
@@ -173,7 +229,7 @@ interface CapabilityStore {
   unregisterAction: (id: string) => void;
   getAction: (id: string) => ActionCapability | undefined;
   getAllActions: () => ActionCapability[];
-  executeAction: (id: string, ...args: any[]) => Promise<void>;
+  executeAction: (id: string, ctx?: ActionContext) => Promise<void>;
 
   // State methods
   registerState: (state: StateCapability) => void;
@@ -294,7 +350,7 @@ export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
       .filter(a => !a.enabled || a.enabled());
   },
 
-  executeAction: async (id, ...args) => {
+  executeAction: async (id, ctx) => {
     const action = get().getAction(id);
     if (!action) {
       throw new Error(`Action not found: ${id}`);
@@ -302,7 +358,7 @@ export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
     if (action.enabled && !action.enabled()) {
       throw new Error(`Action is disabled: ${id}`);
     }
-    await action.execute(...args);
+    await action.execute(ctx);
   },
 
   // States
@@ -468,7 +524,7 @@ export function useExecuteAction(actionId: string) {
   const [error, setError] = React.useState<Error | null>(null);
   const action = useCapabilityStore((s) => s.getAction(actionId));
 
-  const execute = React.useCallback(async (...args: any[]) => {
+  const execute = React.useCallback(async (ctx?: ActionContext) => {
     if (!action) {
       const err = new Error(`Action not found: ${actionId}`);
       setError(err);
@@ -485,7 +541,7 @@ export function useExecuteAction(actionId: string) {
     setError(null);
 
     try {
-      await action.execute(...args);
+      await action.execute(ctx);
       setLoading(false);
       return true;
     } catch (err) {

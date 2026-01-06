@@ -62,10 +62,10 @@ export function createMockCapabilityStore(initialData?: {
     unregisterAction: (id: string) => actions.delete(id),
     getAction: (id: string) => actions.get(id),
     getAllActions: () => Array.from(actions.values()),
-    executeAction: async (id: string, ...args: any[]) => {
+    executeAction: async (id: string, ctx?: import('@shared/types').ActionContext) => {
       const action = actions.get(id);
       if (!action) throw new Error(`Action not found: ${id}`);
-      await action.execute(...args);
+      await action.execute(ctx);
     },
 
     // State methods
