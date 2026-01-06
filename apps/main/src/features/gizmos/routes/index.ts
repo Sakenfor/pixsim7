@@ -13,6 +13,7 @@ export const gizmoLabModule: Module = {
     category: 'development',
     featureId: 'gizmos',
     showInNav: true,
+    featurePrimary: true,
     component: lazy(() => import('../../../routes/GizmoLab').then(m => ({ default: m.GizmoLab }))),
   },
 };

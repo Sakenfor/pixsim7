@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+
 import type { Module } from '@app/modules/types';
 
 export const healthModule: Module = {
@@ -10,6 +11,8 @@ export const healthModule: Module = {
     iconColor: 'text-red-500',
     description: 'Monitor system health and job status',
     category: 'management',
+    featureId: 'health',
+    showInNav: false,
     featured: true,
     // Health page is part of ControlCenter, not a standalone route
   },
@@ -23,6 +26,9 @@ export const appMapModule: Module = {
     icon: 'map',
     description: 'Visualize application structure and architecture',
     category: 'development',
+    featureId: 'app-map',
+    featurePrimary: true,
+    showInNav: true,
     hidden: true,
     component: lazy(() => import('../../../routes/AppMapDev').then(m => ({ default: m.AppMapDev }))),
   },
@@ -37,6 +43,7 @@ export const modulesDevModule: Module = {
     iconColor: 'text-cyan-500',
     description: 'View all registered modules and their status',
     category: 'development',
+    featureId: 'modules-dev',
     hidden: true,
     component: lazy(() => import('../../../routes/ModulesDev').then(m => ({ default: m.ModulesDev }))),
   },

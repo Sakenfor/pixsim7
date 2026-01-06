@@ -23,6 +23,7 @@ export const simulationModule: Module = {
     icon: 'play',
     description: 'Test and explore simulation features',
     category: 'development',
+    featureId: 'simulation',
     hidden: true,
     component: lazy(() => import('../../../routes/SimulationPlayground').then(m => ({ default: m.SimulationPlayground }))),
   },

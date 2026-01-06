@@ -9,6 +9,7 @@ export const overlayConfigModule: Module = {
     iconColor: 'text-blue-500',
     description: 'Customize overlay positioning and styling for all components',
     category: 'management',
+    featureId: 'overlay-config',
     featured: true,
   },
 };

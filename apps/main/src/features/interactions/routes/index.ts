@@ -12,6 +12,7 @@ export const interactionStudioModule: Module = {
     description: 'Design and prototype NPC interactions visually',
     category: 'game',
     featureId: 'interactions',
+    featurePrimary: true,
     component: lazy(() => import('../../../routes/InteractionStudio').then(m => ({ default: m.InteractionStudio }))),
   },
 };
@@ -25,6 +26,7 @@ export const interactionDemoModule: Module = {
     iconColor: 'text-green-500',
     description: 'See all interaction components in action with live examples',
     category: 'development',
+    featureId: 'interaction-demo',
     component: lazy(() => import('../../../routes/InteractionComponentsDemo').then(m => ({ default: m.InteractionComponentsDemo }))),
   },
 };

@@ -12,6 +12,7 @@ export const arcGraphModule: Module = {
     description: 'Manage story arcs, quests, and narrative flow',
     category: 'creation',
     featureId: 'graph',
+    featurePrimary: true,
     featured: true,
     component: lazy(() => import('../../../routes/ArcGraph').then(m => ({ default: m.ArcGraphRoute }))),
   },
@@ -27,6 +28,7 @@ export const graphModule: Module = {
     category: 'development',
     featureId: 'graph',
     showInNav: false,
+    featurePrimary: false,
     component: lazy(() => import('../../../routes/Graph').then(m => ({ default: m.GraphRoute }))),
   },
 };
