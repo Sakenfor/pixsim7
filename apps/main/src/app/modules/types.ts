@@ -1,6 +1,11 @@
-import { logEvent } from '@lib/utils';
-import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
 import type { ComponentType, LazyExoticComponent } from 'react';
+
+import type { FeatureCapability } from '@lib/capabilities';
+import { useCapabilityStore } from '@lib/capabilities';
+import { logEvent } from '@lib/utils';
+
+import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
+
 
 /**
  * Page Categories
@@ -49,6 +54,16 @@ export const PAGE_CATEGORIES = {
  * Page category type
  */
 export type PageCategory = (typeof PAGE_CATEGORIES)[keyof typeof PAGE_CATEGORIES];
+
+type CapabilityCategory = FeatureCapability['category'];
+
+const PAGE_CATEGORY_TO_CAPABILITY: Record<PageCategory, CapabilityCategory> = {
+  creation: 'creation',
+  automation: 'utility',
+  game: 'game',
+  management: 'management',
+  development: 'utility',
+};
 
 /**
  * Base Module Interface
@@ -128,7 +143,74 @@ export interface Module {
      * component: lazy(() => import('./MyPage'))
      */
     component?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
+    /**
+     * Capability feature ID to associate this page with.
+     * When set, the page is registered into the capability registry.
+     */
+    featureId?: string;
+    /**
+     * Capability category override (uses page category mapping by default).
+     */
+    capabilityCategory?: CapabilityCategory;
+    /**
+     * Override whether the page should appear in navigation.
+     * Defaults to false for development pages, true otherwise.
+     */
+    showInNav?: boolean;
+    /**
+     * Whether the route requires authentication.
+     * Defaults to true for module pages.
+     */
+    protected?: boolean;
   };
+}
+
+function registerModuleCapabilities(module: Module) {
+  const page = module.page;
+  if (!page || !page.component || !page.featureId) {
+    return;
+  }
+
+  const store = useCapabilityStore.getState();
+  const featureId = page.featureId;
+  const category = page.capabilityCategory ?? PAGE_CATEGORY_TO_CAPABILITY[page.category];
+
+  const derivedFeature: FeatureCapability = {
+    id: featureId,
+    name: module.name,
+    description: page.description,
+    icon: page.icon,
+    category,
+    ...(module.priority !== undefined ? { priority: module.priority } : {}),
+  };
+
+  const existingFeature = store.getFeature(featureId);
+  const mergedFeature = existingFeature
+    ? {
+        ...derivedFeature,
+        ...existingFeature,
+      }
+    : derivedFeature;
+
+  store.registerFeature(mergedFeature);
+
+  const existingRoute = store.getRoute(page.route);
+  if (!existingRoute) {
+    const showInNav =
+      page.showInNav ?? (!page.hidden && page.category !== 'development');
+    const protectedRoute = page.protected ?? true;
+    store.registerRoute({
+      path: page.route,
+      name: module.name,
+      description: page.description,
+      icon: page.icon,
+      protected: protectedRoute,
+      showInNav,
+      featureId,
+    });
+  } else if (!existingRoute.featureId) {
+    store.registerRoute({ ...existingRoute, featureId });
+  }
 }
 
 /**
@@ -251,6 +333,10 @@ class ModuleRegistry {
       } else {
         // Module has no initialize function, mark as initialized anyway
         initialized.add(module.id);
+      }
+
+      if (initialized.has(module.id)) {
+        registerModuleCapabilities(module);
       }
     }
 

@@ -1,7 +1,10 @@
 import { lazy } from 'react';
-import type { Module } from '@app/modules/types';
+
 import { registerGameFeature } from '@lib/capabilities/registerCoreFeatures';
+
 import { worldToolRegistry } from '@features/worldTools';
+
+import type { Module } from '@app/modules/types';
 
 /**
  * Game Module
@@ -25,6 +28,7 @@ export const gameModule: Module = {
     icon: 'map',
     description: 'Configure locations and hotspots for 3D scenes',
     category: 'game',
+    featureId: 'game',
     featured: true,
     component: lazy(() => import('../../routes/GameWorld').then(m => ({ default: m.GameWorld }))),
   },

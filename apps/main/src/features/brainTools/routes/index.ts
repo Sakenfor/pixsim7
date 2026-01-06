@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+
 import type { Module } from '@app/modules/types';
 
 export const npcBrainLabModule: Module = {
@@ -9,6 +10,7 @@ export const npcBrainLabModule: Module = {
     icon: 'bot',
     description: 'Design and test NPC behavior and AI',
     category: 'game',
+    featureId: 'game',
     component: lazy(() => import('../components/NpcBrainLab').then(m => ({ default: m.NpcBrainLab }))),
   },
 };

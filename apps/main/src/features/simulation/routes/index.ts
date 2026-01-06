@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+
 import type { Module } from '@app/modules/types';
 
 export const game2DModule: Module = {
@@ -9,6 +10,7 @@ export const game2DModule: Module = {
     icon: 'play',
     description: 'Play the turn-based 2D day cycle game',
     category: 'game',
+    featureId: 'game',
     component: lazy(() => import('../../../routes/Game2D').then(m => ({ default: m.Game2D }))),
   },
 };

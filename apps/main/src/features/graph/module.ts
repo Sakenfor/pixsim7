@@ -1,3 +1,5 @@
+import { registerGraphActions } from '@lib/capabilities/registerCoreFeatures';
+
 import { registerArcRenderers } from '@features/graph/lib/editor/arcRenderers';
 import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoRegisterRenderers';
 import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
@@ -23,6 +25,9 @@ export const graphSystemModule: Module = {
   dependsOn: ['plugin-bootstrap'], // Needs plugins loaded first
 
   async initialize() {
+    // Register graph actions in the capability registry
+    registerGraphActions();
+
     // Register builtin node types
     // TODO: Implement registerBuiltinNodeTypes() and registerArcNodeTypes()
     // registerBuiltinNodeTypes();

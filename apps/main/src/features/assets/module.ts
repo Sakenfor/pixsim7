@@ -1,6 +1,8 @@
 import { lazy } from 'react';
-import type { Module } from '@app/modules/types';
+
 import { registerAssetsFeature } from '@lib/capabilities/registerCoreFeatures';
+
+import type { Module } from '@app/modules/types';
 
 /**
  * Assets/Gallery Module
@@ -24,6 +26,7 @@ export const assetsModule: Module = {
     icon: 'image',
     description: 'Browse and manage generated assets',
     category: 'creation',
+    featureId: 'assets',
     featured: true,
     component: lazy(() => import('../../routes/Assets').then(m => ({ default: m.AssetsRoute }))),
   },

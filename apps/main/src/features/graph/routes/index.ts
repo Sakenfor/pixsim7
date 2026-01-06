@@ -1,23 +1,17 @@
 import { lazy } from 'react';
 
-import { registerGraphFeature } from '@lib/capabilities/registerCoreFeatures';
-
 import type { Module } from '@app/modules/types';
 
 export const arcGraphModule: Module = {
   id: 'arc-graph',
   name: 'Arc Graph Editor',
-
-  async initialize() {
-    registerGraphFeature();
-  },
-
   page: {
     route: '/arc-graph',
     icon: 'fileText',
     iconColor: 'text-indigo-500',
     description: 'Manage story arcs, quests, and narrative flow',
     category: 'creation',
+    featureId: 'graph',
     featured: true,
     component: lazy(() => import('../../../routes/ArcGraph').then(m => ({ default: m.ArcGraphRoute }))),
   },
@@ -31,6 +25,8 @@ export const graphModule: Module = {
     icon: 'graph',
     description: 'Visualize asset dependencies and relationships',
     category: 'development',
+    featureId: 'graph',
+    showInNav: false,
     component: lazy(() => import('../../../routes/Graph').then(m => ({ default: m.GraphRoute }))),
   },
 };
