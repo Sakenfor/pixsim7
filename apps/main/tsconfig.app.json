@@ -87,7 +87,7 @@
 
       // Lib - UI (consolidated)
       "@lib/ui": ["./src/lib/ui/index.ts"],
-      "@lib/ui/panels": ["./src/lib/ui/panels/index.ts"],
+      "@lib/ui/panels": ["./src/features/panels/lib/index.ts"],
       "@lib/ui/composer": ["./src/lib/ui/composer/index.ts"],
       "@lib/ui/overlay": ["./src/lib/ui/overlay/index.ts"],
       "@lib/ui/display": ["./src/lib/ui/display/index.ts"],

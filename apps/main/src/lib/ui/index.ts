@@ -17,7 +17,7 @@ export * from './composer';
 // ============================================================================
 // Panel System - Panel plugin registry and management
 // ============================================================================
-export * from './panels';
+export * from '../../features/panels/lib';
 
 // ============================================================================
 // Display System - Display space management

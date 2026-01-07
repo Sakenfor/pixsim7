@@ -21,7 +21,7 @@ export default defineConfig({
       { find: '@lib/shapes', replacement: path.resolve(__dirname, './src/lib/shapes') },
       { find: '@lib/api', replacement: path.resolve(__dirname, './src/lib/api') },
       // Lib modules - UI (consolidated)
-      { find: '@lib/ui/panels', replacement: path.resolve(__dirname, './src/lib/ui/panels') },
+      { find: '@lib/ui/panels', replacement: path.resolve(__dirname, './src/features/panels/lib') },
       { find: '@lib/ui/composer', replacement: path.resolve(__dirname, './src/lib/ui/composer') },
       { find: '@lib/ui/overlay', replacement: path.resolve(__dirname, './src/lib/ui/overlay') },
       { find: '@lib/ui/display', replacement: path.resolve(__dirname, './src/lib/ui/display') },
