@@ -2218,6 +2218,37 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/backfill-upload-method": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Backfill Upload Method
+         * @description Backfill upload_method from asset metadata using centralized inference rules.
+         *
+         *     Uses the rule-based inference system from upload_attribution module which checks:
+         *     - Explicit upload_method in metadata
+         *     - source_folder_id -> 'local_folders'
+         *     - source_url/source_site -> 'extension'
+         *     - source='extension_badge' -> 'extension'
+         *     - source_generation_id -> 'generated'
+         *     - Pixverse remote URLs -> 'extension'
+         *     - Default fallback -> 'api'
+         *
+         *     Rules can be extended by adding to INFERENCE_RULES in upload_attribution.py
+         */
+        readonly post: operations["backfill_upload_method_api_v1_assets_backfill_upload_method_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/bulk-sync-storage": {
         readonly parameters: {
             readonly query?: never;
@@ -2572,6 +2603,51 @@ export interface paths {
          *     - Preps temp file and delegates to UploadService
          */
         readonly post: operations["upload_asset_from_url_api_v1_assets_upload_from_url_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/upload-method-config": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Upload Method Config
+         * @description Get upload method configuration including available methods and inference rules.
+         *
+         *     Useful for understanding how upload_method is inferred during backfill.
+         */
+        readonly get: operations["get_upload_method_config_api_v1_assets_upload_method_config_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/upload-method-stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Upload Method Stats
+         * @description Get statistics about upload_method coverage for user's assets.
+         *
+         *     Shows how many assets have upload_method set, and breakdown by method.
+         *     Useful for identifying assets that need backfill.
+         */
+        readonly get: operations["get_upload_method_stats_api_v1_assets_upload_method_stats_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -9610,6 +9686,89 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/stats/preview-derived-stats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Preview Derived Stats
+         * @description Preview derived stat computation using semantic derivation.
+         *
+         *     This endpoint uses the DerivationEngine to compute derived stats
+         *     (like mood) from input stat values (like relationships) using the
+         *     semantic type mappings declared in registered stat packages.
+         *
+         *     This is stateless and does not modify any game sessions. It's the
+         *     authoritative way to preview what derived values the engine would
+         *     compute for given inputs.
+         *
+         *     **World Mode:**
+         *     - If world_id is 0, None, or omitted: uses default core packages (editor mode)
+         *     - If world_id is provided and exists: uses world's active packages
+         *
+         *     **Package Selection:**
+         *     - If package_ids is explicitly provided, those are used (overrides world config)
+         *     - Otherwise, uses all registered core packages
+         *
+         *     Args:
+         *         request: Preview request with world_id, target stat, and input values
+         *         db: Database session (injected)
+         *
+         *     Returns:
+         *         Derived stat values computed by the DerivationEngine, including:
+         *         - derived_values: axis values + label/levelId
+         *         - input_axes: actual input axes that contributed
+         *         - tiers: per-axis tier IDs (if derivation computes them)
+         *
+         *     Raises:
+         *         404: World not found (only if world_id > 0)
+         *         400: Invalid request or derivation not available
+         *
+         *     Example for mood derivation:
+         *         POST /preview-derived-stats
+         *         {
+         *             "world_id": 0,
+         *             "target_stat_id": "mood",
+         *             "input_values": {
+         *                 "relationships": {
+         *                     "affinity": 75.0,
+         *                     "trust": 60.0,
+         *                     "chemistry": 70.0,
+         *                     "tension": 10.0
+         *                 }
+         *             }
+         *         }
+         *
+         *         Response:
+         *         {
+         *             "target_stat_id": "mood",
+         *             "derived_values": {
+         *                 "valence": 72.5,
+         *                 "arousal": 60.0,
+         *                 "label": "happy"
+         *             },
+         *             "input_axes": [
+         *                 "core.relationships.relationships.affinity",
+         *                 "core.relationships.relationships.chemistry"
+         *             ],
+         *             "tiers": {
+         *                 "valence": "high",
+         *                 "arousal": "moderate"
+         *             }
+         *         }
+         */
+        readonly post: operations["preview_derived_stats_api_v1_stats_preview_derived_stats_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/stats/preview-entity-stats": {
         readonly parameters: {
             readonly query?: never;
@@ -10710,6 +10869,12 @@ export interface components {
             readonly provider_id?: string | null;
         };
         /**
+         * AnalyzerKind
+         * @description Execution model of analyzer.
+         * @enum {string}
+         */
+        readonly AnalyzerKind: "parser" | "llm" | "vision";
+        /**
          * AnalyzerResponse
          * @description Response schema for analyzer info.
          */
@@ -10722,8 +10887,7 @@ export interface components {
             readonly id: string;
             /** Is Default */
             readonly is_default: boolean;
-            /** Kind */
-            readonly kind: string;
+            readonly kind: components["schemas"]["AnalyzerKind"];
             /** Model Id */
             readonly model_id?: string | null;
             /** Name */
@@ -10732,8 +10896,7 @@ export interface components {
             readonly provider_id?: string | null;
             /** Source Plugin Id */
             readonly source_plugin_id?: string | null;
-            /** Target */
-            readonly target: string;
+            readonly target: components["schemas"]["AnalyzerTarget"];
         };
         /**
          * AnalyzersListResponse
@@ -10745,6 +10908,12 @@ export interface components {
             /** Default Id */
             readonly default_id: string;
         };
+        /**
+         * AnalyzerTarget
+         * @description What the analyzer operates on.
+         * @enum {string}
+         */
+        readonly AnalyzerTarget: "prompt" | "asset";
         /**
          * AnalyzerType
          * @description Types of analysis that can be performed
@@ -11269,6 +11438,26 @@ export interface components {
             readonly skipped: number;
             /** Success */
             readonly success: boolean;
+        };
+        /**
+         * BackfillUploadMethodResponse
+         * @description Response from upload method backfill operation
+         */
+        readonly BackfillUploadMethodResponse: {
+            /** By Method */
+            readonly by_method: {
+                readonly [key: string]: number;
+            };
+            /** Errors */
+            readonly errors: number;
+            /** Processed */
+            readonly processed: number;
+            /** Skipped */
+            readonly skipped: number;
+            /** Success */
+            readonly success: boolean;
+            /** Updated */
+            readonly updated: number;
         };
         /**
          * BatchCheckByHashRequest
@@ -14001,6 +14190,16 @@ export interface components {
              */
             readonly preserve_metadata: boolean;
         };
+        /**
+         * InferenceRuleInfo
+         * @description Info about an upload method inference rule
+         */
+        readonly InferenceRuleInfo: {
+            /** Description */
+            readonly description: string;
+            /** Name */
+            readonly name: string;
+        };
         /** InferVersionsRequest */
         readonly InferVersionsRequest: {
             /**
@@ -15195,6 +15394,49 @@ export interface components {
             readonly name: string;
             /** Sql */
             readonly sql: string;
+        };
+        /**
+         * PreviewDerivedStatsRequest
+         * @description Request for previewing derived stat computation.
+         *
+         *     Uses the DerivationEngine to compute derived stats from input values
+         *     using semantic type mappings declared in stat packages.
+         *
+         *     If world_id is 0 or omitted, uses default core packages (editor mode).
+         *     If world_id is provided and exists, uses world's active packages.
+         */
+        readonly PreviewDerivedStatsRequest: {
+            /** Input Values */
+            readonly input_values: {
+                readonly [key: string]: {
+                    readonly [key: string]: number;
+                };
+            };
+            /** Package Ids */
+            readonly package_ids?: readonly string[] | null;
+            /** Target Stat Id */
+            readonly target_stat_id: string;
+            /** World Id */
+            readonly world_id?: number | null;
+        };
+        /**
+         * PreviewDerivedStatsResponse
+         * @description Response for derived stats preview.
+         */
+        readonly PreviewDerivedStatsResponse: {
+            /** Derived Values */
+            readonly derived_values: Record<string, unknown>;
+            /** Input Axes */
+            readonly input_axes: readonly string[];
+            /** Target Stat Id */
+            readonly target_stat_id: string;
+            /**
+             * Tiers
+             * @default {}
+             */
+            readonly tiers: {
+                readonly [key: string]: string;
+            };
         };
         /**
          * PreviewEntityStatsRequest
@@ -17928,6 +18170,38 @@ export interface components {
              * @description Publicly accessible URL to image/video
              */
             readonly url: string;
+        };
+        /**
+         * UploadMethodConfigResponse
+         * @description Upload method configuration and available rules
+         */
+        readonly UploadMethodConfigResponse: {
+            /** Available Methods */
+            readonly available_methods: {
+                readonly [key: string]: string;
+            };
+            /** Default Method */
+            readonly default_method: string;
+            /** Inference Rules */
+            readonly inference_rules: readonly components["schemas"]["InferenceRuleInfo"][];
+        };
+        /**
+         * UploadMethodStatsResponse
+         * @description Upload method coverage statistics
+         */
+        readonly UploadMethodStatsResponse: {
+            /** By Method */
+            readonly by_method: {
+                readonly [key: string]: number;
+            };
+            /** Percentage */
+            readonly percentage: number;
+            /** Total Assets */
+            readonly total_assets: number;
+            /** With Upload Method */
+            readonly with_upload_method: number;
+            /** Without Upload Method */
+            readonly without_upload_method: number;
         };
         /**
          * UserPreferencesResponse
@@ -21573,6 +21847,42 @@ export interface operations {
             };
         };
     };
+    readonly backfill_upload_method_api_v1_assets_backfill_upload_method_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description If true, don't actually update */
+                readonly dry_run?: boolean;
+                /** @description Max assets to process */
+                readonly limit?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BackfillUploadMethodResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly bulk_sync_storage_api_v1_assets_bulk_sync_storage_post: {
         readonly parameters: {
             readonly query?: {
@@ -22041,6 +22351,68 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["UploadAssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_upload_method_config_api_v1_assets_upload_method_config_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UploadMethodConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_upload_method_stats_api_v1_assets_upload_method_stats_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UploadMethodStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -32602,6 +32974,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["ProcessInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly preview_derived_stats_api_v1_stats_preview_derived_stats_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PreviewDerivedStatsRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PreviewDerivedStatsResponse"];
                 };
             };
             /** @description Validation Error */

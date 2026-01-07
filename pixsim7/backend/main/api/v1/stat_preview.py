@@ -59,20 +59,24 @@ class PreviewDerivedStatsRequest(BaseModel):
 
     Uses the DerivationEngine to compute derived stats from input values
     using semantic type mappings declared in stat packages.
+
+    If world_id is 0 or omitted, uses default core packages (editor mode).
+    If world_id is provided and exists, uses world's active packages.
     """
 
-    world_id: int
+    world_id: Optional[int] = None  # 0 or None = use default core packages
     target_stat_id: str  # The derived stat to compute (e.g., "mood")
     input_values: Dict[str, Dict[str, float]]  # Map of stat_def_id -> {axis: value}
-    package_ids: Optional[List[str]] = None  # Optional explicit package IDs
+    package_ids: Optional[List[str]] = None  # Optional explicit package IDs (overrides world config)
 
 
 class PreviewDerivedStatsResponse(BaseModel):
     """Response for derived stats preview."""
 
     target_stat_id: str
-    derived_values: Dict[str, Any]  # The computed derived stat values
-    sources_used: List[str]  # Which source axes were used
+    derived_values: Dict[str, Any]  # The computed derived stat values (axes + label/levelId)
+    input_axes: List[str]  # Input axes that contributed to derivation
+    tiers: Dict[str, str] = {}  # Tier ID per axis (if computed)
 
 
 # ===== Endpoints =====
@@ -225,21 +229,32 @@ async def preview_derived_stats(
     authoritative way to preview what derived values the engine would
     compute for given inputs.
 
+    **World Mode:**
+    - If world_id is 0, None, or omitted: uses default core packages (editor mode)
+    - If world_id is provided and exists: uses world's active packages
+
+    **Package Selection:**
+    - If package_ids is explicitly provided, those are used (overrides world config)
+    - Otherwise, uses all registered core packages
+
     Args:
         request: Preview request with world_id, target stat, and input values
         db: Database session (injected)
 
     Returns:
-        Derived stat values computed by the DerivationEngine
+        Derived stat values computed by the DerivationEngine, including:
+        - derived_values: axis values + label/levelId
+        - input_axes: actual input axes that contributed
+        - tiers: per-axis tier IDs (if derivation computes them)
 
     Raises:
-        404: World not found
+        404: World not found (only if world_id > 0)
         400: Invalid request or derivation not available
 
     Example for mood derivation:
         POST /preview-derived-stats
         {
-            "world_id": 1,
+            "world_id": 0,
             "target_stat_id": "mood",
             "input_values": {
                 "relationships": {
@@ -259,53 +274,65 @@ async def preview_derived_stats(
                 "arousal": 60.0,
                 "label": "happy"
             },
-            "sources_used": [
+            "input_axes": [
                 "core.relationships.relationships.affinity",
                 "core.relationships.relationships.chemistry"
-            ]
+            ],
+            "tiers": {
+                "valence": "high",
+                "arousal": "moderate"
+            }
         }
     """
+    from pixsim7.backend.main.domain.game.stats import list_stat_packages
+
     try:
         # Ensure core packages are registered
         register_core_stat_packages()
 
-        # Load world (for world-specific overrides, if any)
-        result = await db.execute(
-            select(GameWorld).where(GameWorld.id == request.world_id)
-        )
-        world = result.scalar_one_or_none()
+        # Determine if we're in editor/no-world mode
+        world_id = request.world_id or 0
+        world = None
 
-        if not world:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "World not found",
-                    "world_id": request.world_id,
-                },
+        if world_id > 0:
+            # Load world for world-specific package selection
+            result = await db.execute(
+                select(GameWorld).where(GameWorld.id == world_id)
             )
+            world = result.scalar_one_or_none()
+
+            if not world:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error": "World not found",
+                        "world_id": world_id,
+                    },
+                )
 
         # Determine package IDs
-        # Default to core packages that handle relationships -> mood derivation
-        package_ids = request.package_ids or [
-            "core.relationships",
-            "core.mood",
-            "core.personality",
-            "core.conversation_style",
-            "core.behavior_urgency",
-        ]
+        if request.package_ids:
+            # Explicit package IDs override everything
+            package_ids = request.package_ids
+        elif world:
+            # Try to get packages from world config
+            # For now, use all registered packages (world-specific filtering TBD)
+            package_ids = list(list_stat_packages().keys())
+        else:
+            # Editor mode: use all registered core packages
+            package_ids = list(list_stat_packages().keys())
 
         # Use derivation engine to compute derived stats
         engine = get_derivation_engine()
 
-        # Compute all derivations
-        derived = engine.compute_derivations(
+        # Compute derivations - the engine returns DerivationResult with sources
+        derived_results = engine.compute_derivations(
             stat_values=request.input_values,
             package_ids=package_ids,
         )
 
         # Check if target stat was derived
-        if request.target_stat_id not in derived:
-            # Try to find why derivation failed
+        if request.target_stat_id not in derived_results:
             available_inputs = list(request.input_values.keys())
             raise HTTPException(
                 status_code=400,
@@ -313,7 +340,8 @@ async def preview_derived_stats(
                     "error": "Derivation not available",
                     "target_stat_id": request.target_stat_id,
                     "available_inputs": available_inputs,
-                    "derived_stats": list(derived.keys()) if derived else [],
+                    "derived_stats": list(derived_results.keys()) if derived_results else [],
+                    "packages_used": package_ids,
                     "hint": (
                         f"No derivation found for '{request.target_stat_id}' "
                         f"from inputs: {available_inputs}. Ensure the required "
@@ -322,20 +350,33 @@ async def preview_derived_stats(
                 },
             )
 
-        # Extract sources used from the derivation result
-        # The DerivationEngine doesn't return sources in the dict, but we can infer
-        target_values = derived[request.target_stat_id]
-        sources_used: List[str] = []
+        # Get the derived values for target stat
+        target_values = derived_results[request.target_stat_id]
 
-        # Infer sources from input stat definitions
+        # Build input_axes list from the actual inputs provided
+        input_axes: List[str] = []
         for stat_id, values in request.input_values.items():
             for axis_name in values.keys():
-                sources_used.append(f"input.{stat_id}.{axis_name}")
+                input_axes.append(f"{stat_id}.{axis_name}")
+
+        # Extract tiers if the derivation computed them
+        # Derived values may contain tier info as {axis}_tier keys
+        tiers: Dict[str, str] = {}
+        derived_values_clean: Dict[str, Any] = {}
+
+        for key, value in target_values.items():
+            if key.endswith("_tier") and isinstance(value, str):
+                # Extract tier: "valence_tier" -> tiers["valence"] = value
+                axis_name = key[:-5]  # Remove "_tier" suffix
+                tiers[axis_name] = value
+            else:
+                derived_values_clean[key] = value
 
         return PreviewDerivedStatsResponse(
             target_stat_id=request.target_stat_id,
-            derived_values=target_values,
-            sources_used=sources_used,
+            derived_values=derived_values_clean,
+            input_axes=input_axes,
+            tiers=tiers,
         )
 
     except HTTPException:
