@@ -27,23 +27,23 @@ router = APIRouter(prefix="/providers/pixverse", tags=["pixverse", "sync"])
 def _extract_video_id(video: Dict[str, Any]) -> Optional[str]:
     """
     Best-effort extraction of a video ID from Pixverse video payload.
-    Tries common keys ('video_id', 'VideoId', 'id'). Returns string or None.
+
+    Delegates to centralized get_preferred_provider_asset_id helper.
+    Returns the integer video_id if available, None otherwise.
     """
-    for key in ("video_id", "VideoId", "id"):
-        if key in video and video[key] is not None:
-            return str(video[key])
-    return None
+    from pixsim7.backend.main.services.provider.adapters.pixverse_ids import get_preferred_provider_asset_id
+    return get_preferred_provider_asset_id(video, "video", fallback_id=None)
 
 
 def _extract_image_id(image: Dict[str, Any]) -> Optional[str]:
     """
     Best-effort extraction of an image ID from Pixverse image payload.
-    Tries common keys ('image_id', 'ImageId', 'id'). Returns string or None.
+
+    Delegates to centralized get_preferred_provider_asset_id helper.
+    Returns the integer image_id if available, None otherwise.
     """
-    for key in ("image_id", "ImageId", "id"):
-        if key in image and image[key] is not None:
-            return str(image[key])
-    return None
+    from pixsim7.backend.main.services.provider.adapters.pixverse_ids import get_preferred_provider_asset_id
+    return get_preferred_provider_asset_id(image, "image", fallback_id=None)
 
 
 def _extract_video_url(video: Dict[str, Any]) -> Optional[str]:
@@ -515,18 +515,16 @@ async def sync_single_pixverse_asset(
 
     # Build candidate IDs for dedup - always include the provided asset_id
     candidate_ids = [asset_id]
-    primary_id = asset_id  # Default to UUID from extension
+
+    # Resolve best provider_asset_id (prefer integer ID from metadata)
+    from pixsim7.backend.main.services.provider.adapters.pixverse_ids import get_preferred_provider_asset_id
+    primary_id = get_preferred_provider_asset_id(
+        pixverse_metadata or {},
+        "image" if media_type == MediaType.IMAGE else "video",
+        fallback_id=asset_id
+    )
 
     if pixverse_metadata:
-        if media_type == MediaType.IMAGE:
-            metadata_id = pixverse_metadata.get("image_id")
-            if metadata_id:
-                primary_id = str(metadata_id)
-        else:
-            metadata_id = pixverse_metadata.get("video_id") or pixverse_metadata.get("id")
-            if metadata_id:
-                primary_id = str(metadata_id)
-
         additional_candidates = collect_candidate_ids(pixverse_metadata, primary_id, clean_url)
         for cid in additional_candidates:
             if cid not in candidate_ids:

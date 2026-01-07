@@ -26,12 +26,11 @@ def _extract_video_id(video: Dict[str, Any]) -> Optional[str]:
     """
     Best-effort extraction of a video ID from Pixverse video payload.
 
-    Tries common keys ('video_id', 'VideoId', 'id'). Returns string or None.
+    Delegates to centralized get_preferred_provider_asset_id helper.
+    Returns the integer video_id if available, None otherwise.
     """
-    for key in ("video_id", "VideoId", "id"):
-        if key in video and video[key] is not None:
-            return str(video[key])
-    return None
+    from pixsim7.backend.main.services.provider.adapters.pixverse_ids import get_preferred_provider_asset_id
+    return get_preferred_provider_asset_id(video, "video", fallback_id=None)
 
 
 @router.get("/dry-run")

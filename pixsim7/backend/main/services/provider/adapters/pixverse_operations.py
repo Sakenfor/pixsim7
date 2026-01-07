@@ -1241,28 +1241,22 @@ class PixverseOperationsMixin:
 
             try:
                 # Try to get the integer ID from metadata first (for UUID-based assets)
-                delete_id = provider_asset_id
-                if media_metadata:
-                    if media_type == MediaType.IMAGE:
-                        metadata_image_id = media_metadata.get("image_id") or media_metadata.get("pixverse_image_id")
-                        if metadata_image_id:
-                            delete_id = str(metadata_image_id)
-                            logger.debug(
-                                "pixverse_delete_using_metadata_image_id",
-                                provider_asset_id=provider_asset_id,
-                                image_id=delete_id,
-                                account_id=account.id,
-                            )
-                    else:
-                        metadata_video_id = media_metadata.get("video_id") or media_metadata.get("VideoId")
-                        if metadata_video_id:
-                            delete_id = str(metadata_video_id)
-                            logger.debug(
-                                "pixverse_delete_using_metadata_video_id",
-                                provider_asset_id=provider_asset_id,
-                                video_id=delete_id,
-                                account_id=account.id,
-                            )
+                from pixsim7.backend.main.services.provider.adapters.pixverse_ids import get_preferred_provider_asset_id
+
+                delete_id = get_preferred_provider_asset_id(
+                    media_metadata or {},
+                    "image" if media_type == MediaType.IMAGE else "video",
+                    fallback_id=provider_asset_id
+                )
+
+                if delete_id != provider_asset_id:
+                    logger.debug(
+                        "pixverse_delete_id_resolved",
+                        provider_asset_id=provider_asset_id,
+                        resolved_id=delete_id,
+                        media_type=media_type.name,
+                        account_id=account.id,
+                    )
 
                 normalized_id = _normalize_provider_id(delete_id)
 
