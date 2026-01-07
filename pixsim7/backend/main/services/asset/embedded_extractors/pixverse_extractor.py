@@ -316,12 +316,21 @@ def build_embedded_from_pixverse_metadata(
                 "source_video_id": original_video_id or provider_video_id,
             }
 
+            # Collect candidate IDs for video dedup
+            video_candidate_ids: List[str] = []
+            if original_video_id:
+                video_candidate_ids.append(str(original_video_id))
+            video_uuid = extract_uuid_from_url(parent_video_url)
+            if video_uuid and video_uuid not in video_candidate_ids:
+                video_candidate_ids.append(video_uuid)
+
             items.append(
                 {
                     "type": "video",
                     "media_type": "video",
                     "remote_url": parent_video_url or "",
                     "provider_asset_id": str(original_video_id or f"{provider_video_id}_src_video"),
+                    "candidate_ids": video_candidate_ids,  # For dedup lookups
                     "relation_type": "SOURCE_VIDEO",
                     "operation_type": "video_extend",
                     "media_metadata": {"pixverse_extend": parent_meta},
@@ -331,12 +340,24 @@ def build_embedded_from_pixverse_metadata(
     for idx, u in enumerate(urls):
         uuid_value = extract_uuid_from_url(u)
         image_id = url_id_map.get(u)
+        # Primary ID for creation (prefer image_id, then uuid, then synthetic)
         provider_asset_id = image_id or uuid_value or f"{provider_video_id}_src_{idx}"
+
+        # Collect ALL candidate IDs for dedup matching
+        # This ensures we find existing assets regardless of which ID format was used
+        candidate_ids: List[str] = []
+        if image_id:
+            candidate_ids.append(image_id)
+        if uuid_value and uuid_value not in candidate_ids:
+            candidate_ids.append(uuid_value)
+        # Don't include synthetic IDs in candidates - they won't match anything real
+
         item: Dict[str, Any] = {
             "type": "image",
             "media_type": "image",
             "remote_url": u,
             "provider_asset_id": provider_asset_id,
+            "candidate_ids": candidate_ids,  # For dedup lookups
         }
         if uuid_value or image_id:
             item_meta = item.get("media_metadata") or {}

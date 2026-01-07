@@ -19,6 +19,60 @@ from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, normalize_enum
 from pixsim7.backend.main.domain.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
+from pixsim7.backend.main.domain.assets.upload_attribution import (
+    extract_hints_from_metadata,
+    DEFAULT_UPLOAD_METHOD,
+)
+
+
+def _infer_upload_method_for_new_asset(
+    *,
+    source_generation_id: Optional[int],
+    provider_id: str,
+    remote_url: Optional[str],
+    media_metadata: Optional[Dict[str, Any]],
+) -> str:
+    """
+    Infer upload_method for a new asset using centralized rules.
+
+    Uses the same INFERENCE_RULES from upload_attribution module but operates
+    on raw fields since we don't have an Asset object yet.
+
+    Priority:
+    1. Hints from metadata (source_folder_id, source_url, etc.)
+    2. source_generation_id -> 'generated'
+    3. Provider-specific patterns (e.g., pixverse URLs -> 'extension')
+    4. Default -> 'api'
+    """
+    # Extract hints from metadata
+    hints = extract_hints_from_metadata(media_metadata)
+
+    # Check explicit upload_method in metadata
+    if hints.get("upload_method"):
+        return hints["upload_method"]
+
+    # Check source_folder_id -> local_folders
+    if hints.get("source_folder_id"):
+        return "local_folders"
+
+    # Check source_url/source_site -> extension
+    if hints.get("source_url") or hints.get("source_site"):
+        return "extension"
+
+    # Check source='extension_badge' -> extension
+    if hints.get("source") == "extension_badge":
+        return "extension"
+
+    # Check if generated
+    if source_generation_id:
+        return "generated"
+
+    # Check provider-specific patterns
+    if provider_id == "pixverse" and remote_url:
+        if "media.pixverse.ai" in remote_url:
+            return "extension"
+
+    return DEFAULT_UPLOAD_METHOD
 
 
 def _normalize_remote_url(url: Optional[str]) -> Optional[str]:
@@ -288,6 +342,16 @@ async def add_asset(
         await db.commit()
         await db.refresh(existing)
         return existing
+
+    # Auto-infer upload_method if not provided
+    # Uses centralized inference rules from upload_attribution module
+    if not upload_method:
+        upload_method = _infer_upload_method_for_new_asset(
+            source_generation_id=source_generation_id,
+            provider_id=provider_id,
+            remote_url=remote_url,
+            media_metadata=media_metadata,
+        )
 
     # Insert new
     asset = Asset(
