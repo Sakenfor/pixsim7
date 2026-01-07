@@ -515,13 +515,19 @@ async def sync_single_pixverse_asset(
 
     # Build candidate IDs for dedup - always include the provided asset_id
     candidate_ids = [asset_id]
+    primary_id = asset_id  # Default to UUID from extension
+
     if pixverse_metadata:
         if media_type == MediaType.IMAGE:
-            primary_id = pixverse_metadata.get("image_id") or asset_id
+            metadata_id = pixverse_metadata.get("image_id")
+            if metadata_id:
+                primary_id = str(metadata_id)
         else:
-            primary_id = pixverse_metadata.get("video_id") or pixverse_metadata.get("id") or asset_id
+            metadata_id = pixverse_metadata.get("video_id") or pixverse_metadata.get("id")
+            if metadata_id:
+                primary_id = str(metadata_id)
 
-        additional_candidates = collect_candidate_ids(pixverse_metadata, str(primary_id), clean_url)
+        additional_candidates = collect_candidate_ids(pixverse_metadata, primary_id, clean_url)
         for cid in additional_candidates:
             if cid not in candidate_ids:
                 candidate_ids.append(cid)
@@ -553,6 +559,12 @@ async def sync_single_pixverse_asset(
     # Build metadata - use fetched metadata or fallback to basic info
     if pixverse_metadata:
         media_metadata = pixverse_metadata
+        # Preserve UUID if the primary_id is different (UUID -> integer resolution)
+        if asset_id != primary_id:
+            from pixsim7.backend.main.services.provider.adapters.pixverse_ids import looks_like_pixverse_uuid
+            if looks_like_pixverse_uuid(asset_id):
+                media_metadata.setdefault("pixverse_asset_uuid", asset_id)
+
         # Also extract better URL if available
         if media_type == MediaType.VIDEO:
             better_url = _extract_video_url(pixverse_metadata)
@@ -570,13 +582,13 @@ async def sync_single_pixverse_asset(
         if body.source_url:
             media_metadata["source_url"] = body.source_url
 
-    # Create new asset
+    # Create new asset - use primary_id (integer when available, UUID fallback)
     asset = await add_asset(
         db,
         user_id=current_user.id,
         media_type=media_type,
         provider_id="pixverse",
-        provider_asset_id=asset_id,
+        provider_asset_id=primary_id,  # Use resolved integer ID when available
         provider_account_id=body.account_id,
         remote_url=clean_url,
         sync_status=SyncStatus.REMOTE,
@@ -592,6 +604,8 @@ async def sync_single_pixverse_asset(
         "pixverse_single_sync_created",
         pixverse_asset_id=asset_id,
         local_asset_id=asset.id,
+        provider_asset_id=primary_id,
+        id_resolved=asset_id != primary_id,
         media_type=media_type.value,
         provider_account_id=body.account_id,
         has_full_metadata=pixverse_metadata is not None,
