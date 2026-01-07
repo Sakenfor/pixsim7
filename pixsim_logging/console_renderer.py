@@ -85,8 +85,8 @@ class CleanConsoleRenderer:
         else:
             parts.append(service_str)
 
-        # Event name (padded)
-        event_str = event[:self.pad_event].ljust(self.pad_event) if event else ""
+        # Event name (padded for alignment, but never truncated)
+        event_str = event.ljust(self.pad_event) if event else ""
         if self.colors:
             parts.append(f"{BOLD}{event_str}{RESET}")
         else:
