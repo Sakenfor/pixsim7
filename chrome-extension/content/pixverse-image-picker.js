@@ -999,16 +999,22 @@ window.PXS7 = window.PXS7 || {};
       localStorage.setItem('pxs7_picker_state', JSON.stringify(state));
     };
 
-    // Save panel size when resized (debounced)
+    // Track if user is manually resizing (don't auto-save on content changes)
+    let isUserResizing = false;
+
+    // Only update saved size when user manually resizes
+    // (Don't save when content changes cause automatic resize)
     let resizeTimeout = null;
     const resizeObserver = new ResizeObserver(() => {
       if (panel.dataset.minimized === 'true') return; // Don't save size when minimized
+      if (!isUserResizing) return; // Only save during manual resize
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
         panel.style.width = panel.offsetWidth + 'px';
         panel.style.maxHeight = panel.offsetHeight + 'px';
         saveState();
-        debugLog('Saved picker size');
+        debugLog('Saved picker size (manual resize)');
+        isUserResizing = false; // Reset flag after save
       }, 500);
     });
     resizeObserver.observe(panel);
@@ -1166,6 +1172,7 @@ window.PXS7 = window.PXS7 || {};
     let isResizing = false, resizeStartX = 0, resizeStartY = 0, startWidth = 0, startHeight = 0;
     resizeHandle.addEventListener('mousedown', (e) => {
       isResizing = true;
+      isUserResizing = true; // Mark that user is manually resizing
       resizeStartX = e.clientX;
       resizeStartY = e.clientY;
       startWidth = panel.offsetWidth;
@@ -1185,7 +1192,8 @@ window.PXS7 = window.PXS7 || {};
       if (isResizing) {
         isResizing = false;
         panel.style.transition = '';
-        saveState(); // Save size after resize
+        // Note: size is auto-saved by ResizeObserver after debounce
+        // (isUserResizing flag is still true, will be reset after save)
       }
     });
     panel.appendChild(resizeHandle);
