@@ -14,6 +14,8 @@ const openInteractionStudioAction: ActionDefinition = {
   description: 'Open the interaction studio',
   icon: 'sparkles',
   route: ROUTES.INTERACTION_STUDIO,
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.INTERACTION_STUDIO);
   },

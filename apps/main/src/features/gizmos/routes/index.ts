@@ -14,6 +14,8 @@ const openGizmoLabAction: ActionDefinition = {
   description: 'Open the gizmo lab',
   icon: 'sparkles',
   route: ROUTES.GIZMO_LAB,
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.GIZMO_LAB);
   },

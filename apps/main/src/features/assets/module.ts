@@ -1,7 +1,7 @@
 import type { ActionDefinition } from '@shared/types';
 import { lazy } from 'react';
 
-import { useCapabilityStore } from '@lib/capabilities';
+import { registerState } from '@lib/capabilities';
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
 import type { Module } from '@app/modules/types';
@@ -16,6 +16,8 @@ const openGalleryAction: ActionDefinition = {
   icon: 'image',
   shortcut: 'Ctrl+Shift+A',
   route: ROUTES.ASSETS,
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.ASSETS);
   },
@@ -51,9 +53,7 @@ const searchAssetsAction: ActionDefinition = {
  * States are not part of ActionDefinition and must be registered separately.
  */
 function registerAssetsState() {
-  const store = useCapabilityStore.getState();
-
-  store.registerState({
+  registerState({
     id: 'assets.count',
     name: 'Asset Count',
     getValue: () => {

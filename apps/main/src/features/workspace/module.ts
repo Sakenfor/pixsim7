@@ -1,7 +1,7 @@
 import type { ActionDefinition } from "@shared/types";
 import { lazy } from "react";
 
-import { useCapabilityStore } from "@lib/capabilities";
+import { registerState } from "@lib/capabilities";
 import { ROUTES, navigateTo } from "@lib/capabilities/routeConstants";
 
 import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";
@@ -21,6 +21,8 @@ const openWorkspaceAction: ActionDefinition = {
   icon: "palette",
   shortcut: "Ctrl+Shift+W",
   route: ROUTES.WORKSPACE,
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.WORKSPACE);
   },
@@ -63,9 +65,7 @@ const openPanelAction: ActionDefinition = {
  * States are not part of ActionDefinition and must be registered separately.
  */
 function registerWorkspaceState() {
-  const store = useCapabilityStore.getState();
-
-  store.registerState({
+  registerState({
     id: "workspace.panels",
     name: "Open Panels",
     getValue: () => {

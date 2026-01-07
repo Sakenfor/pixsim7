@@ -13,6 +13,8 @@ const quickGenerateAction: ActionDefinition = {
   description: 'Open quick generate in control center',
   icon: 'zap',
   shortcut: 'Ctrl+G',
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('quickGenerate');
     useControlCenterStore.getState().setOpen(true);
