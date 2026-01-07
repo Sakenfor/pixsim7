@@ -21,51 +21,86 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('game_hotspots', sa.Column('scope', sa.String(length=32), nullable=True))
-    op.add_column('game_hotspots', sa.Column('target', sa.JSON(), nullable=True))
-    op.add_column('game_hotspots', sa.Column('world_id', sa.Integer(), nullable=True))
-    op.add_column('game_hotspots', sa.Column('scene_id', sa.Integer(), nullable=True))
+    # Skip if table doesn't exist (table created separately via model)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'game_hotspots')"
+    ))
+    table_exists = result.scalar()
 
-    op.create_foreign_key(
-        'fk_game_hotspots_world_id_game_worlds',
-        'game_hotspots',
-        'game_worlds',
-        ['world_id'],
-        ['id'],
-    )
-    op.create_foreign_key(
-        'fk_game_hotspots_scene_id_game_scenes',
-        'game_hotspots',
-        'game_scenes',
-        ['scene_id'],
-        ['id'],
-    )
+    if not table_exists:
+        # Table doesn't exist - skip migration (will be created by SQLModel)
+        return
 
-    op.alter_column('game_hotspots', 'location_id', nullable=True)
-
-    op.execute("""
-        UPDATE game_hotspots
-        SET scope = 'location',
-            target = jsonb_strip_nulls(
-                jsonb_build_object(
-                    'mesh',
-                    CASE
-                        WHEN object_name IS NOT NULL AND object_name <> ''
-                        THEN jsonb_build_object('object_name', object_name)
-                        ELSE NULL
-                    END,
-                    'rect2d',
-                    CASE
-                        WHEN meta IS NOT NULL AND meta::jsonb ? 'rect2d'
-                        THEN meta::jsonb->'rect2d'
-                        ELSE NULL
-                    END
-                )
+    # Check which columns already exist
+    def column_exists(col_name):
+        result = conn.execute(sa.text(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_name = 'game_hotspots' AND column_name = '{col_name}'
             )
-    """)
+        """))
+        return result.scalar()
 
-    op.alter_column('game_hotspots', 'scope', nullable=False)
-    op.drop_column('game_hotspots', 'object_name')
+    if not column_exists('scope'):
+        op.add_column('game_hotspots', sa.Column('scope', sa.String(length=32), nullable=True))
+    if not column_exists('target'):
+        op.add_column('game_hotspots', sa.Column('target', sa.JSON(), nullable=True))
+    if not column_exists('world_id'):
+        op.add_column('game_hotspots', sa.Column('world_id', sa.Integer(), nullable=True))
+        op.create_foreign_key(
+            'fk_game_hotspots_world_id_game_worlds',
+            'game_hotspots',
+            'game_worlds',
+            ['world_id'],
+            ['id'],
+        )
+    if not column_exists('scene_id'):
+        op.add_column('game_hotspots', sa.Column('scene_id', sa.Integer(), nullable=True))
+        op.create_foreign_key(
+            'fk_game_hotspots_scene_id_game_scenes',
+            'game_hotspots',
+            'game_scenes',
+            ['scene_id'],
+            ['id'],
+        )
+
+    # Only run backfill if object_name column exists (legacy schema)
+    if column_exists('object_name'):
+        op.alter_column('game_hotspots', 'location_id', nullable=True)
+
+        op.execute("""
+            UPDATE game_hotspots
+            SET scope = 'location',
+                target = jsonb_strip_nulls(
+                    jsonb_build_object(
+                        'mesh',
+                        CASE
+                            WHEN object_name IS NOT NULL AND object_name <> ''
+                            THEN jsonb_build_object('object_name', object_name)
+                            ELSE NULL
+                        END,
+                        'rect2d',
+                        CASE
+                            WHEN meta IS NOT NULL AND meta::jsonb ? 'rect2d'
+                            THEN meta::jsonb->'rect2d'
+                            ELSE NULL
+                        END
+                    )
+                )
+            WHERE scope IS NULL
+        """)
+
+        op.drop_column('game_hotspots', 'object_name')
+
+    # Make scope NOT NULL if it exists and has no nulls
+    if column_exists('scope'):
+        result = conn.execute(sa.text(
+            "SELECT COUNT(*) FROM game_hotspots WHERE scope IS NULL"
+        ))
+        null_count = result.scalar()
+        if null_count == 0:
+            op.alter_column('game_hotspots', 'scope', nullable=False)
 
 
 def downgrade():
