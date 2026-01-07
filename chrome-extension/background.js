@@ -298,7 +298,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           endpoint += `?provider_id=${encodeURIComponent(message.providerId)}`;
         }
 
-        const result = await backendRequest(endpoint, { method: 'POST' });
+        // Pass force flag to backend if requested (bypasses TTL)
+        const body = message.force ? JSON.stringify({ force: true }) : undefined;
+        const options = {
+          method: 'POST',
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          body
+        };
+
+        const result = await backendRequest(endpoint, options);
 
         sendResponse({
           success: result.success,

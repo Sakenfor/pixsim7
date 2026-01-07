@@ -62,12 +62,15 @@
       return true;
     }
     if (url.startsWith('http://')) {
+      debugLog('[HTTP Image] Proxying:', url);
       try {
         const response = await chrome.runtime.sendMessage({ action: 'proxyImage', url });
         if (response && response.success && response.dataUrl) {
+          debugLog('[HTTP Image] Proxy success');
           img.src = response.dataUrl;
           return true;
         }
+        console.warn('[pxs7] Proxy failed for:', url, response);
         if (img.onerror) img.dispatchEvent(new Event('error'));
         return false;
       } catch (e) {
@@ -76,6 +79,7 @@
         return false;
       }
     }
+    debugLog('[Image] Direct load (not HTTP):', url.substring(0, 50));
     img.src = url;
     return true;
   }
@@ -237,7 +241,7 @@
       }
       .pxs7-thumb:hover .pxs7-asset-btns { opacity: 1 !important; }
 
-      .pxs7-restore-btn, .pxs7-resync-btn {
+      .pxs7-restore-btn {
         width: 28px;
         height: 28px;
         border-radius: 6px;
@@ -252,14 +256,8 @@
         transition: all 0.15s ease;
         box-shadow: 0 2px 4px rgba(0,0,0,0.2);
       }
-      .pxs7-resync-btn {
-        background: #6366f1;
-        font-size: 13px;
-      }
       .pxs7-restore-btn:hover { background: ${COLORS.accentHover || COLORS.accent}; transform: scale(1.08); }
       .pxs7-restore-btn:active { transform: scale(0.92); }
-      .pxs7-resync-btn:hover { background: #4f46e5; transform: scale(1.08); }
-      .pxs7-resync-btn:active { transform: scale(0.92); }
     `;
     document.head.appendChild(style);
   }
@@ -301,7 +299,7 @@
       loadImageSrc(img, thumbUrl);
       thumb.appendChild(img);
 
-      // Add restore and re-sync buttons for assets with ID
+      // Add restore button for assets with ID
       if (item && typeof item === 'object' && item.id) {
         const btnContainer = document.createElement('div');
         btnContainer.className = 'pxs7-asset-btns';
@@ -313,14 +311,6 @@
         restoreBtn.dataset.assetId = item.id;
         restoreBtn.dataset.idx = index;
 
-        const resyncBtn = document.createElement('button');
-        resyncBtn.className = 'pxs7-resync-btn';
-        resyncBtn.innerHTML = '🔄';
-        resyncBtn.title = 'Re-sync asset metadata and generation';
-        resyncBtn.dataset.assetId = item.id;
-        resyncBtn.dataset.idx = index;
-
-        btnContainer.appendChild(resyncBtn);
         btnContainer.appendChild(restoreBtn);
         thumb.appendChild(btnContainer);
       }
@@ -393,15 +383,58 @@
             throw new Error(assetRes?.error || 'Failed to fetch asset');
           }
 
-          const asset = assetRes.data;
+          let asset = assetRes.data;
           debugLog('[Restore] Asset data:', asset);
           debugLog('[Restore] source_generation_id:', asset.source_generation_id);
 
-          // Check if asset has a source generation
+          // Check if asset has a source generation - if not, try to re-sync first
           if (!asset.source_generation_id) {
-            debugLog('[Restore] No source_generation_id found');
-            if (showToast) showToast('No generation data available', false);
-            return;
+            debugLog('[Restore] No source_generation_id found, attempting auto re-sync...');
+            if (showToast) showToast('No generation data found, syncing...', true);
+
+            try {
+              // Call the backend enrich endpoint
+              const enrichRes = await sendMessageWithTimeout({
+                action: 'enrichAsset',
+                assetId: assetId
+              }, 10000);
+
+              debugLog('[Restore] Auto re-sync response:', enrichRes);
+
+              if (!enrichRes?.success) {
+                throw new Error(enrichRes?.error || 'Failed to re-sync asset');
+              }
+
+              const enrichData = enrichRes.data || {};
+              debugLog('[Restore] Auto re-sync result:', enrichData);
+
+              // Re-fetch the asset after sync
+              const reAssetRes = await sendMessageWithTimeout({
+                action: 'getAsset',
+                assetId: assetId
+              }, 5000);
+
+              if (!reAssetRes?.success) {
+                throw new Error(reAssetRes?.error || 'Failed to fetch asset after sync');
+              }
+
+              asset = reAssetRes.data;
+              debugLog('[Restore] Re-fetched asset after sync:', asset);
+
+              // Check again if we have generation data now
+              if (!asset.source_generation_id) {
+                debugLog('[Restore] Still no source_generation_id after re-sync');
+                if (showToast) showToast('No generation data available even after sync', false);
+                return;
+              }
+
+              if (showToast) showToast('Synced! Restoring generation...', true);
+
+            } catch (err) {
+              console.error('[PixSim7] Auto re-sync failed:', err);
+              if (showToast) showToast('Sync failed: ' + err.message, false);
+              return;
+            }
           }
 
           // Fetch generation details
@@ -453,9 +486,24 @@
                 }, 5000);
                 debugLog('[Restore] Source asset response:', sourceAssetRes);
                 if (sourceAssetRes?.success && sourceAssetRes.data) {
-                  const url = sourceAssetRes.data.remote_url ||
-                              sourceAssetRes.data.file_url ||
-                              sourceAssetRes.data.preview_url;
+                  // Use HTTPS-aware URL selection to avoid mixed content errors
+                  const a = sourceAssetRes.data;
+                  const isHttpsPage = window.location.protocol === 'https:';
+
+                  let url;
+                  if (isHttpsPage) {
+                    // On HTTPS pages: prefer HTTPS URLs to avoid mixed content
+                    url = (a.remote_url?.startsWith('https://') ? a.remote_url :
+                           a.external_url?.startsWith('https://') ? a.external_url :
+                           a.file_url?.startsWith('https://') ? a.file_url :
+                           a.url?.startsWith('https://') ? a.url :
+                           // Fallback to any URL (will be proxied if HTTP)
+                           a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url);
+                  } else {
+                    // On HTTP pages: prefer backend URLs for better control
+                    url = a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
+                  }
+
                   debugLog('[Restore] Extracted URL from source asset:', url);
                   if (url) sourceImages.push(url);
                 }
@@ -537,59 +585,6 @@
         return;
       }
 
-      // Handle re-sync button clicks
-      if (e.target.classList.contains('pxs7-resync-btn')) {
-        e.stopPropagation();
-        e.preventDefault();
-
-        const resyncBtn = e.target;
-        const assetId = resyncBtn.dataset.assetId;
-
-        // Show loading state
-        resyncBtn.innerHTML = '⏳';
-        resyncBtn.disabled = true;
-
-        console.log('[PixSim7 Re-sync] Starting re-sync for asset ID:', assetId);
-
-        (async () => {
-          try {
-            // Call the backend enrich endpoint
-            const enrichRes = await sendMessageWithTimeout({
-              action: 'enrichAsset',
-              assetId: assetId
-            }, 10000);
-
-            console.log('[PixSim7 Re-sync] Enrich response:', enrichRes);
-
-            if (!enrichRes?.success) {
-              throw new Error(enrichRes?.error || 'Failed to re-sync asset');
-            }
-
-            const data = enrichRes.data || {};
-            console.log('[PixSim7 Re-sync] Enrich result:', data);
-
-            // Show success feedback
-            if (showToast) {
-              if (data.enriched) {
-                showToast('Asset re-synced successfully!', true);
-              } else {
-                showToast(data.message || 'Asset already synced', true);
-              }
-            }
-
-          } catch (err) {
-            console.error('[PixSim7] Failed to re-sync asset:', err);
-            if (showToast) showToast('Failed to re-sync: ' + err.message, false);
-          } finally {
-            // Restore button state
-            resyncBtn.innerHTML = '🔄';
-            resyncBtn.disabled = false;
-          }
-        })();
-
-        return;
-      }
-
       // Handle left-click on thumbnail (not buttons) - inject to first empty slot
       const thumb = e.target.closest('.pxs7-thumb');
       if (thumb && !e.target.closest('.pxs7-asset-btns')) {
@@ -642,6 +637,39 @@
   }
 
   // ===== Metadata Popup =====
+
+  // Helper to create an image row with proper HTTP proxying
+  function createImageRow(url, label, onClick = null) {
+    const imgRow = document.createElement('div');
+    imgRow.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      margin-bottom: 4px;
+      background: ${COLORS.bgAlt};
+      border-radius: 4px;
+      cursor: pointer;
+    `;
+
+    const img = document.createElement('img');
+    img.style.cssText = 'width: 32px; height: 32px; object-fit: cover; border-radius: 3px;';
+    loadImageSrc(img, url);  // Handles HTTP proxying
+
+    const span = document.createElement('span');
+    span.style.cssText = `font-size: 10px; color: ${COLORS.textMuted}; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`;
+    span.textContent = label;
+
+    imgRow.appendChild(img);
+    imgRow.appendChild(span);
+
+    if (onClick) {
+      imgRow.title = 'Click to copy URL';
+      imgRow.onclick = onClick;
+    }
+
+    return imgRow;
+  }
 
   function showMetadataPopup(assetData, x, y) {
     // Remove any existing popup
@@ -765,31 +793,29 @@
             assetRef = input.asset.replace('asset:', '');
           }
 
-          const imgRow = document.createElement('div');
-          imgRow.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px;
-            margin-bottom: 4px;
-            background: ${COLORS.bgAlt};
-            border-radius: 4px;
-            cursor: pointer;
-          `;
-
-          // Show placeholder initially if we have asset ref but no URL
           const url = input.url || input.thumbnail_url;
+          const label = input.role || `Input ${i + 1}`;
+
           if (url) {
-            imgRow.innerHTML = `
-              <img src="${url}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 3px;">
-              <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${input.role || `Input ${i + 1}`}</span>
-            `;
-            imgRow.title = 'Click to copy URL';
-            imgRow.onclick = async () => {
+            // Use helper to create image row with HTTP proxying
+            const imgRow = createImageRow(url, label, async () => {
               await navigator.clipboard.writeText(url);
               if (showToast) showToast('URL copied', true);
-            };
+            });
+            container.appendChild(imgRow);
           } else if (assetRef) {
+            // Show loading placeholder while fetching
+            const imgRow = document.createElement('div');
+            imgRow.style.cssText = `
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              padding: 4px;
+              margin-bottom: 4px;
+              background: ${COLORS.bgAlt};
+              border-radius: 4px;
+              cursor: pointer;
+            `;
             imgRow.innerHTML = `
               <div style="width: 32px; height: 32px; background: ${COLORS.hover}; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">⏳</div>
               <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1;">${input.role || `Input ${i + 1}`} (asset:${assetRef})</span>
@@ -799,30 +825,40 @@
               try {
                 const assetRes = await sendMessageWithTimeout({ action: 'getAsset', assetId: assetRef }, 5000);
                 if (assetRes?.success && assetRes.data) {
-                  const fetchedUrl = assetRes.data.remote_url || assetRes.data.file_url || assetRes.data.preview_url;
+                  // Prioritize backend URLs over provider URLs
+                  const fetchedUrl = assetRes.data.file_url || assetRes.data.preview_url || assetRes.data.remote_url;
                   if (fetchedUrl) {
-                    imgRow.innerHTML = `
-                      <img src="${fetchedUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 3px;">
-                      <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${input.role || `Input ${i + 1}`}</span>
-                    `;
-                    imgRow.title = 'Click to copy URL';
-                    imgRow.onclick = async () => {
+                    // Replace loading placeholder with actual image using helper
+                    const newImgRow = createImageRow(fetchedUrl, label, async () => {
                       await navigator.clipboard.writeText(fetchedUrl);
                       if (showToast) showToast('URL copied', true);
-                    };
+                    });
+                    imgRow.replaceWith(newImgRow);
                   }
                 }
               } catch (e) {
                 debugLog('Failed to fetch source asset:', e);
               }
             })();
+            container.appendChild(imgRow);
           } else {
+            // No URL and no asset ref - show empty placeholder
+            const imgRow = document.createElement('div');
+            imgRow.style.cssText = `
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              padding: 4px;
+              margin-bottom: 4px;
+              background: ${COLORS.bgAlt};
+              border-radius: 4px;
+            `;
             imgRow.innerHTML = `
               <div style="width: 32px; height: 32px; background: ${COLORS.hover}; border-radius: 3px;"></div>
-              <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1;">${input.role || `Input ${i + 1}`}</span>
+              <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1;">${label}</span>
             `;
+            container.appendChild(imgRow);
           }
-          container.appendChild(imgRow);
         });
       }
 
@@ -957,6 +993,7 @@
     const slots = slotsToShow || findUploadInputs().filter(u => u.priority >= 10);
     debugLog('[Slots] Menu slots:', slots.length);
 
+    // === SECTION 1: INSERTION ===
     // Upload slots section
     if (slots.length > 0) {
       const header = document.createElement('div');
@@ -1015,7 +1052,7 @@
       }
     }));
 
-    // Actions section (if asset data available)
+    // === SECTION 2: INFORMATION ===
     if (assetData) {
       menu.appendChild(createDivider());
 
@@ -1023,11 +1060,16 @@
       menu.appendChild(createMenuButton('Show Details', 'ℹ️', () => {
         showMetadataPopup(assetData, x, y);
       }));
+    }
+
+    // === SECTION 3: GENERATION/RESTORE ===
+    if (assetData && (assetData.assetId || assetData.asset_id)) {
+      menu.appendChild(createDivider());
+
+      const assetId = assetData.assetId || assetData.asset_id;
 
       // Restore Generation option
-      if (assetData.assetId || assetData.asset_id) {
-        const assetId = assetData.assetId || assetData.asset_id;
-        menu.appendChild(createMenuButton('Restore Generation', '↻', async () => {
+      menu.appendChild(createMenuButton('Restore Generation', '↻', async () => {
           // Find and click the restore button for this asset, or trigger restore directly
           const restoreBtn = document.querySelector(`.pxs7-restore-btn[data-asset-id="${assetId}"]`);
           if (restoreBtn) {
@@ -1039,9 +1081,118 @@
             if (showToast) showToast('Restoring generation...', true);
           }
         }));
-      }
 
-      // Copy URL option
+        // Use Prompt option
+        menu.appendChild(createMenuButton('Use Prompt', '📝', async () => {
+          if (showToast) showToast('Loading prompt...', true);
+
+          try {
+            debugLog('[Use Prompt] Fetching asset for ID:', assetId);
+
+            // Fetch asset details
+            const assetRes = await sendMessageWithTimeout({
+              action: 'getAsset',
+              assetId: assetId
+            }, 5000);
+
+            if (!assetRes?.success) {
+              throw new Error(assetRes?.error || 'Failed to fetch asset');
+            }
+
+            let asset = assetRes.data;
+            let prompt = null;
+
+            // Try to get prompt from asset's generation
+            if (asset.source_generation_id) {
+              const genRes = await sendMessageWithTimeout({
+                action: 'getGeneration',
+                generationId: asset.source_generation_id
+              }, 5000);
+
+              if (genRes?.success && genRes.data) {
+                prompt = genRes.data.final_prompt;
+                debugLog('[Use Prompt] Got prompt from generation:', prompt);
+              }
+            }
+
+            // Fallback to asset metadata if no generation
+            if (!prompt) {
+              prompt = asset.media_metadata?.prompt
+                    || asset.media_metadata?.customer_paths?.prompt;
+              debugLog('[Use Prompt] Got prompt from asset metadata:', prompt);
+            }
+
+            if (!prompt) {
+              if (showToast) showToast('No prompt found for this asset', false);
+              return;
+            }
+
+            // Fill prompt textarea
+            const promptTextarea = document.querySelector('textarea[placeholder*="prompt" i], textarea[placeholder*="describe" i]');
+            if (promptTextarea) {
+              promptTextarea.value = prompt;
+              promptTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+              promptTextarea.dispatchEvent(new Event('change', { bubbles: true }));
+              if (showToast) showToast('Prompt filled!', true);
+              debugLog('[Use Prompt] Prompt set successfully');
+            } else {
+              if (showToast) showToast('No prompt textarea found on page', false);
+              debugLog('[Use Prompt] No prompt textarea found');
+            }
+
+          } catch (err) {
+            console.error('[PixSim7] Failed to load prompt:', err);
+            if (showToast) showToast('Failed to load prompt: ' + err.message, false);
+          }
+        }));
+    }
+
+    // === SECTION 4: ASSET TOOLS ===
+    if (assetData && (assetData.assetId || assetData.asset_id)) {
+      menu.appendChild(createDivider());
+
+      const assetId = assetData.assetId || assetData.asset_id;
+
+      // Re-sync Asset option
+      menu.appendChild(createMenuButton('Re-sync Asset', '🔄', async () => {
+        if (showToast) showToast('Re-syncing asset...', true);
+
+        try {
+          debugLog('[Re-sync] Starting re-sync for asset ID:', assetId);
+
+          // Call the backend enrich endpoint
+          const enrichRes = await sendMessageWithTimeout({
+            action: 'enrichAsset',
+            assetId: assetId
+          }, 10000);
+
+          debugLog('[Re-sync] Enrich response:', enrichRes);
+
+          if (!enrichRes?.success) {
+            throw new Error(enrichRes?.error || 'Failed to re-sync asset');
+          }
+
+          const data = enrichRes.data || {};
+          debugLog('[Re-sync] Enrich result:', data);
+
+          // Show success feedback
+          if (showToast) {
+            if (data.enriched) {
+              showToast('Asset re-synced successfully!', true);
+            } else {
+              showToast(data.message || 'Asset already synced', true);
+            }
+          }
+
+        } catch (err) {
+          console.error('[PixSim7] Failed to re-sync asset:', err);
+          if (showToast) showToast('Failed to re-sync: ' + err.message, false);
+        }
+      }));
+    }
+
+    // Copy URL option (available for all items with imageUrl)
+    if (assetData) {
       menu.appendChild(createMenuButton('Copy URL', '📋', async () => {
         await navigator.clipboard.writeText(imageUrl);
         if (showToast) showToast('URL copied', true);
@@ -1083,7 +1234,8 @@
     showUploadSlotMenu,
     showMetadataPopup,
     showHoverPreview,
-    hideHoverPreview
+    hideHoverPreview,
+    loadImageSrc  // Export for reuse in other modules
   };
 
 })();

@@ -400,22 +400,52 @@ window.PXS7 = window.PXS7 || {};
     // Make container a flex column so we can have fixed header + scrollable grid
     container.style.cssText = 'display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 0;';
 
-    // For thumbnails: prefer backend thumbnail_url (local control, consistent sizing)
-    // HTTP URLs are automatically proxied through background script to avoid mixed content issues
-    // Once backend has HTTPS, proxy is bypassed automatically
+    // For thumbnails: prefer HTTPS URLs on HTTPS pages, otherwise prefer backend
+    // On HTTPS pages, avoid HTTP URLs to prevent mixed content (even with proxy overhead)
+    // On HTTP pages, prefer backend for better control
+    const isHttpsPage = window.location.protocol === 'https:';
+
     const getThumbUrl = (a) => {
-      // Prefer backend thumbnail (local control over quality/size)
-      if (a.thumbnail_url) return a.thumbnail_url;
-      // Fall back to CDN/remote URLs
-      return a.remote_url || a.file_url || a.external_url || a.url || a.src;
+      const candidates = [
+        { url: a.thumbnail_url, source: 'backend_thumb' },
+        { url: a.file_url, source: 'backend_file' },
+        { url: a.url, source: 'generic' },
+        { url: a.src, source: 'generic' },
+        { url: a.remote_url, source: 'provider' },
+        { url: a.external_url, source: 'provider' }
+      ].filter(c => c.url);
+
+      if (isHttpsPage) {
+        // On HTTPS pages: prefer HTTPS URLs to avoid proxy overhead
+        const httpsUrl = candidates.find(c => c.url.startsWith('https://'));
+        if (httpsUrl) return httpsUrl.url;
+      }
+
+      // Fallback: use backend first (will be proxied if HTTP)
+      return a.thumbnail_url || a.file_url || a.url || a.src || a.remote_url || a.external_url;
+    };
+
+    const getFullUrl = (a) => {
+      if (isHttpsPage) {
+        // Prefer HTTPS URLs on HTTPS pages
+        return a.remote_url?.startsWith('https://') ? a.remote_url :
+               a.external_url?.startsWith('https://') ? a.external_url :
+               a.file_url?.startsWith('https://') ? a.file_url :
+               a.url?.startsWith('https://') ? a.url :
+               // Fallback to any URL (will be proxied if HTTP)
+               a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
+      }
+      return a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
     };
 
     let urls = assetsCache.map(a => ({
       id: a.id,
       thumb: getThumbUrl(a),
-      full: a.remote_url || a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
-      // Fallback for thumbnail if backend thumbnail 404s (use remote/CDN URL)
-      fallback: a.remote_url || a.external_url || a.file_url || a.url || a.src,
+      full: getFullUrl(a),
+      // Fallback: prefer HTTPS if available
+      fallback: isHttpsPage && a.remote_url?.startsWith('https://') ? a.remote_url :
+                isHttpsPage && a.external_url?.startsWith('https://') ? a.external_url :
+                a.file_url || a.url || a.src || a.remote_url || a.external_url,
       name: a.name || a.original_filename || a.filename || a.title || '',
       createdAt: a.created_at || a.createdAt || '',
       mediaType: a.media_type || a.mediaType || null,
@@ -577,24 +607,73 @@ window.PXS7 = window.PXS7 || {};
       renderTabContent('assets', container, panel, loadAssets);
     });
 
-    // Page indicator: [1]/[15] (compact)
+    // Page indicator: [1]/[15] (compact) - click to edit inline
+    const pageContainer = document.createElement('span');
+    pageContainer.style.cssText = `display: inline-flex; align-items: center;`;
+
     const pageLabel = document.createElement('span');
-    pageLabel.style.cssText = `font-size: 10px; color: ${COLORS.text}; white-space: nowrap;`;
+    pageLabel.style.cssText = `font-size: 10px; color: ${COLORS.text}; white-space: nowrap; cursor: pointer; padding: 0 4px;`;
     pageLabel.textContent = `${assetsCurrentPage}/${assetsTotalPages > 1 ? assetsTotalPages : '?'}`;
     pageLabel.title = 'Click to enter page number';
-    pageLabel.style.cursor = 'pointer';
+
+    const pageInput = document.createElement('input');
+    pageInput.type = 'number';
+    pageInput.min = '1';
+    pageInput.max = assetsTotalPages > 1 ? assetsTotalPages : '999';
+    pageInput.value = assetsCurrentPage;
+    pageInput.style.cssText = `
+      width: 40px; height: 20px; padding: 2px 4px; font-size: 10px;
+      background: ${COLORS.bgHover}; border: 1px solid ${COLORS.accent};
+      border-radius: 3px; color: ${COLORS.text}; outline: none;
+      text-align: center; display: none;
+    `;
+
+    // Click label to show input
     pageLabel.addEventListener('click', () => {
-      const targetPage = prompt(`Go to page (1-${assetsTotalPages}):`, assetsCurrentPage);
-      if (targetPage) {
-        const page = parseInt(targetPage, 10);
-        if (!isNaN(page) && page >= 1 && loadAssets) {
-          loadAssets({ page }).then(() => {
-            saveAssetsState();
-            renderTabContent('assets', container, panel, loadAssets);
-          });
-        }
+      pageLabel.style.display = 'none';
+      pageInput.style.display = 'inline-block';
+      pageInput.focus();
+      pageInput.select();
+    });
+
+    // Handle input submission
+    const submitPageChange = () => {
+      const page = parseInt(pageInput.value, 10);
+      if (!isNaN(page) && page >= 1 && loadAssets) {
+        loadAssets({ page }).then(() => {
+          saveAssetsState();
+          renderTabContent('assets', container, panel, loadAssets);
+        });
+      } else {
+        // Restore original view
+        pageInput.style.display = 'none';
+        pageLabel.style.display = 'inline-block';
+      }
+    };
+
+    // Submit on Enter or blur
+    pageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitPageChange();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        pageInput.value = assetsCurrentPage;
+        pageInput.style.display = 'none';
+        pageLabel.style.display = 'inline-block';
       }
     });
+
+    pageInput.addEventListener('blur', () => {
+      // Small delay to allow click events to fire
+      setTimeout(() => {
+        pageInput.style.display = 'none';
+        pageLabel.style.display = 'inline-block';
+      }, 150);
+    });
+
+    pageContainer.appendChild(pageLabel);
+    pageContainer.appendChild(pageInput);
 
     const nextBtn = document.createElement('button');
     nextBtn.textContent = '›';
@@ -632,7 +711,7 @@ window.PXS7 = window.PXS7 || {};
     // Build row 1
     searchPaginationRow.appendChild(searchInput);
     searchPaginationRow.appendChild(prevBtn);
-    searchPaginationRow.appendChild(pageLabel);
+    searchPaginationRow.appendChild(pageContainer);
     searchPaginationRow.appendChild(nextBtn);
     searchPaginationRow.appendChild(refreshBtn);
     headerSection.appendChild(searchPaginationRow);

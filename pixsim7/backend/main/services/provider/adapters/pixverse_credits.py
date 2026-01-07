@@ -60,6 +60,7 @@ class PixverseCreditsMixin:
         *,
         include_ad_task: bool = False,
         retry_on_session_error: bool = False,
+        force_refresh: bool = False,
     ) -> dict:
         """Fetch Pixverse credits (web + OpenAPI) with optional ad task status.
 
@@ -68,6 +69,8 @@ class PixverseCreditsMixin:
             include_ad_task: If True, includes ad_watch_task in response (slower)
             retry_on_session_error: If True, enable auto-reauth on session errors.
                 Set to True for user-triggered syncs, False for bulk operations.
+            force_refresh: If True, sends refresh header to force Pixverse to
+                recalculate credits (avoids stale cached values). Use for user-triggered syncs.
 
         Returns:
             Dictionary with 'web' and 'openapi' credit counts, and optionally
@@ -87,10 +90,14 @@ class PixverseCreditsMixin:
 
         async def _operation(session: PixverseSessionData) -> dict:
             # JWT is required for pixverse-py SDK get_credits() call
+            jwt_token = session.get("jwt_token")
+            jwt_preview = jwt_token[:50] + "..." if jwt_token else "None"
+            logger.debug(f"Fetching credits for {account.email} using JWT: {jwt_preview}")
+
             temp_account = Account(
                 email=account.email,
                 session={
-                    "jwt_token": session.get("jwt_token"),
+                    "jwt_token": jwt_token,
                     "cookies": session.get("cookies", {}),
                     **({"openapi_key": session["openapi_key"]} if "openapi_key" in session else {}),
                 },
@@ -100,8 +107,14 @@ class PixverseCreditsMixin:
             web_total = 0
             try:
                 web_data = await asyncio.wait_for(
-                    api.get_credits(temp_account),
+                    api.get_credits(temp_account, force_refresh=force_refresh),
                     timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                )
+                logger.debug(
+                    "pixverse_sdk_credits_response",
+                    account_id=account.id,
+                    email=account.email,
+                    raw_response=web_data,
                 )
                 if isinstance(web_data, dict):
                     # Prefer specific remaining/total fields, but be robust to SDK changes.
@@ -172,6 +185,14 @@ class PixverseCreditsMixin:
                 "openapi": max(0, openapi_total),
             }
 
+            logger.debug(
+                "pixverse_credits_parsed",
+                account_id=account.id,
+                email=account.email,
+                web_credits=result["web"],
+                openapi_credits=result["openapi"],
+            )
+
             # Optionally include ad task status
             if include_ad_task:
                 ad_task = await self._get_ad_task_status_best_effort(account, session)
@@ -191,7 +212,8 @@ class PixverseCreditsMixin:
         self,
         account: ProviderAccount,
         *,
-        retry_on_session_error: bool = True
+        retry_on_session_error: bool = True,
+        force_refresh: bool = False,
     ) -> dict:
         """Backward compatibility wrapper for get_credits with ad task.
 
@@ -204,6 +226,7 @@ class PixverseCreditsMixin:
             account,
             include_ad_task=True,
             retry_on_session_error=retry_on_session_error,
+            force_refresh=force_refresh,
         )
 
     async def _get_ad_task_status_best_effort(

@@ -88,9 +88,12 @@ async function syncCreditsThrottled(reason, options = {}) {
 
     creditSyncInProgress = true;
     creditSyncStartedAt = now;
-    console.log('[Popup] Syncing credits...', reason);
+    console.log('[Popup] Syncing credits...', reason, force ? '(forced)' : '');
 
-    const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
+    const syncResult = await chrome.runtime.sendMessage({
+      action: 'syncAllCredits',
+      force: force  // Pass force flag to backend to bypass TTL
+    });
     if (syncResult && syncResult.success) {
       console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
       await chrome.storage.local.set({ lastCreditSyncAt: now });

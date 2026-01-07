@@ -18,7 +18,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # TTL for credit sync (skip if synced within this time)
-CREDIT_SYNC_TTL_SECONDS = 5 * 60  # 5 minutes
+CREDIT_SYNC_TTL_SECONDS = 5 * 60  # 5 minutes (web credits)
+OPENAPI_CREDIT_SYNC_TTL_SECONDS = 6 * 60 * 60  # 6 hours (openapi credits - checked less frequently)
 
 
 def should_skip_credit_sync(account, force: bool = False) -> tuple[bool, str]:
@@ -167,6 +168,10 @@ async def sync_all_account_credits(
             include_shared=False  # Only sync user's own accounts
         )
 
+    logger.info(f"Credit sync: Processing {len(accounts)} accounts for user {user.id} (provider_id={provider_id}, force={force})")
+    if accounts:
+        logger.info(f"Accounts to check: {[acc.email for acc in accounts]}")
+
     synced = 0
     skipped = 0
     failed = 0
@@ -193,10 +198,14 @@ async def sync_all_account_credits(
         account_provider_id = acc_info["provider_id"]
         account_cookies = acc_info["cookies"]
 
+        logger.info(f"Checking credit sync for {account_email}...")
+
         # Check if should skip
         should_skip, skip_reason = should_skip_credit_sync(account, force=force)
         if should_skip:
             skipped += 1
+            # Log skip reason for debugging stuck accounts
+            logger.info(f"Skipping credit sync for {account_email}: {skip_reason}")
             details.append({
                 "account_id": account_id,
                 "email": account_email,
@@ -217,10 +226,14 @@ async def sync_all_account_credits(
             if hasattr(provider, "get_credits"):
                 try:
                     # All providers use get_credits() for basic credit sync (no ad task)
-                    credits_data = await provider.get_credits(account, retry_on_session_error=True)
+                    # User-triggered sync: force_refresh=True to avoid stale cached values
+                    credits_data = await provider.get_credits(
+                        account, retry_on_session_error=True, force_refresh=True
+                    )
+                    logger.info(f"Fetched credits from provider for {account_email}: {credits_data}")
                 except Exception as e:
                     get_credits_error = e
-                    logger.debug(f"Provider get_credits failed for {account_email}: {e}")
+                    logger.warning(f"Provider get_credits failed for {account_email}: {e}")
 
             # Fallback: extract from account data
             # Skip fallback if get_credits failed with a session error (reauth already attempted)
@@ -260,12 +273,31 @@ async def sync_all_account_credits(
                         updated_credits["web"] = web_int
 
                     if openapi_total is not None:
-                        try:
-                            openapi_int = int(openapi_total)
-                        except (TypeError, ValueError):
-                            openapi_int = 0
-                        await account_service.set_credit(account_id, "openapi", openapi_int)
-                        updated_credits["openapi"] = openapi_int
+                        # Check if we should skip openapi sync (uses longer TTL)
+                        metadata = account.provider_metadata or {}
+                        openapi_synced_at_str = metadata.get("openapi_credits_synced_at")
+                        should_sync_openapi = True
+
+                        if openapi_synced_at_str and not force:
+                            try:
+                                openapi_synced_at = datetime.fromisoformat(openapi_synced_at_str.replace("Z", "+00:00"))
+                                time_since_sync = (datetime.now(timezone.utc) - openapi_synced_at).total_seconds()
+                                if time_since_sync < OPENAPI_CREDIT_SYNC_TTL_SECONDS:
+                                    should_sync_openapi = False
+                                    logger.debug(f"Skipping openapi credit sync for {account_email} (synced {time_since_sync/3600:.1f}h ago)")
+                            except (ValueError, AttributeError):
+                                pass
+
+                        if should_sync_openapi:
+                            try:
+                                openapi_int = int(openapi_total)
+                            except (TypeError, ValueError):
+                                openapi_int = 0
+                            await account_service.set_credit(account_id, "openapi", openapi_int)
+                            updated_credits["openapi"] = openapi_int
+                            # Update openapi-specific timestamp
+                            metadata["openapi_credits_synced_at"] = datetime.now(timezone.utc).isoformat()
+                            account.provider_metadata = metadata
                 else:
                     for credit_type, amount in credits_data.items():
                         # Strip credit_ prefix if present (credit_daily -> daily)
@@ -422,7 +454,9 @@ async def sync_account_credits(
                 logger.info(
                     f"sync_credits_calling_provider account_id={account.id} provider_id={account.provider_id}"
                 )
-                credits_data = await provider.get_credits(account, retry_on_session_error=True)
+                credits_data = await provider.get_credits(
+                    account, retry_on_session_error=True, force_refresh=True
+                )
                 logger.info(
                     f"sync_credits_provider_success account_id={account.id} credits={credits_data}"
                 )

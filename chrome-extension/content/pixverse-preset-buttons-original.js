@@ -528,8 +528,26 @@
                          wrapper.querySelector('.ant-upload-drag-container > div');
 
       if (previewDiv) {
-        // Set the background image directly
-        previewDiv.style.backgroundImage = `url("${imageUrl}")`;
+        let displayUrl = imageUrl;
+
+        // Proxy HTTP URLs to avoid mixed content errors
+        if (imageUrl.startsWith('http://')) {
+          console.log('[PixSim7] HTTP URL detected, proxying for background-image:', imageUrl);
+          try {
+            const proxyResponse = await chrome.runtime.sendMessage({ action: 'proxyImage', url: imageUrl });
+            if (proxyResponse && proxyResponse.success && proxyResponse.dataUrl) {
+              displayUrl = proxyResponse.dataUrl;
+              console.log('[PixSim7] Proxy success for background-image');
+            } else {
+              console.warn('[PixSim7] Background image proxy failed:', proxyResponse);
+            }
+          } catch (e) {
+            console.warn('[PixSim7] Background image proxy error:', e.message);
+          }
+        }
+
+        // Set the background image
+        previewDiv.style.backgroundImage = `url("${displayUrl}")`;
         previewDiv.style.backgroundSize = 'cover';
         previewDiv.style.backgroundPosition = 'center';
 
@@ -539,7 +557,7 @@
           placeholder.style.display = 'none';
         }
 
-        console.log('[PixSim7] Set image preview directly:', imageUrl);
+        console.log('[PixSim7] Set image preview:', displayUrl.substring(0, 50));
       }
 
       // Try to find and update React component state
@@ -1152,11 +1170,35 @@
 
   function renderAssetsTab(container, panel) {
     // Prepare asset URLs first to get accurate count
-    // Note: remote_url is used for Pixverse openapi uploads
-    const urls = assetsCache.map(a => ({
-      thumb: a.thumbnail_url || a.remote_url || a.file_url || a.external_url || a.url || a.src,
-      full: a.remote_url || a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
-      name: a.name || a.original_filename || a.filename || a.title || ''
+    // On HTTPS pages: prefer HTTPS URLs to avoid mixed content
+    // On HTTP pages: prefer backend for better control
+    const isHttpsPage = window.location.protocol === 'https:';
+
+    const urls = assetsCache.map(a => {
+      // Prefer HTTPS URLs on HTTPS pages to avoid proxy overhead
+      let thumb = a.thumbnail_url || a.file_url || a.url || a.src || a.remote_url || a.external_url;
+      let full = a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
+
+      if (isHttpsPage) {
+        // Check for HTTPS URLs first
+        const httpsThumb = a.remote_url?.startsWith('https://') ? a.remote_url :
+                          a.external_url?.startsWith('https://') ? a.external_url :
+                          a.thumbnail_url?.startsWith('https://') ? a.thumbnail_url :
+                          a.file_url?.startsWith('https://') ? a.file_url :
+                          thumb;
+        const httpsFull = a.remote_url?.startsWith('https://') ? a.remote_url :
+                         a.external_url?.startsWith('https://') ? a.external_url :
+                         a.file_url?.startsWith('https://') ? a.file_url :
+                         full;
+        thumb = httpsThumb;
+        full = httpsFull;
+      }
+
+      return {
+        thumb,
+        full,
+        name: a.name || a.original_filename || a.filename || a.title || ''
+      };
     })).filter(u => u.thumb); // Only include assets with a valid URL
 
     // Refresh button row
@@ -1328,13 +1370,23 @@
       `;
 
       const img = document.createElement('img');
-      img.src = thumbUrl;
       img.style.cssText = `
         width: 100%;
         height: 100%;
         object-fit: cover;
       `;
       img.loading = 'lazy';
+
+      // Use proxy for HTTP URLs (from PXS7.imageGrid if available)
+      if (window.PXS7?.imageGrid?.loadImageSrc) {
+        // Reuse the loadImageSrc function from image-grid module
+        const loadImageSrc = window.PXS7.imageGrid.loadImageSrc;
+        loadImageSrc(img, thumbUrl);
+      } else {
+        // Fallback: set directly (old behavior)
+        img.src = thumbUrl;
+      }
+
       thumb.appendChild(img);
 
       if (name) {

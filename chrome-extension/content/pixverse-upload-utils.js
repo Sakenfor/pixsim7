@@ -578,9 +578,27 @@
       const bgDiv = wrapper.querySelector('[style*="background-image"]') ||
                     uploadArea?.querySelector('div[style]');
 
-      // Try setting background-image on existing element
+      // Try setting background-image on existing element (with HTTP proxy support)
       if (bgDiv) {
-        bgDiv.style.backgroundImage = `url("${imageUrl}")`;
+        let displayUrl = imageUrl;
+
+        // Proxy HTTP URLs to avoid mixed content errors
+        if (imageUrl.startsWith('http://')) {
+          debugLog('[Direct] HTTP URL detected, proxying for background-image:', imageUrl);
+          try {
+            const proxyResponse = await chrome.runtime.sendMessage({ action: 'proxyImage', url: imageUrl });
+            if (proxyResponse && proxyResponse.success && proxyResponse.dataUrl) {
+              displayUrl = proxyResponse.dataUrl;
+              debugLog('[Direct] Proxy success for background-image');
+            } else {
+              console.warn('[pxs7] Background image proxy failed:', proxyResponse);
+            }
+          } catch (e) {
+            console.warn('[pxs7] Background image proxy error:', e.message);
+          }
+        }
+
+        bgDiv.style.backgroundImage = `url("${displayUrl}")`;
         bgDiv.style.backgroundSize = 'cover';
         bgDiv.style.backgroundPosition = 'center';
         debugLog('[Direct] Set background-image on existing div');
@@ -753,11 +771,39 @@
       } else {
         // For non-Pixverse URLs, fetch and upload the actual image
         debugLog('Fetching external image for upload');
-        const response = await fetch(imageUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch image: ${response.status}`);
+
+        let blob;
+
+        // Handle HTTP URLs by proxying through background script to avoid mixed content errors
+        if (imageUrl.startsWith('http://')) {
+          debugLog('HTTP URL detected, proxying through background script');
+          try {
+            const proxyResponse = await chrome.runtime.sendMessage({ action: 'proxyImage', url: imageUrl });
+            if (!proxyResponse || !proxyResponse.success || !proxyResponse.dataUrl) {
+              throw new Error('Failed to proxy HTTP image');
+            }
+            // Convert data URL to blob
+            const dataUrlResponse = await fetch(proxyResponse.dataUrl);
+            blob = await dataUrlResponse.blob();
+            debugLog('Successfully proxied HTTP image');
+          } catch (proxyError) {
+            console.warn('[PixSim7] Proxy failed, attempting direct fetch:', proxyError);
+            // Fallback to direct fetch (might fail on HTTPS pages)
+            const response = await fetch(imageUrl);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch image: ${response.status}`);
+            }
+            blob = await response.blob();
+          }
+        } else {
+          // HTTPS or data URLs can be fetched directly
+          const response = await fetch(imageUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status}`);
+          }
+          blob = await response.blob();
         }
-        const blob = await response.blob();
+
         const filename = imageUrl.split('/').pop().split('?')[0] || 'image.jpg';
         const mimeType = getMimeTypeFromUrl(imageUrl);
         file = new File([blob], filename, { type: mimeType });
