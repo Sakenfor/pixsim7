@@ -389,6 +389,15 @@ class AccountService:
 
         await self.db.flush()
 
+        # Log credit update for debugging
+        logger.debug(
+            "credit_updated",
+            account_id=account_id,
+            credit_type=credit_type,
+            amount=amount,
+            was_existing=credit.id is not None,
+        )
+
         # Update account status based on total credits
         await self._update_account_status(account_id)
 

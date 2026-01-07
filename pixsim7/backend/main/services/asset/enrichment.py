@@ -249,8 +249,13 @@ class AssetEnrichmentService:
 
         Uses create_lineage_links_with_metadata to preserve sequence_order,
         time ranges, and frame metadata.
+
+        Deduplication: Uses candidate_ids from extractor to find existing assets
+        before creating new ones. This prevents duplicates when the same source
+        image is referenced by different ID formats (numeric vs UUID).
         """
         from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+        from pixsim7.backend.main.services.asset.dedup import find_existing_asset
         from pixsim_logging import get_logger
         logger = get_logger()
 
@@ -342,22 +347,46 @@ class AssetEnrichmentService:
             media_type = MediaType.IMAGE if item.get("media_type") == "image" else MediaType.VIDEO
             item_metadata = item.get("media_metadata")
 
-            # Create parent asset
-            newly_created = await add_asset(
+            # Get candidate IDs for dedup (extractor provides these)
+            candidate_ids = item.get("candidate_ids") or []
+
+            # Check for existing asset using ALL candidate IDs + URL
+            # This prevents duplicates when the same asset was synced with a different ID format
+            existing_asset = await find_existing_asset(
                 self.db,
                 user_id=user.id,
-                media_type=media_type,
                 provider_id=asset.provider_id,
-                provider_asset_id=provider_asset_id,
-                provider_account_id=asset.provider_account_id,
+                candidate_ids=candidate_ids,
                 remote_url=remote_url,
-                width=item.get("width"),
-                height=item.get("height"),
-                duration_sec=None,
-                sync_status=SyncStatus.REMOTE,
-                source_generation_id=None,
-                media_metadata=item_metadata,
             )
+
+            if existing_asset:
+                logger.debug(
+                    "embedded_asset_dedup_match",
+                    asset_id=asset.id,
+                    existing_asset_id=existing_asset.id,
+                    candidate_ids=candidate_ids,
+                    provider_asset_id=provider_asset_id,
+                    detail="Found existing asset via candidate ID or URL match",
+                )
+                parent_asset = existing_asset
+            else:
+                # Create new parent asset
+                parent_asset = await add_asset(
+                    self.db,
+                    user_id=user.id,
+                    media_type=media_type,
+                    provider_id=asset.provider_id,
+                    provider_asset_id=provider_asset_id,
+                    provider_account_id=asset.provider_account_id,
+                    remote_url=remote_url,
+                    width=item.get("width"),
+                    height=item.get("height"),
+                    duration_sec=None,
+                    sync_status=SyncStatus.REMOTE,
+                    source_generation_id=None,
+                    media_metadata=item_metadata,
+                )
 
             # Get role from item or infer from create_mode
             role = self._get_role_from_item(item, create_mode, media_type)
@@ -368,7 +397,7 @@ class AssetEnrichmentService:
             # Build input entry with full metadata
             input_entry = {
                 "role": role,
-                "asset": f"asset:{newly_created.id}",
+                "asset": f"asset:{parent_asset.id}",
                 "sequence_order": sequence_order,
             }
 

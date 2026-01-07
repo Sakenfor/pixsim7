@@ -7,11 +7,13 @@ Contains:
 - Asset lineage and branching models
 - Asset metadata tables for 3D, audio, temporal, adult content
 - Tag models
+- Upload attribution helpers
 
 Usage:
     from pixsim7.backend.main.domain.assets import Asset, AssetVariant
     from pixsim7.backend.main.domain.assets import AssetLineage
     from pixsim7.backend.main.domain.assets import Tag
+    from pixsim7.backend.main.domain.assets import infer_upload_method_from_asset
 """
 from .models import Asset, AssetVariant
 from .content import ContentBlob
@@ -25,6 +27,14 @@ from .metadata import (
     AssetAdultMetadata,
 )
 from .tag import Tag
+from .upload_attribution import (
+    UPLOAD_METHOD_LABELS,
+    INFERENCE_RULES,
+    infer_upload_method,
+    infer_upload_method_from_asset,
+    extract_hints_from_metadata,
+    build_upload_attribution_context,
+)
 
 __all__ = [
     # Core models
@@ -47,4 +57,11 @@ __all__ = [
     "AssetAdultMetadata",
     # Tags
     "Tag",
+    # Upload attribution
+    "UPLOAD_METHOD_LABELS",
+    "INFERENCE_RULES",
+    "infer_upload_method",
+    "infer_upload_method_from_asset",
+    "extract_hints_from_metadata",
+    "build_upload_attribution_context",
 ]

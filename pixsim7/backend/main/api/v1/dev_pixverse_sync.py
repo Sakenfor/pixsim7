@@ -107,16 +107,13 @@ async def pixverse_sync_dry_run(
         )
         candidate_video_ids.update(candidates)
 
-    # Look up which video IDs already exist as Assets for this user/provider
-    existing_ids: set[str] = set()
-    if candidate_video_ids:
-        stmt_assets = select(Asset.provider_asset_id).where(
-            Asset.user_id == current_user.id,
-            Asset.provider_id == "pixverse",
-            Asset.provider_asset_id.in_(candidate_video_ids),
-        )
-        result_assets = await db.execute(stmt_assets)
-        existing_ids = {row[0] for row in result_assets.fetchall()}
+    # Batch lookup for existing assets using shared dedup helper
+    from pixsim7.backend.main.services.asset.dedup import find_existing_assets_batch
+
+    existing_assets_map = await find_existing_assets_batch(
+        db, current_user.id, "pixverse", candidate_video_ids
+    )
+    existing_ids: set[str] = set(existing_assets_map.keys())
 
     # Build response
     items = []
