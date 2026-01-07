@@ -25,6 +25,8 @@ const openPresetsAction: ActionDefinition = {
   title: 'Open Presets',
   description: 'Open generation presets',
   icon: 'palette',
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('presets');
     useControlCenterStore.getState().setOpen(true);
@@ -37,6 +39,8 @@ const selectProviderAction: ActionDefinition = {
   title: 'Select Provider',
   description: 'Select generation provider',
   icon: 'globe',
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('providers');
     useControlCenterStore.getState().setOpen(true);

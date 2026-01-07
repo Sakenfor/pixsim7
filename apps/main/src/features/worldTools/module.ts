@@ -16,6 +16,8 @@ const enterGameWorldAction: ActionDefinition = {
   description: 'Open the game world',
   icon: 'map',
   route: ROUTES.GAME_WORLD,
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.GAME_WORLD);
   },
@@ -28,6 +30,8 @@ const openNpcEditorAction: ActionDefinition = {
   description: 'Open the NPC brain lab',
   icon: 'brain',
   route: ROUTES.NPC_BRAIN_LAB,
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo(ROUTES.NPC_BRAIN_LAB);
   },

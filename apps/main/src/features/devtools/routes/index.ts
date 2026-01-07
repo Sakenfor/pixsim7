@@ -15,6 +15,8 @@ const openAppMapAction: ActionDefinition = {
   icon: 'map',
   shortcut: 'Ctrl+Shift+M',
   route: '/app-map',
+  contexts: ['background'],
+  category: 'quick-add',
   execute: () => {
     navigateTo('/app-map');
   },
