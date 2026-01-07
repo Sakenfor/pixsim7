@@ -20,13 +20,13 @@ import type {
  * Request for previewing derived stat computation.
  */
 export interface DerivedStatPreviewRequest {
-  /** World ID for context */
-  worldId: number;
+  /** World ID for context (0 or undefined = editor mode with default packages) */
+  worldId?: number;
   /** The derived stat to compute (e.g., "mood") */
   targetStatId: string;
   /** Input stat values: { statDefId: { axisName: value } } */
   inputValues: Record<string, Record<string, number>>;
-  /** Optional explicit package IDs to use */
+  /** Optional explicit package IDs to use (overrides world config) */
   packageIds?: string[];
 }
 
@@ -36,10 +36,12 @@ export interface DerivedStatPreviewRequest {
 export interface DerivedStatPreviewResponse {
   /** The target stat ID */
   targetStatId: string;
-  /** The computed derived values (axis values + any transforms like label) */
+  /** The computed derived values (axis values + label/levelId) */
   derivedValues: Record<string, unknown>;
-  /** Which source axes contributed to the derivation */
-  sourcesUsed: string[];
+  /** Input axes that contributed to the derivation */
+  inputAxes: string[];
+  /** Per-axis tier IDs computed by backend */
+  tiers: Record<string, string>;
 }
 
 /**
@@ -277,7 +279,7 @@ export async function previewDerivedStat(
   const { worldId, targetStatId, inputValues, packageIds } = args;
 
   const requestBody: Record<string, unknown> = {
-    world_id: worldId,
+    world_id: worldId ?? 0, // 0 = editor mode with default packages
     target_stat_id: targetStatId,
     input_values: inputValues,
   };
@@ -312,6 +314,7 @@ export async function previewDerivedStat(
   return {
     targetStatId: data.target_stat_id,
     derivedValues: data.derived_values,
-    sourcesUsed: data.sources_used || [],
+    inputAxes: data.input_axes || [],
+    tiers: data.tiers || {},
   };
 }

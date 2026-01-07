@@ -1283,20 +1283,25 @@ export interface RelationshipTierPreviewResponse {
 }
 
 /**
- * Relationship values for intimacy computation
+ * Known relationship axes (for autocomplete and common access)
+ * Additional axes can be added via world config without code changes.
  */
-export interface RelationshipValues {
-  affinity: number;
-  trust: number;
-  chemistry: number;
-  tension: number;
-}
+export type KnownRelationshipAxis = 'affinity' | 'trust' | 'chemistry' | 'tension';
+
+/**
+ * Relationship values for stat computation.
+ * Known axes are optional (worlds may omit them), extensible via index signature.
+ */
+export type RelationshipValues = {
+  [K in KnownRelationshipAxis]?: number;
+} & Record<string, number>;
 
 /**
  * Request payload for intimacy level preview
  */
 export interface RelationshipIntimacyPreviewRequest {
   worldId: number;
+  /** Relationship axis values - can include any axes defined in world config */
   relationshipValues: RelationshipValues;
 }
 
@@ -1305,6 +1310,7 @@ export interface RelationshipIntimacyPreviewRequest {
  */
 export interface RelationshipIntimacyPreviewResponse {
   intimacyLevelId: IntimacyLevelId | null;
+  /** Echoed back relationship values (may be normalized/clamped by backend) */
   relationshipValues: RelationshipValues;
 }
 

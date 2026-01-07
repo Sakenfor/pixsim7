@@ -111,6 +111,23 @@ function createTestScene(overrides?: Partial<Scene>): Scene {
 function createMockGameRuntime(session: GameSessionDTO): GameRuntime {
   let currentSession = session;
   const eventHandlers = new Map<string, Set<(payload: any) => void>>();
+  const defaultRelationship: NpcRelationshipState = {
+    values: {
+      affinity: 50,
+      trust: 50,
+      chemistry: 50,
+      tension: 0,
+    },
+    tiers: {
+      affinity: 'moderate',
+      trust: 'moderate',
+      chemistry: 'moderate',
+      tension: 'very_low',
+    },
+    tierId: 'friend',
+    levelId: 'casual',
+    flags: [],
+  };
 
   return {
     loadSession: vi.fn().mockResolvedValue(undefined),
@@ -118,23 +135,12 @@ function createMockGameRuntime(session: GameSessionDTO): GameRuntime {
     getWorld: () => null,
     applyInteraction: vi.fn().mockResolvedValue({ success: true }),
     advanceWorldTime: vi.fn().mockResolvedValue(undefined),
-    getNpcRelationship: vi.fn().mockReturnValue({
-      values: {
-        affinity: 50,
-        trust: 50,
-        chemistry: 50,
-        tension: 0,
-      },
-      tiers: {
-        affinity: 'moderate',
-        trust: 'moderate',
-        chemistry: 'moderate',
-        tension: 'very_low',
-      },
-      tierId: 'friend',
-      levelId: 'casual',
-      flags: [],
-    } as NpcRelationshipState),
+    getStat: vi.fn().mockImplementation((source, entityId) => {
+      if (source === 'session.relationships' && entityId !== undefined) {
+        return defaultRelationship;
+      }
+      return null;
+    }),
     updateSession: vi.fn().mockImplementation(async (updates) => {
       currentSession = { ...currentSession, ...updates };
     }),

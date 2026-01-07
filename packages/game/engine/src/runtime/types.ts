@@ -17,6 +17,7 @@ import type {
   ResolveBatchResponse,
   TemplateKind,
 } from '@pixsim7/shared.types';
+import type { NpcRelationshipState } from '../core/types';
 import type { StatSource } from '../session/statAdapters';
 
 // ===================

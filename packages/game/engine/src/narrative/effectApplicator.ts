@@ -161,45 +161,40 @@ export function applyEffects(
     const relationshipChanges: ApplyEffectsResult['changes']['relationship'] = {};
 
     const oldValues = {
-      affinity: current?.affinity ?? 0,
-      trust: current?.trust ?? 0,
-      chemistry: current?.chemistry ?? 0,
-      tension: current?.tension ?? 0,
+      affinity: current?.values.affinity ?? 0,
+      trust: current?.values.trust ?? 0,
+      chemistry: current?.values.chemistry ?? 0,
+      tension: current?.values.tension ?? 0,
     };
 
-    const patch: {
-      affinity?: number;
-      trust?: number;
-      chemistry?: number;
-      tension?: number;
-    } = {};
+    const patchValues: Record<string, number> = {};
 
     if (effects.relationship.affinity !== undefined) {
       const newValue = clamp(oldValues.affinity + effects.relationship.affinity);
-      patch.affinity = newValue;
+      patchValues.affinity = newValue;
       relationshipChanges.affinity = { from: oldValues.affinity, to: newValue };
     }
 
     if (effects.relationship.trust !== undefined) {
       const newValue = clamp(oldValues.trust + effects.relationship.trust);
-      patch.trust = newValue;
+      patchValues.trust = newValue;
       relationshipChanges.trust = { from: oldValues.trust, to: newValue };
     }
 
     if (effects.relationship.chemistry !== undefined) {
       const newValue = clamp(oldValues.chemistry + effects.relationship.chemistry);
-      patch.chemistry = newValue;
+      patchValues.chemistry = newValue;
       relationshipChanges.chemistry = { from: oldValues.chemistry, to: newValue };
     }
 
     if (effects.relationship.tension !== undefined) {
       const newValue = clamp(oldValues.tension + effects.relationship.tension);
-      patch.tension = newValue;
+      patchValues.tension = newValue;
       relationshipChanges.tension = { from: oldValues.tension, to: newValue };
     }
 
-    if (Object.keys(patch).length > 0) {
-      newSession = setNpcRelationshipState(newSession, npcId, patch);
+    if (Object.keys(patchValues).length > 0) {
+      newSession = setNpcRelationshipState(newSession, npcId, { values: patchValues });
       changes.relationship = relationshipChanges;
     }
   }

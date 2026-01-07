@@ -25,10 +25,12 @@ import type {
   InteractionExecutedEvent,
   RuntimeErrorEvent,
 } from './types';
+import type { NpcRelationshipState } from '../core/types';
 import {
   getAdapterBySource,
   type StatSource,
 } from '../session/statAdapters';
+import { getNpcRelationshipState } from '../session/state';
 
 /**
  * Simple typed event emitter (reused from PixSim7Core)

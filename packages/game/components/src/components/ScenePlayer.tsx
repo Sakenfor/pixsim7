@@ -4,7 +4,7 @@ import type { MiniGameResult } from '@pixsim7/scene.gizmos'
 import { Button, Panel } from '@pixsim7/shared.ui'
 import { MiniGameHost } from './minigames/MiniGameHost'
 import { getDefaultNextEdge } from '@pixsim7/game.engine'
-import { useSceneRuntime } from '../runtime/sceneRuntime'
+import { useSceneRuntime } from '@pixsim7/game.react'
 
 export interface ScenePlayerProps {
   scene: Scene  // Primary scene (for backwards compatibility)

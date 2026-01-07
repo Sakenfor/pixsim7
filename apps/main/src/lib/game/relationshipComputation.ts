@@ -1,18 +1,29 @@
 /**
  * Client-side relationship computation helpers.
  *
- * This module is a thin re-export of the canonical implementation in
- * `@pixsim7/game.engine
- * frontend code and docs can continue to import from
- * `frontend/src/lib/game/relationshipComputation` while all logic
- * lives in the shared game-core package.
+ * This module re-exports from the consolidated stat system packages:
+ * - Preview API from @pixsim7/shared.stats-core (backend is source of truth)
+ * - Value extraction from @pixsim7/game.engine
  *
  * At runtime, the backend remains authoritative for persisted
  * relationship tiers and intimacy levels; these helpers are intended
  * for previews, editor tools, and offline calculations only.
  */
+
+// Preview API (use this for computing tiers/levels)
 export {
-  compute_relationship_tier,
-  compute_intimacy_level,
-  extract_relationship_values,
-} from '@pixsim7/game.engine';
+  previewRelationshipTier,
+  previewIntimacyLevel,
+  configurePreviewApi,
+} from '@pixsim7/shared.stats-core';
+
+// Value extraction from session state
+export { extract_relationship_values } from '@pixsim7/game.engine';
+
+// Helpers for ordering/comparison
+export {
+  compareTiers,
+  compareLevels,
+  levelMeetsMinimum,
+  tierMeetsMinimum,
+} from '@pixsim7/shared.stats-core';
