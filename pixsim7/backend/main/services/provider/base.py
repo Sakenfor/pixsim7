@@ -381,6 +381,7 @@ class Provider(ABC):
         account: ProviderAccount,
         provider_asset_id: str,
         media_type: 'MediaType',
+        media_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Delete asset from provider (optional - providers may not support this).
@@ -389,6 +390,7 @@ class Provider(ABC):
             account: Provider account to use for deletion
             provider_asset_id: Provider's asset ID
             media_type: IMAGE or VIDEO
+            media_metadata: Optional media metadata (may contain alternative IDs)
 
         Raises:
             ProviderError: If deletion fails

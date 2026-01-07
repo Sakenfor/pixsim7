@@ -1226,6 +1226,7 @@ class PixverseOperationsMixin:
         account: ProviderAccount,
         provider_asset_id: str,
         media_type: 'MediaType',
+        media_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Delete video or image from Pixverse"""
         from pixsim7.backend.main.domain.enums import MediaType
@@ -1239,7 +1240,31 @@ class PixverseOperationsMixin:
             client = self._create_client_from_session(session, account)
 
             try:
-                normalized_id = _normalize_provider_id(provider_asset_id)
+                # Try to get the integer ID from metadata first (for UUID-based assets)
+                delete_id = provider_asset_id
+                if media_metadata:
+                    if media_type == MediaType.IMAGE:
+                        metadata_image_id = media_metadata.get("image_id") or media_metadata.get("pixverse_image_id")
+                        if metadata_image_id:
+                            delete_id = str(metadata_image_id)
+                            logger.debug(
+                                "pixverse_delete_using_metadata_image_id",
+                                provider_asset_id=provider_asset_id,
+                                image_id=delete_id,
+                                account_id=account.id,
+                            )
+                    else:
+                        metadata_video_id = media_metadata.get("video_id") or media_metadata.get("VideoId")
+                        if metadata_video_id:
+                            delete_id = str(metadata_video_id)
+                            logger.debug(
+                                "pixverse_delete_using_metadata_video_id",
+                                provider_asset_id=provider_asset_id,
+                                video_id=delete_id,
+                                account_id=account.id,
+                            )
+
+                normalized_id = _normalize_provider_id(delete_id)
 
                 if media_type == MediaType.IMAGE:
                     if hasattr(client, "delete_images"):

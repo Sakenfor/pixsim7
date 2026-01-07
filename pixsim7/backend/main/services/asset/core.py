@@ -776,6 +776,7 @@ class AssetCoreService:
                 account=account,
                 provider_asset_id=asset.provider_asset_id,
                 media_type=asset.media_type,
+                media_metadata=asset.media_metadata,
             )
 
             logger.info(
