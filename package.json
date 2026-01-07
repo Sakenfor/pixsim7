@@ -30,7 +30,8 @@
     "generate-docs": "tsx packages/game-core/src/utils/generatePluginDocs.ts",
     "generate-registry-docs": "tsx scripts/generate-registry-docs.ts",
     "docs:check": "python scripts/docs_check.py",
-    "docs:app-map": "python update_app_map.py",
+    "docs:app-map": "tsx scripts/generate-app-map.ts && python update_app_map.py",
+    "docs:app-map:gen": "tsx scripts/generate-app-map.ts",
     "docs:openapi": "python scripts/gen_openapi_docs.py"
   },
   "devDependencies": {

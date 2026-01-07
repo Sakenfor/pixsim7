@@ -16,6 +16,50 @@ For detailed repository structure, see [docs/repo-map.md](./repo-map.md).
 
 ---
 
+## Sources of Truth
+
+The App Map table is a merge of two registries:
+
+1) **Generated registry (optional)**  
+   `docs/app_map.generated.json` is produced from code metadata when available.
+   If it does not exist, only manual entries are used.
+
+2) **Manual registry (authoritative for docs/backend links)**  
+   `docs/app_map.sources.json` contains doc paths and backend module references.
+
+`update_app_map.py` merges these into the table in this file.
+
+### Code-Derived Metadata
+
+When generating `app_map.generated.json`, use:
+
+- **Module pages**: `apps/main/src/app/modules/types.ts`  
+  `Module.page` fields such as `route`, `description`, `category`, `featureId`, and
+  `featurePrimary` provide feature/route metadata.
+
+- **Actions**: `packages/shared/types/src/actions.ts`  
+  `ActionDefinition` (and module `page.actions`) provide action metadata.  
+  Use `contexts` and `visibility` to opt actions into specific UI surfaces.
+
+### Add a Feature to the App Map
+
+1) **Front-end metadata**  
+   Add or update the module `page` definition (route, description, `featureId`).
+
+2) **Actions (optional)**  
+   Declare actions in `page.actions` using `ActionDefinition`.
+
+3) **Docs and backend**  
+   Add or update the entry in `docs/app_map.sources.json`.
+
+4) **Regenerate**  
+   Run `python update_app_map.py` to update the table.
+
+### Comment Conventions (Planned)
+
+If we later parse comments into the generated registry, use short JSDoc lines
+on module and action definitions. Keep them concise and descriptive.
+
 ## Live App Map Registry
 
 The table below is auto-generated from `docs/app_map.sources.json`. Run `python update_app_map.py` to refresh.

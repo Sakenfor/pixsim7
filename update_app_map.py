@@ -13,10 +13,19 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def load_registry(registry_path: Path) -> dict:
     """Load the app map registry JSON file."""
+    with open(registry_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_generated_registry(registry_path: Path) -> Optional[dict]:
+    """Load the generated app map registry JSON file if it exists."""
+    if not registry_path.exists():
+        return None
     with open(registry_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -69,6 +78,55 @@ def format_routes(routes: list[str]) -> str:
     return ", ".join(f"`{r}`" for r in routes)
 
 
+def merge_lists(left: Optional[list[str]], right: Optional[list[str]]) -> list[str]:
+    """Merge two string lists, preserving order and removing duplicates."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for items in (left or [], right or []):
+        for item in items:
+            if item in seen:
+                continue
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def merge_entries(generated: list[dict], manual: list[dict]) -> list[dict]:
+    """Merge generated entries with manual overrides."""
+    generated_by_id = {entry.get("id"): entry for entry in generated if entry.get("id")}
+    used_generated: set[str] = set()
+    merged: list[dict] = []
+
+    for manual_entry in manual:
+        entry_id = manual_entry.get("id")
+        generated_entry = generated_by_id.get(entry_id)
+        if generated_entry:
+            merged_entry = dict(generated_entry)
+            if manual_entry.get("label"):
+                merged_entry["label"] = manual_entry["label"]
+            merged_entry["docs"] = manual_entry.get("docs", merged_entry.get("docs", []))
+            merged_entry["backend"] = manual_entry.get("backend", merged_entry.get("backend", []))
+            merged_entry["routes"] = merge_lists(
+                merged_entry.get("routes", []),
+                manual_entry.get("routes", []),
+            )
+            merged_entry["frontend"] = merge_lists(
+                merged_entry.get("frontend", []),
+                manual_entry.get("frontend", []),
+            )
+            merged.append(merged_entry)
+            used_generated.add(entry_id)
+        else:
+            merged.append(manual_entry)
+
+    for generated_entry in generated:
+        entry_id = generated_entry.get("id")
+        if entry_id and entry_id not in used_generated:
+            merged.append(generated_entry)
+
+    return merged
+
+
 def generate_table(entries: list[dict]) -> str:
     """Generate a markdown table from registry entries."""
     lines = [
@@ -88,11 +146,17 @@ def generate_table(entries: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def update_app_map(app_map_path: Path, registry_path: Path) -> bool:
+def update_app_map(app_map_path: Path, registry_path: Path, generated_path: Path) -> bool:
     """Update APP_MAP.md with generated content from registry."""
     # Load registry
     registry = load_registry(registry_path)
     entries = registry.get("entries", [])
+
+    generated_registry = load_generated_registry(generated_path)
+    if generated_registry:
+        generated_entries = generated_registry.get("entries", [])
+        if generated_entries:
+            entries = merge_entries(generated_entries, entries)
 
     if not entries:
         print("Warning: No entries found in registry")
@@ -133,6 +197,7 @@ def main():
     project_root = Path(__file__).parent
     app_map_path = project_root / "docs" / "APP_MAP.md"
     registry_path = project_root / "docs" / "app_map.sources.json"
+    generated_path = project_root / "docs" / "app_map.generated.json"
 
     # Verify files exist
     if not registry_path.exists():
@@ -146,7 +211,7 @@ def main():
     print(f"Reading registry: {registry_path}")
     print(f"Updating: {app_map_path}")
 
-    if update_app_map(app_map_path, registry_path):
+    if update_app_map(app_map_path, registry_path, generated_path):
         print("APP_MAP.md updated successfully!")
         sys.exit(0)
     else:
