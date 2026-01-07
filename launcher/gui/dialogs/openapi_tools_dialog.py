@@ -94,6 +94,24 @@ class OpenApiWorker(QThread):
             proc.kill()
             return -1, "", "Command timed out"
 
+    def _run_python(self, args, timeout=60):
+        """Run a Python command and return (returncode, stdout, stderr)."""
+        env = service_env()
+        proc = subprocess.Popen(
+            [sys.executable] + args,
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env
+        )
+        try:
+            out, err = proc.communicate(timeout=timeout)
+            return proc.returncode, out, err
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return -1, "", "Command timed out"
+
     def _generate_types(self):
         """Generate TypeScript types from OpenAPI spec."""
         # First check backend is reachable
@@ -126,8 +144,8 @@ class OpenApiWorker(QThread):
         if not check_result[0]:
             return check_result
 
-        code, out, err = self._run_pnpm([
-            "-s", "docs:openapi", "--", "--url", self.openapi_url
+        code, out, err = self._run_python([
+            "scripts/gen_openapi_docs.py", "--url", self.openapi_url
         ], timeout=120)
 
         output_msg = ""
