@@ -68,6 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check if logged in
   await checkLogin();
 
+  // Restore last active tab (after login check so tab is only shown if logged in)
+  await restoreLastTab();
+
   // Detect provider from current tab
   await detectProviderFromTab();
 
@@ -230,6 +233,8 @@ function setupEventListeners() {
 
 // ===== TAB MANAGEMENT =====
 
+const LAST_TAB_STORAGE_KEY = 'pixsim7LastActiveTab';
+
 function switchTab(tabId) {
   // Update tab buttons
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -239,6 +244,11 @@ function switchTab(tabId) {
   // Update tab panes
   document.querySelectorAll('.tab-pane').forEach(pane => {
     pane.classList.toggle('active', pane.id === `tab-${tabId}`);
+  });
+
+  // Save last active tab to storage
+  chrome.storage.local.set({ [LAST_TAB_STORAGE_KEY]: tabId }).catch(() => {
+    console.warn('[Popup] Failed to save last active tab');
   });
 
   // Load accounts when switching to Accounts tab
@@ -254,6 +264,23 @@ function switchTab(tabId) {
   // Update devices tab UI when switching to it
   if (tabId === 'devices') {
     updateDevicesTab();
+  }
+}
+
+async function restoreLastTab() {
+  // Only restore tab if logged in
+  if (!currentUser) return;
+
+  try {
+    const result = await chrome.storage.local.get(LAST_TAB_STORAGE_KEY);
+    const lastTab = result[LAST_TAB_STORAGE_KEY];
+
+    if (lastTab) {
+      console.log('[Popup] Restoring last tab:', lastTab);
+      switchTab(lastTab);
+    }
+  } catch (e) {
+    console.warn('[Popup] Failed to restore last tab:', e);
   }
 }
 

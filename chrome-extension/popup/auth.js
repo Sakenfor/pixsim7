@@ -98,7 +98,49 @@ async function handleLogout() {
   }
 }
 
+/**
+ * Attempt to auto-relogin when backend comes back online.
+ * If we have a stored token, try to use it to get user info.
+ * If that fails (token expired), silently fail - user will need to manually log in.
+ */
+async function attemptAutoRelogin() {
+  console.log('[Auth] Attempting auto-relogin...');
+
+  const result = await chrome.storage.local.get(['pixsim7Token']);
+
+  if (!result.pixsim7Token) {
+    console.log('[Auth] No stored token, skipping auto-relogin');
+    return;
+  }
+
+  try {
+    // Try to get user info with existing token
+    const me = await chrome.runtime.sendMessage({ action: 'getMe' });
+
+    if (me && me.success && me.data) {
+      currentUser = me.data;
+      showLoggedIn();
+      console.log('[Auth] Auto-relogin successful');
+      showToast('success', 'Reconnected successfully');
+
+      // Refresh data
+      if (typeof detectProviderFromTab === 'function') {
+        await detectProviderFromTab();
+      }
+      if (typeof loadAccounts === 'function') {
+        await loadAccounts();
+      }
+    } else {
+      console.log('[Auth] Auto-relogin failed - token may be expired');
+      // Don't show error - user can manually log in if needed
+    }
+  } catch (error) {
+    console.warn('[Auth] Auto-relogin error:', error);
+    // Silently fail - user can manually log in
+  }
+}
+
 // Export main functions
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { checkLogin, showLogin, showLoggedIn, handleLogin, handleLogout };
+  module.exports = { checkLogin, showLogin, showLoggedIn, handleLogin, handleLogout, attemptAutoRelogin };
 }

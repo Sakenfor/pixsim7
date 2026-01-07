@@ -180,8 +180,17 @@ async function checkBackendConnection() {
 
       // Hide backend offline warning if visible
       const backendWarning = document.getElementById('backendOfflineWarning');
+      const wasOffline = backendWarning && !backendWarning.classList.contains('hidden');
       if (backendWarning) {
         backendWarning.classList.add('hidden');
+      }
+
+      // If backend just came back online and we're not logged in, attempt auto-relogin
+      if (wasOffline && !currentUser && typeof attemptAutoRelogin === 'function') {
+        console.log('[Popup] Backend came back online, attempting auto-relogin...');
+        attemptAutoRelogin().catch(err => {
+          console.warn('[Popup] Auto-relogin failed:', err);
+        });
       }
 
       return true;
