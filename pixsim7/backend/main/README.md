@@ -343,7 +343,7 @@ operation_type: OperationType  # Set once, use everywhere
 
 ## 📝 Migration from PixSim6
 
-See: [docs/architecture/CURRENT.md](../../../docs/architecture/CURRENT.md)
+See: [docs/architecture/reviews/2025-12-12-architecture-snapshot.md](../../../docs/architecture/reviews/2025-12-12-architecture-snapshot.md)
 
 **Strategy:** Staged approach
 1. Build PixSim7 core (Week 1-2)
@@ -374,8 +374,8 @@ python -m workers.job_processor
 
 ## 📚 Documentation
 
-- [Current Architecture](../../../docs/architecture/CURRENT.md) - Current snapshot and migration plan
-- [Historical Architecture](../../../docs/architecture/historical/2025-11-snapshot.md) - Prior snapshot (PixSim6 context)
+- [Architecture Snapshot](../../../docs/architecture/reviews/2025-12-12-architecture-snapshot.md) - Current architecture snapshot
+- [Architecture Overview](../../../docs/architecture/README.md) - Full architecture documentation
 
 ---
 

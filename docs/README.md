@@ -21,7 +21,7 @@
 - [Stats & Systems](./stats-and-systems/README.md) - Relationship, social metrics
 
 ## Features & Extensibility
-- [Plugins](./plugins-and-extensibility/README.md) - Plugin architecture, registry
+- [Plugins](./systems/plugins/README.md) - Plugin architecture, registry
 - [Features](./features/README.md) - Simulation, intimacy, automation
 - [Actions](./actions/README.md) - Action blocks, prompt engine
 - [Prompts](./prompts/README.md) - LLM prompt system, versioning
@@ -37,7 +37,7 @@
 - [Walkthroughs](./walkthroughs/README.md) - Step-by-step guides
 
 ## Analysis
-- [Audits](./audits-and-analysis/README.md) - Code audits, cleanup reports
+- [Audits](./architecture/reviews/audits/README.md) - Code audits, cleanup reports
 
 ---
 

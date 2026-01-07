@@ -35,4 +35,4 @@ Documentation for plugin architecture, capability registry, and extension system
 
 ---
 
-**Related:** See [../plugins/](../../../systems/plugins/) for plugin system implementation details.
+**Related:** See [Architecture Documentation](../../architecture/README.md) for overall system architecture.

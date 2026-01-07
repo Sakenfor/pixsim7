@@ -159,7 +159,7 @@ cd admin && npm install && npm run dev
 - **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Contribution guide
 
 ### Key References
-- **[Backend](./pixsim7/backend/main/README.md)** | **[Frontend](./docs/frontend/README.md)** | **[Plugins](./docs/plugins-and-extensibility/README.md)**
+- **[Backend](./pixsim7/backend/main/README.md)** | **[Frontend](./docs/frontend/README.md)** | **[Plugins](./docs/systems/plugins/README.md)**
 - **[Chrome Extension](./chrome-extension/README.md)** | **[Android App](./apps/pixsim7-android/README.md)**
 - **[Authentication](./docs/authentication/README.md)** - Auth flows, storage abstraction, desktop support
 

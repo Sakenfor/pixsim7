@@ -284,5 +284,5 @@ See `README.md` for full roadmap.
 ## Support
 
 - **Documentation:** See `README.md`
-- **Architecture:** Start at [docs/README.md](../../../docs/README.md) and [docs/architecture/CURRENT.md](../../../docs/architecture/CURRENT.md)
+- **Architecture:** Start at [docs/README.md](../../../docs/README.md) and [docs/architecture/README.md](../../../docs/architecture/README.md)
 - **Issues:** Check existing docs or ask in chat

@@ -28,7 +28,7 @@ This guide helps AI assistants understand what's already implemented, where thin
 |-------|-------------|----------|
 | **Getting started** | `DEVELOPMENT_GUIDE.md` | `docs/README.md` |
 | **System architecture** | `docs/architecture/README.md` | `docs/architecture/diagrams.md` |
-| **Building plugins** | `docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md` | `docs/plugins-and-extensibility/README.md` |
+| **Building plugins** | `docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md` | `docs/systems/plugins/README.md` |
 | **Generation system** | `docs/systems/generation/GENERATION_SYSTEM.md` | `docs/systems/generation/README.md` |
 | **Backend services** | `docs/backend/SERVICES.md` | `docs/infrastructure/README.md` |
 | **Frontend components** | `docs/frontend/COMPONENTS.md` | `apps/main/src/components/README.md` |
