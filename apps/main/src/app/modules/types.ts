@@ -1,4 +1,5 @@
-import type { ActionDefinition } from '@shared/types';
+import type { ActionDefinition, AppMapMetadata } from '@shared/types';
+export type { AppMapMetadata } from '@shared/types';
 import type { ComponentType, LazyExoticComponent } from 'react';
 
 import type { FeatureCapability } from '@lib/capabilities';
@@ -8,6 +9,7 @@ import {
   registerFeature,
   registerRoute,
 } from '@lib/capabilities';
+import type { DevToolCategory } from '@lib/dev/devtools/types';
 import { logEvent } from '@lib/utils';
 
 import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
@@ -180,6 +182,41 @@ export interface Module {
      * Uses canonical ActionDefinition from @pixsim7/types.
      */
     actions?: ActionDefinition[];
+
+    /**
+     * App Map metadata for dynamic tooling (App Map panel, exports).
+     * Keep paths workspace-relative (e.g., docs/..., features/...).
+     */
+    appMap?: AppMapMetadata;
+
+    /**
+     * Dev Tool configuration (optional).
+     * When defined, this module is auto-registered as a dev tool,
+     * accessible via the dev tools palette/panel system.
+     *
+     * The module's name, description, and icon are inherited automatically.
+     */
+    devTool?: {
+      /**
+       * Panel component for the dev tool.
+       * If omitted, the route component is used (wrapped appropriately).
+       */
+      panelComponent?: ComponentType<any>;
+      /**
+       * Dev tool category for grouping in the palette.
+       * Defaults to 'misc' if not specified.
+       */
+      category?: DevToolCategory;
+      /**
+       * Tags for filtering/search in the dev tools palette.
+       */
+      tags?: string[];
+      /**
+       * Whether this tool is safe for non-dev users.
+       * Defaults to false.
+       */
+      safeForNonDev?: boolean;
+    };
   };
 }
 
@@ -202,6 +239,7 @@ function registerModuleCapabilities(module: Module) {
         icon: page.icon,
         category,
         ...(module.priority !== undefined ? { priority: module.priority } : {}),
+        ...(page.appMap ? { metadata: { appMap: page.appMap } } : {}),
       };
 
       const existingFeature = getFeature(featureId);
@@ -211,6 +249,13 @@ function registerModuleCapabilities(module: Module) {
             ...derivedFeature,
           }
         : derivedFeature;
+
+      if (existingFeature?.metadata || derivedFeature.metadata) {
+        mergedFeature.metadata = {
+          ...(existingFeature?.metadata ?? {}),
+          ...(derivedFeature.metadata ?? {}),
+        };
+      }
 
       if (existingFeature?.priority !== undefined && derivedFeature.priority === undefined) {
         mergedFeature.priority = existingFeature.priority;
@@ -510,6 +555,16 @@ class ModuleRegistry {
     }
 
     return grouped;
+  }
+
+  /**
+   * Get all modules that have dev tool configurations.
+   * Used by registerDevTools to auto-register dev tools from modules.
+   */
+  getModulesWithDevTools() {
+    return Array.from(this.modules.values()).filter(
+      (module) => module.page?.devTool
+    );
   }
 }
 

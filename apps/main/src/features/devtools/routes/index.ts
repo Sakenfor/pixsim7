@@ -3,6 +3,9 @@ import { lazy } from 'react';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 
+import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
+import { TemplateAnalyticsPanel } from '@features/panels/components/dev/TemplateAnalyticsPanel';
+
 import type { Module } from '@app/modules/types';
 
 // === App Map Actions ===
@@ -52,6 +55,11 @@ export const appMapModule: Module = {
     hidden: true,
     component: lazy(() => import('../../../routes/AppMapDev').then(m => ({ default: m.AppMapDev }))),
     actions: [openAppMapAction],
+    devTool: {
+      panelComponent: AppMapPanel,
+      category: 'graph',
+      tags: ['architecture', 'map', 'visualization', 'structure'],
+    },
   },
 };
 
@@ -82,6 +90,11 @@ export const templateAnalyticsModule: Module = {
     featureId: 'template-analytics',
     hidden: true,
     component: lazy(() => import('../../../routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev }))),
+    devTool: {
+      panelComponent: TemplateAnalyticsPanel,
+      category: 'debug',
+      tags: ['templates', 'analytics', 'metrics', 'performance'],
+    },
   },
 };
 

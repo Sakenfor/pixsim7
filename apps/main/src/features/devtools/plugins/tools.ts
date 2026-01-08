@@ -10,16 +10,15 @@
 import type { DevToolDefinition } from '@lib/dev/devtools/types';
 
 // Import dev tool components
-import { SessionStateViewer } from '@features/panels/components/dev/SessionStateViewer';
-import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
+// Note: AppMapPanel and TemplateAnalyticsPanel are now auto-registered from their modules
 import { BackendArchitecturePanel } from '@features/panels/components/dev/BackendArchitecturePanel';
 import { CapabilityTestingPanel } from '@features/panels/components/dev/CapabilityTestingPanel';
 import { DependencyGraphPanel } from '@features/panels/components/dev/DependencyGraphPanel';
 import { GenerationHealthView } from '@features/panels/components/dev/GenerationHealthView';
-import { TemplateAnalyticsPanel } from '@features/panels/components/dev/TemplateAnalyticsPanel';
 import { GizmoSurfacesPanel } from '@features/panels/components/dev/GizmoSurfacesPanel';
-import { TypesExplorerPanel } from '@features/panels/components/dev/TypesExplorerPanel';
+import { SessionStateViewer } from '@features/panels/components/dev/SessionStateViewer';
 import { SqlQueryExplorerPanel } from '@features/panels/components/dev/SqlQueryExplorerPanel';
+import { TypesExplorerPanel } from '@features/panels/components/dev/TypesExplorerPanel';
 
 // ============================================================================
 // Session & World State Tools
@@ -73,15 +72,7 @@ export const capabilityTestingTool: DevToolDefinition = {
 // Architecture & Graph Tools
 // ============================================================================
 
-export const appMapTool: DevToolDefinition = {
-  id: 'app-map',
-  label: 'App Map',
-  description: 'Visual map of application structure and components',
-  icon: 'map',
-  category: 'graph',
-  panelComponent: AppMapPanel,
-  tags: ['architecture', 'map', 'visualization', 'structure'],
-};
+// appMapTool is now auto-registered from appMapModule (features/devtools/routes/index.ts)
 
 export const dependencyGraphTool: DevToolDefinition = {
   id: 'dependency-graph',
@@ -107,15 +98,7 @@ export const backendArchitectureTool: DevToolDefinition = {
 // Analytics & Metrics Tools
 // ============================================================================
 
-export const templateAnalyticsTool: DevToolDefinition = {
-  id: 'template-analytics',
-  label: 'Template Analytics',
-  description: 'Analyze template usage and performance metrics',
-  icon: 'barChart',
-  category: 'debug',
-  panelComponent: TemplateAnalyticsPanel,
-  tags: ['templates', 'analytics', 'metrics', 'performance'],
-};
+// templateAnalyticsTool is now auto-registered from templateAnalyticsModule (features/devtools/routes/index.ts)
 
 // ============================================================================
 // Gizmo & Surface Management
