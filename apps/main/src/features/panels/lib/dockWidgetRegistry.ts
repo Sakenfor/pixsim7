@@ -11,8 +11,8 @@ import {
   getDockZonePanelIds as libGetPanelIds,
   registerDockZone,
   registerDefaultDockZones,
-} from "@lib/dockview";
-import type { DockZoneDefinition } from "@lib/dockview";
+} from "@/lib/dockview/dockZoneRegistry";
+import type { DockZoneDefinition } from "@/lib/dockview/dockZoneRegistry";
 
 import { getPanelsForScope } from "./panelRegistry";
 
@@ -30,13 +30,13 @@ export {
   registerDefaultDockZones,
   areDefaultZonesRegistered,
   DEFAULT_DOCK_ZONES,
-} from "@lib/dockview";
+} from "@/lib/dockview/dockZoneRegistry";
 
-export type { DockZoneDefinition, PresetScope } from "@lib/dockview";
+export type { DockZoneDefinition, PresetScope } from "@/lib/dockview/dockZoneRegistry";
 export type DockWidgetDefinition = DockZoneDefinition;
 
 // @deprecated - Use dockZoneRegistry instead
-export { dockZoneRegistry as dockWidgetRegistry } from "@lib/dockview";
+export { dockZoneRegistry as dockWidgetRegistry } from "@/lib/dockview/dockZoneRegistry";
 export function registerDockWidget(definition: DockZoneDefinition): void {
   registerDockZone(definition);
 }

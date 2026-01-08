@@ -6,7 +6,8 @@
 
 import { useAssetSelectionStore } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationsStore, useGenerationSettingsStore } from '@features/generation';
+import { useGenerationSettingsStore } from '@features/generation/stores/generationSettingsStore';
+import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
 import { useToolConfigStore } from '@features/gizmos/stores/toolConfigStore';
 import { useSelectionStore, useGraphStore } from '@features/graph';
