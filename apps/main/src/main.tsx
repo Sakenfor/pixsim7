@@ -2,9 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './index.css'
+import { registerContextMenuActions } from '@lib/dockview'
+
 import { registerQuickGenerateComponentSettings } from '@features/controlCenter/lib/registerQuickGenerateComponentSettings'
 import { registerGenerationScopes } from '@features/generation'
 import { registerPreviewScopes } from '@features/preview'
+
+import { moduleRegistry } from '@app/modules'
 
 import App from './App.tsx'
 import { registerFrontendMiniGames } from './components/minigames/registry'
@@ -61,6 +65,10 @@ registerQuickGenerateComponentSettings()
 
 // Initialize console namespace (pixsim.*)
 initializeConsole()
+
+// Initialize modules and context menu actions outside React to avoid StrictMode re-runs
+moduleRegistry.initializeAll()
+registerContextMenuActions()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

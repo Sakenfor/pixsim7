@@ -22,6 +22,7 @@ import type {
   ActionDefinition,
 } from '@shared/types';
 import * as React from 'react';
+
 import { debugFlags } from '@lib/utils/debugFlags';
 import { logEvent } from '@lib/utils/logging';
 
@@ -133,6 +134,10 @@ export function registerFeature(feature: FeatureCapability): void {
   logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name });
 }
 
+export function getFeature(id: string): FeatureCapability | undefined {
+  return capabilityRegistry.getFeature(id);
+}
+
 export function unregisterFeature(id: string): void {
   capabilityRegistry.unregisterFeature(id);
 }
@@ -182,8 +187,10 @@ function useCapabilitySnapshot<T>(getSnapshot: () => T): T {
  * Hook to get all features
  */
 export function useFeatures() {
-  return useCapabilitySnapshot(() =>
-    capabilityRegistry.getAllFeatures().filter(f => !f.enabled || f.enabled())
+  const features = useCapabilitySnapshot(() => capabilityRegistry.getAllFeatures());
+  return React.useMemo(
+    () => features.filter((feature) => !feature.enabled || feature.enabled()),
+    [features]
   );
 }
 
@@ -198,8 +205,10 @@ export function useFeature(id: string) {
  * Hook to get features by category
  */
 export function useFeaturesByCategory(category: string) {
-  return useCapabilitySnapshot(() =>
-    capabilityRegistry.getFeaturesByCategory(category).filter(f => !f.enabled || f.enabled())
+  const features = useFeatures();
+  return React.useMemo(
+    () => features.filter((feature) => feature.category === category),
+    [features, category]
   );
 }
 
@@ -214,15 +223,21 @@ export function useRoutes() {
  * Hook to get routes for a specific feature
  */
 export function useFeatureRoutes(featureId: string) {
-  return useCapabilitySnapshot(() => capabilityRegistry.getRoutesForFeature(featureId));
+  const routes = useRoutes();
+  return React.useMemo(
+    () => routes.filter((route) => route.featureId === featureId),
+    [routes, featureId]
+  );
 }
 
 /**
  * Hook to get navigation routes (showInNav = true)
  */
 export function useNavRoutes() {
-  return useCapabilitySnapshot(() =>
-    capabilityRegistry.getAllRoutes().filter(r => r.showInNav)
+  const routes = useRoutes();
+  return React.useMemo(
+    () => routes.filter((route) => route.showInNav),
+    [routes]
   );
 }
 
@@ -230,9 +245,18 @@ export function useNavRoutes() {
  * Hook to get all actions
  */
 export function useActions() {
-  return useCapabilitySnapshot(() =>
-    capabilityRegistry.getAllActions().filter(a => !a.enabled || a.enabled())
+  const actions = useAllActions();
+  return React.useMemo(
+    () => actions.filter((action) => !action.enabled || action.enabled()),
+    [actions]
   );
+}
+
+/**
+ * Hook to get all actions without filtering
+ */
+export function useAllActions() {
+  return useCapabilitySnapshot(() => capabilityRegistry.getAllActions());
 }
 
 /**

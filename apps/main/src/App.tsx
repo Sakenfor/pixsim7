@@ -1,10 +1,10 @@
-import { useEffect, Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import { useAuthStore } from './stores/authStore';
 
 
-import { useToast } from '@pixsim7/shared.ui';
+import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
+import { useEffect, Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 
 // Register modules synchronously at module load time (before any component renders)
@@ -27,12 +27,10 @@ const PromptLabDev = lazy(() => import('./routes/PromptLabDev').then(m => ({ def
 const ActionBlockGraphDev = lazy(() => import('./routes/ActionBlockGraphDev').then(m => ({ default: m.ActionBlockGraphDev })));
 const BlockFitDev = lazy(() => import('./routes/BlockFitDev').then(m => ({ default: m.BlockFitDev })));
 const TemplateAnalyticsDev = lazy(() => import('./routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev })));
-import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
 
 import {
   ContextMenuProvider,
   ContextMenuPortal,
-  registerContextMenuActions,
 } from '@lib/dockview';
 import { PanelPropertiesPopup } from '@lib/dockview';
 
@@ -76,7 +74,6 @@ function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initializePlugins = usePluginCatalogStore((s) => s.initialize);
   const loadEnabledBundles = usePluginCatalogStore((s) => s.loadEnabledBundles);
-  const toast = useToast();
 
   // Initialize theme (applies saved theme or system preference)
   useTheme();
@@ -89,21 +86,9 @@ function App() {
   useInitializePanelSystem(true);
 
   useEffect(() => {
-    // Modules are already registered synchronously at module load time
-    // Now initialize them (async operations like fetching data, etc.)
-    moduleRegistry.initializeAll();
-
-    // Register context menu actions (feature-specific resolvers are registered by their modules)
-    registerContextMenuActions();
-
     // Initialize auth state
     initialize();
-
-    // Cleanup on unmount
-    return () => {
-      moduleRegistry.cleanupAll();
-    };
-  }, [initialize, toast]);
+  }, [initialize]);
 
   useEffect(() => {
     if (!isAuthenticated) {

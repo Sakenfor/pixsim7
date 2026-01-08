@@ -47,14 +47,53 @@ export function createAppCapabilityRegistry(
   });
   const listeners = new Set<() => void>();
 
+  let cachedFeatures: AppFeatureCapability[] = [];
+  let cachedRoutes: AppRouteCapability[] = [];
+  let cachedActions: AppActionCapability[] = [];
+  let cachedStates: AppStateCapability[] = [];
+
+  const updateFeatureCache = () => {
+    cachedFeatures = Array.from(featureRegistry.getAll().values())
+      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  };
+
+  const updateRouteCache = () => {
+    cachedRoutes = Array.from(routeRegistry.getAll().values());
+  };
+
+  const updateActionCache = () => {
+    cachedActions = Array.from(actionRegistry.getAll().values());
+  };
+
+  const updateStateCache = () => {
+    cachedStates = Array.from(stateRegistry.getAll().values());
+  };
+
   const notify = () => {
     listeners.forEach((listener) => listener());
   };
 
-  featureRegistry.subscribe(() => notify());
-  routeRegistry.subscribe(() => notify());
-  actionRegistry.subscribe(() => notify());
-  stateRegistry.subscribe(() => notify());
+  featureRegistry.subscribe(() => {
+    updateFeatureCache();
+    notify();
+  });
+  routeRegistry.subscribe(() => {
+    updateRouteCache();
+    notify();
+  });
+  actionRegistry.subscribe(() => {
+    updateActionCache();
+    notify();
+  });
+  stateRegistry.subscribe(() => {
+    updateStateCache();
+    notify();
+  });
+
+  updateFeatureCache();
+  updateRouteCache();
+  updateActionCache();
+  updateStateCache();
 
   return {
     registerFeature: (feature) => {
@@ -67,13 +106,10 @@ export function createAppCapabilityRegistry(
       return featureRegistry.get(id);
     },
     getAllFeatures: () => {
-      return Array.from(featureRegistry.getAll().values())
-        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      return cachedFeatures;
     },
     getFeaturesByCategory: (category) => {
-      return Array.from(featureRegistry.getAll().values()).filter(
-        (feature) => feature.category === category
-      );
+      return cachedFeatures.filter((feature) => feature.category === category);
     },
 
     registerRoute: (route) => {
@@ -86,12 +122,10 @@ export function createAppCapabilityRegistry(
       return routeRegistry.get(path);
     },
     getAllRoutes: () => {
-      return Array.from(routeRegistry.getAll().values());
+      return cachedRoutes;
     },
     getRoutesForFeature: (featureId) => {
-      return Array.from(routeRegistry.getAll().values()).filter(
-        (route) => route.featureId === featureId
-      );
+      return cachedRoutes.filter((route) => route.featureId === featureId);
     },
 
     registerAction: (action) => {
@@ -104,7 +138,7 @@ export function createAppCapabilityRegistry(
       return actionRegistry.get(id);
     },
     getAllActions: () => {
-      return Array.from(actionRegistry.getAll().values());
+      return cachedActions;
     },
     executeAction: async (id: string, ctx?: AppActionContext) => {
       const action = actionRegistry.get(id);
@@ -127,7 +161,7 @@ export function createAppCapabilityRegistry(
       return stateRegistry.get(id);
     },
     getAllStates: () => {
-      return Array.from(stateRegistry.getAll().values());
+      return cachedStates;
     },
 
     subscribe: (listener) => {

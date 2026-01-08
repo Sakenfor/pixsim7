@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   type ActionCapability,
   type StateCapability,
-  useActions,
+  useAllActions,
   useStates,
 } from "@lib/capabilities";
 
@@ -30,7 +30,7 @@ function getRootHub(state: ReturnType<typeof useContextHubState>) {
 
 export function ContextHubCapabilityBridge() {
   const hub = useContextHubState();
-  const actions = useActions();
+  const actions = useAllActions();
   const states = useStates();
 
   const actionRef = useRef<Map<string, ActionCapability>>(new Map());

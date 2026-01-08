@@ -6,11 +6,23 @@
 
 import { pluginManager } from './PluginManager';
 
+let bootstrapped = false;
+
 /**
  * Bootstrap plugins
  * This re-enables plugins that were enabled in the previous session
  */
-export async function bootstrapExamplePlugins(): Promise<void> {
+export async function bootstrapExamplePlugins(force = false): Promise<void> {
+  if (bootstrapped && !force) {
+    if (import.meta.env?.DEV) {
+      console.warn(
+        '[Plugins] bootstrapExamplePlugins called more than once',
+        new Error('Duplicate bootstrapExamplePlugins call').stack
+      );
+    }
+    return;
+  }
+  bootstrapped = true;
   try {
     console.info('Bootstrapping plugins...');
 

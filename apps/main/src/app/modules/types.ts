@@ -3,6 +3,7 @@ import type { ComponentType, LazyExoticComponent } from 'react';
 
 import type { FeatureCapability } from '@lib/capabilities';
 import {
+  getFeature,
   registerActionsFromDefinitions,
   registerFeature,
   registerRoute,
@@ -203,7 +204,7 @@ function registerModuleCapabilities(module: Module) {
         ...(module.priority !== undefined ? { priority: module.priority } : {}),
       };
 
-      const existingFeature = store.getFeature(featureId);
+      const existingFeature = getFeature(featureId);
       const mergedFeature = existingFeature
         ? {
             ...existingFeature,
@@ -260,6 +261,9 @@ function registerModuleCapabilities(module: Module) {
 class ModuleRegistry {
   private modules = new Map<string, Module>();
   private listeners: Array<() => void> = [];
+  private initialized = false;
+  private initializedModules = new Set<string>();
+  private capabilitiesRegistered = new Set<string>();
 
   /**
    * Subscribe to module registry changes
@@ -329,6 +333,17 @@ class ModuleRegistry {
   }
 
   async initializeAll() {
+    if (this.initialized) {
+      if (import.meta.env?.DEV) {
+        console.warn(
+          '[ModuleRegistry] initializeAll called more than once',
+          new Error('Duplicate initializeAll call').stack
+        );
+      }
+      return;
+    }
+    this.initialized = true;
+
     logEvent('INFO', 'modules_initializing', { count: this.modules.size });
 
     // Sort modules by priority (higher priority first) and handle dependencies
@@ -352,9 +367,16 @@ class ModuleRegistry {
       }
 
       if (module.initialize) {
+        if (this.initializedModules.has(module.id)) {
+          if (!initialized.has(module.id)) {
+            initialized.add(module.id);
+          }
+          continue;
+        }
         try {
           await module.initialize();
           initialized.add(module.id);
+          this.initializedModules.add(module.id);
           logEvent('INFO', 'module_initialized', {
             moduleId: module.id,
             moduleName: module.name,
@@ -373,8 +395,9 @@ class ModuleRegistry {
         initialized.add(module.id);
       }
 
-      if (initialized.has(module.id)) {
+      if (initialized.has(module.id) && !this.capabilitiesRegistered.has(module.id)) {
         registerModuleCapabilities(module);
+        this.capabilitiesRegistered.add(module.id);
       }
     }
 
@@ -442,6 +465,9 @@ class ModuleRegistry {
         }
       }
     }
+    this.initialized = false;
+    this.initializedModules.clear();
+    this.capabilitiesRegistered.clear();
   }
 
   list() {
