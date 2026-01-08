@@ -9,17 +9,16 @@
  * @see docs/INTIMACY_SCENE_COMPOSER.md - Phase 3
  */
 
-import React, { useState, useEffect } from 'react';
-import type { IntimacySceneConfig, GenerationSocialContext } from '@lib/registries';
+import React, { useState } from 'react';
+
+import type { IntimacySceneConfig } from '@lib/registries';
+
 import type { SimulatedRelationshipState } from '../lib/gateChecking';
 import type { IntimacyPreviewResult } from '../lib/generationPreview';
-import {
-  generateIntimacyPreview,
-  startIntimacyPreview,
-  getPreviewStatus,
-} from '../lib/generationPreview';
+import { startIntimacyPreview, getPreviewStatus } from '../lib/generationPreview';
 import { deriveSocialContext } from '../lib/socialContextDerivation';
-import { SocialContextPanel } from '../generation/SocialContextPanel';
+
+import { SocialContextPanel } from './SocialContextPanel';
 
 interface GenerationPreviewPanelProps {
   /** Scene configuration */

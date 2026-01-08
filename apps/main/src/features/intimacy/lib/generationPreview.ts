@@ -11,6 +11,7 @@
 
 import { normalizeProviderParams } from '@pixsim7/shared.generation-core';
 
+import { createGeneration, getGeneration } from '@lib/api/generations';
 import type {
   IntimacySceneConfig,
   GenerationSocialContext,
@@ -19,7 +20,6 @@ import type {
 
 import { fromGenerationResponse, type GenerationModel } from '@features/generation';
 
-import { createGeneration, getGeneration } from '../api/generations';
 
 import type { SimulatedRelationshipState } from './gateChecking';
 import { deriveSocialContext } from './socialContextDerivation';

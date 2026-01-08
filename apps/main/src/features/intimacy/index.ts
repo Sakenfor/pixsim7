@@ -26,8 +26,8 @@ export { PlaytestingPanel } from './components/PlaytestingPanel';
 export { ProgressionArcEditor } from './components/ProgressionArcEditor';
 export { RelationshipGateVisualizer } from './components/RelationshipGateVisualizer';
 export { RelationshipStateEditor } from './components/RelationshipStateEditor';
-export { SaveLoadControls } from './components/SaveLoadControls';
-export { TemplateBrowser } from './components/TemplateBrowser';
+export { SceneSaveLoadControls, ArcSaveLoadControls, StateSaveLoadControls } from './components/SaveLoadControls';
+export { SceneTemplateBrowser, ArcTemplateBrowser } from './components/TemplateBrowser';
 export { SocialContextPanel, SocialContextBadge } from './components/SocialContextPanel';
 
 // ============================================================================
@@ -56,23 +56,22 @@ export {
 } from '@pixsim7/shared.types';
 
 export {
-  checkRelationshipGate,
+  checkGate,
   checkAllGates,
-  getGateStatus,
   type GateCheckResult,
   type GateStatus,
 } from './lib/gateChecking';
 
 export {
-  validateTemplate,
-  validateAllTemplates,
+  validateSceneTemplate,
+  validateArcTemplate,
   type ValidationResult,
   type ValidationError,
 } from './lib/templateValidation';
 
 export {
-  validateSceneConfig,
-  validateProgression,
+  validateIntimacyScene,
+  validateProgressionArc,
   type SceneValidationResult,
 } from './lib/validation';
 
@@ -81,20 +80,35 @@ export {
 // ============================================================================
 
 export {
-  getTemplateById,
-  getTemplatesByCategory,
-  getAllTemplates,
-  BUILTIN_TEMPLATES,
-  type IntimacyTemplate,
-  type TemplateCategory,
+  getSceneTemplate,
+  getArcTemplate,
+  getSceneTemplates,
+  getArcTemplates,
+  getAllSceneTemplates,
+  getAllArcTemplates,
+  SCENE_TEMPLATES,
+  ARC_TEMPLATES,
+  type SceneTemplate,
+  type ArcTemplate,
 } from './lib/templates';
 
 export {
-  runPlaytest,
-  generatePlaytestReport,
+  PLAYTEST_PRESETS,
+  getPlaytestPreset,
+  getPlaytestPresetList,
+  startPlaytestSession,
+  advanceStage,
+  adjustState,
+  resetPlaytest,
+  autoPlay,
+  analyzePlaytest,
+  exportPlaytestSession,
+  importPlaytestSession,
   type PlaytestConfig,
-  type PlaytestResult,
-  type PlaytestReport,
+  type PlaytestPresetKey,
+  type PlaytestSession,
+  type PlaytestStep,
+  type PlaytestAnalysis,
 } from './lib/playtesting';
 
 // ============================================================================
@@ -102,22 +116,42 @@ export {
 // ============================================================================
 
 export {
-  trackIntimacyEvent,
-  getIntimacyAnalytics,
-  type IntimacyEvent,
-  type IntimacyAnalytics,
+  getSceneEvents,
+  getArcEvents,
+  logSceneEvent,
+  logArcEvent,
+  clearAnalytics,
+  getSceneAnalyticsSummary,
+  getArcAnalyticsSummary,
+  getGateAnalytics,
+  exportAnalytics,
+  importAnalytics,
+  type SceneAnalyticsEvent,
+  type ArcAnalyticsEvent,
+  type GateAnalytics,
+  type SceneAnalyticsSummary,
+  type ArcAnalyticsSummary,
 } from './lib/analytics';
 
 export {
-  exportAnalytics,
-  type AnalyticsExportFormat,
+  exportSceneAnalyticsToCSV,
+  exportArcAnalyticsToCSV,
+  exportSceneEventsToCSV,
+  exportArcEventsToCSV,
+  downloadCSV,
+  downloadSceneAnalyticsCSV,
+  downloadArcAnalyticsCSV,
+  downloadSceneEventsCSV,
+  downloadArcEventsCSV,
 } from './lib/analyticsExport';
 
 export {
-  previewGeneration,
-  getPreviewSuggestions,
-  type GenerationPreviewConfig,
-  type GenerationPreviewResult,
+  generateIntimacyPreview,
+  startIntimacyPreview,
+  getPreviewStatus,
+  type IntimacyPreviewRequest,
+  type IntimacyPreviewResult,
+  type PreviewPollingOptions,
 } from './lib/generationPreview';
 
 // ============================================================================
@@ -125,16 +159,34 @@ export {
 // ============================================================================
 
 export {
-  saveIntimacyState,
-  loadIntimacyState,
-  exportIntimacyData,
-  importIntimacyData,
-  type IntimacyStateSnapshot,
+  exportScenesToJSON,
+  importScenesFromJSON,
+  downloadScenesAsFile,
+  uploadScenesFromFile,
+  exportArcsToJSON,
+  importArcsFromJSON,
+  downloadArcsAsFile,
+  uploadArcsFromFile,
+  saveSceneToLocalStorage,
+  loadSceneFromLocalStorage,
+  listSavedScenes,
+  deleteSceneFromLocalStorage,
+  saveArcToLocalStorage,
+  loadArcFromLocalStorage,
+  listSavedArcs,
+  deleteArcFromLocalStorage,
+  saveSimulatedState,
+  loadSimulatedState,
+  listSavedStates,
+  deleteSimulatedState,
+  clearSavedData,
+  type IntimacySceneExport,
+  type ProgressionArcExport,
+  type SimulatedStateSave,
 } from './lib/saveLoad';
 
 export {
   deriveSocialContext,
-  getSocialContextFactors,
-  type SocialContext,
-  type SocialContextFactors,
+  getEffectiveContentRating,
+  supportsContentRating as supportsSocialContentRating,
 } from './lib/socialContextDerivation';

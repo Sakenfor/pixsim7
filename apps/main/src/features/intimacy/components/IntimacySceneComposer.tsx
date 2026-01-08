@@ -9,26 +9,32 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md
  */
 
+import { GenerationSettingsBar } from '@lib/generation-ui';
 import React, { useState } from 'react';
+
 import type {
   IntimacySceneConfig,
   IntimacySceneType,
   IntimacyIntensity,
   RelationshipGate,
 } from '@lib/registries';
-import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';
-import { validateIntimacyScene } from '../lib/validation';
-import { SocialContextPanel } from '../generation/SocialContextPanel';
-import { RelationshipStateEditor } from './RelationshipStateEditor';
-import { GatePreviewPanel } from './GatePreviewPanel';
-import { GenerationPreviewPanel } from './GenerationPreviewPanel';
-import { SceneSaveLoadControls, StateSaveLoadControls } from './SaveLoadControls';
-import { SceneTemplateBrowser } from './TemplateBrowser';
+
+import { useGenerationWorkbench } from '@features/generation';
+
 import { createDefaultState, type SimulatedRelationshipState } from '../lib/gateChecking';
 import { saveSceneAsTemplate, type SceneTemplate } from '../lib/templates';
 import { validateSceneForTemplate } from '../lib/templateValidation';
-import { useGenerationWorkbench } from '@features/generation';
-import { GenerationSettingsBar } from '../control/GenerationSettingsBar';
+import { validateIntimacyScene } from '../lib/validation';
+
+import { GatePreviewPanel } from './GatePreviewPanel';
+import { GenerationPreviewPanel } from './GenerationPreviewPanel';
+import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';
+import { RelationshipStateEditor } from './RelationshipStateEditor';
+import { SceneSaveLoadControls, StateSaveLoadControls } from './SaveLoadControls';
+import { SocialContextPanel } from './SocialContextPanel';
+import { SceneTemplateBrowser } from './TemplateBrowser';
+
+
 
 interface IntimacySceneComposerProps {
   /** Current scene configuration */
@@ -733,7 +739,7 @@ function SaveSceneTemplateModal({ scene, onClose }: SaveSceneTemplateModalProps)
   const [category, setCategory] = useState<SceneTemplate['category']>('custom');
   const [difficulty, setDifficulty] = useState<SceneTemplate['difficulty']>('medium');
   const [tags, setTags] = useState<string>('');
-  const [validationResult, setValidationResult] = useState(validateSceneForTemplate(scene));
+  const validationResult = useMemo(() => validateSceneForTemplate(scene), [scene]);
 
   const handleSave = () => {
     if (!name.trim()) {
