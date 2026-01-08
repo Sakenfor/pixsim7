@@ -10,27 +10,32 @@
  * 3. Gradually migrate to metadata-driven patterns
  */
 
+
+// Import existing registries
+import { generationUIPluginRegistry } from '@features/providers';
+import type { GenerationUIPlugin } from '@features/providers/lib/core/generationPlugins';
+import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
+
+import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
+import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
+
+import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
+import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
+import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
+import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
+import type { GalleryToolPlugin } from '../gallery/types';
+
+import { panelRegistry, dockWidgetRegistry, type PanelDefinition, type DockWidgetDefinition } from '@features/panels';
+
+import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
+
+import { pluginCatalog } from './pluginSystem';
 import type {
   PluginMetadata,
   ExtendedPluginMetadata,
   PluginOrigin,
   ActivationState,
 } from './pluginSystem';
-import { pluginCatalog } from './pluginSystem';
-
-// Import existing registries
-import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
-import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
-import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
-import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
-import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
-import type { GalleryToolPlugin } from '../gallery/types';
-import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
-import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
-import { generationUIPluginRegistry } from '@features/providers';
-import type { GenerationUIPlugin } from '@features/providers/lib/core/generationPlugins';
-import { panelRegistry, dockWidgetRegistry, type PanelDefinition, type DockWidgetDefinition } from '@features/panels';
-import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 
 // ============================================================================
 // Registry Bridge Base
@@ -696,10 +701,6 @@ export function unregisterPanelWithPlugin(id: string): boolean {
 export function registerBuiltinPanel(panel: PanelDefinition): void {
   // Skip if already registered (prevents duplicate warnings)
   if (panelRegistry.has(panel.id as any)) {
-    return;
-  }
-  if (panel.isInternal) {
-    panelRegistry.register(panel);
     return;
   }
   registerPanelWithPlugin(panel, { origin: 'builtin', canDisable: false });
