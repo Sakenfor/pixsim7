@@ -39,9 +39,6 @@ logEvent('INFO', 'frontend_app_started')
 registerBuiltInMiniGames()
 registerFrontendMiniGames()
 
-// Register dev tools
-registerDevTools()
-
 // Register gallery surfaces and tools
 registerGallerySurfaces()
 registerGalleryTools()
@@ -69,6 +66,10 @@ initializeConsole()
 // Register and initialize modules outside React to avoid StrictMode re-runs
 registerModules()
 moduleRegistry.initializeAll()
+
+// Register dev tools (after modules, since it scans for page.devTool configs)
+registerDevTools()
+
 registerContextMenuActions()
 
 createRoot(document.getElementById('root')!).render(
