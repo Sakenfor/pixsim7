@@ -27,6 +27,13 @@ import {
   overlayConfigModule,
   assetDetailModule,
   generationPageModule,
+  templateAnalyticsModule,
+  promptInspectorModule,
+  promptImporterModule,
+  promptLabModule,
+  actionBlockGraphModule,
+  blockFitModule,
+  widgetBuilderModule,
 } from './pages';
 import { moduleRegistry } from './types';
 
@@ -62,6 +69,13 @@ export function registerModules() {
   moduleRegistry.register(pluginWorkspaceModule);
   moduleRegistry.register(modulesDevModule);
   moduleRegistry.register(overlayConfigModule);
+  moduleRegistry.register(templateAnalyticsModule);
+  moduleRegistry.register(promptInspectorModule);
+  moduleRegistry.register(promptImporterModule);
+  moduleRegistry.register(promptLabModule);
+  moduleRegistry.register(actionBlockGraphModule);
+  moduleRegistry.register(blockFitModule);
+  moduleRegistry.register(widgetBuilderModule);
 }
 
 // Export registry for easy access

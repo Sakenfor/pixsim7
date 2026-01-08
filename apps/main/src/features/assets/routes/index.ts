@@ -1,3 +1,5 @@
+import { lazy } from 'react';
+
 import type { Module } from '@app/modules/types';
 
 export const assetDetailModule: Module = {
@@ -13,5 +15,6 @@ export const assetDetailModule: Module = {
     hidden: true,
     protected: true,
     showInNav: false,
+    component: lazy(() => import('../../../routes/AssetDetail').then(m => ({ default: m.AssetDetailRoute }))),
   },
 };

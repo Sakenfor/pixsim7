@@ -1,4 +1,15 @@
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
+
 import type { Module } from '@app/modules/types';
+
+// Redirect component for /settings/overlays -> /dev/widget-builder?surface=overlay
+function OverlayConfigRedirect() {
+  return createElement(Navigate, {
+    to: '/dev/widget-builder?surface=overlay',
+    replace: true,
+  });
+}
 
 export const overlayConfigModule: Module = {
   id: 'overlay-config',
@@ -11,5 +22,6 @@ export const overlayConfigModule: Module = {
     category: 'management',
     featureId: 'overlay-config',
     featured: true,
+    component: OverlayConfigRedirect,
   },
 };

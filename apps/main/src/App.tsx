@@ -3,7 +3,7 @@ import { useAuthStore } from './stores/authStore';
 
 
 import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
-import { useEffect, Suspense, lazy } from 'react';
+import { useEffect, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 
@@ -17,16 +17,6 @@ function ensureModulesRegistered() {
   }
 }
 ensureModulesRegistered();
-// Static routes that need special handling (params, redirects, etc.)
-const AssetDetailRoute = lazy(() => import('./routes/AssetDetail').then(m => ({ default: m.AssetDetailRoute })));
-const PluginManagerUI = lazy(() => import('./components/PluginManager').then(m => ({ default: m.PluginManagerUI })));
-const WidgetBuilderRoute = lazy(() => import('./routes/WidgetBuilderRoute').then(m => ({ default: m.WidgetBuilderRoute })));
-const PromptInspectorDev = lazy(() => import('./routes/PromptInspectorDev').then(m => ({ default: m.PromptInspectorDev })));
-const DevPromptImporter = lazy(() => import('./routes/DevPromptImporter').then(m => ({ default: m.DevPromptImporter })));
-const PromptLabDev = lazy(() => import('./routes/PromptLabDev').then(m => ({ default: m.PromptLabDev })));
-const ActionBlockGraphDev = lazy(() => import('./routes/ActionBlockGraphDev').then(m => ({ default: m.ActionBlockGraphDev })));
-const BlockFitDev = lazy(() => import('./routes/BlockFitDev').then(m => ({ default: m.BlockFitDev })));
-const TemplateAnalyticsDev = lazy(() => import('./routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev })));
 
 import {
   ContextMenuProvider,
@@ -133,18 +123,6 @@ function App() {
                     />
                   );
                 })}
-
-                {/* Static routes with special handling (params, redirects, etc.) */}
-                <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
-                <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
-                <Route path="/settings/overlays" element={<Navigate to="/dev/widget-builder?surface=overlay" replace />} />
-                <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
-                <Route path="/dev/prompt-inspector" element={<ProtectedRoute><PromptInspectorDev /></ProtectedRoute>} />
-                <Route path="/dev/prompt-importer" element={<ProtectedRoute><DevPromptImporter /></ProtectedRoute>} />
-                <Route path="/dev/prompt-lab" element={<ProtectedRoute><PromptLabDev /></ProtectedRoute>} />
-                <Route path="/dev/action-block-graph" element={<ProtectedRoute><ActionBlockGraphDev /></ProtectedRoute>} />
-                <Route path="/dev/block-fit" element={<ProtectedRoute><BlockFitDev /></ProtectedRoute>} />
-                <Route path="/dev/widget-builder" element={<ProtectedRoute><WidgetBuilderRoute /></ProtectedRoute>} />
 
                 {/* Catch-all redirect */}
                 <Route path="*" element={<Navigate to="/" replace />} />

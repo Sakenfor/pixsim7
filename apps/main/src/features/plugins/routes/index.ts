@@ -35,6 +35,7 @@ export const pluginManagerModule: Module = {
     protected: true,
     showInNav: true,
     actions: [openPluginManagerAction],
+    component: lazy(() => import('../../../components/PluginManager').then(m => ({ default: m.PluginManagerUI }))),
   },
 };
 
