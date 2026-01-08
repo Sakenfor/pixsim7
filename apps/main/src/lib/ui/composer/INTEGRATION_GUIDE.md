@@ -5,7 +5,7 @@ This guide explains how **Task 50.4 (Panel Builder/Composer)** integrates with *
 ## Overview
 
 The integration connects two systems:
-- **Panel Composer** (`lib/widgets/`) - Create custom panels from widgets
+- **Panel Composer** (`lib/ui/composer/`) - Create custom panels from widgets
 - **Data Binding System** (`lib/dataBinding/`) - Connect widgets to live data sources
 
 ## Architecture
@@ -39,10 +39,10 @@ The integration connects two systems:
 
 ### Panel Composer (Task 50.4)
 - `lib/widgets/widgetRegistry.ts` - Widget definitions registry
-- `lib/widgets/panelComposer.ts` - Panel composition logic (updated to use Task 51 types)
-- `lib/widgets/ComposedPanel.tsx` - Renders compositions with live data
-- `lib/widgets/examples/MetricWidget.tsx` - Example widget
-- `lib/widgets/examples/ComposedPanelExample.tsx` - Complete example
+- `lib/ui/composer/panelComposer.ts` - Panel composition logic (updated to use Task 51 types)
+- `lib/ui/composer/ComposedPanel.tsx` - Renders compositions with live data
+- `components/widgets/MetricWidget.tsx` - Example widget
+- `lib/ui/composer/demoCompositions.ts` - Demo compositions
 
 ### Data Binding (Task 51)
 - `lib/dataBinding/index.ts` - Public API
@@ -122,20 +122,19 @@ function MetricWidget({ config, value }: MetricWidgetProps) {
 
 ```typescript
 import { initializeCoreDataSources } from './lib/dataBinding';
-import { widgetRegistry } from './lib/widgets/widgetRegistry';
-import { metricWidgetDefinition } from './lib/widgets/examples/MetricWidget';
+import { widgetRegistry, metricBlockWidget } from '@lib/widgets';
 
 // Initialize data sources (once at app startup)
 initializeCoreDataSources();
 
 // Register widgets
-widgetRegistry.register(metricWidgetDefinition);
+widgetRegistry.register(metricBlockWidget);
 ```
 
 ### 2. Create a Composition
 
 ```typescript
-import { createComposition, addWidget } from './lib/widgets/panelComposer';
+import { createComposition, addWidget } from '@lib/ui/composer';
 import { createStoreSource, createBinding } from './lib/dataBinding';
 
 // Create composition
@@ -168,7 +167,7 @@ composition.widgets[0].dataBindings = {
 ### 3. Render the Composition
 
 ```typescript
-import { ComposedPanel } from './lib/widgets/ComposedPanel';
+import { ComposedPanel } from '@lib/ui/composer';
 
 function MyDashboard() {
   return <ComposedPanel composition={composition} />;
@@ -220,7 +219,7 @@ See `lib/dataBinding/coreDataSources.ts` for the full list.
 ### 1. Define the Widget Component
 
 ```typescript
-import type { WidgetProps, WidgetDefinition } from './lib/widgets/widgetRegistry';
+import type { WidgetProps, WidgetDefinition } from '@lib/widgets';
 
 interface MyWidgetConfig {
   title?: string;
@@ -276,7 +275,7 @@ export const myWidgetDefinition: WidgetDefinition = {
 ### 3. Register the Widget
 
 ```typescript
-import { widgetRegistry } from './lib/widgets/widgetRegistry';
+import { widgetRegistry } from '@lib/widgets';
 
 widgetRegistry.register(myWidgetDefinition);
 ```
@@ -477,4 +476,4 @@ const videoGalleryWidget = addWidget(
 - [Task 50.4 Spec](../../../claude-tasks/50-workspace-panel-system-enhancement.md)
 - [Task 51 Spec](../../../claude-tasks/51-builder-data-sources.md)
 - [Data Binding Guide](../dataBinding/DATA_BINDING_GUIDE.md)
-- [Example Implementation](./examples/ComposedPanelExample.tsx)
+- [Example Implementation](./demoCompositions.ts)

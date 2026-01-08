@@ -11,16 +11,15 @@
  */
 
 import React from 'react';
-import { widgetRegistry } from '../widgetRegistry';
-import { createComposition, addWidget } from '../panelComposer';
-import { ComposedPanel } from '../ComposedPanel';
+import { widgetRegistry } from '@lib/widgets';
+import { createComposition, addWidget, ComposedPanel } from '@lib/ui/composer';
 import {
   initializeCoreDataSources,
   createStoreSource,
   createBinding,
-} from '../../dataBinding';
+} from '@lib/dataBinding';
 import { metricWidgetDefinition } from './MetricWidget';
-import type { PanelComposition } from '../panelComposer';
+import type { PanelComposition } from '@lib/ui/composer';
 
 /**
  * Initialize the example

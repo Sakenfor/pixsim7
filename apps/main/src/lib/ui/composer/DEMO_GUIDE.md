@@ -83,8 +83,7 @@ The demo compositions demonstrate three key capabilities:
 ### Programmatically
 
 ```typescript
-import { getDemoComposition } from '@/lib/widgets/demoCompositions';
-import { ComposedPanel } from '@/components/panels/ComposedPanel';
+import { getDemoComposition, ComposedPanel } from '@lib/ui/composer';
 
 function MyComponent() {
   const composition = getDemoComposition('demo-workspace-status');
@@ -249,7 +248,7 @@ Common transforms you can use:
 Example:
 
 ```typescript
-import { createComposition, addWidget } from '@/lib/widgets/panelComposer';
+import { createComposition, addWidget } from '@lib/ui/composer';
 import { createBinding } from '@/lib/dataBinding';
 
 // Create base composition

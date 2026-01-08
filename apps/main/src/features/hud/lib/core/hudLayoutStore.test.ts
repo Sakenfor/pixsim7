@@ -4,9 +4,11 @@
  * Verification tests for Phase 58.1
  */
 
+import { createComposition } from '@pixsim7/core.composer';
+
 import { useHudLayoutStore } from '@features/hud';
+
 import type { HudRegionLayout } from './types';
-import { createComposition } from '../widgets/panelComposer';
 
 /**
  * Manual test suite for HUD Layout Store

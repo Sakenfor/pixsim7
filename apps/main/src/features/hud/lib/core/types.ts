@@ -7,7 +7,7 @@
  * HUDs are built using the same widget system as custom panels (Task 50).
  */
 
-import type { PanelComposition } from '../widgets/panelComposer';
+import type { PanelComposition } from '@pixsim7/core.composer';
 
 /**
  * HUD region identifiers

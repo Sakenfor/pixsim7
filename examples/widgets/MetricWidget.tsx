@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import type { WidgetProps, WidgetDefinition } from '../widgetRegistry';
+import type { WidgetProps, WidgetDefinition } from '@lib/widgets';
 
 interface MetricWidgetConfig {
   label?: string;
