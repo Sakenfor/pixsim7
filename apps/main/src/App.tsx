@@ -1,22 +1,8 @@
 
-import { useAuthStore } from './stores/authStore';
-
-
 import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
 import { useEffect, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-
-// Register modules synchronously at module load time (before any component renders)
-// This ensures routes are available on first render
-let modulesRegistered = false;
-function ensureModulesRegistered() {
-  if (!modulesRegistered) {
-    registerModules();
-    modulesRegistered = true;
-  }
-}
-ensureModulesRegistered();
 
 import {
   ContextMenuProvider,
@@ -33,17 +19,18 @@ import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
 
-import { registerModules, moduleRegistry } from '@app/modules';
 
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
 import { PluginOverlays } from './components/PluginOverlays';
 import { useActionShortcuts } from './hooks/useActionShortcuts';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
+import { useModuleRoutes } from './hooks/useModuleRoutes';
 import { Home } from './routes/Home';
 import { Login } from './routes/Login';
 import { ProtectedRoute } from './routes/ProtectedRoute';
 import { Register } from './routes/Register';
+import { useAuthStore } from './stores/authStore';
 
 /** Loading fallback for lazy-loaded routes */
 function RouteLoadingFallback() {
@@ -54,16 +41,15 @@ function RouteLoadingFallback() {
   );
 }
 
-// Get dynamic routes once at module load time (stable reference)
-const dynamicRoutes = moduleRegistry
-  .getPages({ includeHidden: true })
-  .filter(page => page.component);
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initializePlugins = usePluginCatalogStore((s) => s.initialize);
   const loadEnabledBundles = usePluginCatalogStore((s) => s.loadEnabledBundles);
+
+  // Get dynamic routes reactively from module registry
+  const dynamicRoutes = useModuleRoutes({ includeHidden: true });
 
   // Initialize theme (applies saved theme or system preference)
   useTheme();

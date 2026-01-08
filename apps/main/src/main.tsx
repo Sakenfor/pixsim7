@@ -8,7 +8,7 @@ import { registerQuickGenerateComponentSettings } from '@features/controlCenter/
 import { registerGenerationScopes } from '@features/generation'
 import { registerPreviewScopes } from '@features/preview'
 
-import { moduleRegistry } from '@app/modules'
+import { registerModules, moduleRegistry } from '@app/modules'
 
 import App from './App.tsx'
 import { registerFrontendMiniGames } from './components/minigames/registry'
@@ -66,7 +66,8 @@ registerQuickGenerateComponentSettings()
 // Initialize console namespace (pixsim.*)
 initializeConsole()
 
-// Initialize modules and context menu actions outside React to avoid StrictMode re-runs
+// Register and initialize modules outside React to avoid StrictMode re-runs
+registerModules()
 moduleRegistry.initializeAll()
 registerContextMenuActions()
 
