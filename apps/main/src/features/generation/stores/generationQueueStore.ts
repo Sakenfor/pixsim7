@@ -24,7 +24,9 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+
 import type { AssetModel } from '@features/assets';
+
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +72,16 @@ export interface GenerationQueueState {
    * This is the preferred method for all asset queuing operations.
    */
   enqueueAsset: (options: EnqueueOptions) => void;
+
+  /**
+   * Enqueue multiple assets with consistent routing and input mode handling.
+   */
+  enqueueAssets: (options: {
+    assets: AssetModel[];
+    operationType: OperationType;
+    forceMulti?: boolean;
+    setInputMode?: boolean;
+  }) => void;
 
   /**
    * Get the effective input mode for an operation, considering metadata and user preferences.
@@ -387,6 +399,27 @@ export function createGenerationQueueStore(storageKey: string): GenerationQueueS
             } else {
               addToQueueHelper(queueType, asset, operationType);
             }
+          },
+
+          enqueueAssets: ({ assets, operationType, forceMulti, setInputMode = true }) => {
+            if (!assets || assets.length === 0) {
+              return;
+            }
+
+            const shouldForceMulti = forceMulti ?? assets.length > 1;
+            if (shouldForceMulti && setInputMode) {
+              const metadata = OPERATION_METADATA[operationType];
+              if (metadata?.multiAssetMode === 'optional') {
+                const currentPref = get().operationInputModePrefs[operationType];
+                if (currentPref !== 'multi') {
+                  get().setOperationInputMode(operationType, 'multi');
+                }
+              }
+            }
+
+            assets.forEach((asset) => {
+              get().enqueueAsset({ asset, operationType, forceMulti: shouldForceMulti });
+            });
           },
 
           getInputModeForOperation: getInputModeForOperationImpl,

@@ -19,15 +19,18 @@ import { toViewerAsset, toSelectedAsset } from '@features/assets';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
-import type { GenerationContextSummary, AssetSelection } from '@features/contextHub';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
+import {
+  CAP_GENERATION_WIDGET,
+  type GenerationWidgetContext,
+  type AssetSelection,
+  type GenerationContextSummary,
+} from '@features/contextHub';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 
-import { getCapability } from '../capabilityHelpers';
-import type { MenuAction } from '../types';
+import { getAllProviders, getCapability, resolveProvider } from '../capabilityHelpers';
+import type { MenuAction, MenuActionContext } from '../types';
 
 type AssetActionInput = {
   id: number;
@@ -132,6 +135,108 @@ function resolveOperationType(
   return fallback;
 }
 
+function resolveGenerationWidget(ctx: MenuActionContext): GenerationWidgetContext | null {
+  const provider = resolveProvider<GenerationWidgetContext>(ctx, CAP_GENERATION_WIDGET);
+  return provider ? provider.getValue() : null;
+}
+
+function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
+  const assets = resolveAssets(ctx);
+  if (!assets.length) {
+    return [
+      {
+        id: 'asset:send-to-generator:none',
+        label: 'No assets available',
+        availableIn: ['asset', 'asset-card'],
+        disabled: () => true,
+        execute: () => {},
+      },
+    ];
+  }
+
+  const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
+  const fallbackOperationType = resolveOperationType(generationContext?.mode, 'image_to_video');
+
+  const providers = getAllProviders<GenerationWidgetContext>(ctx, CAP_GENERATION_WIDGET)
+    .filter((entry) => entry.provider.exposeToContextMenu !== false);
+  const activeProvider = resolveProvider<GenerationWidgetContext>(ctx, CAP_GENERATION_WIDGET);
+
+  const actions: MenuAction[] = [
+    {
+      id: 'asset:send-to-generator:auto',
+      label: 'Auto (nearest)',
+      availableIn: ['asset', 'asset-card'],
+      divider: providers.length > 0,
+      disabled: () => (!activeProvider ? 'No generators available' : false),
+      execute: () => {
+        if (!activeProvider) return;
+        const widget = activeProvider.getValue();
+        if (!widget) return;
+        const operationType = resolveOperationType(widget.operationType, fallbackOperationType);
+        enqueueAssetsToWidget(widget, assets, operationType);
+      },
+    },
+  ];
+
+  if (providers.length === 0) {
+    actions.push({
+      id: 'asset:send-to-generator:empty',
+      label: 'No generators available',
+      availableIn: ['asset', 'asset-card'],
+      disabled: () => true,
+      execute: () => {},
+    });
+    return actions;
+  }
+
+  providers.forEach((entry, index) => {
+    const provider = entry.provider;
+    const baseLabel = provider.label || `Generator ${index + 1}`;
+    const label =
+      provider === activeProvider
+        ? `${entry.scope} - ${baseLabel} (active)`
+        : `${entry.scope} - ${baseLabel}`;
+
+    actions.push({
+      id: `asset:send-to-generator:${provider.id ?? index}`,
+      label,
+      availableIn: ['asset', 'asset-card'],
+      disabled: () => (entry.available ? false : 'Unavailable'),
+      execute: () => {
+        if (!entry.available) return;
+        const widget = provider.getValue();
+        if (!widget) return;
+        const operationType = resolveOperationType(widget.operationType, fallbackOperationType);
+        enqueueAssetsToWidget(widget, assets, operationType);
+      },
+    });
+  });
+
+  return actions;
+}
+
+function enqueueAssetsToWidget(
+  widget: GenerationWidgetContext,
+  assets: AssetModel[],
+  operationType: OperationType,
+) {
+  const forceMulti = assets.length > 1;
+  if (widget.setOperationType && widget.operationType !== operationType) {
+    widget.setOperationType(operationType);
+  }
+  if (widget.enqueueAssets) {
+    widget.enqueueAssets({ assets, operationType, forceMulti });
+  } else {
+    if (forceMulti) {
+      widget.setOperationInputMode(operationType, 'multi');
+    }
+    assets.forEach((asset) => {
+      widget.enqueueAsset({ asset, operationType, forceMulti });
+    });
+  }
+  widget.setOpen(true);
+}
+
 const openAssetInViewerAction: MenuAction = {
   id: 'asset:open-viewer',
   label: 'Open in Viewer',
@@ -148,47 +253,15 @@ const openAssetInViewerAction: MenuAction = {
   },
 };
 
-const sendToActiveGeneratorAction: MenuAction = {
-  id: 'asset:send-to-generator',
-  label: 'Send to Active Generator',
+const sendToGeneratorAction: MenuAction = {
+  id: 'asset:send-to-generator-list',
+  label: 'Send to Generator',
   icon: 'sparkles',
   category: 'generation',
   availableIn: ['asset', 'asset-card'],
   visible: (ctx) => resolveAssets(ctx).length > 0,
-  execute: (ctx) => {
-    const assets = resolveAssets(ctx);
-    if (!assets.length) return;
-
-    const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
-
-    if (generationContext?.id === 'assetViewer') {
-      const viewerAsset = toViewerAsset(assets[0]);
-      useAssetViewerStore.getState().openViewer(viewerAsset, [viewerAsset]);
-      return;
-    }
-
-    const queueStore = useGenerationQueueStore.getState();
-    const controlCenterStore = useControlCenterStore.getState();
-    const selectionStore = useAssetSelectionStore.getState();
-    const operationType = resolveOperationType(
-      generationContext?.mode,
-      controlCenterStore.operationType,
-    );
-    const forceMulti = assets.length > 1;
-
-    assets.forEach((asset) => {
-      queueStore.enqueueAsset({ asset, operationType, forceMulti });
-    });
-
-    const first = assets[0];
-    selectionStore.selectAsset(toSelectedAsset(first, 'gallery'));
-
-    if (controlCenterStore.operationType !== operationType) {
-      controlCenterStore.setOperationType(operationType);
-    }
-    controlCenterStore.setActiveModule('quickGenerate');
-    controlCenterStore.setOpen(true);
-  },
+  children: (ctx) => buildGeneratorMenuActions(ctx),
+  execute: () => {},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,21 +289,14 @@ function createGenerationAction(
       }
       return true;
     },
+    disabled: (ctx) => (resolveGenerationWidget(ctx) ? false : 'No generator available'),
     execute: (ctx) => {
       const assets = resolveAssets(ctx);
       if (!assets.length) return;
 
-      const queueStore = useGenerationQueueStore.getState();
-      const controlCenterStore = useControlCenterStore.getState();
-      const forceMulti = assets.length > 1;
-
-      assets.forEach((asset) => {
-        queueStore.enqueueAsset({ asset, operationType, forceMulti });
-      });
-
-      controlCenterStore.setOperationType(operationType);
-      controlCenterStore.setActiveModule('quickGenerate');
-      controlCenterStore.setOpen(true);
+      const generationWidget = resolveGenerationWidget(ctx);
+      if (!generationWidget) return;
+      enqueueAssetsToWidget(generationWidget, assets, operationType);
     },
   };
 }
@@ -405,7 +471,7 @@ const viewAssetDetailsAction: MenuAction = {
 export const assetActions: MenuAction[] = [
   // Primary actions
   openAssetInViewerAction,
-  sendToActiveGeneratorAction,
+  sendToGeneratorAction,
   // Generation shortcuts
   imageToVideoAction,
   videoExtendAction,

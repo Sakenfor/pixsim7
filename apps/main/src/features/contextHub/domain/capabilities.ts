@@ -1,9 +1,11 @@
-import type { ViewerAsset } from "@features/assets";
 import type { AssetRef, GenerationRef, LocationRef, SceneIdRef } from "@pixsim7/shared.types";
+
+import type { AssetModel } from "@features/assets";
+
+import type { OperationType } from "@/types/operations";
+
 import type { EntityScopedCapability } from "../types";
-import { registerCapabilityDescriptor } from "./descriptorRegistry";
-import { registerCapabilityContract } from "./contracts";
-import { assetInputContract } from "./contracts/assetInput";
+
 import {
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
@@ -17,6 +19,9 @@ import {
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
 } from "./capabilityKeys";
+import { registerCapabilityContract } from "./contracts";
+import { assetInputContract } from "./contracts/assetInput";
+import { registerCapabilityDescriptor } from "./descriptorRegistry";
 
 export {
   CAP_ASSET_SELECTION,
@@ -220,16 +225,25 @@ export interface GenerationWidgetContext {
   /** Open/close the widget */
   setOpen: (open: boolean) => void;
   /** Current operation type (image_to_video, text_to_image, etc.) */
-  operationType: string;
+  operationType: OperationType;
+  /** Update the operation type (if supported by the widget) */
+  setOperationType?: (operationType: OperationType) => void;
   /** Enqueue an asset to the widget's queue */
   enqueueAsset: (options: {
-    asset: ViewerAsset;
-    operationType: string;
+    asset: AssetModel;
+    operationType: OperationType;
     slotIndex?: number;
     forceMulti?: boolean;
   }) => void;
+  /** Enqueue multiple assets using the widget's routing rules */
+  enqueueAssets?: (options: {
+    assets: AssetModel[];
+    operationType: OperationType;
+    forceMulti?: boolean;
+    setInputMode?: boolean;
+  }) => void;
   /** Set input mode preference for an operation */
-  setOperationInputMode: (operationType: string, mode: 'single' | 'multi') => void;
+  setOperationInputMode: (operationType: OperationType, mode: 'single' | 'multi') => void;
   /** Unique identifier for this widget instance */
   widgetId: string;
 }

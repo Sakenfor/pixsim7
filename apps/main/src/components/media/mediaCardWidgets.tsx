@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * MediaCard Widget Factory
  *
@@ -5,8 +6,12 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useOperationSpec, useProviderIdForModel } from '@features/providers';
+import { Icon } from '@lib/icons';
 import { ButtonGroup, type ButtonGroupItem } from '@pixsim7/shared.ui';
+import React, { useState, useRef, useEffect } from 'react';
+
+import { createBindingFromValue } from '@lib/editing-core';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
@@ -16,27 +21,29 @@ import {
   createTooltipWidget,
   type MenuItem,
 } from '@lib/ui/overlay';
-import { createBindingFromValue } from '@lib/editing-core';
-import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
-import type { MediaCardProps } from './MediaCard';
-import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
-import { useGenerationScopeStores } from '@features/generation';
-import { useOperationSpec, useProviderIdForModel } from '@features/providers';
+
+import type { AssetModel } from '@features/assets';
+import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import {
   CAP_GENERATION_WIDGET,
   useCapability,
   type GenerationWidgetContext,
 } from '@features/contextHub';
-import type { AssetModel } from '@features/assets';
-import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
-import { Icon } from '@lib/icons';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
+import { useGenerationScopeStores } from '@features/generation';
+import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
+
 import {
   OPERATION_METADATA,
   type OperationType,
   type MediaType,
 } from '@/types/operations';
+
+import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
+import type { MediaCardProps } from './MediaCard';
+
+
 
 export interface MediaCardOverlayData {
   id: number;
@@ -57,6 +64,262 @@ export interface MediaCardOverlayData {
   generationStatus?: MediaCardProps['generationStatus'];
   generationId?: number;
   generationError?: string;
+}
+
+function QueueStatusBadge({ assetId }: { assetId: number }) {
+  const mainQueue = useGenerationQueueStore((s) => s.mainQueue);
+  const multiQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
+
+  const inMainQueue = mainQueue.find((q) => q.asset.id === assetId);
+  const inMultiQueue = multiQueue.find((q) => q.asset.id === assetId);
+  const queueEntry = inMainQueue || inMultiQueue;
+
+  if (!queueEntry) return null;
+
+  const operation = queueEntry.operation;
+  const metadata = operation ? OPERATION_METADATA[operation] : null;
+  const label = metadata?.label || 'Queued';
+  const icon = metadata?.icon || 'clock';
+
+  return (
+    <div
+      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-500 text-white shadow-sm"
+      title={`Queued for ${label}`}
+    >
+      <Icon name={icon} className="w-3 h-3" />
+      <span className="max-w-[60px] truncate">{label}</span>
+    </div>
+  );
+}
+
+function SelectionStatusBadge({ assetId }: { assetId: number }) {
+  const isSelected = useAssetSelectionStore((s) => s.isSelected(assetId));
+  const selectionCount = useAssetSelectionStore((s) => s.selectedAssets.length);
+
+  if (!isSelected) return null;
+
+  return (
+    <div
+      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-purple-500 text-white shadow-sm"
+      title={`Selected (${selectionCount} total)`}
+    >
+      <Icon name="check" className="w-3 h-3" />
+      {selectionCount > 1 && <span>{selectionCount}</span>}
+    </div>
+  );
+}
+
+type GenerationButtonGroupContentProps = {
+  data: MediaCardOverlayData;
+  cardProps: MediaCardProps;
+};
+
+function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroupContentProps) {
+  const { id, mediaType, actions } = cardProps;
+
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Use capability to get nearest generation widget, with global fallback
+  const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+
+  // Get scoped stores (follows same scoping as the widget capability)
+  const { useSessionStore, useSettingsStore, useQueueStore } = useGenerationScopeStores();
+  const scopedOperationType = useSessionStore((s) => s.operationType);
+  const scopedEnqueueAsset = useQueueStore((s) => s.enqueueAsset);
+  const scopedEnqueueAssets = useQueueStore((s) => s.enqueueAssets);
+
+  // For widget open/close, use capability if available, else fall back to control center
+  const setControlCenterOpenGlobal = useControlCenterStore((s) => s.setOpen);
+  const setWidgetOpen = widgetContext?.setOpen ?? setControlCenterOpenGlobal;
+
+  // Operation type and queue actions come from scoped stores (via capability or scope context)
+  const operationType = widgetContext?.operationType ?? scopedOperationType;
+  const enqueueAsset = widgetContext?.enqueueAsset ?? scopedEnqueueAsset;
+  const enqueueAssets = widgetContext?.enqueueAssets ?? scopedEnqueueAssets;
+  const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
+  const scopedProviderId = useSessionStore((s) => s.providerId);
+  const inferredProviderId = useProviderIdForModel(activeModel);
+  const effectiveProviderId = scopedProviderId ?? inferredProviderId;
+  const operationSpec = useOperationSpec(effectiveProviderId, operationType);
+
+  const menuItems = buildGenerationMenuItems(id, mediaType, actions);
+  const smartActionLabel = getSmartActionLabel(mediaType, operationType);
+  const operationMetadata = OPERATION_METADATA[operationType];
+  const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
+  void isOptionalMultiAsset;
+
+  // Use operation specs first, fall back to model heuristics.
+  const maxSlotsFromSpecs = resolveMaxSlotsFromSpecs(
+    operationSpec?.parameters,
+    operationType,
+    activeModel,
+  );
+  const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
+
+  // Reconstruct asset for slot picker
+  const queueAsset: AssetModel = {
+    id: cardProps.id,
+    createdAt: cardProps.createdAt,
+    description: cardProps.description ?? null,
+    durationSec: cardProps.durationSec ?? null,
+    height: cardProps.height ?? null,
+    isArchived: false,
+    mediaType: cardProps.mediaType,
+    previewUrl: cardProps.previewUrl ?? null,
+    providerAssetId: cardProps.providerAssetId,
+    providerId: cardProps.providerId,
+    providerStatus: cardProps.providerStatus ?? null,
+    remoteUrl: cardProps.remoteUrl ?? null,
+    syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
+    thumbnailUrl: cardProps.thumbUrl ?? null,
+    userId: 0,
+    width: cardProps.width ?? null,
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target as Node)
+      ) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMenuOpen]);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMenuOpen]);
+
+  const handleSmartAction = (e: React.MouseEvent) => {
+    // Normal click -> append to mainQueue (working set for single assets)
+    // Shift+click -> append to multiAssetQueue (for compositions)
+    const forceMulti = e.shiftKey;
+
+    enqueueAssets({
+      assets: [queueAsset],
+      operationType,
+      forceMulti,
+    });
+    // Open the generation widget (nearest via capability, or global control center)
+    setWidgetOpen(true);
+  };
+
+  const handleMenuItemClick = (item: MenuItem) => {
+    item.onClick?.(data);
+    setIsMenuOpen(false);
+  };
+
+  const handleSelectSlot = (selectedAsset: AssetModel, slotIndex: number) => {
+    // Slot picker always targets multiAssetQueue (for arranging compositions)
+    enqueueAsset({
+      asset: selectedAsset,
+      operationType,
+      slotIndex,
+      forceMulti: true, // Always multi queue for slot picker
+    });
+  };
+
+  if (menuItems.length === 0) {
+    return null;
+  }
+
+  const hasQuickGenerate = !!actions?.onQuickAdd;
+
+  // Build button group items
+  const buttonItems: ButtonGroupItem[] = [
+    {
+      id: 'menu',
+      icon: <Icon name="chevronDown" size={14} />,
+      onClick: () => setIsMenuOpen(!isMenuOpen),
+      title: 'Generation options',
+    },
+    {
+      id: 'smart-action',
+      icon: <Icon name="zap" size={14} />,
+      onClick: handleSmartAction,
+      title: `${smartActionLabel}\nShift: add to multi-asset\nHover: slot picker`,
+      expandContent: (
+        <SlotPickerContent asset={queueAsset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
+      ),
+      expandDelay: 150,
+    },
+  ];
+
+  if (hasQuickGenerate) {
+    buttonItems.push({
+      id: 'quick-generate',
+      icon: <Icon name="sparkles" size={14} />,
+      onClick: () => actions?.onQuickAdd?.(),
+      title: 'Quick generate with current settings',
+    });
+  }
+
+  return (
+    <div className="relative">
+      <div ref={triggerRef}>
+        <ButtonGroup layout="pill" items={buttonItems} expandOffset={8} />
+      </div>
+
+      {/* Menu dropdown */}
+      {isMenuOpen && (
+        <div
+          ref={menuRef}
+          className="
+            absolute bottom-full mb-1 left-1/2 -translate-x-1/2
+            min-w-[180px]
+            bg-white dark:bg-neutral-800
+            border border-neutral-200 dark:border-neutral-700
+            rounded-lg shadow-lg
+            py-1 z-50
+            overflow-hidden
+          "
+        >
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => handleMenuItemClick(item)}
+              disabled={item.disabled}
+              className="
+                w-full px-3 py-2 flex items-center gap-2 text-sm text-left
+                hover:bg-neutral-100 dark:hover:bg-neutral-700
+                transition-colors cursor-pointer
+              "
+            >
+              {item.icon && (
+                <Icon
+                  name={item.icon as any}
+                  size={14}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+              )}
+              <span className="flex-1">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -514,7 +777,7 @@ function SlotPickerContent({
  * Create quick add button (+) widget
  * @deprecated Use createGenerationButtonGroup which now includes quick generate
  */
-export function createQuickAddButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createQuickAddButton(): OverlayWidget<MediaCardOverlayData> | null {
   // Quick add is now integrated into the generation button group
   return null;
 }
@@ -533,32 +796,7 @@ export function createQueueStatusWidget(props: MediaCardProps): OverlayWidget<Me
     visibility: { trigger: 'always' },
     priority: 15,
     render: () => {
-      // Subscribe to queue state reactively
-      const mainQueue = useGenerationQueueStore((s) => s.mainQueue);
-      const multiQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
-
-      // Check if this asset is in either queue
-      const inMainQueue = mainQueue.find((q) => q.asset.id === id);
-      const inMultiQueue = multiQueue.find((q) => q.asset.id === id);
-      const queueEntry = inMainQueue || inMultiQueue;
-
-      if (!queueEntry) return null;
-
-      // Get operation label
-      const operation = queueEntry.operation;
-      const metadata = operation ? OPERATION_METADATA[operation] : null;
-      const label = metadata?.label || 'Queued';
-      const icon = metadata?.icon || 'clock';
-
-      return (
-        <div
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-500 text-white shadow-sm"
-          title={`Queued for ${label}`}
-        >
-          <Icon name={icon} className="w-3 h-3" />
-          <span className="max-w-[60px] truncate">{label}</span>
-        </div>
-      );
+      return <QueueStatusBadge assetId={id} />;
     },
   };
 }
@@ -577,21 +815,7 @@ export function createSelectionStatusWidget(props: MediaCardProps): OverlayWidge
     visibility: { trigger: 'always' },
     priority: 12,
     render: () => {
-      // Subscribe to selection state reactively
-      const isSelected = useAssetSelectionStore((s) => s.isSelected(id));
-      const selectionCount = useAssetSelectionStore((s) => s.selectedAssets.length);
-
-      if (!isSelected) return null;
-
-      return (
-        <div
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-purple-500 text-white shadow-sm"
-          title={`Selected (${selectionCount} total)`}
-        >
-          <Icon name="check" className="w-3 h-3" />
-          {selectionCount > 1 && <span>{selectionCount}</span>}
-        </div>
-      );
+      return <SelectionStatusBadge assetId={id} />;
     },
   };
 }
@@ -709,7 +933,7 @@ function resolveMaxSlotsForModel(operationType: OperationType, model?: string): 
  * Two merged buttons: menu (left) + smart action (right)
  */
 export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, mediaType, actions, badgeConfig, presetCapabilities } = props;
+  const { actions, badgeConfig, presetCapabilities } = props;
 
   // Only show if preset capabilities enable it
   if (!presetCapabilities?.showsGenerationMenu) {
@@ -730,219 +954,9 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
     priority: 35,
     interactive: true,
     handlesOwnInteraction: true,
-    render: (data: MediaCardOverlayData) => {
-      const [isMenuOpen, setIsMenuOpen] = useState(false);
-      const menuRef = useRef<HTMLDivElement>(null);
-      const triggerRef = useRef<HTMLButtonElement>(null);
-
-      // Use capability to get nearest generation widget, with global fallback
-      const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
-
-      // Get scoped stores (follows same scoping as the widget capability)
-      const { useSessionStore, useSettingsStore, useQueueStore } = useGenerationScopeStores();
-      const scopedOperationType = useSessionStore((s) => s.operationType);
-      const scopedEnqueueAsset = useQueueStore((s) => s.enqueueAsset);
-      const scopedSetOperationInputMode = useQueueStore((s) => s.setOperationInputMode);
-
-      // For widget open/close, use capability if available, else fall back to control center
-      const setControlCenterOpenGlobal = useControlCenterStore((s) => s.setOpen);
-      const setWidgetOpen = widgetContext?.setOpen ?? setControlCenterOpenGlobal;
-
-      // Operation type and queue actions come from scoped stores (via capability or scope context)
-      const operationType = widgetContext?.operationType ?? scopedOperationType;
-      const enqueueAsset = widgetContext?.enqueueAsset ?? scopedEnqueueAsset;
-      const setOperationInputMode = widgetContext?.setOperationInputMode ?? scopedSetOperationInputMode;
-      const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
-      const scopedProviderId = useSessionStore((s) => s.providerId);
-      const inferredProviderId = useProviderIdForModel(activeModel);
-      const effectiveProviderId = scopedProviderId ?? inferredProviderId;
-      const operationSpec = useOperationSpec(effectiveProviderId, operationType);
-
-      const menuItems = buildGenerationMenuItems(id, mediaType, actions);
-      const smartActionLabel = getSmartActionLabel(mediaType, operationType);
-      const operationMetadata = OPERATION_METADATA[operationType];
-      const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
-
-      // Use operation specs first, fall back to model heuristics.
-      const maxSlotsFromSpecs = resolveMaxSlotsFromSpecs(
-        operationSpec?.parameters,
-        operationType,
-        activeModel,
-      );
-      const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
-
-      // Reconstruct asset for slot picker
-      const queueAsset: AssetModel = {
-        id: props.id,
-        createdAt: props.createdAt,
-        description: props.description ?? null,
-        durationSec: props.durationSec ?? null,
-        height: props.height ?? null,
-        isArchived: false,
-        mediaType: props.mediaType,
-        previewUrl: props.previewUrl ?? null,
-        providerAssetId: props.providerAssetId,
-        providerId: props.providerId,
-        providerStatus: props.providerStatus ?? null,
-        remoteUrl: props.remoteUrl ?? null,
-        syncStatus: (props.status as AssetModel['syncStatus']) ?? 'remote',
-        thumbnailUrl: props.thumbUrl ?? null,
-        userId: 0,
-        width: props.width ?? null,
-      };
-
-      // Close menu when clicking outside
-      useEffect(() => {
-        if (!isMenuOpen) return;
-
-        const handleClickOutside = (event: MouseEvent) => {
-          if (
-            menuRef.current &&
-            !menuRef.current.contains(event.target as Node) &&
-            triggerRef.current &&
-            !triggerRef.current.contains(event.target as Node)
-          ) {
-            setIsMenuOpen(false);
-          }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-      }, [isMenuOpen]);
-
-      // Handle keyboard navigation
-      useEffect(() => {
-        if (!isMenuOpen) return;
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-          if (event.key === 'Escape') {
-            setIsMenuOpen(false);
-          }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-      }, [isMenuOpen]);
-
-      const handleSmartAction = (e: React.MouseEvent) => {
-        // Normal click → append to mainQueue (working set for single assets)
-        // Shift+click → append to multiAssetQueue (for compositions)
-        const forceMulti = e.shiftKey;
-
-        // Smart button appends to queue (no slotIndex = append)
-        enqueueAsset({
-          asset: queueAsset,
-          operationType,
-          forceMulti,
-        });
-        if (forceMulti && isOptionalMultiAsset) {
-          setOperationInputMode(operationType, 'multi');
-        }
-        // Open the generation widget (nearest via capability, or global control center)
-        setWidgetOpen(true);
-      };
-
-      const handleMenuItemClick = (item: MenuItem) => {
-        item.onClick?.(data);
-        setIsMenuOpen(false);
-      };
-
-      const handleSelectSlot = (selectedAsset: AssetModel, slotIndex: number) => {
-        // Slot picker always targets multiAssetQueue (for arranging compositions)
-        enqueueAsset({
-          asset: selectedAsset,
-          operationType,
-          slotIndex,
-          forceMulti: true, // Always multi queue for slot picker
-        });
-
-        // Auto-switch to multi mode if operation supports it
-        if (isOptionalMultiAsset) {
-          setOperationInputMode(operationType, 'multi');
-        }
-      };
-
-      if (menuItems.length === 0) {
-        return null;
-      }
-
-      const hasQuickGenerate = !!actions?.onQuickAdd;
-
-      // Build button group items
-      const buttonItems: ButtonGroupItem[] = [
-        {
-          id: 'menu',
-          icon: <Icon name="chevronDown" size={14} />,
-          onClick: () => setIsMenuOpen(!isMenuOpen),
-          title: 'Generation options',
-        },
-        {
-          id: 'smart-action',
-          icon: <Icon name="zap" size={14} />,
-          onClick: handleSmartAction,
-          title: `${smartActionLabel}\nShift: add to multi-asset\nHover: slot picker`,
-          expandContent: (
-            <SlotPickerContent asset={queueAsset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
-          ),
-          expandDelay: 150,
-        },
-      ];
-
-      if (hasQuickGenerate) {
-        buttonItems.push({
-          id: 'quick-generate',
-          icon: <Icon name="sparkles" size={14} />,
-          onClick: () => actions?.onQuickAdd?.(),
-          title: 'Quick generate with current settings',
-        });
-      }
-
-      return (
-        <div className="relative">
-          <div ref={triggerRef}>
-            <ButtonGroup layout="pill" items={buttonItems} expandOffset={8} />
-          </div>
-
-          {/* Menu dropdown */}
-          {isMenuOpen && (
-            <div
-              ref={menuRef}
-              className="
-                absolute bottom-full mb-1 left-1/2 -translate-x-1/2
-                min-w-[180px]
-                bg-white dark:bg-neutral-800
-                border border-neutral-200 dark:border-neutral-700
-                rounded-lg shadow-lg
-                py-1 z-50
-                overflow-hidden
-              "
-            >
-              {menuItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleMenuItemClick(item)}
-                  disabled={item.disabled}
-                  className="
-                    w-full px-3 py-2 flex items-center gap-2 text-sm text-left
-                    hover:bg-neutral-100 dark:hover:bg-neutral-700
-                    transition-colors cursor-pointer
-                  "
-                >
-                  {item.icon && (
-                    <Icon
-                      name={item.icon as any}
-                      size={14}
-                      className="text-neutral-500 dark:text-neutral-400"
-                    />
-                  )}
-                  <span className="flex-1">{item.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    },
+    render: (data: MediaCardOverlayData) => (
+      <GenerationButtonGroupContent data={data} cardProps={props} />
+    ),
   };
 }
 
@@ -1017,7 +1031,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
     createVideoScrubber(props),
     createUploadButton(props),
     createTagsTooltip(props),
-    createQuickAddButton(props),
+    createQuickAddButton(),
     createGenerationButtonGroup(props),
   ];
 

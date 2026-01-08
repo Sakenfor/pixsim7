@@ -7,12 +7,8 @@
  * Used by both Control Center and Media Viewer for consistent UI.
  */
 
-import { useMemo, useEffect, useCallback } from 'react';
-import clsx from 'clsx';
-import { useGenerationWorkbench, useGenerationQueueStore, useGenerationScopeStores } from '@features/generation';
-import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { useCostEstimate, useProviderIdForModel } from '@features/providers';
-import { OPERATION_METADATA } from '@/types/operations';
+import clsx from 'clsx';
 import {
   Star,
   Zap,
@@ -26,6 +22,14 @@ import {
   ZoomIn,
   Gauge,
 } from 'lucide-react';
+import { useMemo, useEffect } from 'react';
+
+import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
+import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
+
+
+import { OPERATION_METADATA } from '@/types/operations';
+
 
 /** Icon configuration for param values - data-driven approach */
 const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> = {
@@ -150,7 +154,7 @@ export function GenerationSettingsPanel({
   excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt'],
   error,
 }: GenerationSettingsPanelProps) {
-  const { useSessionStore } = useGenerationScopeStores();
+  const { useSessionStore, useQueueStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
@@ -158,8 +162,8 @@ export function GenerationSettingsPanel({
 
   // Input mode for optional multi-asset operations
   // Subscribe directly to operationInputModePrefs to trigger re-render on changes
-  const operationInputModePrefs = useGenerationQueueStore(s => s.operationInputModePrefs);
-  const setOperationInputMode = useGenerationQueueStore(s => s.setOperationInputMode);
+  const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
+  const setOperationInputMode = useQueueStore(s => s.setOperationInputMode);
   const operationMetadata = OPERATION_METADATA[operationType];
   const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
   const currentInputMode = operationInputModePrefs[operationType] ?? 'single';

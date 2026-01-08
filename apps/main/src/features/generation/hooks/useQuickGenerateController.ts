@@ -5,7 +5,7 @@ import { logEvent } from '@lib/utils/logging';
 
 import { extractFrame, fromAssetResponse } from '@features/assets';
 import { generateAsset } from '@features/controlCenter/lib/api';
-import { useGenerationsStore, useGenerationQueueStore, createPendingGeneration, resolveInputMode } from '@features/generation';
+import { useGenerationsStore, createPendingGeneration, resolveInputMode } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateBindings } from '@features/prompts';
 
@@ -27,7 +27,7 @@ import { buildGenerationRequest } from '../lib/quickGenerateLogic';
  * This keeps QuickGenerateModule focused on rendering/layout.
  */
 export function useQuickGenerateController() {
-  const { useSessionStore } = useGenerationScopeStores();
+  const { useSessionStore, useQueueStore } = useGenerationScopeStores();
 
   // Generation session state (scoped)
   const operationType = useSessionStore((s) => s.operationType);
@@ -105,7 +105,7 @@ export function useQuickGenerateController() {
 
       // Get current queue state directly from store to avoid stale React hook values
       // This is critical for frame extraction and passing context to logic
-      const queueState = useGenerationQueueStore.getState();
+      const queueState = (useQueueStore as any).getState();
       const currentMainQueue = queueState.mainQueue;
       const currentMainQueueIndex = queueState.mainQueueIndex;
 

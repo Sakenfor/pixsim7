@@ -1,12 +1,10 @@
 import { useEffect, useState, useRef, type Dispatch, type SetStateAction } from 'react';
+
 import { useAssetSelectionStore, type SelectedAsset } from '@features/assets/stores/assetSelectionStore';
-import {
-  useGenerationQueueStore,
-  type GenerationQueueState,
-  type QueuedAsset,
-} from '@features/generation';
-import { useGenerationScopeStores } from '@features/generation';
 import { useCubeSettingsStore } from '@features/cubes';
+import type { GenerationQueueState, QueuedAsset } from '@features/generation';
+import { useGenerationScopeStores } from '@features/generation';
+
 import type { OperationType } from '@/types/operations';
 
 // Re-export for backwards compatibility
@@ -57,20 +55,20 @@ export function useQuickGenerateBindings(
   // Active asset support
   const lastSelectedAsset = useAssetSelectionStore(s => s.lastSelectedAsset);
 
-  // Generation queue support
-  const mainQueue = useGenerationQueueStore(s => s.mainQueue);
-  const mainQueueIndex = useGenerationQueueStore(s => s.mainQueueIndex);
-  const multiAssetQueue = useGenerationQueueStore(s => s.multiAssetQueue);
-  const multiAssetQueueIndex = useGenerationQueueStore(s => s.multiAssetQueueIndex);
-  const consumeFromQueue = useGenerationQueueStore(s => s.consumeFromQueue);
-  const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
-  const clearQueue = useGenerationQueueStore(s => s.clearQueue);
-  const cycleQueue = useGenerationQueueStore(s => s.cycleQueue);
+  const { useSettingsStore, useQueueStore } = useGenerationScopeStores();
+
+  // Generation queue support (scoped)
+  const mainQueue = useQueueStore(s => s.mainQueue);
+  const mainQueueIndex = useQueueStore(s => s.mainQueueIndex);
+  const multiAssetQueue = useQueueStore(s => s.multiAssetQueue);
+  const multiAssetQueueIndex = useQueueStore(s => s.multiAssetQueueIndex);
+  const consumeFromQueue = useQueueStore(s => s.consumeFromQueue);
+  const removeFromQueue = useQueueStore(s => s.removeFromQueue);
+  const clearQueue = useQueueStore(s => s.clearQueue);
+  const cycleQueue = useQueueStore(s => s.cycleQueue);
 
   // Settings for auto-selection behavior
   const autoSelectOperationType = useCubeSettingsStore(s => s.autoSelectOperationType);
-
-  const { useSettingsStore } = useGenerationScopeStores();
 
   // Dynamic params from operation_specs (scoped store)
   const dynamicParams = useSettingsStore((s) => s.params);
@@ -146,7 +144,6 @@ export function useQuickGenerateBindings(
 
   // Sync source_asset_ids and prompts/durations arrays for video_transition
   useEffect(() => {
-    const prevLength = prevTransitionQueueLengthRef.current;
     const currentLength = multiAssetQueue.length;
 
     // Update ref for next render
@@ -156,8 +153,12 @@ export function useQuickGenerateBindings(
       setPrompts([]);
       setTransitionDurations([]);
       setDynamicParams((prev) => {
-        const { source_asset_ids, ...rest } = prev;
-        return rest;
+        if (!('source_asset_ids' in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next.source_asset_ids;
+        return next;
       });
       return;
     }

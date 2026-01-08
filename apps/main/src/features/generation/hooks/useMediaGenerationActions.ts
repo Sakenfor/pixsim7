@@ -1,24 +1,32 @@
 import { useCallback, useMemo } from 'react';
+
+import { extractErrorMessage } from '@lib/api/errorHandling';
+
 import type { AssetModel } from '@features/assets';
 import { toSelectedAsset } from '@features/assets/models/asset';
-import { useGenerationQueueStore } from '../stores/generationQueueStore';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
-import { useGenerationScopeStores } from './useGenerationScope';
-import { useGenerationsStore } from '../stores/generationsStore';
-import { createPendingGeneration } from '../models';
-import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+import {
+  CAP_GENERATION_WIDGET,
+  type GenerationWidgetContext,
+  useCapability,
+} from '@features/contextHub';
 import { generateAsset } from '@features/controlCenter/lib/api';
-import { extractErrorMessage } from '@lib/api/errorHandling';
+import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+
 import type { OperationType } from '@/types/operations';
+
+import { createPendingGeneration } from '../models';
+import { useGenerationsStore } from '../stores/generationsStore';
+
+import { useGenerationScopeStores } from './useGenerationScope';
 
 /**
  * Hook: useMediaGenerationActions
  *
- * Centralizes gallery → generation actions so MediaCard and widgets
- * can queue work and open the Control Center consistently.
+ * Centralizes gallery generation actions so MediaCard and widgets
+ * can queue work and open the nearest generation widget consistently.
  *
- * Uses the centralized `enqueueAsset` API for automatic queue routing
+ * Uses the centralized `enqueueAssets` API for automatic queue routing
  * based on operation metadata and user preferences.
  *
  * Scope-aware: Uses useGenerationScopeStores() to read from the current
@@ -28,29 +36,76 @@ import type { OperationType } from '@/types/operations';
  * When assets are added via quick actions:
  * - The asset is added to the appropriate generation queue (auto-routed)
  * - The asset is selected in the asset selection store
- * - The Control Center operation type is set to match
- * - The Quick Generate module is opened
+ * - The generation operation type is aligned when possible
+ * - The active generation widget is opened (if available)
  */
 export function useMediaGenerationActions() {
-  const enqueueAsset = useGenerationQueueStore((s) => s.enqueueAsset);
-
   // Use scoped stores for scope-aware generation settings
-  const { useSessionStore, useSettingsStore } = useGenerationScopeStores();
-
-  // Control center actions (for opening UI)
-  const setActiveModule = useControlCenterStore((s) => s.setActiveModule);
-  const setOpen = useControlCenterStore((s) => s.setOpen);
-  const setOperationType = useControlCenterStore((s) => s.setOperationType);
+  const { useSessionStore, useSettingsStore, useQueueStore } = useGenerationScopeStores();
+  const scopedEnqueueAssets = useQueueStore((s) => s.enqueueAssets);
 
   // Read operation type from scoped session store
-  const currentOperationType = useSessionStore((s) => s.operationType);
+  const sessionOperationType = useSessionStore((s) => s.operationType);
+  const setSessionOperationType = useSessionStore((s) => s.setOperationType);
 
   const selectAsset = useAssetSelectionStore((s) => s.selectAsset);
 
-  const openQuickGenerate = useCallback(() => {
-    setActiveModule('quickGenerate');
-    setOpen(true);
-  }, [setActiveModule, setOpen]);
+  const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const currentOperationType = widgetContext?.operationType ?? sessionOperationType;
+
+  const openGenerationWidget = useCallback(
+    (operationType?: OperationType) => {
+      if (!widgetContext) return false;
+      if (operationType && widgetContext.setOperationType) {
+        widgetContext.setOperationType(operationType);
+      }
+      widgetContext.setOpen(true);
+      return true;
+    },
+    [widgetContext],
+  );
+
+  const setOperationType = useCallback(
+    (operationType: OperationType) => {
+      if (widgetContext?.setOperationType) {
+        widgetContext.setOperationType(operationType);
+        return;
+      }
+      setSessionOperationType(operationType);
+    },
+    [setSessionOperationType, widgetContext],
+  );
+
+  const enqueueAssets = useCallback(
+    (options: {
+      assets: AssetModel[];
+      operationType: OperationType;
+      forceMulti?: boolean;
+      setInputMode?: boolean;
+    }) => {
+      if (widgetContext?.enqueueAssets) {
+        widgetContext.enqueueAssets(options);
+        return;
+      }
+      if (widgetContext?.enqueueAsset) {
+        const shouldForceMulti = options.forceMulti ?? options.assets.length > 1;
+        const shouldSetMode = options.setInputMode !== false;
+        if (shouldForceMulti && shouldSetMode) {
+          widgetContext.setOperationInputMode(options.operationType, 'multi');
+        }
+        options.assets.forEach((asset) => {
+          widgetContext.enqueueAsset({
+            asset,
+            operationType: options.operationType,
+            forceMulti: shouldForceMulti,
+          });
+        });
+        return;
+      }
+      scopedEnqueueAssets(options);
+    },
+    [scopedEnqueueAssets, widgetContext],
+  );
 
   // Helper to select asset in selection store
   const selectAssetFromSummary = useCallback((asset: AssetModel) => {
@@ -61,7 +116,7 @@ export function useMediaGenerationActions() {
   const createQueueAction = useCallback(
     (operationType: OperationType) => (asset: AssetModel) => {
       // Use centralized enqueueAsset which handles queue routing automatically
-      enqueueAsset({ asset, operationType });
+      enqueueAssets({ assets: [asset], operationType });
 
       selectAssetFromSummary(asset);
 
@@ -70,9 +125,9 @@ export function useMediaGenerationActions() {
         setOperationType(operationType);
       }
 
-      openQuickGenerate();
+      openGenerationWidget(operationType);
     },
-    [enqueueAsset, selectAssetFromSummary, setOperationType, currentOperationType, openQuickGenerate],
+    [enqueueAssets, selectAssetFromSummary, setOperationType, currentOperationType, openGenerationWidget],
   );
 
   // Memoize individual actions for stable references
@@ -84,22 +139,22 @@ export function useMediaGenerationActions() {
   const queueAutoGenerate = useCallback(
     (asset: AssetModel) => {
       // Auto-generate uses current operation type for routing
-      enqueueAsset({ asset, operationType: currentOperationType });
+      enqueueAssets({ assets: [asset], operationType: currentOperationType });
       selectAssetFromSummary(asset);
-      openQuickGenerate();
+      openGenerationWidget(currentOperationType);
     },
-    [enqueueAsset, currentOperationType, selectAssetFromSummary, openQuickGenerate],
+    [enqueueAssets, currentOperationType, selectAssetFromSummary, openGenerationWidget],
   );
 
   // Silent add - just adds to queue without opening control center
   const queueSilentAdd = useCallback(
     (asset: AssetModel) => {
       // Silent add uses current operation type for routing
-      enqueueAsset({ asset, operationType: currentOperationType });
+      enqueueAssets({ assets: [asset], operationType: currentOperationType });
       selectAssetFromSummary(asset);
       // Don't open control center - just queue it
     },
-    [enqueueAsset, currentOperationType, selectAssetFromSummary],
+    [enqueueAssets, currentOperationType, selectAssetFromSummary],
   );
 
   // Generations store for seeding new generations
@@ -114,7 +169,7 @@ export function useMediaGenerationActions() {
       try {
         // Optionally add to queue (default: no)
         if (options?.addToQueue) {
-          enqueueAsset({ asset, operationType: currentOperationType });
+          enqueueAssets({ assets: [asset], operationType: currentOperationType });
           selectAssetFromSummary(asset);
         }
 
@@ -180,7 +235,7 @@ export function useMediaGenerationActions() {
       }
     },
     [
-      enqueueAsset,
+      enqueueAssets,
       currentOperationType,
       selectAssetFromSummary,
       useSessionStore,

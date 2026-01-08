@@ -17,6 +17,9 @@ interface AssetSelectionStore {
   // Select an asset
   selectAsset: (asset: SelectedAsset) => void;
 
+  // Set the last selected asset without changing selection list
+  setLastSelectedAsset: (asset: SelectedAsset | undefined) => void;
+
   // Toggle selection
   toggleAsset: (asset: SelectedAsset) => void;
 
@@ -48,6 +51,10 @@ export const useAssetSelectionStore = create<AssetSelectionStore>()(
             lastSelectedAsset: asset,
           };
         });
+      },
+
+      setLastSelectedAsset: (asset) => {
+        set({ lastSelectedAsset: asset });
       },
 
       toggleAsset: (asset) => {

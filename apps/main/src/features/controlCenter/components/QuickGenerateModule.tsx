@@ -156,6 +156,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     generating,
     prompt,
     setProvider,
+    setOperationType,
     setPrompt,
     error,
     generationId,
@@ -233,6 +234,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
 
   // Get scoped queue store actions for the widget capability
   const scopedEnqueueAsset = useQueueStore(s => s.enqueueAsset);
+  const scopedEnqueueAssets = useQueueStore(s => s.enqueueAssets);
   const scopedSetOperationInputMode = useQueueStore(s => s.setOperationInputMode);
 
   // Get control center state for open/close
@@ -245,11 +247,13 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       isOpen: ccIsOpen,
       setOpen: ccSetOpen,
       operationType,
+      setOperationType,
       enqueueAsset: scopedEnqueueAsset,
+      enqueueAssets: scopedEnqueueAssets,
       setOperationInputMode: scopedSetOperationInputMode,
       widgetId: 'controlCenter',
     }),
-    [ccIsOpen, ccSetOpen, operationType, scopedEnqueueAsset, scopedSetOperationInputMode],
+    [ccIsOpen, ccSetOpen, operationType, setOperationType, scopedEnqueueAsset, scopedEnqueueAssets, scopedSetOperationInputMode],
   );
 
   const generationWidgetProvider = useMemo(
@@ -257,6 +261,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       id: 'generation-widget:controlCenter',
       label: 'Control Center',
       priority: 50,
+      exposeToContextMenu: true,
       isAvailable: () => true,
       getValue: () => generationWidgetValue,
     }),
