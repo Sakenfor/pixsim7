@@ -5,54 +5,18 @@
  * Part of Task 51 Phase 51.1 - Core Types & Registry
  */
 
-import { BaseRegistry } from '../core/BaseRegistry';
+import type {
+  DataSourceType,
+  DataSourceDefinition,
+} from "@pixsim7/core.composer";
 
-/**
- * Core data source types
- */
-export type DataSourceType = 'store' | 'static' | 'computed';
+import { BaseRegistry } from "../core/BaseRegistry";
 
-/**
- * Data source definition (serializable)
- */
-export interface DataSourceDefinition {
-  id: string;
-  type: DataSourceType;
-
-  // Human-friendly metadata
-  label: string;
-  description?: string;
-  tags?: string[];
-
-  // For 'store' sources
-  storeId?: string; // e.g. 'workspace', 'scene-builder', 'game-session'
-  path?: string; // e.g. 'scenes.length', 'currentScene.meta.stats'
-
-  // For 'static' sources
-  value?: unknown;
-
-  // For 'computed' sources
-  dependencies?: string[]; // IDs of other data sources
-  transformId?: string; // ID of a registered transform to apply
-
-  // Caching hints (optional, can be ignored initially)
-  cache?: boolean;
-  refreshIntervalMs?: number;
-}
-
-/**
- * Data source binding - how widgets refer to registered data sources
- *
- * Note: This is the Task 51 registry-based binding model.
- * For the simpler, direct binding model, see editing-core/dataBinding.ts
- */
-export interface DataSourceBinding {
-  id: string; // unique per widget binding
-  sourceId: string; // DataSourceDefinition.id
-  targetProp: string; // Widget prop name, e.g. 'value', 'data'
-  transformId?: string; // Optional transform applied on top
-  fallbackValue?: unknown; // Used when resolution fails
-}
+export type {
+  DataSourceType,
+  DataSourceDefinition,
+  DataSourceBinding,
+} from "@pixsim7/core.composer";
 
 /**
  * Data transform function (pure, deterministic)
