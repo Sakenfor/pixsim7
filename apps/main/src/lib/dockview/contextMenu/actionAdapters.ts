@@ -7,7 +7,24 @@
 
 import type { ActionDefinition } from '@shared/types';
 
-import type { MenuAction, ContextMenuContext } from './types';
+import type { MenuAction, ContextMenuContext, MenuActionContext } from './types';
+
+export type ToMenuActionOptions = {
+  /** Override availableIn contexts (defaults to action.contexts or ['item']) */
+  availableIn?: ContextMenuContext[];
+  /** Override category (defaults to action.category) */
+  category?: string;
+  /** Action variant for styling */
+  variant?: 'default' | 'danger' | 'success';
+  /** Show divider after this item */
+  divider?: boolean;
+  /** Icon color class */
+  iconColor?: string;
+  /** Additional visibility condition */
+  visible?: (ctx: MenuActionContext) => boolean;
+  /** Disabled condition */
+  disabled?: (ctx: MenuActionContext) => boolean | string;
+};
 
 /**
  * Convert a canonical ActionDefinition to a MenuAction for context menus.
@@ -30,22 +47,7 @@ import type { MenuAction, ContextMenuContext } from './types';
  */
 export function toMenuAction(
   action: ActionDefinition,
-  options?: {
-    /** Override availableIn contexts (defaults to action.contexts or ['item']) */
-    availableIn?: ContextMenuContext[];
-    /** Override category (defaults to action.category) */
-    category?: string;
-    /** Action variant for styling */
-    variant?: 'default' | 'danger' | 'success';
-    /** Show divider after this item */
-    divider?: boolean;
-    /** Icon color class */
-    iconColor?: string;
-    /** Additional visibility condition */
-    visible?: (ctx: any) => boolean;
-    /** Disabled condition */
-    disabled?: (ctx: any) => boolean | string;
-  }
+  options?: ToMenuActionOptions
 ): MenuAction {
   // Determine availableIn from action.contexts or options or default
   const availableIn: ContextMenuContext[] =
@@ -86,7 +88,7 @@ export function toMenuAction(
  */
 export function toMenuActions(
   actions: ActionDefinition[],
-  defaultOptions?: Parameters<typeof toMenuAction>[1]
+  defaultOptions?: ToMenuActionOptions
 ): MenuAction[] {
   return actions.map((action) => toMenuAction(action, defaultOptions));
 }

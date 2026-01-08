@@ -4,7 +4,7 @@ import {
   type FeatureCapability,
   type RouteCapability,
   type ActionCapability,
-  useCapabilityStore,
+  useStates,
 } from "@lib/capabilities";
 
 interface CapabilityTestingPanelProps {
@@ -30,7 +30,6 @@ export function CapabilityTestingPanel({
     "routes" | "actions" | "state"
   >("routes");
   const navigate = useNavigate();
-  const store = useCapabilityStore();
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -97,7 +96,7 @@ export function CapabilityTestingPanel({
           <ActionTester actions={actions} onInvokeAction={handleInvokeAction} />
         )}
 
-        {activeSection === "state" && <StateInspector store={store} />}
+        {activeSection === "state" && <StateInspector />}
       </div>
     </div>
   );
@@ -295,12 +294,8 @@ function ActionTester({ actions, onInvokeAction }: ActionTesterProps) {
 // State Inspector
 // ============================================================================
 
-interface StateInspectorProps {
-  store: ReturnType<typeof useCapabilityStore>;
-}
-
-function StateInspector({ store }: StateInspectorProps) {
-  const states = store.getAllStates();
+function StateInspector() {
+  const states = useStates();
   const stateEntries = states.map((s) => [s.id, s.getValue()] as const);
 
   return (

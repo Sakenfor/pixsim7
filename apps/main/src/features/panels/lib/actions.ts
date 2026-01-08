@@ -11,7 +11,7 @@ import React from "react";
 import type { ActionDefinition } from "@shared/types";
 import type { CubeFace } from "@pixsim7/pixcubes";
 
-import { useCapabilityStore, type ActionCapability } from "@lib/capabilities";
+import { capabilityRegistry, type ActionCapability } from "@lib/capabilities";
 
 import { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
 
@@ -53,7 +53,7 @@ class PanelActionRegistry {
 
   constructor() {
     // Recompute panel actions when capability registry updates.
-    useCapabilityStore.subscribe(() => {
+    capabilityRegistry.subscribe(() => {
       this.notifyListeners();
     });
   }
@@ -65,13 +65,12 @@ class PanelActionRegistry {
       return baseActions;
     }
 
-    const store = useCapabilityStore.getState();
     const existingIds = new Set(baseActions.map(action => action.id));
     const derived: PanelAction[] = [];
 
     for (const id of ids) {
       if (existingIds.has(id)) continue;
-      const action = store.getAction(id);
+      const action = capabilityRegistry.getAction(id);
       if (!action) continue;
       const options = config.capabilityActionOptions?.[id];
       derived.push(toPanelActionFromCapability(action, options));

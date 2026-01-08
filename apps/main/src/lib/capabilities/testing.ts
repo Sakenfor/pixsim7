@@ -5,8 +5,7 @@
  * components that use the capability registry.
  */
 
-import { ReactNode } from 'react';
-import { create } from 'zustand';
+import { createAppCapabilityRegistry, type AppCapabilityRegistry } from '@pixsim7/capabilities-core/app';
 import type {
   FeatureCapability,
   RouteCapability,
@@ -15,71 +14,22 @@ import type {
 } from './index';
 
 /**
- * Create a mock capability store for testing
+ * Create a mock capability registry for testing
  */
 export function createMockCapabilityStore(initialData?: {
   features?: FeatureCapability[];
   routes?: RouteCapability[];
   actions?: ActionCapability[];
   states?: StateCapability[];
-}) {
-  const features = new Map<string, FeatureCapability>();
-  const routes = new Map<string, RouteCapability>();
-  const actions = new Map<string, ActionCapability>();
-  const states = new Map<string, StateCapability>();
+}): AppCapabilityRegistry {
+  const registry = createAppCapabilityRegistry();
 
-  // Populate with initial data
-  initialData?.features?.forEach(f => features.set(f.id, f));
-  initialData?.routes?.forEach(r => routes.set(r.path, r));
-  initialData?.actions?.forEach(a => actions.set(a.id, a));
-  initialData?.states?.forEach(s => states.set(s.id, s));
+  initialData?.features?.forEach(feature => registry.registerFeature(feature));
+  initialData?.routes?.forEach(route => registry.registerRoute(route));
+  initialData?.actions?.forEach(action => registry.registerAction(action));
+  initialData?.states?.forEach(state => registry.registerState(state));
 
-  return create(() => ({
-    features,
-    routes,
-    actions,
-    states,
-    listeners: new Set<() => void>(),
-
-    // Feature methods
-    registerFeature: (feature: FeatureCapability) => features.set(feature.id, feature),
-    unregisterFeature: (id: string) => features.delete(id),
-    getFeature: (id: string) => features.get(id),
-    getAllFeatures: () => Array.from(features.values()),
-    getFeaturesByCategory: (category: string) =>
-      Array.from(features.values()).filter(f => f.category === category),
-
-    // Route methods
-    registerRoute: (route: RouteCapability) => routes.set(route.path, route),
-    unregisterRoute: (path: string) => routes.delete(path),
-    getRoute: (path: string) => routes.get(path),
-    getAllRoutes: () => Array.from(routes.values()),
-    getRoutesForFeature: (featureId: string) =>
-      Array.from(routes.values()).filter(r => r.featureId === featureId),
-
-    // Action methods
-    registerAction: (action: ActionCapability) => actions.set(action.id, action),
-    unregisterAction: (id: string) => actions.delete(id),
-    getAction: (id: string) => actions.get(id),
-    getAllActions: () => Array.from(actions.values()),
-    executeAction: async (id: string, ctx?: import('@shared/types').ActionContext) => {
-      const action = actions.get(id);
-      if (!action) throw new Error(`Action not found: ${id}`);
-      await action.execute(ctx);
-    },
-
-    // State methods
-    registerState: (state: StateCapability) => states.set(state.id, state),
-    unregisterState: (id: string) => states.delete(id),
-    getState: (id: string) => states.get(id),
-    getAllStates: () => Array.from(states.values()),
-
-    // Subscription
-    subscribe: (callback: () => void) => {
-      return () => {};
-    },
-    notify: () => {},
-  }));
+  return registry;
 }
 
 /**
@@ -121,6 +71,7 @@ export function createMockAction(overrides?: Partial<ActionCapability>): ActionC
     name: 'Mock Action',
     description: 'A mock action for testing',
     icon: '⚡',
+    featureId: 'mock-feature',
     execute: jest.fn(),
     enabled: () => true,
     ...overrides,
@@ -188,20 +139,17 @@ export function createCompleteFeatureSetup() {
 }
 
 /**
- * Test helper to clear the capability store
+ * Test helper to clear the capability registry
  */
-export function clearCapabilityStore(store: any) {
-  store.getState().features.clear();
-  store.getState().routes.clear();
-  store.getState().actions.clear();
-  store.getState().states.clear();
+export function clearCapabilityStore(store: AppCapabilityRegistry) {
+  store.clearAll();
 }
 
 /**
  * Test helper to populate capability store
  */
 export function populateCapabilityStore(
-  store: any,
+  store: AppCapabilityRegistry,
   data: {
     features?: FeatureCapability[];
     routes?: RouteCapability[];
@@ -209,8 +157,8 @@ export function populateCapabilityStore(
     states?: StateCapability[];
   }
 ) {
-  data.features?.forEach(f => store.getState().registerFeature(f));
-  data.routes?.forEach(r => store.getState().registerRoute(r));
-  data.actions?.forEach(a => store.getState().registerAction(a));
-  data.states?.forEach(s => store.getState().registerState(s));
+  data.features?.forEach(f => store.registerFeature(f));
+  data.routes?.forEach(r => store.registerRoute(r));
+  data.actions?.forEach(a => store.registerAction(a));
+  data.states?.forEach(s => store.registerState(s));
 }

@@ -7,10 +7,10 @@
 
 import type { ActionDefinition } from '@shared/types';
 
-import { useCapabilityStore, type ActionCapability } from '@lib/capabilities';
+import { capabilityRegistry, type ActionCapability } from '@lib/capabilities';
 import { BaseRegistry } from '@lib/core/BaseRegistry';
 
-import { toMenuAction, toMenuActions } from './actionAdapters';
+import { toMenuAction, toMenuActions, type ToMenuActionOptions } from './actionAdapters';
 import type {
   MenuAction,
   MenuItem,
@@ -45,8 +45,8 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   'zzz': 100,
 };
 
-function isContextMenuCapable(action: ActionCapability): boolean {
-  if (!action.contexts || action.contexts.length === 0) {
+function isContextMenuCapable(action: ActionCapability, forceInclude: boolean): boolean {
+  if (!forceInclude && (!action.contexts || action.contexts.length === 0)) {
     return false;
   }
 
@@ -57,17 +57,24 @@ function isContextMenuCapable(action: ActionCapability): boolean {
   return true;
 }
 
-function toMenuActionFromCapability(action: ActionCapability): MenuAction {
+function toMenuActionFromCapability(
+  action: ActionCapability,
+  options?: ToMenuActionOptions
+): MenuAction {
   const availableIn = action.contexts as ContextMenuContext[] | undefined;
 
   return {
     id: action.id,
     label: action.name,
     icon: action.icon,
+    iconColor: options?.iconColor,
     shortcut: action.shortcut,
-    category: action.category,
-    availableIn: availableIn ?? ['item'],
-    disabled: action.enabled ? () => !action.enabled!() : undefined,
+    category: options?.category ?? action.category,
+    variant: options?.variant,
+    divider: options?.divider,
+    availableIn: options?.availableIn ?? availableIn ?? ['item'],
+    visible: options?.visible,
+    disabled: options?.disabled ?? (action.enabled ? () => !action.enabled!() : undefined),
     execute: (ctx) => {
       const actionCtx = {
         source: 'contextMenu' as const,
@@ -95,12 +102,15 @@ function getCategoryPriority(category: string | undefined): number {
  */
 export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
   private includeCapabilityActions = true;
+  private capabilityActionIds = new Set<string>();
+  private capabilityOverrides = new Map<string, ToMenuActionOptions>();
 
   /**
    * Enable or disable auto-inclusion of capability actions.
    */
   setIncludeCapabilityActions(enabled: boolean): void {
     this.includeCapabilityActions = enabled;
+    this.notifyListeners();
   }
 
   /**
@@ -118,12 +128,25 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
   ): MenuAction[] {
     const registered = this.getAll();
     const registeredIds = new Set(registered.map((action) => action.id));
+    const includeCapabilityActions =
+      this.includeCapabilityActions || this.capabilityActionIds.size > 0;
 
-    const capabilityActions = this.includeCapabilityActions
-      ? Array.from(useCapabilityStore.getState().actions.values())
-          .filter(isContextMenuCapable)
-          .filter((action) => !registeredIds.has(action.id))
-          .map((action) => toMenuActionFromCapability(action))
+    const capabilityActions = includeCapabilityActions
+      ? capabilityRegistry.getAllActions()
+          .filter((action) => {
+            const forceInclude = this.capabilityActionIds.has(action.id);
+            if (!this.includeCapabilityActions && !forceInclude) {
+              return false;
+            }
+            if (!isContextMenuCapable(action, forceInclude)) {
+              return false;
+            }
+            return !registeredIds.has(action.id);
+          })
+          .map((action) => {
+            const overrides = this.capabilityOverrides.get(action.id);
+            return toMenuActionFromCapability(action, overrides);
+          })
       : [];
 
     return [...registered, ...capabilityActions]
@@ -239,10 +262,50 @@ export class ContextMenuRegistry extends BaseRegistry<MenuAction> {
    */
   registerFromDefinitions(
     actions: ActionDefinition[],
-    defaultOptions?: Parameters<typeof toMenuAction>[1]
+    defaultOptions?: ToMenuActionOptions
   ): void {
     const menuActions = toMenuActions(actions, defaultOptions);
     this.registerAll(menuActions);
+  }
+
+  /**
+   * Register actions from the capability registry by ID.
+   *
+   * Useful for adding context menu entries without duplicating metadata.
+   * This stores overrides that are applied when capability actions are
+   * converted into menu actions.
+   *
+   * @param actionIds - Action IDs from the capability registry
+   * @param options - Optional overrides for menu conversion
+   *
+   * @example
+   * ```typescript
+   * contextMenuRegistry.registerFromCapabilities(
+   *   ['assets.open-gallery', 'assets.upload'],
+   *   { availableIn: ['asset', 'asset-card'] }
+   * );
+   * ```
+   */
+  registerFromCapabilities(
+    actionIds: string[],
+    options?: {
+      defaultOptions?: ToMenuActionOptions;
+      actionOptions?: Record<string, ToMenuActionOptions>;
+    }
+  ): void {
+    actionIds.forEach((id) => {
+      this.capabilityActionIds.add(id);
+      const mergedOptions = {
+        ...(options?.defaultOptions ?? {}),
+        ...(options?.actionOptions?.[id] ?? {}),
+      };
+      if (Object.keys(mergedOptions).length > 0) {
+        this.capabilityOverrides.set(id, mergedOptions);
+      } else {
+        this.capabilityOverrides.delete(id);
+      }
+    });
+    this.notifyListeners();
   }
 }
 

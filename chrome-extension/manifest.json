@@ -60,6 +60,7 @@
       ],
       "js": [
         "content/pixverse-styles.js",
+        "content/pixverse-dialogs.js",
         "content/pixverse-utils.js",
         "content/pixverse-storage.js",
         "content/pixverse-upload-utils.js",

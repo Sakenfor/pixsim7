@@ -4,7 +4,12 @@
  * Registers cubes as a feature in the capabilities system with actions and states.
  */
 
-import { registerCompleteFeature, useCapabilityStore } from '@lib/capabilities';
+import {
+  registerCompleteFeature,
+  unregisterAction,
+  unregisterFeature,
+  unregisterState,
+} from '@lib/capabilities';
 import { useCubeStore } from '../useCubeStore';
 import { useCubeSettingsStore } from '../stores/cubeSettingsStore';
 import type { FormationPattern } from '@pixsim7/pixcubes';
@@ -248,10 +253,8 @@ export function registerCubesCapabilities(): void {
  * Unregister cubes capabilities
  */
 export function unregisterCubesCapabilities(): void {
-  const store = useCapabilityStore.getState();
-
   // Unregister feature
-  store.unregisterFeature('cubes');
+  unregisterFeature('cubes');
 
   // Unregister actions
   const actionIds = [
@@ -267,9 +270,9 @@ export function unregisterCubesCapabilities(): void {
     'cubes.formation.scattered',
     'cubes.clearAll',
   ];
-  actionIds.forEach((id) => store.unregisterAction(id));
+  actionIds.forEach((id) => unregisterAction(id));
 
   // Unregister states
   const stateIds = ['cubes.visible', 'cubes.formation', 'cubes.count', 'cubes.store'];
-  stateIds.forEach((id) => store.unregisterState(id));
+  stateIds.forEach((id) => unregisterState(id));
 }

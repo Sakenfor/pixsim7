@@ -1,4 +1,4 @@
-import { useCapabilityStore } from '@lib/capabilities';
+import { registerState } from '@lib/capabilities';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
@@ -9,9 +9,7 @@ import type { Module } from '@app/modules/types';
  * States are not part of ActionDefinition and must be registered separately.
  */
 function registerGenerationState() {
-  const store = useCapabilityStore.getState();
-
-  store.registerState({
+  registerState({
     id: 'generation.active',
     name: 'Generation Active',
     getValue: () => {

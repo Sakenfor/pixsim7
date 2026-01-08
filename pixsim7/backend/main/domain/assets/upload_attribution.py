@@ -21,10 +21,11 @@ if TYPE_CHECKING:
 DEFAULT_UPLOAD_METHOD = "api"
 
 UPLOAD_METHOD_LABELS: dict[str, str] = {
-    "extension": "Chrome Extension",
+    "extension_pixverse": "Pixverse Badge",
+    "extension_web": "Web Badge",
     "local_folders": "Local Folders",
-    "api": "API Upload",
     "generated": "Generated",
+    "api": "API Upload",
     "web": "Web Upload",
     "mobile": "Mobile Upload",
 }
@@ -48,17 +49,30 @@ def _rule_source_folder(hints: Dict[str, Any], asset: Optional[Any]) -> Optional
     return None
 
 
-def _rule_source_url(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
-    """Rule: source_url or source_site indicates extension."""
-    if hints.get("source_url") or hints.get("source_site"):
-        return "extension"
+def _rule_extension_pixverse(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
+    """Rule: Pixverse badge (auto-sync or syncing your own Pixverse content)."""
+    # Badge auto-sync via source='extension_badge'
+    if hints.get("source") == "extension_badge":
+        return "extension_pixverse"
+    # Pixverse metadata indicates badge sync of your own content
+    if not asset:
+        return None
+    # Check for Pixverse-specific metadata fields
+    metadata = getattr(asset, "media_metadata", None) or {}
+    if metadata.get("pixverse_asset_uuid") or metadata.get("image_id"):
+        return "extension_pixverse"
+    # Pixverse provider with no source_site (not from web) and no metadata
+    provider_id = getattr(asset, "provider_id", None)
+    if provider_id == "pixverse" and not hints.get("source_site"):
+        return "extension_pixverse"
     return None
 
 
-def _rule_extension_badge(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
-    """Rule: source='extension_badge' indicates extension."""
-    if hints.get("source") == "extension_badge":
-        return "extension"
+def _rule_extension_web(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
+    """Rule: Web badge (Pinterest, Google, etc.)."""
+    # Has source_url or source_site = saved from web via badge
+    if hints.get("source_url") or hints.get("source_site"):
+        return "extension_web"
     return None
 
 
@@ -69,25 +83,13 @@ def _rule_generated(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str
     return None
 
 
-def _rule_pixverse_sync(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
-    """Rule: Pixverse remote URLs indicate extension sync."""
-    if not asset:
-        return None
-    provider_id = getattr(asset, "provider_id", None)
-    remote_url = getattr(asset, "remote_url", None)
-    if provider_id == "pixverse" and remote_url and "media.pixverse.ai" in remote_url:
-        return "extension"
-    return None
-
-
-# Ordered list of inference rules
+# Ordered list of inference rules (priority order)
 INFERENCE_RULES: List[tuple[str, InferenceRule]] = [
     ("explicit_method", _rule_explicit_method),
     ("source_folder", _rule_source_folder),
-    ("source_url", _rule_source_url),
-    ("extension_badge", _rule_extension_badge),
+    ("extension_pixverse", _rule_extension_pixverse),  # Pixverse badge
+    ("extension_web", _rule_extension_web),  # Web badge (Pinterest, Google, etc.)
     ("generated", _rule_generated),
-    ("pixverse_sync", _rule_pixverse_sync),
 ]
 
 

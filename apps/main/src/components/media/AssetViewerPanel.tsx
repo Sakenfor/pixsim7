@@ -20,7 +20,8 @@ import {
   useProvideCapability,
   type AssetSelection,
 } from '@features/contextHub';
-import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import { Ref } from '@pixsim7/ref-core';
+import type { AssetRef } from '@pixsim7/shared.types';
 
 export function AssetViewerPanel() {
   // Panel orchestration hook

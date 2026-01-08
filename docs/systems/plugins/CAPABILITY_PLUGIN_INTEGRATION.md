@@ -146,14 +146,15 @@ adapter.registerRoute({
 
 // Register an action
 adapter.registerAction({
-  id: 'toggle-debug',  // Will be prefixed to 'plugin.my-plugin.toggle-debug'
-  name: 'Toggle Debug Overlay',
+  id: 'debug-overlay.toggle',  // Will be prefixed to 'plugin.my-plugin.debug-overlay.toggle'
+  featureId: 'debug-overlay',
+  title: 'Toggle Debug Overlay',
   icon: '🐛',
   shortcut: 'Ctrl+Shift+D',
   execute: () => {
     // Your code here
   },
-}, 'debug-overlay');
+});
 
 // Register state (always read-only for plugins)
 adapter.registerState({
@@ -536,8 +537,9 @@ export const plugin: Plugin = {
 
     // Register action
     adapter.registerAction({
-      id: 'show-relationships',
-      name: 'Show Relationships',
+      id: 'relationship-tracker.show-relationships',
+      featureId: 'relationship-tracker',
+      title: 'Show Relationships',
       icon: '💕',
       shortcut: 'Ctrl+R',
       execute: () => {

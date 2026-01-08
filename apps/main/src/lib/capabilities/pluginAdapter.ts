@@ -13,20 +13,30 @@
  * ```
  */
 
-import type { ActionContext } from '@shared/types';
+import type { ActionDefinition } from '@shared/types';
 import type {
   FeatureCapability,
   RouteCapability,
-  ActionCapability,
   StateCapability,
 } from './index';
-import { useCapabilityStore } from './index';
+import {
+  registerAction,
+  registerFeature,
+  registerRoute,
+  registerState,
+  toActionCapability,
+  unregisterAction,
+  unregisterFeature,
+  unregisterRoute,
+  unregisterState,
+} from './index';
 import type { PluginPermission } from '../plugins/types';
 import { debugFlags } from '@lib/utils/debugFlags';
 import { logEvent } from '@lib/utils/logging';
 
 /**
- * Simplified types for plugin registration (no execute functions, etc.)
+ * Simplified types for plugin registration.
+ * Actions use ActionDefinition from @shared/types.
  */
 export interface PluginFeatureRegistration {
   id: string;
@@ -43,17 +53,6 @@ export interface PluginRouteRegistration {
   description?: string;
   icon?: string;
   showInNav?: boolean;
-}
-
-export interface PluginActionRegistration {
-  id: string;
-  name: string;
-  description?: string;
-  icon?: string;
-  shortcut?: string;
-  execute: (ctx?: ActionContext) => void | Promise<void>;
-  enabled?: () => boolean;
-  category?: string;
 }
 
 export interface PluginStateRegistration {
@@ -99,7 +98,7 @@ export class PluginCapabilityAdapter {
       },
     };
 
-    useCapabilityStore.getState().registerFeature(capability);
+    registerFeature(capability);
     this.registeredFeatureIds.add(fullId);
 
     debugFlags.log('registry', `[PluginAdapter] Registered feature: ${fullId} (plugin: ${this.pluginId})`);
@@ -123,7 +122,7 @@ export class PluginCapabilityAdapter {
       featureId: featureId ? `plugin.${this.pluginId}.${featureId}` : undefined,
     };
 
-    useCapabilityStore.getState().registerRoute(capability);
+    registerRoute(capability);
     this.registeredRoutes.add(route.path);
 
     debugFlags.log('registry', `[PluginAdapter] Registered route: ${route.path} (plugin: ${this.pluginId})`);
@@ -134,17 +133,43 @@ export class PluginCapabilityAdapter {
    * Register an action
    * Actions are sandboxed - execute function can't access internals directly
    */
-  registerAction(action: PluginActionRegistration, featureId?: string): void {
-    // Prefix action ID with plugin ID
-    const fullId = `plugin.${this.pluginId}.${action.id}`;
+  registerAction(action: ActionDefinition): void {
+    const prefix = `plugin.${this.pluginId}.`;
 
-    const capability: ActionCapability = {
+    if (action.id.startsWith(prefix)) {
+      throw new Error(
+        `Plugin action id should be local (without prefix): ${action.id}`
+      );
+    }
+
+    if (action.id.startsWith('plugin.')) {
+      throw new Error(
+        `Plugin action id uses reserved prefix 'plugin.': ${action.id}`
+      );
+    }
+
+    if (action.featureId.startsWith(prefix)) {
+      throw new Error(
+        `Plugin action featureId should be local (without prefix): ${action.featureId}`
+      );
+    }
+
+    if (action.featureId.startsWith('plugin.')) {
+      throw new Error(
+        `Plugin action featureId uses reserved prefix 'plugin.': ${action.featureId}`
+      );
+    }
+
+    const fullId = `${prefix}${action.id}`;
+    const fullFeatureId = `${prefix}${action.featureId}`;
+
+    const prefixedAction: ActionDefinition = {
       ...action,
       id: fullId,
-      featureId: featureId ? `plugin.${this.pluginId}.${featureId}` : undefined,
+      featureId: fullFeatureId,
     };
 
-    useCapabilityStore.getState().registerAction(capability);
+    registerAction(toActionCapability(prefixedAction));
     this.registeredActionIds.add(fullId);
 
     debugFlags.log('registry', `[PluginAdapter] Registered action: ${fullId} (plugin: ${this.pluginId})`);
@@ -165,7 +190,7 @@ export class PluginCapabilityAdapter {
       readonly: true, // Always readonly for plugin-provided state
     };
 
-    useCapabilityStore.getState().registerState(capability);
+    registerState(capability);
     this.registeredStateIds.add(fullId);
 
     console.log(`[PluginAdapter] Registered state: ${fullId} (plugin: ${this.pluginId})`);
@@ -176,26 +201,24 @@ export class PluginCapabilityAdapter {
    * Call this when plugin is disabled/uninstalled
    */
   cleanup(): void {
-    const store = useCapabilityStore.getState();
-
     // Unregister features
     this.registeredFeatureIds.forEach((id) => {
-      store.unregisterFeature(id);
+      unregisterFeature(id);
     });
 
     // Unregister routes
     this.registeredRoutes.forEach((path) => {
-      store.unregisterRoute(path);
+      unregisterRoute(path);
     });
 
     // Unregister actions
     this.registeredActionIds.forEach((id) => {
-      store.unregisterAction(id);
+      unregisterAction(id);
     });
 
     // Unregister states
     this.registeredStateIds.forEach((id) => {
-      store.unregisterState(id);
+      unregisterState(id);
     });
 
     // Clear tracking sets

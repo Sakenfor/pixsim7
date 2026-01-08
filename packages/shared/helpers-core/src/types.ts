@@ -6,6 +6,109 @@
  */
 
 /**
+ * Options for creating a registry.
+ */
+export interface RegistryOptions<V> {
+  /**
+   * Whether to warn when overwriting an existing entry.
+   * @default true
+   */
+  warnOnOverwrite?: boolean;
+
+  /**
+   * Whether to throw when overwriting an existing entry.
+   * Takes precedence over warnOnOverwrite.
+   * @default false
+   */
+  strictMode?: boolean;
+
+  /**
+   * Optional callback when a duplicate entry is registered.
+   */
+  onDuplicate?: (incoming: V, existing: V) => void;
+
+  /**
+   * Optional label used in log messages.
+   */
+  label?: string;
+}
+
+/**
+ * Listener for registry changes.
+ */
+export type RegistryChangeListener<K extends string, V> = (
+  event: RegistryChangeEvent<K, V>
+) => void;
+
+/**
+ * Event emitted when registry changes.
+ */
+export interface RegistryChangeEvent<K extends string, V> {
+  type: 'register' | 'unregister';
+  key: K;
+  value: V;
+}
+
+/**
+ * Generic registry interface.
+ *
+ * Provides typed registration and lookup of entries by key.
+ *
+ * @typeParam K - Key type (typically a string union of valid keys)
+ * @typeParam V - Value type
+ */
+export interface Registry<K extends string, V> {
+  /**
+   * Register a value for a key.
+   * @param key - The key to register under
+   * @param value - The value to register
+   * @returns Unsubscribe function to remove the entry
+   */
+  register(key: K, value: V): () => void;
+
+  /**
+   * Get the value for a key.
+   * @param key - The key to look up
+   */
+  get(key: K): V | undefined;
+
+  /**
+   * Check if a value is registered for a key.
+   * @param key - The key to check
+   */
+  has(key: K): boolean;
+
+  /**
+   * Get all registered entries.
+   */
+  getAll(): Map<K, V>;
+
+  /**
+   * Get all registered keys.
+   */
+  keys(): K[];
+
+  /**
+   * Remove an entry by key.
+   * @param key - The key to remove
+   * @returns true if removed, false if not found
+   */
+  unregister(key: K): boolean;
+
+  /**
+   * Subscribe to registry changes.
+   * @param listener - Callback when registry changes
+   * @returns Unsubscribe function
+   */
+  subscribe(listener: RegistryChangeListener<K, V>): () => void;
+
+  /**
+   * Remove all entries from the registry.
+   */
+  clear(): void;
+}
+
+/**
  * Base helper adapter interface.
  *
  * Adapters provide read/write operations for a specific data source.
@@ -64,82 +167,9 @@ export interface HelperAdapter<TRead = unknown, TWrite = unknown> {
  * const registry = createHelperRegistry<StatSource, SessionStatAdapter>();
  * ```
  */
-export interface HelperRegistry<K extends string, A extends HelperAdapter> {
-  /**
-   * Register an adapter for a key.
-   * @param key - The key to register under
-   * @param adapter - The adapter to register
-   * @returns Unsubscribe function to remove the adapter
-   */
-  register(key: K, adapter: A): () => void;
-
-  /**
-   * Get the adapter for a key.
-   * @param key - The key to look up
-   */
-  get(key: K): A | undefined;
-
-  /**
-   * Check if an adapter is registered for a key.
-   * @param key - The key to check
-   */
-  has(key: K): boolean;
-
-  /**
-   * Get all registered adapters.
-   */
-  getAll(): Map<K, A>;
-
-  /**
-   * Get all registered keys.
-   */
-  keys(): K[];
-
-  /**
-   * Remove an adapter by key.
-   * @param key - The key to remove
-   * @returns true if removed, false if not found
-   */
-  unregister(key: K): boolean;
-
-  /**
-   * Subscribe to registry changes.
-   * @param listener - Callback when registry changes
-   * @returns Unsubscribe function
-   */
-  subscribe(listener: RegistryChangeListener<K, A>): () => void;
-}
-
-/**
- * Listener for registry changes.
- */
-export type RegistryChangeListener<K extends string, A extends HelperAdapter> = (
-  event: RegistryChangeEvent<K, A>
-) => void;
-
-/**
- * Event emitted when registry changes.
- */
-export interface RegistryChangeEvent<K extends string, A extends HelperAdapter> {
-  type: 'register' | 'unregister';
-  key: K;
-  adapter: A;
-}
+export interface HelperRegistry<K extends string, A extends HelperAdapter> extends Registry<K, A> {}
 
 /**
  * Options for creating a helper registry.
  */
-export interface HelperRegistryOptions {
-  /**
-   * Whether to warn when overwriting an existing adapter.
-   * @default true
-   */
-  warnOnOverwrite?: boolean;
-
-  /**
-   * Whether to throw when overwriting an existing adapter.
-   * Takes precedence over warnOnOverwrite.
-   * @default false
-   */
-  strictMode?: boolean;
-}
+export type HelperRegistryOptions<A extends HelperAdapter = HelperAdapter> = RegistryOptions<A>;

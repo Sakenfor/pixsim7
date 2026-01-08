@@ -78,12 +78,12 @@ def get_preferred_provider_asset_id(
     if media_type == "image":
         for key in ("image_id", "pixverse_image_id"):
             value = payload.get(key)
-            if value is not None:
+            if value:
                 return str(value)
     else:  # video
         for key in ("video_id", "VideoId", "id"):
             value = payload.get(key)
-            if value is not None:
+            if value:
                 return str(value)
 
     return fallback_id if fallback_id else None

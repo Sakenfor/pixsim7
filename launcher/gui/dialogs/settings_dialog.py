@@ -1,15 +1,38 @@
+import os
+import socket
+import shutil
+import subprocess
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
-    QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QTabWidget, QWidget
+    QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QTabWidget, QWidget,
+    QLineEdit, QFormLayout
 )
 from PySide6.QtCore import Qt
 
 try:
-    from ..config import UIState, save_ui_state
+    from ..config import (
+        UIState,
+        save_ui_state,
+        read_env_file,
+        write_env_file,
+        read_env_ports,
+        write_env_ports,
+    )
     from .. import theme
+    from ..dialogs.ports_dialog import show_ports_dialog
+    from ..dialogs.env_editor_dialog import show_env_editor
 except Exception:
-    from config import UIState, save_ui_state
+    from config import (
+        UIState,
+        save_ui_state,
+        read_env_file,
+        write_env_file,
+        read_env_ports,
+        write_env_ports,
+    )
     import theme
+    from dialogs.ports_dialog import show_ports_dialog
+    from dialogs.env_editor_dialog import show_env_editor
 
 
 def show_settings_dialog(parent, ui_state: UIState) -> UIState | None:
@@ -25,6 +48,7 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Launcher Settings")
         self.setModal(True)
         self._state = ui_state
+        self._env_vars = read_env_file()
         self.setMinimumWidth(550)
         self.setMinimumHeight(500)
         # Use centralized dark theme
@@ -51,6 +75,10 @@ class SettingsDialog(QDialog):
         # Performance Tab
         performance_tab = self._create_performance_tab()
         tabs.addTab(performance_tab, "Performance")
+
+        # Network Tab
+        network_tab = self._create_network_tab()
+        tabs.addTab(network_tab, "Network")
 
         layout.addWidget(tabs)
 
@@ -139,6 +167,230 @@ class SettingsDialog(QDialog):
 
         layout.addStretch()
         return tab
+
+    def _create_network_tab(self) -> QWidget:
+        """Create base URL/HTTPS settings tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        urls_group = QGroupBox("Base URLs (optional)")
+        urls_layout = QFormLayout(urls_group)
+        urls_layout.setSpacing(8)
+        urls_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+
+        self.chk_use_local_datastores = QCheckBox("Use local Postgres/Redis (skip Docker DB service)")
+        self.chk_use_local_datastores.setChecked(self._state.use_local_datastores)
+        urls_layout.addRow(self.chk_use_local_datastores)
+
+        button_row = QHBoxLayout()
+        btn_ports = QPushButton("Edit Ports")
+        btn_ports.clicked.connect(self._open_ports_editor)
+        button_row.addWidget(btn_ports)
+        btn_env = QPushButton("Edit Environment Variables")
+        btn_env.clicked.connect(self._open_env_editor)
+        button_row.addWidget(btn_env)
+        button_row.addStretch()
+        urls_layout.addRow(button_row)
+
+        self.input_local_db_url = QLineEdit()
+        self.input_local_db_url.setPlaceholderText("postgresql://pixsim:pixsim123@127.0.0.1:5432/pixsim7")
+        self.input_local_db_url.setText(self._env_vars.get("LOCAL_DATABASE_URL", ""))
+        urls_layout.addRow("Local DATABASE_URL:", self.input_local_db_url)
+
+        self.input_local_redis_url = QLineEdit()
+        self.input_local_redis_url.setPlaceholderText("redis://localhost:6379/0")
+        self.input_local_redis_url.setText(self._env_vars.get("LOCAL_REDIS_URL", ""))
+        urls_layout.addRow("Local REDIS_URL:", self.input_local_redis_url)
+
+        self.input_backend_base = QLineEdit()
+        self.input_backend_base.setPlaceholderText("https://api.pixsim7.local")
+        self.input_backend_base.setText(self._env_vars.get("BACKEND_BASE_URL", ""))
+        urls_layout.addRow("Backend:", self.input_backend_base)
+
+        self.input_generation_base = QLineEdit()
+        self.input_generation_base.setPlaceholderText("https://gen.pixsim7.local")
+        self.input_generation_base.setText(self._env_vars.get("GENERATION_BASE_URL", ""))
+        urls_layout.addRow("Generation API:", self.input_generation_base)
+
+        self.input_frontend_base = QLineEdit()
+        self.input_frontend_base.setPlaceholderText("https://app.pixsim7.local")
+        self.input_frontend_base.setText(self._env_vars.get("FRONTEND_BASE_URL", ""))
+        urls_layout.addRow("Frontend:", self.input_frontend_base)
+
+        self.input_admin_base = QLineEdit()
+        self.input_admin_base.setPlaceholderText("https://admin.pixsim7.local")
+        self.input_admin_base.setText(self._env_vars.get("ADMIN_BASE_URL", ""))
+        urls_layout.addRow("Admin:", self.input_admin_base)
+
+        self.input_game_base = QLineEdit()
+        self.input_game_base.setPlaceholderText("https://game.pixsim7.local")
+        self.input_game_base.setText(self._env_vars.get("GAME_FRONTEND_BASE_URL", ""))
+        urls_layout.addRow("Game Frontend:", self.input_game_base)
+
+        self.input_launcher_base = QLineEdit()
+        self.input_launcher_base.setPlaceholderText("https://launcher.pixsim7.local")
+        self.input_launcher_base.setText(self._env_vars.get("LAUNCHER_BASE_URL", ""))
+        urls_layout.addRow("Launcher API:", self.input_launcher_base)
+
+        layout.addWidget(urls_group)
+
+        tools_row = QHBoxLayout()
+        tools_row.addStretch()
+        btn_detect_local = QPushButton("Detect local DB/Redis")
+        btn_detect_local.clicked.connect(self._detect_local_datastores)
+        tools_row.addWidget(btn_detect_local)
+        btn_fill = QPushButton("Use pixsim7.local defaults")
+        btn_fill.clicked.connect(self._fill_pixsim7_defaults)
+        tools_row.addWidget(btn_fill)
+        layout.addLayout(tools_row)
+
+        note = QLabel(
+            "Leave a field blank to use http://localhost:<port>. "
+            "Local DB URLs are applied when the local toggle is enabled. "
+            "Changes take effect after restarting services."
+        )
+        note.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-top: 6px;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        layout.addStretch()
+        return tab
+
+    def _fill_pixsim7_defaults(self):
+        self.input_backend_base.setText("https://api.pixsim7.local")
+        self.input_generation_base.setText("https://gen.pixsim7.local")
+        self.input_frontend_base.setText("https://app.pixsim7.local")
+        self.input_admin_base.setText("https://admin.pixsim7.local")
+        self.input_game_base.setText("https://game.pixsim7.local")
+        self.input_launcher_base.setText("https://launcher.pixsim7.local")
+
+    def _open_ports_editor(self):
+        parent = self.parent()
+        if parent and hasattr(parent, "edit_ports"):
+            parent.edit_ports()
+        else:
+            current = read_env_ports()
+            result = show_ports_dialog(self, current)
+            if result is not None:
+                try:
+                    write_env_ports(result)
+                except Exception:
+                    pass
+        self._reload_env_fields()
+
+    def _open_env_editor(self):
+        parent = self.parent()
+        if parent and hasattr(parent, "edit_env"):
+            parent.edit_env()
+        else:
+            data = show_env_editor(self)
+            if data is not None:
+                try:
+                    write_env_file(data)
+                except Exception:
+                    pass
+        self._reload_env_fields()
+
+    def _reload_env_fields(self):
+        self._env_vars = read_env_file()
+        self.input_local_db_url.setText(self._env_vars.get("LOCAL_DATABASE_URL", ""))
+        self.input_local_redis_url.setText(self._env_vars.get("LOCAL_REDIS_URL", ""))
+        self.input_backend_base.setText(self._env_vars.get("BACKEND_BASE_URL", ""))
+        self.input_generation_base.setText(self._env_vars.get("GENERATION_BASE_URL", ""))
+        self.input_frontend_base.setText(self._env_vars.get("FRONTEND_BASE_URL", ""))
+        self.input_admin_base.setText(self._env_vars.get("ADMIN_BASE_URL", ""))
+        self.input_game_base.setText(self._env_vars.get("GAME_FRONTEND_BASE_URL", ""))
+        self.input_launcher_base.setText(self._env_vars.get("LAUNCHER_BASE_URL", ""))
+
+    def _detect_local_datastores(self):
+        """Detect local Postgres/Redis ports and fill URLs."""
+        from PySide6.QtWidgets import QMessageBox
+
+        pg_ports = [5432, 5433, 5434, 5435]
+        redis_ports = [6379, 6380]
+
+        pg_port = self._find_open_port(pg_ports)
+        redis_port = self._find_open_port(redis_ports)
+
+        if pg_port:
+            current_db = self.input_local_db_url.text().strip()
+            if not current_db:
+                self.input_local_db_url.setText(
+                    f"postgresql://pixsim:pixsim123@127.0.0.1:{pg_port}/pixsim7"
+                )
+        if redis_port:
+            current_redis = self.input_local_redis_url.text().strip()
+            if not current_redis:
+                self.input_local_redis_url.setText(
+                    f"redis://localhost:{redis_port}/0"
+                )
+
+        versions = self._get_local_versions()
+        details = []
+        if pg_port:
+            details.append(f"Postgres port: {pg_port}")
+        else:
+            details.append("Postgres port: not detected")
+        if redis_port:
+            details.append(f"Redis port: {redis_port}")
+        else:
+            details.append("Redis port: not detected")
+        if versions:
+            details.append(versions)
+
+        QMessageBox.information(
+            self,
+            "Local Datastores",
+            "Detection complete:\n" + "\n".join(details)
+        )
+
+    def _find_open_port(self, ports):
+        for port in ports:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                    return port
+            except OSError:
+                continue
+        return None
+
+    def _get_local_versions(self) -> str:
+        pg_version = None
+        redis_version = None
+
+        if shutil.which("psql"):
+            try:
+                result = subprocess.run(
+                    ["psql", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    pg_version = result.stdout.strip()
+            except Exception:
+                pass
+
+        if shutil.which("redis-server"):
+            try:
+                result = subprocess.run(
+                    ["redis-server", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    redis_version = result.stdout.strip()
+            except Exception:
+                pass
+
+        parts = []
+        if pg_version:
+            parts.append(pg_version)
+        if redis_version:
+            parts.append(redis_version)
+        return " | ".join(parts)
 
     def _create_performance_tab(self) -> QWidget:
         """Create performance/health check settings tab."""
@@ -244,6 +496,48 @@ class SettingsDialog(QDialog):
         self._state.health_check_startup_interval = float(self.spin_startup_interval.value())
         self._state.health_check_stable_interval = float(self.spin_stable_interval.value())
 
+        if hasattr(self, "chk_use_local_datastores"):
+            self._state.use_local_datastores = self.chk_use_local_datastores.isChecked()
+
+        env_updates = {
+            "BACKEND_BASE_URL": self.input_backend_base.text().strip(),
+            "GENERATION_BASE_URL": self.input_generation_base.text().strip(),
+            "FRONTEND_BASE_URL": self.input_frontend_base.text().strip(),
+            "ADMIN_BASE_URL": self.input_admin_base.text().strip(),
+            "GAME_FRONTEND_BASE_URL": self.input_game_base.text().strip(),
+            "LAUNCHER_BASE_URL": self.input_launcher_base.text().strip(),
+            "USE_LOCAL_DATASTORES": "1" if self._state.use_local_datastores else "0",
+            "LOCAL_DATABASE_URL": self.input_local_db_url.text().strip(),
+            "LOCAL_REDIS_URL": self.input_local_redis_url.text().strip(),
+        }
+        if self._state.use_local_datastores:
+            current_db = self._env_vars.get("DATABASE_URL", "")
+            current_redis = self._env_vars.get("REDIS_URL", "")
+            if current_db:
+                env_updates.setdefault("DOCKER_DATABASE_URL", current_db)
+            if current_redis:
+                env_updates.setdefault("DOCKER_REDIS_URL", current_redis)
+            if env_updates["LOCAL_DATABASE_URL"]:
+                env_updates["DATABASE_URL"] = env_updates["LOCAL_DATABASE_URL"]
+            if env_updates["LOCAL_REDIS_URL"]:
+                env_updates["REDIS_URL"] = env_updates["LOCAL_REDIS_URL"]
+        else:
+            docker_db = self._env_vars.get("DOCKER_DATABASE_URL")
+            docker_redis = self._env_vars.get("DOCKER_REDIS_URL")
+            if docker_db:
+                env_updates["DATABASE_URL"] = docker_db
+            if docker_redis:
+                env_updates["REDIS_URL"] = docker_redis
+        try:
+            write_env_file(env_updates)
+        except Exception:
+            pass
+        for key, value in env_updates.items():
+            if value:
+                os.environ[key] = value
+            elif key in os.environ:
+                del os.environ[key]
+
         save_ui_state(self._state)
         return self._state
 
@@ -286,3 +580,21 @@ class SettingsDialog(QDialog):
                 self.chk_worker_debug.setChecked(bool(defaults.worker_debug_flags))
             if hasattr(self, "chk_backend_debug"):
                 self.chk_backend_debug.setChecked(defaults.backend_debug_enabled)
+            if hasattr(self, "input_backend_base"):
+                self.input_backend_base.setText("")
+            if hasattr(self, "input_generation_base"):
+                self.input_generation_base.setText("")
+            if hasattr(self, "input_frontend_base"):
+                self.input_frontend_base.setText("")
+            if hasattr(self, "input_admin_base"):
+                self.input_admin_base.setText("")
+            if hasattr(self, "input_game_base"):
+                self.input_game_base.setText("")
+            if hasattr(self, "input_launcher_base"):
+                self.input_launcher_base.setText("")
+            if hasattr(self, "chk_use_local_datastores"):
+                self.chk_use_local_datastores.setChecked(defaults.use_local_datastores)
+            if hasattr(self, "input_local_db_url"):
+                self.input_local_db_url.setText("")
+            if hasattr(self, "input_local_redis_url"):
+                self.input_local_redis_url.setText("")

@@ -155,7 +155,12 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
     p = ports or read_env_ports()
     # Vite env for admin/frontend
     env['VITE_ADMIN_PORT'] = str(p.admin)
-    env['VITE_BACKEND_URL'] = f"http://localhost:{p.backend}"
+    if 'VITE_BACKEND_URL' not in env:
+        backend_base_url = os.getenv("BACKEND_BASE_URL")
+        env['VITE_BACKEND_URL'] = backend_base_url or f"http://localhost:{p.backend}"
+    if 'VITE_GAME_URL' not in env:
+        game_base_url = os.getenv("GAME_FRONTEND_BASE_URL")
+        env['VITE_GAME_URL'] = game_base_url or f"http://localhost:{p.game_frontend}"
     env['PORT'] = str(p.backend)  # backend FastAPI if read by app
     # SQL logging control (use parameter if provided, otherwise use global setting)
     sql_log_enabled = sql_logging if sql_logging is not None else _sql_logging_enabled
@@ -200,6 +205,7 @@ class UIState:
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
     worker_debug_flags: str = ""        # Worker debug categories (comma-separated)
     backend_debug_enabled: bool = False # Toggle backend LOG_LEVEL=DEBUG
+    use_local_datastores: bool = False # Prefer local Postgres/Redis over Docker
 
     # Console settings
     autoscroll_enabled: bool = False    # Auto-scroll console logs to bottom
@@ -231,6 +237,8 @@ def load_ui_state() -> UIState:
                     data['worker_debug_flags'] = ""
                 if 'backend_debug_enabled' not in data:
                     data['backend_debug_enabled'] = False
+                if 'use_local_datastores' not in data:
+                    data['use_local_datastores'] = False
                 if 'window_always_on_top' not in data:
                     data['window_always_on_top'] = False
                 if 'health_check_interval' not in data:

@@ -6,6 +6,189 @@
 
 // Note: renderAdPill is loaded from shared/ad-pill-renderer.js via popup.html
 
+// ===== CUSTOM CONFIRM DIALOG =====
+
+/**
+ * Show a styled confirmation dialog (replaces window.confirm)
+ * @param {string} message - Confirmation message
+ * @param {object} options - Optional configuration
+ * @returns {Promise<boolean>} - Resolves to true if confirmed
+ */
+function showConfirm(message, options = {}) {
+  const {
+    title = 'Confirm Action',
+    confirmText = 'Confirm',
+    cancelText = 'Cancel',
+    isDangerous = false,
+  } = options;
+
+  return new Promise((resolve) => {
+    // Remove any existing confirm dialogs
+    document.querySelectorAll('.popup-confirm-dialog').forEach(d => d.remove());
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-confirm-dialog';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      animation: fadeIn 0.15s ease-out;
+    `;
+
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: linear-gradient(135deg, #1a1f2e 0%, #151a26 100%);
+      border: 2px solid #6366f1;
+      border-radius: 12px;
+      padding: 20px;
+      min-width: 280px;
+      max-width: 340px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      animation: slideIn 0.2s ease-out;
+    `;
+
+    // Title
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = `
+      font-size: 15px;
+      font-weight: 600;
+      color: #a5b4fc;
+      margin-bottom: 12px;
+    `;
+    titleEl.textContent = title;
+    dialog.appendChild(titleEl);
+
+    // Message
+    const messageEl = document.createElement('div');
+    messageEl.style.cssText = `
+      font-size: 13px;
+      line-height: 1.5;
+      color: #e5e7eb;
+      margin-bottom: 20px;
+    `;
+    messageEl.textContent = message;
+    dialog.appendChild(messageEl);
+
+    // Buttons
+    const btnContainer = document.createElement('div');
+    btnContainer.style.cssText = 'display: flex; gap: 8px;';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = confirmText;
+    confirmBtn.style.cssText = `
+      flex: 1;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      background: ${isDangerous ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)'};
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    `;
+    confirmBtn.addEventListener('mouseenter', () => {
+      confirmBtn.style.transform = 'translateY(-1px)';
+      confirmBtn.style.boxShadow = `0 4px 12px ${isDangerous ? 'rgba(239, 68, 68, 0.4)' : 'rgba(99, 102, 241, 0.4)'}`;
+    });
+    confirmBtn.addEventListener('mouseleave', () => {
+      confirmBtn.style.transform = '';
+      confirmBtn.style.boxShadow = '';
+    });
+    confirmBtn.addEventListener('click', () => {
+      overlay.remove();
+      resolve(true);
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = cancelText;
+    cancelBtn.style.cssText = `
+      flex: 1;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      background: #2d3748;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    `;
+    cancelBtn.addEventListener('mouseenter', () => {
+      cancelBtn.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%)';
+      cancelBtn.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+      cancelBtn.style.color = '#a5b4fc';
+    });
+    cancelBtn.addEventListener('mouseleave', () => {
+      cancelBtn.style.background = '#2d3748';
+      cancelBtn.style.borderColor = '#374151';
+      cancelBtn.style.color = '#e5e7eb';
+    });
+    cancelBtn.addEventListener('click', () => {
+      overlay.remove();
+      resolve(false);
+    });
+
+    btnContainer.appendChild(confirmBtn);
+    btnContainer.appendChild(cancelBtn);
+    dialog.appendChild(btnContainer);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    // Keyboard handling
+    const keyHandler = (e) => {
+      if (e.key === 'Enter') {
+        overlay.remove();
+        document.removeEventListener('keydown', keyHandler);
+        resolve(true);
+      } else if (e.key === 'Escape') {
+        overlay.remove();
+        document.removeEventListener('keydown', keyHandler);
+        resolve(false);
+      }
+    };
+    document.addEventListener('keydown', keyHandler);
+
+    // Click outside to cancel
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+        resolve(false);
+      }
+    });
+
+    // Focus confirm button
+    setTimeout(() => confirmBtn.focus(), 0);
+
+    // Add animation styles
+    if (!document.getElementById('popup-dialog-styles')) {
+      const style = document.createElement('style');
+      style.id = 'popup-dialog-styles';
+      style.textContent = `
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideIn {
+          from { transform: translateY(-20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  });
+}
+
 // ===== UNIFIED CACHE HELPERS =====
 
 function getCachedField(accountId, fieldName, options = {}) {
@@ -340,7 +523,12 @@ async function handleReauthMissingJwt() {
   }
 
   const confirmMsg = `Attempt to re-authenticate ${targetAccountIds.length} account(s) using stored credentials?`;
-  if (!window.confirm(confirmMsg)) return;
+  const confirmed = await showConfirm(confirmMsg, {
+    title: 'Re-authenticate Accounts',
+    confirmText: 'Re-authenticate',
+    isDangerous: false
+  });
+  if (!confirmed) return;
 
   try {
     const res = await chrome.runtime.sendMessage({

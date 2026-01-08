@@ -2,15 +2,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssetsController, useAssetViewer, AssetDetailModal } from '@features/assets';
 import { useGenerationWebSocket } from '@features/generation';
-import { useControlCenterLayout, useControlCenterStore } from '@features/controlCenter';
-import { Modal, Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
+import { useControlCenterLayout } from '@features/controlCenter';
+import { Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '@features/workspace';
 import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels';
 import {
   GallerySurfaceSwitcher,
   GalleryLayoutControls,
-  mergeBadgeConfig,
+  // mergeBadgeConfig,
   deriveOverlayPresetIdFromBadgeConfig,
   getAssetSource,
   getAllAssetSources,
@@ -25,7 +25,8 @@ import {
   useProvideCapability,
   type AssetSelection,
 } from '@features/contextHub';
-import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import { Ref } from '@pixsim7/ref-core';
+import type { AssetRef } from '@pixsim7/shared.types';
 
 export function AssetsRoute() {
   const navigate = useNavigate();
@@ -51,10 +52,10 @@ export function AssetsRoute() {
   const [panelsDropdownOpen, setPanelsDropdownOpen] = useState(false);
 
   // Get current surface ID from URL (for remote gallery)
-  const currentSurfaceId = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('surface') || 'assets-default';
-  }, [location.search]);
+  // const currentSurfaceId = useMemo(() => {
+  //   const params = new URLSearchParams(location.search);
+  //   return params.get('surface') || 'assets-default';
+  // }, [location.search]);
 
   // Get active source from URL
   const activeSourceId = useMemo<AssetSourceId>(() => {
@@ -71,8 +72,8 @@ export function AssetsRoute() {
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
   // Get current control center state for smart quick actions
-  const controlCenterOpen = useControlCenterStore((s) => s.isOpen);
-  const controlCenterOperation = useControlCenterStore((s) => s.operationType);
+  // const controlCenterOpen = useControlCenterStore((s) => s.isOpen);
+  // const controlCenterOperation = useControlCenterStore((s) => s.operationType);
 
   // Get current overlay preset ID
   const currentOverlayPresetId = useMemo(() => {

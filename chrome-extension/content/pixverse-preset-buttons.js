@@ -211,27 +211,44 @@
     return [];
   }
 
-  // Track current search query for pagination
+  // Track current search query and filters for cache invalidation
   let assetsCurrentQuery = '';
+  let assetsCurrentFilters = {
+    uploadMethod: undefined,
+    mediaType: undefined,
+    providerId: undefined
+  };
 
   /**
    * Load assets with true pagination (page replacement, not append)
    * @param {Object} options
    * @param {number} options.page - Page number to load (1-based)
    * @param {string} options.q - Search query
+   * @param {string} options.uploadMethod - Upload method filter (e.g., 'local_folders', 'extension')
+   * @param {string} options.mediaType - Media type filter (e.g., 'image', 'video')
+   * @param {string} options.providerId - Provider ID filter (e.g., 'pixverse', 'runway')
    * @param {boolean} options.forceRefresh - Force reload even if cached
    */
   async function loadAssets(options = {}) {
-    const { page = 1, q, forceRefresh = false } = options;
+    const { page = 1, q, uploadMethod, mediaType, providerId, forceRefresh = false } = options;
 
-    // If query changed, reset to page 1
+    // Check if query or filters changed
     const queryChanged = q !== undefined && q !== assetsCurrentQuery;
+    const filtersChanged =
+      uploadMethod !== assetsCurrentFilters.uploadMethod ||
+      mediaType !== assetsCurrentFilters.mediaType ||
+      providerId !== assetsCurrentFilters.providerId;
+
+    // Update tracked state
     if (queryChanged) {
       assetsCurrentQuery = q || '';
     }
+    if (filtersChanged) {
+      assetsCurrentFilters = { uploadMethod, mediaType, providerId };
+    }
 
-    // Check cache - only use if same page and query and not forcing refresh
-    if (!forceRefresh && !queryChanged && assetsCache.length > 0 && assetsCurrentPage === page) {
+    // Check cache - only use if same page, query, filters, and not forcing refresh
+    if (!forceRefresh && !queryChanged && !filtersChanged && assetsCache.length > 0 && assetsCurrentPage === page) {
       return assetsCache;
     }
 
@@ -249,6 +266,17 @@
       // Include search query if set
       if (assetsCurrentQuery) {
         params.q = assetsCurrentQuery;
+      }
+
+      // Include server-side filter parameters
+      if (uploadMethod && uploadMethod !== 'all') {
+        params.uploadMethod = uploadMethod;
+      }
+      if (mediaType && mediaType !== 'all') {
+        params.mediaType = mediaType;
+      }
+      if (providerId && providerId !== 'all') {
+        params.providerId = providerId;
       }
 
       const res = await sendMessageWithTimeout(params);
@@ -1061,13 +1089,18 @@
     imagePicker.setLoadAssetsFunction(loadAssetsWrapper);
 
     // Load data in background (don't block)
-    // Use saved page/search from image picker for assets
+    // Use saved page/search/filters from image picker for assets
     const savedPage = imagePicker.getSavedPage?.() || 1;
     const savedSearch = imagePicker.getSavedSearch?.() || '';
+    const savedFilters = imagePicker.getSavedFilters?.() || {};
     Promise.all([
       loadPresets(),
       loadAccounts(),
-      loadAssets({ page: savedPage, q: savedSearch || undefined })
+      loadAssets({
+        page: savedPage,
+        q: savedSearch || undefined,
+        ...savedFilters
+      })
     ]).then(() => {
       syncModuleCaches();
       updateAllAccountButtons();

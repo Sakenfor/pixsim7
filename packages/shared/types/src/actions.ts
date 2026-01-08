@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * Canonical Action Types
  *
@@ -110,7 +112,8 @@ export interface ActionDefinition {
 
   /**
    * Unique action identifier.
-   * Convention: `featureId.action-name` (e.g., 'assets.open-gallery')
+   * Convention: namespaced with dots (e.g., 'assets.open-gallery').
+   * Plugins may add additional namespace segments.
    */
   id: string;
 
@@ -214,3 +217,38 @@ export interface ModuleActionConfig {
   /** Actions provided by this module */
   actions: ActionDefinition[];
 }
+
+// =============================================================================
+// Runtime Schemas (for validation during registration)
+// =============================================================================
+
+const functionSchema = z.any().refine((value) => typeof value === 'function', {
+  message: 'Expected function',
+});
+
+export const ActionVisibilitySchema = z.enum([
+  'always',
+  'commandPalette',
+  'contextMenu',
+  'hidden',
+]);
+
+export const ActionDefinitionSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .regex(/^[\w-]+(\.[\w-]+)+$/, 'Expected dot-namespaced action id'),
+  featureId: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  shortcut: z.string().optional(),
+  execute: functionSchema,
+  enabled: functionSchema.optional(),
+  visibility: ActionVisibilitySchema.optional(),
+  contexts: z.array(z.string()).optional(),
+  route: z.string().optional(),
+  validate: functionSchema.optional(),
+  category: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});

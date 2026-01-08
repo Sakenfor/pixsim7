@@ -27,4 +27,4 @@ export * from './actions';
 export { registerContextMenuActions } from './actions';
 
 // Action adapters for converting canonical ActionDefinition to MenuAction
-export { toMenuAction, toMenuActions } from './actionAdapters';
+export { toMenuAction, toMenuActions, type ToMenuActionOptions } from './actionAdapters';

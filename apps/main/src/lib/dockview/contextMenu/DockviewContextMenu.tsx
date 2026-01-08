@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
-import { useContextMenu } from './ContextMenuProvider';
+import { useContextMenu } from './useContextMenu';
 import type { MenuItem } from './types';
 
 /**

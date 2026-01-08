@@ -38,39 +38,43 @@ def _infer_upload_method_for_new_asset(
     Uses the same INFERENCE_RULES from upload_attribution module but operates
     on raw fields since we don't have an Asset object yet.
 
-    Priority:
-    1. Hints from metadata (source_folder_id, source_url, etc.)
-    2. source_generation_id -> 'generated'
-    3. Provider-specific patterns (e.g., pixverse URLs -> 'extension')
-    4. Default -> 'api'
+    Priority (matches INFERENCE_RULES):
+    1. Explicit upload_method in metadata
+    2. source_folder_id -> 'local_folders'
+    3. Pixverse badge -> 'extension_pixverse'
+    4. Web badge -> 'extension_web'
+    5. source_generation_id -> 'generated'
+    6. Default -> 'api'
     """
     # Extract hints from metadata
     hints = extract_hints_from_metadata(media_metadata)
 
-    # Check explicit upload_method in metadata
+    # 1. Check explicit upload_method in metadata
     if hints.get("upload_method"):
         return hints["upload_method"]
 
-    # Check source_folder_id -> local_folders
+    # 2. Check source_folder_id -> local_folders
     if hints.get("source_folder_id"):
         return "local_folders"
 
-    # Check source_url/source_site -> extension
-    if hints.get("source_url") or hints.get("source_site"):
-        return "extension"
-
-    # Check source='extension_badge' -> extension
+    # 3. Check Pixverse badge (auto-sync or Pixverse content)
     if hints.get("source") == "extension_badge":
-        return "extension"
+        return "extension_pixverse"
+    # Pixverse metadata indicates badge sync
+    if media_metadata:
+        if media_metadata.get("pixverse_asset_uuid") or media_metadata.get("image_id"):
+            return "extension_pixverse"
+    # Pixverse provider with no source_site = Pixverse badge
+    if provider_id == "pixverse" and not hints.get("source_site"):
+        return "extension_pixverse"
 
-    # Check if generated
+    # 4. Check web badge (Pinterest, Google, etc.)
+    if hints.get("source_url") or hints.get("source_site"):
+        return "extension_web"
+
+    # 5. Check if generated
     if source_generation_id:
         return "generated"
-
-    # Check provider-specific patterns
-    if provider_id == "pixverse" and remote_url:
-        if "media.pixverse.ai" in remote_url:
-            return "extension"
 
     return DEFAULT_UPLOAD_METHOD
 

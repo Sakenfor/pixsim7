@@ -514,7 +514,13 @@ window.PXS7 = window.PXS7 || {};
       try {
         if (loadAssets) {
           // Call loadAssets with search query - resets to page 1
-          await loadAssets({ page: 1, q: query });
+          await loadAssets({
+            page: 1,
+            q: query,
+            uploadMethod: assetsFilterUploadMethod,
+            mediaType: assetsFilterMediaType,
+            providerId: assetsFilterProvider
+          });
         }
         // Re-render entire tab to update pagination
         renderTabContent('assets', container, panel, loadAssets);
@@ -530,22 +536,36 @@ window.PXS7 = window.PXS7 || {};
       }
     };
 
-    // Filter handler
-    const applyFilters = () => {
-      let filtered = urls;
-      if (assetsFilterProvider !== 'all') {
-        filtered = filtered.filter(u => u.providerId === assetsFilterProvider);
+    // Filter handler - triggers server-side filtering and re-render
+    const applyFilters = async () => {
+      // Show loading state
+      gridContainer.innerHTML = `
+        <div style="text-align: center; padding: 20px 10px; color: ${COLORS.textMuted};">
+          <div style="font-size: 11px;">Loading filtered results...</div>
+        </div>
+      `;
+
+      try {
+        if (loadAssets) {
+          // Call loadAssets with filter parameters - resets to page 1
+          await loadAssets({
+            page: 1,
+            q: assetsSearchQuery || undefined,
+            uploadMethod: assetsFilterUploadMethod,
+            mediaType: assetsFilterMediaType,
+            providerId: assetsFilterProvider
+          });
+        }
+        // Re-render entire tab to update with filtered results
+        renderTabContent('assets', container, panel, loadAssets);
+      } catch (e) {
+        console.warn('[PixSim7] Filter failed:', e);
+        gridContainer.innerHTML = `
+          <div style="text-align: center; padding: 20px 10px; color: ${COLORS.textMuted};">
+            <div style="font-size: 11px;">Filter failed</div>
+          </div>
+        `;
       }
-      if (assetsFilterMediaType !== 'all') {
-        filtered = filtered.filter(u => {
-          const mediaType = (u.mediaType || '').toLowerCase();
-          return mediaType === assetsFilterMediaType;
-        });
-      }
-      if (assetsFilterUploadMethod !== 'all') {
-        filtered = filtered.filter(u => u.uploadMethod === assetsFilterUploadMethod);
-      }
-      renderGrid(filtered);
     };
 
     // === ROW 1: Search + Pagination (compact) ===
@@ -602,7 +622,12 @@ window.PXS7 = window.PXS7 || {};
     prevBtn.addEventListener('click', async () => {
       if (!canGoPrev || !loadAssets) return;
       prevBtn.textContent = '...';
-      await loadAssets({ page: assetsCurrentPage - 1 });
+      await loadAssets({
+        page: assetsCurrentPage - 1,
+        uploadMethod: assetsFilterUploadMethod,
+        mediaType: assetsFilterMediaType,
+        providerId: assetsFilterProvider
+      });
       saveAssetsState();
       renderTabContent('assets', container, panel, loadAssets);
     });
@@ -640,7 +665,12 @@ window.PXS7 = window.PXS7 || {};
     const submitPageChange = () => {
       const page = parseInt(pageInput.value, 10);
       if (!isNaN(page) && page >= 1 && loadAssets) {
-        loadAssets({ page }).then(() => {
+        loadAssets({
+          page,
+          uploadMethod: assetsFilterUploadMethod,
+          mediaType: assetsFilterMediaType,
+          providerId: assetsFilterProvider
+        }).then(() => {
           saveAssetsState();
           renderTabContent('assets', container, panel, loadAssets);
         });
@@ -689,7 +719,12 @@ window.PXS7 = window.PXS7 || {};
     nextBtn.addEventListener('click', async () => {
       if (!canGoNext || !loadAssets) return;
       nextBtn.textContent = '...';
-      await loadAssets({ page: assetsCurrentPage + 1 });
+      await loadAssets({
+        page: assetsCurrentPage + 1,
+        uploadMethod: assetsFilterUploadMethod,
+        mediaType: assetsFilterMediaType,
+        providerId: assetsFilterProvider
+      });
       saveAssetsState();
       renderTabContent('assets', container, panel, loadAssets);
     });
@@ -704,7 +739,13 @@ window.PXS7 = window.PXS7 || {};
     `;
     refreshBtn.addEventListener('click', async () => {
       refreshBtn.textContent = '...';
-      if (loadAssets) await loadAssets({ page: assetsCurrentPage, forceRefresh: true });
+      if (loadAssets) await loadAssets({
+        page: assetsCurrentPage,
+        forceRefresh: true,
+        uploadMethod: assetsFilterUploadMethod,
+        mediaType: assetsFilterMediaType,
+        providerId: assetsFilterProvider
+      });
       renderTabContent('assets', container, panel, loadAssets);
     });
 
@@ -794,9 +835,11 @@ window.PXS7 = window.PXS7 || {};
         .join('');
       uploadMethodSelect.innerHTML = `<option value="all">Source</option>${uploadOptions}`;
     } else {
+      // Fallback options (should load from API)
       uploadMethodSelect.innerHTML = `
         <option value="all">Source</option>
-        <option value="extension">Ext</option>
+        <option value="extension_pixverse">PV Badge</option>
+        <option value="extension_web">Web Badge</option>
         <option value="local_folders">Local</option>
         <option value="generated">Gen</option>
         <option value="api">API</option>
@@ -1277,6 +1320,11 @@ window.PXS7 = window.PXS7 || {};
     // Expose saved state for initial load
     getSavedPage: () => assetsCurrentPage,
     getSavedSearch: () => assetsSearchQuery,
+    getSavedFilters: () => ({
+      uploadMethod: assetsFilterUploadMethod !== 'all' ? assetsFilterUploadMethod : undefined,
+      mediaType: assetsFilterMediaType !== 'all' ? assetsFilterMediaType : undefined,
+      providerId: assetsFilterProvider !== 'all' ? assetsFilterProvider : undefined,
+    }),
     // Reset picker position (can call from console: PXS7.imagePicker.resetPosition())
     resetPosition: () => {
       localStorage.removeItem('pxs7_picker_state');

@@ -10,6 +10,7 @@
   const { sendMessageWithTimeout, normalizeUrl, showToast } = window.PXS7.utils || {};
   const { injectImageToUpload, findUploadInputs } = window.PXS7.uploadUtils || {};
   const { COLORS } = window.PXS7.styles || {};
+  const { showDeleteAssetDialog } = window.PXS7.dialogs || {};
 
   // Debug mode - controlled by extension settings
   let DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
@@ -616,21 +617,78 @@
     }, true); // Capture phase to handle before other click listeners
 
     // Right-click context menu for slot selection and restore
-    grid.addEventListener('contextmenu', (e) => {
+    // Ctrl+Right-click for instant delete (DB + Provider) without confirmation
+    grid.addEventListener('contextmenu', async (e) => {
       const thumb = e.target.closest('.pxs7-thumb');
       if (!thumb) return;
       e.preventDefault();
       const idx = parseInt(thumb.dataset.idx, 10);
       const data = itemDataMap.get(idx);
-      if (data) {
-        // Merge item data with wrapper data for easier access
-        const assetData = {
-          ...data,
-          ...data.item,
-          assetId: data.item?.id || data.item?.asset_id,
-        };
-        showUploadSlotMenu(data.fullUrl, e.clientX, e.clientY, null, assetData);
+      if (!data) return;
+
+      // Merge item data with wrapper data for easier access
+      const assetData = {
+        ...data,
+        ...data.item,
+        assetId: data.item?.id || data.item?.asset_id,
+        element: thumb,
+      };
+
+      // Ctrl+Right-click: Delete immediately without confirmation
+      if (e.ctrlKey && assetData.assetId) {
+        if (showToast) showToast('Deleting asset (DB + Provider)...', true);
+
+        try {
+          console.log('[Delete] Ctrl+Right-click delete for asset ID:', assetData.assetId, 'type:', typeof assetData.assetId);
+
+          const deleteRes = await sendMessageWithTimeout({
+            action: 'deleteAsset',
+            assetId: assetData.assetId,
+            deleteFromProvider: true  // Always delete from both on Ctrl+click
+          }, 10000);
+
+          console.log('[Delete] Delete response:', deleteRes);
+          console.log('[Delete] Response data:', JSON.stringify(deleteRes?.data, null, 2));
+
+          if (!deleteRes?.success) {
+            console.error('[Delete] Delete failed:', deleteRes?.error);
+            throw new Error(deleteRes?.error || 'Failed to delete asset');
+          }
+
+          const data = deleteRes?.data;
+          console.log('[Delete] Delete successful, deleted_count:', data?.deleted_count);
+
+          // Check for errors in the response
+          if (data?.errors && data.errors.length > 0) {
+            console.error('[Delete] Backend reported errors:', data.errors);
+            throw new Error(`Delete failed: ${data.errors[0].error}`);
+          }
+
+          if (data?.deleted_count === 0) {
+            console.error('[Delete] No assets were deleted!');
+            throw new Error('Asset was not deleted (deleted_count = 0)');
+          }
+
+          // Show success feedback
+          if (showToast) {
+            showToast('Asset deleted from DB + Provider!', true);
+          }
+
+          // Remove the thumbnail from UI with animation
+          thumb.style.transition = 'all 0.2s ease-out';
+          thumb.style.opacity = '0';
+          thumb.style.transform = 'scale(0.8)';
+          setTimeout(() => thumb.remove(), 200);
+
+        } catch (err) {
+          console.error('[PixSim7] Failed to delete asset:', err);
+          if (showToast) showToast('Failed to delete: ' + err.message, false);
+        }
+        return;
       }
+
+      // Normal right-click: Show context menu
+      showUploadSlotMenu(data.fullUrl, e.clientX, e.clientY, null, assetData);
     });
 
     return { grid, itemDataMap };
@@ -1196,6 +1254,76 @@
       menu.appendChild(createMenuButton('Copy URL', '📋', async () => {
         await navigator.clipboard.writeText(imageUrl);
         if (showToast) showToast('URL copied', true);
+      }));
+    }
+
+    // === SECTION 5: DELETE ===
+    if (assetData && (assetData.assetId || assetData.asset_id)) {
+      menu.appendChild(createDivider());
+
+      const assetId = assetData.assetId || assetData.asset_id;
+
+      // Delete Asset option
+      menu.appendChild(createMenuButton('Delete Asset', '🗑️', () => {
+        // Show confirmation dialog using shared dialogs module
+        if (showDeleteAssetDialog) {
+          showDeleteAssetDialog(assetData, x, y, async (deleteFromProvider) => {
+          if (showToast) showToast('Deleting asset...', true);
+
+          try {
+            console.log('[Delete] Starting delete for asset ID:', assetId, 'type:', typeof assetId, 'deleteFromProvider:', deleteFromProvider);
+
+            const deleteRes = await sendMessageWithTimeout({
+              action: 'deleteAsset',
+              assetId: assetId,
+              deleteFromProvider: deleteFromProvider
+            }, 10000);
+
+            console.log('[Delete] Delete response:', deleteRes);
+            console.log('[Delete] Response data:', JSON.stringify(deleteRes?.data, null, 2));
+
+            if (!deleteRes?.success) {
+              console.error('[Delete] Delete failed:', deleteRes?.error);
+              throw new Error(deleteRes?.error || 'Failed to delete asset');
+            }
+
+            const data = deleteRes?.data;
+            console.log('[Delete] Delete successful, deleted_count:', data?.deleted_count);
+
+            // Check for errors in the response
+            if (data?.errors && data.errors.length > 0) {
+              console.error('[Delete] Backend reported errors:', data.errors);
+              throw new Error(`Delete failed: ${data.errors[0].error}`);
+            }
+
+            if (data?.deleted_count === 0) {
+              console.error('[Delete] No assets were deleted!');
+              throw new Error('Asset was not deleted (deleted_count = 0)');
+            }
+
+            // Show success feedback
+            if (showToast) {
+              const location = deleteFromProvider ? 'DB + Provider' : 'DB only';
+              showToast(`Asset deleted from ${location}!`, true);
+            }
+
+            // Remove the thumbnail from UI
+            const thumb = document.querySelector(`.pxs7-thumb[data-idx="${assetData.element?.dataset?.idx}"]`);
+            if (thumb) {
+              thumb.style.opacity = '0';
+              thumb.style.transform = 'scale(0.8)';
+              setTimeout(() => thumb.remove(), 200);
+            }
+
+          } catch (err) {
+            console.error('[PixSim7] Failed to delete asset:', err);
+            if (showToast) showToast('Failed to delete: ' + err.message, false);
+          }
+        });
+        } else {
+          console.warn('[PixSim7] Dialogs module not loaded');
+          if (showToast) showToast('Dialog module not available', false);
+        }
       }));
     }
 

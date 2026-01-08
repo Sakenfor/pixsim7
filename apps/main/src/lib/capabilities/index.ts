@@ -8,14 +8,20 @@
  * Inspired by VS Code's extension API and Eclipse's contribution model.
  */
 
+import {
+  createAppCapabilityRegistry,
+  toAppActionCapability,
+  type AppActionCapability,
+  type AppFeatureCapability,
+  type AppRouteCapability,
+  type AppStateCapability,
+} from '@pixsim7/capabilities-core/app';
+import { ActionDefinitionSchema } from '@shared/types';
 import type {
   ActionContext,
   ActionDefinition,
-  ActionMenuContext,
-  ActionVisibility,
 } from '@shared/types';
 import * as React from 'react';
-import { create } from 'zustand';
 import { debugFlags } from '@lib/utils/debugFlags';
 import { logEvent } from '@lib/utils/logging';
 
@@ -25,118 +31,13 @@ export * from './pluginAdapter';
 export * from './securityFilter';
 
 /**
- * Feature Capability
- * Represents a high-level feature of the app
+ * App Capability Types
+ * Derived from the shared core registry module.
  */
-export interface FeatureCapability {
-  /** Unique identifier */
-  id: string;
-
-  /** Display name */
-  name: string;
-
-  /** Description */
-  description: string;
-
-  /** Icon/emoji */
-  icon?: string;
-
-  /** Category */
-  category: 'creation' | 'editing' | 'viewing' | 'management' | 'utility' | 'game';
-
-  /** Priority for ordering */
-  priority?: number;
-
-  /** Routes associated with this feature */
-  routes?: RouteCapability[];
-
-  /** Actions available */
-  actions?: ActionCapability[];
-
-  /** State accessor */
-  getState?: () => any;
-
-  /** Whether this feature is currently enabled */
-  enabled?: () => boolean;
-
-  /** Required permissions */
-  permissions?: string[];
-
-  /** Metadata */
-  metadata?: Record<string, any>;
-}
-
-/**
- * Route Capability
- * Represents a route/page in the app
- */
-export interface RouteCapability {
-  /** Route path */
-  path: string;
-
-  /** Display name */
-  name: string;
-
-  /** Description */
-  description?: string;
-
-  /** Icon */
-  icon?: string;
-
-  /** Whether route requires auth */
-  protected?: boolean;
-
-  /** Whether to show in navigation */
-  showInNav?: boolean;
-
-  /** Parent feature ID */
-  featureId?: string;
-
-  /** Parameters */
-  params?: Record<string, string>;
-}
-
-/**
- * Action Capability
- * Represents an executable action
- */
-export interface ActionCapability {
-  /** Unique identifier */
-  id: string;
-
-  /** Display name */
-  name: string;
-
-  /** Description */
-  description?: string;
-
-  /** Icon */
-  icon?: string;
-
-  /** Keyboard shortcut */
-  shortcut?: string;
-
-  /**
-   * Execute function.
-   * Accepts optional ActionContext for standardized invocation.
-   */
-  execute: (ctx?: ActionContext) => void | Promise<void>;
-
-  /** Visibility hints for UI surfaces */
-  visibility?: ActionVisibility;
-
-  /** Context menu placement contexts (if applicable) */
-  contexts?: ActionMenuContext[];
-
-  /** Whether action is currently enabled */
-  enabled?: () => boolean;
-
-  /** Category */
-  category?: string;
-
-  /** Parent feature ID */
-  featureId?: string;
-}
+export type FeatureCapability = AppFeatureCapability;
+export type RouteCapability = AppRouteCapability;
+export type ActionCapability = AppActionCapability;
+export type StateCapability<T = unknown> = AppStateCapability<T>;
 
 /**
  * Convert an ActionDefinition to an ActionCapability.
@@ -145,30 +46,35 @@ export interface ActionCapability {
  * to be registered with the capability store without ad-hoc conversions.
  *
  * @param action - Canonical ActionDefinition from module page.actions
- * @returns ActionCapability for registration with useCapabilityStore
+ * @returns ActionCapability for registration with registerAction
  *
  * @example
  * ```typescript
  * import { toActionCapability } from '@lib/capabilities';
  *
  * const capability = toActionCapability(openGalleryAction);
- * useCapabilityStore.getState().registerAction(capability);
+ * registerAction(capability);
  * ```
  */
 export function toActionCapability(action: ActionDefinition): ActionCapability {
-  return {
-    id: action.id,
-    name: action.title,
-    description: action.description,
-    icon: action.icon,
-    shortcut: action.shortcut,
-    featureId: action.featureId,
-    category: action.category,
-    enabled: action.enabled,
-    visibility: action.visibility,
-    contexts: action.contexts,
-    execute: action.execute,
-  };
+  return toAppActionCapability(action);
+}
+
+function validateActionDefinition(action: ActionDefinition): void {
+  const result = ActionDefinitionSchema.safeParse(action);
+  if (result.success) {
+    return;
+  }
+
+  const issues = result.error.issues.map((issue) => ({
+    path: issue.path.join('.'),
+    message: issue.message,
+  }));
+
+  logEvent('WARNING', 'capability_action_validation_failed', {
+    actionId: action.id,
+    issues,
+  });
 }
 
 /**
@@ -186,307 +92,164 @@ export function toActionCapability(action: ActionDefinition): ActionCapability {
  * ```
  */
 export function registerActionsFromDefinitions(actions: ActionDefinition[]): void {
-  const store = useCapabilityStore.getState();
   for (const action of actions) {
-    store.registerAction(toActionCapability(action));
+    validateActionDefinition(action);
+    registerAction(toActionCapability(action));
   }
 }
 
-/**
- * State Capability
- * Represents accessible state
- */
-export interface StateCapability {
-  /** State identifier */
-  id: string;
+export const capabilityRegistry = createAppCapabilityRegistry({
+  onDuplicateAction: (action) => {
+    logEvent('WARNING', 'capability_action_overwritten', {
+      actionId: action.id,
+      newName: action.name,
+      newFeatureId: action.featureId,
+    });
+  },
+  onDuplicateFeature: (feature) => {
+    logEvent('WARNING', 'capability_feature_overwritten', {
+      featureId: feature.id,
+      name: feature.name,
+    });
+  },
+  onDuplicateRoute: (route) => {
+    logEvent('WARNING', 'capability_route_overwritten', {
+      path: route.path,
+      name: route.name,
+      featureId: route.featureId,
+    });
+  },
+  onDuplicateState: (state) => {
+    logEvent('WARNING', 'capability_state_overwritten', {
+      stateId: state.id,
+      name: state.name,
+    });
+  },
+});
 
-  /** Display name */
-  name: string;
-
-  /** Get current value */
-  getValue: () => any;
-
-  /** Subscribe to changes */
-  subscribe?: (callback: (value: any) => void) => () => void;
-
-  /** Whether state is readonly */
-  readonly?: boolean;
+export function registerFeature(feature: FeatureCapability): void {
+  capabilityRegistry.registerFeature(feature);
+  debugFlags.log('registry', `[Capabilities] Registered feature: ${feature.name}`);
+  logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name });
 }
 
-/**
- * Capability Registry Store
- */
-interface CapabilityStore {
-  features: Map<string, FeatureCapability>;
-  routes: Map<string, RouteCapability>;
-  actions: Map<string, ActionCapability>;
-  states: Map<string, StateCapability>;
-  listeners: Set<() => void>;
-
-  // Feature methods
-  registerFeature: (feature: FeatureCapability) => void;
-  unregisterFeature: (id: string) => void;
-  getFeature: (id: string) => FeatureCapability | undefined;
-  getAllFeatures: () => FeatureCapability[];
-  getFeaturesByCategory: (category: string) => FeatureCapability[];
-
-  // Route methods
-  registerRoute: (route: RouteCapability) => void;
-  unregisterRoute: (path: string) => void;
-  getRoute: (path: string) => RouteCapability | undefined;
-  getAllRoutes: () => RouteCapability[];
-  getRoutesForFeature: (featureId: string) => RouteCapability[];
-
-  // Action methods
-  registerAction: (action: ActionCapability) => void;
-  unregisterAction: (id: string) => void;
-  getAction: (id: string) => ActionCapability | undefined;
-  getAllActions: () => ActionCapability[];
-  executeAction: (id: string, ctx?: ActionContext) => Promise<void>;
-
-  // State methods
-  registerState: (state: StateCapability) => void;
-  unregisterState: (id: string) => void;
-  getState: (id: string) => StateCapability | undefined;
-  getAllStates: () => StateCapability[];
-
-  // Subscription
-  subscribe: (callback: () => void) => () => void;
-  notify: () => void;
+export function unregisterFeature(id: string): void {
+  capabilityRegistry.unregisterFeature(id);
 }
 
-/**
- * Capability Registry Store Implementation
- */
-export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
-  features: new Map(),
-  routes: new Map(),
-  actions: new Map(),
-  states: new Map(),
-  listeners: new Set(),
+export function registerRoute(route: RouteCapability): void {
+  capabilityRegistry.registerRoute(route);
+  debugFlags.log('registry', `[Capabilities] Registered route: ${route.path}`);
+  logEvent('DEBUG', 'capability_route_registered', { path: route.path });
+}
 
-  // Features
-  registerFeature: (feature) => {
-    set((state) => {
-      const features = new Map(state.features);
-      features.set(feature.id, feature);
-      return { features };
-    });
-    get().notify();
-    debugFlags.log('registry', `[Capabilities] Registered feature: ${feature.name}`);
-    logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name });
-  },
+export function unregisterRoute(path: string): void {
+  capabilityRegistry.unregisterRoute(path);
+}
 
-  unregisterFeature: (id) => {
-    set((state) => {
-      const features = new Map(state.features);
-      features.delete(id);
-      return { features };
-    });
-    get().notify();
-  },
+export function registerAction(action: ActionCapability): void {
+  capabilityRegistry.registerAction(action);
+  debugFlags.log('registry', `[Capabilities] Registered action: ${action.name}`);
+  logEvent('DEBUG', 'capability_action_registered', { actionId: action.id, name: action.name });
+}
 
-  getFeature: (id) => {
-    return get().features.get(id);
-  },
+export function unregisterAction(id: string): void {
+  capabilityRegistry.unregisterAction(id);
+}
 
-  getAllFeatures: () => {
-    return Array.from(get().features.values())
-      .filter(f => !f.enabled || f.enabled())
-      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
-  },
+export function registerState(state: StateCapability): void {
+  capabilityRegistry.registerState(state);
+  console.log(`[Capabilities] Registered state: ${state.name}`);
+}
 
-  getFeaturesByCategory: (category) => {
-    return get().getAllFeatures().filter(f => f.category === category);
-  },
+export function unregisterState(id: string): void {
+  capabilityRegistry.unregisterState(id);
+}
 
-  // Routes
-  registerRoute: (route) => {
-    set((state) => {
-      const routes = new Map(state.routes);
-      routes.set(route.path, route);
-      return { routes };
-    });
-    get().notify();
-    debugFlags.log('registry', `[Capabilities] Registered route: ${route.path}`);
-    logEvent('DEBUG', 'capability_route_registered', { path: route.path });
-  },
+export function clearAllCapabilities(): void {
+  capabilityRegistry.clearAll();
+}
 
-  unregisterRoute: (path) => {
-    set((state) => {
-      const routes = new Map(state.routes);
-      routes.delete(path);
-      return { routes };
-    });
-    get().notify();
-  },
-
-  getRoute: (path) => {
-    return get().routes.get(path);
-  },
-
-  getAllRoutes: () => {
-    return Array.from(get().routes.values());
-  },
-
-  getRoutesForFeature: (featureId) => {
-    return get().getAllRoutes().filter(r => r.featureId === featureId);
-  },
-
-  // Actions
-  registerAction: (action) => {
-    const existing = get().actions.get(action.id);
-    if (existing && (existing.name !== action.name || existing.featureId !== action.featureId)) {
-      logEvent('WARNING', 'capability_action_overwritten', {
-        actionId: action.id,
-        existingName: existing.name,
-        newName: action.name,
-        existingFeatureId: existing.featureId,
-        newFeatureId: action.featureId,
-      });
-    }
-    set((state) => {
-      const actions = new Map(state.actions);
-      actions.set(action.id, action);
-      return { actions };
-    });
-    get().notify();
-    debugFlags.log('registry', `[Capabilities] Registered action: ${action.name}`);
-    logEvent('DEBUG', 'capability_action_registered', { actionId: action.id, name: action.name });
-  },
-
-  unregisterAction: (id) => {
-    set((state) => {
-      const actions = new Map(state.actions);
-      actions.delete(id);
-      return { actions };
-    });
-    get().notify();
-  },
-
-  getAction: (id) => {
-    return get().actions.get(id);
-  },
-
-  getAllActions: () => {
-    return Array.from(get().actions.values())
-      .filter(a => !a.enabled || a.enabled());
-  },
-
-  executeAction: async (id, ctx) => {
-    const action = get().getAction(id);
-    if (!action) {
-      throw new Error(`Action not found: ${id}`);
-    }
-    if (action.enabled && !action.enabled()) {
-      throw new Error(`Action is disabled: ${id}`);
-    }
-    await action.execute(ctx);
-  },
-
-  // States
-  registerState: (state) => {
-    set((s) => {
-      const states = new Map(s.states);
-      states.set(state.id, state);
-      return { states };
-    });
-    get().notify();
-    console.log(`[Capabilities] Registered state: ${state.name}`);
-  },
-
-  unregisterState: (id) => {
-    set((state) => {
-      const states = new Map(state.states);
-      states.delete(id);
-      return { states };
-    });
-    get().notify();
-  },
-
-  getState: (id) => {
-    return get().states.get(id);
-  },
-
-  getAllStates: () => {
-    return Array.from(get().states.values());
-  },
-
-  // Subscription
-  subscribe: (callback) => {
-    get().listeners.add(callback);
-    return () => {
-      get().listeners.delete(callback);
-    };
-  },
-
-  notify: () => {
-    get().listeners.forEach(listener => listener());
-  },
-}));
+function useCapabilitySnapshot<T>(getSnapshot: () => T): T {
+  return React.useSyncExternalStore(
+    capabilityRegistry.subscribe,
+    getSnapshot,
+    getSnapshot
+  );
+}
 
 /**
  * Hook to get all features
  */
 export function useFeatures() {
-  return useCapabilityStore((s) => s.getAllFeatures());
+  return useCapabilitySnapshot(() =>
+    capabilityRegistry.getAllFeatures().filter(f => !f.enabled || f.enabled())
+  );
 }
 
 /**
  * Hook to get a specific feature by ID
  */
 export function useFeature(id: string) {
-  return useCapabilityStore((s) => s.getFeature(id));
+  return useCapabilitySnapshot(() => capabilityRegistry.getFeature(id));
 }
 
 /**
  * Hook to get features by category
  */
 export function useFeaturesByCategory(category: string) {
-  return useCapabilityStore((s) => s.getFeaturesByCategory(category));
+  return useCapabilitySnapshot(() =>
+    capabilityRegistry.getFeaturesByCategory(category).filter(f => !f.enabled || f.enabled())
+  );
 }
 
 /**
  * Hook to get all routes
  */
 export function useRoutes() {
-  return useCapabilityStore((s) => s.getAllRoutes());
+  return useCapabilitySnapshot(() => capabilityRegistry.getAllRoutes());
 }
 
 /**
  * Hook to get routes for a specific feature
  */
 export function useFeatureRoutes(featureId: string) {
-  return useCapabilityStore((s) => s.getRoutesForFeature(featureId));
+  return useCapabilitySnapshot(() => capabilityRegistry.getRoutesForFeature(featureId));
 }
 
 /**
  * Hook to get navigation routes (showInNav = true)
  */
 export function useNavRoutes() {
-  return useCapabilityStore((s) => s.getAllRoutes().filter(r => r.showInNav));
+  return useCapabilitySnapshot(() =>
+    capabilityRegistry.getAllRoutes().filter(r => r.showInNav)
+  );
 }
 
 /**
  * Hook to get all actions
  */
 export function useActions() {
-  return useCapabilityStore((s) => s.getAllActions());
+  return useCapabilitySnapshot(() =>
+    capabilityRegistry.getAllActions().filter(a => !a.enabled || a.enabled())
+  );
 }
 
 /**
  * Hook to get a specific action by ID
  */
 export function useAction(id: string) {
-  return useCapabilityStore((s) => s.getAction(id));
+  return useCapabilitySnapshot(() => capabilityRegistry.getAction(id));
 }
 
 /**
  * Hook to get actions for a specific feature
  */
 export function useFeatureActions(featureId: string) {
-  return useCapabilityStore((s) =>
-    s.getAllActions().filter(a => a.featureId === featureId)
+  const actions = useActions();
+  return React.useMemo(
+    () => actions.filter(action => action.featureId === featureId),
+    [actions, featureId]
   );
 }
 
@@ -494,7 +257,7 @@ export function useFeatureActions(featureId: string) {
  * Hook to get all states
  */
 export function useStates() {
-  return useCapabilityStore((s) => s.getAllStates());
+  return useCapabilitySnapshot(() => capabilityRegistry.getAllStates());
 }
 
 /**
@@ -502,7 +265,7 @@ export function useStates() {
  * Named useCapabilityState to avoid conflict with React's useState
  */
 export function useCapabilityState(id: string) {
-  return useCapabilityStore((s) => s.getState(id));
+  return useCapabilitySnapshot(() => capabilityRegistry.getState(id));
 }
 
 /**
@@ -516,7 +279,7 @@ export const useState = useCapabilityState;
  */
 export function useStateValue<T = any>(id: string): T | undefined {
   const [value, setValue] = React.useState<T | undefined>(undefined);
-  const stateCapability = useCapabilityStore((s) => s.getState(id));
+  const stateCapability = useCapabilityState(id);
 
   React.useEffect(() => {
     if (!stateCapability) {
@@ -545,7 +308,7 @@ export function useStateValue<T = any>(id: string): T | undefined {
 export function useExecuteAction(actionId: string) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<Error | null>(null);
-  const action = useCapabilityStore((s) => s.getAction(actionId));
+  const action = useAction(actionId);
 
   const execute = React.useCallback(async (ctx?: ActionContext) => {
     if (!action) {
@@ -720,7 +483,9 @@ export function useCommandPalette(query?: string) {
 
   // Convert actions to commands
   const commands = React.useMemo(() => {
-    return actions.map(action => {
+    return actions
+      .filter(action => action.visibility !== 'hidden' && action.visibility !== 'contextMenu')
+      .map(action => {
       // Find the feature this action belongs to
       const feature = features.find(f => f.id === action.featureId);
 
@@ -731,7 +496,7 @@ export function useCommandPalette(query?: string) {
         icon: action.icon,
         shortcut: action.shortcut,
         category: feature?.name || action.category,
-        execute: action.execute,
+        execute: () => action.execute({ source: 'commandPalette' }),
         enabled: action.enabled ? action.enabled() : true,
       } as Command;
     });
@@ -871,42 +636,40 @@ export function useRegisterCapabilities(
   },
   deps: React.DependencyList = []
 ) {
-  const store = useCapabilityStore.getState();
-
   React.useEffect(() => {
     // Register all capabilities
     config.features?.forEach(feature => {
-      store.registerFeature(feature);
+      registerFeature(feature);
     });
 
     config.routes?.forEach(route => {
-      store.registerRoute(route);
+      registerRoute(route);
     });
 
     config.actions?.forEach(action => {
-      store.registerAction(action);
+      registerAction(action);
     });
 
     config.states?.forEach(state => {
-      store.registerState(state);
+      registerState(state);
     });
 
     // Cleanup on unmount
     return () => {
       config.features?.forEach(feature => {
-        store.unregisterFeature(feature.id);
+        unregisterFeature(feature.id);
       });
 
       config.routes?.forEach(route => {
-        store.unregisterRoute(route.path);
+        unregisterRoute(route.path);
       });
 
       config.actions?.forEach(action => {
-        store.unregisterAction(action.id);
+        unregisterAction(action.id);
       });
 
       config.states?.forEach(state => {
-        store.unregisterState(state.id);
+        unregisterState(state.id);
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -922,23 +685,21 @@ export function registerCompleteFeature(config: {
   actions?: ActionCapability[];
   states?: StateCapability[];
 }) {
-  const store = useCapabilityStore.getState();
-
   // Register feature
-  store.registerFeature(config.feature);
+  registerFeature(config.feature);
 
   // Register routes
   config.routes?.forEach(route => {
-    store.registerRoute({ ...route, featureId: config.feature.id });
+    registerRoute({ ...route, featureId: config.feature.id });
   });
 
   // Register actions
   config.actions?.forEach(action => {
-    store.registerAction({ ...action, featureId: config.feature.id });
+    registerAction({ ...action, featureId: config.feature.id });
   });
 
   // Register states
   config.states?.forEach(state => {
-    store.registerState(state);
+    registerState(state);
   });
 }

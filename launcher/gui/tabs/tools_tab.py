@@ -15,6 +15,7 @@ try:
     from ..dialogs.git_tools_dialog import show_git_tools_dialog
     from ..dialogs.log_management_dialog import show_log_management_dialog
     from ..dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+    from ..widgets.settings_panel import SettingsPanel
 except ImportError:
     import theme
     from dialogs.migrations_dialog import show_migrations_dialog
@@ -22,6 +23,7 @@ except ImportError:
     from dialogs.git_tools_dialog import show_git_tools_dialog
     from dialogs.log_management_dialog import show_log_management_dialog
     from dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+    from widgets.settings_panel import SettingsPanel
 
 
 class ToolsTab:
@@ -144,47 +146,10 @@ class ToolsTab:
         settings_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
         settings_layout.setSpacing(theme.SPACING_LG)
 
-        # Configuration Section
-        config_group = QFrame()
-        config_group.setFrameShape(QFrame.Shape.StyledPanel)
-        config_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        config_layout = QVBoxLayout(config_group)
+        def on_saved(updated_state):
+            if hasattr(launcher, "_apply_settings"):
+                launcher._apply_settings(updated_state)
 
-        config_title = QLabel("⚙ Configuration")
-        config_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        config_layout.addWidget(config_title)
-
-        launcher.btn_ports = QPushButton('🔌 Edit Ports')
-        launcher.btn_ports.setToolTip("Edit service ports")
-        launcher.btn_ports.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_ports.clicked.connect(launcher.edit_ports)
-        config_layout.addWidget(launcher.btn_ports)
-
-        launcher.btn_env = QPushButton('🔧 Edit Environment Variables')
-        launcher.btn_env.setToolTip("Edit environment variables")
-        launcher.btn_env.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_env.clicked.connect(launcher.edit_env)
-        config_layout.addWidget(launcher.btn_env)
-
-        settings_layout.addWidget(config_group)
-
-        # Application Settings Section
-        app_group = QFrame()
-        app_group.setFrameShape(QFrame.Shape.StyledPanel)
-        app_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        app_layout = QVBoxLayout(app_group)
-
-        app_title = QLabel("🎨 Application Settings")
-        app_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        app_layout.addWidget(app_title)
-
-        launcher.btn_settings = QPushButton('⚙ General Settings')
-        launcher.btn_settings.setToolTip("Configure launcher preferences")
-        launcher.btn_settings.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_settings.clicked.connect(launcher._open_settings)
-        app_layout.addWidget(launcher.btn_settings)
-
-        settings_layout.addWidget(app_group)
-
-        settings_layout.addStretch()
+        panel = SettingsPanel(launcher.ui_state, on_saved=on_saved, parent=launcher)
+        settings_layout.addWidget(panel)
         return settings_tab

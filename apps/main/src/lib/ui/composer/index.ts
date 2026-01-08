@@ -51,4 +51,4 @@ export { builtInBlocks, registerBuiltInBlocks, builtInWidgets, registerBuiltInWi
 export { initializeBlocks, areBlocksInitialized, initializeWidgets, areWidgetsInitialized } from './initializeBlocks';
 
 // Demo compositions
-export { demoCompositions } from './demoCompositions';
+export { demoCompositions, getDemoComposition, getDemoCompositionIds } from './demoCompositions';

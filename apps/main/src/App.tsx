@@ -50,6 +50,7 @@ import { registerModules, moduleRegistry } from '@app/modules';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
 import { PluginOverlays } from './components/PluginOverlays';
+import { useActionShortcuts } from './hooks/useActionShortcuts';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
 import { Home } from './routes/Home';
 import { Login } from './routes/Login';
@@ -82,6 +83,7 @@ function App() {
 
   // Register dev tool keyboard shortcuts
   useDevToolShortcuts();
+  useActionShortcuts(isAuthenticated);
 
   // Initialize panel orchestration system
   useInitializePanelSystem(true);

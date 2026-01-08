@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useMemo, type MouseEvent } from 'react';
-import { useContextMenuOptional } from './ContextMenuProvider';
+import { useContextMenuOptional } from './useContextMenu';
 import type { ContextMenuContext } from './types';
 
 export interface UseComponentContextMenuOptions {

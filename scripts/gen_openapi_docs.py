@@ -10,6 +10,7 @@ Usage:
     python scripts/gen_openapi_docs.py                     # Use default local OpenAPI JSON
     python scripts/gen_openapi_docs.py --input spec.json  # Use local file
     python scripts/gen_openapi_docs.py --url http://localhost:8000/openapi.json
+    python scripts/gen_openapi_docs.py --service main-api
 
 Output: docs/api/ENDPOINTS.md
 
@@ -20,6 +21,7 @@ Exit codes:
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -29,6 +31,7 @@ from pathlib import Path
 DEFAULT_INPUT = "pixsim7/backend/main/openapi.json"
 DEFAULT_URL = "http://localhost:8000/openapi.json"
 DEFAULT_OUTPUT = "docs/api/ENDPOINTS.md"
+DEFAULT_SERVICES_CONFIG = "launcher/services.json"
 
 
 def load_openapi_from_file(path: Path) -> dict:
@@ -57,6 +60,51 @@ def fetch_openapi_from_url(url: str) -> dict:
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON from {url}: {e}")
         sys.exit(1)
+
+
+def load_services_config(path: Path) -> dict | None:
+    """Load services.json config if present."""
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in {path}: {e}")
+        sys.exit(1)
+
+
+def resolve_service_config(config: dict, service_id: str) -> dict | None:
+    """Find a backend service definition by id."""
+    for service in config.get("backend_services", []):
+        if service.get("id") == service_id:
+            return service
+    return None
+
+
+def resolve_service_openapi_url(service: dict) -> str | None:
+    """Resolve OpenAPI URL from a backend service config."""
+    base_url = None
+    base_url_env = service.get("base_url_env")
+    if base_url_env:
+        base_url = os.getenv(base_url_env)
+
+    if not base_url:
+        port_env = service.get("port_env")
+        port = os.getenv(port_env) if port_env else None
+        if not port:
+            port = service.get("default_port")
+        if port:
+            base_url = f"http://localhost:{port}"
+
+    if not base_url:
+        return None
+
+    endpoint = service.get("openapi_endpoint") or "/openapi.json"
+    if not endpoint.startswith("/"):
+        endpoint = f"/{endpoint}"
+
+    return f"{base_url.rstrip('/')}{endpoint}"
 
 
 def get_auth_requirement(spec: dict, operation: dict) -> str:
@@ -181,13 +229,50 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default=DEFAULT_OUTPUT,
         help=f"Output markdown file (default: {DEFAULT_OUTPUT})",
+    )
+    parser.add_argument(
+        "--service",
+        type=str,
+        help="Backend service id from launcher/services.json",
+    )
+    parser.add_argument(
+        "--services-config",
+        type=str,
+        help=f"Path to services.json (default: {DEFAULT_SERVICES_CONFIG})",
     )
     args = parser.parse_args()
 
     # Get project root
     project_root = Path(__file__).parent.parent
+    output_was_set = "--output" in sys.argv
+
+    service_id = args.service or os.getenv("OPENAPI_SERVICE")
+    if service_id:
+        services_config_path = Path(
+            args.services_config
+            if args.services_config
+            else os.getenv("OPENAPI_SERVICES_CONFIG", DEFAULT_SERVICES_CONFIG)
+        )
+        if not services_config_path.is_absolute():
+            services_config_path = project_root / services_config_path
+
+        config = load_services_config(services_config_path)
+        if not config:
+            print(f"Error: services config not found: {services_config_path}")
+            sys.exit(1)
+
+        service_config = resolve_service_config(config, service_id)
+        if not service_config:
+            print(f"Error: OpenAPI service not found: {service_id}")
+            sys.exit(1)
+
+        service_url = resolve_service_openapi_url(service_config)
+        if not service_url:
+            print(f"Error: Could not resolve OpenAPI URL for {service_id}")
+            sys.exit(1)
+    else:
+        service_url = None
 
     # Resolve input path
     if args.input:
@@ -202,6 +287,9 @@ def main():
     elif args.url:
         print(f"Fetching OpenAPI spec from: {args.url}")
         spec = fetch_openapi_from_url(args.url)
+    elif service_url:
+        print(f"Fetching OpenAPI spec from: {service_url}")
+        spec = fetch_openapi_from_url(service_url)
     else:
         input_path = project_root / DEFAULT_INPUT
         if not input_path.exists():
@@ -216,7 +304,14 @@ def main():
     content = generate_endpoint_docs(spec)
 
     # Write output
-    output_path = project_root / args.output
+    output = args.output
+    if not output:
+        if service_id and service_id != "main-api" and not output_was_set:
+            output = f"docs/api/ENDPOINTS.{service_id}.md"
+        else:
+            output = DEFAULT_OUTPUT
+
+    output_path = project_root / output
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -231,7 +326,7 @@ def main():
         if method in path_item
     )
 
-    print(f"Generated: {args.output}")
+    print(f"Generated: {output}")
     print(f"  {endpoint_count} endpoints documented")
 
 

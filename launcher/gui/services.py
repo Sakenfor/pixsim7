@@ -140,6 +140,30 @@ def _resolve_port(service_config: Dict) -> int:
         return int(os.getenv(port_env))
     return service_config.get('default_port', 8000)
 
+def _normalize_base_url(value: str) -> str:
+    return value.rstrip("/")
+
+
+def _join_base_url(base_url: str, endpoint: Optional[str]) -> str:
+    if not endpoint:
+        return base_url
+    if not endpoint.startswith("/"):
+        endpoint = "/" + endpoint
+    return f"{base_url.rstrip('/')}{endpoint}"
+
+
+def _resolve_base_url(service_config: Dict, port: int) -> str:
+    """Resolve base URL from env/config, fallback to localhost + port."""
+    base_url = None
+    base_url_env = service_config.get('base_url_env')
+    if base_url_env:
+        base_url = os.getenv(base_url_env)
+    if not base_url:
+        base_url = service_config.get('base_url')
+    if base_url:
+        return _normalize_base_url(base_url)
+    return f"http://localhost:{port}"
+
 
 def _get_command_executable(command: str) -> str:
     """Get platform-specific command executable (adds .cmd on Windows for npm/pnpm)."""
@@ -160,6 +184,12 @@ def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int
     if not env_overrides:
         return {}
 
+    backend_base_url = os.getenv("BACKEND_BASE_URL", f"http://localhost:{ports.backend}")
+    admin_base_url = os.getenv("ADMIN_BASE_URL", f"http://localhost:{ports.admin}")
+    frontend_base_url = os.getenv("FRONTEND_BASE_URL", f"http://localhost:{ports.frontend}")
+    game_frontend_base_url = os.getenv("GAME_FRONTEND_BASE_URL", f"http://localhost:{ports.game_frontend}")
+    launcher_base_url = os.getenv("LAUNCHER_BASE_URL", "http://localhost:8100")
+
     substituted = {}
     for key, value in env_overrides.items():
         # Replace port placeholders with actual port values
@@ -169,6 +199,11 @@ def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int
         value = value.replace('$FRONTEND_PORT', str(ports.frontend))
         value = value.replace('$GAME_FRONTEND_PORT', str(ports.game_frontend))
         value = value.replace('$ADMIN_PORT', str(ports.admin))
+        value = value.replace('$BACKEND_BASE_URL', backend_base_url)
+        value = value.replace('$FRONTEND_BASE_URL', frontend_base_url)
+        value = value.replace('$GAME_FRONTEND_BASE_URL', game_frontend_base_url)
+        value = value.replace('$ADMIN_BASE_URL', admin_base_url)
+        value = value.replace('$LAUNCHER_BASE_URL', launcher_base_url)
         substituted[key] = value
 
     return substituted
@@ -179,14 +214,18 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
     python_exe = find_python_executable()
     service_id = service_config['id']
     port = _resolve_port(service_config)
+    base_url = _resolve_base_url(service_config, port)
 
     # Parse module (e.g., "pixsim7.backend.main.main:app")
     module = service_config.get('module', 'pixsim7.backend.main.main:app')
 
     # OpenAPI settings (optional)
     openapi_endpoint = service_config.get('openapi_endpoint')
-    openapi_url = f"http://localhost:{port}{openapi_endpoint}" if openapi_endpoint else None
+    openapi_url = _join_base_url(base_url, openapi_endpoint) if openapi_endpoint else None
     openapi_types_path = service_config.get('openapi_types_path')
+
+    docs_endpoint = service_config.get('docs_endpoint', '/docs')
+    health_endpoint = service_config.get('health_endpoint', '/health')
 
     return ServiceDef(
         key=service_id,
@@ -200,8 +239,8 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
         },
-        url=f"http://localhost:{port}/docs",
-        health_url=f"http://localhost:{port}{service_config.get('health_endpoint', '/health')}",
+        url=_join_base_url(base_url, docs_endpoint),
+        health_url=_join_base_url(base_url, health_endpoint),
         health_grace_attempts=6,
         depends_on=service_config.get('depends_on', []),
         openapi_url=openapi_url,
@@ -213,6 +252,7 @@ def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
     """Convert a frontend service from services.json to ServiceDef."""
     service_id = service_config['id']
     port = _resolve_port(service_config)
+    base_url = _resolve_base_url(service_config, port)
 
     # Get command executable (handles Windows .cmd extension)
     command = _get_command_executable(service_config.get('command', 'pnpm'))
@@ -236,8 +276,8 @@ def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
         args=args,
         cwd=os.path.join(ROOT, service_config.get('directory', service_id)),
         env_overrides=env_overrides,
-        url=f"http://localhost:{port}",
-        health_url=f"http://localhost:{port}/",
+        url=base_url,
+        health_url=_join_base_url(base_url, service_config.get('health_endpoint', '/')),
         required_tool=command.replace('.cmd', ''),
         health_grace_attempts=15,
     )

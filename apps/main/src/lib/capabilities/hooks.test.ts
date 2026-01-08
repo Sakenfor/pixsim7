@@ -4,7 +4,10 @@
 
 import { renderHook, act } from '@testing-library/react';
 import {
-  useCapabilityStore,
+  clearAllCapabilities,
+  registerAction,
+  registerFeature,
+  registerRoute,
   useFeatures,
   useFeatureRoutes,
   useActions,
@@ -16,11 +19,7 @@ import {
 describe('Capability Hooks', () => {
   beforeEach(() => {
     // Clear store before each test
-    const store = useCapabilityStore.getState();
-    store.features.clear();
-    store.routes.clear();
-    store.actions.clear();
-    store.states.clear();
+    clearAllCapabilities();
   });
 
   describe('useFeatures', () => {
@@ -38,7 +37,7 @@ describe('Capability Hooks', () => {
       };
 
       act(() => {
-        useCapabilityStore.getState().registerFeature(feature);
+        registerFeature(feature);
       });
 
       const { result } = renderHook(() => useFeatures());
@@ -64,9 +63,8 @@ describe('Capability Hooks', () => {
       };
 
       act(() => {
-        const store = useCapabilityStore.getState();
-        store.registerFeature(enabledFeature);
-        store.registerFeature(disabledFeature);
+        registerFeature(enabledFeature);
+        registerFeature(disabledFeature);
       });
 
       const { result } = renderHook(() => useFeatures());
@@ -92,9 +90,8 @@ describe('Capability Hooks', () => {
       };
 
       act(() => {
-        const store = useCapabilityStore.getState();
-        store.registerFeature(lowPriority);
-        store.registerFeature(highPriority);
+        registerFeature(lowPriority);
+        registerFeature(highPriority);
       });
 
       const { result } = renderHook(() => useFeatures());
@@ -107,7 +104,7 @@ describe('Capability Hooks', () => {
       expect(result.current).toHaveLength(0);
 
       act(() => {
-        useCapabilityStore.getState().registerFeature({
+        registerFeature({
           id: 'test',
           name: 'Test',
           description: 'Test',
@@ -140,9 +137,8 @@ describe('Capability Hooks', () => {
       };
 
       act(() => {
-        const store = useCapabilityStore.getState();
-        store.registerRoute(route1);
-        store.registerRoute(route2);
+        registerRoute(route1);
+        registerRoute(route2);
       });
 
       const { result } = renderHook(() => useFeatureRoutes('feature-a'));
@@ -164,9 +160,8 @@ describe('Capability Hooks', () => {
       };
 
       act(() => {
-        const store = useCapabilityStore.getState();
-        store.registerRoute(route1);
-        store.registerRoute(route2);
+        registerRoute(route1);
+        registerRoute(route2);
       });
 
       const { result } = renderHook(() => useFeatureRoutes('test-feature'));
@@ -178,7 +173,7 @@ describe('Capability Hooks', () => {
       expect(result.current).toHaveLength(0);
 
       act(() => {
-        useCapabilityStore.getState().registerRoute({
+        registerRoute({
           path: '/test',
           name: 'Test',
           featureId: 'test-feature',
@@ -200,11 +195,12 @@ describe('Capability Hooks', () => {
       const action: ActionCapability = {
         id: 'test-action',
         name: 'Test Action',
+        featureId: 'test-feature',
         execute: jest.fn(),
       };
 
       act(() => {
-        useCapabilityStore.getState().registerAction(action);
+        registerAction(action);
       });
 
       const { result } = renderHook(() => useActions());
@@ -216,6 +212,7 @@ describe('Capability Hooks', () => {
       const enabledAction: ActionCapability = {
         id: 'enabled',
         name: 'Enabled',
+        featureId: 'test-feature',
         execute: jest.fn(),
         enabled: () => true,
       };
@@ -223,14 +220,14 @@ describe('Capability Hooks', () => {
       const disabledAction: ActionCapability = {
         id: 'disabled',
         name: 'Disabled',
+        featureId: 'test-feature',
         execute: jest.fn(),
         enabled: () => false,
       };
 
       act(() => {
-        const store = useCapabilityStore.getState();
-        store.registerAction(enabledAction);
-        store.registerAction(disabledAction);
+        registerAction(enabledAction);
+        registerAction(disabledAction);
       });
 
       const { result } = renderHook(() => useActions());
@@ -243,9 +240,10 @@ describe('Capability Hooks', () => {
       expect(result.current).toHaveLength(0);
 
       act(() => {
-        useCapabilityStore.getState().registerAction({
+        registerAction({
           id: 'test',
           name: 'Test',
+          featureId: 'test-feature',
           execute: jest.fn(),
         });
       });
@@ -261,7 +259,7 @@ describe('Capability Hooks', () => {
       const initialLength = result.current.length;
 
       act(() => {
-        useCapabilityStore.getState().registerFeature({
+        registerFeature({
           id: 'new-feature',
           name: 'New Feature',
           description: 'New',
@@ -278,7 +276,7 @@ describe('Capability Hooks', () => {
       const initialLength = result.current.length;
 
       act(() => {
-        useCapabilityStore.getState().registerRoute({
+        registerRoute({
           path: '/new',
           name: 'New Route',
           featureId: 'test',
@@ -294,9 +292,10 @@ describe('Capability Hooks', () => {
       const initialLength = result.current.length;
 
       act(() => {
-        useCapabilityStore.getState().registerAction({
+        registerAction({
           id: 'new-action',
           name: 'New Action',
+          featureId: 'test-feature',
           execute: jest.fn(),
         });
       });
@@ -330,10 +329,9 @@ describe('Capability Hooks', () => {
       };
 
       act(() => {
-        const store = useCapabilityStore.getState();
-        store.registerFeature(feature);
-        store.registerRoute(route);
-        store.registerAction(action);
+        registerFeature(feature);
+        registerRoute(route);
+        registerAction(action);
       });
 
       // All hooks should return the registered data

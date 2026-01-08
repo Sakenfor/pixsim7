@@ -308,21 +308,22 @@ interface ActionContext {
    - Create `toPanelAction(action: ActionDefinition, panelConfig): PanelAction`
    - Panel-specific fields (`face`, `onError`) added at adaptation time
 
-### Phase 3: Single Registry
+### Phase 3: Hybrid Registry Integration (Current Direction)
 
-1. **Consolidate registries**
-   - Capability store becomes the single source
-   - Context menu queries capability store, filters by `contexts`
-   - Panel actions derive from capability store + panel-specific config
+Hybrid keeps the domain registries but lets capability actions flow in:
 
-2. **Remove redundant registrations**
-   - Delete `contextMenuRegistry` class (use hooks instead)
-   - Delete `PanelActionRegistry` (use capability hooks)
+1. **Context menu hybrid**
+   - Context menu auto-includes capability actions with `contexts`
+   - Local `MenuAction` registrations remain for complex menu trees
+   - `registerFromDefinitions` and `registerFromCapabilities` allow opt-in reuse
 
-3. **Update consumers**
-   - `useCommandPalette` already uses capability store
-   - `AppMapPanel` already uses capability store
-   - Update context menu to query capability store
+2. **Panel action hybrid**
+   - Panel registry remains for `face` placement + panel-specific behavior
+   - Panel configs can source actions by capability ID
+
+3. **Consumers**
+   - `useCommandPalette` and app map already use capability actions
+   - Context menu now queries capability actions by default
 
 ### Phase 4: Documentation & Type Safety
 

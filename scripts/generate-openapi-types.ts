@@ -8,10 +8,13 @@
  * Usage:
  *   pnpm openapi:gen          # Generate/overwrite types
  *   pnpm openapi:check        # Check if types are up-to-date (CI/pre-commit)
+ *   pnpm openapi:gen -- --service main-api
  *
  * Optional env overrides:
  *   OPENAPI_URL="http://localhost:8000/openapi.json"
  *   OPENAPI_TYPES_OUT="packages/shared/types/src/openapi.generated.ts"
+ *   OPENAPI_SERVICE="main-api"
+ *   OPENAPI_SERVICES_CONFIG="launcher/services.json"
  *
  * Exit codes:
  *   0 - Success (or types are up-to-date in check mode)
@@ -21,11 +24,120 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+type BackendServiceConfig = {
+  id: string;
+  base_url_env?: string;
+  port_env?: string;
+  default_port?: number;
+  openapi_endpoint?: string;
+  openapi_types_path?: string;
+};
+
+type ServicesConfig = {
+  backend_services?: BackendServiceConfig[];
+};
+
+function getArgValue(flag: string, args: string[]): string | undefined {
+  const prefix = `${flag}=`;
+  const direct = args.find((arg) => arg.startsWith(prefix));
+  if (direct) {
+    return direct.slice(prefix.length);
+  }
+  const index = args.indexOf(flag);
+  if (index !== -1 && index + 1 < args.length) {
+    return args[index + 1];
+  }
+  return undefined;
+}
+
+async function loadServicesConfig(configPath: string): Promise<ServicesConfig | null> {
+  try {
+    const raw = await fs.readFile(configPath, 'utf8');
+    return JSON.parse(raw) as ServicesConfig;
+  } catch {
+    return null;
+  }
+}
+
+function resolveBaseUrl(service: BackendServiceConfig): string | null {
+  if (service.base_url_env) {
+    const baseUrl = process.env[service.base_url_env];
+    if (baseUrl) {
+      return baseUrl;
+    }
+  }
+
+  if (service.port_env) {
+    const port = process.env[service.port_env];
+    if (port) {
+      return `http://localhost:${port}`;
+    }
+  }
+
+  if (service.default_port) {
+    return `http://localhost:${service.default_port}`;
+  }
+
+  return null;
+}
+
+function resolveOpenapiUrl(service: BackendServiceConfig): string | null {
+  const baseUrl = resolveBaseUrl(service);
+  if (!baseUrl) {
+    return null;
+  }
+
+  let endpoint = service.openapi_endpoint || '/openapi.json';
+  if (!endpoint.startsWith('/')) {
+    endpoint = `/${endpoint}`;
+  }
+
+  return `${baseUrl.replace(/\/$/, '')}${endpoint}`;
+}
+
+async function resolveServiceConfig(
+  configPath: string,
+  preferredId?: string
+): Promise<BackendServiceConfig | null> {
+  const config = await loadServicesConfig(configPath);
+  if (!config) {
+    return null;
+  }
+
+  const services = config.backend_services ?? [];
+  if (preferredId) {
+    return services.find((service) => service.id === preferredId) ?? null;
+  }
+
+  return (
+    services.find((service) => service.id === 'main-api') ??
+    services.find((service) => service.openapi_endpoint) ??
+    null
+  );
+}
+
 async function main() {
-  const isCheckMode = process.argv.includes('--check');
-  const openapiUrl = process.env.OPENAPI_URL || 'http://localhost:8000/openapi.json';
+  const args = process.argv.slice(2);
+  const isCheckMode = args.includes('--check');
+
+  const serviceId = getArgValue('--service', args) ?? process.env.OPENAPI_SERVICE;
+  const servicesConfigPath =
+    process.env.OPENAPI_SERVICES_CONFIG ||
+    path.resolve(process.cwd(), 'launcher', 'services.json');
+
+  const serviceConfig = await resolveServiceConfig(servicesConfigPath, serviceId);
+  if (serviceId && !serviceConfig) {
+    throw new Error(`OpenAPI service "${serviceId}" not found in ${servicesConfigPath}`);
+  }
+
+  const openapiUrl =
+    process.env.OPENAPI_URL ||
+    (serviceConfig ? resolveOpenapiUrl(serviceConfig) : null) ||
+    'http://localhost:8000/openapi.json';
   const outPath =
-    process.env.OPENAPI_TYPES_OUT || 'packages/shared/types/src/openapi.generated.ts';
+    process.env.OPENAPI_TYPES_OUT ||
+    serviceConfig?.openapi_types_path ||
+    'packages/shared/types/src/openapi.generated.ts';
 
   const absOutPath = path.resolve(process.cwd(), outPath);
 

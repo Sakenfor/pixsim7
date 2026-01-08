@@ -35,7 +35,6 @@ try:
     from .dialogs.ports_dialog import show_ports_dialog
     from .dialogs.env_editor_dialog import show_env_editor
     from .database_log_viewer import DatabaseLogViewer
-    from .dialogs.settings_dialog import show_settings_dialog
     from .dialogs.log_management_dialog import show_log_management_dialog
 except ImportError:
     # Fallback for running directly
@@ -52,7 +51,6 @@ except ImportError:
     from dialogs.ports_dialog import show_ports_dialog
     from dialogs.env_editor_dialog import show_env_editor
     from database_log_viewer import DatabaseLogViewer
-    from dialogs.settings_dialog import show_settings_dialog
     from dialogs.log_management_dialog import show_log_management_dialog
 
 # Structured logging for the launcher
@@ -429,7 +427,8 @@ class LauncherWindow(QWidget):
 
         # === TAB 4: SETTINGS ===
         settings_tab = ToolsTab.create_settings(self)
-        self.main_tabs.addTab(settings_tab, "⚙ Settings")
+        self.main_tabs.addTab(settings_tab, "?sT Settings")
+        self.settings_tab_index = self.main_tabs.indexOf(settings_tab)
 
         # === TAB 5: BACKEND ARCHITECTURE ===
         architecture_tab = ArchitectureTab.create(self)
@@ -460,6 +459,8 @@ class LauncherWindow(QWidget):
         self.btn_kill_all.clicked.connect(self._stop_all_with_confirmation)
         self.btn_restart_all.clicked.connect(self._restart_all)
         self.btn_db_down.clicked.connect(self.stop_databases)
+        if hasattr(self, 'btn_settings'):
+            self.btn_settings.clicked.connect(self._open_settings)
         
         # Console log controls
         self.btn_refresh_logs.clicked.connect(lambda: self._refresh_console_logs(force=True))
@@ -998,6 +999,8 @@ class LauncherWindow(QWidget):
 
         # Build dependency graph and start in correct order
         started = set()
+        if getattr(self.ui_state, "use_local_datastores", False):
+            started.add("db")
 
         def can_start(service_key):
             """Check if a service's dependencies are satisfied."""
@@ -1017,6 +1020,10 @@ class LauncherWindow(QWidget):
 
             for key, sp in self.processes.items():
                 if key in started or sp.running:
+                    continue
+
+                if key == "db" and getattr(self.ui_state, "use_local_datastores", False):
+                    started.add(key)
                     continue
 
                 if not sp.tool_available:
@@ -1509,29 +1516,33 @@ class LauncherWindow(QWidget):
         self.show()
 
     def _open_settings(self):
-        updated = show_settings_dialog(self, self.ui_state)
-        if updated:
-            old_always_on_top = self.ui_state.window_always_on_top
-            self.ui_state = updated
-            # Apply preferences immediately
-            set_sql_logging(self.ui_state.sql_logging_enabled)
-            set_worker_debug_flags(self.ui_state.worker_debug_flags)
-            set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
+        if hasattr(self, "settings_tab_index"):
+            self.main_tabs.setCurrentIndex(self.settings_tab_index)
 
-            # Apply window flags if changed
-            if old_always_on_top != self.ui_state.window_always_on_top:
-                self._apply_window_flags()
+    def _apply_settings(self, updated):
+        old_always_on_top = self.ui_state.window_always_on_top
+        self.ui_state = updated
+        # Apply preferences immediately
+        set_sql_logging(self.ui_state.sql_logging_enabled)
+        set_worker_debug_flags(self.ui_state.worker_debug_flags)
+        set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
 
-            if self.ui_state.auto_refresh_logs:
-                try:
-                    self.db_log_viewer.auto_refresh_checkbox.setChecked(True)
-                except Exception:
-                    pass
-            else:
-                try:
-                    self.db_log_viewer.auto_refresh_checkbox.setChecked(False)
-                except Exception:
-                    pass
+        # Apply window flags if changed
+        if old_always_on_top != self.ui_state.window_always_on_top:
+            self._apply_window_flags()
+
+        if self.ui_state.auto_refresh_logs:
+            try:
+                self.db_log_viewer.auto_refresh_checkbox.setChecked(True)
+            except Exception:
+                pass
+        else:
+            try:
+                self.db_log_viewer.auto_refresh_checkbox.setChecked(False)
+            except Exception:
+                pass
+
+
 
     def _open_db_browser(self):
         """Open database browser window"""

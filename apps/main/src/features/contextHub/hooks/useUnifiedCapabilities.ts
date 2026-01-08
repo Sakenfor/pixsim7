@@ -7,7 +7,7 @@ import type {
   RouteCapability,
   StateCapability,
 } from "@lib/capabilities";
-import { useCapabilityStore } from "@lib/capabilities";
+import { useActions, useFeatures, useRoutes, useStates } from "@lib/capabilities";
 
 import { getAppActionCapabilityKey, getAppStateCapabilityKey } from "../domain/appCapabilityBridge";
 import {
@@ -103,10 +103,10 @@ export function useUnifiedCapabilities(
   } = options;
 
   const hubKeys = useContextHubKeys();
-  const actions = useCapabilityStore((state) => state.getAllActions());
-  const states = useCapabilityStore((state) => state.getAllStates());
-  const routes = useCapabilityStore((state) => state.getAllRoutes());
-  const features = useCapabilityStore((state) => state.getAllFeatures());
+  const actions = useActions();
+  const states = useStates();
+  const routes = useRoutes();
+  const features = useFeatures();
 
   return useMemo(() => {
     const descriptors = getCapabilityDescriptors();

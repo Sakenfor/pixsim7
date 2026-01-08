@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   type ActionCapability,
   type StateCapability,
-  useCapabilityStore,
+  useActions,
+  useStates,
 } from "@lib/capabilities";
 
 import {
@@ -29,14 +30,8 @@ function getRootHub(state: ReturnType<typeof useContextHubState>) {
 
 export function ContextHubCapabilityBridge() {
   const hub = useContextHubState();
-  const actionsMap = useCapabilityStore((s) => s.actions);
-  const statesMap = useCapabilityStore((s) => s.states);
-
-  const actions = useMemo(
-    () => Array.from(actionsMap.values()).filter((a) => !a.enabled || a.enabled()),
-    [actionsMap]
-  );
-  const states = useMemo(() => Array.from(statesMap.values()), [statesMap]);
+  const actions = useActions();
+  const states = useStates();
 
   const actionRef = useRef<Map<string, ActionCapability>>(new Map());
   const stateRef = useRef<Map<string, StateCapability>>(new Map());

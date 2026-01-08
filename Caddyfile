@@ -1,0 +1,35 @@
+# Local HTTPS reverse proxy for PixSim7.
+# Update hosts file to map these to 127.0.0.1.
+#
+# For mkcert, replace `tls internal` with:
+# tls C:\path\pixsim7.local.pem C:\path\pixsim7.local-key.pem
+
+api.pixsim7.local {
+  tls internal
+  reverse_proxy localhost:8000
+}
+
+gen.pixsim7.local {
+  tls internal
+  reverse_proxy localhost:8001
+}
+
+app.pixsim7.local {
+  tls internal
+  reverse_proxy localhost:5173
+}
+
+admin.pixsim7.local {
+  tls internal
+  reverse_proxy localhost:8002
+}
+
+game.pixsim7.local {
+  tls internal
+  reverse_proxy localhost:5174
+}
+
+launcher.pixsim7.local {
+  tls internal
+  reverse_proxy localhost:8100
+}

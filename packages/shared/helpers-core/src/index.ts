@@ -39,9 +39,20 @@ export type {
   HelperAdapter,
   HelperRegistry,
   HelperRegistryOptions,
+  Registry,
+  RegistryOptions,
   RegistryChangeListener,
   RegistryChangeEvent,
 } from './types';
 
 // Factory
-export { createHelperRegistry } from './registry';
+export { createRegistry, createHelperRegistry } from './registry';
+
+// Shortcuts
+export {
+  parseShortcutString,
+  getShortcutSignature,
+  MODIFIER_ALIASES,
+  KEY_ALIASES,
+  type ParsedShortcut,
+} from './shortcuts';

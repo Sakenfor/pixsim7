@@ -1021,6 +1021,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Delete asset (with optional provider deletion)
+  if (message.action === 'deleteAsset') {
+    (async () => {
+      try {
+        const { assetId, deleteFromProvider = true } = message;
+        if (!assetId) throw new Error('assetId is required');
+
+        console.log('[Background] Deleting asset:', assetId, 'deleteFromProvider:', deleteFromProvider);
+
+        const params = new URLSearchParams();
+        params.set('delete_from_provider', String(deleteFromProvider));
+
+        const endpoint = `/api/v1/assets/bulk/delete?${params.toString()}`;
+        const data = await backendRequest(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ asset_ids: [assetId] }),
+        });
+
+        console.log('[Background] Delete response:', data);
+        sendResponse({ success: true, data });
+      } catch (error) {
+        console.error('[Background] Delete error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.action === 'updateAccountStatus') {
     (async () => {
       try {

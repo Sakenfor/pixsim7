@@ -2,7 +2,11 @@ import type { ActionDefinition } from '@shared/types';
 import type { ComponentType, LazyExoticComponent } from 'react';
 
 import type { FeatureCapability } from '@lib/capabilities';
-import { toActionCapability, useCapabilityStore } from '@lib/capabilities';
+import {
+  registerActionsFromDefinitions,
+  registerFeature,
+  registerRoute,
+} from '@lib/capabilities';
 import { logEvent } from '@lib/utils';
 
 import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
@@ -184,7 +188,6 @@ function registerModuleCapabilities(module: Module) {
     return;
   }
 
-  const store = useCapabilityStore.getState();
   if (page.featureId) {
     const featureId = page.featureId;
     const category = page.capabilityCategory ?? PAGE_CATEGORY_TO_CAPABILITY[page.category];
@@ -212,13 +215,13 @@ function registerModuleCapabilities(module: Module) {
         mergedFeature.priority = existingFeature.priority;
       }
 
-      store.registerFeature(mergedFeature);
+      registerFeature(mergedFeature);
     }
 
     const showInNav =
       page.showInNav ?? (!page.hidden && page.category !== 'development');
     const protectedRoute = page.protected ?? true;
-    store.registerRoute({
+    registerRoute({
       path: page.route,
       name: module.name,
       description: page.description,
@@ -238,8 +241,8 @@ function registerModuleCapabilities(module: Module) {
       });
     }
 
+    registerActionsFromDefinitions(page.actions);
     for (const action of page.actions) {
-      store.registerAction(toActionCapability(action));
       logEvent('DEBUG', 'module_action_registered', {
         moduleId: module.id,
         actionId: action.id,

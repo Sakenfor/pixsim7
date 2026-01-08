@@ -334,7 +334,9 @@ function displayAccountsForProvider(accounts, settings) {
   // Add event listeners to buttons
   document.querySelectorAll('.widget-account-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
-      const accountId = e.target.dataset.accountId;
+      // Use currentTarget instead of target to get the button element
+      // (target could be the emoji text node inside the button)
+      const accountId = e.currentTarget.dataset.accountId;
       await openAccountInTab(accountId, settings);
     });
   });
@@ -375,7 +377,17 @@ async function openAccountInTab(accountId, settings) {
 
   } catch (error) {
     console.error('[PixSim7 Widget] Error opening account:', error);
-    alert(`Failed to open account:\n${error.message}`);
+
+    // Use custom dialog if available, fallback to alert
+    if (window.PXS7?.dialogs?.showAlert) {
+      window.PXS7.dialogs.showAlert(`Failed to open account:\n${error.message}`, {
+        title: 'Error',
+        icon: '❌'
+      });
+    } else {
+      alert(`Failed to open account:\n${error.message}`);
+    }
+
     btn.textContent = originalText;
     btn.disabled = false;
   }

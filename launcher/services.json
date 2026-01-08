@@ -13,6 +13,7 @@
       "id": "main-api",
       "name": "Main Backend API",
       "description": "Core API handling game, users, assets, dialogue, and actions",
+      "base_url_env": "BACKEND_BASE_URL",
       "port_env": "BACKEND_PORT",
       "default_port": 8000,
       "info_endpoint": "/dev/info",
@@ -31,6 +32,7 @@
       "id": "generation-api",
       "name": "Generation API",
       "description": "Lightweight API for generation + chrome extension + automation (excludes game engine). Perfect for development when you don't need NPCs, dialogue, worlds, etc.",
+      "base_url_env": "GENERATION_BASE_URL",
       "port_env": "GENERATION_API_PORT",
       "default_port": 8001,
       "info_endpoint": "/dev/info",
@@ -53,6 +55,7 @@
       "id": "admin",
       "name": "Admin Panel",
       "description": "SvelteKit admin interface",
+      "base_url_env": "ADMIN_BASE_URL",
       "port_env": "ADMIN_PORT",
       "default_port": 5174,
       "directory": "apps/main",
@@ -60,7 +63,7 @@
       "args": ["run", "dev"],
       "env_overrides": {
         "VITE_ADMIN_PORT": "$PORT",
-        "VITE_BACKEND_URL": "http://localhost:$BACKEND_PORT"
+        "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
       "enabled": true,
@@ -70,14 +73,15 @@
       "id": "frontend",
       "name": "Main Frontend",
       "description": "React main application",
+      "base_url_env": "FRONTEND_BASE_URL",
       "port_env": "FRONTEND_PORT",
       "default_port": 5173,
       "directory": "apps/main",
       "command": "pnpm",
       "args": ["dev", "--port"],
       "env_overrides": {
-        "VITE_GAME_URL": "http://localhost:$GAME_FRONTEND_PORT",
-        "VITE_BACKEND_URL": "http://localhost:$BACKEND_PORT"
+        "VITE_GAME_URL": "$GAME_FRONTEND_BASE_URL",
+        "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
       "enabled": true,
@@ -87,13 +91,14 @@
       "id": "game_frontend",
       "name": "Game Frontend",
       "description": "React game interface",
+      "base_url_env": "GAME_FRONTEND_BASE_URL",
       "port_env": "GAME_FRONTEND_PORT",
       "default_port": 5175,
       "directory": "apps/game",
       "command": "pnpm",
       "args": ["dev", "--port"],
       "env_overrides": {
-        "VITE_BACKEND_URL": "http://localhost:$BACKEND_PORT"
+        "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
       "enabled": true,

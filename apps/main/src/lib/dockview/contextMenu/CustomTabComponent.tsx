@@ -6,7 +6,7 @@
 
 import { DockviewDefaultTab } from 'dockview';
 import type { IDockviewPanelProps } from 'dockview-core';
-import { useContextMenuOptional } from './ContextMenuProvider';
+import { useContextMenuOptional } from './useContextMenu';
 import { useDockviewContext } from './DockviewIdContext';
 import { useContextHubState } from '@features/contextHub';
 

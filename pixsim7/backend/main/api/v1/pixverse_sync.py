@@ -612,7 +612,7 @@ async def sync_single_pixverse_asset(
     return SyncSingleAssetResponse(
         asset_id=asset.id,
         existed=False,
-        provider_asset_id=asset_id,
+        provider_asset_id=primary_id,
         media_type=media_type.value,
         remote_url=clean_url,
     )

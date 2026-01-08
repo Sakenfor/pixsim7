@@ -5,7 +5,8 @@
  * Panels receive context via SmartDockview's injected props.
  */
 import { resolveMediaTypes } from '@pixsim7/shared.assets-core';
-import { Ref, type AssetRef } from '@pixsim7/shared.types';
+import { Ref } from '@pixsim7/ref-core';
+import type { AssetRef } from '@pixsim7/shared.types';
 import { PromptInput } from '@pixsim7/shared.ui';
 import type { IDockviewPanelProps } from 'dockview-core';
 import { useRef, useEffect, useMemo } from 'react';
