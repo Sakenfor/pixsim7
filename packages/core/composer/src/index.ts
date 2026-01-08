@@ -1,3 +1,9 @@
+/**
+ * Composer Core
+ *
+ * Framework-agnostic composition model and helpers.
+ */
+
 export {
   validateComposition,
   createComposition,
@@ -20,4 +26,4 @@ export {
   removeWidget,
   updateWidget,
   type WidgetInstance,
-} from "@pixsim7/core.composer";
+} from "./panelComposer";
