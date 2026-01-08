@@ -122,6 +122,7 @@
 
       // Packages
       "@pixsim7/types": ["../packages/types/dist"],
+      "@pixsim7/helpers-core": ["../../packages/shared/helpers-core/src"],
       "@shared/types": ["../../packages/shared/types/src"],
       "@shared/types/*": ["../../packages/shared/types/src/*"]
     },

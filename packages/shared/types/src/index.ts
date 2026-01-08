@@ -10,6 +10,9 @@ export * from './ids';
 // Namespace export (new pattern: import { IDs } from '@shared/types')
 export * as IDs from './ids';
 
+// Runtime ref builders (Ref.*)
+export { Ref } from '@pixsim7/ref-core';
+
 // ===================
 // Scene Graph Types
 // ===================
