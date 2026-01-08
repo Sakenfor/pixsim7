@@ -10,8 +10,10 @@
 The frontend is **well-structured** with good separation between framework-agnostic core packages and React-specific code. However, several opportunities exist to:
 
 1. Extract more business logic from `apps/main/` into reusable packages
-2. Consolidate `-core` packages under a unified `packages/core/` directory
+2. Consolidate `-core` packages under a unified `packages/core/` directory (optional, long-term)
 3. Better prepare for a potential desktop frontend (Electron/Tauri)
+
+**Recommendation:** Prefer incremental extraction + aliasing first. Full directory moves/renames are high churn and should be deferred until a second frontend actively consumes them.
 
 ---
 
@@ -23,7 +25,7 @@ The frontend is **well-structured** with good separation between framework-agnos
 |---------|----------|---------|--------------|
 | `@pixsim7/shared.types` | `packages/shared/types/` | Core type definitions | `@pixsim7/ref-core`, `zod` |
 | `@pixsim7/ref-core` | `packages/shared/ref-core/` | Entity references, builders, parsers | None (leaf) |
-| `@pixsim7/helpers-core` | `packages/shared/helpers-core/` | Generic registry patterns | None (leaf) |
+| `@pixsim7/helpers-core` | `packages/shared/helpers-core/` | Small framework-agnostic helpers (e.g., shortcut parsing) | None (leaf) |
 | `@pixsim7/capabilities-core` | `packages/shared/capabilities-core/` | Capability system (provider/app) | `helpers-core`, `shared.types` |
 | `@pixsim7/stats-core` | `packages/shared/stats-core/` | Stats & metrics | `shared.types` |
 | `@pixsim7/assets-core` | `packages/shared/assets-core/` | Asset card actions, media types | `shared.types` |
@@ -174,17 +176,13 @@ Files to extract:
 | `serverManagerStore.ts` | Server selection logic |
 | `gameStateStore.ts` | State shapes (core is in game.engine) |
 
-**Recommendation:** Create `@pixsim7/core.state` with:
-- Pure state interfaces (no Zustand)
-- State initialization functions
-- State transformation utilities
-- Validation logic
+**Recommendation:** Create `@pixsim7/core.state` only for shared state *shapes* and transformations that are used across multiple clients. Avoid extracting stores that are tightly coupled to React/Zustand or UI flows until there is a clear second consumer.
 
 React apps use Zustand, desktop apps use their preferred state management.
 
 ---
 
-## Proposed Consolidation: `packages/core/`
+## Proposed Consolidation: `packages/core/` (Optional / Long-Term)
 
 ### Recommended Structure
 
@@ -321,9 +319,14 @@ Given the architecture, **Tauri + React** maximizes reuse:
 
 ---
 
-## Migration Strategy
+## Migration Strategy (Revised)
 
-### Phase 1: Create `packages/core/` structure
+### Phase 0: Low-churn alignment (recommended first)
+1. Add alias exports (if desired) to make `@pixsim7/core.*` available without moving folders.
+2. Add lint rules / constraints to prevent React/DOM imports in core packages.
+3. Extract only code with a second consumer or strong reuse evidence.
+
+### Phase 1: Create `packages/core/` structure (defer until Phase 0 proves value)
 1. Create `packages/core/` directory
 2. Move `shared/types/` → `core/types/`
 3. Move `shared/ref-core/` → `core/ref/`
@@ -333,18 +336,18 @@ Given the architecture, **Tauri + React** maximizes reuse:
 7. Update all import paths
 8. Update `pnpm-workspace.yaml`
 
-### Phase 2: Create `packages/assets/` domain
+### Phase 2: Create `packages/assets/` domain (evaluate first)
 1. Move `shared/stats-core/` → `assets/stats/`
 2. Move `shared/assets-core/` → `assets/core/`
 3. Move `shared/generation-core/` → `assets/generation/`
 4. Update all import paths
 
-### Phase 3: Move React packages
+### Phase 3: Move React packages (lowest priority)
 1. Move `shared/ui/` → `ui/`
 2. Delete empty `shared/` directory
 3. Update all import paths
 
-### Phase 4: Extract new packages from `apps/main/`
+### Phase 4: Extract new packages from `apps/main/` (only if multi-client reuse)
 1. Extract `core/auth/` from `apps/main/src/lib/auth/`
 2. Extract `core/domain/` from `apps/main/src/domain/`
 3. Extract `core/state/` (pure state interfaces)
@@ -369,9 +372,8 @@ Given the architecture, **Tauri + React** maximizes reuse:
 - No clear visual distinction between React/non-React packages
 
 ### Recommended Actions
-1. Consolidate to `packages/core/` for framework-agnostic code
-2. Extract auth, domain, state logic from main app
-3. Group asset-related packages under `packages/assets/`
-4. Move `shared/ui/` to top-level `packages/ui/`
+1. Add optional alias exports for core packages (no renames yet)
+2. Extract only high-reuse modules with clear second consumers
+3. Delay folder moves/renames until there is a confirmed second frontend
 
 This positions the codebase well for a desktop frontend while improving organization for the existing React app.
