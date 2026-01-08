@@ -3,9 +3,10 @@ import socket
 import shutil
 import subprocess
 import json
+from urllib.parse import urlparse
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
-    QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox,
+    QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QMessageBox,
     QLineEdit, QFormLayout, QListWidget, QStackedWidget, QTabWidget
 )
 from PySide6.QtCore import Qt
@@ -549,6 +550,7 @@ class SettingsPanel(QWidget):
             "DEBUG": self.input_debug.text().strip(),
             "LOG_LEVEL": self.input_log_level.text().strip(),
         }
+        env_updates["CORS_ORIGINS"] = self._generate_cors_origins(env_updates)
         if self._state.use_local_datastores:
             current_db = env_updates.get("DATABASE_URL") or self._env_vars.get("DATABASE_URL", "")
             current_redis = env_updates.get("REDIS_URL") or self._env_vars.get("REDIS_URL", "")
@@ -579,6 +581,42 @@ class SettingsPanel(QWidget):
 
         save_ui_state(self._state)
         return self._state
+
+    def _generate_cors_origins(self, env_updates: dict) -> str:
+        urls = [
+            env_updates.get("BACKEND_BASE_URL"),
+            env_updates.get("GENERATION_BASE_URL"),
+            env_updates.get("FRONTEND_BASE_URL"),
+            env_updates.get("ADMIN_BASE_URL"),
+            env_updates.get("GAME_FRONTEND_BASE_URL"),
+            env_updates.get("LAUNCHER_BASE_URL"),
+        ]
+        ports = {
+            "backend": self.spin_backend_port.value(),
+            "admin": self.spin_admin_port.value(),
+            "frontend": self.spin_frontend_port.value(),
+            "game_frontend": self.spin_game_frontend_port.value(),
+        }
+        for port in ports.values():
+            urls.append(f"http://localhost:{port}")
+            urls.append(f"http://127.0.0.1:{port}")
+
+        seen = set()
+        origins = []
+        for url in urls:
+            if not url:
+                continue
+            url = url.strip()
+            if not url:
+                continue
+            parsed = urlparse(url)
+            if not parsed.scheme or not parsed.netloc:
+                continue
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            if origin not in seen:
+                seen.add(origin)
+                origins.append(origin)
+        return ",".join(origins)
 
     def _on_adaptive_toggled(self, checked: bool):
         for i in range(self.startup_row.count()):
@@ -654,12 +692,154 @@ class SettingsPanel(QWidget):
                 self.input_log_level.setText("")
 
     def _save_settings(self):
+        if not self._confirm_port_changes():
+            return
         updated = self.get_state()
         if self._on_saved:
             try:
                 self._on_saved(updated)
             except Exception:
                 pass
+
+    def _confirm_port_changes(self) -> bool:
+        ports = self._collect_configured_ports()
+        running_ports = self._get_running_ports()
+
+        duplicates = {}
+        for name, port in ports.items():
+            duplicates.setdefault(port, []).append(name)
+        dup_lines = [
+            f"{port}: {', '.join(names)}"
+            for port, names in duplicates.items()
+            if len(names) > 1
+        ]
+
+        in_use = []
+        for name, port in ports.items():
+            if port in running_ports:
+                continue
+            if self._is_port_open(port):
+                in_use.append(f"{name} ({port})")
+
+        if not dup_lines and not in_use:
+            return True
+
+        lines = []
+        if dup_lines:
+            lines.append("Duplicate ports:")
+            lines.extend(dup_lines)
+        if in_use:
+            lines.append("Ports currently in use:")
+            lines.extend(in_use)
+
+        message = "Potential port conflicts detected.\n\n" + "\n".join(lines) + "\n\nSave anyway?"
+        reply = QMessageBox.question(
+            self,
+            "Port Conflicts",
+            message,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        return reply == QMessageBox.Yes
+
+    def _is_port_open(self, port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.2):
+                return True
+        except OSError:
+            return False
+
+    def _collect_configured_ports(self) -> dict:
+        env = read_env_file()
+        ports_by_id = {}
+
+        services_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'services.json'))
+        try:
+            with open(services_path, 'r', encoding='utf-8') as f:
+                services = json.load(f)
+        except Exception:
+            services = {}
+
+        for section in ("backend_services", "frontend_services"):
+            for cfg in services.get(section, []) or []:
+                if not cfg.get("enabled", True):
+                    continue
+                port = self._resolve_port_from_config(cfg, env)
+                if port is None:
+                    continue
+                service_id = cfg.get("id", cfg.get("name", "service"))
+                label = cfg.get("name", service_id)
+                ports_by_id[service_id] = {"label": label, "port": port}
+
+        # Known infra ports
+        postgres_port = self._parse_int(env.get("POSTGRES_PORT"), default=5434)
+        redis_port = self._parse_int(env.get("REDIS_PORT"), default=6380)
+        ports_by_id.setdefault("postgres", {"label": "Postgres", "port": postgres_port})
+        ports_by_id.setdefault("redis", {"label": "Redis", "port": redis_port})
+
+        launcher_port = self._parse_int(env.get("LAUNCHER_PORT"), default=8100)
+        ports_by_id.setdefault("launcher-api", {"label": "Launcher API", "port": launcher_port})
+
+        # Override with current UI values for known services
+        if "main-api" in ports_by_id:
+            ports_by_id["main-api"]["port"] = self.spin_backend_port.value()
+        if "admin" in ports_by_id:
+            ports_by_id["admin"]["port"] = self.spin_admin_port.value()
+        if "frontend" in ports_by_id:
+            ports_by_id["frontend"]["port"] = self.spin_frontend_port.value()
+        if "game_frontend" in ports_by_id:
+            ports_by_id["game_frontend"]["port"] = self.spin_game_frontend_port.value()
+
+        # Game service is not always defined, track separately
+        ports_by_id.setdefault("game-service", {"label": "Game Service", "port": self.spin_game_service_port.value()})
+
+        return {item["label"]: item["port"] for item in ports_by_id.values()}
+
+    def _resolve_port_from_config(self, cfg: dict, env: dict) -> int | None:
+        port_env = cfg.get("port_env")
+        if port_env and port_env in env:
+            try:
+                return int(env[port_env])
+            except Exception:
+                return None
+        if "default_port" in cfg:
+            try:
+                return int(cfg["default_port"])
+            except Exception:
+                return None
+        return None
+
+    def _parse_int(self, value, default: int) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return default
+
+    def _get_running_ports(self) -> set:
+        running = set()
+        parent = self.parent()
+        processes = getattr(parent, "processes", None) if parent else None
+        if not processes:
+            return running
+        for sp in processes.values():
+            if not getattr(sp, "running", False):
+                continue
+            url = getattr(sp.defn, "health_url", None) or getattr(sp.defn, "url", None)
+            port = self._port_from_url(url)
+            if port:
+                running.add(port)
+        return running
+
+    def _port_from_url(self, url: str | None) -> int | None:
+        if not url:
+            return None
+        try:
+            parsed = urlparse(url)
+            if parsed.port:
+                return parsed.port
+        except Exception:
+            return None
+        return None
 
     def _fill_pixsim7_defaults(self):
         self.input_backend_base.setText("https://api.pixsim7.local")
