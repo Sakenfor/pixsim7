@@ -971,4 +971,42 @@
   // Auto-setup on load
   setupAutoSave();
 
+  // ===== SPA NAVIGATION DETECTION =====
+  // Pixverse is an SPA - detect URL changes and re-scan for upload inputs
+  let lastUrl = window.location.href;
+  let lastPath = window.location.pathname;
+
+  function onPageChange() {
+    debugLog('[SPA] Page changed to:', window.location.pathname);
+
+    // Re-scan upload inputs after DOM settles
+    setTimeout(() => {
+      const uploads = findUploadInputs();
+      debugLog('[SPA] Re-scanned inputs, found:', uploads.length);
+    }, 500);
+  }
+
+  // Method 1: Watch for popstate (back/forward navigation)
+  window.addEventListener('popstate', () => {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      lastPath = window.location.pathname;
+      onPageChange();
+    }
+  });
+
+  // Method 2: Poll for URL changes (catches SPA pushState navigation)
+  setInterval(() => {
+    const currentUrl = window.location.href;
+    const currentPath = window.location.pathname;
+
+    if (currentPath !== lastPath) {
+      lastUrl = currentUrl;
+      lastPath = currentPath;
+      onPageChange();
+    }
+  }, 500); // Check every 500ms
+
+  debugLog('[SPA] Navigation detection active');
+
 })();

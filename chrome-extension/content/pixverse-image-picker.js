@@ -406,36 +406,43 @@ window.PXS7 = window.PXS7 || {};
     const isHttpsPage = window.location.protocol === 'https:';
 
     const getThumbUrl = (a) => {
+      // Priority order (prefer provider CDN for browser auto-caching):
+      // 1. Provider CDN (remote_url/external_url) - HTTPS, browser-cached, no proxy needed
+      // 2. Backend thumbnail (thumbnail_url) - HTTP, needs proxy on HTTPS pages
+      // 3. Backend file (file_url) - HTTP, needs proxy on HTTPS pages
       const candidates = [
-        { url: a.thumbnail_url, source: 'backend_thumb' },
-        { url: a.file_url, source: 'backend_file' },
-        { url: a.url, source: 'generic' },
-        { url: a.src, source: 'generic' },
-        { url: a.remote_url, source: 'provider' },
-        { url: a.external_url, source: 'provider' }
+        { url: a.remote_url, source: 'provider_cdn', priority: 1 },
+        { url: a.external_url, source: 'provider_cdn', priority: 1 },
+        { url: a.thumbnail_url, source: 'backend_thumb', priority: 2 },
+        { url: a.file_url, source: 'backend_file', priority: 3 },
+        { url: a.url, source: 'generic', priority: 4 },
+        { url: a.src, source: 'generic', priority: 4 }
       ].filter(c => c.url);
 
-      if (isHttpsPage) {
-        // On HTTPS pages: prefer HTTPS URLs to avoid proxy overhead
-        const httpsUrl = candidates.find(c => c.url.startsWith('https://'));
-        if (httpsUrl) return httpsUrl.url;
+      // Always prefer HTTPS URLs for better caching and no proxy overhead
+      const httpsUrl = candidates.find(c => c.url.startsWith('https://'));
+      if (httpsUrl) {
+        debugLog(`[Thumb] Using HTTPS from ${httpsUrl.source}`);
+        return httpsUrl.url;
       }
 
-      // Fallback: use backend first (will be proxied if HTTP)
-      return a.thumbnail_url || a.file_url || a.url || a.src || a.remote_url || a.external_url;
+      // Fallback: use by priority (provider CDN first, even if HTTP)
+      candidates.sort((a, b) => a.priority - b.priority);
+      const fallback = candidates[0]?.url || a.thumbnail_url;
+      debugLog(`[Thumb] Using fallback from ${candidates[0]?.source || 'unknown'}`);
+      return fallback;
     };
 
     const getFullUrl = (a) => {
-      if (isHttpsPage) {
-        // Prefer HTTPS URLs on HTTPS pages
-        return a.remote_url?.startsWith('https://') ? a.remote_url :
-               a.external_url?.startsWith('https://') ? a.external_url :
-               a.file_url?.startsWith('https://') ? a.file_url :
-               a.url?.startsWith('https://') ? a.url :
-               // Fallback to any URL (will be proxied if HTTP)
-               a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
-      }
-      return a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
+      // Same priority as thumbnails: provider CDN > backend
+      // Prefer HTTPS URLs for better caching and no proxy
+      if (a.remote_url?.startsWith('https://')) return a.remote_url;
+      if (a.external_url?.startsWith('https://')) return a.external_url;
+      if (a.file_url?.startsWith('https://')) return a.file_url;
+      if (a.url?.startsWith('https://')) return a.url;
+
+      // HTTP fallback: prefer provider CDN even if HTTP (better quality)
+      return a.remote_url || a.external_url || a.file_url || a.url || a.src || a.thumbnail_url;
     };
 
     let urls = assetsCache.map(a => ({
@@ -1338,5 +1345,44 @@ window.PXS7 = window.PXS7 || {};
       debugLog('Picker position reset');
     },
   };
+
+  // ===== SPA NAVIGATION DETECTION =====
+  // Pixverse is an SPA - detect URL changes and close/refresh picker
+  let lastPickerUrl = window.location.href;
+  let lastPickerPath = window.location.pathname;
+
+  function onPickerPageChange() {
+    debugLog('[Picker SPA] Page changed to:', window.location.pathname);
+
+    // Close picker on navigation to avoid stale slots
+    if (activePickerPanel) {
+      debugLog('[Picker SPA] Closing picker due to navigation');
+      activePickerPanel.remove();
+      activePickerPanel = null;
+    }
+  }
+
+  // Method 1: Watch for popstate (back/forward navigation)
+  window.addEventListener('popstate', () => {
+    if (window.location.href !== lastPickerUrl) {
+      lastPickerUrl = window.location.href;
+      lastPickerPath = window.location.pathname;
+      onPickerPageChange();
+    }
+  });
+
+  // Method 2: Poll for URL changes (catches SPA pushState navigation)
+  setInterval(() => {
+    const currentUrl = window.location.href;
+    const currentPath = window.location.pathname;
+
+    if (currentPath !== lastPickerPath) {
+      lastPickerUrl = currentUrl;
+      lastPickerPath = currentPath;
+      onPickerPageChange();
+    }
+  }, 500); // Check every 500ms
+
+  debugLog('[Picker SPA] Navigation detection active');
 
 })();
