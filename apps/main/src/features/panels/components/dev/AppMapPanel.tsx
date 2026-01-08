@@ -9,6 +9,7 @@
  * - System health metrics
  */
 
+import type { AppMapMetadata } from '@shared/types';
 import React, {
   useState,
   useMemo,
@@ -17,30 +18,31 @@ import React, {
   type ErrorInfo,
   type ReactNode,
 } from 'react';
+
 import {
   useFeatures,
   useFeatureRoutes,
+  useRoutes,
   useActions,
-  type RouteCapability,
 } from '@lib/capabilities';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
 import {
   fromPluginSystemMetadata,
   type UnifiedPluginDescriptor,
   type UnifiedPluginFamily,
   type UnifiedPluginOrigin,
 } from '@lib/plugins/types';
-import { pluginCatalog } from '@lib/plugins/pluginSystem';
 
 // Split views
 import { FeaturesView } from './appMap/FeaturesView';
 import { PluginsView } from './appMap/PluginsView';
-import { StatsView } from './appMap/StatsView';
 import { RegistriesView } from './appMap/RegistriesView';
+import { StatsView } from './appMap/StatsView';
 
 // Other panels
-import { DependencyGraphPanel } from './DependencyGraphPanel';
-import { CapabilityTestingPanel } from './CapabilityTestingPanel';
 import { BackendArchitecturePanel } from './BackendArchitecturePanel';
+import { CapabilityTestingPanel } from './CapabilityTestingPanel';
+import { DependencyGraphPanel } from './DependencyGraphPanel';
 
 // =============================================================================
 // Error Boundary
@@ -137,18 +139,8 @@ export function AppMapPanel() {
   // Data from capability registry
   const allFeatures = useFeatures();
   const allActions = useActions();
+  const allRoutes = useRoutes();
   const selectedFeatureRoutes = useFeatureRoutes(selectedFeatureId || '');
-
-  // Collect all routes from all features
-  const allRoutes = useMemo(() => {
-    const routes: RouteCapability[] = [];
-    allFeatures.forEach((feature) => {
-      if (feature.routes) {
-        routes.push(...feature.routes);
-      }
-    });
-    return routes;
-  }, [allFeatures]);
 
   // Data from plugin catalog
   useEffect(() => {
@@ -210,6 +202,7 @@ export function AppMapPanel() {
         category: f.category,
         icon: f.icon,
         priority: f.priority,
+        appMap: (f.metadata as { appMap?: AppMapMetadata } | undefined)?.appMap,
         routes: f.routes?.map((r) => ({
           path: r.path,
           name: r.name,
