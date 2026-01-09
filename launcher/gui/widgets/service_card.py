@@ -390,8 +390,8 @@ class ServiceCard(QFrame):
             except Exception:
                 pass
 
-        # Add PID if available
-        pid = self.service_process.started_pid or self.service_process.detected_pid
+        # Add PID if available (prefer started > detected > persisted)
+        pid = self.service_process.get_effective_pid()
         if pid:
             status_info += f" • PID {pid}"
 
