@@ -24,13 +24,6 @@ export const PROMPT_SEGMENT_ROLES = [
 
 export type PromptSegmentRole = typeof PROMPT_SEGMENT_ROLES[number];
 
-/**
- * Check if a string is a valid PromptSegmentRole
- */
-export function isValidPromptSegmentRole(value: string): value is PromptSegmentRole {
-  return PROMPT_SEGMENT_ROLES.includes(value as PromptSegmentRole);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt Segment (Full Backend Shape)
 // ─────────────────────────────────────────────────────────────────────────────

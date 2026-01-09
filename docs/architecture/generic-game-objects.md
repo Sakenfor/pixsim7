@@ -73,8 +73,10 @@ function processObject(obj: GameObject) {
 }
 ```
 
-**Type guards** provide additional safety:
+**Type guards** provide additional safety (from `@pixsim7/shared.logic-core/game`):
 ```typescript
+import { isNpcObject } from '@pixsim7/shared.logic-core/game';
+
 if (isNpcObject(obj)) {
   // obj is now NpcObject
   const persona = obj.npcData?.personaId;
@@ -90,7 +92,8 @@ All entity types use the same infrastructure:
 
 ## Core Types
 
-**Location:** `packages/shared/types/src/game.ts`
+**Types:** `packages/shared/types/src/game.ts` (`@pixsim7/shared.types`)
+**Type Guards:** `packages/shared/logic-core/src/game.ts` (`@pixsim7/shared.logic-core/game`)
 
 ### GameObjectBase
 
@@ -406,7 +409,8 @@ export type GameObject =
   | TriggerObject
   | VehicleObject;  // Add here
 
-// 5. Add type guard
+// 5. Add type guard in @pixsim7/shared.logic-core/game
+// File: packages/shared/logic-core/src/game.ts
 export function isVehicleObject(obj: GameObject): obj is VehicleObject {
   return obj.kind === 'vehicle';
 }
@@ -556,6 +560,8 @@ function renderGameObject(obj: GameObject) {
 ### Pattern 2: Filter by Tag
 
 ```typescript
+import { isNpcObject } from '@pixsim7/shared.logic-core/game';
+
 // All objects have tags, can filter generically
 function findObjectsByTag(objects: GameObject[], tag: string): GameObject[] {
   return objects.filter(obj => obj.tags?.includes(tag));

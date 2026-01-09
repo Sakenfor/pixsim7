@@ -7,9 +7,10 @@
  * This is the single source of truth for composition role data at runtime.
  * Replaces build-time generated constants with dynamic API data.
  */
-import { create } from 'zustand';
+import { getAvailableRoles } from '@pixsim7/shared.logic-core/composition';
 import type { CompositionPackage, CompositionRoleDefinition } from '@pixsim7/shared.types';
-import { getAvailableRoles } from '@pixsim7/shared.types';
+import { create } from 'zustand';
+
 import { getCompositionPackages } from '@lib/api/composition';
 import { getConceptRoles, type RoleConceptResponse } from '@lib/api/concepts';
 
