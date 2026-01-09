@@ -10,7 +10,7 @@ Queries the /dev/architecture/map endpoint to show:
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGridLayout, QFrame, QTextEdit, QGroupBox
+    QGridLayout, QFrame, QTextEdit
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
@@ -33,33 +33,16 @@ class MetricCard(QFrame):
     def __init__(self, icon: str, label: str, parent=None):
         super().__init__(parent)
         self.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
-        self.setStyleSheet("""
-            MetricCard {
-                background-color: palette(base);
-                border: 1px solid palette(mid);
-                border-radius: 4px;
-                padding: 8px;
-            }
-        """)
+        self.setStyleSheet(theme.get_group_frame_stylesheet())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(4)
 
-        # Icon + Label header
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(6)
-
-        icon_label = QLabel(icon)
-        icon_label.setStyleSheet("font-size: 20px;")
-        header_layout.addWidget(icon_label)
-
+        # Label header
         label_widget = QLabel(label)
-        label_widget.setStyleSheet("font-size: 11px; color: palette(mid);")
-        header_layout.addWidget(label_widget)
-        header_layout.addStretch()
-
-        layout.addLayout(header_layout)
+        label_widget.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY};")
+        layout.addWidget(label_widget)
 
         # Value
         self.value_label = QLabel("--")
@@ -71,7 +54,7 @@ class MetricCard(QFrame):
 
         # Sublabel
         self.sublabel = QLabel("")
-        self.sublabel.setStyleSheet("font-size: 10px; color: palette(mid);")
+        self.sublabel.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY};")
         layout.addWidget(self.sublabel)
 
     def set_value(self, value: str):
@@ -113,34 +96,30 @@ class ArchitectureMetricsPanel(QWidget):
         """Set up the UI layout."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
-        # Group box
-        group = QGroupBox("Backend Architecture")
-        group_layout = QVBoxLayout(group)
+        layout.setSpacing(12)
 
         # Metrics grid
         metrics_grid = QGridLayout()
         metrics_grid.setSpacing(8)
 
         # Create metric cards
-        self.routes_card = MetricCard("🛣️", "Routes")
-        self.services_card = MetricCard("🏗️", "Services")
-        self.plugins_card = MetricCard("🔌", "Modernized")
-        self.module_size_card = MetricCard("📏", "Avg Module")
+        self.routes_card = MetricCard("", "Routes")
+        self.services_card = MetricCard("", "Services")
+        self.plugins_card = MetricCard("", "Modernized")
+        self.module_size_card = MetricCard("", "Avg Module")
 
         metrics_grid.addWidget(self.routes_card, 0, 0)
         metrics_grid.addWidget(self.services_card, 0, 1)
         metrics_grid.addWidget(self.plugins_card, 1, 0)
         metrics_grid.addWidget(self.module_size_card, 1, 1)
 
-        group_layout.addLayout(metrics_grid)
+        layout.addLayout(metrics_grid)
 
         # Status label
         self.status_label = QLabel("Not connected")
-        self.status_label.setStyleSheet("color: palette(mid); font-size: 10px;")
+        self.status_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
         self.status_label.setAlignment(Qt.AlignCenter)
-        group_layout.addWidget(self.status_label)
+        layout.addWidget(self.status_label)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -148,27 +127,25 @@ class ArchitectureMetricsPanel(QWidget):
 
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.clicked.connect(self.refresh_metrics)
-        self.refresh_btn.setMaximumWidth(100)
+        self.refresh_btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         button_layout.addWidget(self.refresh_btn)
 
         self.auto_refresh_btn = QPushButton("Auto: OFF")
         self.auto_refresh_btn.clicked.connect(self.toggle_auto_refresh)
-        self.auto_refresh_btn.setMaximumWidth(100)
+        self.auto_refresh_btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.auto_refresh_btn.setCheckable(True)
         self.auto_refresh_btn.setToolTip("Toggle automatic refresh every 30 seconds")
         button_layout.addWidget(self.auto_refresh_btn)
 
         self.app_map_btn = QPushButton("Open App Map")
         self.app_map_btn.clicked.connect(self.open_app_map)
-        self.app_map_btn.setMaximumWidth(120)
+        self.app_map_btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.app_map_btn.setEnabled(False)
         button_layout.addWidget(self.app_map_btn)
 
         button_layout.addStretch()
 
-        group_layout.addLayout(button_layout)
-
-        layout.addWidget(group)
+        layout.addLayout(button_layout)
 
         # Initially show disconnected state
         self.set_disconnected_state()
@@ -320,29 +297,29 @@ class RoutesPreviewWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Group box
-        group = QGroupBox("Available Routes")
-        group_layout = QVBoxLayout(group)
+        # Routes text area in a frame
+        frame = QFrame()
+        frame.setFrameShape(QFrame.Shape.StyledPanel)
+        frame.setStyleSheet(theme.get_group_frame_stylesheet())
+        frame_layout = QVBoxLayout(frame)
 
-        # Routes text area
         self.routes_text = QTextEdit()
         self.routes_text.setReadOnly(True)
-        self.routes_text.setMaximumHeight(150)
-        self.routes_text.setStyleSheet("""
-            QTextEdit {
-                background-color: palette(base);
-                border: 1px solid palette(mid);
+        self.routes_text.setMinimumHeight(200)
+        self.routes_text.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {theme.BG_TERTIARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
                 border-radius: 4px;
                 font-family: monospace;
-                font-size: 11px;
-                padding: 4px;
-            }
+                font-size: 10pt;
+                padding: 8px;
+            }}
         """)
         self.routes_text.setPlainText("No routes available")
 
-        group_layout.addWidget(self.routes_text)
-
-        layout.addWidget(group)
+        frame_layout.addWidget(self.routes_text)
+        layout.addWidget(frame)
 
     def update_routes(self, routes_by_tag: dict):
         """Update routes display."""
@@ -352,6 +329,6 @@ class RoutesPreviewWidget(QWidget):
 
         lines = []
         for tag, routes in sorted(routes_by_tag.items(), key=lambda x: -len(x[1])):
-            lines.append(f"📁 {tag.upper()}: {len(routes)} routes")
+            lines.append(f"{tag.upper()}: {len(routes)} routes")
 
         self.routes_text.setPlainText("\n".join(lines))
