@@ -38,11 +38,14 @@ class CameraPath(str, Enum):
 
 
 class ContentRating(str, Enum):
-    """Content rating levels for filtering."""
-    GENERAL = "general"
-    SUGGESTIVE = "suggestive"
-    INTIMATE = "intimate"
-    EXPLICIT = "explicit"
+    """Content rating levels for filtering.
+
+    Canonical scale aligned with social_context_builder.py and generation pipeline.
+    """
+    SFW = "sfw"
+    ROMANTIC = "romantic"
+    MATURE_IMPLIED = "mature_implied"
+    RESTRICTED = "restricted"
 
 
 class IntensityPattern(str, Enum):
@@ -118,7 +121,7 @@ class EnhancedActionBlockTags(BaseModel):
 
     # Content rating and filtering
     content_rating: ContentRating = Field(
-        ContentRating.GENERAL,
+        ContentRating.SFW,
         description="Content appropriateness level"
     )
     requires_age_verification: bool = Field(

@@ -15,6 +15,9 @@ from typing import Dict, Any, List, Optional, Literal
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
+# Import canonical BranchIntent from action_blocks (single source of truth)
+from pixsim7.backend.main.domain.narrative.action_blocks.types_unified import BranchIntent
+
 
 # ===================
 # Core Enums
@@ -27,15 +30,6 @@ class InteractionSurface(str, Enum):
     SCENE = "scene"
     NOTIFICATION = "notification"
     MENU = "menu"
-
-
-class BranchIntent(str, Enum):
-    """Narrative direction control (reused from action blocks)"""
-    ESCALATE = "escalate"
-    COOL_DOWN = "cool_down"
-    SIDE_BRANCH = "side_branch"
-    MAINTAIN = "maintain"
-    RESOLVE = "resolve"
 
 
 class DisabledReason(str, Enum):

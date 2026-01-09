@@ -12,17 +12,8 @@ from pixsim7.backend.main.shared.schemas.entity_ref import (
     EntityRef,
 )
 
-
-class BranchIntent(str, Enum):
-    """
-    Branch intent types that align with narrative suggested intents.
-    These control the narrative direction when selecting next blocks.
-    """
-    ESCALATE = "escalate"           # Increase intimacy/intensity
-    COOL_DOWN = "cool_down"          # Reduce tension/intensity
-    SIDE_BRANCH = "side_branch"      # Divergent event (interruption, etc.)
-    MAINTAIN = "maintain"            # Keep current intensity level
-    RESOLVE = "resolve"              # Resolve tension/conflict
+# Import canonical BranchIntent from types_unified (single source of truth)
+from .types_unified import BranchIntent
 
 
 class ReferenceImage(BaseModel):

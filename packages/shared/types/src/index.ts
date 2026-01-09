@@ -108,6 +108,12 @@ export * from './intimacy'
 export * from './narrative'
 
 // ===================
+// Prompt Types
+// ===================
+
+export * from './prompt'
+
+// ===================
 // Brain State Types
 // ===================
 
@@ -121,6 +127,12 @@ export * from './actions'
 
 // Namespace export for organized access
 export * as Actions from './actions'
+
+// ===================
+// App Map Types
+// ===================
+
+export * from './appMap'
 
 // ===================
 // Asset Provider Types

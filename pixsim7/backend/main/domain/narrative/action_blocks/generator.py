@@ -57,7 +57,7 @@ class GenerationRequest:
     """Request for generating a new action block."""
     concept_type: str  # e.g., "creature_interaction", "position_maintenance"
     parameters: Dict[str, Any]
-    content_rating: ContentRating = ContentRating.GENERAL
+    content_rating: ContentRating = ContentRating.SFW
     duration: float = 6.0
     camera_settings: Optional[Dict[str, Any]] = None
     consistency_settings: Optional[Dict[str, Any]] = None
@@ -266,7 +266,7 @@ class DynamicBlockGenerator:
         self,
         concept: str,
         requirements: str,
-        content_rating: ContentRating = ContentRating.GENERAL
+        content_rating: ContentRating = ContentRating.SFW
     ) -> GenerationResult:
         """
         Generate using Claude Sonnet API (placeholder for actual implementation).
@@ -496,13 +496,13 @@ class DynamicBlockGenerator:
     def _determine_content_rating(self, intensity: int) -> ContentRating:
         """Determine content rating based on intensity."""
         if intensity <= 3:
-            return ContentRating.GENERAL
+            return ContentRating.SFW
         elif intensity <= 5:
-            return ContentRating.SUGGESTIVE
+            return ContentRating.ROMANTIC
         elif intensity <= 7:
-            return ContentRating.INTIMATE
+            return ContentRating.MATURE_IMPLIED
         else:
-            return ContentRating.EXPLICIT
+            return ContentRating.RESTRICTED
 
 
 # Singleton instance

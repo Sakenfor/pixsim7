@@ -664,24 +664,25 @@ action_blocks:
       range: [9, 10]
 
   # Content ratings for filtering
+  # Canonical scale aligned with social_context_builder.py and generation pipeline
   content_ratings:
-    - id: "rating:general"
-      label: "General"
+    - id: "rating:sfw"
+      label: "Safe for Work"
       level: 0
       description: "Suitable for all audiences"
 
-    - id: "rating:suggestive"
-      label: "Suggestive"
+    - id: "rating:romantic"
+      label: "Romantic"
       level: 1
-      description: "Mild romantic/suggestive content"
+      description: "Mild romantic/flirty content"
 
-    - id: "rating:intimate"
-      label: "Intimate"
+    - id: "rating:mature_implied"
+      label: "Mature Implied"
       level: 2
-      description: "Intimate romantic content"
+      description: "Intimate content (implied, not explicit)"
 
-    - id: "rating:explicit"
-      label: "Explicit"
+    - id: "rating:restricted"
+      label: "Restricted"
       level: 3
       description: "Explicit adult content"
       requires_age_verification: true

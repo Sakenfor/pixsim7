@@ -90,7 +90,7 @@ def _build_generation_request(req: 'GenerateActionBlockRequest') -> GenerationRe
     try:
         content_rating = ContentRating(req.content_rating)
     except ValueError:
-        content_rating = ContentRating.GENERAL
+        content_rating = ContentRating.SFW
 
     return GenerationRequest(
         concept_type=req.concept_type,

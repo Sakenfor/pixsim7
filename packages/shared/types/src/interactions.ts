@@ -43,14 +43,15 @@ export type NpcInteractionSurface =
 
 /**
  * Branch intent - narrative direction control.
- * NOTE: Not yet exposed in OpenAPI. Manually defined to match backend BranchIntent enum.
+ * Canonical IDs aligned with ontology.yaml branch_intents.
+ * Values use ontology prefix format: branch:<id>
  */
 export type BranchIntent =
-  | 'escalate'      // Increase intimacy/intensity
-  | 'cool_down'     // Reduce tension/intensity
-  | 'side_branch'   // Divergent event (interruption, etc.)
-  | 'maintain'      // Keep current intensity level
-  | 'resolve';      // Resolve tension/conflict
+  | 'branch:escalate'      // Increase intimacy/intensity
+  | 'branch:cool_down'     // Reduce tension/intensity
+  | 'branch:side_branch'   // Divergent event (interruption, etc.)
+  | 'branch:maintain'      // Keep current intensity level
+  | 'branch:resolve';      // Resolve tension/conflict
 
 /**
  * Branch intent alias for NPC interactions.

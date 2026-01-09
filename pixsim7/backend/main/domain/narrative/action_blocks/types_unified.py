@@ -50,12 +50,16 @@ from pixsim7.backend.main.shared.composition import normalize_composition_role
 # ============================================================================
 
 class BranchIntent(str, Enum):
-    """Branch intent types for narrative direction."""
-    ESCALATE = "escalate"
-    COOL_DOWN = "cool_down"
-    SIDE_BRANCH = "side_branch"
-    MAINTAIN = "maintain"
-    RESOLVE = "resolve"
+    """Branch intent types for narrative direction.
+
+    Canonical IDs aligned with ontology.yaml branch_intents.
+    Values use ontology prefix format: branch:<id>
+    """
+    ESCALATE = "branch:escalate"
+    COOL_DOWN = "branch:cool_down"
+    SIDE_BRANCH = "branch:side_branch"
+    MAINTAIN = "branch:maintain"
+    RESOLVE = "branch:resolve"
 
 
 class CameraMovementType(str, Enum):
@@ -82,11 +86,15 @@ class CameraPath(str, Enum):
 
 
 class ContentRating(str, Enum):
-    """Content rating levels for filtering."""
-    GENERAL = "general"
-    SUGGESTIVE = "suggestive"
-    INTIMATE = "intimate"
-    EXPLICIT = "explicit"
+    """Content rating levels for filtering.
+
+    Canonical scale aligned with social_context_builder.py and generation pipeline.
+    Maps to ontology IDs: rating:sfw, rating:romantic, rating:mature_implied, rating:restricted
+    """
+    SFW = "sfw"
+    ROMANTIC = "romantic"
+    MATURE_IMPLIED = "mature_implied"
+    RESTRICTED = "restricted"
 
 
 class IntensityPattern(str, Enum):
@@ -306,7 +314,7 @@ class ActionBlockTags(BaseModel):
 
     # Content rating
     content_rating: ContentRating = Field(
-        ContentRating.GENERAL,
+        ContentRating.SFW,
         description="Content appropriateness level",
     )
     requires_age_verification: bool = Field(False)
@@ -602,7 +610,7 @@ class ActionSelectionContext(BaseModel):
     maxDuration: Optional[float] = Field(None)
 
     # Content filtering
-    max_content_rating: ContentRating = Field(ContentRating.INTIMATE)
+    max_content_rating: ContentRating = Field(ContentRating.MATURE_IMPLIED)
     world_id: Optional[str] = Field(None)
 
     model_config = ConfigDict(use_enum_values=True)
