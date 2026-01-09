@@ -140,10 +140,14 @@ export interface RegisterFeatureOptions {
   mode?: FeatureRegistrationMode;
 }
 
+/**
+ * Register a feature capability.
+ * @returns true if registration succeeded, false if it failed due to mode constraints
+ */
 export function registerFeature(
   feature: FeatureCapability,
   options?: RegisterFeatureOptions
-): void {
+): boolean {
   const mode = options?.mode ?? 'upsert';
   const existingFeature = capabilityRegistry.getFeature(feature.id);
 
@@ -152,7 +156,7 @@ export function registerFeature(
       `[Capabilities] Feature '${feature.id}' already exists (mode: create). ` +
         `Use mode: 'upsert' to merge or 'update' to modify.`
     );
-    return;
+    return false;
   }
 
   if (mode === 'update' && !existingFeature) {
@@ -160,13 +164,14 @@ export function registerFeature(
       `[Capabilities] Feature '${feature.id}' does not exist (mode: update). ` +
         `Use mode: 'create' to create new or 'upsert' to create-or-merge.`
     );
-    return;
+    return false;
   }
 
   const mergedFeature = mergeFeature(existingFeature, feature);
   capabilityRegistry.registerFeature(mergedFeature);
   debugFlags.log('registry', `[Capabilities] Registered feature: ${feature.name} (mode: ${mode})`);
   logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name, mode });
+  return true;
 }
 
 function mergeFeature(

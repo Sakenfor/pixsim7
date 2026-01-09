@@ -195,22 +195,26 @@ export function AppMapPanel() {
     const appMapData = {
       version: '1.0',
       timestamp: new Date().toISOString(),
-      features: allFeatures.map((f) => ({
-        id: f.id,
-        name: f.name,
-        description: f.description,
-        category: f.category,
-        icon: f.icon,
-        priority: f.priority,
-        appMap: f.appMap ?? (f.metadata as { appMap?: AppMapMetadata } | undefined)?.appMap,
-        routes: f.routes?.map((r) => ({
-          path: r.path,
-          name: r.name,
-          description: r.description,
-          protected: r.protected,
-          showInNav: r.showInNav,
-        })),
-      })),
+      features: allFeatures.map((f) => {
+        // Get routes from registry (feature.routes is not populated)
+        const featureRoutes = allRoutes.filter((r) => r.featureId === f.id);
+        return {
+          id: f.id,
+          name: f.name,
+          description: f.description,
+          category: f.category,
+          icon: f.icon,
+          priority: f.priority,
+          appMap: f.appMap ?? (f.metadata as { appMap?: AppMapMetadata } | undefined)?.appMap,
+          routes: featureRoutes.map((r) => ({
+            path: r.path,
+            name: r.name,
+            description: r.description,
+            protected: r.protected,
+            showInNav: r.showInNav,
+          })),
+        };
+      }),
       actions: allActions.map((a) => ({
         id: a.id,
         name: a.name,
