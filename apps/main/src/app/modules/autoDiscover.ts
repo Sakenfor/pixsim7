@@ -18,7 +18,7 @@ export function getDiscoveredFeatureModules(): Module[] {
 
   for (const [path, moduleExports] of Object.entries(featureModuleImports)) {
     const featureName = path.match(/features\/([^/]+)\/module\.ts/)?.[1] ?? 'unknown';
-    const moduleExport = findModuleExport(moduleExports);
+    const moduleExport = findModuleExport(moduleExports, featureName);
 
     if (moduleExport) {
       modules.push(moduleExport);
@@ -30,24 +30,59 @@ export function getDiscoveredFeatureModules(): Module[] {
   return modules;
 }
 
-function findModuleExport(exports: ModuleExport): Module | null {
-  if (exports.default && isValidModule(exports.default)) {
-    return exports.default;
-  }
-
+/**
+ * Find the module export from a module file.
+ * Preferred order:
+ * 1. Named export matching ${featureName}Module (convention)
+ * 2. default export
+ * 3. Any export ending in 'Module'
+ * 4. Any valid module export (fallback)
+ *
+ * Warns when multiple valid exports exist to encourage single-export convention.
+ */
+function findModuleExport(exports: ModuleExport, featureName: string): Module | null {
+  // Collect all valid module exports for warning detection
+  const validExports: { name: string; module: Module }[] = [];
   for (const [name, value] of Object.entries(exports)) {
-    if (name.endsWith('Module') && value && isValidModule(value)) {
-      return value;
-    }
-  }
-
-  for (const value of Object.values(exports)) {
     if (value && isValidModule(value)) {
-      return value;
+      validExports.push({ name, module: value });
     }
   }
 
-  return null;
+  if (validExports.length === 0) {
+    return null;
+  }
+
+  // Warn if multiple valid exports exist
+  if (validExports.length > 1) {
+    const exportNames = validExports.map((e) => e.name).join(', ');
+    console.warn(
+      `[autoDiscover] Multiple valid module exports in ${featureName}/module.ts: ${exportNames}. ` +
+        `Prefer a single named export: ${featureName}Module`
+    );
+  }
+
+  // 1. Prefer ${featureName}Module (convention)
+  const conventionName = `${featureName}Module`;
+  const conventionExport = validExports.find((e) => e.name === conventionName);
+  if (conventionExport) {
+    return conventionExport.module;
+  }
+
+  // 2. Try default export
+  const defaultExport = validExports.find((e) => e.name === 'default');
+  if (defaultExport) {
+    return defaultExport.module;
+  }
+
+  // 3. Try any *Module export
+  const moduleExport = validExports.find((e) => e.name.endsWith('Module'));
+  if (moduleExport) {
+    return moduleExport.module;
+  }
+
+  // 4. Fallback to first valid export
+  return validExports[0].module;
 }
 
 function isValidModule(obj: unknown): obj is Module {

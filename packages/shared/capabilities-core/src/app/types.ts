@@ -5,6 +5,8 @@
  * and exposed state. The UI layer can wrap this registry with hooks.
  */
 
+import type { AppMapMetadata } from '@pixsim7/shared.types';
+
 export type AppCapabilityCategory = string;
 
 export type AppActionVisibility = "always" | "commandPalette" | "contextMenu" | "hidden";
@@ -24,6 +26,18 @@ export interface AppActionContext {
 
 export type AppActionMenuContext = string;
 
+export type AppActionVariant = "default" | "danger" | "success";
+
+export interface AppActionContextMenu {
+  availableIn?: AppActionMenuContext[];
+  category?: string;
+  variant?: AppActionVariant;
+  divider?: boolean;
+  iconColor?: string;
+  visible?: (ctx?: AppActionContext) => boolean;
+  disabled?: (ctx?: AppActionContext) => boolean | string;
+}
+
 export interface AppFeatureCapability {
   id: string;
   name: string;
@@ -36,6 +50,15 @@ export interface AppFeatureCapability {
   getState?: () => unknown;
   enabled?: () => boolean;
   permissions?: string[];
+  /**
+   * App Map metadata for documentation and tooling.
+   * Top-level alias for `metadata.appMap` (preferred).
+   */
+  appMap?: AppMapMetadata;
+  /**
+   * Generic metadata store (legacy).
+   * Prefer `appMap` for App Map data.
+   */
   metadata?: Record<string, unknown>;
 }
 
@@ -60,6 +83,7 @@ export interface AppActionCapability {
   execute: (ctx?: AppActionContext) => void | Promise<void>;
   visibility?: AppActionVisibility;
   contexts?: AppActionMenuContext[];
+  contextMenu?: AppActionContextMenu;
   enabled?: () => boolean;
   category?: string;
   featureId: string;

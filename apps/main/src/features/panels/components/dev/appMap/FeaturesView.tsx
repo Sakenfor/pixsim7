@@ -4,7 +4,9 @@
  * Shows registered features grouped by category with their routes and actions.
  */
 
+import type { AppMapMetadata } from '@shared/types';
 import { useMemo } from 'react';
+
 import type {
   FeatureCapability,
   RouteCapability,
@@ -37,6 +39,14 @@ export function FeaturesView({
   }, [features]);
 
   const categories = Object.keys(featuresByCategory).sort();
+  // Prefer top-level appMap, fall back to metadata.appMap for compatibility
+  const appMapMeta = (selectedFeature?.appMap ?? selectedFeature?.metadata?.appMap) as AppMapMetadata | undefined;
+  const appMapSections = [
+    { label: 'Docs', items: appMapMeta?.docs },
+    { label: 'Frontend', items: appMapMeta?.frontend },
+    { label: 'Backend', items: appMapMeta?.backend },
+    { label: 'Notes', items: appMapMeta?.notes },
+  ].filter((section) => section.items && section.items.length > 0);
 
   return (
     <div className="flex h-full">
@@ -108,6 +118,32 @@ export function FeaturesView({
                 </p>
               )}
             </div>
+
+            {appMapSections.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+                  Notes & References
+                </h3>
+                <div className="space-y-3">
+                  {appMapSections.map((section) => (
+                    <div key={section.label}>
+                      <div className="text-xs font-semibold uppercase text-neutral-500 dark:text-neutral-400">
+                        {section.label}
+                      </div>
+                      <ul className="mt-1 space-y-1">
+                        {section.items?.map((item) => (
+                          <li key={item} className="text-sm text-neutral-700 dark:text-neutral-300">
+                            <code className="text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                              {item}
+                            </code>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Routes */}
             {selectedFeatureRoutes.length > 0 && (

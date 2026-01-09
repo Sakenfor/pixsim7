@@ -202,7 +202,7 @@ export function AppMapPanel() {
         category: f.category,
         icon: f.icon,
         priority: f.priority,
-        appMap: (f.metadata as { appMap?: AppMapMetadata } | undefined)?.appMap,
+        appMap: f.appMap ?? (f.metadata as { appMap?: AppMapMetadata } | undefined)?.appMap,
         routes: f.routes?.map((r) => ({
           path: r.path,
           name: r.name,

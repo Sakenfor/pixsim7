@@ -128,10 +128,84 @@ export const capabilityRegistry = createAppCapabilityRegistry({
   },
 });
 
-export function registerFeature(feature: FeatureCapability): void {
-  capabilityRegistry.registerFeature(feature);
-  debugFlags.log('registry', `[Capabilities] Registered feature: ${feature.name}`);
-  logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name });
+/**
+ * Registration mode for features.
+ * - 'create': Fail if feature already exists
+ * - 'update': Fail if feature doesn't exist, merge with existing
+ * - 'upsert': Create if new, merge if exists (default, backward-compatible)
+ */
+export type FeatureRegistrationMode = 'create' | 'update' | 'upsert';
+
+export interface RegisterFeatureOptions {
+  mode?: FeatureRegistrationMode;
+}
+
+export function registerFeature(
+  feature: FeatureCapability,
+  options?: RegisterFeatureOptions
+): void {
+  const mode = options?.mode ?? 'upsert';
+  const existingFeature = capabilityRegistry.getFeature(feature.id);
+
+  if (mode === 'create' && existingFeature) {
+    console.error(
+      `[Capabilities] Feature '${feature.id}' already exists (mode: create). ` +
+        `Use mode: 'upsert' to merge or 'update' to modify.`
+    );
+    return;
+  }
+
+  if (mode === 'update' && !existingFeature) {
+    console.error(
+      `[Capabilities] Feature '${feature.id}' does not exist (mode: update). ` +
+        `Use mode: 'create' to create new or 'upsert' to create-or-merge.`
+    );
+    return;
+  }
+
+  const mergedFeature = mergeFeature(existingFeature, feature);
+  capabilityRegistry.registerFeature(mergedFeature);
+  debugFlags.log('registry', `[Capabilities] Registered feature: ${feature.name} (mode: ${mode})`);
+  logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name, mode });
+}
+
+function mergeFeature(
+  existing: FeatureCapability | undefined,
+  incoming: FeatureCapability
+): FeatureCapability {
+  if (!existing) {
+    // Mirror metadata.appMap to top-level appMap for compatibility
+    if (!incoming.appMap && incoming.metadata?.appMap) {
+      return { ...incoming, appMap: incoming.metadata.appMap as FeatureCapability['appMap'] };
+    }
+    return incoming;
+  }
+
+  const merged: FeatureCapability = {
+    ...existing,
+    ...incoming,
+  };
+
+  // Merge metadata objects
+  if (existing.metadata || incoming.metadata) {
+    merged.metadata = {
+      ...(existing.metadata ?? {}),
+      ...(incoming.metadata ?? {}),
+    };
+  }
+
+  // Preserve existing priority if incoming doesn't specify
+  if (existing.priority !== undefined && incoming.priority === undefined) {
+    merged.priority = existing.priority;
+  }
+
+  // Mirror metadata.appMap to top-level appMap for compatibility
+  // Prefer explicit appMap > incoming metadata.appMap > existing appMap
+  if (!merged.appMap && merged.metadata?.appMap) {
+    merged.appMap = merged.metadata.appMap as FeatureCapability['appMap'];
+  }
+
+  return merged;
 }
 
 export function getFeature(id: string): FeatureCapability | undefined {

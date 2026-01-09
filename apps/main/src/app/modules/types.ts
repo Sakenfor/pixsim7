@@ -4,7 +4,6 @@ import type { ComponentType, LazyExoticComponent } from 'react';
 
 import type { FeatureCapability } from '@lib/capabilities';
 import {
-  getFeature,
   registerActionsFromDefinitions,
   registerFeature,
   registerRoute,
@@ -232,6 +231,8 @@ function registerModuleCapabilities(module: Module) {
     const isPrimary = page.featurePrimary ?? page.featureId === module.id;
 
     if (isPrimary) {
+      // Build feature from module page config
+      // Merging with existing features is handled by registerFeature with mode: 'upsert'
       const derivedFeature: FeatureCapability = {
         id: featureId,
         name: module.name,
@@ -242,26 +243,7 @@ function registerModuleCapabilities(module: Module) {
         ...(page.appMap ? { metadata: { appMap: page.appMap } } : {}),
       };
 
-      const existingFeature = getFeature(featureId);
-      const mergedFeature = existingFeature
-        ? {
-            ...existingFeature,
-            ...derivedFeature,
-          }
-        : derivedFeature;
-
-      if (existingFeature?.metadata || derivedFeature.metadata) {
-        mergedFeature.metadata = {
-          ...(existingFeature?.metadata ?? {}),
-          ...(derivedFeature.metadata ?? {}),
-        };
-      }
-
-      if (existingFeature?.priority !== undefined && derivedFeature.priority === undefined) {
-        mergedFeature.priority = existingFeature.priority;
-      }
-
-      registerFeature(mergedFeature);
+      registerFeature(derivedFeature, { mode: 'upsert' });
     }
 
     const showInNav =

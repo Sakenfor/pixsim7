@@ -23,7 +23,7 @@ import type { DevToolDefinition } from './types';
  */
 export function registerDevTools(): void {
   // 1. Register explicit tool definitions from plugins folder
-  builtInDevTools.forEach(tool => {
+  builtInDevTools.forEach((tool) => {
     if (!devToolRegistry.get(tool.id)) {
       devToolRegistry.register(tool);
     }
@@ -31,9 +31,27 @@ export function registerDevTools(): void {
 
   // 2. Auto-register dev tools from modules with page.devTool config
   const modulesWithDevTools = moduleRegistry.getModulesWithDevTools();
+
+  // Warn if called before modules are registered (common ordering mistake)
+  if (modulesWithDevTools.length === 0 && moduleRegistry.list().length === 0) {
+    console.warn(
+      '[DevToolRegistry] registerDevTools() called before any modules are registered. ' +
+        'Auto-discovered dev tools from page.devTool will not be available. ' +
+        'Ensure registerModules() is called before registerDevTools().'
+    );
+  }
+
   for (const module of modulesWithDevTools) {
     const page = module.page!;
     const devToolConfig = page.devTool!;
+
+    // Warn if devTool config lacks both panel component and route
+    if (!devToolConfig.panelComponent && !page.route) {
+      console.warn(
+        `[DevToolRegistry] Module '${module.id}' has page.devTool but no panelComponent or route. ` +
+          'The dev tool will not be usable.'
+      );
+    }
 
     // Use featureId as the dev tool id (canonical identifier), fallback to module.id
     const devToolId = page.featureId ?? module.id;
