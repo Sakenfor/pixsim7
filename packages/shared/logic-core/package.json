@@ -45,6 +45,16 @@
       "import": "./src/characterGraph.ts",
       "require": "./src/characterGraph.ts",
       "types": "./src/characterGraph.ts"
+    },
+    "./ids": {
+      "import": "./src/ids.ts",
+      "require": "./src/ids.ts",
+      "types": "./src/ids.ts"
+    },
+    "./brain": {
+      "import": "./src/brain.ts",
+      "require": "./src/brain.ts",
+      "types": "./src/brain.ts"
     }
   },
   "files": ["src", "dist"],

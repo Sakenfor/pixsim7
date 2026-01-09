@@ -22,7 +22,7 @@ export type {
   BehaviorUrge,
 } from './types';
 
-// BrainState helpers (re-exported from @shared/types)
+// BrainState helpers (re-exported from @pixsim7/shared.logic-core/brain)
 export {
   hasStat,
   hasDerived,

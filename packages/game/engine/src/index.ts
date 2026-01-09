@@ -25,7 +25,7 @@ export type {
   DerivedBehaviorUrgency,
 } from '@pixsim7/shared.types';
 
-// Re-export brain helper functions
+// Re-export brain helper functions from logic-core
 export {
   getBrainStat,
   hasStat,
@@ -37,7 +37,7 @@ export {
   getAxisValue,
   getAxisTier,
   isInCriticalState,
-} from '@pixsim7/shared.types';
+} from '@pixsim7/shared.logic-core/brain';
 
 // ===== Relationships =====
 
@@ -49,14 +49,14 @@ export {
 } from './relationships/computation';
 
 // Preview API (recommended for editor/tooling)
-// Re-exported from @pixsim7/shared.stats-core
+// Re-exported from @pixsim7/shared.logic-core/stats
 export {
   previewRelationshipTier,
   previewIntimacyLevel,
   configurePreviewApi,
   resetPreviewApiConfig,
   getPreviewApiConfig,
-} from '@pixsim7/shared.stats-core';
+} from '@pixsim7/shared.logic-core/stats';
 
 // ===== Metrics Preview =====
 

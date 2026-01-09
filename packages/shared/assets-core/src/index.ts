@@ -8,5 +8,8 @@
 // Media type resolution utilities
 export * from './assetMediaType';
 
+// Asset hash utilities
+export * from './assetHash';
+
 // Asset action factory
 export * from './assetCardActions';

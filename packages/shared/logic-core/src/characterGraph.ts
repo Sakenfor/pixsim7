@@ -5,12 +5,12 @@
  * Types are imported from @pixsim7/shared.types.
  */
 import type { CharacterGraphNodeType, ParsedNodeId } from '@pixsim7/shared.types';
-import { parseRef } from '@pixsim7/ref-core';
+import { parseRef } from './ids';
 
 /**
  * Parse a character graph node ID
  *
- * @deprecated Use canonical `parseRef()` from @pixsim7/shared.types instead.
+ * @deprecated Use canonical `parseRef()` from @pixsim7/shared.logic-core/ids instead.
  * This wrapper maps the canonical parsed result to the legacy ParsedNodeId format.
  *
  * @example
@@ -19,7 +19,7 @@ import { parseRef } from '@pixsim7/ref-core';
  * const parsed = parseCharacterGraphNodeId("npc:123")
  *
  * // New (recommended):
- * import { parseRef } from '@pixsim7/shared.types';
+ * import { parseRef } from '@pixsim7/shared.logic-core/ids';
  * const parsed = parseRef("npc:123")
  * if (parsed?.type === 'npc') {
  *   console.log(parsed.id) // Typed as NpcId

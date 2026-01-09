@@ -2,18 +2,12 @@
  * Core type definitions for the headless @pixsim7/game.engine
  * These types define the contract between the core and any frontend (React/CLI/Discord/etc)
  *
- * Brain types and helpers are sourced from the shared types package so that
- * frontend and backend use the same data-driven BrainState model.
+ * Brain types come from shared types; runtime helpers from shared logic-core
+ * so frontend and backend use the same data-driven BrainState model.
  */
 
-import type {
-  BrainState,
-  BrainStatSnapshot,
-  BrainMemory,
-  DerivedBehaviorUrgency,
-  BehaviorUrge,
-} from '@shared/types';
 import type { StatSource } from '@pixsim7/game.engine';
+import type { BrainState } from '@shared/types';
 
 export type {
   BrainState,
@@ -39,7 +33,7 @@ export {
   getPersonaTags,
   getIntimacyLevel,
   getRelationshipFlags,
-} from '@shared/types';
+} from '@pixsim7/shared.logic-core/brain';
 
 // ============================================================================
 // Event System

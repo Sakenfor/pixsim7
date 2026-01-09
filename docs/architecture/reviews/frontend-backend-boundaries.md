@@ -197,7 +197,7 @@ import type { SceneNode } from '@shared/types';
 **Package:** `@shared/types` provides namespace exports for major type groups:
 
 **Available Namespaces:**
-- `IDs` - ID constructors and ref helpers
+- `IDs` - ID types and constructors (ref helpers live in ref-core/logic-core)
 - `Scene` - Scene graph types (nodes, edges, runtime state)
 - `Game` - Game DTOs (locations, NPCs, sessions, etc.)
 
@@ -212,6 +212,7 @@ import type { SceneNode } from '@shared/types';
 ```typescript
 // âœ… RECOMMENDED - Clean namespace imports
 import { IDs } from '@shared/types';
+import { Ref } from '@pixsim7/ref-core';
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
   // ...
@@ -223,7 +224,7 @@ export async function createGameSession(
 ): Promise<GameSessionDTO> {
   // Create IDs using namespace
   const sessionId = IDs.SessionId(response.id);
-  const npcRef = IDs.Ref.npc(npcId);
+  const npcRef = Ref.npc(npcId);
   // ...
 }
 ```
@@ -287,15 +288,17 @@ export async function updateLocation(locationId: LocationId) {
 |----------|----------|-------|
 | **ID Types** | `IDs.NpcId`, `IDs.LocationId`, `IDs.SessionId`, `IDs.CharacterId` | Type annotations for function parameters |
 | **ID Constructors** | `IDs.NpcId(123)`, `IDs.SessionId(456)` | Create branded IDs from primitives |
-| **Ref Builders** | `IDs.Ref.npc(id)`, `IDs.Ref.location(id)` | Build canonical string refs (`"npc:123"`) |
-| **Type Guards** | `IDs.isNpcRef(str)`, `IDs.isLocationRef(str)` | Runtime validation of ref strings |
-| **Parsers** | `IDs.parseRef(str)`, `IDs.extractNpcId(str)` | Parse ref strings into typed IDs |
+| **Ref Builders** | `Ref.npc(id)`, `Ref.location(id)` | Build canonical string refs (`"npc:123"`) |
+| **Type Guards** | `isNpcRef(str)`, `isLocationRef(str)` | Runtime validation of ref strings |
+| **Parsers** | `parseRef(str)`, `extractNpcId(str)` | Parse ref strings into typed IDs |
 
 **Examples:**
 
 ```typescript
 // Using namespace for multiple ID types
 import { IDs } from '@shared/types';
+import { Ref, isNpcRef } from '@pixsim7/ref-core';
+import { parseRef } from '@pixsim7/shared.logic-core/ids';
 
 function processInteraction(
   worldId: IDs.WorldId,
@@ -304,19 +307,19 @@ function processInteraction(
   locationId?: IDs.LocationId
 ) {
   // Build refs for session storage
-  const npcRef = IDs.Ref.npc(npcId);
-  const locationRef = locationId ? IDs.Ref.location(locationId) : null;
+  const npcRef = Ref.npc(npcId);
+  const locationRef = locationId ? Ref.location(locationId) : null;
 
   // Use type guards
-  if (IDs.isNpcRef(someString)) {
-    const parsed = IDs.parseRef(someString);
+  if (isNpcRef(someString)) {
+    const parsed = parseRef(someString);
     // ...
   }
 }
 ```
 
 **Benefits:**
-- **Discoverability** - All ID utilities visible via `IDs.` autocomplete
+- **Discoverability** - ID types and constructors visible via `IDs.` autocomplete
 - **Reduces line noise** - One import instead of listing many types
 - **Clear intent** - `IDs.LocationId` explicitly shows it's an ID type
 - **Backward compatible** - Direct imports still work for existing code
@@ -1090,4 +1093,3 @@ PixSim7 maintains **clean separation** between frontend and backend with:
 4. Document intentional boundary crossings
 
 This architecture ensures the team always knows "where backend ends and frontend begins."
-
