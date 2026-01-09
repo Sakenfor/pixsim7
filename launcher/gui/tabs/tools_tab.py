@@ -4,9 +4,7 @@ Tools and Settings Tabs for Launcher
 Creates the tools and settings tabs with organized sections.
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QFrame
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 
 try:
     from .. import theme
@@ -14,16 +12,24 @@ try:
     from ..dialogs.simple_git_dialog import show_simple_git_dialog
     from ..dialogs.git_tools_dialog import show_git_tools_dialog
     from ..dialogs.log_management_dialog import show_log_management_dialog
-    from ..dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+    from ..dialogs.openapi_tools_dialog import OpenApiToolsWidget
+    from ..dialogs.codegen_dialog import CodegenToolsWidget
     from ..widgets.settings_panel import SettingsPanel
+    from ..widgets.tab_builder import (
+        TabBuilder, create_page, create_styled_frame, create_section_label
+    )
 except ImportError:
     import theme
     from dialogs.migrations_dialog import show_migrations_dialog
     from dialogs.simple_git_dialog import show_simple_git_dialog
     from dialogs.git_tools_dialog import show_git_tools_dialog
     from dialogs.log_management_dialog import show_log_management_dialog
-    from dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+    from dialogs.openapi_tools_dialog import OpenApiToolsWidget
+    from dialogs.codegen_dialog import CodegenToolsWidget
     from widgets.settings_panel import SettingsPanel
+    from widgets.tab_builder import (
+        TabBuilder, create_page, create_styled_frame, create_section_label
+    )
 
 
 class ToolsTab:
@@ -44,91 +50,93 @@ class ToolsTab:
         Returns:
             QWidget: The tools tab widget
         """
-        tools_tab = QWidget()
-        tools_layout = QVBoxLayout(tools_tab)
-        tools_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
-        tools_layout.setSpacing(theme.SPACING_LG)
+        builder = TabBuilder()
+        builder.add_page("Database", lambda: ToolsTab._create_database_page(launcher))
+        builder.add_page("Development", lambda: ToolsTab._create_development_page(launcher))
+        builder.add_page("OpenAPI", lambda: OpenApiToolsWidget())
+        builder.add_page("Codegen", lambda: CodegenToolsWidget())
 
-        # Database Tools Section
-        db_group = QFrame()
-        db_group.setFrameShape(QFrame.Shape.StyledPanel)
-        db_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        db_layout = QVBoxLayout(db_group)
+        container, _, _ = builder.build()
+        return container
 
-        db_title = QLabel("🗄 Database Tools")
-        db_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        db_layout.addWidget(db_title)
+    @staticmethod
+    def _create_database_page(launcher) -> QWidget:
+        """Create the Database tools page."""
+        page, layout = create_page("Database Tools")
 
-        launcher.btn_migrations = QPushButton('🗃 Migrations')
-        launcher.btn_migrations.setToolTip("Database migration manager")
-        launcher.btn_migrations.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_migrations.clicked.connect(lambda: show_migrations_dialog(launcher))
-        db_layout.addWidget(launcher.btn_migrations)
+        frame, frame_layout = create_styled_frame()
 
-        launcher.btn_db_browser = QPushButton('📊 Database Browser')
-        launcher.btn_db_browser.setToolTip("Browse accounts, copy passwords, export to CSV")
-        launcher.btn_db_browser.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_db_browser.clicked.connect(launcher._open_db_browser)
-        db_layout.addWidget(launcher.btn_db_browser)
+        def make_button(key, label, tooltip, handler):
+            btn = QPushButton(label)
+            btn.setToolTip(tooltip)
+            btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+            btn.clicked.connect(handler)
+            launcher.register_widget(key, btn)
+            return btn
 
-        launcher.btn_import_accounts = QPushButton('📥 Import Accounts from PixSim6')
-        launcher.btn_import_accounts.setToolTip("Import provider accounts from PixSim6 database")
-        launcher.btn_import_accounts.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_import_accounts.clicked.connect(launcher._open_import_accounts_dialog)
-        db_layout.addWidget(launcher.btn_import_accounts)
+        frame_layout.addWidget(make_button(
+            'btn_migrations', 'Migrations',
+            "Database migration manager",
+            lambda: show_migrations_dialog(launcher)
+        ))
+        frame_layout.addWidget(make_button(
+            'btn_db_browser', 'Database Browser',
+            "Browse accounts, copy passwords, export to CSV",
+            launcher._open_db_browser
+        ))
+        frame_layout.addWidget(make_button(
+            'btn_import_accounts', 'Import Accounts from PixSim6',
+            "Import provider accounts from PixSim6 database",
+            launcher._open_import_accounts_dialog
+        ))
 
-        tools_layout.addWidget(db_group)
+        layout.addWidget(frame)
+        layout.addStretch()
+        return page
 
-        # Development Tools Section
-        dev_group = QFrame()
-        dev_group.setFrameShape(QFrame.Shape.StyledPanel)
-        dev_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        dev_layout = QVBoxLayout(dev_group)
+    @staticmethod
+    def _create_development_page(launcher) -> QWidget:
+        """Create the Development tools page."""
+        page, layout = create_page("Development Tools")
 
-        dev_title = QLabel("🔀 Development Tools")
-        dev_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        dev_layout.addWidget(dev_title)
+        def make_button(key, label, tooltip, handler):
+            btn = QPushButton(label)
+            btn.setToolTip(tooltip)
+            btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
+            btn.clicked.connect(handler)
+            launcher.register_widget(key, btn)
+            return btn
 
-        launcher.btn_git_workflow = QPushButton('⚡ Git Workflow')
-        launcher.btn_git_workflow.setToolTip("Simple git operations: commit, push, pull, merge, cleanup")
-        launcher.btn_git_workflow.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_git_workflow.clicked.connect(lambda: show_simple_git_dialog(launcher))
-        dev_layout.addWidget(launcher.btn_git_workflow)
+        # Git tools frame
+        git_frame, git_layout = create_styled_frame()
+        git_layout.addWidget(create_section_label("Git"))
 
-        launcher.btn_git_tools = QPushButton('🔀 Advanced Git Tools')
-        launcher.btn_git_tools.setToolTip("Structured commit helper (grouped commits)")
-        launcher.btn_git_tools.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(launcher))
-        dev_layout.addWidget(launcher.btn_git_tools)
+        git_layout.addWidget(make_button(
+            'btn_git_workflow', 'Git Workflow',
+            "Simple git operations: commit, push, pull, merge, cleanup",
+            lambda: show_simple_git_dialog(launcher)
+        ))
+        git_layout.addWidget(make_button(
+            'btn_git_tools', 'Advanced Git Tools',
+            "Structured commit helper (grouped commits)",
+            lambda: show_git_tools_dialog(launcher)
+        ))
 
-        launcher.btn_log_management = QPushButton('📋 Log Management')
-        launcher.btn_log_management.setToolTip("Manage, archive, and export console logs")
-        launcher.btn_log_management.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_log_management.clicked.connect(lambda: show_log_management_dialog(launcher, launcher.processes))
-        dev_layout.addWidget(launcher.btn_log_management)
+        layout.addWidget(git_frame)
 
-        tools_layout.addWidget(dev_group)
+        # Logging frame
+        log_frame, log_layout = create_styled_frame()
+        log_layout.addWidget(create_section_label("Logging"))
 
-        # API Contract (OpenAPI) Section
-        api_group = QFrame()
-        api_group.setFrameShape(QFrame.Shape.StyledPanel)
-        api_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        api_layout = QVBoxLayout(api_group)
+        log_layout.addWidget(make_button(
+            'btn_log_management', 'Log Management',
+            "Manage, archive, and export console logs",
+            lambda: show_log_management_dialog(launcher, launcher.processes)
+        ))
 
-        api_title = QLabel("📄 API Contract (OpenAPI)")
-        api_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        api_layout.addWidget(api_title)
-
-        launcher.btn_openapi_tools = QPushButton('🔧 OpenAPI Tools')
-        launcher.btn_openapi_tools.setToolTip("Manage OpenAPI docs, generate TypeScript types, check sync status")
-        launcher.btn_openapi_tools.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        launcher.btn_openapi_tools.clicked.connect(lambda: show_openapi_tools_dialog(launcher))
-        api_layout.addWidget(launcher.btn_openapi_tools)
-
-        tools_layout.addWidget(api_group)
-
-        tools_layout.addStretch()
-        return tools_tab
+        layout.addWidget(log_frame)
+        layout.addStretch()
+        return page
 
     @staticmethod
     def create_settings(launcher):
@@ -141,15 +149,9 @@ class ToolsTab:
         Returns:
             QWidget: The settings tab widget
         """
-        settings_tab = QWidget()
-        settings_layout = QVBoxLayout(settings_tab)
-        settings_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
-        settings_layout.setSpacing(theme.SPACING_LG)
-
         def on_saved(updated_state):
             if hasattr(launcher, "_apply_settings"):
                 launcher._apply_settings(updated_state)
 
-        panel = SettingsPanel(launcher.ui_state, on_saved=on_saved, parent=launcher)
-        settings_layout.addWidget(panel)
-        return settings_tab
+        # SettingsPanel handles its own layout/margins
+        return SettingsPanel(launcher.ui_state, on_saved=on_saved, parent=launcher)
