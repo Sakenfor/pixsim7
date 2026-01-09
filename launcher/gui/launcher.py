@@ -69,8 +69,10 @@ except Exception:
 
 try:
     from .widgets.service_card import ServiceCard
+    from .widgets.notification_bar import NotificationBar
 except Exception:
     from widgets.service_card import ServiceCard
+    from widgets.notification_bar import NotificationBar
 
 try:
     from .clickable_fields import get_field, ActionType
@@ -90,6 +92,17 @@ try:
     from .tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab
 except Exception:
     from tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab
+
+try:
+    from .icons import (
+        ICON_SETTINGS, ICON_RELOAD,
+        TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_SETTINGS, TAB_ARCHITECTURE
+    )
+except Exception:
+    from icons import (
+        ICON_SETTINGS, ICON_RELOAD,
+        TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_SETTINGS, TAB_ARCHITECTURE
+    )
 
 try:
     from .processes import ServiceProcess
@@ -195,13 +208,27 @@ class LauncherWindow(QWidget):
         set_sql_logging(self.ui_state.sql_logging_enabled)
         set_worker_debug_flags(self.ui_state.worker_debug_flags)
         set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
-        if self.ui_state.window_width > 0 and self.ui_state.window_height > 0:
-            self.resize(self.ui_state.window_width, self.ui_state.window_height)
-        else:
-            self.resize(1200, 750)
+        # Set minimum window size
+        self.setMinimumSize(800, 500)
 
+        # Get available screen geometry
+        screen = QApplication.primaryScreen().availableGeometry()
+        max_width = screen.width() - 50
+        max_height = screen.height() - 50
+
+        # Restore saved size (clamped to screen)
+        if self.ui_state.window_width > 0 and self.ui_state.window_height > 0:
+            w = min(self.ui_state.window_width, max_width)
+            h = min(self.ui_state.window_height, max_height)
+            self.resize(w, h)
+        else:
+            self.resize(min(1200, max_width), min(750, max_height))
+
+        # Restore saved position (ensure visible on screen)
         if self.ui_state.window_x >= 0 and self.ui_state.window_y >= 0:
-            self.move(self.ui_state.window_x, self.ui_state.window_y)
+            x = min(self.ui_state.window_x, screen.width() - 100)
+            y = min(self.ui_state.window_y, screen.height() - 100)
+            self.move(max(0, x), max(0, y))
 
         # Apply window flags (always on top)
         self._apply_window_flags()
@@ -239,6 +266,13 @@ class LauncherWindow(QWidget):
                 except Exception:
                     pass
 
+        # Clean up stale PIDs from previous sessions
+        try:
+            from .pid_store import cleanup_stale_pids
+            cleanup_stale_pids()
+        except Exception:
+            pass
+
         # Log service discovery
         if _launcher_logger:
             try:
@@ -251,6 +285,9 @@ class LauncherWindow(QWidget):
                 pass
         self.cards: Dict[str, ServiceCard] = {}
         self.selected_service_key: Optional[str] = None
+
+        # Widget registry for clean reload
+        self.widgets: Dict[str, QWidget] = {}
 
         # Check tool availability
         for sp in self.processes.values():
@@ -293,22 +330,13 @@ class LauncherWindow(QWidget):
 
         self.update_ports_label()
 
-    def _init_ui(self):
-        root = QHBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(6)  # Make handle wide enough to grab
-        self.splitter.setChildrenCollapsible(False)  # Prevent panels from collapsing
-        root.addWidget(self.splitter)
-
-        # Left panel: service cards & controls
+    def _build_left_panel(self):
         left = QWidget()
-        left.setMinimumWidth(280)  # Minimum width for services panel
+        self.left_panel = left
+        left.setMinimumWidth(280)
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
-        self.splitter.addWidget(left)
 
-        # Header
         header = QLabel("Services")
         header_font = QFont()
         header_font.setPointSize(13)
@@ -317,60 +345,57 @@ class LauncherWindow(QWidget):
         header_row = QHBoxLayout()
         header_row.addWidget(header)
         header_row.addStretch()
-        self.btn_settings = QPushButton("⚙")
+        self.btn_settings = QPushButton(ICON_SETTINGS)
         self.btn_settings.setFixedSize(theme.ICON_BUTTON_MD, theme.ICON_BUTTON_MD)
         self.btn_settings.setToolTip("Launcher Settings")
         self.btn_settings.setStyleSheet(theme.get_settings_button_stylesheet())
         header_row.addWidget(self.btn_settings)
+        self.btn_reload_ui = QPushButton(ICON_RELOAD)
+        self.btn_reload_ui.setFixedSize(theme.ICON_BUTTON_MD, theme.ICON_BUTTON_MD)
+        self.btn_reload_ui.setToolTip("Reload UI")
+        self.btn_reload_ui.setStyleSheet(theme.get_settings_button_stylesheet())
+        header_row.addWidget(self.btn_reload_ui)
         left_layout.addLayout(header_row)
 
-        # Scroll area for service cards
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # Container for cards
         cards_container = QWidget()
         cards_layout = QVBoxLayout(cards_container)
         cards_layout.setSpacing(8)
         cards_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Create cards for each service
+        self.cards = {}
         for s in self.services:
             sp = self.processes[s.key]
             card = ServiceCard(s, sp)
             self.cards[s.key] = card
-
-            # Connect card signals
             card.clicked.connect(self._select_service)
             card.start_btn.clicked.connect(lambda checked, k=s.key: self._start_service(k))
             card.stop_btn.clicked.connect(lambda checked, k=s.key: self._stop_service(k))
             card.force_stop_btn.clicked.connect(lambda checked, k=s.key: self._force_stop_service(k))
             card.restart_requested.connect(self._restart_service)
-            # Open DB logs for this specific service from card context menu
             card.db_logs_requested.connect(lambda k=s.key: (self._select_service(k), self._open_db_logs_for_current_service()))
-            # OpenAPI actions from card menu
             card.openapi_refresh_requested.connect(self._refresh_openapi_status)
             card.openapi_generate_requested.connect(self._generate_openapi_types)
             if card.open_btn:
                 card.open_btn.clicked.connect(lambda checked, k=s.key: self._open_service_url(k))
-
             cards_layout.addWidget(card)
 
         cards_layout.addStretch()
         scroll_area.setWidget(cards_container)
         left_layout.addWidget(scroll_area, stretch=1)
 
-        # Global control buttons
         btn_row1 = QHBoxLayout()
-        self.btn_all = QPushButton('▶ Start All')
+        self.btn_all = QPushButton('? Start All')
         self.btn_all.setToolTip("Start all services")
-        self.btn_kill_all = QPushButton('■ Stop All')
+        self.btn_kill_all = QPushButton('? Stop All')
         self.btn_kill_all.setToolTip("Stop all services")
-        self.btn_restart_all = QPushButton('↻ Restart All')
+        self.btn_restart_all = QPushButton('? Restart All')
         self.btn_restart_all.setToolTip("Restart all running services")
-        self.btn_db_down = QPushButton('🗄 Stop DBs')
+        self.btn_db_down = QPushButton('?? Stop DBs')
         self.btn_db_down.setToolTip("Stop database containers")
         btn_row1.addWidget(self.btn_all)
         btn_row1.addWidget(self.btn_kill_all)
@@ -378,34 +403,46 @@ class LauncherWindow(QWidget):
         btn_row1.addWidget(self.btn_db_down)
         left_layout.addLayout(btn_row1)
 
-        # Status bar with dark theme
         self.status_label = QLabel('Ports: loading...')
         self.status_label.setStyleSheet(theme.get_status_label_stylesheet())
         left_layout.addWidget(self.status_label)
+        return left
 
-        # Right panel: main tab widget for all tools
+    def _build_right_panel(self):
         right = QWidget()
-        right.setMinimumWidth(400)  # Minimum width for console/tabs panel
+        self.right_panel = right
+        right.setMinimumWidth(400)
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
-        self.splitter.addWidget(right)
 
-        # Set initial splitter sizes (left panel ~30%, right panel ~70%)
-        self.splitter.setSizes([350, 850])
+        self.notification_bar = NotificationBar()
+        right_layout.addWidget(self.notification_bar)
 
-        # Create main tab widget with dark theme
         self.main_tabs = QTabWidget()
         self.main_tabs.setStyleSheet(theme.get_tab_widget_stylesheet())
         right_layout.addWidget(self.main_tabs)
 
-        # === TAB 1: CONSOLE LOGS ===
         console_tab = ConsoleTab.create(self)
-        self.main_tabs.addTab(console_tab, "📊 Console")
+        self.main_tabs.addTab(console_tab, TAB_CONSOLE)
 
-        # Restore console settings from saved state
+        db_logs_tab = DbLogsTab.create(self)
+        self.main_tabs.addTab(db_logs_tab, TAB_DB_LOGS)
+
+        tools_tab = ToolsTab.create(self)
+        self.main_tabs.addTab(tools_tab, TAB_TOOLS)
+
+        settings_tab = ToolsTab.create_settings(self)
+        self.main_tabs.addTab(settings_tab, TAB_SETTINGS)
+        self.settings_tab_index = self.main_tabs.indexOf(settings_tab)
+
+        architecture_tab = ArchitectureTab.create(self)
+        self.main_tabs.addTab(architecture_tab, TAB_ARCHITECTURE)
+
+        return right
+
+    def _restore_console_ui_state(self):
         if hasattr(self, 'autoscroll_checkbox'):
             self.autoscroll_checkbox.setChecked(self.ui_state.autoscroll_enabled)
-        # Initialize log_view widget state
         if hasattr(self, 'log_view'):
             self.log_view.set_autoscroll(self.ui_state.autoscroll_enabled)
         if hasattr(self, 'console_style_checkbox'):
@@ -417,24 +454,43 @@ class LauncherWindow(QWidget):
         if hasattr(self, 'console_search_input') and self.ui_state.console_search_text:
             self.console_search_input.setText(self.ui_state.console_search_text)
 
-        # === TAB 2: DATABASE LOGS ===
-        db_logs_tab = DbLogsTab.create(self)
-        self.main_tabs.addTab(db_logs_tab, "🗄 Database Logs")
+    def _notify_ui_reloaded(self):
+        self.notify("UI reloaded")
 
-        # === TAB 3: TOOLS ===
-        tools_tab = ToolsTab.create(self)
-        self.main_tabs.addTab(tools_tab, "🔧 Tools")
+    def notify(self, message: str, level: str = "info", duration_ms: int = 2000, category: str = "INFO"):
+        if hasattr(self, "notification_bar") and self.notification_bar:
+            try:
+                self.notification_bar.show_message(message, duration_ms=duration_ms, level=level, category=category)
+                return
+            except Exception:
+                pass
+        if hasattr(self, "status_label"):
+            try:
+                self.status_label.setText(message)
+                QTimer.singleShot(duration_ms, self._restore_status_label)
+            except Exception:
+                pass
 
-        # === TAB 4: SETTINGS ===
-        settings_tab = ToolsTab.create_settings(self)
-        self.main_tabs.addTab(settings_tab, "?sT Settings")
-        self.settings_tab_index = self.main_tabs.indexOf(settings_tab)
 
-        # === TAB 5: BACKEND ARCHITECTURE ===
-        architecture_tab = ArchitectureTab.create(self)
-        self.main_tabs.addTab(architecture_tab, "🏗️ Architecture")
+    def _init_ui(self):
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(6)
+        self.splitter.setChildrenCollapsible(False)
+        root.addWidget(self.splitter)
 
-        # Setup all connections
+        left = self._build_left_panel()
+        self.splitter.addWidget(left)
+
+        right = self._build_right_panel()
+        self.splitter.addWidget(right)
+
+        # Set initial splitter sizes (left panel ~30%, right panel ~70%)
+        self.splitter.setSizes([350, 850])
+
+        self._restore_console_ui_state()
+
         self._setup_connections()
 
     def _on_architecture_metrics_updated(self, metrics):
@@ -461,13 +517,14 @@ class LauncherWindow(QWidget):
         self.btn_db_down.clicked.connect(self.stop_databases)
         if hasattr(self, 'btn_settings'):
             self.btn_settings.clicked.connect(self._open_settings)
+        if hasattr(self, 'btn_reload_ui'):
+            self.btn_reload_ui.clicked.connect(self._reload_ui)
         
         # Console log controls
         self.btn_refresh_logs.clicked.connect(lambda: self._refresh_console_logs(force=True))
         self.btn_clear_logs.clicked.connect(self._clear_console_display)
         if hasattr(self, 'btn_attach_logs'):
             self.btn_attach_logs.clicked.connect(self._on_attach_logs_clicked)
-        self.btn_open_db_logs.clicked.connect(self._open_db_logs_for_current_service)
 
         # Auto-refresh timer for console
         self.console_refresh_timer = QTimer(self)
@@ -677,35 +734,6 @@ class LauncherWindow(QWidget):
         """Copy text to clipboard."""
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
-
-    def _open_db_logs_for_current_service(self):
-        """Switch to Database Logs tab and apply current service filter."""
-        if not hasattr(self, 'db_log_viewer') or not self.db_log_viewer:
-            return
-
-        # Ensure selected service is reflected in DB viewer
-        if self.selected_service_key:
-            svc_name = self.selected_service_key
-            idx = self.db_log_viewer.service_combo.findText(svc_name)
-            if idx < 0:
-                idx = self.db_log_viewer.service_combo.findText(svc_name.lower())
-            if idx < 0:
-                idx = self.db_log_viewer.service_combo.findText(svc_name.upper())
-            if idx >= 0:
-                self.db_log_viewer.service_combo.setCurrentIndex(idx)
-
-        # Switch to the Database Logs tab
-        if hasattr(self, 'main_tabs') and self.main_tabs:
-            for i in range(self.main_tabs.count()):
-                if "Database" in self.main_tabs.tabText(i):
-                    self.main_tabs.setCurrentIndex(i)
-                    break
-
-        # Trigger an immediate refresh in the DB viewer
-        try:
-            self.db_log_viewer.refresh_logs()
-        except Exception:
-            pass
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
@@ -1149,7 +1177,7 @@ class LauncherWindow(QWidget):
                         _launcher_logger.info('stop_databases_success')
                     except Exception:
                         pass
-                QMessageBox.information(self, 'Database Stopped', 'Databases have been stopped.')
+                self.notify('Databases have been stopped.')
                 # Update DB process status
                 if 'db' in self.processes:
                     self.processes['db'].running = False
@@ -1515,6 +1543,23 @@ class LauncherWindow(QWidget):
         # Need to show again after changing flags
         self.show()
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Widget Registry - for clean UI reload
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def register_widget(self, key: str, widget) -> any:
+        """Register a widget for lifecycle management. Returns the widget."""
+        self.widgets[key] = widget
+        return widget
+
+    def get_widget(self, key: str):
+        """Get a registered widget by key."""
+        return self.widgets.get(key)
+
+    def clear_widgets(self):
+        """Clear widget registry (call before rebuild)."""
+        self.widgets.clear()
+
     def _open_settings(self):
         if hasattr(self, "settings_tab_index"):
             self.main_tabs.setCurrentIndex(self.settings_tab_index)
@@ -1542,7 +1587,75 @@ class LauncherWindow(QWidget):
             except Exception:
                 pass
 
+    def _reload_ui(self):
+        """Rebuild UI tabs and refresh settings without restarting launcher."""
+        try:
+            if hasattr(self, "console_refresh_timer"):
+                self.console_refresh_timer.stop()
+        except Exception:
+            pass
 
+        # Reset panels (keep splitter)
+        try:
+            if hasattr(self, "main_tabs") and self.main_tabs:
+                self.main_tabs.setParent(None)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "right_panel") and self.right_panel:
+                self.right_panel.setParent(None)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "left_panel") and self.left_panel:
+                self.left_panel.setParent(None)
+        except Exception:
+            pass
+
+        # Clear widget registry before rebuild
+        self.clear_widgets()
+        self.cards.clear()
+
+        # Reload state and services
+        try:
+            self.ui_state = load_ui_state()
+        except Exception:
+            pass
+
+        try:
+            self.services = build_services_with_fallback()
+            old_processes = self.processes
+            self.processes = {}
+            for s in self.services:
+                if s.key in old_processes:
+                    old_sp = old_processes[s.key]
+                    new_sp = ServiceProcess(s)
+                    new_sp.running = old_sp.running
+                    new_sp.health_status = old_sp.health_status
+                    new_sp.detected_pid = old_sp.detected_pid
+                    self.processes[s.key] = new_sp
+                else:
+                    self.processes[s.key] = ServiceProcess(s)
+        except Exception:
+            pass
+
+        # Rebuild panels
+        try:
+            if hasattr(self, "splitter"):
+                left = self._build_left_panel()
+                self.splitter.insertWidget(0, left)
+                right = self._build_right_panel()
+                self.splitter.addWidget(right)
+                self.splitter.setSizes([350, 850])
+        except Exception:
+            pass
+
+        self._restore_console_ui_state()
+
+        self._setup_connections()
+        if hasattr(self, "console_refresh_timer"):
+            self.console_refresh_timer.start(1000)
+        self._notify_ui_reloaded()
 
     def _open_db_browser(self):
         """Open database browser window"""
@@ -1603,11 +1716,10 @@ class LauncherWindow(QWidget):
             )
             
             if result.returncode == 0:
-                QMessageBox.information(
-                    self,
-                    "Import Complete",
-                    f"Successfully imported accounts!\n\n{result.stdout}"
-                )
+                msg = "Successfully imported accounts."
+                if result.stdout:
+                    msg = f"{msg} {result.stdout.strip()}"
+                self.notify(msg)
             else:
                 QMessageBox.warning(
                     self,
