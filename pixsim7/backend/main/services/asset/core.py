@@ -367,6 +367,8 @@ class AssetCoreService:
         provider_id: Optional[str] = None,
         provider_status: Optional[str] = None,
         upload_method: Optional[str] = None,
+        source_filename: Optional[str] = None,
+        source_site: Optional[str] = None,
         *,
         tag: Optional[str] = None,
         q: Optional[str] = None,
@@ -478,6 +480,10 @@ class AssetCoreService:
         # Upload method filter
         if upload_method:
             query = query.where(Asset.upload_method == upload_method)
+        if source_filename:
+            query = query.where(Asset.upload_context["source_filename"].astext == source_filename)
+        if source_site:
+            query = query.where(Asset.upload_context["source_site"].astext == source_site)
 
         # Date range filters
         if created_from is not None:

@@ -3,10 +3,12 @@ Asset filter registry for dynamic filter metadata.
 
 Provides a central place to define filters and option sources, so
 clients can render filters without hard-coded values.
+
+Also includes nested filter registry for upload-method-specific sub-filters.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
 from sqlalchemy import select, func, distinct
@@ -15,6 +17,154 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.upload_attribution import UPLOAD_METHOD_LABELS
 
+
+# ===== NESTED FILTER SPECS (for upload-method-specific sub-filters) =====
+
+@dataclass(frozen=True)
+class NestedFilterSpec:
+    """Specification for a nested filter within an upload method."""
+    key: str  # e.g., "source_filename"
+    label: str  # e.g., "Source Video"
+    jsonb_path: tuple[str, ...]  # Path in upload_context, e.g., ("source_filename",)
+    description: Optional[str] = None
+
+
+class NestedFilterRegistry:
+    """Registry for upload-method-specific nested filters."""
+
+    def __init__(self) -> None:
+        self._specs: dict[str, list[NestedFilterSpec]] = {}
+
+    def register(self, upload_method: str, spec: NestedFilterSpec) -> None:
+        """Register a nested filter for an upload method."""
+        if upload_method not in self._specs:
+            self._specs[upload_method] = []
+        self._specs[upload_method].append(spec)
+
+    def get_specs(self, upload_method: str) -> list[NestedFilterSpec]:
+        """Get nested filter specs for an upload method."""
+        return self._specs.get(upload_method, [])
+
+    def has_nested_filters(self, upload_method: str) -> bool:
+        """Check if an upload method has nested filters."""
+        return upload_method in self._specs and len(self._specs[upload_method]) > 0
+
+    def list_upload_methods_with_nested(self) -> list[str]:
+        """List upload methods that have nested filters defined."""
+        return [k for k, v in self._specs.items() if v]
+
+    async def build_options(
+        self,
+        db: AsyncSession,
+        *,
+        user: Any,
+        upload_method: str,
+        include_counts: bool = False,
+    ) -> dict[str, list[tuple[str, Optional[str], Optional[int]]]]:
+        """
+        Build nested filter options for a specific upload method.
+
+        Returns dict of filter_key -> [(value, label, count), ...]
+        """
+        specs = self.get_specs(upload_method)
+        if not specs:
+            return {}
+
+        options: dict[str, list[tuple[str, Optional[str], Optional[int]]]] = {}
+
+        for spec in specs:
+            values = await _load_jsonb_distinct_options(
+                db,
+                user=user,
+                upload_method=upload_method,
+                jsonb_path=spec.jsonb_path,
+                include_counts=include_counts,
+            )
+            if values:
+                options[spec.key] = values
+
+        return options
+
+
+async def _load_jsonb_distinct_options(
+    db: AsyncSession,
+    *,
+    user: Any,
+    upload_method: str,
+    jsonb_path: tuple[str, ...],
+    include_counts: bool,
+) -> list[tuple[str, Optional[str], Optional[int]]]:
+    """Load distinct values from a JSONB path in upload_context."""
+    # Build the JSONB accessor for the path
+    jsonb_col = Asset.upload_context
+    for key in jsonb_path:
+        jsonb_col = jsonb_col[key]
+    jsonb_text = jsonb_col.astext
+
+    if include_counts:
+        stmt = (
+            select(jsonb_text.label("value"), func.count(Asset.id).label("count"))
+            .where(
+                Asset.user_id == user.id,
+                Asset.is_archived == False,
+                Asset.upload_method == upload_method,
+                jsonb_text.isnot(None),
+                jsonb_text != "",
+            )
+            .group_by(jsonb_text)
+            .order_by(func.count(Asset.id).desc())
+        )
+        result = await db.execute(stmt)
+        return [(row.value, row.value, row.count) for row in result.all() if row.value]
+    else:
+        stmt = (
+            select(distinct(jsonb_text).label("value"))
+            .where(
+                Asset.user_id == user.id,
+                Asset.is_archived == False,
+                Asset.upload_method == upload_method,
+                jsonb_text.isnot(None),
+                jsonb_text != "",
+            )
+            .order_by(jsonb_text)
+        )
+        result = await db.execute(stmt)
+        return [(row.value, row.value, None) for row in result.all() if row.value]
+
+
+nested_filter_registry = NestedFilterRegistry()
+
+
+def register_default_nested_filters() -> None:
+    """Register default nested filters for known upload methods."""
+    # Video capture: group by source filename
+    nested_filter_registry.register(
+        "video_capture",
+        NestedFilterSpec(
+            key="source_filename",
+            label="Source Video",
+            jsonb_path=("source_filename",),
+            description="Filter by the source video file name",
+        )
+    )
+
+    # Web uploads: group by source site (domain)
+    nested_filter_registry.register(
+        "web",
+        NestedFilterSpec(
+            key="source_site",
+            label="Domain",
+            jsonb_path=("source_site",),
+            description="Filter by the website domain",
+        )
+    )
+
+    # Pixverse sync: group by pixverse media type (i2i, t2v, etc.)
+    # This would require querying media_metadata instead of upload_context
+    # Could add later if needed
+
+
+# ===== MAIN FILTER SPECS =====
 
 @dataclass(frozen=True)
 class FilterSpec:
@@ -165,3 +315,4 @@ def register_default_asset_filters() -> None:
 
 
 register_default_asset_filters()
+register_default_nested_filters()

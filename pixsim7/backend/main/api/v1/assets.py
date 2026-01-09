@@ -66,6 +66,8 @@ async def list_assets(
     provider_id: str | None = Query(None, description="Filter by provider"),
     provider_status: str | None = Query(None, description="Filter by provider status (ok, local_only, flagged, unknown)"),
     upload_method: str | None = Query(None, description="Filter by upload method"),
+    source_filename: str | None = Query(None, description="Filter by source filename (for video_capture)"),
+    source_site: str | None = Query(None, description="Filter by source site/domain (for web uploads)"),
     tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
     q: str | None = Query(None, description="Full-text search over description/tags"),
     include_archived: bool = Query(False, description="Include archived assets (default: false)"),
@@ -112,6 +114,8 @@ async def list_assets(
             provider_id=provider_id,
             provider_status=provider_status,
             upload_method=upload_method,
+            source_filename=source_filename,
+            source_site=source_site,
             tag=tag,
             q=q,
             include_archived=include_archived,
@@ -245,6 +249,91 @@ async def get_filter_metadata(
     except Exception as e:
         logger.error("filter_metadata_failed", error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get filter metadata: {str(e)}")
+
+
+# ===== NESTED FILTER OPTIONS =====
+
+class NestedFilterOption(BaseModel):
+    """A single nested filter option."""
+    value: str
+    label: Optional[str] = None
+    count: Optional[int] = None
+
+
+class NestedFilterDefinition(BaseModel):
+    """Definition of a nested filter (for UI rendering)."""
+    key: str
+    label: str
+    description: Optional[str] = None
+
+
+class NestedFilterOptionsResponse(BaseModel):
+    """Response containing nested filter options for a specific upload method."""
+    upload_method: str
+    definitions: List[NestedFilterDefinition] = Field(
+        default_factory=list,
+        description="Filter definitions (key, label, description)"
+    )
+    filters: dict[str, List[NestedFilterOption]] = Field(
+        description="Available nested filters and their options"
+    )
+
+
+@router.get("/nested-filter-options", response_model=NestedFilterOptionsResponse)
+async def get_nested_filter_options(
+    user: CurrentUser,
+    db: DatabaseSession,
+    upload_method: str = Query(..., description="Upload method to get nested filters for"),
+    include_counts: bool = Query(False, description="Include asset counts per option"),
+):
+    """
+    Get nested filter options specific to an upload method.
+
+    For example, when upload_method=video_capture, returns available
+    source_filename values that can be used as a secondary filter.
+
+    This enables dynamic, context-aware filtering in the UI.
+    Uses the nested filter registry - no hardcoded logic here.
+    """
+    from pixsim7.backend.main.services.asset.filter_registry import nested_filter_registry
+
+    try:
+        # Get filter definitions from registry
+        specs = nested_filter_registry.get_specs(upload_method)
+        definitions = [
+            NestedFilterDefinition(
+                key=spec.key,
+                label=spec.label,
+                description=spec.description,
+            )
+            for spec in specs
+        ]
+
+        # Build options using registry
+        options_raw = await nested_filter_registry.build_options(
+            db,
+            user=user,
+            upload_method=upload_method,
+            include_counts=include_counts,
+        )
+
+        # Convert to response format
+        filters: dict[str, List[NestedFilterOption]] = {}
+        for key, values in options_raw.items():
+            filters[key] = [
+                NestedFilterOption(value=v, label=lbl, count=cnt)
+                for v, lbl, cnt in values
+            ]
+
+        return NestedFilterOptionsResponse(
+            upload_method=upload_method,
+            definitions=definitions,
+            filters=filters,
+        )
+
+    except Exception as e:
+        logger.error("nested_filter_options_failed", error=str(e), upload_method=upload_method, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get nested filter options: {str(e)}")
 
 
 # ===== AUTOCOMPLETE =====
@@ -766,7 +855,7 @@ async def upload_asset_to_provider(
     source_relative_path: Optional[str] = Form(None),
     upload_method: Optional[str] = Form(
         None,
-        description="Upload method identifier (e.g., extension, local_folders)",
+        description="Upload method identifier (e.g., web, local, pixverse_sync, generated)",
     ),
     upload_context: Optional[str] = Form(
         None,
@@ -1050,7 +1139,7 @@ class UploadFromUrlRequest(BaseModel):
     )
     upload_method: Optional[str] = Field(
         default=None,
-        description="Upload method identifier (e.g., extension, api, local_folders)",
+        description="Upload method identifier (e.g., web, local, pixverse_sync, generated)",
     )
     upload_context: Optional[dict] = Field(
         default=None,
