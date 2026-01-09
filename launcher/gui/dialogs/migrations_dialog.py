@@ -653,13 +653,29 @@ def show_migrations_dialog(parent):
         )
 
         if backup_check != QMessageBox.Yes:
-            QMessageBox.information(
-                dlg,
-                'Cancelled',
-                'Good decision! Create a backup first:\n\n'
-                'pg_dump pixsim7 > backup_before_downgrade.sql\n\n'
-                'Test that you can restore from it before attempting downgrades.'
-            )
+            try:
+                if dlg.parent() and hasattr(dlg.parent(), "notify"):
+                    dlg.parent().notify(
+                        'Good decision! Create a backup first:\n'
+                        'pg_dump pixsim7 > backup_before_downgrade.sql\n'
+                        'Test that you can restore from it before attempting downgrades.'
+                    )
+                else:
+                    QMessageBox.information(
+                        dlg,
+                        'Cancelled',
+                        'Good decision! Create a backup first:\n\n'
+                        'pg_dump pixsim7 > backup_before_downgrade.sql\n\n'
+                        'Test that you can restore from it before attempting downgrades.'
+                    )
+            except Exception:
+                QMessageBox.information(
+                    dlg,
+                    'Cancelled',
+                    'Good decision! Create a backup first:\n\n'
+                    'pg_dump pixsim7 > backup_before_downgrade.sql\n\n'
+                    'Test that you can restore from it before attempting downgrades.'
+                )
             return
 
         # Double confirmation for downgrade

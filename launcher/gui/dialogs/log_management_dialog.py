@@ -13,6 +13,15 @@ def show_log_management_dialog(parent, processes):
     dlg = LogManagementDialog(parent, processes)
     dlg.exec()
 
+def _notify(parent, message: str):
+    if parent and hasattr(parent, "notify"):
+        try:
+            parent.notify(message)
+            return
+        except Exception:
+            pass
+    QMessageBox.information(parent, "Info", message)
+
 
 class LogManagementDialog(QDialog):
     def __init__(self, parent, processes):
@@ -300,7 +309,7 @@ class LogManagementDialog(QDialog):
             try:
                 import shutil
                 shutil.copy2(sp.log_file_path, filename)
-                QMessageBox.information(self, "Success", f"Log exported to:\n{filename}")
+                _notify(self.parent(), f"Log exported to:\n{filename}")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to export log: {e}")
 
@@ -316,7 +325,7 @@ class LogManagementDialog(QDialog):
             for sp in self.processes.values():
                 sp.clear_logs()
             self._refresh_log_list()
-            QMessageBox.information(self, "Success", "All console logs cleared.")
+            _notify(self.parent(), "All console logs cleared.")
 
     def _archive_all_logs(self):
         """Archive all logs to a zip file."""
@@ -350,9 +359,6 @@ class LogManagementDialog(QDialog):
             # Remove temp directory
             shutil.rmtree(temp_dir)
 
-            QMessageBox.information(
-                self, "Success",
-                f"Archived {copied} log files to:\n{archive_path}.zip"
-            )
+            _notify(self.parent(), f"Archived {copied} log files to:\n{archive_path}.zip")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to create archive: {e}")
