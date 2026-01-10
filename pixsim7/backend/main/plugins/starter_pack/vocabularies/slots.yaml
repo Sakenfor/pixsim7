@@ -1,0 +1,221 @@
+# Slots Vocabulary - Core provides/requires system
+# Everything speaks slots: poses, roles, backgrounds, scenes
+version: "1.0.0"
+
+# Slot categories for organization/UI
+categories:
+  interaction_role: "Role in an interaction between entities"
+  spatial: "Physical positioning and proximity"
+  contact: "Type of physical contact"
+  scene: "Scene composition elements"
+  emotional: "Emotional state or intent"
+
+# Slot definitions
+# Each slot can have:
+#   - parent: taxonomy (child satisfies parent in queries)
+#   - implies: auto-provided when this is provided
+#   - inverse: paired opposite slot
+#   - tension_modifier: adjustment to base tension
+slots:
+  # === Interaction Roles ===
+  slot:initiator:
+    label: "Initiator"
+    category: interaction_role
+    abstract: true
+    description: "Entity initiating an interaction"
+
+  slot:receiver:
+    label: "Receiver"
+    category: interaction_role
+    abstract: true
+    description: "Entity receiving an interaction"
+
+  slot:kiss_initiator:
+    label: "Kiss Initiator"
+    category: interaction_role
+    parent: slot:initiator
+    inverse: slot:kiss_receiver
+    implies: [slot:facing_partner, slot:close_proximity]
+    tension_modifier: 3
+
+  slot:kiss_receiver:
+    label: "Kiss Receiver"
+    category: interaction_role
+    parent: slot:receiver
+    inverse: slot:kiss_initiator
+    implies: [slot:facing_partner, slot:close_proximity]
+    tension_modifier: 3
+
+  slot:attacker:
+    label: "Attacker"
+    category: interaction_role
+    parent: slot:initiator
+    inverse: slot:target
+    implies: [slot:aggressive_intent]
+    tension_modifier: 4
+
+  slot:target:
+    label: "Target"
+    category: interaction_role
+    parent: slot:receiver
+    inverse: slot:attacker
+    implies: [slot:reactive]
+
+  slot:embrace_initiator:
+    label: "Embrace Initiator"
+    category: interaction_role
+    parent: slot:initiator
+    inverse: slot:embrace_receiver
+    implies: [slot:close_contact]
+
+  slot:embrace_receiver:
+    label: "Embrace Receiver"
+    category: interaction_role
+    parent: slot:receiver
+    inverse: slot:embrace_initiator
+    implies: [slot:close_contact]
+
+  # === Spatial ===
+  slot:proximity:
+    label: "Proximity"
+    category: spatial
+    abstract: true
+
+  slot:close_proximity:
+    label: "Close Proximity"
+    category: spatial
+    parent: slot:proximity
+    description: "Entities are close together"
+
+  slot:distant:
+    label: "Distant"
+    category: spatial
+    parent: slot:proximity
+    incompatible: [slot:close_proximity]
+
+  slot:facing_partner:
+    label: "Facing Partner"
+    category: spatial
+    description: "Oriented toward interaction partner"
+
+  slot:facing_away:
+    label: "Facing Away"
+    category: spatial
+    incompatible: [slot:facing_partner]
+
+  slot:airborne:
+    label: "Airborne"
+    category: spatial
+    incompatible: [slot:grounded]
+
+  slot:grounded:
+    label: "Grounded"
+    category: spatial
+    incompatible: [slot:airborne]
+
+  slot:standing:
+    label: "Standing"
+    category: spatial
+    parent: slot:grounded
+
+  slot:sitting:
+    label: "Sitting"
+    category: spatial
+    parent: slot:grounded
+
+  slot:lying:
+    label: "Lying"
+    category: spatial
+    parent: slot:grounded
+
+  # === Contact ===
+  slot:contact:
+    label: "Contact"
+    category: contact
+    abstract: true
+
+  slot:no_contact:
+    label: "No Contact"
+    category: contact
+    incompatible: [slot:contact]
+
+  slot:light_touch:
+    label: "Light Touch"
+    category: contact
+    parent: slot:contact
+    tension_modifier: 1
+
+  slot:close_contact:
+    label: "Close Contact"
+    category: contact
+    parent: slot:contact
+    implies: [slot:close_proximity]
+    tension_modifier: 2
+
+  slot:intimate_contact:
+    label: "Intimate Contact"
+    category: contact
+    parent: slot:close_contact
+    tension_modifier: 4
+
+  slot:hand_holding:
+    label: "Hand Holding"
+    category: contact
+    parent: slot:light_touch
+
+  # === Scene Composition ===
+  slot:focal_subject:
+    label: "Focal Subject"
+    category: scene
+    description: "Primary focus of the composition"
+
+  slot:secondary_subject:
+    label: "Secondary Subject"
+    category: scene
+    description: "Supporting subject in composition"
+
+  slot:scene_setting:
+    label: "Scene Setting"
+    category: scene
+    description: "Background/environment"
+
+  slot:scene_prop:
+    label: "Scene Prop"
+    category: scene
+    description: "Interactive object in scene"
+
+  slot:romantic_atmosphere:
+    label: "Romantic Atmosphere"
+    category: scene
+    implies: [slot:scene_setting]
+
+  slot:action_atmosphere:
+    label: "Action Atmosphere"
+    category: scene
+    implies: [slot:scene_setting]
+
+  # === Emotional ===
+  slot:aggressive_intent:
+    label: "Aggressive Intent"
+    category: emotional
+    tension_modifier: 3
+
+  slot:intimate_intent:
+    label: "Intimate Intent"
+    category: emotional
+    tension_modifier: 2
+
+  slot:reactive:
+    label: "Reactive"
+    category: emotional
+    description: "Responding to another's action"
+
+  slot:receptive:
+    label: "Receptive"
+    category: emotional
+    description: "Open to interaction"
+
+  slot:defensive:
+    label: "Defensive"
+    category: emotional
+    implies: [slot:reactive]

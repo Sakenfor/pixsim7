@@ -1,0 +1,6 @@
+# Anatomy Vocabulary (core schema only)
+# Actual anatomy content is provided by vocab packs (e.g., starter_pack).
+version: "1.0.0"
+
+categories: {}
+parts: {}

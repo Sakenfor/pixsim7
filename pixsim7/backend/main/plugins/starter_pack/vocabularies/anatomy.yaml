@@ -1,0 +1,99 @@
+# Anatomy Vocabulary
+# Body parts and regions for labeling and composition
+version: "1.0.0"
+
+categories:
+  general: "General body areas"
+  specific: "Specific anatomical parts"
+  appearance: "Appearance-related"
+
+# Unified parts (combines legacy anatomy_parts + anatomy_regions + common labels)
+parts:
+  # === General body areas ===
+  part:face:
+    label: "Face"
+    category: general
+    keywords: [face, head, visage]
+
+  part:hair:
+    label: "Hair"
+    category: appearance
+    keywords: [hair, hairstyle]
+
+  part:expression:
+    label: "Expression"
+    category: appearance
+    keywords: [expression, facial expression]
+
+  part:body:
+    label: "Body"
+    category: general
+    keywords: [body, figure, form]
+
+  part:upper_body:
+    label: "Upper Body"
+    category: general
+    keywords: [upper body, torso, chest area]
+
+  part:lower_body:
+    label: "Lower Body"
+    category: general
+    keywords: [lower body, legs, hips]
+
+  part:hands:
+    label: "Hands"
+    category: general
+    keywords: [hands, fingers, palm]
+
+  part:torso:
+    label: "Torso"
+    category: general
+    keywords: [torso, body, chest]
+
+  # === Appearance ===
+  part:outfit:
+    label: "Outfit"
+    category: appearance
+    keywords: [outfit, clothing, attire]
+
+  part:clothes:
+    label: "Clothes"
+    category: appearance
+    keywords: [clothes, garments, dress]
+
+  # === Body regions ===
+  part:chest:
+    label: "Chest"
+    category: general
+    keywords: [chest, breast, torso]
+
+  part:back:
+    label: "Back"
+    category: general
+    keywords: [back, spine]
+
+  part:groin:
+    label: "Groin"
+    category: specific
+    keywords: [groin, crotch, pelvis]
+
+  part:between_legs:
+    label: "Between Legs"
+    category: specific
+    keywords: [between legs, thighs]
+
+  part:buttocks:
+    label: "Buttocks"
+    category: specific
+    keywords: [buttocks, rear, bottom]
+
+  # === Specific parts (domain content) ===
+  part:shaft:
+    label: "Shaft"
+    category: specific
+    keywords: [shaft, member]
+
+  part:head_tip:
+    label: "Head/Tip"
+    category: specific
+    keywords: [head, tip, glans]

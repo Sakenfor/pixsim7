@@ -1,0 +1,24 @@
+# Influence Regions Vocabulary
+# Regions for applying effects/modifications to parts of an image
+version: "1.0.0"
+
+regions:
+  region:foreground:
+    label: "Foreground"
+    description: "Apply to foreground elements"
+    color: blue
+
+  region:background:
+    label: "Background"
+    description: "Apply to background elements"
+    color: green
+
+  region:full:
+    label: "Full Image"
+    description: "Apply to entire image"
+    color: gray
+
+  region:subject:
+    label: "Subject"
+    description: "Apply to detected subject"
+    color: orange

@@ -1,0 +1,31 @@
+# Scoring Configuration
+# Weights and constraints for action block selection
+version: "1.0.0"
+
+# Weight distribution for block scoring (should sum to 1.0)
+weights:
+  chain_compatibility: 0.30
+  location_match: 0.20
+  pose_match: 0.15
+  intimacy_match: 0.15
+  mood_match: 0.10
+  branch_intent: 0.10
+
+# Partial credit rules (0.0 - 1.0)
+partial_credit:
+  generic_block: 0.5
+  parent_pose: 0.8
+  same_category: 0.6
+  adjacent_intimacy: 0.7
+
+# Chain building constraints
+chain:
+  max_blocks: 3
+  min_remaining_budget: 3.0
+
+# Duration constraints (seconds)
+duration:
+  min_block: 3.0
+  max_block: 12.0
+  default_single: 6.0
+  default_transition: 7.0

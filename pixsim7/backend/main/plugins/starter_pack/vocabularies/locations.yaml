@@ -1,0 +1,77 @@
+# Locations Vocabulary
+# Scene locations for action block filtering and context
+version: "1.0.0"
+
+categories:
+  indoor: "Indoor locations"
+  outdoor: "Outdoor locations"
+
+locations:
+  # === Indoor ===
+  location:bedroom:
+    label: "Bedroom"
+    category: indoor
+    indoor: true
+    private: true
+    romantic: true
+    keywords: [bedroom, bed, private room]
+
+  location:living_room:
+    label: "Living Room"
+    category: indoor
+    indoor: true
+    keywords: [living room, lounge, couch, sofa]
+
+  location:kitchen:
+    label: "Kitchen"
+    category: indoor
+    indoor: true
+    keywords: [kitchen, cooking area]
+
+  location:office:
+    label: "Office"
+    category: indoor
+    indoor: true
+    keywords: [office, desk, workplace]
+
+  location:bar_lounge:
+    label: "Bar/Lounge"
+    category: indoor
+    indoor: true
+    romantic: true
+    keywords: [bar, lounge, club, nightclub]
+
+  location:restaurant:
+    label: "Restaurant"
+    category: indoor
+    indoor: true
+    romantic: true
+    keywords: [restaurant, dining, table]
+
+  # === Outdoor ===
+  location:bench_park:
+    label: "Park Bench"
+    category: outdoor
+    indoor: false
+    romantic: true
+    keywords: [bench, park, outdoor seat]
+
+  location:beach:
+    label: "Beach"
+    category: outdoor
+    indoor: false
+    romantic: true
+    keywords: [beach, shore, sand, ocean]
+
+  location:forest:
+    label: "Forest/Woods"
+    category: outdoor
+    indoor: false
+    keywords: [forest, woods, trees, nature]
+
+  location:balcony:
+    label: "Balcony"
+    category: outdoor
+    indoor: false
+    romantic: true
+    keywords: [balcony, terrace, overlook]

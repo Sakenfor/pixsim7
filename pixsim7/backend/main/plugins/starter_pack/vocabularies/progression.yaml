@@ -1,0 +1,143 @@
+# Progression Vocabulary
+# Defines tension paths, escalation sequences, and narrative flow
+version: "1.0.0"
+
+# Tension scale definition
+tension:
+  min: 0
+  max: 10
+  labels:
+    - id: tension:none
+      range: [0, 0]
+      label: "None"
+    - id: tension:low
+      range: [1, 3]
+      label: "Low"
+    - id: tension:medium
+      range: [4, 6]
+      label: "Medium"
+    - id: tension:high
+      range: [7, 8]
+      label: "High"
+    - id: tension:peak
+      range: [9, 10]
+      label: "Peak"
+
+# Intimacy levels (maps to tension for romantic content)
+intimacy_levels:
+  - id: intimacy:none
+    level: 0
+    label: "None"
+    tension_range: [0, 0]
+
+  - id: intimacy:acquaintance
+    level: 1
+    label: "Acquaintance"
+    tension_range: [1, 2]
+
+  - id: intimacy:light_flirt
+    level: 2
+    label: "Light Flirt"
+    tension_range: [3, 4]
+
+  - id: intimacy:deep_flirt
+    level: 3
+    label: "Deep Flirt"
+    tension_range: [5, 6]
+
+  - id: intimacy:intimate
+    level: 4
+    label: "Intimate"
+    tension_range: [7, 8]
+
+  - id: intimacy:very_intimate
+    level: 5
+    label: "Very Intimate"
+    tension_range: [9, 10]
+
+# Progression paths - named sequences of poses/states
+paths:
+  # Romantic escalation
+  romantic_approach:
+    label: "Romantic Approach"
+    description: "From distant to intimate contact"
+    stages:
+      - poses: [pose:standing_neutral, pose:sitting_neutral]
+        tension: 0
+        mood: [mood:neutral]
+      - poses: [pose:standing_near, pose:sitting_close]
+        tension: 2
+        mood: [mood:interested]
+      - poses: [pose:standing_facing, pose:sitting_leaning]
+        tension: 4
+        mood: [mood:romantic]
+      - poses: [pose:almost_kiss, pose:forehead_touch]
+        tension: 6
+        mood: [mood:anticipation]
+      - poses: [pose:kissing]
+        tension: 7
+        mood: [mood:passionate]
+
+  hand_holding_progression:
+    label: "Hand Holding Progression"
+    description: "Building to hand holding"
+    stages:
+      - poses: [pose:walking_neutral, pose:standing_near]
+        tension: 1
+      - poses: [pose:walking_together]
+        tension: 2
+      - poses: [pose:hand_holding, pose:walking_holding_hands]
+        tension: 4
+
+  # Action escalation
+  combat_engagement:
+    label: "Combat Engagement"
+    description: "From tension to action"
+    stages:
+      - tension: 4
+        mood: [mood:tense, mood:alert]
+      - tension: 6
+        mood: [mood:aggressive]
+      - poses: [pose:lunging, pose:jumping_attack]
+        tension: 8
+        mood: [mood:aggressive, mood:determined]
+      - poses: [pose:scared_defensive, pose:dodging]
+        tension: 6
+        mood: [mood:fearful, mood:alert]
+
+# Branch intents for narrative direction
+branch_intents:
+  - id: branch:escalate
+    label: "Escalate"
+    description: "Increase intimacy/intensity"
+    tension_delta: [1, 3]
+
+  - id: branch:cool_down
+    label: "Cool Down"
+    description: "Reduce tension/intensity"
+    tension_delta: [-3, -1]
+
+  - id: branch:maintain
+    label: "Maintain"
+    description: "Keep current intensity level"
+    tension_delta: [-1, 1]
+
+  - id: branch:side_branch
+    label: "Side Branch"
+    description: "Divergent event (interruption, etc.)"
+    tension_delta: [-2, 2]
+
+  - id: branch:resolve
+    label: "Resolve"
+    description: "Resolve tension/conflict"
+    tension_delta: [-5, -2]
+
+# Compatibility constraints
+constraints:
+  # Maximum tension jump in single transition
+  max_tension_jump: 3
+
+  # Poses that can't directly transition
+  forbidden_transitions:
+    - [pose:lying_neutral, pose:jumping_attack]  # Can't jump from lying
+    - [pose:sitting_neutral, pose:airborne]  # Can't be airborne from sitting

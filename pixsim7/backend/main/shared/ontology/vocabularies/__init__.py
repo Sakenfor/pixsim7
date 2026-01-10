@@ -139,6 +139,104 @@ class RatingDef:
 
 
 @dataclass
+class LocationDef:
+    """A location definition for scene context."""
+    id: str
+    label: str
+    category: str = ""
+    indoor: bool = True
+    private: bool = False
+    romantic: bool = False
+    keywords: List[str] = field(default_factory=list)
+    source: str = "core"
+
+
+@dataclass
+class PartDef:
+    """An anatomy part definition (body parts and regions)."""
+    id: str
+    label: str
+    category: str = ""
+    keywords: List[str] = field(default_factory=list)
+    source: str = "core"
+
+
+@dataclass
+class InfluenceRegionDef:
+    """An influence region definition (areas for applying effects)."""
+    id: str
+    label: str
+    description: str = ""
+    color: str = "gray"
+    source: str = "core"
+
+
+@dataclass
+class SpatialDef:
+    """A spatial definition (camera, framing, orientation, depth)."""
+    id: str
+    label: str
+    category: str = ""
+    keywords: List[str] = field(default_factory=list)
+    source: str = "core"
+
+
+@dataclass
+class ProgressionDef:
+    """A progression definition (tension label, intimacy level, path, branch intent)."""
+    id: str
+    label: str
+    kind: str
+    data: Dict[str, Any] = field(default_factory=dict)
+    source: str = "core"
+
+
+@dataclass
+class ScoringWeights:
+    """Scoring weights for action block selection."""
+    chain_compatibility: float = 0.30
+    location_match: float = 0.20
+    pose_match: float = 0.15
+    intimacy_match: float = 0.15
+    mood_match: float = 0.10
+    branch_intent: float = 0.10
+
+
+@dataclass
+class PartialCredit:
+    """Partial credit rules for scoring."""
+    generic_block: float = 0.5
+    parent_pose: float = 0.8
+    same_category: float = 0.6
+    adjacent_intimacy: float = 0.7
+
+
+@dataclass
+class ChainConstraints:
+    """Chain building constraints."""
+    max_blocks: int = 3
+    min_remaining_budget: float = 3.0
+
+
+@dataclass
+class DurationConstraints:
+    """Duration constraints for blocks."""
+    min_block: float = 3.0
+    max_block: float = 12.0
+    default_single: float = 6.0
+    default_transition: float = 7.0
+
+
+@dataclass
+class ScoringConfig:
+    """Complete scoring configuration."""
+    weights: ScoringWeights = field(default_factory=ScoringWeights)
+    partial_credit: PartialCredit = field(default_factory=PartialCredit)
+    chain: ChainConstraints = field(default_factory=ChainConstraints)
+    duration: DurationConstraints = field(default_factory=DurationConstraints)
+
+
+@dataclass
 class VocabPackInfo:
     """Metadata about a loaded vocabulary pack."""
     id: str
@@ -241,6 +339,59 @@ def _make_rating(id: str, data: Dict[str, Any], source: str) -> RatingDef:
     )
 
 
+def _make_location(id: str, data: Dict[str, Any], source: str) -> LocationDef:
+    return LocationDef(
+        id=id,
+        label=data.get("label", ""),
+        category=data.get("category", ""),
+        indoor=data.get("indoor", True),
+        private=data.get("private", False),
+        romantic=data.get("romantic", False),
+        keywords=data.get("keywords", []),
+        source=source,
+    )
+
+
+def _make_part(id: str, data: Dict[str, Any], source: str) -> PartDef:
+    return PartDef(
+        id=id,
+        label=data.get("label", ""),
+        category=data.get("category", ""),
+        keywords=data.get("keywords", []),
+        source=source,
+    )
+
+
+def _make_influence_region(id: str, data: Dict[str, Any], source: str) -> InfluenceRegionDef:
+    return InfluenceRegionDef(
+        id=id,
+        label=data.get("label", ""),
+        description=data.get("description", ""),
+        color=data.get("color", "gray"),
+        source=source,
+    )
+
+
+def _make_spatial(id: str, data: Dict[str, Any], source: str) -> SpatialDef:
+    return SpatialDef(
+        id=id,
+        label=data.get("label", ""),
+        category=data.get("category", ""),
+        keywords=data.get("keywords", []),
+        source=source,
+    )
+
+
+def _make_progression(id: str, data: Dict[str, Any], source: str) -> ProgressionDef:
+    return ProgressionDef(
+        id=id,
+        label=data.get("label", ""),
+        kind=data.get("kind", ""),
+        data=data.get("data", {}) or {},
+        source=source,
+    )
+
+
 # =============================================================================
 # Vocab Type Configuration
 # =============================================================================
@@ -262,6 +413,11 @@ VOCAB_CONFIGS: Dict[str, VocabTypeConfig] = {
     "poses": VocabTypeConfig("poses", "poses.yaml", "poses", _make_pose),
     "moods": VocabTypeConfig("moods", "moods.yaml", "moods", _make_mood),
     "ratings": VocabTypeConfig("ratings", "ratings.yaml", "ratings", _make_rating),
+    "locations": VocabTypeConfig("locations", "locations.yaml", "locations", _make_location),
+    "parts": VocabTypeConfig("parts", "anatomy.yaml", "parts", _make_part),
+    "influence_regions": VocabTypeConfig("influence_regions", "influence_regions.yaml", "regions", _make_influence_region),
+    "spatial": VocabTypeConfig("spatial", "spatial.yaml", "spatial", _make_spatial),
+    "progression": VocabTypeConfig("progression", "progression.yaml", "progression", _make_progression),
 }
 
 
@@ -293,10 +449,20 @@ class VocabularyRegistry:
         # Generic storage: vocab_name -> {id -> dataclass}
         self._vocabs: Dict[str, Dict[str, Any]] = {name: {} for name in VOCAB_CONFIGS}
 
-        # Role-specific extras (only from core)
+        # Role-specific extras (loaded from first/last vocab pack that provides them)
         self._role_priority: List[str] = []
         self._role_slug_mappings: Dict[str, str] = {}
         self._role_namespace_mappings: Dict[str, str] = {}
+        self._spatial_compatibility: Dict[str, List[List[str]]] = {}
+        self._progression_tension: Dict[str, Any] = {}
+        self._progression_constraints: Dict[str, Any] = {}
+
+        # Scoring configuration
+        self._scoring: ScoringConfig = ScoringConfig()
+
+        # Pose indices for fast lookup
+        self._poses_by_category: Dict[str, List[str]] = {}
+        self._detector_to_pose: Dict[str, str] = {}
 
         # Plugin tracking
         self._packs: List[VocabPackInfo] = []
@@ -310,8 +476,11 @@ class VocabularyRegistry:
         # Load core vocabularies
         counts = self._load_all_vocabs("core", self._vocab_dir)
 
-        # Load role-specific extras from core
-        self._load_role_extras(self._vocab_dir)
+        # Load role-specific extras from core (if present)
+        self._load_role_extras(self._vocab_dir, source="core")
+
+        # Load scoring config from core (if present)
+        self._load_scoring(self._vocab_dir)
 
         # Register core pack
         self._packs.append(VocabPackInfo(
@@ -324,6 +493,9 @@ class VocabularyRegistry:
 
         # Discover and load plugin vocabularies
         self._discover_plugins()
+
+        # Build pose indices after all loading is complete
+        self._build_pose_indices()
 
         self._loaded = True
 
@@ -350,7 +522,22 @@ class VocabularyRegistry:
     ) -> int:
         """Load a single vocab type. Returns count of items loaded."""
         data = self._load_yaml(config.yaml_file, directory)
-        items = data.get(config.yaml_key, {})
+        if config.name == "spatial":
+            self._apply_spatial_compatibility(data)
+            items: Dict[str, Any] = {}
+            for key in ("camera_views", "camera_framing", "body_orientation", "depth"):
+                group = data.get(key, {})
+                if not isinstance(group, dict):
+                    continue
+                for item_id, item_data in group.items():
+                    items[item_id] = item_data
+        elif config.name == "progression":
+            self._apply_progression_meta(data)
+            items = self._build_progression_items(data)
+        else:
+            items = data.get(config.yaml_key, {})
+        if config.name == "roles":
+            self._apply_role_extras(data, source)
         store = self._vocabs[config.name]
         count = 0
 
@@ -366,12 +553,165 @@ class VocabularyRegistry:
 
         return count
 
-    def _load_role_extras(self, directory: Path) -> None:
-        """Load role-specific extras (priority, mappings) from core only."""
+    def _apply_spatial_compatibility(self, data: Dict[str, Any]) -> None:
+        """Merge spatial compatibility rules if present."""
+        compatibility = data.get("compatibility")
+        if not isinstance(compatibility, dict):
+            return
+        for key, pairs in compatibility.items():
+            if not isinstance(pairs, list):
+                continue
+            merged = self._spatial_compatibility.setdefault(key, [])
+            merged.extend(pairs)
+
+    def _apply_progression_meta(self, data: Dict[str, Any]) -> None:
+        """Store progression meta fields (tension scale, constraints) if present."""
+        tension = data.get("tension")
+        if isinstance(tension, dict) and tension:
+            self._progression_tension = tension
+        constraints = data.get("constraints")
+        if isinstance(constraints, dict) and constraints:
+            self._progression_constraints = constraints
+
+    def _build_progression_items(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize progression vocab sections into item dictionaries."""
+        items: Dict[str, Any] = {}
+
+        tension = data.get("tension", {})
+        labels = tension.get("labels", []) if isinstance(tension, dict) else []
+        if isinstance(labels, list):
+            for label_data in labels:
+                if not isinstance(label_data, dict):
+                    continue
+                label_id = label_data.get("id")
+                if not label_id:
+                    continue
+                items[label_id] = {
+                    "label": label_data.get("label", ""),
+                    "kind": "tension_label",
+                    "data": {"range": label_data.get("range", [])},
+                }
+
+        intimacy_levels = data.get("intimacy_levels", [])
+        if isinstance(intimacy_levels, list):
+            for level_data in intimacy_levels:
+                if not isinstance(level_data, dict):
+                    continue
+                level_id = level_data.get("id")
+                if not level_id:
+                    continue
+                items[level_id] = {
+                    "label": level_data.get("label", ""),
+                    "kind": "intimacy_level",
+                    "data": {
+                        "level": level_data.get("level", 0),
+                        "tension_range": level_data.get("tension_range", []),
+                    },
+                }
+
+        paths = data.get("paths", {})
+        if isinstance(paths, dict):
+            for path_id, path_data in paths.items():
+                if not isinstance(path_data, dict):
+                    continue
+                items[path_id] = {
+                    "label": path_data.get("label", ""),
+                    "kind": "path",
+                    "data": {
+                        "description": path_data.get("description", ""),
+                        "stages": path_data.get("stages", []),
+                    },
+                }
+
+        branch_intents = data.get("branch_intents", [])
+        if isinstance(branch_intents, list):
+            for intent_data in branch_intents:
+                if not isinstance(intent_data, dict):
+                    continue
+                intent_id = intent_data.get("id")
+                if not intent_id:
+                    continue
+                items[intent_id] = {
+                    "label": intent_data.get("label", ""),
+                    "kind": "branch_intent",
+                    "data": {
+                        "description": intent_data.get("description", ""),
+                        "tension_delta": intent_data.get("tension_delta", []),
+                    },
+                }
+
+        return items
+
+    def _apply_role_extras(self, data: Dict[str, Any], source: str) -> None:
+        """Apply role-specific extras if present (priority, mappings)."""
+        if not data:
+            return
+        if "priority" in data:
+            self._role_priority = data.get("priority") or []
+        if "slug_mappings" in data:
+            self._role_slug_mappings = data.get("slug_mappings") or {}
+        if "namespace_mappings" in data:
+            self._role_namespace_mappings = data.get("namespace_mappings") or {}
+
+    def _load_role_extras(self, directory: Path, source: str) -> None:
+        """Load role-specific extras from a directory if present."""
         data = self._load_yaml("roles.yaml", directory)
-        self._role_priority = data.get("priority", [])
-        self._role_slug_mappings = data.get("slug_mappings", {})
-        self._role_namespace_mappings = data.get("namespace_mappings", {})
+        self._apply_role_extras(data, source)
+
+    def _load_scoring(self, directory: Path) -> None:
+        """Load scoring configuration from a directory."""
+        data = self._load_yaml("scoring.yaml", directory)
+        if not data:
+            return
+
+        weights_data = data.get("weights", {})
+        partial_data = data.get("partial_credit", {})
+        chain_data = data.get("chain", {})
+        duration_data = data.get("duration", {})
+
+        self._scoring = ScoringConfig(
+            weights=ScoringWeights(
+                chain_compatibility=weights_data.get("chain_compatibility", 0.30),
+                location_match=weights_data.get("location_match", 0.20),
+                pose_match=weights_data.get("pose_match", 0.15),
+                intimacy_match=weights_data.get("intimacy_match", 0.15),
+                mood_match=weights_data.get("mood_match", 0.10),
+                branch_intent=weights_data.get("branch_intent", 0.10),
+            ),
+            partial_credit=PartialCredit(
+                generic_block=partial_data.get("generic_block", 0.5),
+                parent_pose=partial_data.get("parent_pose", 0.8),
+                same_category=partial_data.get("same_category", 0.6),
+                adjacent_intimacy=partial_data.get("adjacent_intimacy", 0.7),
+            ),
+            chain=ChainConstraints(
+                max_blocks=chain_data.get("max_blocks", 3),
+                min_remaining_budget=chain_data.get("min_remaining_budget", 3.0),
+            ),
+            duration=DurationConstraints(
+                min_block=duration_data.get("min_block", 3.0),
+                max_block=duration_data.get("max_block", 12.0),
+                default_single=duration_data.get("default_single", 6.0),
+                default_transition=duration_data.get("default_transition", 7.0),
+            ),
+        )
+
+    def _build_pose_indices(self) -> None:
+        """Build pose category and detector label indices."""
+        self._poses_by_category.clear()
+        self._detector_to_pose.clear()
+
+        for pose_id, pose in self._vocabs["poses"].items():
+            # Category index
+            cat = pose.category
+            if cat:
+                if cat not in self._poses_by_category:
+                    self._poses_by_category[cat] = []
+                self._poses_by_category[cat].append(pose_id)
+
+            # Detector label index
+            for label in pose.detector_labels:
+                self._detector_to_pose[label.lower()] = pose_id
 
     # =========================================================================
     # Plugin Discovery
@@ -397,6 +737,9 @@ class VocabularyRegistry:
 
         try:
             counts = self._load_all_vocabs(source, vocab_dir)
+
+            # Load scoring config from plugin (overrides previous)
+            self._load_scoring(vocab_dir)
 
             # Only register pack if something was loaded
             if sum(counts.values()) > 0:
@@ -499,6 +842,21 @@ class VocabularyRegistry:
     def get_rating(self, rating_id: str) -> Optional[RatingDef]:
         return self.get("ratings", rating_id)
 
+    def get_location(self, location_id: str) -> Optional[LocationDef]:
+        return self.get("locations", location_id)
+
+    def get_part(self, part_id: str) -> Optional[PartDef]:
+        return self.get("parts", part_id)
+
+    def get_influence_region(self, region_id: str) -> Optional[InfluenceRegionDef]:
+        return self.get("influence_regions", region_id)
+
+    def get_spatial(self, spatial_id: str) -> Optional[SpatialDef]:
+        return self.get("spatial", spatial_id)
+
+    def get_progression(self, progression_id: str) -> Optional[ProgressionDef]:
+        return self.get("progression", progression_id)
+
     def all_slots(self) -> List[SlotDef]:
         return self.all_of("slots")
 
@@ -514,10 +872,170 @@ class VocabularyRegistry:
     def all_ratings(self) -> List[RatingDef]:
         return self.all_of("ratings")
 
+    def all_locations(self) -> List[LocationDef]:
+        return self.all_of("locations")
+
+    def all_parts(self) -> List[PartDef]:
+        return self.all_of("parts")
+
+    def all_influence_regions(self) -> List[InfluenceRegionDef]:
+        return self.all_of("influence_regions")
+
+    def all_spatial(self) -> List[SpatialDef]:
+        return self.all_of("spatial")
+
+    def all_progression(self) -> List[ProgressionDef]:
+        return self.all_of("progression")
+
     @property
     def role_priority(self) -> List[str]:
         self._ensure_loaded()
         return self._role_priority
+
+    @property
+    def spatial_compatibility(self) -> Dict[str, List[List[str]]]:
+        self._ensure_loaded()
+        return self._spatial_compatibility
+
+    @property
+    def progression_tension(self) -> Dict[str, Any]:
+        self._ensure_loaded()
+        return self._progression_tension
+
+    @property
+    def progression_constraints(self) -> Dict[str, Any]:
+        self._ensure_loaded()
+        return self._progression_constraints
+
+    # =========================================================================
+    # Public API - Scoring Config
+    # =========================================================================
+
+    @property
+    def scoring(self) -> ScoringConfig:
+        """Get scoring configuration."""
+        self._ensure_loaded()
+        return self._scoring
+
+    @property
+    def weights(self) -> ScoringWeights:
+        """Get scoring weights."""
+        return self.scoring.weights
+
+    @property
+    def partial_credit(self) -> PartialCredit:
+        """Get partial credit rules."""
+        return self.scoring.partial_credit
+
+    @property
+    def chain_constraints(self) -> ChainConstraints:
+        """Get chain building constraints."""
+        return self.scoring.chain
+
+    @property
+    def duration_constraints(self) -> DurationConstraints:
+        """Get duration constraints."""
+        return self.scoring.duration
+
+    # =========================================================================
+    # Public API - Pose Helpers
+    # =========================================================================
+
+    def all_pose_ids(self) -> List[str]:
+        """Get all pose IDs."""
+        self._ensure_loaded()
+        return list(self._vocabs["poses"].keys())
+
+    def poses_in_category(self, category: str) -> List[str]:
+        """Get all pose IDs in a category."""
+        self._ensure_loaded()
+        return self._poses_by_category.get(category, [])
+
+    def map_detector_to_pose(self, detector_label: str) -> Optional[str]:
+        """Map a detector label to a pose ID."""
+        self._ensure_loaded()
+        return self._detector_to_pose.get(detector_label.lower())
+
+    def are_poses_compatible(self, pose1: str, pose2: str) -> bool:
+        """Check if two poses are compatible for chaining."""
+        if pose1 == pose2:
+            return True
+
+        p1 = self.get_pose(pose1)
+        p2 = self.get_pose(pose2)
+
+        if not p1 or not p2:
+            return False
+
+        # Same category
+        if p1.category == p2.category:
+            return True
+
+        # Parent-child
+        if p1.parent == pose2 or p2.parent == pose1:
+            return True
+
+        return False
+
+    def pose_similarity_score(self, pose1: str, pose2: str) -> float:
+        """Calculate similarity score between poses."""
+        if pose1 == pose2:
+            return 1.0
+
+        p1 = self.get_pose(pose1)
+        p2 = self.get_pose(pose2)
+
+        if not p1 or not p2:
+            return 0.0
+
+        # Parent-child
+        if p1.parent == pose2 or p2.parent == pose1:
+            return self._scoring.partial_credit.parent_pose
+
+        # Same category
+        if p1.category == p2.category:
+            return self._scoring.partial_credit.same_category
+
+        return 0.0
+
+    # =========================================================================
+    # Public API - Rating Helpers
+    # =========================================================================
+
+    def get_rating_level(self, rating_id: str) -> int:
+        """Get numeric level for a rating (0-3)."""
+        rating = self.get_rating(rating_id)
+        return rating.level if rating else 0
+
+    def is_rating_allowed(self, block_rating: str, max_rating: str) -> bool:
+        """Check if a block's rating is within the allowed max."""
+        return self.get_rating_level(block_rating) <= self.get_rating_level(max_rating)
+
+    # =========================================================================
+    # Public API - Intimacy Helpers
+    # =========================================================================
+
+    def get_intimacy_level(self, level_id: str) -> Optional[ProgressionDef]:
+        """Get an intimacy level by ID."""
+        prog = self.get_progression(level_id)
+        if prog and prog.kind == "intimacy_level":
+            return prog
+        return None
+
+    def get_intimacy_order(self, level_id: str) -> int:
+        """Get numeric order for an intimacy level (0-5)."""
+        level = self.get_intimacy_level(level_id)
+        if level:
+            return level.data.get("level", 0)
+        return 0
+
+    def intimacy_distance(self, level1: str, level2: str) -> int:
+        """Get distance between two intimacy levels."""
+        return abs(self.get_intimacy_order(level1) - self.get_intimacy_order(level2))
+
+    def are_intimacy_adjacent(self, level1: str, level2: str) -> bool:
+        """Check if two intimacy levels are adjacent."""
+        return self.intimacy_distance(level1, level2) <= 1
 
     # =========================================================================
     # Public API - Hierarchy & Implication
@@ -687,6 +1205,26 @@ def get_rating(rating_id: str) -> Optional[RatingDef]:
     return get_registry().get_rating(rating_id)
 
 
+def get_location(location_id: str) -> Optional[LocationDef]:
+    return get_registry().get_location(location_id)
+
+
+def get_part(part_id: str) -> Optional[PartDef]:
+    return get_registry().get_part(part_id)
+
+
+def get_influence_region(region_id: str) -> Optional[InfluenceRegionDef]:
+    return get_registry().get_influence_region(region_id)
+
+
+def get_spatial(spatial_id: str) -> Optional[SpatialDef]:
+    return get_registry().get_spatial(spatial_id)
+
+
+def get_progression(progression_id: str) -> Optional[ProgressionDef]:
+    return get_registry().get_progression(progression_id)
+
+
 def check_pose_compatibility(pose_a_id: str, pose_b_id: str) -> bool:
     return get_registry().check_pose_compatibility(pose_a_id, pose_b_id)
 
@@ -699,8 +1237,19 @@ __all__ = [
     "PoseDef",
     "MoodDef",
     "RatingDef",
+    "LocationDef",
+    "PartDef",
+    "InfluenceRegionDef",
+    "SpatialDef",
+    "ProgressionDef",
     "Progression",
     "VocabPackInfo",
+    # Scoring config
+    "ScoringConfig",
+    "ScoringWeights",
+    "PartialCredit",
+    "ChainConstraints",
+    "DurationConstraints",
     # Config
     "VocabTypeConfig",
     "VOCAB_CONFIGS",
@@ -714,5 +1263,10 @@ __all__ = [
     "get_pose",
     "get_mood",
     "get_rating",
+    "get_location",
+    "get_part",
+    "get_influence_region",
+    "get_spatial",
+    "get_progression",
     "check_pose_compatibility",
 ]

@@ -1,0 +1,120 @@
+# Spatial Vocabulary
+# Camera angles, positioning, and framing
+# Cross-cutting vocabulary for composition matching
+version: "1.0.0"
+
+categories:
+  camera_view: "Camera viewing angle"
+  camera_framing: "Framing within the shot"
+  body_orientation: "Character body orientation"
+  depth: "Depth/layering in scene"
+
+# Camera views
+camera_views:
+  spatial:cam_front:
+    label: "Front View"
+    category: camera_view
+    keywords: [front, facing, forward]
+
+  spatial:cam_side:
+    label: "Side View"
+    category: camera_view
+    keywords: [side, profile, lateral]
+
+  spatial:cam_back:
+    label: "Back View"
+    category: camera_view
+    keywords: [back, behind, rear]
+
+  spatial:cam_pov:
+    label: "POV"
+    category: camera_view
+    keywords: [pov, point_of_view, first_person]
+
+  spatial:cam_above:
+    label: "From Above"
+    category: camera_view
+    keywords: [above, overhead, birds_eye]
+
+  spatial:cam_below:
+    label: "From Below"
+    category: camera_view
+    keywords: [below, low_angle, worms_eye]
+
+# Camera framing
+camera_framing:
+  spatial:frame_full:
+    label: "Full Body"
+    category: camera_framing
+    keywords: [full_body, full_shot, wide]
+
+  spatial:frame_upper:
+    label: "Upper Body"
+    category: camera_framing
+    keywords: [upper_body, torso, bust]
+
+  spatial:frame_closeup:
+    label: "Close-up"
+    category: camera_framing
+    keywords: [closeup, close_up, face]
+
+  spatial:frame_centered:
+    label: "Centered"
+    category: camera_framing
+    keywords: [centered, center_frame, middle]
+
+  spatial:frame_left:
+    label: "Left of Frame"
+    category: camera_framing
+    keywords: [left, left_side, stage_right]
+
+  spatial:frame_right:
+    label: "Right of Frame"
+    category: camera_framing
+    keywords: [right, right_side, stage_left]
+
+# Body orientation
+body_orientation:
+  spatial:orient_facing_cam:
+    label: "Facing Camera"
+    category: body_orientation
+    keywords: [facing_camera, front_facing]
+
+  spatial:orient_facing_partner:
+    label: "Facing Partner"
+    category: body_orientation
+    keywords: [facing_partner, facing_other]
+
+  spatial:orient_facing_away:
+    label: "Facing Away"
+    category: body_orientation
+    keywords: [facing_away, back_to_camera]
+
+  spatial:orient_profile:
+    label: "Profile"
+    category: body_orientation
+    keywords: [profile, side_facing]
+
+# Depth/layering
+depth:
+  spatial:depth_foreground:
+    label: "Foreground"
+    category: depth
+    keywords: [foreground, front, near]
+
+  spatial:depth_midground:
+    label: "Midground"
+    category: depth
+    keywords: [midground, middle, center]
+
+  spatial:depth_background:
+    label: "Background"
+    category: depth
+    keywords: [background, back, far]
+
+# Compatibility rules for spatial matching
+compatibility:
+  # Characters facing each other need compatible views
+  facing_pair:
+    - [spatial:cam_side, spatial:cam_side]  # Both side view
+    - [spatial:cam_front, spatial:cam_back]  # One front, one back

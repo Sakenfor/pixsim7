@@ -1,0 +1,9 @@
+# Scoring Configuration (core schema only)
+# Actual scoring config is provided by vocab packs (e.g., starter_pack).
+version: "1.0.0"
+
+# Default values are used if no pack provides scoring config
+weights: {}
+partial_credit: {}
+chain: {}
+duration: {}

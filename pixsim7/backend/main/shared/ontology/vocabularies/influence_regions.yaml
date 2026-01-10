@@ -1,0 +1,5 @@
+# Influence Regions Vocabulary (core schema only)
+# Actual region content is provided by vocab packs (e.g., starter_pack).
+version: "1.0.0"
+
+regions: {}

@@ -1,68 +1,87 @@
 """
 OntologyService - Single source of truth for action block vocabulary.
 
-This module re-exports from the central OntologyRegistry for backward compatibility.
-All ontology functionality is now centralized in:
-    pixsim7.backend.main.domain.ontology
+This module provides the vocabulary registry for action block selection.
+All vocabulary functionality is centralized in:
+    pixsim7.backend.main.shared.ontology.vocabularies
 
-The OntologyRegistry provides:
-- Core ontology loading from ontology.yaml
-- Plugin pack discovery and merging
-- Validation with strict/non-strict modes
+The VocabularyRegistry provides:
+- Vocabulary loading from YAML files (poses, moods, locations, ratings, etc.)
+- Plugin vocabulary discovery and merging
+- Scoring configuration (weights, partial credit, chain/duration constraints)
 - Query helpers for poses, moods, locations, intimacy levels, ratings, etc.
 
-Migration note:
-- OntologyService is now an alias for OntologyRegistry
-- get_ontology() is now an alias for get_ontology_registry()
-- All existing code continues to work unchanged
+Usage:
+    from pixsim7.backend.main.domain.narrative.action_blocks.ontology import (
+        get_ontology,
+        OntologyService,
+    )
+
+    ontology = get_ontology()
+    pose = ontology.get_pose("pose:standing_neutral")
+    chain_cfg = ontology.chain_constraints
 """
 
-# Re-export everything from the central registry
-from pixsim7.backend.main.domain.ontology.registry import (
+# Re-export from the unified vocabulary system
+from pixsim7.backend.main.shared.ontology.vocabularies import (
     # Main class (aliased for backward compatibility)
-    OntologyRegistry as OntologyService,
-    OntologyRegistry,
+    VocabularyRegistry as OntologyService,
+    VocabularyRegistry,
     # Data classes
-    PoseDefinition,
-    IntimacyLevel,
-    ContentRatingDef,
-    MoodDefinition,
-    BranchIntentDef,
-    LocationDefinition,
+    PoseDef as PoseDefinition,
+    PoseDef,
+    MoodDef as MoodDefinition,
+    MoodDef,
+    RatingDef as ContentRatingDef,
+    RatingDef,
+    LocationDef as LocationDefinition,
+    LocationDef,
+    ProgressionDef as IntimacyLevel,  # Intimacy levels are stored in progression
+    ProgressionDef as BranchIntentDef,
+    ProgressionDef,
+    # Scoring config
     ScoringConfig,
     ScoringWeights,
     PartialCredit,
     ChainConstraints,
     DurationConstraints,
-    OntologyPackInfo,
+    VocabPackInfo as OntologyPackInfo,
+    VocabPackInfo,
     # Singleton access (aliased for backward compatibility)
-    get_ontology_registry as get_ontology,
-    reset_ontology_registry as reset_ontology,
+    get_registry as get_ontology,
+    reset_registry as reset_ontology,
     # Also export under original names
-    get_ontology_registry,
-    reset_ontology_registry,
+    get_registry,
+    reset_registry,
 )
 
 __all__ = [
     # Main class (both names for compatibility)
     "OntologyService",
-    "OntologyRegistry",
-    # Data classes
+    "VocabularyRegistry",
+    # Data classes (both old and new names)
     "PoseDefinition",
-    "IntimacyLevel",
-    "ContentRatingDef",
+    "PoseDef",
     "MoodDefinition",
-    "BranchIntentDef",
+    "MoodDef",
+    "ContentRatingDef",
+    "RatingDef",
     "LocationDefinition",
+    "LocationDef",
+    "IntimacyLevel",
+    "BranchIntentDef",
+    "ProgressionDef",
+    # Scoring config
     "ScoringConfig",
     "ScoringWeights",
     "PartialCredit",
     "ChainConstraints",
     "DurationConstraints",
     "OntologyPackInfo",
+    "VocabPackInfo",
     # Singleton access (all names)
     "get_ontology",
     "reset_ontology",
-    "get_ontology_registry",
-    "reset_ontology_registry",
+    "get_registry",
+    "reset_registry",
 ]

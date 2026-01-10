@@ -1,0 +1,6 @@
+# Locations Vocabulary (core schema only)
+# Actual location content is provided by vocab packs (e.g., starter_pack).
+version: "1.0.0"
+
+categories: {}
+locations: {}
