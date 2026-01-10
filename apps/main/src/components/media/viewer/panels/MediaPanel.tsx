@@ -6,16 +6,18 @@
  * Supports overlay modes for drawing regions and pose references.
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { ViewerPanelContext } from '../types';
-import { MediaDisplay, type FitMode } from './MediaDisplay';
-import { MediaControlBar } from './MediaControlBar';
-import { useMediaMaximize } from './useMediaMaximize';
-import { useAssetViewerStore } from '@features/assets';
-import { CAP_ASSET_SELECTION, useCapability, type AssetSelection } from '@features/contextHub';
+import { useState, useEffect, useRef } from 'react';
+
 import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
+
 import { useProvideRegionAnnotations } from '../capabilities';
-import { useMediaOverlayRegistry, type MediaOverlayId } from '../overlays';
+import { useMediaOverlayHost } from '../overlays';
+import type { ViewerPanelContext } from '../types';
+
+import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks';
+import { MediaControlBar } from './MediaControlBar';
+import { MediaDisplay, type FitMode } from './MediaDisplay';
+import { useMediaMaximize } from './useMediaMaximize';
 
 interface MediaPanelProps {
   context?: ViewerPanelContext;
@@ -24,81 +26,18 @@ interface MediaPanelProps {
 }
 
 export function MediaPanel({ context }: MediaPanelProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [fitMode, setFitMode] = useState<FitMode>('contain');
   const [zoom, setZoom] = useState(100);
-  const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
-  const viewerSettings = useAssetViewerStore((s) => s.settings);
-  const [fallbackIndex, setFallbackIndex] = useState(0);
+
+  // Resolve viewer context (from prop or fallback selection)
+  const { resolvedContext } = useViewerContext({ context });
 
   // Overlay mode state
   const overlayMode = useAssetViewerOverlayStore((s) => s.overlayMode);
   const setOverlayMode = useAssetViewerOverlayStore((s) => s.setOverlayMode);
   const toggleOverlayMode = useAssetViewerOverlayStore((s) => s.toggleOverlayMode);
-  const setDrawingMode = useAssetRegionStore((s) => s.setDrawingMode);
-  const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
   const selectRegion = useAssetRegionStore((s) => s.selectRegion);
-
-  const annotationMode = overlayMode === 'annotate';
-  const { overlays } = useMediaOverlayRegistry();
-  const activeOverlay = overlayMode !== 'none'
-    ? overlays.find((overlay) => overlay.id === overlayMode)
-    : null;
-  const ActiveToolbar = activeOverlay?.Toolbar;
-  const ActiveSidebar = activeOverlay?.Sidebar;
-  const ActiveMain = activeOverlay?.Main;
-
-  const fallbackAssets = selection?.assets ?? [];
-  const fallbackAsset = selection?.asset ?? fallbackAssets[fallbackIndex] ?? null;
-
-  useEffect(() => {
-    if (fallbackAssets.length === 0) {
-      setFallbackIndex(0);
-      return;
-    }
-
-    if (selection?.asset) {
-      const idx = fallbackAssets.findIndex((asset) => asset.id === selection.asset?.id);
-      if (idx >= 0 && idx !== fallbackIndex) {
-        setFallbackIndex(idx);
-        return;
-      }
-    }
-
-    if (fallbackIndex >= fallbackAssets.length) {
-      setFallbackIndex(Math.max(0, fallbackAssets.length - 1));
-    }
-  }, [fallbackAssets, selection?.asset, fallbackIndex]);
-
-  const resolvedContext = useMemo<ViewerPanelContext>(() => {
-    if (context) return context;
-
-    const canNavigatePrev = fallbackIndex > 0;
-    const canNavigateNext = fallbackIndex < fallbackAssets.length - 1;
-
-    return {
-      asset: fallbackAsset,
-      settings: {
-        autoPlayVideos: viewerSettings.autoPlayVideos,
-        loopVideos: viewerSettings.loopVideos,
-      },
-      currentIndex: fallbackIndex,
-      assetListLength: fallbackAssets.length,
-      canNavigatePrev,
-      canNavigateNext,
-      navigatePrev: () => setFallbackIndex((idx) => Math.max(0, idx - 1)),
-      navigateNext: () =>
-        setFallbackIndex((idx) => Math.min(fallbackAssets.length - 1, idx + 1)),
-      closeViewer: () => {},
-      toggleFullscreen: () => {},
-    };
-  }, [
-    context,
-    fallbackAsset,
-    fallbackAssets.length,
-    fallbackIndex,
-    viewerSettings.autoPlayVideos,
-    viewerSettings.loopVideos,
-  ]);
 
   const { isMaximized, toggleMaximize } = useMediaMaximize({
     dockviewApi: resolvedContext.dockviewApi,
@@ -116,6 +55,39 @@ export function MediaPanel({ context }: MediaPanelProps) {
     navigateNext,
   } = resolvedContext;
 
+  const {
+    overlays: availableOverlays,
+    activeOverlay,
+    effectiveOverlayMode,
+    toggleOverlay,
+    getOverlayForShortcut,
+  } = useMediaOverlayHost({
+    asset,
+    overlayMode,
+    setOverlayMode,
+    toggleOverlayMode,
+  });
+
+  const annotationMode = activeOverlay?.id === 'annotate';
+  const ActiveToolbar = activeOverlay?.Toolbar;
+  const ActiveSidebar = activeOverlay?.Sidebar;
+  const ActiveMain = activeOverlay?.Main;
+  const activeOverlayId = activeOverlay?.id ?? null;
+
+  // Frame capture hook
+  const { isCapturing, captureFrame } = useFrameCapture({
+    asset,
+    videoRef,
+    activeOverlayId,
+  });
+
+  // Overlay keyboard shortcuts
+  useOverlayShortcuts({
+    overlayMode,
+    annotationMode,
+    overlayHostState: { toggleOverlay, getOverlayForShortcut },
+  });
+
   // Provide region annotations capability for other panels to consume
   useProvideRegionAnnotations({
     assetId: asset?.id ?? null,
@@ -126,89 +98,20 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const zoomOut = () => setZoom(Math.max(zoom - 25, 25));
   const resetZoom = () => setZoom(100);
 
-  const handleToggleOverlay = useCallback(
-    (id: MediaOverlayId) => {
-      const entering = overlayMode !== id;
-      toggleOverlayMode(id);
-      if (entering) {
-        selectRegion(null);
-      }
-    },
-    [overlayMode, toggleOverlayMode, selectRegion]
-  );
+  const handleToggleOverlay = (id: string) => {
+    const entering = overlayMode !== id;
+    if (!toggleOverlay(id)) {
+      return;
+    }
+    if (entering) {
+      selectRegion(null);
+    }
+  };
 
   // Clear selection when asset changes
   useEffect(() => {
     selectRegion(null);
   }, [asset?.id, selectRegion]);
-
-  // Keyboard shortcuts for overlay modes
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if in input/textarea
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-
-      switch (e.key.toLowerCase()) {
-        case 'escape':
-          // Exit overlay mode or deselect region
-          if (annotationMode) {
-            if (selectedRegionId) {
-              selectRegion(null);
-            } else {
-              setOverlayMode('none');
-            }
-          } else if (overlayMode !== 'none') {
-            setOverlayMode('none');
-          }
-          break;
-        case 'r':
-          // Switch to rect mode
-          if (annotationMode && !e.ctrlKey && !e.metaKey) {
-            setDrawingMode('rect');
-          }
-          break;
-        case 'p':
-          // Switch to polygon mode
-          if (annotationMode && !e.ctrlKey && !e.metaKey) {
-            setDrawingMode('polygon');
-          }
-          break;
-        case 's':
-          // Switch to select mode
-          if (annotationMode && !e.ctrlKey && !e.metaKey) {
-            setDrawingMode('select');
-          }
-          break;
-        default: {
-          const matchingOverlay = overlays.find(
-            (overlay) =>
-              overlay.shortcut?.toLowerCase() === e.key.toLowerCase()
-          );
-          if (matchingOverlay && !e.ctrlKey && !e.metaKey) {
-            handleToggleOverlay(matchingOverlay.id);
-          }
-          break;
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    annotationMode,
-    overlayMode,
-    selectedRegionId,
-    overlays,
-    handleToggleOverlay,
-    setOverlayMode,
-    setDrawingMode,
-    selectRegion,
-  ]);
 
   if (!asset) {
     return (
@@ -221,7 +124,12 @@ export function MediaPanel({ context }: MediaPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {ActiveToolbar && (
-        <ActiveToolbar asset={asset} settings={settings} />
+        <ActiveToolbar
+          asset={asset}
+          settings={settings}
+          onCaptureFrame={captureFrame}
+          captureDisabled={isCapturing}
+        />
       )}
 
       {/* Main content area */}
@@ -229,19 +137,30 @@ export function MediaPanel({ context }: MediaPanelProps) {
         {/* Media/overlay display */}
         <div className="flex-1 min-w-0 relative">
           {ActiveMain ? (
-            <ActiveMain asset={asset} settings={settings} />
+            <ActiveMain
+              asset={asset}
+              settings={settings}
+              onCaptureFrame={captureFrame}
+              captureDisabled={isCapturing}
+            />
           ) : (
             <MediaDisplay
               asset={asset}
               settings={settings}
               fitMode={fitMode}
               zoom={zoom}
+              videoRef={videoRef}
             />
           )}
         </div>
 
         {ActiveSidebar && (
-          <ActiveSidebar asset={asset} settings={settings} />
+          <ActiveSidebar
+            asset={asset}
+            settings={settings}
+            onCaptureFrame={captureFrame}
+            captureDisabled={isCapturing}
+          />
         )}
       </div>
 
@@ -260,9 +179,12 @@ export function MediaPanel({ context }: MediaPanelProps) {
         onFitModeChange={setFitMode}
         isMaximized={isMaximized}
         onToggleMaximize={toggleMaximize}
-        overlayMode={overlayMode}
-        overlayTools={overlays}
+        overlayMode={effectiveOverlayMode}
+        overlayTools={availableOverlays}
         onToggleOverlay={handleToggleOverlay}
+        showCapture={asset?.type === 'video' && activeOverlayId !== 'capture'}
+        captureDisabled={isCapturing}
+        onCaptureFrame={captureFrame}
       />
     </div>
   );
