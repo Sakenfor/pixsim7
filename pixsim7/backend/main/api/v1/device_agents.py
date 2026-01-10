@@ -310,22 +310,22 @@ async def get_pairing_status(
 async def agent_heartbeat(
     agent_id: str,
     data: AgentHeartbeatRequest,
-    user: CurrentUser,
     db: AsyncSession = Depends(get_db)
 ):
-    """Receive heartbeat from agent and sync devices"""
-    
-    # Find agent
+    """Receive heartbeat from agent and sync devices.
+
+    No authentication required - agent just needs to be registered/paired.
+    The agent_id serves as the authentication mechanism for paired agents.
+    """
+
+    # Find agent by agent_id only (no user auth required for heartbeat)
     result = await db.execute(
-        select(DeviceAgent).where(
-            DeviceAgent.agent_id == agent_id,
-            DeviceAgent.user_id == user.id
-        )
+        select(DeviceAgent).where(DeviceAgent.agent_id == agent_id)
     )
     agent = result.scalars().first()
-    
+
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent not found - complete pairing first")
     
     # Update agent status
     now = datetime.utcnow()
@@ -420,6 +420,87 @@ async def list_agents(
     await db.commit()
     
     return agents
+
+
+class AdminCreateAgentRequest(BaseModel):
+    """Request to directly create an agent (bypasses pairing for testing)."""
+    name: str
+    host: str  # ZeroTier IP of the remote PC
+    port: int = 5037
+    api_port: int = 8765
+
+
+@router.post("/admin/create")
+async def admin_create_agent(
+    data: AdminCreateAgentRequest,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db)
+):
+    """Directly create a device agent (for testing/admin use).
+
+    Use this to add a remote PC by its ZeroTier IP without going through
+    the pairing code flow. Useful for development and testing.
+
+    Example:
+        POST /api/v1/automation/agents/admin/create
+        {
+            "name": "LivingRoom-PC",
+            "host": "10.243.48.200"
+        }
+    """
+    import uuid
+    now = datetime.utcnow()
+
+    # Check if agent with same host already exists for this user
+    result = await db.execute(
+        select(DeviceAgent).where(
+            DeviceAgent.host == data.host,
+            DeviceAgent.user_id == user.id
+        )
+    )
+    existing = result.scalars().first()
+
+    if existing:
+        # Update existing
+        existing.name = data.name
+        existing.port = data.port
+        existing.api_port = data.api_port
+        existing.status = "offline"  # Will go online when heartbeat received
+        existing.updated_at = now
+        agent = existing
+    else:
+        # Create new
+        agent = DeviceAgent(
+            agent_id=str(uuid.uuid4()),
+            name=data.name,
+            host=data.host,
+            port=data.port,
+            api_port=data.api_port,
+            user_id=user.id,
+            status="offline",
+            version="manual",
+            os_info="Added manually",
+            created_at=now,
+            updated_at=now
+        )
+        db.add(agent)
+
+    await db.commit()
+    await db.refresh(agent)
+
+    return {
+        "status": "created",
+        "agent": {
+            "id": agent.id,
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "host": agent.host,
+            "port": agent.port,
+            "api_port": agent.api_port,
+            "status": agent.status
+        },
+        "note": "Agent created. Run device_agent.py on the remote PC to connect."
+    }
 
 
 @router.delete("/{agent_id}")
