@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 import yaml
 
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
+from pixsim7.backend.main.lib.registry.nested import NestedRegistry
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
     RoleDef,
@@ -57,9 +58,15 @@ class VocabularyRegistry:
         from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
 
         # Storage for each vocab type (config-driven)
-        self._vocabs: Dict[str, Dict[str, Any]] = {
-            config.name: {} for config in VOCAB_CONFIGS.values()
-        }
+        # Using NestedRegistry for consistent API across vocab types
+        self._vocabs: NestedRegistry[str, str, Any] = NestedRegistry(
+            name="vocabularies",
+            allow_overwrite=False,  # Duplicate vocab items are errors
+            log_operations=False,   # Too noisy for vocab loading
+        )
+        # Pre-create namespaces for core vocab types
+        for config in VOCAB_CONFIGS.values():
+            self._vocabs.add_namespace(config.name)
 
         # Role-specific extras
         self._role_priority: List[str] = []
@@ -153,15 +160,19 @@ class VocabularyRegistry:
         if not isinstance(items, dict):
             return 0
 
-        store = self._vocabs.setdefault(config.name, {})
+        # Ensure namespace exists (may be dynamic type from plugin)
+        if not self._vocabs.has_namespace(config.name):
+            self._vocabs.add_namespace(config.name)
+
         count = 0
 
         for item_id, item_data in items.items():
-            if item_id in store:
+            if self._vocabs.has(config.name, item_id):
                 raise ValueError(
                     f"Duplicate {config.name} ID '{item_id}' from {source}"
                 )
-            store[item_id] = config.factory(item_id, item_data, source)
+            item = config.factory(item_id, item_data, source)
+            self._vocabs.register(config.name, item_id, item)
             count += 1
 
         return count
@@ -228,7 +239,7 @@ class VocabularyRegistry:
         self._poses_by_category.clear()
         self._detector_to_pose.clear()
 
-        for pose_id, pose in self._vocabs["poses"].items():
+        for pose_id, pose in self._vocabs.items_of("poses"):
             # Category index
             cat = pose.category
             if cat:
@@ -253,9 +264,8 @@ class VocabularyRegistry:
 
             mode = config.match_mode if config.match_mode in ("substring", "word") else "substring"
             entries = self._keyword_index.setdefault(mode, [])
-            items = self._vocabs.get(config.name, {})
 
-            for item in items.values():
+            for item in self._vocabs.all_of(config.name):
                 keywords = getattr(item, config.keywords_attr, [])
                 if not keywords:
                     continue
@@ -297,8 +307,9 @@ class VocabularyRegistry:
         self._dynamic_configs.register(name, config)
         self._dynamic_type_meta.register(name, meta)
 
-        if name not in self._vocabs:
-            self._vocabs[name] = {}
+        # Create namespace for the new vocab type
+        if not self._vocabs.has_namespace(name):
+            self._vocabs.add_namespace(name)
 
     def _load_plugin_manifest(self, plugin_id: str, vocab_dir: Path) -> None:
         """Load plugin-defined vocab types from manifest.yaml."""
@@ -422,22 +433,22 @@ class VocabularyRegistry:
     def get(self, vocab_type: str, item_id: str) -> Optional[Any]:
         """Get an item by type and ID."""
         self._ensure_loaded()
-        return self._vocabs.get(vocab_type, {}).get(item_id)
+        return self._vocabs.get(vocab_type, item_id)
 
     def all_of(self, vocab_type: str) -> List[Any]:
         """Get all items of a vocab type."""
         self._ensure_loaded()
-        return list(self._vocabs.get(vocab_type, {}).values())
+        return self._vocabs.all_of(vocab_type)
 
     def ids_of(self, vocab_type: str) -> List[str]:
         """Get all IDs of a vocab type."""
         self._ensure_loaded()
-        return list(self._vocabs.get(vocab_type, {}).keys())
+        return self._vocabs.keys_of(vocab_type)
 
     def list_vocab_types(self) -> List[str]:
         """List all known vocab types (core + dynamic)."""
         self._ensure_loaded()
-        return list(self._vocabs.keys())
+        return self._vocabs.namespaces()
 
     def list_dynamic_types(self) -> List[str]:
         """List vocab types defined by plugins."""

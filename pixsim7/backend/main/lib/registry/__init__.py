@@ -53,6 +53,9 @@ from .simple import (
     KeyNotFoundError,
     create_registry,
 )
+from .nested import (
+    NestedRegistry,
+)
 from .world_merge import (
     WorldMergeMixin,
     MergeStrategy,
@@ -80,6 +83,8 @@ __all__ = [
     "DuplicateKeyError",
     "KeyNotFoundError",
     "create_registry",
+    # Nested registry
+    "NestedRegistry",
     # World merge
     "WorldMergeMixin",
     "MergeStrategy",
