@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 from .ontology import ACTION_VERBS
-from pixsim7.backend.main.domain.ontology import match_keywords
+from pixsim7.backend.main.shared.ontology.vocabularies import match_keywords
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 
 

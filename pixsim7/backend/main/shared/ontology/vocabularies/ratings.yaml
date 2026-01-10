@@ -1,41 +1,5 @@
-# Content Ratings Vocabulary
-# Content rating levels for filtering and gating
-# Cross-cutting vocabulary used by poses, scenes, actions
+# Ratings Vocabulary (core schema only)
+# Actual rating content is provided by vocab packs (e.g., starter_pack).
 version: "1.0.0"
 
-# Ratings in order of restrictiveness
-ratings:
-  rating:sfw:
-    label: "Safe for Work"
-    level: 0
-    description: "Suitable for all audiences"
-    keywords: [sfw, safe, general]
-
-  rating:romantic:
-    label: "Romantic"
-    level: 1
-    description: "Mild romantic/flirty content"
-    keywords: [romantic, flirty, mild]
-    min_intimacy: 3
-
-  rating:mature_implied:
-    label: "Mature Implied"
-    level: 2
-    description: "Intimate content (implied, not explicit)"
-    keywords: [mature, implied, suggestive]
-    min_intimacy: 6
-
-  rating:restricted:
-    label: "Restricted"
-    level: 3
-    description: "Explicit adult content"
-    keywords: [explicit, adult, restricted]
-    min_intimacy: 8
-    requires_age_verification: true
-
-# Rating comparison helpers
-ordering:
-  - rating:sfw
-  - rating:romantic
-  - rating:mature_implied
-  - rating:restricted
+ratings: {}

@@ -8,7 +8,7 @@ from sqlmodel import Session
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
-from pixsim7.backend.main.domain.ontology import match_keywords
+from pixsim7.backend.main.shared.ontology.vocabularies import match_keywords
 from pixsim7.backend.main.services.prompt.parser import SimplePromptParser
 from pixsim7.backend.main.shared.composition import (
     ImageCompositionRole,
