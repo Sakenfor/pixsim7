@@ -18,6 +18,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     InfluenceRegionDef,
     SpatialDef,
     ProgressionDef,
+    GenericVocabDef,
 )
 
 
@@ -169,6 +170,19 @@ def make_progression(id: str, data: Dict[str, Any], source: str) -> ProgressionD
     )
 
 
+def make_generic(id: str, data: Dict[str, Any], source: str) -> GenericVocabDef:
+    """Create a GenericVocabDef from YAML data."""
+    label = data.get("label")
+    if not label:
+        label = id.replace("_", " ").title()
+    return GenericVocabDef(
+        id=id,
+        label=str(label),
+        data=data,
+        source=source,
+    )
+
+
 __all__ = [
     "make_slot",
     "make_role",
@@ -180,4 +194,5 @@ __all__ = [
     "make_influence_region",
     "make_spatial",
     "make_progression",
+    "make_generic",
 ]

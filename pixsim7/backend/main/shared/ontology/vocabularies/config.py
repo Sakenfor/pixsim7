@@ -17,6 +17,7 @@ class VocabTypeConfig(Generic[T]):
     yaml_key: str                      # e.g., "slots" (key in YAML)
     factory: Callable[[str, Dict[str, Any], str], T]  # Creates dataclass from dict
     keywords_attr: Optional[str] = None  # Attribute containing keywords for matching
+    match_mode: str = "substring"     # Keyword matching mode: "substring" or "word"
 
 
 # Import factories here to avoid circular imports

@@ -4,10 +4,12 @@ VocabularyRegistry - Central registry for all vocabularies.
 Handles loading, plugin discovery, and query operations.
 """
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
+from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
     RoleDef,
@@ -52,18 +54,11 @@ class VocabularyRegistry:
         self._vocab_dir = vocab_dir
         self._plugins_dir = plugins_dir
 
-        # Storage for each vocab type
+        from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
+
+        # Storage for each vocab type (config-driven)
         self._vocabs: Dict[str, Dict[str, Any]] = {
-            "slots": {},
-            "roles": {},
-            "poses": {},
-            "moods": {},
-            "ratings": {},
-            "locations": {},
-            "parts": {},
-            "influence_regions": {},
-            "spatial": {},
-            "progression": {},
+            config.name: {} for config in VOCAB_CONFIGS.values()
         }
 
         # Role-specific extras
@@ -80,6 +75,21 @@ class VocabularyRegistry:
         # Pose indices for fast lookup
         self._poses_by_category: Dict[str, List[str]] = {}
         self._detector_to_pose: Dict[str, str] = {}
+        self._keyword_index: Dict[str, List[tuple[str, str]]] = {}
+
+        # Dynamic type registration (plugin-defined vocab types)
+        # Using SimpleRegistry for consistency, duplicate protection, and logging
+        from pixsim7.backend.main.shared.ontology.vocabularies.config import VocabTypeConfig
+        self._dynamic_configs: SimpleRegistry[str, VocabTypeConfig] = SimpleRegistry(
+            name="dynamic_vocab_configs",
+            allow_overwrite=False,
+            log_operations=True,
+        )
+        self._dynamic_type_meta: SimpleRegistry[str, Dict[str, Any]] = SimpleRegistry(
+            name="dynamic_type_meta",
+            allow_overwrite=False,
+            log_operations=True,
+        )
 
         # Plugin tracking
         self._packs: List[VocabPackInfo] = []
@@ -94,11 +104,10 @@ class VocabularyRegistry:
         if self._loaded:
             return
 
-        # Import here to avoid circular imports
-        from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
+        configs = self._configs()
 
         # Load core vocabularies
-        counts = self._load_all_vocabs("core", self._vocab_dir, VOCAB_CONFIGS)
+        counts = self._load_all_vocabs("core", self._vocab_dir, configs)
 
         # Load role-specific extras from core
         self._load_role_extras(self._vocab_dir, source="core")
@@ -107,10 +116,11 @@ class VocabularyRegistry:
         self._load_scoring(self._vocab_dir)
 
         # Discover and load plugin vocabularies
-        self._discover_plugins(VOCAB_CONFIGS)
+        self._discover_plugins()
 
         # Build pose indices
         self._build_pose_indices()
+        self._build_keyword_index()
 
         self._loaded = True
 
@@ -143,7 +153,7 @@ class VocabularyRegistry:
         if not isinstance(items, dict):
             return 0
 
-        store = self._vocabs[config.name]
+        store = self._vocabs.setdefault(config.name, {})
         count = 0
 
         for item_id, item_data in items.items():
@@ -230,11 +240,137 @@ class VocabularyRegistry:
             for label in pose.detector_labels:
                 self._detector_to_pose[label.lower()] = pose_id
 
+    def _build_keyword_index(self) -> None:
+        """Build keyword index for match_keywords."""
+        self._keyword_index.clear()
+
+        # Import here to avoid circular imports
+        configs = self._configs()
+
+        for config in configs.values():
+            if not config.keywords_attr:
+                continue
+
+            mode = config.match_mode if config.match_mode in ("substring", "word") else "substring"
+            entries = self._keyword_index.setdefault(mode, [])
+            items = self._vocabs.get(config.name, {})
+
+            for item in items.values():
+                keywords = getattr(item, config.keywords_attr, [])
+                if not keywords:
+                    continue
+                for keyword in keywords:
+                    if keyword is None:
+                        continue
+                    normalized = str(keyword).strip().lower()
+                    if not normalized:
+                        continue
+                    entries.append((normalized, item.id))
+
+    # =========================================================================
+    # Dynamic Type Registration
+    # =========================================================================
+
+    def _configs(self) -> Dict[str, Any]:
+        """Return merged vocab configs (core + dynamic)."""
+        from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
+
+        merged = dict(VOCAB_CONFIGS)
+        for key, config in self._dynamic_configs.items():
+            merged[key] = config
+        return merged
+
+    def _register_dynamic_type(self, name: str, config: Any, meta: Dict[str, Any]) -> None:
+        """Register a plugin-defined vocab type.
+
+        Raises:
+            DuplicateKeyError: If type already registered (via SimpleRegistry)
+            ValueError: If type conflicts with core VOCAB_CONFIGS
+        """
+        from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
+
+        # Check against core configs (SimpleRegistry handles dynamic duplicates)
+        if name in VOCAB_CONFIGS:
+            raise ValueError(f"Vocab type '{name}' conflicts with core config")
+
+        # SimpleRegistry raises DuplicateKeyError if already registered
+        self._dynamic_configs.register(name, config)
+        self._dynamic_type_meta.register(name, meta)
+
+        if name not in self._vocabs:
+            self._vocabs[name] = {}
+
+    def _load_plugin_manifest(self, plugin_id: str, vocab_dir: Path) -> None:
+        """Load plugin-defined vocab types from manifest.yaml."""
+        manifest = self._load_yaml("manifest.yaml", vocab_dir)
+        if not manifest:
+            return
+
+        raw_types = manifest.get("types")
+        if not raw_types:
+            return
+
+        specs: List[Dict[str, Any]] = []
+        if isinstance(raw_types, dict):
+            for name, spec in raw_types.items():
+                if not isinstance(spec, dict):
+                    continue
+                merged = dict(spec)
+                merged.setdefault("name", name)
+                specs.append(merged)
+        elif isinstance(raw_types, list):
+            specs = [spec for spec in raw_types if isinstance(spec, dict)]
+        else:
+            return
+
+        from pixsim7.backend.main.shared.ontology.vocabularies.config import VocabTypeConfig
+        from pixsim7.backend.main.shared.ontology.vocabularies.factories import make_generic
+
+        for spec in specs:
+            name = spec.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            name = name.strip()
+
+            yaml_file = spec.get("yaml_file") or f"{name}.yaml"
+            yaml_key = spec.get("yaml_key") or name
+            keywords_attr = spec.get("keywords_attr")
+            match_mode = spec.get("match_mode", "substring")
+
+            config = VocabTypeConfig(
+                name=name,
+                yaml_file=yaml_file,
+                yaml_key=yaml_key,
+                factory=make_generic,
+                keywords_attr=keywords_attr,
+                match_mode=match_mode,
+            )
+
+            meta = {
+                "group_name": spec.get("group_name") or name.replace("_", " ").title(),
+                "color": spec.get("color") or "gray",
+                "label_attr": spec.get("label_attr") if "label_attr" in spec else "label",
+                "description_attr": spec.get("description_attr"),
+                "tags_attr": spec.get("tags_attr"),
+                "keywords_attr": keywords_attr,
+                "include_in_labels": spec.get("include_in_labels", True),
+                "plugin_id": plugin_id,
+            }
+            if "prefix" in spec:
+                meta["prefix"] = spec.get("prefix")
+            else:
+                meta["prefix"] = f"{name}:"
+
+            if meta["tags_attr"] is None and "tags_attr" not in spec:
+                meta["tags_attr"] = keywords_attr
+
+            self._register_dynamic_type(name, config, meta)
+
     # =========================================================================
     # Plugin Discovery
     # =========================================================================
 
-    def _discover_plugins(self, configs: Dict[str, Any]) -> None:
+    def _discover_plugins(self) -> None:
         """Discover and load plugin vocabularies."""
         if not self._plugins_dir.exists():
             return
@@ -245,6 +381,8 @@ class VocabularyRegistry:
 
             vocab_dir = plugin_dir / "vocabularies"
             if vocab_dir.exists():
+                self._load_plugin_manifest(plugin_dir.name, vocab_dir)
+                configs = self._configs()
                 self._load_plugin_vocabs(plugin_dir.name, vocab_dir, configs)
 
     def _load_plugin_vocabs(
@@ -295,6 +433,21 @@ class VocabularyRegistry:
         """Get all IDs of a vocab type."""
         self._ensure_loaded()
         return list(self._vocabs.get(vocab_type, {}).keys())
+
+    def list_vocab_types(self) -> List[str]:
+        """List all known vocab types (core + dynamic)."""
+        self._ensure_loaded()
+        return list(self._vocabs.keys())
+
+    def list_dynamic_types(self) -> List[str]:
+        """List vocab types defined by plugins."""
+        self._ensure_loaded()
+        return self._dynamic_type_meta.keys()
+
+    def get_dynamic_type_meta(self, vocab_type: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for a plugin-defined vocab type."""
+        self._ensure_loaded()
+        return self._dynamic_type_meta.get_or_none(vocab_type)
 
     # =========================================================================
     # Typed Getters
@@ -643,26 +796,23 @@ class VocabularyRegistry:
         """
         self._ensure_loaded()
 
-        # Import here to avoid circular imports
-        from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
-
         text_lower = text.lower()
         matched_ids: List[str] = []
+        seen_ids: Set[str] = set()
 
-        for config in VOCAB_CONFIGS.values():
-            if not config.keywords_attr:
-                continue
+        substring_entries = self._keyword_index.get("substring", [])
+        for keyword, item_id in substring_entries:
+            if keyword in text_lower and item_id not in seen_ids:
+                matched_ids.append(item_id)
+                seen_ids.add(item_id)
 
-            for item in self.all_of(config.name):
-                keywords = getattr(item, config.keywords_attr, [])
-                if not keywords:
-                    continue
-
-                for keyword in keywords:
-                    if keyword.lower() in text_lower:
-                        if item.id not in matched_ids:
-                            matched_ids.append(item.id)
-                        break
+        word_entries = self._keyword_index.get("word", [])
+        if word_entries:
+            tokens = set(re.findall(r"\b\w+\b", text_lower))
+            for keyword, item_id in word_entries:
+                if keyword in tokens and item_id not in seen_ids:
+                    matched_ids.append(item_id)
+                    seen_ids.add(item_id)
 
         return matched_ids
 

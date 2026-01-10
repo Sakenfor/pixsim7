@@ -146,6 +146,20 @@ class ProgressionDef:
     source: str = "core"
 
 
+@dataclass
+class GenericVocabDef:
+    """Generic vocab item for plugin-defined types."""
+    id: str
+    label: str
+    data: Dict[str, Any] = field(default_factory=dict)
+    source: str = "core"
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self.data:
+            return self.data[name]
+        raise AttributeError(name)
+
+
 # Scoring config dataclasses
 @dataclass
 class ScoringWeights:
@@ -216,6 +230,7 @@ __all__ = [
     "InfluenceRegionDef",
     "SpatialDef",
     "ProgressionDef",
+    "GenericVocabDef",
     "ScoringWeights",
     "PartialCredit",
     "ChainConstraints",
