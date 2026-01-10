@@ -123,7 +123,7 @@
       // Packages
       "@pixsim7/types": ["../packages/types/dist"],
       "@pixsim7/helpers-core": ["../../packages/shared/helpers-core/src"],
-      "@pixsim7/core.composer": ["../../packages/core/composer/src"],
+      "@pixsim7/composer-core": ["../../packages/core/composer/src"],
       "@shared/types": ["../../packages/shared/types/src"],
       "@shared/types/*": ["../../packages/shared/types/src/*"]
     },

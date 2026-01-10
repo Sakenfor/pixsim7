@@ -94,6 +94,7 @@ export default defineConfig({
       { find: '@features/poseBoard', replacement: path.resolve(__dirname, './src/features/poseBoard') },
       // Workspace packages
       { find: '@pixsim7/scene.cubes', replacement: path.resolve(__dirname, '../../packages/scene/cubes/src') },
+      { find: '@pixsim7/composer-core', replacement: path.resolve(__dirname, '../../packages/core/composer/src') },
       // Local src directory alias for cleaner imports (must be last)
       { find: '@', replacement: path.resolve(__dirname, './src') },
     ],
