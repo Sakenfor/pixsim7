@@ -33,6 +33,8 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from pixsim7.backend.main.lib.registry.nested import NestedRegistry
+
 
 @dataclass
 class FieldRefConfig:
@@ -64,7 +66,12 @@ class EntityRefRegistry:
 
     def __init__(self):
         self._exact_mappings: Dict[str, FieldRefConfig] = {}
-        self._model_mappings: Dict[str, Dict[str, FieldRefConfig]] = {}
+        # Model-scoped mappings: model_name -> field_name -> config
+        self._model_mappings: NestedRegistry[str, str, FieldRefConfig] = NestedRegistry(
+            name="entity_ref_model_mappings",
+            allow_overwrite=True,  # Allow re-registration
+            log_operations=False,  # Too noisy
+        )
         self._patterns: List[Tuple[re.Pattern, FieldRefConfig]] = []
 
     def register(
@@ -88,9 +95,7 @@ class EntityRefRegistry:
         """
         config = FieldRefConfig(entity_type=entity_type, description=description)
         if model:
-            if model not in self._model_mappings:
-                self._model_mappings[model] = {}
-            self._model_mappings[model][field_name] = config
+            self._model_mappings.register(model, field_name, config)
         else:
             self._exact_mappings[field_name] = config
 
@@ -136,9 +141,10 @@ class EntityRefRegistry:
         3. Pattern match (first match wins)
         """
         # 1. Model-specific exact match
-        if model and model in self._model_mappings:
-            if field_name in self._model_mappings[model]:
-                return self._model_mappings[model][field_name].entity_type
+        if model:
+            config = self._model_mappings.get(model, field_name)
+            if config:
+                return config.entity_type
 
         # 2. Global exact match
         if field_name in self._exact_mappings:
@@ -166,9 +172,10 @@ class EntityRefRegistry:
             FieldRefConfig or None if not found
         """
         # 1. Model-specific exact match
-        if model and model in self._model_mappings:
-            if field_name in self._model_mappings[model]:
-                return self._model_mappings[model][field_name]
+        if model:
+            config = self._model_mappings.get(model, field_name)
+            if config:
+                return config
 
         # 2. Global exact match
         if field_name in self._exact_mappings:
@@ -194,9 +201,8 @@ class EntityRefRegistry:
             result[name] = config.entity_type
 
         # Model-specific mappings
-        for model, fields in self._model_mappings.items():
-            for field, config in fields.items():
-                result[f"{model}.{field}"] = config.entity_type
+        for model, field, config in self._model_mappings.all_items():
+            result[f"{model}.{field}"] = config.entity_type
 
         # Pattern mappings
         for compiled_pattern, config in self._patterns:
@@ -227,10 +233,11 @@ class EntityRefRegistry:
             True if mapping was removed, False if it didn't exist
         """
         if model:
-            if model in self._model_mappings and field_name in self._model_mappings[model]:
-                del self._model_mappings[model][field_name]
-                if not self._model_mappings[model]:
-                    del self._model_mappings[model]
+            removed = self._model_mappings.unregister(model, field_name)
+            if removed is not None:
+                # Clean up empty namespace
+                if self._model_mappings.count_of(model) == 0:
+                    self._model_mappings.remove_namespace(model)
                 return True
             return False
 
