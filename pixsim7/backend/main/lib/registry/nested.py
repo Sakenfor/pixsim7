@@ -41,6 +41,7 @@ import structlog
 from pixsim7.backend.main.lib.registry.simple import (
     SimpleRegistry,
     DuplicateKeyError,
+    KeyNotFoundError,
 )
 
 logger = structlog.get_logger(__name__)
@@ -203,11 +204,11 @@ class NestedRegistry(Generic[NS, K, V]):
             The item.
 
         Raises:
-            KeyError: If namespace or key not found.
+            KeyNotFoundError: If namespace or key not found.
         """
         ns_registry = self._namespaces.get(namespace)
         if ns_registry is None:
-            raise KeyError(f"Namespace '{namespace}' not found in {self._name}")
+            raise KeyNotFoundError(str(namespace), f"{self._name}:namespaces")
         return ns_registry.get(key)
 
     def has(self, namespace: NS, key: K) -> bool:

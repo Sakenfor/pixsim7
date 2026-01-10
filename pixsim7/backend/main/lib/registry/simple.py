@@ -278,6 +278,10 @@ class SimpleRegistry(Generic[K, V]):
         """Iterate over keys."""
         return iter(self._items)
 
+    def __getitem__(self, key: K) -> V:
+        """Get item by key (supports [] operator). Raises KeyNotFoundError if not found."""
+        return self.get(key)
+
     # =========================================================================
     # Extension Points
     # =========================================================================
