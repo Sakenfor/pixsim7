@@ -28,6 +28,11 @@ from pydantic import BaseModel, Field, ValidationError
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.logging import get_event_logger
+from pixsim7.backend.main.shared.retry_utils import (
+    with_retry,
+    RetryConfig,
+    is_retryable_http_status,
+)
 
 
 # ===== HANDLER MANIFEST =====
@@ -203,6 +208,85 @@ def _build_signature_headers(body: bytes, event: Event, secret: Optional[str]) -
     return headers
 
 
+# ===== WEBHOOK DELIVERY =====
+
+async def _deliver_webhook_with_retry(
+    url: str,
+    body: bytes,
+    headers: dict,
+    timeout_seconds: int,
+    max_retries: int,
+    event_type: str,
+    logger,
+) -> None:
+    """
+    Deliver webhook with retries and exponential backoff.
+
+    Preserves original semantics:
+    - Only 2xx is success (3xx treated as failure)
+    - Only retry on network errors or 5xx/429 (not 4xx client errors)
+    - Swallow errors on exhaustion (log but don't raise)
+    """
+
+    async def send() -> httpx.Response:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.post(url, content=body, headers=headers)
+
+            # Explicit 2xx check (original behavior: 3xx = failure)
+            if not (200 <= response.status_code < 300):
+                raise httpx.HTTPStatusError(
+                    f"Non-2xx status: {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+            return response
+
+    def should_retry(exc: Exception) -> bool:
+        """Only retry on network errors or retryable HTTP status (5xx, 429)."""
+        if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+            return True
+        if isinstance(exc, httpx.HTTPStatusError):
+            return is_retryable_http_status(exc.response.status_code)
+        return False
+
+    try:
+        response = await with_retry(
+            send,
+            config=RetryConfig(
+                max_attempts=max_retries + 1,  # max_retries=3 means 4 total attempts
+                backoff_base=1.0,
+                backoff_max=30.0,
+                retryable=(httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError),
+            ),
+            should_retry=should_retry,
+            on_retry=lambda attempt, exc, delay: logger.warning(
+                "Webhook delivery retry",
+                url=url,
+                event_type=event_type,
+                attempt=attempt,
+                error=str(exc),
+                next_delay=f"{delay:.1f}s",
+            ),
+        )
+
+        logger.info(
+            "Webhook delivered",
+            url=url,
+            event_type=event_type,
+            status_code=response.status_code,
+        )
+
+    except Exception as exc:
+        # Exhausted retries or non-retryable error - log and swallow (original behavior)
+        logger.error(
+            "Webhook delivery failed",
+            url=url,
+            event_type=event_type,
+            error=str(exc),
+            max_retries=max_retries,
+        )
+
+
 # ===== EVENT HANDLER =====
 
 async def handle_event(event: Event) -> None:
@@ -260,56 +344,15 @@ async def handle_event(event: Event) -> None:
         }
         headers.update(_build_signature_headers(body, event, secret))
 
-        attempt = 0
-        while attempt <= max_retries:
-            attempt += 1
-            try:
-                async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-                    response = await client.post(cfg.url, content=body, headers=headers)
-
-                if 200 <= response.status_code < 300:
-                    logger.info(
-                        "Webhook delivered",
-                        url=cfg.url,
-                        event_type=event.event_type,
-                        status_code=response.status_code,
-                        attempt=attempt,
-                    )
-                    break
-
-                logger.warning(
-                    "Webhook delivery failed with non-2xx status",
-                    url=cfg.url,
-                    event_type=event.event_type,
-                    status_code=response.status_code,
-                    attempt=attempt,
-                )
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                logger.warning(
-                    "Webhook delivery error (timeout/network)",
-                    url=cfg.url,
-                    event_type=event.event_type,
-                    error=str(exc),
-                    attempt=attempt,
-                )
-            except Exception as exc:
-                logger.error(
-                    "Webhook delivery error (unexpected)",
-                    url=cfg.url,
-                    event_type=event.event_type,
-                    error=str(exc),
-                    attempt=attempt,
-                    exc_info=True,
-                )
-
-            if attempt > max_retries:
-                logger.error(
-                    "Webhook delivery exhausted retries",
-                    url=cfg.url,
-                    event_type=event.event_type,
-                    max_retries=max_retries,
-                )
-                break
+        await _deliver_webhook_with_retry(
+            url=cfg.url,
+            body=body,
+            headers=headers,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            event_type=event.event_type,
+            logger=logger,
+        )
 
 
 # ===== LIFECYCLE HOOKS =====

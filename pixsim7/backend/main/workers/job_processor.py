@@ -25,6 +25,10 @@ from pixsim7.backend.main.shared.errors import (
     ProviderRateLimitError,
     ProviderConcurrentLimitError,
 )
+from pixsim7.backend.main.shared.fallback_utils import (
+    with_fallback,
+    FallbackExhaustedError,
+)
 
 # Expected errors that don't need stack traces - these are business logic, not bugs
 EXPECTED_ERRORS = (
@@ -224,38 +228,46 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:
-                for attempt in range(MAX_ACCOUNT_RETRIES):
+                async def acquire_account():
+                    """Select and reserve next account. Raises if pool empty."""
                     try:
-                        account = await account_service.select_and_reserve_account(
+                        acct = await account_service.select_and_reserve_account(
                             provider_id=generation.provider_id,
                             user_id=generation.user_id
                         )
-                        gen_logger.info("account_selected", account_id=account.id, provider_id=generation.provider_id, attempt=attempt + 1)
-                        debug.worker("account_selected", account_id=account.id, provider_id=generation.provider_id, attempt=attempt + 1)
+                        return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
-                        gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__, attempt=attempt + 1)
-                        debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__, attempt=attempt + 1)
-                        # No more accounts to try - let ARQ retry later
-                        raise
+                        gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
+                        debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
+                        raise  # Propagate - no more accounts to try
 
-                    # Refresh credits BEFORE generation to verify account has credits
-                    credits_data = await refresh_account_credits(account, account_service, gen_logger)
-                    if credits_data and not has_sufficient_credits(credits_data):
-                        gen_logger.warning("account_no_credits", account_id=account.id, credits=credits_data, attempt=attempt + 1)
-                        debug.worker("account_no_credits", account_id=account.id, credits=credits_data, attempt=attempt + 1)
-                        # Release this account and mark as exhausted, then try another
-                        await account_service.release_account(account.id)
-                        await account_service.mark_exhausted(account.id)
-                        account = None
-                        continue  # Try next account
+                async def verify_credits(acct: ProviderAccount) -> bool:
+                    """Check if account has sufficient credits."""
+                    credits_data = await refresh_account_credits(acct, account_service, gen_logger)
+                    return not (credits_data and not has_sufficient_credits(credits_data))
 
-                    # Found an account with credits
-                    break
+                async def reject_account(acct: ProviderAccount) -> None:
+                    """Release and mark exhausted."""
+                    gen_logger.warning("account_no_credits", account_id=acct.id)
+                    debug.worker("account_no_credits", account_id=acct.id)
+                    await account_service.release_account(acct.id)
+                    await account_service.mark_exhausted(acct.id)
 
-            if not account:
-                gen_logger.error("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
-                debug.worker("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
-                raise AccountExhaustedError(0, generation.provider_id)
+                try:
+                    account = await with_fallback(
+                        acquire=acquire_account,
+                        verify=verify_credits,
+                        on_reject=reject_account,
+                        on_attempt=lambda n, a: (
+                            gen_logger.info("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
+                            debug.worker("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
+                        ),
+                        max_attempts=MAX_ACCOUNT_RETRIES,
+                    )
+                except FallbackExhaustedError:
+                    gen_logger.error("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
+                    debug.worker("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
+                    raise AccountExhaustedError(0, generation.provider_id)
 
             # Save account_id on generation so UI can show which account is being used
             if generation.account_id != account.id:
