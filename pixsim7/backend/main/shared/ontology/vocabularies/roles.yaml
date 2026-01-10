@@ -1,0 +1,115 @@
+# Composition Roles Vocabulary
+# Defines what role an image plays in a composition
+# Replaces: composition-roles.yaml
+version: "1.0.0"
+
+roles:
+  role:main_character:
+    label: "Main Character"
+    description: "Primary subject/character in the scene"
+    color: blue
+    default_layer: 1
+    slots:
+      provides: [slot:focal_subject, slot:character_presence]
+      requires: []
+    tags: [character, subject, primary]
+    aliases: [character, char, hero, subject]
+
+  role:companion:
+    label: "Companion"
+    description: "Supporting characters (NPCs, pets, monsters)"
+    color: purple
+    default_layer: 1
+    slots:
+      provides: [slot:secondary_subject, slot:character_presence]
+      requires: []
+    tags: [character, secondary, npc]
+    aliases: [npc, companion, monster]
+
+  role:environment:
+    label: "Environment"
+    description: "Background, setting, location"
+    color: green
+    default_layer: 0
+    slots:
+      provides: [slot:scene_setting, slot:spatial_context]
+      requires: []
+    tags: [background, setting, location]
+    aliases: [environment, setting, background, bg, scene]
+
+  role:prop:
+    label: "Prop"
+    description: "Objects, vehicles, items"
+    color: orange
+    default_layer: 1
+    slots:
+      provides: [slot:scene_prop]
+      requires: [slot:spatial_context]
+    tags: [object, item, prop]
+    aliases: [prop, object, vehicle]
+
+  role:style_reference:
+    label: "Style Reference"
+    description: "Style/aesthetic reference images"
+    color: pink
+    default_layer: 0
+    slots:
+      provides: [slot:aesthetic_guidance]
+      requires: []
+    tags: [style, reference, aesthetic]
+    aliases: [style, style_reference, reference]
+
+  role:effect:
+    label: "Effect"
+    description: "Lighting, camera, visual effects"
+    color: cyan
+    default_layer: 2
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [effect, lighting, camera]
+    aliases: [effect, lighting]
+
+# Priority order for role selection (highest first)
+# When an asset has multiple tags mapping to different roles, pick highest priority
+priority:
+  - role:main_character
+  - role:companion
+  - role:prop
+  - role:style_reference
+  - role:effect
+  - role:environment
+
+# Tag slug -> role mapping (exact match)
+slug_mappings:
+  bg: role:environment
+  "role:bg": role:environment
+  "role:environment": role:environment
+  "role:setting": role:environment
+  "char:hero": role:main_character
+  "pov:player": role:main_character
+  "role:char": role:main_character
+  "role:character": role:main_character
+  "char:npc": role:companion
+  "char:monster": role:companion
+  comic_frame: role:style_reference
+
+# Tag namespace -> role mapping (prefix match)
+namespace_mappings:
+  character: role:main_character
+  person: role:main_character
+  npc: role:main_character
+  animal: role:companion
+  creature: role:companion
+  object: role:prop
+  prop: role:prop
+  vehicle: role:prop
+  location: role:environment
+  environment: role:environment
+  setting: role:environment
+  background: role:environment
+  scene: role:environment
+  place: role:environment
+  style: role:style_reference
+  lighting: role:effect
+  camera: role:effect
