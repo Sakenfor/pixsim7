@@ -9,10 +9,13 @@
  * - Advanced filtering
  */
 
-import { useMemo } from 'react';
-import { MediaCard } from '@/components/media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
+import { useMemo } from 'react';
+
 import { GalleryToolsPanel, useCuratorGalleryController } from '@features/gallery';
+
+import { MediaCard } from '@/components/media/MediaCard';
+
 import {
   GallerySurfaceShell,
   AssetGrid,

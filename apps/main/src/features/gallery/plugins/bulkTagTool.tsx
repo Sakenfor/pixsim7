@@ -5,9 +5,11 @@
  * Available on default and curator surfaces, but not review.
  */
 
-import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@pixsim7/shared.ui';
+import { useEffect, useMemo, useState } from 'react';
+
 import { toSnakeCaseDeep } from '@lib/utils';
+
 import type { GalleryToolPlugin, GalleryToolContext } from '../lib/core/types';
 
 type TagSuggestion = {

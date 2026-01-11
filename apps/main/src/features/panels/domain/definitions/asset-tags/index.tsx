@@ -6,14 +6,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GalleryToolsPanel } from '@features/gallery';
-import type { GalleryToolContext } from '@features/gallery/lib/core/types';
+
+import { fromAssetResponse, getAsset, type AssetModel } from '@features/assets';
 import {
   CAP_ASSET_SELECTION,
   useCapability,
   type AssetSelection,
 } from '@features/contextHub';
-import { fromAssetResponse, getAsset, type AssetModel } from '@features/assets';
+import { GalleryToolsPanel } from '@features/gallery';
+import type { GalleryToolContext } from '@features/gallery/lib/core/types';
+
 import { definePanel } from '../../../lib/definePanel';
 
 type LoadState = {

@@ -15,13 +15,16 @@
  * └──────────────┴──────────────┘
  */
 
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import type { DockviewApi } from 'dockview-core';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+
 import { SmartDockview } from '@lib/dockview';
-import type { ViewerSettings } from './types';
+
 import type { ViewerAsset } from '@features/assets';
 import type { PanelDefinition } from '@features/panels';
 import { getPanelIdsForScope, panelRegistry } from '@features/panels';
+
+import type { ViewerSettings } from './types';
 
 export interface AssetViewerDockviewProps {
   /** Current asset being viewed */
