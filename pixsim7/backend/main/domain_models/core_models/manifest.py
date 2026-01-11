@@ -23,6 +23,8 @@ manifest = DomainModelManifest(
         "pixsim7.backend.main.domain.assets.lineage",
         "pixsim7.backend.main.domain.assets.analysis",
         "pixsim7.backend.main.domain.assets.tag",
+        "pixsim7.backend.main.domain.analyzer_definition",
+        "pixsim7.backend.main.domain.analyzer_preset",
         "pixsim7.backend.main.domain.ai_interaction",
         "pixsim7.backend.main.domain.plugin_catalog",
         "pixsim7.backend.main.domain.links",

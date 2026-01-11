@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt import PromptVersionService
+from pixsim7.backend.main.services.prompt.parser import analyzer_registry
+from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
+    AnalyzerPresetService,
+)
 from .schemas import (
     BatchVersionRequest,
     CreatePromptVersionRequest,
@@ -418,6 +422,10 @@ class AnalyzePromptRequest(BaseModel):
     """Request for prompt analysis preview."""
     text: str = Field(..., min_length=1, max_length=10000, description="Prompt text to analyze")
     analyzer_id: Optional[str] = Field(None, description="Analyzer ID (default: prompt:simple)")
+    preset_id: Optional[str] = Field(
+        None,
+        description="Optional analyzer preset ID (tags_only, blocks_tags, etc.)",
+    )
     analyzer_instance_id: Optional[int] = Field(
         None,
         description="Analyzer instance ID for provider/model overrides",
@@ -463,6 +471,7 @@ async def analyze_prompt(
     provider_id = None
     model_id = None
     instance_config = None
+    preset_id = request.preset_id
 
     if request.analyzer_instance_id is not None:
         from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
@@ -480,9 +489,46 @@ async def analyze_prompt(
         provider_id = instance.provider_id
         model_id = instance.model_id
         instance_config = instance.config
+        if not preset_id and isinstance(instance_config, dict):
+            preset_id = instance_config.get("preset_id")
+
+        if preset_id:
+            analyzer_info = analyzer_registry.get(analyzer_id)
+            presets = (analyzer_info.config or {}).get("presets") if analyzer_info else None
+            has_preset = isinstance(presets, dict) and preset_id in presets
+            if not has_preset:
+                preset_service = AnalyzerPresetService(db)
+                preset = await preset_service.get_user_preset(
+                    owner_user_id=user.id,
+                    analyzer_id=analyzer_id,
+                    preset_id=preset_id,
+                )
+                if preset:
+                    instance_config = _merge_instance_config(instance_config, preset.config)
+                    if isinstance(instance_config, dict):
+                        instance_config.pop("preset_id", None)
+                    preset_id = None
+
+    if preset_id:
+        analyzer_info = analyzer_registry.get(analyzer_id)
+        presets = (analyzer_info.config or {}).get("presets") if analyzer_info else None
+        has_preset = isinstance(presets, dict) and preset_id in presets
+        if not has_preset:
+            preset_service = AnalyzerPresetService(db)
+            preset = await preset_service.get_user_preset(
+                owner_user_id=user.id,
+                analyzer_id=analyzer_id,
+                preset_id=preset_id,
+            )
+            if preset:
+                instance_config = _merge_instance_config(instance_config, preset.config)
+                if isinstance(instance_config, dict):
+                    instance_config.pop("preset_id", None)
+                preset_id = None
     analysis = await service.analyze(
         request.text,
         analyzer_id,
+        preset_id=preset_id,
         provider_id=provider_id,
         model_id=model_id,
         instance_config=instance_config,
@@ -493,3 +539,15 @@ async def analyze_prompt(
         analysis=analysis,
         analyzer_id=analysis.get("analyzer_id", analyzer_id),
     )
+
+
+def _merge_instance_config(
+    base_config: Optional[Dict[str, Any]],
+    override_config: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    if isinstance(base_config, dict):
+        merged.update(base_config)
+    if isinstance(override_config, dict):
+        merged.update(override_config)
+    return merged

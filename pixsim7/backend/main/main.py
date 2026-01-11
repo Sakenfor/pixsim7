@@ -85,10 +85,12 @@ async def lifespan(app: FastAPI):
         validate_settings,
         setup_domain_registry,
         setup_database_and_seed,
+        setup_analyzer_definitions,
         setup_redis,
         setup_providers,
         setup_ai_models,
         setup_analyzer_plugins,
+        setup_analyzer_presets,
         setup_event_handlers,
         setup_ecs_components,
         setup_stat_packages,
@@ -120,6 +122,7 @@ async def lifespan(app: FastAPI):
 
     # Setup database and seed defaults
     await setup_database_and_seed()
+    await setup_analyzer_definitions()
 
     # Setup Redis (optional - degraded mode without it)
     redis_available = await setup_redis()
@@ -154,6 +157,9 @@ async def lifespan(app: FastAPI):
         fail_fast=settings.debug,
         external_plugins_dir=settings.external_plugins_dir
     )
+
+    # Load approved analyzer presets after plugins (ensures plugin analyzers exist)
+    await setup_analyzer_presets()
 
     # Attach managers to app.state for request-context access
     app.state.plugin_manager = plugin_manager

@@ -11,7 +11,7 @@ Analyzer ID convention:
 
 import logging
 from typing import Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ class AnalyzerInfo(BaseModel):
     provider_id: Optional[str] = None  # For LLM/vision analyzers
     model_id: Optional[str] = None     # Default model
     source_plugin_id: Optional[str] = None  # Plugin that registered this analyzer
+    config: dict = Field(default_factory=dict)
     enabled: bool = True
     is_default: bool = False
     is_legacy: bool = False  # Legacy aliases
@@ -209,6 +210,24 @@ class AnalyzerRegistry:
         if target:
             enabled = [a for a in enabled if a.target == target]
         return enabled[0] if enabled else None
+
+    def set_default(self, analyzer_id: str) -> bool:
+        """
+        Set the default analyzer for the analyzer's target.
+
+        Returns True if the analyzer was found and set as default.
+        """
+        analyzer_id = self.resolve_legacy(analyzer_id)
+        analyzer = self._analyzers.get(analyzer_id)
+        if not analyzer:
+            return False
+
+        for entry in self._analyzers.values():
+            if entry.target == analyzer.target:
+                entry.is_default = False
+
+        analyzer.is_default = True
+        return True
 
     def is_valid_id(self, analyzer_id: str) -> bool:
         """Check if analyzer ID is valid (registered)."""

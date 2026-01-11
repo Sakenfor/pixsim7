@@ -120,6 +120,14 @@ class ProviderStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ReviewStatus(str, Enum):
+    """Approval workflow status for user-created presets."""
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class ContentDomain(str, Enum):
     """Content domain for specialized metadata"""
     GENERAL = "general"

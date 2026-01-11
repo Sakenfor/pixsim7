@@ -52,6 +52,7 @@ class PromptAnalysisService:
         text: str,
         analyzer_id: Optional[str] = None,
         *,
+        preset_id: Optional[str] = None,
         provider_id: Optional[str] = None,
         model_id: Optional[str] = None,
         instance_config: Optional[Dict[str, Any]] = None,
@@ -67,6 +68,7 @@ class PromptAnalysisService:
         Args:
             text: Prompt text to analyze
             analyzer_id: Analyzer to use (default: prompt:simple)
+            preset_id: Optional analyzer preset to apply
             pack_ids: Optional semantic pack IDs to extend role registry/hints
             semantic_context: Pre-built semantic context (overrides pack_ids)
 
@@ -94,6 +96,7 @@ class PromptAnalysisService:
             normalized,
             analyzer_id,
             role_registry=role_registry,
+            preset_id=preset_id,
             provider_id=provider_id,
             model_id=model_id,
             instance_config=instance_config,
@@ -285,6 +288,7 @@ class PromptAnalysisService:
         analyzer_id: str,
         *,
         role_registry: Optional[PromptRoleRegistry] = None,
+        preset_id: Optional[str] = None,
         provider_id: Optional[str] = None,
         model_id: Optional[str] = None,
         instance_config: Optional[Dict[str, Any]] = None,
@@ -301,6 +305,12 @@ class PromptAnalysisService:
             logger.warning(f"Unknown analyzer {analyzer_id}, falling back to prompt:simple")
             analyzer_id = "prompt:simple"
             analyzer_info = analyzer_registry.get(analyzer_id)
+
+        merged_config = _resolve_analyzer_config(
+            analyzer_info.config if analyzer_info else None,
+            instance_config,
+            preset_id,
+        )
 
         # Dispatch based on analyzer kind
         if analyzer_info and analyzer_info.kind == AnalyzerKind.PARSER:
@@ -335,7 +345,7 @@ class PromptAnalysisService:
                 provider_id=resolved_provider,
                 model_id=resolved_model,
                 role_registry=role_registry,
-                instance_config=instance_config,
+                instance_config=merged_config,
             )
 
         else:
@@ -366,3 +376,56 @@ class PromptAnalysisService:
     def _compute_hash(self, text: str) -> str:
         """Compute SHA256 hash of normalized prompt text."""
         return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def _resolve_analyzer_config(
+    base_config: Optional[Dict[str, Any]],
+    instance_config: Optional[Dict[str, Any]],
+    request_preset_id: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    if not base_config and not instance_config and not request_preset_id:
+        return None
+
+    base_config = base_config if isinstance(base_config, dict) else {}
+    instance_config = instance_config if isinstance(instance_config, dict) else {}
+
+    presets = base_config.get("presets")
+    presets_map = presets if isinstance(presets, dict) else {}
+
+    instance_preset_id = instance_config.get("preset_id")
+    base_preset_id = base_config.get("preset_id")
+    default_preset_id = base_config.get("default_preset")
+
+    effective_preset_id = (
+        request_preset_id
+        or instance_preset_id
+        or base_preset_id
+        or default_preset_id
+    )
+
+    preset_config: Dict[str, Any] = {}
+    if effective_preset_id and presets_map:
+        preset_value = presets_map.get(effective_preset_id)
+        if isinstance(preset_value, dict):
+            preset_config = preset_value
+        else:
+            logger.warning(
+                "analyzer_preset_missing",
+                preset_id=effective_preset_id,
+            )
+
+    merged = {}
+    merged.update(_strip_config_meta(base_config))
+    merged.update(preset_config)
+    merged.update(_strip_config_meta(instance_config))
+
+    return merged or None
+
+
+def _strip_config_meta(config: Dict[str, Any]) -> Dict[str, Any]:
+    stripped = {}
+    for key, value in config.items():
+        if key in {"presets", "default_preset", "preset_id"}:
+            continue
+        stripped[key] = value
+    return stripped

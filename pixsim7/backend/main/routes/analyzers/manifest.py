@@ -15,7 +15,7 @@ manifest = PluginManifest(
     prefix="/api/v1",
     tags=["analyzers"],
     dependencies=[],
-    requires_db=False,
+    requires_db=True,
     requires_redis=False,
     enabled=True,
 )

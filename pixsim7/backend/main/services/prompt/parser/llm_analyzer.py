@@ -91,21 +91,27 @@ async def analyze_prompt_with_llm(
         logger.warning(f"LLM provider {provider_id} not found, falling back to simple parser")
         return await _fallback_to_simple(text)
 
-    user_prompt = f"""Analyze this prompt:
+    config = instance_config or {}
+    analysis_system_prompt = config.get("analysis_system_prompt")
+    analysis_user_prompt = config.get("analysis_user_prompt")
 
-{text}
+    provider_config = {
+        key: value
+        for key, value in config.items()
+        if key not in {"analysis_system_prompt", "analysis_user_prompt"}
+    }
 
-Return the analysis as JSON following the specified schema."""
+    user_prompt = _build_user_prompt(text, analysis_user_prompt)
 
     try:
-        full_prompt = f"{_build_system_prompt(role_registry)}\n\n{user_prompt}"
+        full_prompt = f"{_build_system_prompt(role_registry, analysis_system_prompt)}\n\n{user_prompt}"
 
         response_text = await llm_provider.edit_prompt(
             model_id=model_id,
             prompt_before=full_prompt,
             context={"mode": "prompt_analysis"},
             account=None,
-            instance_config=instance_config,
+            instance_config=provider_config or None,
         )
 
         cleaned = _clean_json_response(response_text)
@@ -203,9 +209,34 @@ async def _fallback_to_simple(text: str) -> Dict[str, Any]:
     return await analyze_prompt(text)
 
 
-def _build_system_prompt(role_registry: PromptRoleRegistry) -> str:
+def _build_system_prompt(
+    role_registry: PromptRoleRegistry,
+    override_prompt: Optional[str],
+) -> str:
     role_lines = []
     for role in role_registry.list_roles(sort_by_priority=True):
         description = role.description or role.label
         role_lines.append(f'- "{role.id}": {description}')
-    return BASE_ANALYSIS_SYSTEM_PROMPT.format(role_lines="\n".join(role_lines))
+    rendered_role_lines = "\n".join(role_lines)
+
+    if not override_prompt:
+        return BASE_ANALYSIS_SYSTEM_PROMPT.format(role_lines=rendered_role_lines)
+
+    if "{role_lines}" in override_prompt:
+        return override_prompt.replace("{role_lines}", rendered_role_lines)
+
+    return f"{override_prompt}\n\nROLES:\n{rendered_role_lines}"
+
+
+def _build_user_prompt(text: str, override_prompt: Optional[str]) -> str:
+    if not override_prompt:
+        return f"""Analyze this prompt:
+
+{text}
+
+Return the analysis as JSON following the specified schema."""
+
+    if "{text}" in override_prompt:
+        return override_prompt.replace("{text}", text)
+
+    return f"{override_prompt}\n\n{text}"

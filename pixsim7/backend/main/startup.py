@@ -113,6 +113,40 @@ async def setup_database_and_seed() -> None:
         )
 
 
+async def setup_analyzer_definitions() -> int:
+    """
+    Load custom analyzer definitions from the database.
+
+    Returns:
+        int: Number of analyzer definitions loaded
+    """
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+    from pixsim7.backend.main.services.analysis import load_analyzer_definitions
+
+    async with get_async_session() as db:
+        count = await load_analyzer_definitions(db)
+
+    logger.info("custom_analyzers_loaded", count=count)
+    return count
+
+
+async def setup_analyzer_presets() -> int:
+    """
+    Load approved analyzer presets from the database.
+
+    Returns:
+        int: Number of presets applied
+    """
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+    from pixsim7.backend.main.services.analysis import load_analyzer_presets
+
+    async with get_async_session() as db:
+        count = await load_analyzer_presets(db)
+
+    logger.info("approved_analyzer_presets_loaded", count=count)
+    return count
+
+
 async def setup_redis() -> bool:
     """
     Initialize Redis connection (OPTIONAL - degraded mode without it).
