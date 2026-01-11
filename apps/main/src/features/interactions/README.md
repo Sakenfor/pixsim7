@@ -19,7 +19,7 @@ The **interaction contract** lives in `@shared/types/interactions.ts` (not here)
 ```typescript
 // @shared/types/interactions.ts
 export type NpcInteractionSurface = 'inline' | 'dialogue' | 'scene' | ...;
-export type NpcInteractionBranchIntent = 'escalate' | 'cool_down' | ...;
+export type NpcInteractionBranchIntent = 'branch:escalate' | 'branch:cool_down' | ...;
 export interface NpcInteractionDefinition { /* ... */ }
 export interface StatGating { /* ... */ }
 ```
