@@ -5,9 +5,12 @@
  */
 
 import { Icon } from '@lib/icons';
-import type { FitMode } from './MediaDisplay';
+
 import type { AssetViewerOverlayMode } from '@features/mediaViewer';
+
 import type { MediaOverlayId, MediaOverlayTone, MediaOverlayTool } from '../overlays';
+
+import type { FitMode } from './MediaDisplay';
 
 interface MediaControlBarProps {
   // Navigation
@@ -36,6 +39,11 @@ interface MediaControlBarProps {
   overlayMode?: AssetViewerOverlayMode;
   overlayTools?: MediaOverlayTool[];
   onToggleOverlay?: (id: MediaOverlayId) => void;
+
+  // Capture
+  showCapture?: boolean;
+  captureDisabled?: boolean;
+  onCaptureFrame?: () => void;
 }
 
 export function MediaControlBar({
@@ -56,6 +64,9 @@ export function MediaControlBar({
   overlayMode,
   overlayTools,
   onToggleOverlay,
+  showCapture,
+  captureDisabled,
+  onCaptureFrame,
 }: MediaControlBarProps) {
   const isOverlayActive = overlayMode !== undefined && overlayMode !== 'none';
   const overlayList = overlayTools ?? [];
@@ -139,6 +150,17 @@ export function MediaControlBar({
                 </button>
               ))}
             </div>
+          )}
+
+          {showCapture && onCaptureFrame && (
+            <button
+              onClick={onCaptureFrame}
+              disabled={captureDisabled}
+              className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Capture Frame"
+            >
+              <Icon name="camera" size={14} />
+            </button>
           )}
 
           {onToggleOverlay && overlayList.map((tool) => {

@@ -29,6 +29,25 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [fitMode, setFitMode] = useState<FitMode>('contain');
   const [zoom, setZoom] = useState(100);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | undefined>();
+
+  // Track video dimensions when video metadata loads
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const updateDimensions = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
+    };
+
+    video.addEventListener('loadedmetadata', updateDimensions);
+    // Also check if already loaded
+    updateDimensions();
+
+    return () => video.removeEventListener('loadedmetadata', updateDimensions);
+  }, []);
 
   // Resolve viewer context (from prop or fallback selection)
   const { resolvedContext } = useViewerContext({ context });
@@ -129,6 +148,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
           settings={settings}
           onCaptureFrame={captureFrame}
           captureDisabled={isCapturing}
+          videoDimensions={videoDimensions}
         />
       )}
 

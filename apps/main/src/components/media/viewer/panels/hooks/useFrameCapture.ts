@@ -8,13 +8,14 @@
 import { useToast } from '@pixsim7/shared.ui';
 import { useState, useCallback, useMemo, type RefObject } from 'react';
 
-import { API_BASE_URL } from '@lib/api';
-import { authService } from '@lib/auth';
+import { getAsset } from '@lib/api/assets';
+import { uploadAsset } from '@lib/api/upload';
 
 import type { ViewerAsset } from '@features/assets';
+import { assetEvents } from '@features/assets/lib/assetEvents';
 import { useCaptureRegionStore, type AssetRegion } from '@features/mediaViewer';
 
-import type { MediaOverlayId } from '../../overlays';
+import { findActiveRegion, type MediaOverlayId } from '../../overlays';
 
 const EMPTY_CAPTURE_REGIONS: AssetRegion[] = [];
 
@@ -57,27 +58,14 @@ export function useFrameCapture({
     asset ? s.getRegions(asset.id) : EMPTY_CAPTURE_REGIONS
   );
   const captureSelectedRegionId = useCaptureRegionStore((s) => s.selectedRegionId);
-  const getCaptureRegion = useCaptureRegionStore((s) => s.getRegion);
 
   // Determine which region to use for capture
   const captureRegion = useMemo(() => {
     if (!asset || activeOverlayId !== 'capture') {
       return null;
     }
-    if (captureSelectedRegionId) {
-      const selected = getCaptureRegion(asset.id, captureSelectedRegionId);
-      if (selected) {
-        return selected;
-      }
-    }
-    if (captureRegions.length === 1) {
-      return captureRegions[0];
-    }
-    if (captureRegions.length > 1) {
-      return captureRegions[captureRegions.length - 1];
-    }
-    return null;
-  }, [asset, activeOverlayId, captureSelectedRegionId, captureRegions, getCaptureRegion]);
+    return findActiveRegion(captureRegions, captureSelectedRegionId);
+  }, [asset, activeOverlayId, captureSelectedRegionId, captureRegions]);
 
   // Resolve the provider ID for upload
   const resolveCaptureProviderId = useCallback((): string | null => {
@@ -252,27 +240,24 @@ export function useFrameCapture({
         }
       }
 
-      const form = new FormData();
-      form.append('file', blob, buildCaptureFilename(sourceFilename, video.currentTime));
-      form.append('provider_id', providerId);
-      form.append('upload_method', 'video_capture');
-      form.append('upload_context', JSON.stringify(uploadContext));
-
-      const token = authService.getStoredToken();
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/assets/upload`, {
-        method: 'POST',
-        body: form,
-        headers,
+      const uploadResult = await uploadAsset({
+        file: blob,
+        filename: buildCaptureFilename(sourceFilename, video.currentTime),
+        providerId,
+        uploadMethod: 'video_capture',
+        uploadContext,
       });
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || `${res.status} ${res.statusText}`);
+      const newAssetId = uploadResult.asset_id;
+
+      // Fetch and emit the new asset so it appears in the gallery
+      if (newAssetId) {
+        try {
+          const newAsset = await getAsset(newAssetId);
+          assetEvents.emitAssetCreated(newAsset);
+        } catch {
+          // Non-critical: asset was created but won't auto-appear
+        }
       }
 
       toast.success('Frame captured to library.');

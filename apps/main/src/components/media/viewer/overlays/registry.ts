@@ -31,6 +31,15 @@ class MediaOverlayRegistry extends BaseRegistry<MediaOverlayTool> {
 
 export const mediaOverlayRegistry = new MediaOverlayRegistry();
 
+const DEFAULT_OVERLAY_PRIORITY = 100;
+
+export function registerMediaOverlay(tool: MediaOverlayTool): void {
+  mediaOverlayRegistry.register({
+    ...tool,
+    priority: tool.priority ?? DEFAULT_OVERLAY_PRIORITY,
+  });
+}
+
 export function useMediaOverlayRegistry() {
   const subscribe = useCallback(
     (callback: () => void) => mediaOverlayRegistry.subscribe(callback),

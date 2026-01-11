@@ -1,12 +1,13 @@
-import { mediaOverlayRegistry } from './registry';
 import {
   AnnotationOverlayMain,
   AnnotationOverlayToolbar,
   AnnotationOverlaySidebar,
 } from './builtins/annotationOverlay';
+import { CaptureOverlayMain, CaptureOverlayToolbar } from './builtins/captureOverlay';
 import { PoseBoardOverlayMain } from './builtins/poseOverlay';
+import { registerMediaOverlay } from './registry';
 
-mediaOverlayRegistry.register({
+registerMediaOverlay({
   id: 'annotate',
   label: 'Annotate',
   description: 'Draw labeled regions on the current asset.',
@@ -18,7 +19,7 @@ mediaOverlayRegistry.register({
   Sidebar: AnnotationOverlaySidebar,
 });
 
-mediaOverlayRegistry.register({
+registerMediaOverlay({
   id: 'pose',
   label: 'Pose',
   description: 'Compose mannequin poses and snapshot references.',
@@ -26,4 +27,16 @@ mediaOverlayRegistry.register({
   priority: 20,
   tone: 'purple',
   Main: PoseBoardOverlayMain,
+});
+
+registerMediaOverlay({
+  id: 'capture',
+  label: 'Capture',
+  description: 'Select a region and capture a frame.',
+  shortcut: 'C',
+  priority: 30,
+  tone: 'amber',
+  isAvailable: (asset) => asset.type === 'video',
+  Main: CaptureOverlayMain,
+  Toolbar: CaptureOverlayToolbar,
 });

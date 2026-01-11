@@ -1,6 +1,8 @@
 import { useAssetRegionStore } from '@features/mediaViewer';
+
 import { RegionAnnotationOverlay } from '../../panels/RegionAnnotationOverlay';
 import { RegionEditForm, RegionList } from '../../panels/RegionEditForm';
+import { getToolbarButtonClass, useRegionStoreSelectors } from '../index';
 import type { MediaOverlayComponentProps } from '../types';
 
 export function AnnotationOverlayMain({ asset, settings }: MediaOverlayComponentProps) {
@@ -20,8 +22,10 @@ export function AnnotationOverlayToolbar() {
 }
 
 export function AnnotationOverlaySidebar({ asset }: MediaOverlayComponentProps) {
-  const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
-  const selectRegion = useAssetRegionStore((s) => s.selectRegion);
+  const { selectedRegionId, selectRegion } = useRegionStoreSelectors(
+    useAssetRegionStore,
+    asset.id
+  );
 
   return (
     <div className="w-56 flex-shrink-0 border-l border-neutral-700 bg-neutral-800/50 flex flex-col">
@@ -52,24 +56,20 @@ function AnnotationToolbar({
   drawingMode,
   onDrawingModeChange,
 }: AnnotationToolbarProps) {
-  const buttonBase = 'px-2 py-1 text-xs rounded transition-colors';
-  const buttonActive = 'bg-blue-600 text-white';
-  const buttonInactive = 'bg-neutral-700 hover:bg-neutral-600 text-neutral-200';
-
   return (
     <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800/90 border-b border-neutral-700 text-xs">
       <span className="text-neutral-400 mr-2">Draw:</span>
 
       <button
         onClick={() => onDrawingModeChange('rect')}
-        className={`${buttonBase} ${drawingMode === 'rect' ? buttonActive : buttonInactive}`}
+        className={getToolbarButtonClass(drawingMode === 'rect')}
         title="Draw rectangle regions (R)"
       >
         Rect
       </button>
       <button
         onClick={() => onDrawingModeChange('polygon')}
-        className={`${buttonBase} ${drawingMode === 'polygon' ? buttonActive : buttonInactive}`}
+        className={getToolbarButtonClass(drawingMode === 'polygon')}
         title="Draw polygon regions, double-click to finish (P)"
       >
         Polygon
@@ -79,7 +79,7 @@ function AnnotationToolbar({
 
       <button
         onClick={() => onDrawingModeChange('select')}
-        className={`${buttonBase} ${drawingMode === 'select' ? buttonActive : buttonInactive}`}
+        className={getToolbarButtonClass(drawingMode === 'select')}
         title="Select and edit regions (S)"
       >
         Select

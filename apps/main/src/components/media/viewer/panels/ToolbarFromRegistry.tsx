@@ -10,6 +10,8 @@
  */
 
 import { useMemo } from 'react';
+
+import { getToolbarButtonClass } from '../overlays';
 import { useRegionDrawerRegistry, type RegionDrawer } from '../tools';
 
 // ============================================================================
@@ -43,7 +45,7 @@ export function ToolbarFromRegistry({
   isSelectMode = false,
   onSelectModeToggle,
 }: ToolbarFromRegistryProps) {
-  const { drawers, getByCategory } = useRegionDrawerRegistry();
+  const { drawers } = useRegionDrawerRegistry();
 
   // Filter drawers by category if specified
   const filteredDrawers = useMemo(() => {
@@ -64,12 +66,6 @@ export function ToolbarFromRegistry({
     return groups;
   }, [filteredDrawers]);
 
-  const buttonBase =
-    'px-2 py-1 text-xs rounded transition-colors';
-  const buttonActive = 'bg-blue-600 text-white';
-  const buttonInactive =
-    'bg-neutral-700 hover:bg-neutral-600 text-neutral-200';
-
   return (
     <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800/90 border-b border-neutral-700 text-xs">
       <span className="text-neutral-400 mr-2">Draw:</span>
@@ -83,11 +79,7 @@ export function ToolbarFromRegistry({
             <button
               key={drawer.id}
               onClick={() => onDrawerSelect(drawer.id)}
-              className={`${buttonBase} ${
-                activeDrawerId === drawer.id && !isSelectMode
-                  ? buttonActive
-                  : buttonInactive
-              }`}
+              className={getToolbarButtonClass(activeDrawerId === drawer.id && !isSelectMode)}
               title={`${drawer.description} (${drawer.shortcut?.toUpperCase()})`}
             >
               {typeof drawer.icon === 'string' ? drawer.icon : null} {drawer.name}
@@ -102,10 +94,10 @@ export function ToolbarFromRegistry({
           <div className="w-px h-4 bg-neutral-600 mx-1" />
           <button
             onClick={onSelectModeToggle}
-            className={`${buttonBase} ${isSelectMode ? buttonActive : buttonInactive}`}
+            className={getToolbarButtonClass(isSelectMode)}
             title="Select and edit regions (S)"
           >
-            ↖ Select
+            Select
           </button>
         </>
       )}

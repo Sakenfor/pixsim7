@@ -6,6 +6,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import type { ViewerAsset } from '@features/assets';
+import {
+  useAssetRegionStore,
+  type AssetRegion,
+  type AssetRegionStoreHook,
+} from '@features/mediaViewer';
+
 import {
   InteractiveImageSurface,
   useInteractionLayer,
@@ -15,12 +23,9 @@ import {
   type RegionElement,
   type PolygonElement,
 } from '@/components/interactive-surface';
-import type { ViewerAsset } from '@features/assets';
+
 import type { ViewerSettings } from '../types';
-import {
-  useAssetRegionStore,
-  type AssetRegion,
-} from '@features/mediaViewer';
+
 
 // ============================================================================
 // Types
@@ -31,6 +36,7 @@ interface RegionAnnotationOverlayProps {
   settings: ViewerSettings;
   onRegionCreated?: (region: AssetRegion) => void;
   onRegionSelected?: (regionId: string | null) => void;
+  useRegionStore?: AssetRegionStoreHook;
 }
 
 // ============================================================================
@@ -52,18 +58,22 @@ const REGION_COLORS = [
 
 export function RegionAnnotationOverlay({
   asset,
-  settings,
+  settings: _settings,
   onRegionCreated,
   onRegionSelected,
+  useRegionStore: regionStore,
 }: RegionAnnotationOverlayProps) {
+  void _settings; // Reserved for future use
+  const useRegionStore = regionStore ?? useAssetRegionStore;
   const surfaceRef = useRef<InteractiveImageSurfaceHandle>(null);
 
   // Store state
-  const regions = useAssetRegionStore((s) => s.getRegions(asset.id));
-  const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
-  const drawingMode = useAssetRegionStore((s) => s.drawingMode);
-  const addRegion = useAssetRegionStore((s) => s.addRegion);
-  const selectRegion = useAssetRegionStore((s) => s.selectRegion);
+  const regions = useRegionStore((s) => s.getRegions(asset.id));
+  const selectedRegionId = useRegionStore((s) => s.selectedRegionId);
+  const drawingMode = useRegionStore((s) => s.drawingMode);
+  const addRegion = useRegionStore((s) => s.addRegion);
+  const selectRegion = useRegionStore((s) => s.selectRegion);
+  const getRegion = useRegionStore((s) => s.getRegion);
 
   // Local drawing state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -84,7 +94,7 @@ export function RegionAnnotationOverlay({
     getLayer,
     addElement,
     removeElement,
-    updateElement,
+    // updateElement - reserved for future region editing
     setMode,
   } = useInteractionLayer({
     initialMode: drawingMode === 'select' ? 'view' : 'region',
@@ -205,7 +215,8 @@ export function RegionAnnotationOverlay({
   );
 
   const handlePointerUp = useCallback(
-    (event: SurfacePointerEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_event: SurfacePointerEvent) => {
       if (!isDrawing || drawingMode !== 'rect' || !currentRect) {
         setIsDrawing(false);
         return;
@@ -228,17 +239,21 @@ export function RegionAnnotationOverlay({
 
         // Select the newly created region
         selectRegion(regionId);
-        onRegionCreated?.(useAssetRegionStore.getState().getRegion(asset.id, regionId)!);
+        const region = getRegion(asset.id, regionId);
+        if (region) {
+          onRegionCreated?.(region);
+        }
       }
 
       setIsDrawing(false);
       setDrawStart(null);
       setCurrentRect(null);
     },
-    [isDrawing, drawingMode, currentRect, regions.length, asset.id, addRegion, selectRegion, onRegionCreated]
+    [isDrawing, drawingMode, currentRect, regions.length, asset.id, addRegion, selectRegion, getRegion, onRegionCreated]
   );
 
   const handleDoubleClick = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_event: SurfacePointerEvent) => {
       // Complete polygon on double-click
       if (drawingMode === 'polygon' && polygonPoints.length >= 3) {
@@ -257,10 +272,13 @@ export function RegionAnnotationOverlay({
 
         selectRegion(regionId);
         setPolygonPoints([]);
-        onRegionCreated?.(useAssetRegionStore.getState().getRegion(asset.id, regionId)!);
+        const region = getRegion(asset.id, regionId);
+        if (region) {
+          onRegionCreated?.(region);
+        }
       }
     },
-    [drawingMode, polygonPoints, regions.length, asset.id, addRegion, selectRegion, onRegionCreated]
+    [drawingMode, polygonPoints, regions.length, asset.id, addRegion, selectRegion, getRegion, onRegionCreated]
   );
 
   // Combine handlers

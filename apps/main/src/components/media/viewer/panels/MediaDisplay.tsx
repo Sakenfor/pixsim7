@@ -4,7 +4,7 @@
  * Renders the actual media (image or video) with zoom and fit mode applied.
  */
 
-import { useRef } from 'react';
+import { useRef, type RefObject } from 'react';
 
 import { useAutoContextMenu } from '@lib/dockview';
 
@@ -19,10 +19,12 @@ interface MediaDisplayProps {
   settings: ViewerSettings;
   fitMode: FitMode;
   zoom: number;
+  videoRef?: RefObject<HTMLVideoElement>;
 }
 
-export function MediaDisplay({ asset, settings, fitMode, zoom }: MediaDisplayProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef }: MediaDisplayProps) {
+  const fallbackVideoRef = useRef<HTMLVideoElement>(null);
+  const resolvedVideoRef = videoRef ?? fallbackVideoRef;
   const mediaUrl = asset.fullUrl || asset.url;
 
   // Auto-register context menu for the displayed asset
@@ -57,7 +59,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom }: MediaDisplayPro
     >
       {asset.type === 'video' ? (
         <video
-          ref={videoRef}
+          ref={resolvedVideoRef}
           src={mediaUrl}
           className={`${getFitClass()} rounded-lg`}
           style={{ transform: `scale(${zoom / 100})` }}
