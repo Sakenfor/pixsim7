@@ -9,11 +9,12 @@ import {
   ContextMenuPortal,
 } from '@lib/dockview';
 import { PanelPropertiesPopup } from '@lib/dockview';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { ControlCenterManager } from '@features/controlCenter';
-import { useInitializePanelSystem, panelRegistry } from '@features/panels';
+import { useInitializePanelSystem } from '@features/panels';
 import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
@@ -85,7 +86,7 @@ function App() {
         <ContextMenuProvider
           services={{
             workspaceStore: useWorkspaceStore,
-            panelRegistry,
+            panelRegistry: panelSelectors,
           }}
         >
           <div className="min-h-screen flex flex-col">

@@ -5,11 +5,15 @@
 Workspace panels in PixSim7 are now first-class plugins integrated with the unified plugin system. This allows panels to be discovered, enabled/disabled, and extended via the plugin architecture.
 
 **Key Features:**
-- Panel registry for runtime panel management
+- Catalog-backed panel selectors for runtime panel management
 - Unified plugin catalog integration
 - Built-in and custom panel support
 - Plugin Browser UI for panel management
 - Metadata-driven architecture
+
+**Note:** The plugin catalog is now the source of truth. `panelRegistry` and
+`registryBridge` are legacy compatibility layers and should not be used for new
+code. Prefer `registerPluginDefinition()` and `panelSelectors`.
 
 ---
 
@@ -17,10 +21,10 @@ Workspace panels in PixSim7 are now first-class plugins integrated with the unif
 
 ### Components
 
-1. **Panel Registry** (`panelRegistry.ts`)
-   - Centralized registry for all workspace panels
-   - Manages panel definitions and lifecycle
+1. **Panel Catalog Selectors** (`catalogSelectors.ts`)
+   - Catalog-backed selectors for all workspace panels
    - Provides search and category filtering
+   - `panelRegistry` is legacy-only (avoid for new work)
 
 2. **Unified Plugin System** (`pluginSystem.ts`)
    - New `workspace-panel` plugin family
@@ -28,13 +32,12 @@ Workspace panels in PixSim7 are now first-class plugins integrated with the unif
    - Consistent enable/disable semantics
 
 3. **Plugin Runtime** (`pluginRuntime.ts` + `familyAdapters.ts`)
-   - Connects `panelRegistry` with `pluginCatalog`
    - Registers panel definitions through `registerPluginDefinition`
-   - Keeps registry state in sync with catalog metadata
+   - Populates `pluginCatalog` as the source of truth
 
 4. **Panel Definitions** (`domain/definitions/*/index.ts`)
    - Auto-discovered built-in workspace panels
-   - Registered via registry bridge during auto-discovery
+   - Registered via `registerPluginDefinition` during auto-discovery
 
 5. **Plugin Browser UI** (`PluginBrowser.tsx`)
    - Workspace Panels tab for browsing panels
@@ -97,15 +100,15 @@ export const myCustomPanel: PanelDefinition = {
 ### 2. Register as Plugin
 
 ```typescript
-import { registerPanelWithPlugin } from '@/lib/plugins/registryBridge';
+import { registerPluginDefinition } from '@/lib/plugins/pluginRuntime';
 
 // Register with default options (user plugin)
-registerPanelWithPlugin(myCustomPanel);
-
-// Or with specific options
-registerPanelWithPlugin(myCustomPanel, {
+await registerPluginDefinition({
+  id: myCustomPanel.id,
+  family: 'workspace-panel',
   origin: 'plugin-dir',
-  activationState: 'active',
+  source: 'source',
+  plugin: myCustomPanel,
   canDisable: true,
 });
 ```
@@ -113,19 +116,26 @@ registerPanelWithPlugin(myCustomPanel, {
 ### 3. For Built-in Panels
 
 ```typescript
-import { registerBuiltinPanel } from '@/lib/plugins/registryBridge';
+import { registerPluginDefinition } from '@/lib/plugins/pluginRuntime';
 
 // Built-in panels cannot be disabled
-registerBuiltinPanel(myCustomPanel);
+await registerPluginDefinition({
+  id: myCustomPanel.id,
+  family: 'workspace-panel',
+  origin: 'builtin',
+  source: 'source',
+  plugin: myCustomPanel,
+  canDisable: false,
+});
 ```
 
 ---
 
 ## Registry Bridge Functions
 
-### `registerPanelWithPlugin()`
+### (Deprecated) `registerPanelWithPlugin()`
 
-Registers a panel in both `panelRegistry` and `pluginCatalog`.
+Legacy helper that registered a panel in both `panelRegistry` and `pluginCatalog`.
 
 ```typescript
 registerPanelWithPlugin(
@@ -140,7 +150,7 @@ registerPanelWithPlugin(
 - `canDisable`: Whether users can disable this panel
 - `metadata`: Additional plugin metadata
 
-### `registerBuiltinPanel()`
+### (Deprecated) `registerBuiltinPanel()`
 
 Convenience function for registering built-in panels.
 
@@ -287,7 +297,7 @@ const isActive = pluginActivationManager.isActive('my-custom-panel');
 
 When a panel is disabled via the plugin system:
 1. Its `activationState` is set to `'inactive'` in the plugin catalog
-2. The panel remains registered in `panelRegistry`
+2. The panel remains registered in the plugin catalog
 3. The panel configuration UI should check activation state
 4. Disabled panels won't appear in panel creation menus
 
@@ -299,7 +309,7 @@ When a panel is disabled via the plugin system:
 
 ```typescript
 // myPanel.ts
-import { registerPanelWithPlugin } from '@/lib/plugins/registryBridge';
+import { registerPluginDefinition } from '@/lib/plugins/pluginRuntime';
 import type { PanelDefinition } from '@/lib/panels/panelRegistry';
 
 function MyCustomPanelComponent() {
@@ -323,9 +333,12 @@ const myPanel: PanelDefinition = {
 };
 
 // Register the panel as a plugin
-registerPanelWithPlugin(myPanel, {
+await registerPluginDefinition({
+  id: myPanel.id,
+  family: 'workspace-panel',
   origin: 'plugin-dir',
-  activationState: 'active',
+  source: 'source',
+  plugin: myPanel,
   canDisable: true,
   metadata: {
     version: '1.0.0',
@@ -407,7 +420,7 @@ pluginCatalog.printSummary();
 
 ### 1. Use Registry Bridge Functions
 
-Always use `registerPanelWithPlugin()` or `registerBuiltinPanel()` instead of directly calling `panelRegistry.register()`. This ensures dual registration and metadata tracking.
+Always use `registerPluginDefinition()` instead of directly calling `panelRegistry.register()`. This ensures catalog metadata tracking.
 
 ### 2. Set Appropriate Metadata
 
@@ -419,7 +432,7 @@ Provide descriptive metadata for better discoverability:
 
 ### 3. Respect `canDisable`
 
-Core functionality panels should use `registerBuiltinPanel()`. Optional utility panels should allow disabling.
+Core functionality panels should use `registerPluginDefinition()` with `origin: 'builtin'`. Optional utility panels should allow disabling.
 
 ### 4. Handle Activation State
 
@@ -484,7 +497,7 @@ Panel IDs should be unique, lowercase, and kebab-case (e.g., `'my-custom-panel'`
 **A:** No. Built-in panels are marked as `canDisable: false` and are essential to the workspace.
 
 ### Q: How do I add a new custom panel?
-**A:** Create a `PanelDefinition`, then call `registerPanelWithPlugin()` during your plugin's initialization.
+**A:** Create a `PanelDefinition`, then call `registerPluginDefinition()` during your plugin's initialization.
 
 ### Q: Where do disabled panels go?
 **A:** They remain in the registry but have `activationState: 'inactive'` in the catalog. They won't appear in panel creation UIs.

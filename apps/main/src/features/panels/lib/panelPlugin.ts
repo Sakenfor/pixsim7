@@ -5,8 +5,24 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
+import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";
+import { pluginCatalog } from "@lib/plugins/pluginSystem";
+
 import type { PanelDefinition } from "./panelRegistry";
-import { panelRegistry } from "./panelRegistry";
+import type { PanelRegistryLike } from "./panelTypes";
+
+function buildPanelRegistrySnapshot(): PanelRegistryLike<PanelDefinition> {
+  return {
+    get: (id: string) => panelSelectors.get(id),
+    has: (id: string) => panelSelectors.has(id),
+    getAll: () => panelSelectors.getAll(),
+    getIds: () => panelSelectors.getIds(),
+    get size() {
+      return panelSelectors.size;
+    },
+  };
+}
 
 export interface PanelPlugin {
   id: string;
@@ -17,7 +33,7 @@ export interface PanelPlugin {
   panels: PanelDefinition[];
 
   // Plugin lifecycle
-  initialize?: (registry: typeof panelRegistry) => void | Promise<void>;
+  initialize?: (registry: PanelRegistryLike<PanelDefinition>) => void | Promise<void>;
   cleanup?: () => void | Promise<void>;
 
   // Dependencies
@@ -63,7 +79,7 @@ export class PanelPluginManager {
     // Initialize plugin (if it has an initialize hook)
     if (plugin.initialize) {
       try {
-        await plugin.initialize(panelRegistry);
+        await plugin.initialize(buildPanelRegistrySnapshot());
       } catch (error) {
         throw new Error(`Failed to initialize plugin "${plugin.id}": ${error}`);
       }
@@ -73,11 +89,28 @@ export class PanelPluginManager {
     const registeredPanelIds = new Set<string>();
     for (const panelDef of plugin.panels) {
       try {
-        panelRegistry.register(panelDef);
+        await registerPluginDefinition({
+          id: panelDef.id,
+          family: 'workspace-panel',
+          origin: 'plugin-dir',
+          source: 'source',
+          plugin: panelDef,
+          canDisable: true,
+        });
         registeredPanelIds.add(panelDef.id);
       } catch (error) {
         // Rollback on failure
-        registeredPanelIds.forEach((id) => panelRegistry.unregister(id as any));
+        registeredPanelIds.forEach((id) => {
+          const definition = panelSelectors.get(id);
+          if (definition?.onUnmount) {
+            try {
+              definition.onUnmount();
+            } catch (innerError) {
+              console.error(`Error in onUnmount for panel "${id}":`, innerError);
+            }
+          }
+          pluginCatalog.unregister(id);
+        });
         throw new Error(
           `Failed to register panel "${panelDef.id}" from plugin "${plugin.id}": ${error}`,
         );
@@ -107,7 +140,15 @@ export class PanelPluginManager {
     if (panelIds) {
       // Unregister all panels
       panelIds.forEach((panelId) => {
-        panelRegistry.unregister(panelId as any);
+        const definition = panelSelectors.get(panelId);
+        if (definition?.onUnmount) {
+          try {
+            definition.onUnmount();
+          } catch (error) {
+            console.error(`Error in onUnmount for panel "${panelId}":`, error);
+          }
+        }
+        pluginCatalog.unregister(panelId);
       });
     }
 

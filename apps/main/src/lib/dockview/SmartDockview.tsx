@@ -50,23 +50,21 @@
  * - panelManagerId is used as the dockview ID for cross-dockview communication
  */
 
-import { useCallback, useEffect, useRef, useMemo, useState, type ReactNode } from 'react';
+import clsx from 'clsx';
 import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview';
 import type { DockviewApi } from 'dockview-core';
-import clsx from 'clsx';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
+
 import 'dockview/dist/styles/dockview.css';
-import styles from './SmartDockview.module.css';
-import { useSmartDockview } from './useSmartDockview';
-import type { LocalPanelRegistry } from './LocalPanelRegistry';
-import type { LocalPanelDefinition } from './types';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
+import { ContextHubHost, useContextHubState, useProvideCapability, CAP_PANEL_CONTEXT } from '@features/contextHub';
 import {
-  panelRegistry,
-  getPanelsForScope,
   getInstanceId,
   ScopeHost,
   type PanelDefinition,
 } from '@features/panels';
-import { ContextHubHost, useContextHubState, useProvideCapability, CAP_PANEL_CONTEXT } from '@features/contextHub';
+
 import {
   CustomTabComponent,
   useContextMenuOptional,
@@ -77,6 +75,10 @@ import {
 } from './contextMenu';
 import { createDockviewHost } from './host';
 import { registerDockviewHost, unregisterDockviewHost, getDockviewHost } from './hostRegistry';
+import type { LocalPanelRegistry } from './LocalPanelRegistry';
+import styles from './SmartDockview.module.css';
+import type { LocalPanelDefinition } from './types';
+import { useSmartDockview } from './useSmartDockview';
 
 /** Base props shared by all modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -331,7 +333,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const resolvedPanelDefs = useMemo((): PanelDefinition[] => {
     if (panelsProp && panelsProp.length > 0) {
       let panels = panelsProp
-        .map(id => panelRegistry.get(id))
+        .map(id => panelSelectors.get(id))
         .filter((def): def is PanelDefinition => def !== undefined);
       if (allowedPanels && allowedPanels.length > 0) {
         const allowedSet = new Set(allowedPanels);
@@ -346,7 +348,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
     // New API: scope-based filtering
     if (scope) {
-      let panels = getPanelsForScope(scope);
+      let panels = panelSelectors.getForScope(scope);
       if (excludePanels.length > 0) {
         panels = panels.filter(p => !excludePanels.includes(p.id));
       }
@@ -368,9 +370,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Determine which panels are allowed to be added (context menu)
   const availablePanelDefs = useMemo((): PanelDefinition[] => {
     // Start with all public panels
-    let panels = panelRegistry.getPublicPanels
-      ? panelRegistry.getPublicPanels()
-      : panelRegistry.getAll();
+    let panels = panelSelectors.getPublicPanels();
 
     if (allowedPanels && allowedPanels.length > 0) {
       const allowedSet = new Set(allowedPanels);
@@ -436,7 +436,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
   // Subscribe to global panel registry - bump version on any change
   useEffect(() => {
-    const unsubscribe = panelRegistry.subscribe(() => {
+    const unsubscribe = panelSelectors.subscribe(() => {
       setGlobalRegistryVersion((version) => version + 1);
     });
     return unsubscribe;
@@ -815,7 +815,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     // - ScopeHost is stable and uses refs internally
     // - dockviewPanelRegistry uses a ref to get the latest value at callback time
     // The components map is created once and should not change during the component lifecycle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [
     registry,
     availablePanelDefs,

@@ -6,6 +6,8 @@
  * while the catalog becomes the single source of truth.
  */
 
+import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
+
 import type { DevToolDefinition, DevToolCategory } from '@lib/dev/devtools/types';
 
 import type { BrainToolPlugin, BrainToolContext, BrainToolCategory } from '@features/brainTools/lib/types';
@@ -17,6 +19,8 @@ import type {
   GizmoSurfaceContext,
   GizmoSurfaceId,
 } from '@features/gizmos/lib/core/surfaceRegistry';
+import type { PanelDefinition, WorkspaceContext } from '@features/panels/lib/panelRegistry';
+import type { PanelInstancePolicy } from '@features/panels/lib/panelTypes';
 import type { WorldToolPlugin, WorldToolContext, WorldToolCategory } from '@features/worldTools/lib/types';
 
 import { pluginCatalog } from './pluginSystem';
@@ -471,6 +475,360 @@ export const gizmoSurfaceSelectors = {
       const priorityB = b.priority ?? 0;
       return priorityB - priorityA;
     });
+  },
+
+  /**
+   * Subscribe to catalog changes
+   */
+  subscribe(callback: () => void): () => void {
+    return pluginCatalog.subscribe(callback);
+  },
+};
+
+// ============================================================================
+// Workspace Panel Selectors
+// ============================================================================
+
+function resolvePanelInstancePolicy(
+  policy: PanelInstancePolicy | undefined,
+  fallbackSupportsMultiple?: boolean,
+  fallbackMax?: number,
+): { supportsMultipleInstances?: boolean; maxInstances?: number } {
+  if (!policy) {
+    return {
+      supportsMultipleInstances: fallbackSupportsMultiple,
+      maxInstances: fallbackMax,
+    };
+  }
+
+  if (policy === 'single') {
+    return { supportsMultipleInstances: false, maxInstances: 1 };
+  }
+
+  if (policy === 'multiple') {
+    return { supportsMultipleInstances: true, maxInstances: fallbackMax };
+  }
+
+  if (typeof policy === 'object' && typeof policy.max === 'number') {
+    return {
+      supportsMultipleInstances: policy.max > 1,
+      maxInstances: policy.max,
+    };
+  }
+
+  return {
+    supportsMultipleInstances: fallbackSupportsMultiple,
+    maxInstances: fallbackMax,
+  };
+}
+
+function normalizePanelDefinition<TSettings = any>(
+  definition: PanelDefinition<TSettings>,
+): PanelDefinition<TSettings> {
+  const availableIn = definition.availability?.docks ?? definition.availableIn;
+  const { supportsMultipleInstances, maxInstances } = resolvePanelInstancePolicy(
+    definition.instances,
+    definition.supportsMultipleInstances,
+    definition.maxInstances,
+  );
+
+  if (
+    availableIn === definition.availableIn &&
+    supportsMultipleInstances === definition.supportsMultipleInstances &&
+    maxInstances === definition.maxInstances
+  ) {
+    return definition;
+  }
+
+  return {
+    ...definition,
+    availableIn,
+    supportsMultipleInstances,
+    maxInstances,
+  };
+}
+
+/**
+ * Workspace panel catalog selectors
+ *
+ * Provides the same API as PanelRegistry but reads from the catalog.
+ */
+export const panelSelectors = {
+  /**
+   * Get all panels
+   */
+  getAll(): PanelDefinition[] {
+    return pluginCatalog
+      .getPluginsByFamily<PanelDefinition>('workspace-panel')
+      .map((panel) => normalizePanelDefinition(panel));
+  },
+
+  /**
+   * Get a panel by ID
+   */
+  get(id: string): PanelDefinition | undefined {
+    const meta = pluginCatalog.get(id);
+    if (!meta || meta.family !== 'workspace-panel') return undefined;
+    const panel = pluginCatalog.getPlugin<PanelDefinition>(id);
+    return panel ? normalizePanelDefinition(panel) : undefined;
+  },
+
+  /**
+   * Check if a panel exists
+   */
+  has(id: string): boolean {
+    const meta = pluginCatalog.get(id);
+    return meta?.family === 'workspace-panel';
+  },
+
+  /**
+   * Get all panel IDs
+   */
+  getIds(): string[] {
+    return pluginCatalog.getByFamily('workspace-panel').map((meta) => meta.id);
+  },
+
+  /**
+   * Get the number of registered panels
+   */
+  get size(): number {
+    return pluginCatalog.getByFamily('workspace-panel').length;
+  },
+
+  /**
+   * Get panels by category
+   */
+  getByCategory(category: string): PanelDefinition[] {
+    return this.getAll().filter((panel) => panel.category === category);
+  },
+
+  /**
+   * Get panels that should appear in user-facing lists.
+   */
+  getPublicPanels(): PanelDefinition[] {
+    return this.getAll().filter((panel) => !panel.isInternal);
+  },
+
+  /**
+   * Search panels by query (searches id, title, description, tags)
+   */
+  search(query: string): PanelDefinition[] {
+    const lowerQuery = query.toLowerCase();
+    return this.getAll().filter((panel) => {
+      const matchesId = panel.id.toLowerCase().includes(lowerQuery);
+      const matchesTitle = panel.title.toLowerCase().includes(lowerQuery);
+      const matchesDescription = panel.description
+        ?.toLowerCase()
+        .includes(lowerQuery);
+      const matchesTags = panel.tags?.some((tag) =>
+        tag.toLowerCase().includes(lowerQuery)
+      );
+
+      return matchesId || matchesTitle || matchesDescription || matchesTags;
+    });
+  },
+
+  /**
+   * Get visible panels based on context
+   */
+  getVisiblePanels(context: WorkspaceContext): PanelDefinition[] {
+    return this.getAll().filter((panel) => {
+      if (!panel.showWhen) return true;
+      try {
+        return panel.showWhen(context);
+      } catch (error) {
+        console.error(`Error in showWhen for panel "${panel.id}":`, error);
+        return false;
+      }
+    });
+  },
+
+  /**
+   * Get registry statistics
+   */
+  getStats() {
+    const all = this.getAll();
+    return {
+      total: all.length,
+      byCategory: {
+        workspace: all.filter((p) => p.category === 'workspace').length,
+        scene: all.filter((p) => p.category === 'scene').length,
+        game: all.filter((p) => p.category === 'game').length,
+        dev: all.filter((p) => p.category === 'dev').length,
+        tools: all.filter((p) => p.category === 'tools').length,
+        utilities: all.filter((p) => p.category === 'utilities').length,
+        system: all.filter((p) => p.category === 'system').length,
+        custom: all.filter((p) => p.category === 'custom').length,
+      },
+      capabilities: {
+        supportsCompactMode: all.filter((p) => p.supportsCompactMode).length,
+        supportsMultipleInstances: all.filter(
+          (p) => p.supportsMultipleInstances,
+        ).length,
+        requiresContext: all.filter((p) => p.requiresContext).length,
+      },
+    };
+  },
+
+  /**
+   * Get panels by a specific tag
+   */
+  getByTag(tag: string): PanelDefinition[] {
+    return this.getAll().filter((panel) => panel.tags?.includes(tag));
+  },
+
+  /**
+   * Get panel IDs by tag
+   */
+  getIdsByTag(tag: string): string[] {
+    return this.getByTag(tag).map((panel) => panel.id);
+  },
+
+  /**
+   * Get panels available in a specific dockview scope.
+   */
+  getForScope(scope: string): PanelDefinition[] {
+    return this.getAll()
+      .filter((panel) => panel.availableIn?.includes(scope))
+      .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+  },
+
+  /**
+   * Get panel IDs available in a specific dockview scope.
+   */
+  getIdsForScope(scope: string): string[] {
+    return this.getForScope(scope).map((panel) => panel.id);
+  },
+
+  /**
+   * Legacy alias for getForScope
+   */
+  getPanelsForScope(scope: string): PanelDefinition[] {
+    return this.getForScope(scope);
+  },
+
+  /**
+   * Legacy alias for getIdsForScope
+   */
+  getPanelIdsForScope(scope: string): string[] {
+    return this.getIdsForScope(scope);
+  },
+
+  /**
+   * Subscribe to catalog changes
+   */
+  subscribe(callback: () => void): () => void {
+    return pluginCatalog.subscribe(callback);
+  },
+};
+
+// ============================================================================
+// Dock Widget Selectors
+// ============================================================================
+
+let defaultPresetScope: PresetScope = 'workspace';
+
+/**
+ * Dock widget catalog selectors
+ *
+ * Provides the same API as DockZoneRegistry but reads from the catalog.
+ */
+export const dockWidgetSelectors = {
+  /**
+   * Get all dock widgets
+   */
+  getAll(): DockZoneDefinition[] {
+    return pluginCatalog.getPluginsByFamily<DockZoneDefinition>('dock-widget');
+  },
+
+  /**
+   * Get a dock widget by ID
+   */
+  get(id: string): DockZoneDefinition | undefined {
+    const meta = pluginCatalog.get(id);
+    if (!meta || meta.family !== 'dock-widget') return undefined;
+    return pluginCatalog.getPlugin<DockZoneDefinition>(id);
+  },
+
+  /**
+   * Check if a dock widget exists
+   */
+  has(id: string): boolean {
+    const meta = pluginCatalog.get(id);
+    return meta?.family === 'dock-widget';
+  },
+
+  /**
+   * Get all dock widget IDs
+   */
+  getIds(): string[] {
+    return pluginCatalog.getByFamily('dock-widget').map((meta) => meta.id);
+  },
+
+  /**
+   * Get the number of registered dock widgets
+   */
+  get size(): number {
+    return pluginCatalog.getByFamily('dock-widget').length;
+  },
+
+  /**
+   * Get dock widget by dockview ID
+   */
+  getByDockviewId(dockviewId: string): DockZoneDefinition | undefined {
+    return this.getAll().find((widget) => widget.dockviewId === dockviewId);
+  },
+
+  /**
+   * Get panel IDs for a dockview with scope-based filtering.
+   */
+  getPanelIds(dockviewId: string | undefined): string[] {
+    if (!dockviewId) return [];
+    const widget = this.getByDockviewId(dockviewId);
+    if (!widget) return [];
+
+    if (widget.allowedPanels && widget.allowedPanels.length > 0) {
+      return widget.allowedPanels;
+    }
+
+    if (widget.panelScope) {
+      return panelSelectors.getForScope(widget.panelScope).map((panel) => panel.id);
+    }
+
+    return [];
+  },
+
+  /**
+   * Set the default preset scope fallback.
+   */
+  setDefaultPresetScope(scope: PresetScope): void {
+    defaultPresetScope = scope;
+  },
+
+  /**
+   * Get the default preset scope fallback.
+   */
+  getDefaultPresetScope(): PresetScope {
+    return defaultPresetScope;
+  },
+
+  /**
+   * Resolve preset scope for a dockview ID.
+   */
+  resolvePresetScope(
+    dockviewId: string | undefined,
+    fallback?: PresetScope,
+  ): PresetScope {
+    if (!dockviewId) {
+      return fallback ?? defaultPresetScope;
+    }
+
+    const widget = this.getByDockviewId(dockviewId);
+    if (widget?.presetScope) {
+      return widget.presetScope;
+    }
+
+    return fallback ?? defaultPresetScope;
   },
 
   /**

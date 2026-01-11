@@ -10,8 +10,9 @@
 
 import type { CapabilityKey, CapabilityProvider } from "@pixsim7/capabilities-core";
 
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
+
 import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/contextHub";
-import { panelRegistry } from "@features/panels";
 import { getCapabilityKeys } from "@features/panels/lib/panelTypes";
 
 import {
@@ -66,7 +67,7 @@ function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
   ].filter(Boolean) as string[];
 
   for (const candidate of candidates) {
-    if (panelRegistry.get(candidate)) {
+    if (panelSelectors.get(candidate)) {
       return candidate;
     }
   }
@@ -77,7 +78,7 @@ function resolvePanelDefinitionId(ctx: MenuActionContext): string | undefined {
 function getDeclaredCapabilities(ctx: MenuActionContext): CapabilityKey[] {
   const panelId = resolvePanelDefinitionId(ctx);
   if (!panelId) return [];
-  const definition = panelRegistry.get(panelId);
+  const definition = panelSelectors.get(panelId);
   return getCapabilityKeys(definition?.consumesCapabilities);
 }
 

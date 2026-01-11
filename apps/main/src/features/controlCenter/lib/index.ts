@@ -1,9 +1,9 @@
 /**
  * Control Center Lib
  *
- * Note: Control Center panels are now registered to the global panelRegistry
- * with the 'control-center' tag. Use getPanelsByTag('control-center') from
- * @features/panels to get CC panels.
+ * Note: Control Center panels are registered in the plugin catalog
+ * with the 'control-center' tag. Use panelSelectors.getByTag('control-center')
+ * from @features/panels to get CC panels.
  *
  * This folder contains:
  * - api.ts: Generation API wrappers

@@ -55,6 +55,7 @@ export {
   type PanelSettingsFormSchema,
 } from "./lib/panelRegistry";
 
+
 export {
   usePanelSettingsHelpers,
   validateAndMigrateSettings,
@@ -63,11 +64,13 @@ export {
 export {
   dockWidgetRegistry,
   registerDockWidget,
+  registerDefaultDockWidgets,
   getDockWidget,
   getDockWidgetByDockviewId,
   resolvePresetScope,
   getDockWidgetPanelIds,
   type DockWidgetDefinition,
+  type PresetScope,
 } from "./lib/dockWidgetRegistry";
 
 export {

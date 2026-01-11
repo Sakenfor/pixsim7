@@ -19,10 +19,10 @@ import type { DockviewApi } from 'dockview-core';
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 
 import { SmartDockview } from '@lib/dockview';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
 import type { PanelDefinition } from '@features/panels';
-import { getPanelIdsForScope, panelRegistry } from '@features/panels';
 
 import type { ViewerSettings } from './types';
 
@@ -66,6 +66,7 @@ const DEFAULT_VIEWER_PANEL_IDS = [
  * Media preview takes top 75%, generate/metadata tabs below.
  */
 function createDefaultLayout(api: DockviewApi, panelDefs: PanelDefinition[]) {
+  void panelDefs;
   // Media panel takes the top area
   api.addPanel({
     id: 'media-preview',
@@ -122,13 +123,13 @@ export function AssetViewerDockview({
   panelManagerId,
 }: AssetViewerDockviewProps) {
   const [viewerPanelIds, setViewerPanelIds] = useState<string[]>(() => {
-    const ids = getPanelIdsForScope('asset-viewer');
+    const ids = panelSelectors.getIdsForScope('asset-viewer');
     return ids.length > 0 ? ids : [...DEFAULT_VIEWER_PANEL_IDS];
   });
 
   useEffect(() => {
-    return panelRegistry.subscribe(() => {
-      const ids = getPanelIdsForScope('asset-viewer');
+    return panelSelectors.subscribe(() => {
+      const ids = panelSelectors.getIdsForScope('asset-viewer');
       setViewerPanelIds(ids.length > 0 ? ids : [...DEFAULT_VIEWER_PANEL_IDS]);
     });
   }, []);

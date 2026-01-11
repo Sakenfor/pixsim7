@@ -5,10 +5,11 @@ import { Rnd } from 'react-rnd';
 import { useNavigate } from 'react-router-dom';
 
 import { SmartDockview } from '@lib/dockview';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { getPanelsForScope, type PanelDefinition } from '@features/panels';
+import type { PanelDefinition } from '@features/panels';
 
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { DockToolbar } from './DockToolbar';
@@ -19,7 +20,7 @@ import { useDockBehavior } from './hooks/useDockBehavior';
  * Filters panels that have availableIn: ['control-center'].
  */
 function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): PanelDefinition[] {
-  const all = getPanelsForScope('control-center');
+  const all = panelSelectors.getPanelsForScope('control-center');
 
   if (!enabledPrefs || Object.keys(enabledPrefs).length === 0) {
     return all.filter((p) => p.enabledByDefault !== false);
@@ -251,4 +252,3 @@ export function ControlCenterDock() {
     </div>
   );
 }
-

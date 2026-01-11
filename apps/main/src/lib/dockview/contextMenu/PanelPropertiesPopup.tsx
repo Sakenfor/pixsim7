@@ -1,7 +1,9 @@
+import { Panel } from "@pixsim7/shared.ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
-import { Panel } from "@pixsim7/shared.ui";
+
+import { useContextHubState, type CapabilityConsumption } from "@features/contextHub";
 import {
   panelRegistry,
   panelSettingsScopeRegistry,
@@ -10,7 +12,7 @@ import {
   getScopeMode,
   ScopeModeSelect,
 } from "@features/panels";
-import { useContextHubState, type CapabilityConsumption } from "@features/contextHub";
+
 import type { ContextMenuContext } from "./types";
 
 type PopupPosition = { x: number; y: number };
@@ -24,7 +26,7 @@ interface PropertiesPayload {
   /** Panel info (for panel-content, tab contexts) */
   panelId?: string;
   instanceId?: string;
-  /** Panel title (for local registries that aren't in global panelRegistry) */
+  /** Panel title (for local registries that aren't in the global catalog) */
   panelTitle?: string;
   /** Panel definition from local registry (includes settingScopes, tags, category) */
   panelDefinition?: {
@@ -49,6 +51,7 @@ interface PropertiesPopupState {
   close: () => void;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- store export is intentional
 export const usePropertiesPopupStore = create<PropertiesPopupState>((set) => ({
   isOpen: false,
   payload: null,

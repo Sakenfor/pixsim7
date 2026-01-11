@@ -9,13 +9,9 @@ import type { DockviewApi } from "dockview-core";
 import { useEffect, useMemo, useState } from "react";
 
 import { getDockviewHost } from "@lib/dockview";
+import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import {
-  dockWidgetRegistry,
-  getDockWidgetPanelIds,
-  type DockWidgetDefinition,
-  panelRegistry,
-} from "@features/panels";
+import type { DockWidgetDefinition } from "@features/panels";
 import { useWorkspaceStore } from "@features/workspace/stores/workspaceStore";
 import type { LayoutPreset } from "@features/workspace/stores/workspaceStore";
 
@@ -24,7 +20,7 @@ import { settingsRegistry } from "../../lib/core/registry";
 type PresetScope = LayoutPreset["scope"];
 
 function resolvePanelTitle(panelId: string): string {
-  return panelRegistry.get(panelId)?.title ?? panelId;
+  return panelSelectors.get(panelId)?.title ?? panelId;
 }
 
 function getDockviewPanels(api: DockviewApi): any[] {
@@ -86,14 +82,14 @@ export function WidgetPresetsSettings() {
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
 
   useEffect(() => {
-    return dockWidgetRegistry.subscribe(() => {
+    return dockWidgetSelectors.subscribe(() => {
       setRegistryVersion((v) => v + 1);
     });
   }, []);
 
   const widgets = useMemo(
     () =>
-      dockWidgetRegistry
+      dockWidgetSelectors
         .getAll()
         .slice()
         .sort((a, b) => a.label.localeCompare(b.label)),
@@ -115,7 +111,7 @@ export function WidgetPresetsSettings() {
           localStorage.removeItem(widget.storageKey);
         }
         clearDockview(host.api);
-        const panelIds = getDockWidgetPanelIds(widget.dockviewId);
+        const panelIds = dockWidgetSelectors.getPanelIds(widget.dockviewId);
         applyFallbackLayout(host.api, panelIds);
       }
       setActivePreset(widget.presetScope, preset.id);

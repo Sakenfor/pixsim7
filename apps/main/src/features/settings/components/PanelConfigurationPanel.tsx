@@ -10,11 +10,15 @@
  */
 
 import { useState, useMemo } from 'react';
-import { usePanelConfigStore } from '@features/panels';
-import { useWorkspaceStore } from '@features/workspace';
+
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
-import { panelRegistry } from '@features/panels/lib/panelRegistry';
+
+import { usePanelConfigStore } from '@features/panels';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+import { useWorkspaceStore } from '@features/workspace';
+
+
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
@@ -28,12 +32,8 @@ export function PanelConfigurationPanel() {
   const togglePanelEnabled = usePanelConfigStore((s) => s.togglePanelEnabled);
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
   const searchPanels = usePanelConfigStore((s) => s.searchPanels);
-  const getPanelsByCategory = usePanelConfigStore((s) => s.getPanelsByCategory);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
-  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
-
-  const [graphEditorSelectorOpen, setGraphEditorSelectorOpen] = useState(false);
 
   // Filter panels based on search and category
   const filteredPanels = useMemo(() => {
@@ -129,7 +129,6 @@ export function PanelConfigurationPanel() {
           ) : (
             <div className="flex flex-col">
               {filteredPanels.map((panel) => {
-                const pluginMeta = pluginCatalog.get(panel.id);
                 const isSelected = selectedPanelId === panel.id;
                 return (
                   <button
@@ -212,7 +211,7 @@ function PanelDetailView({
   const pluginMeta = pluginCatalog.get(panel.id);
 
   // Get panel definition from registry
-  const panelDefinition = panelRegistry.get(panel.id);
+  const panelDefinition = panelSelectors.get(panel.id);
 
   // Create settings helpers with debouncing
   const settingsHelpers = usePanelSettingsHelpers(

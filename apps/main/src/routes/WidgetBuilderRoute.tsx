@@ -13,8 +13,8 @@ import { Button, Panel } from '@pixsim7/shared.ui';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { dockZoneRegistry } from '@lib/dockview';
 import { useUndoRedo } from '@lib/editing-core';
+import { dockWidgetSelectors, panelSelectors } from '@lib/plugins/catalogSelectors';
 import type { OverlayConfiguration } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
 import { LocalStoragePresetStorage } from '@lib/ui/overlay';
@@ -28,7 +28,6 @@ import {
   type WidgetInstance,
 } from '@lib/widgets';
 
-import { panelRegistry, getPanelsForScope } from '@features/panels/lib';
 
 import { MediaCard } from '@/components/media/MediaCard';
 import { OverlayEditor } from '@/components/overlay-editor';
@@ -712,26 +711,26 @@ function BrowseExisting() {
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null);
 
-  // Get all dock zones dynamically from registry
-  const dockZones = useMemo(() => dockZoneRegistry.getAll(), []);
+  // Get all dock zones dynamically from catalog
+  const dockZones = useMemo(() => dockWidgetSelectors.getAll(), []);
 
   // Get panels for selected zone
   const panelsForZone = useMemo(() => {
     if (!selectedZoneId) return [];
-    const zone = dockZoneRegistry.get(selectedZoneId);
+    const zone = dockWidgetSelectors.get(selectedZoneId);
     if (!zone?.panelScope) return [];
-    return getPanelsForScope(zone.panelScope);
+    return panelSelectors.getForScope(zone.panelScope);
   }, [selectedZoneId]);
 
   // Get all registered panels
-  const allPanels = useMemo(() => panelRegistry.getAll(), []);
+  const allPanels = useMemo(() => panelSelectors.getAll(), []);
 
   // Get all registered widgets
   const allWidgets = useMemo(() => widgetRegistry.getAll(), []);
 
   // Selected panel details
   const selectedPanel = useMemo(
-    () => (selectedPanelId ? panelRegistry.get(selectedPanelId) : null),
+    () => (selectedPanelId ? panelSelectors.get(selectedPanelId) : null),
     [selectedPanelId]
   );
 
@@ -770,7 +769,7 @@ function BrowseExisting() {
       {selectedZoneId && (
         <Panel className="space-y-3">
           <h3 className="text-sm font-semibold">
-            Panels in {dockZoneRegistry.get(selectedZoneId)?.label} ({panelsForZone.length})
+            Panels in {dockWidgetSelectors.get(selectedZoneId)?.label} ({panelsForZone.length})
           </h3>
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {panelsForZone.map((panel) => (
@@ -842,7 +841,7 @@ function BrowseExisting() {
               >
                 <div className="font-medium">{zone.label}</div>
                 <div className={`text-xs ${selectedZoneId === zone.id ? 'text-blue-100' : 'text-neutral-500'}`}>
-                  {getPanelsForScope(zone.panelScope || '').length} panels
+                  {panelSelectors.getForScope(zone.panelScope ?? '').length} panels
                 </div>
               </div>
             ))}

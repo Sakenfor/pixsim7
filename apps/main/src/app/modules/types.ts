@@ -9,8 +9,11 @@ import {
   registerRoute,
 } from '@lib/capabilities';
 import type { DevToolCategory } from '@lib/dev/devtools/types';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { logEvent } from '@lib/utils';
 
+import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 import type { BasePanelDefinition } from '@features/panels/lib/panelTypes';
 
 
@@ -117,7 +120,7 @@ export interface Module {
   /**
    * Control Center panels (optional)
    * Modules can provide CC panels that will be automatically registered
-   * to the global panelRegistry with 'control-center' tag.
+   * to the panel catalog with 'control-center' tag.
    * These are rendered via SmartDockview in the Control Center.
    */
   controlCenterPanels?: BasePanelDefinition[];
@@ -337,19 +340,39 @@ class ModuleRegistry {
     // Notify listeners of the registry change
     this.notifyListeners();
 
-    // Auto-register any Control Center panels to global panelRegistry
+    // Auto-register any Control Center panels to plugin catalog
     if (module.controlCenterPanels && module.controlCenterPanels.length > 0) {
-      // Dynamic import to avoid circular dependency
-      import('@features/panels/lib/panelRegistry').then(({ registerSimplePanel }) => {
-        module.controlCenterPanels!.forEach(panel => {
-          // Add 'control-center' tag for filtering
-          const tags = [...(panel.tags ?? []), 'control-center'];
-          registerSimplePanel({ ...panel, tags });
-          logEvent('INFO', 'cc_panel_registered_from_module', {
-            moduleId: module.id,
-            panelId: panel.id,
-            panelTitle: panel.title
-          });
+      module.controlCenterPanels.forEach((panel) => {
+        if (panelSelectors.has(panel.id)) {
+          return;
+        }
+
+        const tags = [...(panel.tags ?? []), 'control-center'];
+        const definition: PanelDefinition = {
+          ...panel,
+          id: panel.id as any,
+          category: (panel.category ?? 'custom') as any,
+          tags,
+        };
+
+        void registerPluginDefinition({
+          id: definition.id,
+          family: 'workspace-panel',
+          origin: 'builtin',
+          source: 'source',
+          plugin: definition,
+          canDisable: false,
+        }).catch((error) => {
+          console.warn(
+            '[ModuleRegistry] Failed to register control center panel:',
+            error,
+          );
+        });
+
+        logEvent('INFO', 'cc_panel_registered_from_module', {
+          moduleId: module.id,
+          panelId: panel.id,
+          panelTitle: panel.title
         });
       });
     }

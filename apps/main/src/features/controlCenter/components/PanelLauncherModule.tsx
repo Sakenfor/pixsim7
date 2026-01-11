@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 
 import { resolvePanelDefinitionId } from '@lib/dockview';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { panelRegistry } from '@features/panels';
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
 import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
 
@@ -11,8 +11,8 @@ export function PanelLauncherModule() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
 
-  // Get all panels from registry
-  const allPanels = useMemo(() => panelRegistry.getPublicPanels(), []);
+  // Get all panels from catalog
+  const allPanels = useMemo(() => panelSelectors.getPublicPanels(), []);
 
   // Get list of currently open panels (docked) from dockview API
   const [openPanels, setOpenPanels] = useState<Set<PanelId>>(new Set());

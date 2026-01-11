@@ -22,12 +22,12 @@
  * ```
  */
 
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import type { PanelModule } from './definePanel';
 import { getPanelContexts } from './definePanel';
 import type { PanelDefinition } from './panelRegistry';
-import { panelRegistry } from './panelRegistry';
 
 
 /**
@@ -133,7 +133,7 @@ export async function autoRegisterPanels(
       }
 
       // Check if already registered
-      if (panelRegistry.has(panel.definition.id as any)) {
+      if (panelSelectors.has(panel.definition.id as any)) {
         if (verbose) {
           console.log(
             `[PanelAutoDiscovery] Skipping ${panel.definition.id} (already registered)`
@@ -187,7 +187,7 @@ export async function autoRegisterPanels(
  * Useful for dockviews that only want panels for their specific context.
  */
 export function getPanelsForContext(context: string): PanelDefinition[] {
-  return panelRegistry.getAll().filter((panel) => {
+  return panelSelectors.getAll().filter((panel) => {
     const contexts = getPanelContexts(panel);
     return contexts.length === 0 || contexts.includes(context);
   });

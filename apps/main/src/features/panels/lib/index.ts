@@ -12,6 +12,8 @@ export {
   type PanelInstancePolicy,
 } from "./panelTypes";
 
+export { panelSelectors, dockWidgetSelectors } from "@lib/plugins/catalogSelectors";
+
 export {
   PanelRegistry,
   panelRegistry,
@@ -80,11 +82,13 @@ export {
 export {
   dockWidgetRegistry,
   registerDockWidget,
+  registerDefaultDockWidgets,
   getDockWidget,
   getDockWidgetByDockviewId,
   resolvePresetScope,
   getDockWidgetPanelIds,
   type DockWidgetDefinition,
+  type PresetScope,
 } from "./dockWidgetRegistry";
 
 // Scope instance helpers

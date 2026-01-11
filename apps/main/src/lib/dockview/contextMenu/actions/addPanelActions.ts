@@ -3,7 +3,7 @@
  *
  * Context menu actions for adding panels to dockview:
  * - Shows available panels grouped by category
- * - Only shows panels registered in panelRegistry
+ * - Only shows panels registered in the panel catalog
  */
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
@@ -14,7 +14,7 @@ import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 /**
- * Get panels grouped by category from the panel registry
+ * Get panels grouped by category from the panel catalog
  */
 function getPanelsByCategory(ctx: MenuActionContext): Map<string, Array<{
   id: string;

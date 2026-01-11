@@ -2,8 +2,8 @@ import { Icon } from "@lib/icons";
 import { useState, useEffect } from "react";
 
 import { resolvePanelDefinitionId } from "@lib/dockview";
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import { panelRegistry } from "@features/panels";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
 
 import { getWorkspaceDockviewApi } from "../../lib/getWorkspaceDockviewApi";
@@ -34,7 +34,7 @@ export function AddPanelDropdown({
     }
     setExistingPanels(ids);
   }, []);
-  const allPanels = panelRegistry.getPublicPanels();
+  const allPanels = panelSelectors.getPublicPanels();
 
   // Group panels by category
   const panelsByCategory = CATEGORY_ORDER.map((category) => ({

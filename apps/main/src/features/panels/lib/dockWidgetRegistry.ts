@@ -1,79 +1,99 @@
 /**
- * Dock Zone Registry (Feature Facade)
+ * Dock Widget Catalog Facade
  *
- * Re-exports from @lib/dockview with panel-specific extensions.
- * Adds scope-based panel filtering which requires access to the panel registry.
+ * Provides dock widget helpers backed by the unified plugin catalog.
  */
 
-import {
-  getDockZone,
-  getDockZoneByDockviewId,
-  getDockZonePanelIds as libGetPanelIds,
-  registerDockZone,
-  registerDefaultDockZones,
-} from "@/lib/dockview/dockZoneRegistry";
-import type { DockZoneDefinition } from "@/lib/dockview/dockZoneRegistry";
+import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
+import { DEFAULT_DOCK_ZONES } from '@lib/dockview/dockZoneRegistry';
 
-import { getPanelsForScope } from "./panelRegistry";
+import { dockWidgetSelectors } from '@lib/plugins/catalogSelectors';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
-// Re-export from lib
-export {
-  dockZoneRegistry,
-  registerDockZone,
-  unregisterDockZone,
-  getDockZone,
-  getDockZoneByDockviewId,
-  resolvePresetScope,
-  setDefaultPresetScope,
-  getDefaultPresetScope,
-  getDockZonePanelIds,
-  registerDefaultDockZones,
-  areDefaultZonesRegistered,
-  DEFAULT_DOCK_ZONES,
-} from "@/lib/dockview/dockZoneRegistry";
-
-export type { DockZoneDefinition, PresetScope } from "@/lib/dockview/dockZoneRegistry";
+export type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
+export { DEFAULT_DOCK_ZONES } from '@lib/dockview/dockZoneRegistry';
 export type DockWidgetDefinition = DockZoneDefinition;
 
-// @deprecated - Use dockZoneRegistry instead
-export { dockZoneRegistry as dockWidgetRegistry } from "@/lib/dockview/dockZoneRegistry";
-export function registerDockWidget(definition: DockZoneDefinition): void {
-  registerDockZone(definition);
+export { dockWidgetSelectors };
+
+// @deprecated - use dockWidgetSelectors directly
+export const dockWidgetRegistry = dockWidgetSelectors;
+
+/**
+ * Register a dock widget definition.
+ */
+export async function registerDockWidget(
+  definition: DockZoneDefinition,
+): Promise<void> {
+  await registerPluginDefinition({
+    id: definition.id,
+    family: 'dock-widget',
+    origin: 'builtin',
+    source: 'source',
+    plugin: definition,
+    canDisable: false,
+  });
 }
 
+/**
+ * Register default dock widgets (workspace, control center, asset viewer).
+ */
+export async function registerDefaultDockWidgets(
+  override = false,
+): Promise<void> {
+  for (const zone of DEFAULT_DOCK_ZONES) {
+    if (override || !dockWidgetSelectors.has(zone.id)) {
+      await registerDockWidget(zone);
+    }
+  }
+}
+
+/**
+ * Get a dock widget by ID.
+ */
 export function getDockWidget(id: string): DockZoneDefinition | undefined {
-  return getDockZone(id);
+  return dockWidgetSelectors.get(id);
 }
 
+/**
+ * Get a dock widget by dockview ID.
+ */
 export function getDockWidgetByDockviewId(
   dockviewId: string | undefined,
 ): DockZoneDefinition | undefined {
-  return getDockZoneByDockviewId(dockviewId);
+  if (!dockviewId) return undefined;
+  return dockWidgetSelectors.getByDockviewId(dockviewId);
 }
 
 /**
  * Get panel IDs for a dockview with scope-based filtering.
- *
- * This extends the lib's getDockZonePanelIds by adding
- * support for panelScope-based filtering using the panel registry.
  */
-export function getDockWidgetPanelIds(dockviewId: string | undefined): string[] {
-  const zone = getDockZoneByDockviewId(dockviewId);
-  if (!zone) return [];
-
-  // First try allowedPanels (explicit allowlist)
-  if (zone.allowedPanels && zone.allowedPanels.length > 0) {
-    return zone.allowedPanels;
-  }
-
-  // Then try scope-based filtering (requires panel registry)
-  if (zone.panelScope) {
-    return getPanelsForScope(zone.panelScope).map((panel) => panel.id);
-  }
-
-  // Fall back to lib implementation
-  return libGetPanelIds(dockviewId);
+export function getDockWidgetPanelIds(
+  dockviewId: string | undefined,
+): string[] {
+  return dockWidgetSelectors.getPanelIds(dockviewId);
 }
 
-// Auto-register defaults on module load
-registerDefaultDockZones();
+/**
+ * Set the default preset scope fallback.
+ */
+export function setDefaultPresetScope(scope: PresetScope): void {
+  dockWidgetSelectors.setDefaultPresetScope(scope);
+}
+
+/**
+ * Get the default preset scope fallback.
+ */
+export function getDefaultPresetScope(): PresetScope {
+  return dockWidgetSelectors.getDefaultPresetScope();
+}
+
+/**
+ * Resolve preset scope for a dockview ID.
+ */
+export function resolvePresetScope(
+  dockviewId: string | undefined,
+  fallback?: PresetScope,
+): PresetScope {
+  return dockWidgetSelectors.resolvePresetScope(dockviewId, fallback);
+}

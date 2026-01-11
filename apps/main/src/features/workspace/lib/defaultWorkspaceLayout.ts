@@ -1,13 +1,15 @@
 import type { DockviewReadyEvent } from "dockview-core";
 
-import { panelRegistry, type PanelDefinition } from "@features/panels";
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
+
+import { type PanelDefinition } from "@features/panels";
 
 const defaultWorkspacePanels: string[] = ["gallery", "health", "graph", "inspector", "game"];
 
 function resolveTitle(panelId: string, panelDefs?: PanelDefinition[]) {
   const fromResolved = panelDefs?.find((p) => p.id === panelId)?.title;
   if (fromResolved) return fromResolved;
-  return panelRegistry.get(panelId)?.title ?? panelId;
+  return panelSelectors.get(panelId)?.title ?? panelId;
 }
 
 export function createDefaultLayout(
@@ -18,7 +20,7 @@ export function createDefaultLayout(
     id: string,
     position?: { direction: "left" | "right" | "below" | "above"; referencePanel?: string }
   ) => {
-    if (!panelRegistry.get(id)) return;
+    if (!panelSelectors.get(id)) return;
     api.addPanel({
       id,
       component: id,

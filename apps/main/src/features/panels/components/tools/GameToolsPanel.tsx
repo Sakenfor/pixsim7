@@ -5,12 +5,11 @@ import {
   type EditorPrimaryView,
   type EditorMode,
 } from "@lib/context";
-import { worldToolSelectors } from "@lib/plugins/catalogSelectors";
+import { panelSelectors, worldToolSelectors } from "@lib/plugins/catalogSelectors";
 import { pluginCatalog } from "@lib/plugins/pluginSystem";
 import { interactionRegistry } from "@lib/registries";
 import { widgetRegistry } from "@lib/ui/composer";
 
-import { panelRegistry } from "@features/panels";
 
 
 type CategoryFilter =
@@ -95,7 +94,7 @@ export function GameToolsPanel() {
     setHasUserOverride(true);
   };
 
-  const panels = useMemo(() => panelRegistry.getPublicPanels(), []);
+  const panels = useMemo(() => panelSelectors.getPublicPanels(), []);
   const widgets = useMemo(() => widgetRegistry.getAll(), []);
   const worldTools = useMemo(() => worldToolSelectors.getAll(), []);
   const interactions = useMemo(() => interactionRegistry.getAll(), []);

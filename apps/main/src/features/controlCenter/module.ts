@@ -1,8 +1,10 @@
-import type { Module } from '@app/modules/types';
-import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
-import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
 import { ProviderOverviewModule } from '@features/providers';
+
 import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
+import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
+import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
+
+import type { Module } from '@app/modules/types';
 
 /**
  * Control Center Module
@@ -22,7 +24,7 @@ export const controlCenterModule: Module = {
     // Control center initialization (dock mode is default)
   },
 
-  // Auto-register Control Center panels to global panelRegistry
+  // Auto-register Control Center panels to the panel catalog
   controlCenterPanels: [
     {
       id: 'cc-generate',

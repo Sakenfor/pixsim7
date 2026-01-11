@@ -3,16 +3,17 @@
  *
  * Metadata registry for panel orchestration system.
  * Defines interaction rules and zone behaviors for workspace panels.
- * Metadata now pulls from the panel registry to keep sources in sync.
+ * Metadata now pulls from the plugin catalog to keep sources in sync.
  */
 
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
 import { arePanelsInitialized, initializePanels } from './initializePanels';
-import { panelRegistry } from './panelRegistry';
 import type { PanelMetadata } from './types';
 
 
 function getRegistryPanelMetadata(): PanelMetadata[] {
-  return panelRegistry
+  return panelSelectors
     .getAll()
     .filter((panel) => !!panel.orchestration)
     .map((panel) => ({

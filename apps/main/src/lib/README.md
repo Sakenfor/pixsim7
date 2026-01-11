@@ -6,8 +6,8 @@ This section is specifically for **registries and plugin integration**.
 
 ## Registry Conventions
 
-- Most UI systems expose a small, in‑memory registry:
-  - Panels: `apps/main/src/lib/panels/panelRegistry.ts`
+- Most UI systems expose a small, in-memory registry:
+  - Panels: `apps/main/src/lib/plugins/catalogSelectors.ts` (panelSelectors)
   - Dev tools: `apps/main/src/lib/devtools/devToolRegistry.ts`
   - Graph editors: `apps/main/src/lib/graph/editorRegistry.ts`
   - Gizmo surfaces: `apps/main/src/lib/gizmos/surfaceRegistry.ts`
@@ -20,7 +20,7 @@ Core rules:
 - **Prefer a shared base**: new registries should extend the generic base once Task 91 is implemented:
   - `apps/main/src/lib/core/BaseRegistry.ts` (see `claude-tasks/91-ui-registry-base-and-normalization.md`)
 - **Expose a singleton**:
-  - e.g. `export const panelRegistry = new PanelRegistry();`
+  - e.g. `export const widgetRegistry = new WidgetRegistry();`
 - **Keep domain logic in the concrete registry**:
   - Category helpers (`getByCategory`), visibility helpers (`getVisible`), stats (`getStats`), etc.
 
@@ -111,7 +111,7 @@ The following UI registries extend `BaseRegistry`:
 
 | Registry | Location | Purpose | Features |
 |----------|----------|---------|----------|
-| **PanelRegistry** | `lib/panels/panelRegistry.ts` | Workspace panels | Listeners, Search, Stats, Lifecycle hooks |
+| **PanelRegistry (legacy)** | `lib/panels/panelRegistry.ts` | Workspace panels | Legacy; catalog selectors are primary |
 | **DevToolRegistry** | `lib/devtools/devToolRegistry.ts` | Developer tools | Listeners, Search, Category filtering |
 | **GraphEditorRegistry** | `lib/graph/editorRegistry.ts` | Graph editor surfaces | Listeners, Search, Stats, Category filtering |
 | **GizmoSurfaceRegistry** | `lib/gizmos/surfaceRegistry.ts` | Gizmo UI surfaces | Listeners, Search, Context/tag filtering |
@@ -126,7 +126,7 @@ The following UI registries extend `BaseRegistry`:
 All registries support reactive updates via the `subscribe()` method:
 
 ```typescript
-const unsubscribe = panelRegistry.subscribe(() => {
+const unsubscribe = panelSelectors.subscribe(() => {
   // React to registry changes
   updateUI();
 });
@@ -143,7 +143,7 @@ Most registries provide a `search(query: string)` method that searches across re
 
 ```typescript
 // Search across all fields
-const results = panelRegistry.search('debug');
+const results = panelSelectors.search('debug');
 
 // Returns panels matching 'debug' in id, title, description, or tags
 ```
@@ -153,7 +153,7 @@ const results = panelRegistry.search('debug');
 Registries typically provide helper methods for filtering by category or type:
 
 ```typescript
-const corePanels = panelRegistry.getByCategory('core');
+const corePanels = panelSelectors.getByCategory('core');
 const textWidgets = widgetRegistry.getByType('text');
 ```
 

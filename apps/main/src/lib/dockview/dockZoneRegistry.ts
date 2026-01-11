@@ -225,7 +225,7 @@ export function areDefaultZonesRegistered(): boolean {
  * Returns allowedPanels if defined, otherwise returns empty array.
  *
  * Note: For scope-based panel filtering, use the panels feature's
- * getPanelsForScope() function which has access to the panel registry.
+ * panelSelectors.getPanelsForScope() helper (catalog-backed).
  */
 export function getDockZonePanelIds(
   dockviewId: string | undefined,

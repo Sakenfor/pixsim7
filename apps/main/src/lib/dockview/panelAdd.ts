@@ -1,5 +1,6 @@
 import type { DockviewApi } from 'dockview-core';
-import { panelRegistry } from '@features/panels';
+
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 export interface AddDockviewPanelOptions {
   allowMultiple?: boolean;
@@ -68,7 +69,7 @@ export function addDockviewPanel(
     return panelId;
   }
 
-  const definition = panelRegistry.get(panelId);
+  const definition = panelSelectors.get(panelId);
   const title = options.title ?? definition?.title ?? panelId;
   const instanceId = options.instanceId ?? (allowMultiple ? createInstanceId(panelId) : panelId);
   const params = { ...(options.params ?? {}), panelId };

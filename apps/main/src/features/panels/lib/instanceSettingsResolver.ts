@@ -12,15 +12,19 @@
  */
 
 import { useMemo } from "react";
-import { usePanelConfigStore } from "../stores/panelConfigStore";
-import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
+
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
+
 import { useComponentSettingsStore } from "@features/componentSettings";
-import { panelRegistry } from "./panelRegistry";
 import { componentRegistry } from "@features/componentSettings";
 import { collectSchemaDefaults } from "@features/settings";
-import { getScopeMode } from "./panelSettingsScopes";
 import type { SettingTab, SettingGroup } from "@features/settings";
 import type { PanelId } from "@features/workspace";
+
+import { usePanelConfigStore } from "../stores/panelConfigStore";
+import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
+
+import { getScopeMode } from "./panelSettingsScopes";
 
 // Stable empty objects to avoid creating new references
 const EMPTY_SETTINGS: Record<string, unknown> = {};
@@ -108,7 +112,7 @@ export function useResolvePanelSettings<T extends Record<string, unknown> = Reco
   instanceId?: string | null,
   scopeId?: string,
 ): ResolvedSettings<T> {
-  const panelDefinition = useMemo(() => panelRegistry.get(panelId), [panelId]);
+  const panelDefinition = useMemo(() => panelSelectors.get(panelId), [panelId]);
 
   // Check scope mode - if "local", we ignore global settings
   const effectiveScopeId = scopeId ?? panelId;

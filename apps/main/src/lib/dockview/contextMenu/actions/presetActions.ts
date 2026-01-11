@@ -11,9 +11,9 @@
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
+import { resolvePresetScope, type PresetScope } from '@features/panels';
 import type { LayoutPreset } from '@features/workspace/stores/workspaceStore';
 
-import { resolvePresetScope, type PresetScope } from '../../dockZoneRegistry';
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import type { MenuAction, MenuActionContext } from '../types';
 

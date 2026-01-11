@@ -2,12 +2,16 @@
  * Dynamic Panel Settings Component
  *
  * Dynamically displays settings for all registered panels.
- * Integrates with the existing panel registry's settings system.
+ * Integrates with the catalog-backed panel settings system.
  */
 
-import { useMemo, useState, useCallback, useRef } from 'react';
-import { panelRegistry, usePanelConfigStore, type PanelDefinition } from '@features/panels';
+import { useMemo, useState, useCallback } from 'react';
+
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
+import { usePanelConfigStore, type PanelDefinition } from '@features/panels';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 
 // Stable empty object to avoid re-renders
@@ -139,7 +143,7 @@ export function DynamicPanelSettings() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Get all registered panels
-  const allPanels = useMemo(() => panelRegistry.getAll(), []);
+  const allPanels = useMemo(() => panelSelectors.getAll(), []);
 
   // Get unique categories
   const categories = useMemo(() => {

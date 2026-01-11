@@ -1,9 +1,8 @@
 import { Rnd } from "react-rnd";
 
-import { devToolSelectors } from "@lib/plugins/catalogSelectors";
+import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { ContextHubHost } from "@features/contextHub";
-import { panelRegistry } from "@features/panels";
 import { useWorkspaceStore } from "@features/workspace";
 
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
@@ -46,8 +45,8 @@ export function FloatingPanelsManager() {
           // Ensure toolId is in context (critical for persistence/restore)
           panelContext = { ...panelContext, toolId };
         } else {
-          // Regular panel from registry
-          const panelDef = panelRegistry.get(panel.id);
+          // Regular panel from catalog
+          const panelDef = panelSelectors.get(panel.id);
           if (!panelDef) return null;
 
           Component = panelDef.component;

@@ -108,7 +108,7 @@ At startup, `initializePanels()` calls `autoRegisterPanels()` which:
 
 1. Uses Vite's `import.meta.glob` to find all `domain/definitions/*/index.ts` and `domain/definitions/*/index.tsx` files
 2. Imports each module's default export (the `PanelDefinition`)
-3. Registers each panel in the global `panelRegistry`
+3. Registers each panel in the plugin catalog via `registerPluginDefinition()`
 4. Logs the discovery process for debugging
 
 ## Backward Compatibility

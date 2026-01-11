@@ -6,15 +6,12 @@ import {
   type EditorContext,
   type EditorMode,
 } from "@lib/context";
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { ContextHubHost } from "@features/contextHub";
 import type { PanelId } from "@features/workspace";
 
-import {
-  panelRegistry,
-  type ContextLabelStrategy,
-  type CoreEditorRole,
-} from "../../lib/panelRegistry";
+import type { ContextLabelStrategy, CoreEditorRole } from "../../lib/panelRegistry";
 import { PanelHeader } from "../shared/PanelHeader";
 
 type PanelHostVariant = "standalone" | "embedded" | "dockview";
@@ -123,7 +120,7 @@ export function PanelHostLite({
   fill = true,
   variant = "standalone",
 }: PanelHostLiteProps) {
-  const panelDef = panelRegistry.get(panelId);
+  const panelDef = panelSelectors.get(panelId);
   const ctx = useEditorContext();
 
   if (!panelDef) {

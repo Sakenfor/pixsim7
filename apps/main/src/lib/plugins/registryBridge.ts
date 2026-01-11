@@ -26,7 +26,7 @@ import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
-import { panelRegistry, dockWidgetRegistry, type PanelDefinition, type DockWidgetDefinition } from '@features/panels';
+import type { PanelDefinition, DockWidgetDefinition } from '@features/panels';
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 
 import type { GalleryToolPlugin } from '../gallery/types';
@@ -685,15 +685,20 @@ export function registerPanelWithPlugin(
   panel: PanelDefinition,
   options: RegisterWithMetadataOptions = {}
 ): void {
-  registerWithCatalog(panel, panelRegistry, buildPanelMetadata, options, { origin: 'builtin' });
+  const resolvedOptions = {
+    ...options,
+    origin: options.origin ?? 'builtin',
+    canDisable: options.canDisable ?? true,
+  };
+  const metadata = buildPanelMetadata(panel, resolvedOptions);
+  pluginCatalog.registerWithPlugin(metadata, panel);
 }
 
 /**
  * Unregister a workspace panel and remove it from the catalog
  */
 export function unregisterPanelWithPlugin(id: string): boolean {
-  const existed = panelRegistry.has(id as any);
-  panelRegistry.unregister(id as any);
+  const existed = !!pluginCatalog.get(id);
   pluginCatalog.unregister(id);
   return existed;
 }
@@ -703,7 +708,7 @@ export function unregisterPanelWithPlugin(id: string): boolean {
  */
 export function registerBuiltinPanel(panel: PanelDefinition): void {
   // Skip if already registered (prevents duplicate warnings)
-  if (panelRegistry.has(panel.id as any)) {
+  if (pluginCatalog.get(panel.id)) {
     return;
   }
   registerPanelWithPlugin(panel, { origin: 'builtin', canDisable: false });
@@ -743,15 +748,20 @@ export function registerDockWidgetWithPlugin(
   widget: DockWidgetDefinition,
   options: RegisterWithMetadataOptions = {}
 ): void {
-  registerWithCatalog(widget, dockWidgetRegistry, buildDockWidgetMetadata, options, { origin: 'builtin' });
+  const resolvedOptions = {
+    ...options,
+    origin: options.origin ?? 'builtin',
+    canDisable: options.canDisable ?? true,
+  };
+  const metadata = buildDockWidgetMetadata(widget, resolvedOptions);
+  pluginCatalog.registerWithPlugin(metadata, widget);
 }
 
 /**
  * Unregister a dock widget and remove it from the catalog
  */
 export function unregisterDockWidgetWithPlugin(id: string): boolean {
-  const existed = dockWidgetRegistry.has(id);
-  dockWidgetRegistry.unregister(id);
+  const existed = !!pluginCatalog.get(id);
   pluginCatalog.unregister(id);
   return existed;
 }
@@ -995,24 +1005,6 @@ export function syncCatalogFromRegistries(): void {
     }
   }
 
-  // Sync workspace panels
-  for (const panel of panelRegistry.getPublicPanels()) {
-    if (!pluginCatalog.get(panel.id)) {
-      pluginCatalog.register(
-        buildPanelMetadata(panel, { origin: 'builtin', canDisable: false })
-      );
-    }
-  }
-
-  // Sync dock widgets
-  for (const widget of dockWidgetRegistry.getAll()) {
-    if (!pluginCatalog.get(widget.id)) {
-      pluginCatalog.register(
-        buildDockWidgetMetadata(widget, { origin: 'builtin', canDisable: false })
-      );
-    }
-  }
-
   // Sync gizmo surfaces
   for (const surface of gizmoSurfaceRegistry.getAll()) {
     if (!pluginCatalog.get(surface.id)) {
@@ -1035,7 +1027,7 @@ export function printRegistryComparison(): void {
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
   console.log(`Generation UI: ${generationUIPluginRegistry.getPluginIds().length} in registry, ${pluginCatalog.getByFamily('generation-ui').length} in catalog`);
   console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
-  console.log(`Workspace Panels: ${panelRegistry.getPublicPanels().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
-  console.log(`Dock Widgets: ${dockWidgetRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('dock-widget').length} in catalog`);
+  console.log(`Workspace Panels: catalog-only (${pluginCatalog.getByFamily('workspace-panel').length})`);
+  console.log(`Dock Widgets: catalog-only (${pluginCatalog.getByFamily('dock-widget').length})`);
   console.log(`Gizmo Surfaces: ${gizmoSurfaceRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('gizmo-surface').length} in catalog`);
 }

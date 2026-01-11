@@ -7,10 +7,13 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
+import { componentRegistry, useComponentSettingsStore } from '@features/componentSettings';
 import {
   getAllPanelMetadata,
   type PanelMetadata,
-  panelRegistry,
   usePanelConfigStore,
   panelSettingsScopeRegistry,
   usePanelInstanceSettingsStore,
@@ -19,14 +22,17 @@ import {
   getScopeMode,
   ScopeModeSelect,
 } from '@features/panels';
-import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
-import { usePanelSettingsUiStore } from '../stores/panelSettingsUiStore';
-import { SettingFieldRenderer } from './shared/SettingFieldRenderer';
+import type { PanelId } from '@features/workspace';
+
 import { resolveSchemaValues } from '../lib/core/schemaUtils';
 import type { SettingField, SettingGroup, SettingTab } from '../lib/core/types';
-import { componentRegistry, useComponentSettingsStore } from '@features/componentSettings';
-import type { PanelId } from '@features/workspace';
+import { usePanelSettingsUiStore } from '../stores/panelSettingsUiStore';
+
+import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
+import { SettingFieldRenderer } from './shared/SettingFieldRenderer';
+
+
 
 // Stable empty object to avoid re-renders
 const EMPTY_SETTINGS = {};
@@ -332,7 +338,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
   const allPanels = useMemo(() => getAllPanelMetadata(), []);
   // Get panel definition from registry (for panel-specific settings)
   const panelDefinition = useMemo(
-    () => panelRegistry.getAll().find((p) => p.id === metadata.id),
+    () => panelSelectors.getAll().find((p) => p.id === metadata.id),
     [metadata.id]
   );
   const [componentRegistryVersion, setComponentRegistryVersion] = useState(0);
