@@ -21,48 +21,12 @@ from pixsim7.backend.main.domain.game.stats.migration import (
     needs_migration as needs_world_migration,
     get_default_relationship_definition,
 )
+from pixsim7.backend.main.shared.content_rating import (
+    clamp_rating,
+    is_rating_allowed,
+)
 
 logger = logging.getLogger(__name__)
-
-
-# Content rating ordering for clamping
-RATING_ORDER = ['sfw', 'romantic', 'mature_implied', 'restricted']
-
-
-def _clamp_rating(
-    rating: str,
-    world_max: Optional[str] = None,
-    user_max: Optional[str] = None
-) -> str:
-    """
-    Clamp content rating by world and user maximums
-
-    Args:
-        rating: Proposed content rating
-        world_max: World's maximum allowed rating
-        user_max: User's maximum allowed rating (if set)
-
-    Returns:
-        Clamped rating (most restrictive of rating, world_max, user_max)
-    """
-    if rating not in RATING_ORDER:
-        rating = 'sfw'  # Default to safe rating
-
-    # Get most restrictive rating
-    effective_max_idx = len(RATING_ORDER) - 1
-
-    if world_max and world_max in RATING_ORDER:
-        effective_max_idx = min(effective_max_idx, RATING_ORDER.index(world_max))
-
-    if user_max and user_max in RATING_ORDER:
-        effective_max_idx = min(effective_max_idx, RATING_ORDER.index(user_max))
-
-    # Clamp rating to max
-    rating_idx = RATING_ORDER.index(rating)
-    if rating_idx > effective_max_idx:
-        rating = RATING_ORDER[effective_max_idx]
-
-    return rating
 
 
 def _map_intimacy_to_band(intimacy_level_id: Optional[str]) -> str:
@@ -226,7 +190,7 @@ async def build_generation_social_context(
     base_rating = _map_intimacy_to_rating(intimacy_band)
 
     # Clamp rating by world and user preferences
-    content_rating = _clamp_rating(base_rating, world_max_rating, user_max_rating)
+    content_rating = clamp_rating(base_rating, world_max_rating, user_max_rating)
 
     # Build context object
     context = {
@@ -280,13 +244,13 @@ def validate_social_context_against_constraints(
     user_max_rating = user_preferences.get('maxContentRating') if user_preferences else None
 
     # Check against world max
-    if RATING_ORDER.index(content_rating) > RATING_ORDER.index(world_max_rating):
+    if not is_rating_allowed(content_rating, world_max_rating):
         errors.append(
             f"Content rating '{content_rating}' exceeds world maximum '{world_max_rating}'"
         )
 
     # Check against user max
-    if user_max_rating and RATING_ORDER.index(content_rating) > RATING_ORDER.index(user_max_rating):
+    if user_max_rating and not is_rating_allowed(content_rating, user_max_rating):
         errors.append(
             f"Content rating '{content_rating}' exceeds user maximum '{user_max_rating}'"
         )

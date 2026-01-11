@@ -30,7 +30,7 @@ from pixsim7.backend.main.shared.errors import (
 )
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, JOB_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
-from pixsim7.backend.main.services.generation.social_context_builder import RATING_ORDER
+from pixsim7.backend.main.shared.content_rating import RATING_ORDER
 from pixsim7.backend.main.services.generation.cache import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
 from pixsim7.backend.main.shared.debug import DebugLogger
