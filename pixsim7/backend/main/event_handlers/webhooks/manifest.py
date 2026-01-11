@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.logging import get_event_logger
-from pixsim7.backend.main.shared.retry_utils import (
+from pixsim7.backend.main.shared.policies import (
     with_retry,
     RetryConfig,
     is_retryable_http_status,
@@ -228,7 +228,11 @@ async def _deliver_webhook_with_retry(
     - Swallow errors on exhaustion (log but don't raise)
     """
 
+    attempt_count = 0
+
     async def send() -> httpx.Response:
+        nonlocal attempt_count
+        attempt_count += 1
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(url, content=body, headers=headers)
 
@@ -277,6 +281,7 @@ async def _deliver_webhook_with_retry(
         )
 
     except Exception as exc:
+        retryable = should_retry(exc)
         # Exhausted retries or non-retryable error - log and swallow (original behavior)
         logger.error(
             "Webhook delivery failed",
@@ -284,6 +289,8 @@ async def _deliver_webhook_with_retry(
             event_type=event_type,
             error=str(exc),
             max_retries=max_retries,
+            attempts=attempt_count,
+            retryable=retryable,
         )
 
 

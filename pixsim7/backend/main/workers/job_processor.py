@@ -25,7 +25,7 @@ from pixsim7.backend.main.shared.errors import (
     ProviderRateLimitError,
     ProviderConcurrentLimitError,
 )
-from pixsim7.backend.main.shared.fallback_utils import (
+from pixsim7.backend.main.shared.policies import (
     with_fallback,
     FallbackExhaustedError,
 )

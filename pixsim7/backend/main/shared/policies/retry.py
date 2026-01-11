@@ -4,7 +4,7 @@ Retry utilities with exponential backoff.
 Provides reusable retry logic for network operations, API calls, etc.
 
 Usage:
-    from pixsim7.backend.main.shared.retry_utils import with_retry, RetryConfig
+    from pixsim7.backend.main.shared.policies import with_retry, RetryConfig
 
     # Simple usage
     result = await with_retry(lambda: client.post(url, data=payload))

@@ -5,7 +5,7 @@ Provides reusable logic for acquiring resources from a pool where
 each resource may fail verification and need to be marked as exhausted.
 
 Usage:
-    from pixsim7.backend.main.shared.fallback_utils import with_fallback
+    from pixsim7.backend.main.shared.policies import with_fallback
 
     # Acquire an account with sufficient credits
     account = await with_fallback(
@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import inspect
 from dataclasses import dataclass
 from typing import (
     Awaitable,
@@ -153,12 +154,12 @@ async def with_fallback(
         # Notify attempt start
         if on_attempt is not None:
             result = on_attempt(attempt, resource)
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 await result
 
         # Verify resource
         is_valid = verify(resource)
-        if asyncio.iscoroutine(is_valid):
+        if inspect.isawaitable(is_valid):
             is_valid = await is_valid
 
         if is_valid:
@@ -167,7 +168,7 @@ async def with_fallback(
         # Resource rejected - notify and maybe delay
         if on_reject is not None:
             result = on_reject(resource)
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 await result
 
         # Backoff before next attempt (if configured and not last attempt)
