@@ -5,12 +5,14 @@
  */
 
 import { useState } from 'react';
+
 import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
 import { galleryToolRegistry } from '@features/gallery/lib/core/types';
+
 import { useAssets } from '../hooks/useAssets';
 
 export function DebugGallerySurface() {
-  const [filters, setFilters] = useState({ q: '', sort: 'new' as const });
+  const [filters] = useState({ q: '', sort: 'new' as const });
   const { items, loading, error } = useAssets({ filters });
   const [activeTab, setActiveTab] = useState<'surfaces' | 'tools' | 'assets'>('surfaces');
 
@@ -34,6 +36,16 @@ export function DebugGallerySurface() {
       acc[cat] = (acc[cat] || 0) + 1;
       return acc;
     }, {} as Record<string, number>),
+  };
+
+  const formatUploadContext = (context?: Record<string, unknown> | null) => {
+    if (!context || Object.keys(context).length === 0) {
+      return '-';
+    }
+    const entries = Object.entries(context)
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join(', ');
+    return entries.length > 120 ? `${entries.slice(0, 117)}...` : entries;
   };
 
   return (
@@ -210,9 +222,11 @@ export function DebugGallerySurface() {
                       <th className="text-left p-2">ID</th>
                       <th className="text-left p-2">Type</th>
                       <th className="text-left p-2">Provider</th>
+                      <th className="text-left p-2">Upload Method</th>
                       <th className="text-left p-2">Status</th>
                       <th className="text-left p-2">Dimensions</th>
                       <th className="text-left p-2">Tags</th>
+                      <th className="text-left p-2">Upload Context</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -221,11 +235,13 @@ export function DebugGallerySurface() {
                         <td className="p-2 truncate max-w-xs">{asset.id}</td>
                         <td className="p-2">{asset.mediaType}</td>
                         <td className="p-2">{asset.providerId}</td>
+                        <td className="p-2">{asset.uploadMethod || '-'}</td>
                         <td className="p-2">{asset.syncStatus}</td>
                         <td className="p-2">
-                          {asset.width && asset.height ? `${asset.width}×${asset.height}` : '-'}
+                          {asset.width && asset.height ? `${asset.width}x${asset.height}` : '-'}
                         </td>
                         <td className="p-2 truncate max-w-xs">{asset.tags?.map(t => t.name).join(', ') || '-'}</td>
+                        <td className="p-2 truncate max-w-md">{formatUploadContext(asset.uploadContext)}</td>
                       </tr>
                     ))}
                   </tbody>

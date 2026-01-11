@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from 'react';
-import { useFilterMetadata } from '../hooks/useFilterMetadata';
-import type { AssetFilters } from '../hooks/useAssets';
-import type { FilterDefinition, FilterOptionValue } from '../lib/api';
 import { Icon } from '@lib/icons';
+import { useCallback, useMemo } from 'react';
+
+import type { AssetFilters } from '../hooks/useAssets';
+import { useFilterMetadata } from '../hooks/useFilterMetadata';
+import type { FilterDefinition, FilterOptionValue } from '../lib/api';
 
 /**
  * UI-specific metadata for filter keys.
@@ -41,7 +42,17 @@ export function DynamicFilters({
   showCounts = false,
   compact = false,
 }: DynamicFiltersProps) {
-  const { metadata, loading, error } = useFilterMetadata({ includeCounts: showCounts });
+  const filterContext = useMemo(() => {
+    if (!filters.upload_method) {
+      return undefined;
+    }
+    return { upload_method: filters.upload_method };
+  }, [filters.upload_method]);
+
+  const { metadata, loading, error } = useFilterMetadata({
+    includeCounts: showCounts,
+    context: filterContext,
+  });
 
   // Sort and filter the definitions
   const visibleFilters = useMemo(() => {

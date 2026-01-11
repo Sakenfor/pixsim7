@@ -42,6 +42,8 @@ export interface ViewerAsset {
     path?: string;
     providerId?: string;
     duration?: number;
+    folderId?: string;
+    folderName?: string;
   };
 }
 

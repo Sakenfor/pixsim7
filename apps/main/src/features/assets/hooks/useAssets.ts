@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse } from '@lib/api/assets';
+
 import { assetEvents } from '../lib/assetEvents';
 import { type AssetModel, fromAssetResponse, fromAssetResponses } from '../models/asset';
 
@@ -16,6 +18,7 @@ export type AssetFilters = {
   provider_id?: string | null;
   sort?: 'new' | 'old' | 'size';  // Removed 'alpha' - Asset has no name field
   media_type?: 'video' | 'image' | 'audio' | '3d_model';
+  upload_method?: string;
   provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   include_archived?: boolean;
 
@@ -44,7 +47,7 @@ export type AssetFilters = {
   // Sort options (backend fields)
   sort_by?: 'created_at' | 'file_size_bytes';
   sort_dir?: 'asc' | 'desc';
-};
+} & Record<string, string | boolean | number | undefined>;
 
 export function useAssets(options?: { limit?: number; filters?: AssetFilters; paginationMode?: 'infinite' | 'page' }) {
   const limit = options?.limit ?? 20;
@@ -72,6 +75,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     tag: filters.tag || undefined,
     provider_id: filters.provider_id || undefined,
     media_type: filters.media_type || undefined,
+    upload_method: filters.upload_method || undefined,
     provider_status: filters.provider_status || undefined,
     include_archived: filters.include_archived || undefined,
 
@@ -102,12 +106,55 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     has_children: filters.has_children,
   }), [
     filters.q, filters.tag, filters.provider_id, filters.sort,
-    filters.media_type, filters.provider_status, filters.include_archived,
+    filters.media_type, filters.upload_method, filters.provider_status, filters.include_archived,
     filters.created_from, filters.created_to,
     filters.min_width, filters.max_width, filters.min_height, filters.max_height,
     filters.content_domain, filters.content_category, filters.content_rating, filters.searchable,
     filters.source_generation_id, filters.operation_type, filters.has_parent, filters.has_children,
   ]);
+
+  const extraRegistryFilters = useMemo(() => {
+    const knownKeys = new Set([
+      'q',
+      'tag',
+      'provider_id',
+      'sort',
+      'media_type',
+      'upload_method',
+      'provider_status',
+      'include_archived',
+      'created_from',
+      'created_to',
+      'min_width',
+      'max_width',
+      'min_height',
+      'max_height',
+      'content_domain',
+      'content_category',
+      'content_rating',
+      'searchable',
+      'source_generation_id',
+      'operation_type',
+      'has_parent',
+      'has_children',
+      'sort_by',
+      'sort_dir',
+    ]);
+    const extras: Record<string, string | boolean | number> = {};
+    Object.entries(filters).forEach(([key, value]) => {
+      if (knownKeys.has(key)) return;
+      if (value === undefined || value === null || value === '') return;
+      if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') {
+        extras[key] = value;
+      }
+    });
+    return extras;
+  }, [filters]);
+
+  const extraRegistryFiltersKey = useMemo(
+    () => JSON.stringify(extraRegistryFilters),
+    [extraRegistryFilters]
+  );
 
   // Use ref to always access current filterParams in loadMore without stale closures
   const filterParamsRef = useRef(filterParams);
@@ -119,16 +166,29 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
 
   // Build query params helper
   const buildQueryParams = useCallback((currentFilters: typeof filterParams, offset?: number, currentCursor?: string | null) => {
+    const registryFilters: Record<string, string> = {};
+    if (currentFilters.provider_id) {
+      registryFilters.provider_id = currentFilters.provider_id;
+    }
+    if (currentFilters.media_type) {
+      registryFilters.media_type = currentFilters.media_type;
+    }
+    if (currentFilters.upload_method) {
+      registryFilters.upload_method = currentFilters.upload_method;
+    }
+    Object.entries(extraRegistryFilters).forEach(([key, value]) => {
+      registryFilters[key] = String(value);
+    });
+
     return {
       limit,
       offset: offset !== undefined ? offset : undefined,
       cursor: offset === undefined ? (currentCursor || undefined) : undefined,
+      filters: Object.keys(registryFilters).length ? registryFilters : undefined,
       // Basic filters
       q: currentFilters.q || undefined,
       tag: currentFilters.tag || undefined,
-      provider_id: currentFilters.provider_id || undefined,
       provider_status: currentFilters.provider_status || undefined,
-      media_type: currentFilters.media_type || undefined,
       include_archived: currentFilters.include_archived || undefined,
       // Date range filters
       created_from: currentFilters.created_from || undefined,
@@ -152,7 +212,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
       sort_by: currentFilters.sort_by || undefined,
       sort_dir: currentFilters.sort_dir || undefined,
     };
-  }, [limit]);
+  }, [limit, extraRegistryFilters]);
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -322,6 +382,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
       const matchesFilters =
         (!filterParams.media_type || asset.media_type === filterParams.media_type) &&
         (!filterParams.provider_id || asset.provider_id === filterParams.provider_id) &&
+        (!filterParams.upload_method || asset.upload_method === filterParams.upload_method) &&
         (!filterParams.provider_status || asset.provider_status === filterParams.provider_status) &&
         (!filterParams.tag || tags.includes(filterParams.tag)) &&
         (!filterParams.q ||
@@ -350,12 +411,13 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     reset();
   }, [
     filterParams.q, filterParams.tag, filterParams.provider_id,
-    filterParams.media_type, filterParams.provider_status, filterParams.include_archived,
+    filterParams.media_type, filterParams.upload_method, filterParams.provider_status, filterParams.include_archived,
     filterParams.created_from, filterParams.created_to,
     filterParams.min_width, filterParams.max_width, filterParams.min_height, filterParams.max_height,
     filterParams.content_domain, filterParams.content_category, filterParams.content_rating, filterParams.searchable,
     filterParams.source_generation_id, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
     filterParams.sort_by, filterParams.sort_dir,
+    extraRegistryFiltersKey,
     limit, reset,
   ]);
 

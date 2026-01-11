@@ -16,6 +16,6 @@ export type {
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
   FilterOptionValue,
-  ListAssetsQuery,
+  AssetSearchRequest,
   AssetListResponse,
 } from '@lib/api/assets';

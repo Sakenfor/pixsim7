@@ -1,11 +1,15 @@
-import { useMemo, useCallback } from 'react';
-import { useLocalFoldersController } from '@features/assets/hooks/useLocalFoldersController';
 import { useProviders } from '@features/providers';
-import { useAssetViewer } from '../hooks/useAssetViewer';
-import { TreeFolderView } from './TreeFolderView';
-import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
-import type { LocalAsset } from '../stores/localFoldersStore';
 import { Icons } from '@lib/icons';
+import { useMemo, useCallback } from 'react';
+
+import { useLocalFoldersController } from '@features/assets/hooks/useLocalFoldersController';
+
+import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
+
+import { useAssetViewer } from '../hooks/useAssetViewer';
+import type { LocalAsset } from '../stores/localFoldersStore';
+
+import { TreeFolderView } from './TreeFolderView';
 
 interface LocalFoldersPanelProps {
   layout?: 'masonry' | 'grid';
@@ -15,7 +19,6 @@ interface LocalFoldersPanelProps {
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
-  const { openLocalAsset } = useAssetViewer({ source: 'local' });
 
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
@@ -23,6 +26,16 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
       return acc;
     }, {} as Record<string, string>);
   }, [controller.folders]);
+  const localMetadataResolver = useCallback(
+    (asset: LocalAsset) => ({
+      folderName: folderNames[asset.folderId],
+    }),
+    [folderNames]
+  );
+  const { openLocalAsset } = useAssetViewer({
+    source: 'local',
+    localMetadataResolver,
+  });
 
   // Determine which assets to show based on folder selection
   const displayAssets = useMemo(() => {

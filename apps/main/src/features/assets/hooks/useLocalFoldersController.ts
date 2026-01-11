@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
-import { authService } from '@lib/auth';
+import { uploadAsset } from '@lib/api/upload';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
@@ -434,42 +434,16 @@ export function useLocalFoldersController(): LocalFoldersController {
           console.warn('Failed to compute hash before upload', asset.name, hashError);
         }
       }
-      const form = new FormData();
-      form.append('file', file, asset.name);
-      form.append('provider_id', providerId);
-      // Add source context for upload tracking
-      if (asset.folderId) {
-        form.append('source_folder_id', asset.folderId);
-      }
-      if (asset.relativePath) {
-        form.append('source_relative_path', asset.relativePath);
-      }
-      form.append('upload_method', 'local_folders');
-      form.append(
-        'upload_context',
-        JSON.stringify({ client: 'web_app', feature: 'local_folders' })
-      );
-      const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-
-      // Get auth token
-      const token = authService.getStoredToken();
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/upload`, {
-        method: 'POST',
-        body: form,
-        headers,
+      const data = await uploadAsset({
+        file,
+        filename: asset.name,
+        providerId,
+        uploadMethod: 'local',
+        uploadContext: { client: 'web_app', feature: 'local_folders' },
+        sourceFolderId: asset.folderId,
+        sourceRelativePath: asset.relativePath,
       });
 
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `${res.status} ${res.statusText}`);
-      }
-
-      const data = await res.json().catch(() => ({}));
       const note = data?.note;
 
       setUploadNotes(n => ({ ...n, [asset.key]: note }));

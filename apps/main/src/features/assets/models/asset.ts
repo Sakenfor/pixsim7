@@ -54,6 +54,8 @@ export interface AssetModel {
   tags?: TagSummary[];
   thumbnailKey?: string | null;
   thumbnailUrl?: string | null;
+  uploadMethod?: string | null;
+  uploadContext?: Record<string, unknown> | null;
   userId: number;
   width?: number | null;
 
@@ -73,6 +75,9 @@ export interface AssetModel {
  * This is the only place where snake_case -> camelCase conversion happens.
  */
 export function fromAssetResponse(response: AssetResponse): AssetModel {
+  const responseWithContext = response as AssetResponse & {
+    upload_context?: Record<string, unknown> | null;
+  };
   return {
     id: response.id,
     createdAt: response.created_at,
@@ -82,10 +87,9 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     fileUrl: response.file_url,
     height: response.height,
     isArchived: response.is_archived,
-    lastUploadStatusByProvider: response.last_upload_status_by_provider as
-      | Record<string, 'success' | 'error'>
-      | null
-      | undefined,
+    lastUploadStatusByProvider: response.last_upload_status_by_provider
+      ? { ...response.last_upload_status_by_provider }
+      : response.last_upload_status_by_provider,
     localPath: response.local_path,
     mediaType: response.media_type,
     mimeType: response.mime_type,
@@ -94,7 +98,9 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     providerAssetId: response.provider_asset_id,
     providerId: response.provider_id,
     providerStatus: response.provider_status,
-    providerUploads: (response as any).provider_uploads as Record<string, string> | null | undefined,
+    providerUploads: response.provider_uploads
+      ? { ...response.provider_uploads }
+      : response.provider_uploads,
     remoteUrl: response.remote_url,
     sourceGenerationId: response.source_generation_id,
     storedKey: response.stored_key,
@@ -108,14 +114,16 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     })),
     thumbnailKey: response.thumbnail_key,
     thumbnailUrl: response.thumbnail_url,
+    uploadMethod: response.upload_method ?? null,
+    uploadContext: responseWithContext.upload_context ?? null,
     userId: response.user_id,
     width: response.width,
 
     // Versioning fields
-    versionFamilyId: (response as any).version_family_id ?? null,
-    versionNumber: (response as any).version_number ?? null,
-    parentAssetId: (response as any).parent_asset_id ?? null,
-    versionMessage: (response as any).version_message ?? null,
+    versionFamilyId: response.version_family_id ?? null,
+    versionNumber: response.version_number ?? null,
+    parentAssetId: response.parent_asset_id ?? null,
+    versionMessage: response.version_message ?? null,
   };
 }
 

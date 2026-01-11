@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 import { getFilterMetadata } from '../lib/api';
 import type { FilterMetadataQueryOptions, FilterMetadataResponse } from '../lib/api';
@@ -11,6 +11,11 @@ export function useFilterMetadata(options?: FilterMetadataQueryOptions) {
   const [metadata, setMetadata] = useState<FilterMetadataResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const contextKey = useMemo(
+    () => JSON.stringify(options?.context ?? {}),
+    [options?.context]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +44,7 @@ export function useFilterMetadata(options?: FilterMetadataQueryOptions) {
     return () => {
       cancelled = true;
     };
-  }, [options?.includeCounts, options?.include?.join(',')]);
+  }, [options?.includeCounts, options?.include?.join(','), options?.limit, contextKey]);
 
   return { metadata, loading, error };
 }

@@ -6,16 +6,18 @@
  */
 
 import { useCallback } from 'react';
+
+import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
 import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
 import type { LocalAsset } from '../stores/localFoldersStore';
-import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
 
 interface UseAssetViewerOptions {
   source: 'gallery' | 'local';
+  localMetadataResolver?: (asset: LocalAsset) => Partial<ViewerAsset['metadata']>;
 }
 
 export function useAssetViewer(options: UseAssetViewerOptions) {
-  const { source } = options;
+  const { localMetadataResolver } = options;
   const openViewer = useAssetViewerStore((s) => s.openViewer);
   const closeViewer = useAssetViewerStore((s) => s.closeViewer);
   const updateAssetList = useAssetViewerStore((s) => s.updateAssetList);
@@ -45,9 +47,11 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
         createdAt: asset.lastModified
           ? new Date(asset.lastModified).toISOString()
           : undefined,
+        folderId: asset.folderId,
+        ...(localMetadataResolver?.(asset) ?? {}),
       },
     }),
-    []
+    [localMetadataResolver]
   );
 
   /**
