@@ -8,9 +8,13 @@
  * - Bulk export
  */
 
-import { useState } from 'react';
-import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
+/* eslint-disable react-refresh/only-export-components */
 import { Button } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import { toSnakeCaseDeep } from '@lib/utils';
+
+import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
 
 /**
  * Bulk operations tool component
@@ -37,11 +41,13 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          asset_ids: assetIds,
-          tags,
-          mode: 'add',
-        }),
+        body: JSON.stringify(
+          toSnakeCaseDeep({
+            assetIds,
+            tags,
+            mode: 'add',
+          })
+        ),
       });
 
       if (!response.ok) {
@@ -75,9 +81,11 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          asset_ids: assetIds,
-        }),
+        body: JSON.stringify(
+          toSnakeCaseDeep({
+            assetIds,
+          })
+        ),
       });
 
       if (!response.ok) {
@@ -108,9 +116,11 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          asset_ids: assetIds,
-        }),
+        body: JSON.stringify(
+          toSnakeCaseDeep({
+            assetIds,
+          })
+        ),
       });
 
       if (!response.ok) {
@@ -226,8 +236,8 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
 /**
  * Register the bulk operations tool
  */
-export function registerBulkOperationsTool() {
-  const { galleryToolRegistry } = require('../../lib/gallery/types');
+export async function registerBulkOperationsTool() {
+  const { galleryToolRegistry } = await import('../../lib/gallery/types');
 
   const bulkOpsTool: GalleryToolPlugin = {
     id: 'bulk-operations',
