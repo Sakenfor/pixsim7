@@ -2,7 +2,7 @@
  * Relationship value extraction helpers
  *
  * Extracts relationship values from session.stats.relationships structure.
- * For computing tiers/levels, use the preview API from @pixsim7/shared.stats-core.
+ * For computing tiers/levels, use the preview API from @pixsim7/shared.logic-core/stats.
  *
  * @use_cases Session state access, value extraction
  * @backend_authoritative Use session.stats.relationships["npc:X"].tierId at runtime

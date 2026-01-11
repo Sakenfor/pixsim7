@@ -15,8 +15,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Import registries using relative paths
-import { nodeTypeRegistry, NodeTypeDefinition } from '../../../types/src/nodeTypeRegistry.js';
-import { registerBuiltinNodeTypes } from '../../../types/src/builtinNodeTypes.js';
+import { nodeTypeRegistry, NodeTypeDefinition } from '../../../../shared/graph-core/src/nodeTypeRegistry.js';
+import { registerBuiltinNodeTypes } from '../../../../shared/graph-core/src/builtinNodeTypes.js';
 
 interface RegistrySection {
   title: string;
@@ -61,7 +61,7 @@ function generatePluginDocs(): string {
   sections.push('## 🚀 Adding Your Own Plugins\n');
   sections.push('### Creating a Custom Node Type\n');
   sections.push('```typescript');
-  sections.push("import { nodeTypeRegistry } from '@pixsim7/shared.types';");
+  sections.push("import { nodeTypeRegistry } from '@pixsim7/shared.graph-core';");
   sections.push('');
   sections.push('nodeTypeRegistry.register({');
   sections.push("  id: 'my_custom_node',");

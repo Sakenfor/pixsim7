@@ -1,6 +1,6 @@
 /**
  * Tests for relationship preview API client
- * Tests the re-exported functions from @pixsim7/shared.stats-core
+ * Tests the re-exported functions from @pixsim7/shared.logic-core/stats
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -11,7 +11,7 @@ import {
   configurePreviewApi,
   resetPreviewApiConfig,
   getPreviewApiConfig,
-} from '@pixsim7/shared.stats-core';
+} from '@pixsim7/shared.logic-core/stats';
 
 describe('Relationship Preview API', () => {
   // Mock fetch function

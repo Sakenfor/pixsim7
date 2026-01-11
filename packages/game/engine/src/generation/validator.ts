@@ -18,27 +18,7 @@ import type {
   GenerationValidationResult,
 } from '@pixsim7/shared.types';
 import type { UserContentPreferences } from '@pixsim7/shared.types';
-
-/**
- * Content rating hierarchy (lower index = more restrictive)
- */
-const RATING_HIERARCHY: Array<'sfw' | 'romantic' | 'mature_implied' | 'restricted'> = [
-  'sfw',
-  'romantic',
-  'mature_implied',
-  'restricted',
-];
-
-/**
- * Get rating index for comparison
- */
-function getRatingIndex(rating: string | undefined): number {
-  if (!rating) return 0; // Default to sfw
-  const index = RATING_HIERARCHY.indexOf(
-    rating as 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
-  );
-  return index >= 0 ? index : 0;
-}
+import { getContentRatingIndex } from '@pixsim7/shared.logic-core/contentRating';
 
 /**
  * Validate social context against world constraints
@@ -65,8 +45,8 @@ export function validateSocialContextAgainstWorld(
   const worldMaxRating = worldMeta.generation?.maxContentRating as string | undefined;
 
   if (worldMaxRating && socialContext.contentRating) {
-    const contextRatingIndex = getRatingIndex(socialContext.contentRating);
-    const worldMaxIndex = getRatingIndex(worldMaxRating);
+    const contextRatingIndex = getContentRatingIndex(socialContext.contentRating);
+    const worldMaxIndex = getContentRatingIndex(worldMaxRating);
 
     if (contextRatingIndex > worldMaxIndex) {
       errors.push(
@@ -100,8 +80,8 @@ export function validateSocialContextAgainstUser(
 
   // Check user max content rating
   if (userPrefs.maxContentRating && socialContext.contentRating) {
-    const contextRatingIndex = getRatingIndex(socialContext.contentRating);
-    const userMaxIndex = getRatingIndex(userPrefs.maxContentRating);
+    const contextRatingIndex = getContentRatingIndex(socialContext.contentRating);
+    const userMaxIndex = getContentRatingIndex(userPrefs.maxContentRating);
 
     if (contextRatingIndex > userMaxIndex) {
       errors.push(

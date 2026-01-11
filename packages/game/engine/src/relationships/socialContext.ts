@@ -12,6 +12,11 @@
  */
 
 import type { GameSessionDTO, GameWorldDetail, GenerationSocialContext } from '@pixsim7/shared.types';
+import {
+  CONTENT_RATING_ORDER,
+  clampContentRating,
+  getContentRatingIndex,
+} from '@pixsim7/shared.logic-core/contentRating';
 import { getNpcRelationshipState } from '../session/state';
 
 /**
@@ -71,32 +76,6 @@ const INTIMACY_RATING_MAP: Record<string, 'sfw' | 'romantic' | 'mature_implied' 
   'very_intimate': 'mature_implied',
 };
 
-/**
- * Content rating hierarchy for clamping
- */
-const RATING_HIERARCHY: Array<'sfw' | 'romantic' | 'mature_implied' | 'restricted'> = [
-  'sfw',
-  'romantic',
-  'mature_implied',
-  'restricted',
-];
-
-/**
- * Clamp content rating to maximum allowed
- */
-function clampContentRating(
-  rating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
-  maxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
-): 'sfw' | 'romantic' | 'mature_implied' | 'restricted' {
-  if (!maxRating) {
-    return rating;
-  }
-
-  const currentIndex = RATING_HIERARCHY.indexOf(rating);
-  const maxIndex = RATING_HIERARCHY.indexOf(maxRating);
-
-  return currentIndex > maxIndex ? maxRating : rating;
-}
 
 /**
  * Reduce intimacy band intensity by one level
@@ -184,7 +163,7 @@ export function buildGenerationSocialContext(
       }
     }
 
-    if (RATING_HIERARCHY.indexOf(rating) > RATING_HIERARCHY.indexOf(highestRating)) {
+    if (getContentRatingIndex(rating) > getContentRatingIndex(highestRating)) {
       highestRating = rating;
     }
   }
@@ -197,9 +176,9 @@ export function buildGenerationSocialContext(
   if (config?.reduceIntensity) {
     finalBand = reduceIntimacyBand(finalBand);
     // Also reduce rating by one level if possible
-    const ratingIndex = RATING_HIERARCHY.indexOf(finalRating);
+    const ratingIndex = getContentRatingIndex(finalRating);
     if (ratingIndex > 0) {
-      finalRating = RATING_HIERARCHY[ratingIndex - 1];
+      finalRating = CONTENT_RATING_ORDER[ratingIndex - 1];
     }
   }
 
