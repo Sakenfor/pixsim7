@@ -1820,33 +1820,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/assets": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * List Assets
-         * @description List assets for current user with optional filters.
-         *
-         *     Supports either offset or cursor pagination (cursor takes precedence if provided).
-         *     Assets returned newest first by default (created_at DESC, id DESC for tie-break).
-         *
-         *     By default:
-         *     - Archived assets are excluded. Set include_archived=true to show them.
-         *     - Only searchable assets are shown. Set searchable=false to include hidden assets.
-         */
-        readonly get: operations["list_assets_api_v1_assets_get"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/assets/{asset_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -2232,13 +2205,12 @@ export interface paths {
          * @description Backfill upload_method from asset metadata using centralized inference rules.
          *
          *     Uses the rule-based inference system from upload_attribution module which checks:
-         *     - Explicit upload_method in metadata
-         *     - source_folder_id -> 'local_folders'
-         *     - source_url/source_site -> 'extension'
-         *     - source='extension_badge' -> 'extension'
+         *     - Explicit upload_method in metadata (normalized)
+         *     - source_folder_id -> 'local'
+         *     - Pixverse metadata/provider -> 'pixverse_sync'
+         *     - source_url/source_site -> 'web'
          *     - source_generation_id -> 'generated'
-         *     - Pixverse remote URLs -> 'extension'
-         *     - Default fallback -> 'api'
+         *     - Default fallback -> 'web'
          *
          *     Rules can be extended by adding to INFERENCE_RULES in upload_attribution.py
          */
@@ -2455,20 +2427,18 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/assets/filter-metadata": {
+    readonly "/api/v1/assets/filter-options": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
+        readonly get?: never;
+        readonly put?: never;
         /**
-         * Get Filter Metadata
+         * Get Filter Options
          * @description Get available filter definitions and options for the assets gallery.
-         *
-         *     Returns:
-         *     - filters: List of filter definitions (key, type, optional label)
-         *     - options: Available values for enum-type filters
          *
          *     The frontend should use this to dynamically render filter UI.
          *     Filter types:
@@ -2477,9 +2447,34 @@ export interface paths {
          *     - search: Free-text search input
          *     - autocomplete: Async search (use /tags endpoint for values)
          */
-        readonly get: operations["get_filter_metadata_api_v1_assets_filter_metadata_get"];
+        readonly post: operations["get_filter_options_api_v1_assets_filter_options_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
         readonly put?: never;
-        readonly post?: never;
+        /**
+         * Search Assets
+         * @description Search assets for current user with filters and pagination.
+         *
+         *     Supports either offset or cursor pagination (cursor takes precedence if provided).
+         *     Assets returned newest first by default (created_at DESC, id DESC for tie-break).
+         *
+         *     By default:
+         *     - Archived assets are excluded. Set include_archived=true to show them.
+         *     - Only searchable assets are shown. Set searchable=false to include hidden assets.
+         */
+        readonly post: operations["search_assets_api_v1_assets_search_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2579,6 +2574,26 @@ export interface paths {
          *     - upload_context: JSON-encoded object with additional context
          */
         readonly post: operations["upload_asset_to_provider_api_v1_assets_upload_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/assets/upload-context-schema": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Upload Context Schema
+         * @description Return the upload context schema for clients (extension, UI).
+         */
+        readonly get: operations["get_upload_context_schema_api_v1_assets_upload_context_schema_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -3039,9 +3054,42 @@ export interface paths {
         readonly put?: never;
         /**
          * Agent Heartbeat
-         * @description Receive heartbeat from agent and sync devices
+         * @description Receive heartbeat from agent and sync devices.
+         *
+         *     No authentication required - agent just needs to be registered/paired.
+         *     The agent_id serves as the authentication mechanism for paired agents.
          */
         readonly post: operations["agent_heartbeat_api_v1_automation_agents__agent_id__heartbeat_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/automation/agents/admin/create": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Admin Create Agent
+         * @description Directly create a device agent (for testing/admin use).
+         *
+         *     Use this to add a remote PC by its ZeroTier IP without going through
+         *     the pairing code flow. Useful for development and testing.
+         *
+         *     Example:
+         *         POST /api/v1/automation/agents/admin/create
+         *         {
+         *             "name": "LivingRoom-PC",
+         *             "host": "10.243.48.200"
+         *         }
+         */
+        readonly post: operations["admin_create_agent_api_v1_automation_agents_admin_create_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -10557,6 +10605,26 @@ export interface components {
             /** Title */
             readonly title: string;
         };
+        /**
+         * AdminCreateAgentRequest
+         * @description Request to directly create an agent (bypasses pairing for testing).
+         */
+        readonly AdminCreateAgentRequest: {
+            /**
+             * Api Port
+             * @default 8765
+             */
+            readonly api_port: number;
+            /** Host */
+            readonly host: string;
+            /** Name */
+            readonly name: string;
+            /**
+             * Port
+             * @default 5037
+             */
+            readonly port: number;
+        };
         /** AdvanceWorldTimeRequest */
         readonly AdvanceWorldTimeRequest: {
             /** Delta Seconds */
@@ -11259,6 +11327,8 @@ export interface components {
             readonly thumbnail_key?: string | null;
             /** Thumbnail Url */
             readonly thumbnail_url?: string | null;
+            /** Upload Context */
+            readonly upload_context?: Record<string, unknown> | null;
             /** Upload Method */
             readonly upload_method?: string | null;
             /** User Id */
@@ -11271,6 +11341,133 @@ export interface components {
             readonly version_number?: number | null;
             /** Width */
             readonly width?: number | null;
+        };
+        /**
+         * AssetSearchRequest
+         * @description Request body for asset search.
+         */
+        readonly AssetSearchRequest: {
+            /**
+             * Content Category
+             * @description Filter by content category
+             */
+            readonly content_category?: string | null;
+            /** @description Filter by content domain */
+            readonly content_domain?: components["schemas"]["ContentDomain"] | null;
+            /**
+             * Content Rating
+             * @description Filter by content rating
+             */
+            readonly content_rating?: string | null;
+            /**
+             * Created From
+             * @description Filter by created_at >= value
+             */
+            readonly created_from?: string | null;
+            /**
+             * Created To
+             * @description Filter by created_at <= value
+             */
+            readonly created_to?: string | null;
+            /**
+             * Cursor
+             * @description Opaque cursor for pagination
+             */
+            readonly cursor?: string | null;
+            /**
+             * Filters
+             * @description Filter key/value pairs (registry-defined)
+             */
+            readonly filters?: Record<string, unknown>;
+            /**
+             * Has Children
+             * @description Has lineage children
+             */
+            readonly has_children?: boolean | null;
+            /**
+             * Has Parent
+             * @description Has lineage parent
+             */
+            readonly has_parent?: boolean | null;
+            /**
+             * Include Archived
+             * @description Include archived assets (default: false)
+             * @default false
+             */
+            readonly include_archived: boolean;
+            /**
+             * Limit
+             * @description Results per page
+             * @default 50
+             */
+            readonly limit: number;
+            /**
+             * Max Height
+             * @description Maximum height
+             */
+            readonly max_height?: number | null;
+            /**
+             * Max Width
+             * @description Maximum width
+             */
+            readonly max_width?: number | null;
+            /**
+             * Min Height
+             * @description Minimum height
+             */
+            readonly min_height?: number | null;
+            /**
+             * Min Width
+             * @description Minimum width
+             */
+            readonly min_width?: number | null;
+            /**
+             * Offset
+             * @description Pagination offset (legacy)
+             * @default 0
+             */
+            readonly offset: number;
+            /** @description Filter by lineage operation type */
+            readonly operation_type?: components["schemas"]["OperationType"] | null;
+            /**
+             * Provider Status
+             * @description Filter by provider status (ok, local_only, flagged, unknown)
+             */
+            readonly provider_status?: string | null;
+            /**
+             * Q
+             * @description Full-text search over description/tags
+             */
+            readonly q?: string | null;
+            /**
+             * Searchable
+             * @description Filter by searchable flag (default: true)
+             * @default true
+             */
+            readonly searchable: boolean | null;
+            /**
+             * Sort By
+             * @description Sort field
+             */
+            readonly sort_by?: string | null;
+            /**
+             * Sort Dir
+             * @description Sort direction
+             * @default desc
+             */
+            readonly sort_dir: string;
+            /**
+             * Source Generation Id
+             * @description Filter by source generation ID
+             */
+            readonly source_generation_id?: number | null;
+            /** @description Filter by sync status */
+            readonly sync_status?: components["schemas"]["SyncStatus"] | null;
+            /**
+             * Tag
+             * @description Filter assets containing tag (slug)
+             */
+            readonly tag?: string | null;
         };
         /**
          * AssignTagsRequest
@@ -11813,7 +12010,7 @@ export interface components {
             readonly upload_context?: string | null;
             /**
              * Upload Method
-             * @description Upload method identifier (e.g., extension, local_folders)
+             * @description Upload method identifier (e.g., web, local, pixverse_sync, generated)
              */
             readonly upload_method?: string | null;
         };
@@ -13476,8 +13673,20 @@ export interface components {
          */
         readonly FilterDefinition: {
             /**
+             * Depends On
+             * @description Context dependencies for showing this filter
+             */
+            readonly depends_on?: {
+                readonly [key: string]: readonly string[];
+            } | null;
+            /**
+             * Description
+             * @description Optional description for UI
+             */
+            readonly description?: string | null;
+            /**
              * Key
-             * @description Filter parameter key (matches query param name)
+             * @description Filter parameter key
              */
             readonly key: string;
             /**
@@ -13492,10 +13701,37 @@ export interface components {
             readonly type: string;
         };
         /**
-         * FilterMetadataResponse
+         * FilterOptionsRequest
+         * @description Request for filter definitions and options.
+         */
+        readonly FilterOptionsRequest: {
+            /**
+             * Context
+             * @description Current filter context (used for dependent filters)
+             */
+            readonly context?: Record<string, unknown>;
+            /**
+             * Include
+             * @description Optional filter keys to include (repeat or comma-separated)
+             */
+            readonly include?: readonly string[] | null;
+            /**
+             * Include Counts
+             * @description Include asset counts per option (slower)
+             * @default false
+             */
+            readonly include_counts: boolean;
+            /**
+             * Limit
+             * @description Optional max options per filter
+             */
+            readonly limit?: number | null;
+        };
+        /**
+         * FilterOptionsResponse
          * @description Response containing available filters and their options.
          */
-        readonly FilterMetadataResponse: {
+        readonly FilterOptionsResponse: {
             /**
              * Filters
              * @description Available filter definitions
@@ -13850,7 +14086,7 @@ export interface components {
             readonly consistency_settings?: Record<string, unknown> | null;
             /**
              * Content Rating
-             * @default general
+             * @default sfw
              */
             readonly content_rating: string | null;
             /**
@@ -18132,6 +18368,14 @@ export interface components {
             /** Provider Id */
             readonly provider_id: string;
         };
+        /**
+         * UploadContextSchemaResponse
+         * @description Schema for upload_context fields by upload method.
+         */
+        readonly UploadContextSchemaResponse: {
+            /** Schema */
+            readonly schema: Record<string, unknown>;
+        };
         /** UploadFromUrlRequest */
         readonly UploadFromUrlRequest: {
             /**
@@ -18157,12 +18401,12 @@ export interface components {
             readonly source_url?: string | null;
             /**
              * Upload Context
-             * @description Optional upload context (free-form)
+             * @description Optional upload context (validated against schema)
              */
             readonly upload_context?: Record<string, unknown> | null;
             /**
              * Upload Method
-             * @description Upload method identifier (e.g., extension, api, local_folders)
+             * @description Upload method identifier (e.g., web, local, pixverse_sync, generated)
              */
             readonly upload_method?: string | null;
             /**
@@ -21201,92 +21445,6 @@ export interface operations {
             };
         };
     };
-    readonly list_assets_api_v1_assets_get: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Filter by content category */
-                readonly content_category?: string | null;
-                /** @description Filter by content domain */
-                readonly content_domain?: components["schemas"]["ContentDomain"] | null;
-                /** @description Filter by content rating */
-                readonly content_rating?: string | null;
-                /** @description Filter by created_at >= value */
-                readonly created_from?: string | null;
-                /** @description Filter by created_at <= value */
-                readonly created_to?: string | null;
-                /** @description Opaque cursor for pagination */
-                readonly cursor?: string | null;
-                /** @description Has lineage children */
-                readonly has_children?: boolean | null;
-                /** @description Has lineage parent */
-                readonly has_parent?: boolean | null;
-                /** @description Include archived assets (default: false) */
-                readonly include_archived?: boolean;
-                /** @description Results per page */
-                readonly limit?: number;
-                /** @description Maximum height */
-                readonly max_height?: number | null;
-                /** @description Maximum width */
-                readonly max_width?: number | null;
-                /** @description Filter by media type */
-                readonly media_type?: components["schemas"]["MediaType"] | null;
-                /** @description Minimum height */
-                readonly min_height?: number | null;
-                /** @description Minimum width */
-                readonly min_width?: number | null;
-                /** @description Pagination offset (legacy) */
-                readonly offset?: number;
-                /** @description Filter by lineage operation type */
-                readonly operation_type?: components["schemas"]["OperationType"] | null;
-                /** @description Filter by provider */
-                readonly provider_id?: string | null;
-                /** @description Filter by provider status (ok, local_only, flagged, unknown) */
-                readonly provider_status?: string | null;
-                /** @description Full-text search over description/tags */
-                readonly q?: string | null;
-                /** @description Filter by searchable flag (default: true) */
-                readonly searchable?: boolean | null;
-                /** @description Sort field */
-                readonly sort_by?: string | null;
-                /** @description Sort direction */
-                readonly sort_dir?: string | null;
-                /** @description Filter by source generation ID */
-                readonly source_generation_id?: number | null;
-                /** @description Filter by sync status */
-                readonly sync_status?: components["schemas"]["SyncStatus"] | null;
-                /** @description Filter assets containing tag (slug) */
-                readonly tag?: string | null;
-                /** @description Filter by upload method */
-                readonly upload_method?: string | null;
-            };
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Successful Response */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AssetListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            readonly 422: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     readonly get_asset_api_v1_assets__asset_id__get: {
         readonly parameters: {
             readonly query?: never;
@@ -22161,21 +22319,20 @@ export interface operations {
             };
         };
     };
-    readonly get_filter_metadata_api_v1_assets_filter_metadata_get: {
+    readonly get_filter_options_api_v1_assets_filter_options_post: {
         readonly parameters: {
-            readonly query?: {
-                /** @description Optional filter keys to include (repeat or comma-separated) */
-                readonly include?: readonly string[] | null;
-                /** @description Include asset counts per option (slower) */
-                readonly include_counts?: boolean;
-            };
+            readonly query?: never;
             readonly header?: {
                 readonly authorization?: string | null;
             };
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["FilterOptionsRequest"];
+            };
+        };
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
@@ -22183,7 +22340,42 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["FilterMetadataResponse"];
+                    readonly "application/json": components["schemas"]["FilterOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly search_assets_api_v1_assets_search_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssetSearchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssetListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22325,6 +22517,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_upload_context_schema_api_v1_assets_upload_context_schema_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UploadContextSchemaResponse"];
                 };
             };
         };
@@ -22934,9 +23146,7 @@ export interface operations {
     readonly agent_heartbeat_api_v1_automation_agents__agent_id__heartbeat_post: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: {
-                readonly authorization?: string | null;
-            };
+            readonly header?: never;
             readonly path: {
                 readonly agent_id: string;
             };
@@ -22945,6 +23155,41 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["AgentHeartbeatRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly admin_create_agent_api_v1_automation_agents_admin_create_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AdminCreateAgentRequest"];
             };
         };
         readonly responses: {
