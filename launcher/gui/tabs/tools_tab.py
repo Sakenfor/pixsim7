@@ -12,7 +12,6 @@ try:
     from ..dialogs.simple_git_dialog import show_simple_git_dialog
     from ..dialogs.git_tools_dialog import show_git_tools_dialog
     from ..dialogs.log_management_dialog import show_log_management_dialog
-    from ..dialogs.openapi_tools_dialog import OpenApiToolsWidget
     from ..dialogs.codegen_dialog import CodegenToolsWidget
     from ..widgets.settings_panel import SettingsPanel
     from ..widgets.tab_builder import (
@@ -24,7 +23,6 @@ except ImportError:
     from dialogs.simple_git_dialog import show_simple_git_dialog
     from dialogs.git_tools_dialog import show_git_tools_dialog
     from dialogs.log_management_dialog import show_log_management_dialog
-    from dialogs.openapi_tools_dialog import OpenApiToolsWidget
     from dialogs.codegen_dialog import CodegenToolsWidget
     from widgets.settings_panel import SettingsPanel
     from widgets.tab_builder import (
@@ -53,7 +51,6 @@ class ToolsTab:
         builder = TabBuilder()
         builder.add_page("Database", lambda: ToolsTab._create_database_page(launcher))
         builder.add_page("Development", lambda: ToolsTab._create_development_page(launcher))
-        builder.add_page("OpenAPI", lambda: OpenApiToolsWidget())
         builder.add_page("Codegen", lambda: CodegenToolsWidget())
 
         container, _, _ = builder.build()
