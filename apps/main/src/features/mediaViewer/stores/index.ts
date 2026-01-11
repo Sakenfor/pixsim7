@@ -6,10 +6,12 @@
 
 export {
   useAssetRegionStore,
+  useCaptureRegionStore,
   selectSelectedRegionId,
   selectDrawingMode,
   type AssetRegion,
   type ExportedRegion,
+  type AssetRegionStoreHook,
 } from './assetRegionStore';
 
 export {

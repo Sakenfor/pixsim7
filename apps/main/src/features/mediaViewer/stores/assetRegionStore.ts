@@ -7,6 +7,7 @@
  */
 
 import { create } from 'zustand';
+
 import type { NormalizedRect, NormalizedPoint } from '@/components/interactive-surface';
 
 // ============================================================================
@@ -103,103 +104,110 @@ const EMPTY_REGIONS: AssetRegion[] = [];
 // Store
 // ============================================================================
 
-export const useAssetRegionStore = create<AssetRegionState>((set, get) => ({
-  regionsByAsset: new Map(),
-  selectedRegionId: null,
-  drawingMode: 'rect',
+export function createAssetRegionStore() {
+  return create<AssetRegionState>((set, get) => ({
+    regionsByAsset: new Map(),
+    selectedRegionId: null,
+    drawingMode: 'rect',
 
-  addRegion: (assetId, regionData) => {
-    const id = generateId();
-    const now = Date.now();
-    const region: AssetRegion = {
-      ...regionData,
-      id,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    set((state) => {
-      const key = normalizeAssetId(assetId);
-      const newMap = new Map(state.regionsByAsset);
-      const existing = newMap.get(key) || [];
-      newMap.set(key, [...existing, region]);
-      return { regionsByAsset: newMap };
-    });
-
-    return id;
-  },
-
-  updateRegion: (assetId, regionId, updates) => {
-    set((state) => {
-      const key = normalizeAssetId(assetId);
-      const newMap = new Map(state.regionsByAsset);
-      const regions = newMap.get(key);
-      if (!regions) return state;
-
-      const updatedRegions = regions.map((r) =>
-        r.id === regionId
-          ? { ...r, ...updates, updatedAt: Date.now() }
-          : r
-      );
-      newMap.set(key, updatedRegions);
-      return { regionsByAsset: newMap };
-    });
-  },
-
-  removeRegion: (assetId, regionId) => {
-    set((state) => {
-      const key = normalizeAssetId(assetId);
-      const newMap = new Map(state.regionsByAsset);
-      const regions = newMap.get(key);
-      if (!regions) return state;
-
-      newMap.set(key, regions.filter((r) => r.id !== regionId));
-      return {
-        regionsByAsset: newMap,
-        selectedRegionId: state.selectedRegionId === regionId ? null : state.selectedRegionId,
+    addRegion: (assetId, regionData) => {
+      const id = generateId();
+      const now = Date.now();
+      const region: AssetRegion = {
+        ...regionData,
+        id,
+        createdAt: now,
+        updatedAt: now,
       };
-    });
-  },
 
-  getRegions: (assetId) => {
-    const key = normalizeAssetId(assetId);
-    return get().regionsByAsset.get(key) ?? EMPTY_REGIONS;
-  },
+      set((state) => {
+        const key = normalizeAssetId(assetId);
+        const newMap = new Map(state.regionsByAsset);
+        const existing = newMap.get(key) || [];
+        newMap.set(key, [...existing, region]);
+        return { regionsByAsset: newMap };
+      });
 
-  getRegion: (assetId, regionId) => {
-    const regions = get().getRegions(assetId);
-    return regions.find((r) => r.id === regionId);
-  },
+      return id;
+    },
 
-  selectRegion: (regionId) => {
-    set({ selectedRegionId: regionId });
-  },
+    updateRegion: (assetId, regionId, updates) => {
+      set((state) => {
+        const key = normalizeAssetId(assetId);
+        const newMap = new Map(state.regionsByAsset);
+        const regions = newMap.get(key);
+        if (!regions) return state;
 
-  clearAssetRegions: (assetId) => {
-    set((state) => {
+        const updatedRegions = regions.map((r) =>
+          r.id === regionId
+            ? { ...r, ...updates, updatedAt: Date.now() }
+            : r
+        );
+        newMap.set(key, updatedRegions);
+        return { regionsByAsset: newMap };
+      });
+    },
+
+    removeRegion: (assetId, regionId) => {
+      set((state) => {
+        const key = normalizeAssetId(assetId);
+        const newMap = new Map(state.regionsByAsset);
+        const regions = newMap.get(key);
+        if (!regions) return state;
+
+        newMap.set(key, regions.filter((r) => r.id !== regionId));
+        return {
+          regionsByAsset: newMap,
+          selectedRegionId: state.selectedRegionId === regionId ? null : state.selectedRegionId,
+        };
+      });
+    },
+
+    getRegions: (assetId) => {
       const key = normalizeAssetId(assetId);
-      const newMap = new Map(state.regionsByAsset);
-      newMap.delete(key);
-      return { regionsByAsset: newMap, selectedRegionId: null };
-    });
-  },
+      return get().regionsByAsset.get(key) ?? EMPTY_REGIONS;
+    },
 
-  setDrawingMode: (mode) => {
-    set({ drawingMode: mode });
-  },
+    getRegion: (assetId, regionId) => {
+      const regions = get().getRegions(assetId);
+      return regions.find((r) => r.id === regionId);
+    },
 
-  exportRegions: (assetId) => {
-    const regions = get().getRegions(assetId);
-    return regions.map((r) => ({
-      id: r.id,
-      type: r.type,
-      bounds: r.bounds,
-      points: r.points,
-      label: r.label,
-      note: r.note,
-    }));
-  },
-}));
+    selectRegion: (regionId) => {
+      set({ selectedRegionId: regionId });
+    },
+
+    clearAssetRegions: (assetId) => {
+      set((state) => {
+        const key = normalizeAssetId(assetId);
+        const newMap = new Map(state.regionsByAsset);
+        newMap.delete(key);
+        return { regionsByAsset: newMap, selectedRegionId: null };
+      });
+    },
+
+    setDrawingMode: (mode) => {
+      set({ drawingMode: mode });
+    },
+
+    exportRegions: (assetId) => {
+      const regions = get().getRegions(assetId);
+      return regions.map((r) => ({
+        id: r.id,
+        type: r.type,
+        bounds: r.bounds,
+        points: r.points,
+        label: r.label,
+        note: r.note,
+      }));
+    },
+  }));
+}
+
+export type AssetRegionStoreHook = ReturnType<typeof createAssetRegionStore>;
+
+export const useAssetRegionStore = createAssetRegionStore();
+export const useCaptureRegionStore = createAssetRegionStore();
 
 // ============================================================================
 // Selectors

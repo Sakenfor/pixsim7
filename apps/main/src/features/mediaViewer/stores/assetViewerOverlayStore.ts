@@ -6,12 +6,12 @@
 
 import { create } from 'zustand';
 
-export type AssetViewerOverlayMode = 'none' | 'annotate' | 'pose';
+export type AssetViewerOverlayMode = 'none' | string;
 
 interface AssetViewerOverlayState {
   overlayMode: AssetViewerOverlayMode;
   setOverlayMode: (mode: AssetViewerOverlayMode) => void;
-  toggleOverlayMode: (mode: Exclude<AssetViewerOverlayMode, 'none'>) => void;
+  toggleOverlayMode: (mode: string) => void;
 }
 
 export const useAssetViewerOverlayStore = create<AssetViewerOverlayState>((set, get) => ({
