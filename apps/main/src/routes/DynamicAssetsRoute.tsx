@@ -5,9 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { gallerySurfaceRegistry, GallerySurfaceSwitcher } from '@features/gallery';
-import { AssetsRoute } from './Assets';
-import { ReviewGallerySurface } from '../components/assets/ReviewGallerySurface';
+import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
 
 export function DynamicAssetsRoute() {
   // Get initial surface from URL
@@ -29,7 +27,7 @@ export function DynamicAssetsRoute() {
   }, []);
 
   // Get the surface definition
-  const surface = gallerySurfaceRegistry.get(activeSurfaceId);
+  const surface = gallerySurfaceSelectors.get(activeSurfaceId);
 
   if (!surface) {
     return (

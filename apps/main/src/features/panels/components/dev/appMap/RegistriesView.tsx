@@ -7,13 +7,14 @@
 
 import { useState, useMemo, useSyncExternalStore } from 'react';
 
-// Tool registries
-import { galleryToolRegistry } from '@features/gallery/lib/core/types';
+// Catalog selectors (source of truth for gallery families)
+import { galleryToolSelectors, gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
+// Tool registries (legacy - still used for non-gallery families)
 import { brainToolRegistry } from '@features/brainTools/lib/types';
 import { worldToolRegistry } from '@features/worldTools/lib/types';
 
 // Surface registries
-import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
 import { gizmoSurfaceRegistry } from '@features/gizmos/lib/core/surfaceRegistry';
 import { mediaOverlayRegistry, type MediaOverlayTool } from '@/components/media/viewer/overlays';
 
@@ -53,8 +54,8 @@ const REGISTRIES: RegistryInfo[] = [
     description: 'Tools for asset management and visualization',
     icon: '🖼️',
     category: 'tools',
-    getItems: () => galleryToolRegistry.getAll(),
-    subscribe: (cb) => galleryToolRegistry.subscribe(cb),
+    getItems: () => galleryToolSelectors.getAll(),
+    subscribe: (cb) => galleryToolSelectors.subscribe(cb),
     renderItem: (item) => <GalleryToolItem tool={item as GalleryToolPlugin} />,
   },
   {
@@ -93,8 +94,8 @@ const REGISTRIES: RegistryInfo[] = [
     description: 'Different views/modes for the asset gallery',
     icon: '📐',
     category: 'surfaces',
-    getItems: () => gallerySurfaceRegistry.getAll(),
-    subscribe: (cb) => gallerySurfaceRegistry.subscribe(cb),
+    getItems: () => gallerySurfaceSelectors.getAll(),
+    subscribe: (cb) => gallerySurfaceSelectors.subscribe(cb),
     renderItem: (item) => <GallerySurfaceItem surface={item as GallerySurfaceDefinition} />,
   },
   {

@@ -463,6 +463,7 @@ export class PluginDiscovery {
  */
 export class PluginCatalog {
   private plugins = new Map<string, ExtendedPluginMetadata>();
+  private pluginObjects = new Map<string, unknown>();
   private listeners = new Set<() => void>();
 
   /**
@@ -483,10 +484,46 @@ export class PluginCatalog {
   }
 
   /**
+   * Register a plugin with its runtime object
+   *
+   * This stores both metadata and the actual plugin object (with render functions, etc.)
+   * making the catalog the single source of truth for plugin data.
+   */
+  registerWithPlugin<T>(metadata: ExtendedPluginMetadata, plugin: T): void {
+    this.register(metadata);
+    this.pluginObjects.set(metadata.id, plugin);
+  }
+
+  /**
+   * Store a plugin object (for use when metadata is registered separately)
+   */
+  setPlugin<T>(id: string, plugin: T): void {
+    this.pluginObjects.set(id, plugin);
+  }
+
+  /**
+   * Get the plugin object by ID
+   */
+  getPlugin<T>(id: string): T | undefined {
+    return this.pluginObjects.get(id) as T | undefined;
+  }
+
+  /**
+   * Get all plugin objects for a family
+   */
+  getPluginsByFamily<T>(family: PluginFamily): T[] {
+    const familyPlugins = this.getByFamily(family);
+    return familyPlugins
+      .map(meta => this.pluginObjects.get(meta.id) as T)
+      .filter((p): p is T => p !== undefined);
+  }
+
+  /**
    * Remove a plugin from the catalog
    */
   unregister(id: string): boolean {
     const existed = this.plugins.delete(id);
+    this.pluginObjects.delete(id);
     if (existed) {
       this.notifyListeners();
     }
@@ -597,6 +634,7 @@ export class PluginCatalog {
    */
   clear(): void {
     this.plugins.clear();
+    this.pluginObjects.clear();
   }
 
   /**

@@ -1,17 +1,14 @@
 /**
  * Gallery Tool Plugin Registry
  *
- * Central registry for gallery tools.
- * Import and register your custom tools here.
+ * @deprecated Use `galleryToolSelectors` from '@lib/plugins/catalogSelectors' instead.
+ * The PluginCatalog is now the source of truth for gallery tools.
+ *
+ * Registration is now done via `registerGalleryTools()` in main.tsx using pluginRuntime.
  */
 
-import { galleryToolRegistry } from './core/types';
-import { builtInGalleryTools } from '../plugins';
+// Re-export catalog selectors as the new API
+export { galleryToolSelectors } from '@lib/plugins/catalogSelectors';
 
-// Export the singleton registry
-export { galleryToolRegistry };
-
-// Register built-in gallery tools
-builtInGalleryTools.forEach(tool => {
-  galleryToolRegistry.register(tool);
-});
+// Legacy re-export for backwards compatibility (deprecated)
+export { galleryToolRegistry } from './core/types';

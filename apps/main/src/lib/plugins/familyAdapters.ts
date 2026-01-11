@@ -7,8 +7,8 @@ import { dockZoneRegistry, type DockZoneDefinition } from '@lib/dockview/dockZon
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 import { brainToolRegistry, type BrainToolPlugin } from '@features/brainTools/lib/registry';
-import { galleryToolRegistry, type GalleryToolPlugin } from '@features/gallery';
-import { gallerySurfaceRegistry, type GallerySurfaceDefinition } from '@features/gallery';
+import type { GalleryToolPlugin } from '@features/gallery';
+import type { GallerySurfaceDefinition } from '@features/gallery';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
@@ -17,12 +17,13 @@ import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 
 import { controlCenterRegistry, type ControlCenterPlugin, type ControlCenterPluginManifest } from './controlCenterPlugin';
-import type {
-  ActivationState,
-  ExtendedPluginMetadata,
-  PluginFamily,
-  PluginMetadata,
-  PluginOrigin,
+import {
+  pluginCatalog,
+  type ActivationState,
+  type ExtendedPluginMetadata,
+  type PluginFamily,
+  type PluginMetadata,
+  type PluginOrigin,
 } from './pluginSystem';
 import type { PluginRegistrationSource } from './registration';
 import { sceneViewRegistry, type SceneViewPlugin, type SceneViewPluginManifest } from './sceneViewPlugin';
@@ -536,7 +537,10 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildWorldToolMetadata,
   },
   'gallery-tool': {
-    register: (tool: GalleryToolPlugin) => galleryToolRegistry.register(tool),
+    // Store in catalog only - catalog is the source of truth
+    register: (tool: GalleryToolPlugin) => {
+      pluginCatalog.setPlugin(tool.id, tool);
+    },
     buildMetadata: buildGalleryToolMetadata,
   },
   'brain-tool': {
@@ -544,7 +548,10 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildBrainToolMetadata,
   },
   'gallery-surface': {
-    register: (surface: GallerySurfaceDefinition) => gallerySurfaceRegistry.register(surface),
+    // Store in catalog only - catalog is the source of truth
+    register: (surface: GallerySurfaceDefinition) => {
+      pluginCatalog.setPlugin(surface.id, surface);
+    },
     buildMetadata: buildGallerySurfaceMetadata,
   },
   'generation-ui': {

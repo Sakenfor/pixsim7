@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { gallerySurfaceRegistry, type GallerySurfaceId } from '../lib/core/surfaceRegistry';
+import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+import type { GallerySurfaceId } from '../lib/core/surfaceRegistry';
 
 interface GallerySurfaceSwitcherProps {
   /** Current active surface ID */
@@ -37,11 +38,11 @@ export function GallerySurfaceSwitcher({
     if (urlSurfaceId) return urlSurfaceId as GallerySurfaceId;
 
     // Fall back to default
-    const defaultSurface = gallerySurfaceRegistry.getDefault();
+    const defaultSurface = gallerySurfaceSelectors.getDefault();
     return defaultSurface?.id || 'assets-default';
   });
 
-  const surfaces = gallerySurfaceRegistry.getAll();
+  const surfaces = gallerySurfaceSelectors.getAll();
 
   useEffect(() => {
     if (activeSurfaceId) {

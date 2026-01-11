@@ -6,7 +6,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { galleryToolRegistry, type GalleryToolContext, type GalleryToolPlugin } from '@features/gallery/lib/core/types';
+import { galleryToolSelectors } from '@lib/plugins/catalogSelectors';
+import type { GalleryToolContext, GalleryToolPlugin } from '@features/gallery/lib/core/types';
 
 interface GalleryToolsPanelProps {
   context: GalleryToolContext;
@@ -25,8 +26,8 @@ export function GalleryToolsPanel({ context, surfaceId }: GalleryToolsPanelProps
   // Update visible tools when context or surface changes
   useEffect(() => {
     const tools = surfaceId
-      ? galleryToolRegistry.getVisibleForSurface(surfaceId, context)
-      : galleryToolRegistry.getVisible(context);
+      ? galleryToolSelectors.getVisibleForSurface(surfaceId, context)
+      : galleryToolSelectors.getVisible(context);
     setVisibleTools(tools);
   }, [context, surfaceId]);
 
@@ -106,8 +107,8 @@ export function CompactGalleryToolsPanel({ context, surfaceId }: GalleryToolsPan
 
   useEffect(() => {
     const tools = surfaceId
-      ? galleryToolRegistry.getVisibleForSurface(surfaceId, context)
-      : galleryToolRegistry.getVisible(context);
+      ? galleryToolSelectors.getVisibleForSurface(surfaceId, context)
+      : galleryToolSelectors.getVisible(context);
     setVisibleTools(tools);
 
     // Auto-select first tool if none selected

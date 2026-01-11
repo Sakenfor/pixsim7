@@ -15,7 +15,7 @@ import type { GalleryPanelSettings } from '@features/panels';
 import { useAssets } from '@features/assets';
 import { mediaCardPresets } from '@lib/ui/overlay';
 import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
-import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
+import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
 
 export function GalleryModule() {
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ export function GalleryModule() {
   }, [panelConfig]);
 
   // Get all surfaces
-  const surfaces = gallerySurfaceRegistry.getAll();
+  const surfaces = gallerySurfaceSelectors.getAll();
 
   // Asset stats by type
   const stats = useMemo(() => {

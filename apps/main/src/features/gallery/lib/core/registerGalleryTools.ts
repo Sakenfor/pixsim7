@@ -1,7 +1,7 @@
 /**
  * Gallery Tools Registration
  *
- * Registers all available gallery tools with the registry.
+ * Registers all available gallery tools with the plugin catalog.
  * Called once at application startup.
  *
  * Note: Tools now live in `features/gallery/plugins/` following the
@@ -9,10 +9,9 @@
  */
 
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+import { galleryToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import { builtInGalleryTools } from '../../plugins';
-
-import { galleryToolRegistry } from './types';
 
 /**
  * Register all gallery tools
@@ -22,7 +21,7 @@ import { galleryToolRegistry } from './types';
 export async function registerGalleryTools(): Promise<void> {
   // Register built-in tools from the plugins folder
   for (const tool of builtInGalleryTools) {
-    if (!galleryToolRegistry.get(tool.id)) {
+    if (!galleryToolSelectors.get(tool.id)) {
       await registerPluginDefinition({
         id: tool.id,
         family: 'gallery-tool',
@@ -34,5 +33,5 @@ export async function registerGalleryTools(): Promise<void> {
     }
   }
 
-  console.log(`[GalleryTools] Registered ${galleryToolRegistry.getAll().length} gallery tool(s)`);
+  console.log(`[GalleryTools] Registered ${galleryToolSelectors.getAll().length} gallery tool(s)`);
 }

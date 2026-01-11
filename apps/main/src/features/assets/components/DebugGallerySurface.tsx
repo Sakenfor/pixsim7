@@ -6,8 +6,7 @@
 
 import { useState } from 'react';
 
-import { gallerySurfaceRegistry } from '@features/gallery/lib/core/surfaceRegistry';
-import { galleryToolRegistry } from '@features/gallery/lib/core/types';
+import { gallerySurfaceSelectors, galleryToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssets } from '../hooks/useAssets';
 
@@ -17,8 +16,8 @@ export function DebugGallerySurface() {
   const [activeTab, setActiveTab] = useState<'surfaces' | 'tools' | 'assets'>('surfaces');
 
   // Get registry information
-  const surfaces = gallerySurfaceRegistry.getAll();
-  const tools = galleryToolRegistry.getAll();
+  const surfaces = gallerySurfaceSelectors.getAll();
+  const tools = galleryToolSelectors.getAll();
 
   const surfaceStats = {
     total: surfaces.length,

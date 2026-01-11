@@ -5,7 +5,8 @@
  */
 
 import { useMemo, useEffect } from 'react';
-import { gallerySurfaceRegistry, type GallerySurfaceId } from '../lib/core/surfaceRegistry';
+import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+import type { GallerySurfaceId } from '../lib/core/surfaceRegistry';
 import { logEvent } from '@lib/utils/logging';
 
 interface GallerySurfaceHostProps {
@@ -29,12 +30,12 @@ export function GallerySurfaceHost({ surfaceId: propSurfaceId }: GallerySurfaceH
     if (urlSurfaceId) return urlSurfaceId as GallerySurfaceId;
 
     // Fall back to default
-    const defaultSurface = gallerySurfaceRegistry.getDefault();
+    const defaultSurface = gallerySurfaceSelectors.getDefault();
     return defaultSurface?.id || 'assets-default';
   }, [propSurfaceId]);
 
   // Get surface definition from registry
-  const surface = gallerySurfaceRegistry.get(activeSurfaceId);
+  const surface = gallerySurfaceSelectors.get(activeSurfaceId);
 
   // Call lifecycle hooks when surface changes
   useEffect(() => {
@@ -90,7 +91,7 @@ export function GallerySurfaceHost({ surfaceId: propSurfaceId }: GallerySurfaceH
           Surface "{activeSurfaceId}" not found in registry.
         </div>
         <div className="text-sm text-neutral-600">
-          Available surfaces: {gallerySurfaceRegistry.getAll().map(s => s.id).join(', ')}
+          Available surfaces: {gallerySurfaceSelectors.getAll().map(s => s.id).join(', ')}
         </div>
       </div>
     );
