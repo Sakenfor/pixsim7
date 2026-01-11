@@ -4,11 +4,20 @@ Upload attribution helpers for assets.
 Centralizes upload method labels and inference so API endpoints
 avoid hard-coded source logic scattered across the codebase.
 
+Upload Method Categories:
+- pixverse_sync: Synced from Pixverse via browser extension
+- web: Imported from any website (extension, direct upload, API, mobile)
+- local: Uploaded from local folders
+- generated: Created by the generation engine
+- video_capture: Frame captured from video player
+
 Inference Rules (priority order):
-1. Explicit upload_method parameter
-2. Metadata-based inference (source_folder_id, source_url, etc.)
-3. Asset field inference (source_generation_id, provider_id, remote_url)
-4. Default fallback
+1. Explicit upload_method parameter (normalized)
+2. source_folder_id -> local
+3. Pixverse metadata/provider -> pixverse_sync
+4. source_url/source_site -> web
+5. source_generation_id -> generated
+6. Default -> web
 """
 from __future__ import annotations
 
@@ -18,18 +27,15 @@ if TYPE_CHECKING:
     from pixsim7.backend.main.domain.assets.models import Asset
 
 
-DEFAULT_UPLOAD_METHOD = "api"
+DEFAULT_UPLOAD_METHOD = "web"
 
 UPLOAD_METHOD_LABELS: dict[str, str] = {
-    "extension_pixverse": "Pixverse Badge",
-    "extension_web": "Web Badge",
-    "local_folders": "Local Folders",
+    "pixverse_sync": "Pixverse Sync",
+    "web": "Web Import",
+    "local": "Local",
     "generated": "Generated",
-    "api": "API Upload",
-    "web": "Web Upload",
-    "mobile": "Mobile Upload",
+    "video_capture": "Video Capture",
 }
-
 
 # ===== INFERENCE RULES =====
 # Each rule is a (name, check_fn) tuple. check_fn receives extracted hints and asset,
@@ -43,36 +49,36 @@ def _rule_explicit_method(hints: Dict[str, Any], asset: Optional[Any]) -> Option
 
 
 def _rule_source_folder(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
-    """Rule: source_folder_id indicates local folders."""
+    """Rule: source_folder_id indicates local upload."""
     if hints.get("source_folder_id"):
-        return "local_folders"
+        return "local"
     return None
 
 
-def _rule_extension_pixverse(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
-    """Rule: Pixverse badge (auto-sync or syncing your own Pixverse content)."""
+def _rule_pixverse_sync(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
+    """Rule: Pixverse sync (auto-sync or syncing your own Pixverse content)."""
     # Badge auto-sync via source='extension_badge'
     if hints.get("source") == "extension_badge":
-        return "extension_pixverse"
+        return "pixverse_sync"
     # Pixverse metadata indicates badge sync of your own content
     if not asset:
         return None
     # Check for Pixverse-specific metadata fields
     metadata = getattr(asset, "media_metadata", None) or {}
     if metadata.get("pixverse_asset_uuid") or metadata.get("image_id"):
-        return "extension_pixverse"
+        return "pixverse_sync"
     # Pixverse provider with no source_site (not from web) and no metadata
     provider_id = getattr(asset, "provider_id", None)
     if provider_id == "pixverse" and not hints.get("source_site"):
-        return "extension_pixverse"
+        return "pixverse_sync"
     return None
 
 
-def _rule_extension_web(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
-    """Rule: Web badge (Pinterest, Google, etc.)."""
-    # Has source_url or source_site = saved from web via badge
+def _rule_web_import(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str]:
+    """Rule: Web import (Pinterest, Google, any external site, etc.)."""
+    # Has source_url or source_site = saved from web
     if hints.get("source_url") or hints.get("source_site"):
-        return "extension_web"
+        return "web"
     return None
 
 
@@ -87,18 +93,20 @@ def _rule_generated(hints: Dict[str, Any], asset: Optional[Any]) -> Optional[str
 INFERENCE_RULES: List[tuple[str, InferenceRule]] = [
     ("explicit_method", _rule_explicit_method),
     ("source_folder", _rule_source_folder),
-    ("extension_pixverse", _rule_extension_pixverse),  # Pixverse badge
-    ("extension_web", _rule_extension_web),  # Web badge (Pinterest, Google, etc.)
+    ("pixverse_sync", _rule_pixverse_sync),
+    ("web_import", _rule_web_import),
     ("generated", _rule_generated),
 ]
 
 
 def normalize_upload_method(value: Optional[str]) -> Optional[str]:
-    """Normalize upload method values to lowercase strings."""
+    """Normalize upload method values for storage."""
     if not value:
         return None
     normalized = value.strip().lower()
-    return normalized or None
+    if not normalized:
+        return None
+    return normalized
 
 
 def infer_upload_method(
@@ -118,9 +126,9 @@ def infer_upload_method(
     if normalized:
         return normalized
     if source_folder_id:
-        return "local_folders"
+        return "local"
     if source_url or source_site:
-        return "extension"
+        return "web"
     return DEFAULT_UPLOAD_METHOD
 
 

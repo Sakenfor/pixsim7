@@ -75,7 +75,7 @@ class AssetSyncService:
             status: 'success' or 'error'
             error_code: Optional provider-specific error code
             error_message: Optional human-readable error message (safe for UI)
-            method: Optional method (e.g., "extension", "local_folders", "api")
+            method: Optional method (e.g., "web", "local", "pixverse_sync", "generated")
             context: Optional free-form context (job ID, route, etc.)
 
         Note:

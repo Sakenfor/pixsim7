@@ -2,7 +2,7 @@
 Asset management request/response schemas
 """
 from datetime import datetime
-from typing import Optional, List, Literal, Dict
+from typing import Optional, List, Literal, Dict, Any
 from pydantic import BaseModel, Field, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain, OperationType
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
@@ -98,8 +98,10 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
-    # Upload method (source): 'extension', 'local_folders', 'api', 'generated', etc.
+    # Upload method (source): 'web', 'local', 'pixverse_sync', 'generated', 'video_capture'
     upload_method: Optional[str] = None
+    # Upload context captured at ingestion time (validated against schema)
+    upload_context: Optional[Dict[str, Any]] = None
 
     # Cross-provider upload mapping (provider_id -> uploaded asset URL/ID)
     # Used by frontend to get provider-specific URLs for operations like IMAGE_TO_IMAGE

@@ -21,6 +21,7 @@ from pixsim7.backend.main.domain.relation_types import DERIVATION
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.domain.assets.upload_attribution import (
     extract_hints_from_metadata,
+    normalize_upload_method,
     DEFAULT_UPLOAD_METHOD,
 )
 
@@ -39,38 +40,39 @@ def _infer_upload_method_for_new_asset(
     on raw fields since we don't have an Asset object yet.
 
     Priority (matches INFERENCE_RULES):
-    1. Explicit upload_method in metadata
-    2. source_folder_id -> 'local_folders'
-    3. Pixverse badge -> 'extension_pixverse'
-    4. Web badge -> 'extension_web'
+    1. Explicit upload_method in metadata (normalized)
+    2. source_folder_id -> 'local'
+    3. Pixverse sync -> 'pixverse_sync'
+    4. Web import -> 'web'
     5. source_generation_id -> 'generated'
-    6. Default -> 'api'
+    6. Default -> 'web'
     """
     # Extract hints from metadata
     hints = extract_hints_from_metadata(media_metadata)
 
     # 1. Check explicit upload_method in metadata
-    if hints.get("upload_method"):
-        return hints["upload_method"]
+    explicit = normalize_upload_method(hints.get("upload_method"))
+    if explicit:
+        return explicit
 
-    # 2. Check source_folder_id -> local_folders
+    # 2. Check source_folder_id -> local
     if hints.get("source_folder_id"):
-        return "local_folders"
+        return "local"
 
-    # 3. Check Pixverse badge (auto-sync or Pixverse content)
+    # 3. Check Pixverse sync (auto-sync or Pixverse content)
     if hints.get("source") == "extension_badge":
-        return "extension_pixverse"
+        return "pixverse_sync"
     # Pixverse metadata indicates badge sync
     if media_metadata:
         if media_metadata.get("pixverse_asset_uuid") or media_metadata.get("image_id"):
-            return "extension_pixverse"
-    # Pixverse provider with no source_site = Pixverse badge
+            return "pixverse_sync"
+    # Pixverse provider with no source_site = Pixverse sync
     if provider_id == "pixverse" and not hints.get("source_site"):
-        return "extension_pixverse"
+        return "pixverse_sync"
 
-    # 4. Check web badge (Pinterest, Google, etc.)
+    # 4. Check web import (Pinterest, Google, etc.)
     if hints.get("source_url") or hints.get("source_site"):
-        return "extension_web"
+        return "web"
 
     # 5. Check if generated
     if source_generation_id:
@@ -156,6 +158,7 @@ async def add_asset(
     phash64: Optional[int] = None,
     operation_type: Optional[OperationType] = None,
     upload_method: Optional[str] = None,
+    upload_context: Optional[Dict[str, Any]] = None,
 ) -> Asset:
     """
     Create or upsert an Asset record with sensible deduplication.
@@ -383,6 +386,7 @@ async def add_asset(
         image_hash=image_hash,
         phash64=phash64,
         upload_method=upload_method,
+        upload_context=upload_context,
         created_at=datetime.utcnow(),
     )
     db.add(asset)

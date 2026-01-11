@@ -803,13 +803,12 @@ async def backfill_upload_method(
     Backfill upload_method from asset metadata using centralized inference rules.
 
     Uses the rule-based inference system from upload_attribution module which checks:
-    - Explicit upload_method in metadata
-    - source_folder_id -> 'local_folders'
-    - source_url/source_site -> 'extension'
-    - source='extension_badge' -> 'extension'
+    - Explicit upload_method in metadata (normalized)
+    - source_folder_id -> 'local'
+    - Pixverse metadata/provider -> 'pixverse_sync'
+    - source_url/source_site -> 'web'
     - source_generation_id -> 'generated'
-    - Pixverse remote URLs -> 'extension'
-    - Default fallback -> 'api'
+    - Default fallback -> 'web'
 
     Rules can be extended by adding to INFERENCE_RULES in upload_attribution.py
     """

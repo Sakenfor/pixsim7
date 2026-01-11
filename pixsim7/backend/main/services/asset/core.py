@@ -24,6 +24,7 @@ from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetada
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.prompt.parser import analyze_prompt
+from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -362,14 +363,10 @@ class AssetCoreService:
     async def list_assets(
         self,
         user: User,
-        media_type: Optional[MediaType] = None,
-        sync_status: Optional[SyncStatus] = None,
-        provider_id: Optional[str] = None,
         provider_status: Optional[str] = None,
-        upload_method: Optional[str] = None,
-        source_filename: Optional[str] = None,
-        source_site: Optional[str] = None,
         *,
+        filters: dict[str, Any] | None = None,
+        sync_status: Optional[SyncStatus] = None,
         tag: Optional[str] = None,
         q: Optional[str] = None,
         include_archived: bool = False,
@@ -399,9 +396,8 @@ class AssetCoreService:
 
         Args:
             user: User (or admin)
-            media_type: Filter by media type
+            filters: Registry-defined filters (media_type, provider_id, upload_method, nested JSONB, etc.)
             sync_status: Filter by sync status
-            provider_id: Filter by provider
             provider_status: Filter by provider status (ok, local_only, flagged, unknown)
             include_archived: If False (default), exclude archived assets
             limit: Max results
@@ -446,13 +442,12 @@ class AssetCoreService:
         if searchable is not None:
             query = query.where(Asset.searchable == searchable)
 
-        # Apply filters
-        if media_type:
-            query = query.where(Asset.media_type == media_type)
+        # Apply registry-driven filters
+        if filters:
+            for condition in asset_filter_registry.build_filter_conditions(filters):
+                query = query.where(condition)
         if sync_status:
             query = query.where(Asset.sync_status == sync_status)
-        if provider_id:
-            query = query.where(Asset.provider_id == provider_id)
         if provider_status:
             provider_status_expr = case(
                 (Asset.remote_url.ilike("http%"), literal("ok")),
@@ -476,14 +471,6 @@ class AssetCoreService:
                 query = query.where(literal(False))
             else:
                 query = query.where(provider_status_expr == provider_status)
-
-        # Upload method filter
-        if upload_method:
-            query = query.where(Asset.upload_method == upload_method)
-        if source_filename:
-            query = query.where(Asset.upload_context["source_filename"].astext == source_filename)
-        if source_site:
-            query = query.where(Asset.upload_context["source_site"].astext == source_site)
 
         # Date range filters
         if created_from is not None:

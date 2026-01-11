@@ -23,7 +23,7 @@ from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import json
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim7.backend.main.domain.assets.upload_attribution import (
@@ -31,6 +31,10 @@ from pixsim7.backend.main.domain.assets.upload_attribution import (
     infer_upload_method,
 )
 from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
+from pixsim7.backend.main.shared.upload_context_schema import (
+    UPLOAD_CONTEXT_SPEC,
+    normalize_upload_context,
+)
 from pixsim_logging import get_logger
 
 # Shared helper (used by this module and sub-modules)
@@ -53,51 +57,55 @@ router.include_router(assets_tags.router)
 router.include_router(assets_versions.router)
 
 
-# ===== LIST ASSETS =====
+# ===== ASSET SEARCH =====
 
-@router.get("", response_model=AssetListResponse)
-async def list_assets(
+class AssetSearchRequest(BaseModel):
+    """Request body for asset search."""
+    filters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Filter key/value pairs (registry-defined)",
+    )
+    tag: Optional[str] = Field(None, description="Filter assets containing tag (slug)")
+    q: Optional[str] = Field(None, description="Full-text search over description/tags")
+    include_archived: bool = Field(False, description="Include archived assets (default: false)")
+    searchable: Optional[bool] = Field(True, description="Filter by searchable flag (default: true)")
+
+    created_from: datetime | None = Field(None, description="Filter by created_at >= value")
+    created_to: datetime | None = Field(None, description="Filter by created_at <= value")
+    min_width: int | None = Field(None, ge=0, description="Minimum width")
+    max_width: int | None = Field(None, ge=0, description="Maximum width")
+    min_height: int | None = Field(None, ge=0, description="Minimum height")
+    max_height: int | None = Field(None, ge=0, description="Maximum height")
+
+    content_domain: ContentDomain | None = Field(None, description="Filter by content domain")
+    content_category: str | None = Field(None, description="Filter by content category")
+    content_rating: str | None = Field(None, description="Filter by content rating")
+
+    provider_status: str | None = Field(None, description="Filter by provider status (ok, local_only, flagged, unknown)")
+    sync_status: SyncStatus | None = Field(None, description="Filter by sync status")
+
+    source_generation_id: int | None = Field(None, description="Filter by source generation ID")
+    operation_type: OperationType | None = Field(None, description="Filter by lineage operation type")
+    has_parent: bool | None = Field(None, description="Has lineage parent")
+    has_children: bool | None = Field(None, description="Has lineage children")
+
+    sort_by: str | None = Field(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field")
+    sort_dir: str = Field("desc", pattern=r"^(asc|desc)$", description="Sort direction")
+
+    limit: int = Field(50, ge=1, le=100, description="Results per page")
+    offset: int = Field(0, ge=0, description="Pagination offset (legacy)")
+    cursor: str | None = Field(None, description="Opaque cursor for pagination")
+
+# ===== SEARCH ASSETS =====
+
+@router.post("/search", response_model=AssetListResponse)
+async def search_assets(
     user: CurrentUser,
     asset_service: AssetSvc,
     db: DatabaseSession,
-    # Basic filters
-    media_type: MediaType | None = Query(None, description="Filter by media type"),
-    sync_status: SyncStatus | None = Query(None, description="Filter by sync status"),
-    provider_id: str | None = Query(None, description="Filter by provider"),
-    provider_status: str | None = Query(None, description="Filter by provider status (ok, local_only, flagged, unknown)"),
-    upload_method: str | None = Query(None, description="Filter by upload method"),
-    source_filename: str | None = Query(None, description="Filter by source filename (for video_capture)"),
-    source_site: str | None = Query(None, description="Filter by source site/domain (for web uploads)"),
-    tag: str | None = Query(None, description="Filter assets containing tag (slug)"),
-    q: str | None = Query(None, description="Full-text search over description/tags"),
-    include_archived: bool = Query(False, description="Include archived assets (default: false)"),
-    # Date range filters
-    created_from: datetime | None = Query(None, description="Filter by created_at >= value"),
-    created_to: datetime | None = Query(None, description="Filter by created_at <= value"),
-    # Dimension filters
-    min_width: int | None = Query(None, ge=0, description="Minimum width"),
-    max_width: int | None = Query(None, ge=0, description="Maximum width"),
-    min_height: int | None = Query(None, ge=0, description="Minimum height"),
-    max_height: int | None = Query(None, ge=0, description="Maximum height"),
-    # Content filters
-    content_domain: ContentDomain | None = Query(None, description="Filter by content domain"),
-    content_category: str | None = Query(None, description="Filter by content category"),
-    content_rating: str | None = Query(None, description="Filter by content rating"),
-    searchable: bool | None = Query(True, description="Filter by searchable flag (default: true)"),
-    # Lineage filters
-    source_generation_id: int | None = Query(None, description="Filter by source generation ID"),
-    operation_type: OperationType | None = Query(None, description="Filter by lineage operation type"),
-    has_parent: bool | None = Query(None, description="Has lineage parent"),
-    has_children: bool | None = Query(None, description="Has lineage children"),
-    # Sorting
-    sort_by: str | None = Query(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field"),
-    sort_dir: str | None = Query("desc", pattern=r"^(asc|desc)$", description="Sort direction"),
-    # Pagination
-    limit: int = Query(50, ge=1, le=100, description="Results per page"),
-    offset: int = Query(0, ge=0, description="Pagination offset (legacy)"),
-    cursor: str | None = Query(None, description="Opaque cursor for pagination"),
+    request: AssetSearchRequest,
 ):
-    """List assets for current user with optional filters.
+    """Search assets for current user with filters and pagination.
 
     Supports either offset or cursor pagination (cursor takes precedence if provided).
     Assets returned newest first by default (created_at DESC, id DESC for tie-break).
@@ -109,36 +117,32 @@ async def list_assets(
     try:
         assets = await asset_service.list_assets(
             user=user,
-            media_type=media_type,
-            sync_status=sync_status,
-            provider_id=provider_id,
-            provider_status=provider_status,
-            upload_method=upload_method,
-            source_filename=source_filename,
-            source_site=source_site,
-            tag=tag,
-            q=q,
-            include_archived=include_archived,
-            limit=limit,
-            offset=offset if cursor is None else 0,
-            cursor=cursor,
+            filters=request.filters,
+            sync_status=request.sync_status,
+            provider_status=request.provider_status,
+            tag=request.tag,
+            q=request.q,
+            include_archived=request.include_archived,
+            limit=request.limit,
+            offset=request.offset if request.cursor is None else 0,
+            cursor=request.cursor,
             # New search filters
-            created_from=created_from,
-            created_to=created_to,
-            min_width=min_width,
-            max_width=max_width,
-            min_height=min_height,
-            max_height=max_height,
-            content_domain=content_domain,
-            content_category=content_category,
-            content_rating=content_rating,
-            searchable=searchable,
-            source_generation_id=source_generation_id,
-            operation_type=operation_type,
-            has_parent=has_parent,
-            has_children=has_children,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
+            created_from=request.created_from,
+            created_to=request.created_to,
+            min_width=request.min_width,
+            max_width=request.max_width,
+            min_height=request.min_height,
+            max_height=request.max_height,
+            content_domain=request.content_domain,
+            content_category=request.content_category,
+            content_rating=request.content_rating,
+            searchable=request.searchable,
+            source_generation_id=request.source_generation_id,
+            operation_type=request.operation_type,
+            has_parent=request.has_parent,
+            has_children=request.has_children,
+            sort_by=request.sort_by,
+            sort_dir=request.sort_dir,
         )
 
         # Simple total (future: separate COUNT query)
@@ -146,7 +150,7 @@ async def list_assets(
 
         # Generate cursor for next page
         next_cursor = None
-        if len(assets) == limit:
+        if len(assets) == request.limit:
             last = assets[-1]
             # Opaque format: created_at|id
             next_cursor = f"{last.created_at.isoformat()}|{last.id}"
@@ -160,21 +164,26 @@ async def list_assets(
         return AssetListResponse(
             assets=asset_responses,
             total=total,
-            limit=limit,
-            offset=offset,
+            limit=request.limit,
+            offset=request.offset,
             next_cursor=next_cursor,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list assets: {str(e)}")
 
 
-# ===== FILTER METADATA =====
+# ===== FILTER OPTIONS =====
 
 class FilterDefinition(BaseModel):
     """Definition of a single filter field."""
-    key: str = Field(description="Filter parameter key (matches query param name)")
+    key: str = Field(description="Filter parameter key")
     type: str = Field(description="Filter type: enum, boolean, search, autocomplete")
     label: Optional[str] = Field(None, description="Display label (optional, frontend can override)")
+    description: Optional[str] = Field(None, description="Optional description for UI")
+    depends_on: dict[str, list[str]] | None = Field(
+        None,
+        description="Context dependencies for showing this filter",
+    )
 
 
 class FilterOptionValue(BaseModel):
@@ -184,31 +193,42 @@ class FilterOptionValue(BaseModel):
     count: Optional[int] = Field(None, description="Number of assets with this value")
 
 
-class FilterMetadataResponse(BaseModel):
+class FilterOptionsRequest(BaseModel):
+    """Request for filter definitions and options."""
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Current filter context (used for dependent filters)",
+    )
+    include_counts: bool = Field(False, description="Include asset counts per option (slower)")
+    include: list[str] | None = Field(
+        None,
+        description="Optional filter keys to include (repeat or comma-separated)",
+    )
+    limit: int | None = Field(None, ge=1, le=500, description="Optional max options per filter")
+
+
+class FilterOptionsResponse(BaseModel):
     """Response containing available filters and their options."""
     filters: List[FilterDefinition] = Field(description="Available filter definitions")
     options: dict[str, List[FilterOptionValue]] = Field(
         default_factory=dict,
-        description="Available options per filter key (for enum types)"
+        description="Available options per filter key (for enum types)",
     )
 
 
-@router.get("/filter-metadata", response_model=FilterMetadataResponse)
-async def get_filter_metadata(
+class UploadContextSchemaResponse(BaseModel):
+    """Schema for upload_context fields by upload method."""
+    schema_: dict[str, Any] = Field(alias="schema")
+
+
+@router.post("/filter-options", response_model=FilterOptionsResponse)
+async def get_filter_options(
     user: CurrentUser,
     db: DatabaseSession,
-    include_counts: bool = Query(False, description="Include asset counts per option (slower)"),
-    include: list[str] | None = Query(
-        None,
-        description="Optional filter keys to include (repeat or comma-separated)",
-    ),
+    request: FilterOptionsRequest,
 ):
     """
     Get available filter definitions and options for the assets gallery.
-
-    Returns:
-    - filters: List of filter definitions (key, type, optional label)
-    - options: Available values for enum-type filters
 
     The frontend should use this to dynamically render filter UI.
     Filter types:
@@ -218,24 +238,33 @@ async def get_filter_metadata(
     - autocomplete: Async search (use /tags endpoint for values)
     """
     include_keys = None
-    if include:
+    if request.include:
         include_keys = []
-        for entry in include:
+        for entry in request.include:
             if not entry:
                 continue
             include_keys.extend([key for key in entry.split(",") if key])
 
+    context = request.context or {}
     filters = [
-        FilterDefinition(key=spec.key, type=spec.type, label=spec.label)
-        for spec in asset_filter_registry.list_filters(include=include_keys)
+        FilterDefinition(
+            key=spec.key,
+            type=spec.type,
+            label=spec.label,
+            description=spec.description,
+            depends_on={k: sorted(v) for k, v in spec.depends_on.items()} if spec.depends_on else None,
+        )
+        for spec in asset_filter_registry.list_filters(include=include_keys, context=context)
     ]
 
     try:
         options_raw = await asset_filter_registry.build_options(
             db,
             user=user,
-            include_counts=include_counts,
+            include_counts=request.include_counts,
             include=include_keys,
+            context=context,
+            limit=request.limit,
         )
         options: dict[str, List[FilterOptionValue]] = {}
         for key, values in options_raw.items():
@@ -244,96 +273,17 @@ async def get_filter_metadata(
                 for value, label, count in values
             ]
 
-        return FilterMetadataResponse(filters=filters, options=options)
+        return FilterOptionsResponse(filters=filters, options=options)
 
     except Exception as e:
-        logger.error("filter_metadata_failed", error=str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get filter metadata: {str(e)}")
+        logger.error("filter_options_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}")
 
 
-# ===== NESTED FILTER OPTIONS =====
-
-class NestedFilterOption(BaseModel):
-    """A single nested filter option."""
-    value: str
-    label: Optional[str] = None
-    count: Optional[int] = None
-
-
-class NestedFilterDefinition(BaseModel):
-    """Definition of a nested filter (for UI rendering)."""
-    key: str
-    label: str
-    description: Optional[str] = None
-
-
-class NestedFilterOptionsResponse(BaseModel):
-    """Response containing nested filter options for a specific upload method."""
-    upload_method: str
-    definitions: List[NestedFilterDefinition] = Field(
-        default_factory=list,
-        description="Filter definitions (key, label, description)"
-    )
-    filters: dict[str, List[NestedFilterOption]] = Field(
-        description="Available nested filters and their options"
-    )
-
-
-@router.get("/nested-filter-options", response_model=NestedFilterOptionsResponse)
-async def get_nested_filter_options(
-    user: CurrentUser,
-    db: DatabaseSession,
-    upload_method: str = Query(..., description="Upload method to get nested filters for"),
-    include_counts: bool = Query(False, description="Include asset counts per option"),
-):
-    """
-    Get nested filter options specific to an upload method.
-
-    For example, when upload_method=video_capture, returns available
-    source_filename values that can be used as a secondary filter.
-
-    This enables dynamic, context-aware filtering in the UI.
-    Uses the nested filter registry - no hardcoded logic here.
-    """
-    from pixsim7.backend.main.services.asset.filter_registry import nested_filter_registry
-
-    try:
-        # Get filter definitions from registry
-        specs = nested_filter_registry.get_specs(upload_method)
-        definitions = [
-            NestedFilterDefinition(
-                key=spec.key,
-                label=spec.label,
-                description=spec.description,
-            )
-            for spec in specs
-        ]
-
-        # Build options using registry
-        options_raw = await nested_filter_registry.build_options(
-            db,
-            user=user,
-            upload_method=upload_method,
-            include_counts=include_counts,
-        )
-
-        # Convert to response format
-        filters: dict[str, List[NestedFilterOption]] = {}
-        for key, values in options_raw.items():
-            filters[key] = [
-                NestedFilterOption(value=v, label=lbl, count=cnt)
-                for v, lbl, cnt in values
-            ]
-
-        return NestedFilterOptionsResponse(
-            upload_method=upload_method,
-            definitions=definitions,
-            filters=filters,
-        )
-
-    except Exception as e:
-        logger.error("nested_filter_options_failed", error=str(e), upload_method=upload_method, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get nested filter options: {str(e)}")
+@router.get("/upload-context-schema", response_model=UploadContextSchemaResponse)
+async def get_upload_context_schema():
+    """Return the upload context schema for clients (extension, UI)."""
+    return UploadContextSchemaResponse(schema=UPLOAD_CONTEXT_SPEC)
 
 
 # ===== AUTOCOMPLETE =====
@@ -840,6 +790,7 @@ class UploadAssetResponse(BaseModel):
     media_type: MediaType
     external_url: str | None = None
     provider_asset_id: str | None = None
+    asset_id: int | None = None
     note: str | None = None
 
 
@@ -932,6 +883,7 @@ async def upload_asset_to_provider(
             media_type=existing.media_type,
             external_url=existing_external,
             provider_asset_id=provider_specific_id,
+            asset_id=existing.id,
             note=prep.dedup_note,
         )
 
@@ -990,17 +942,23 @@ async def upload_asset_to_provider(
                     detail="upload_context must be a JSON object",
                 )
 
+        context_input = dict(upload_context_payload or {})
+        if source_folder_id and "source_folder_id" not in context_input:
+            context_input["source_folder_id"] = source_folder_id
+        if source_relative_path and "source_relative_path" not in context_input:
+            context_input["source_relative_path"] = source_relative_path
+        normalized_context = normalize_upload_context(upload_method, context_input)
+
         # Build upload attribution metadata (rich context only)
         upload_attribution = build_upload_attribution_context(
-            upload_context=upload_context_payload,
-            source_folder_id=source_folder_id,
-            source_relative_path=source_relative_path,
+            upload_context=normalized_context,
         )
 
         media_metadata = {}
         if upload_attribution:
             media_metadata["upload_attribution"] = upload_attribution
 
+        created_asset_id = None
         try:
             # Check if we're updating an existing asset (cross-provider upload)
             if existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
@@ -1027,6 +985,7 @@ async def upload_asset_to_provider(
                     media_type=existing.media_type,
                     external_url=remote_url,
                     provider_asset_id=provider_asset_id,
+                    asset_id=existing.id,
                     note=f"Reused existing asset (deduplicated by sha256, uploaded to {provider_id})",
                 )
             else:
@@ -1051,7 +1010,11 @@ async def upload_asset_to_provider(
                     phash64=phash64,
                     media_metadata=media_metadata or None,
                     upload_method=upload_method,
+                    upload_context=normalized_context or None,
                 )
+
+                if new_asset:
+                    created_asset_id = new_asset.id
 
                 # Queue thumbnail generation if we have a local copy
                 if stored_key and new_asset:
@@ -1097,6 +1060,7 @@ async def upload_asset_to_provider(
             media_type=result.media_type,
             external_url=result.external_url,
             provider_asset_id=result.provider_asset_id,
+            asset_id=created_asset_id,
             note=result.note,
         )
     except InvalidOperationError as e:
@@ -1143,7 +1107,7 @@ class UploadFromUrlRequest(BaseModel):
     )
     upload_context: Optional[dict] = Field(
         default=None,
-        description="Optional upload context (free-form)",
+        description="Optional upload context (validated against schema)",
     )
 
 
@@ -1325,6 +1289,7 @@ async def upload_asset_from_url(
                 media_type=existing.media_type,
                 external_url=existing_external,
                 provider_asset_id=provider_specific_id,
+                asset_id=existing.id,
                 note=note,
             )
 
@@ -1361,11 +1326,16 @@ async def upload_asset_from_url(
         source_site=request.source_site,
     )
 
+    context_input = dict(request.upload_context or {})
+    if request.source_url and "source_url" not in context_input:
+        context_input["source_url"] = request.source_url
+    if request.source_site and "source_site" not in context_input:
+        context_input["source_site"] = request.source_site
+    normalized_context = normalize_upload_context(upload_method, context_input)
+
     # Build upload attribution metadata (rich context only)
     upload_attribution = build_upload_attribution_context(
-        upload_context=request.upload_context,
-        source_url=request.source_url,
-        source_site=request.source_site,
+        upload_context=normalized_context,
     )
 
     media_metadata = {}
@@ -1393,6 +1363,7 @@ async def upload_asset_from_url(
             phash64=phash64,
             media_metadata=media_metadata or None,
             upload_method=upload_method,
+            upload_context=normalized_context or None,
         )
         # TODO: Add "user_upload" and "from_url" tags using TagService after asset creation
 
@@ -1504,6 +1475,7 @@ async def upload_asset_from_url(
         media_type=media_type,
         external_url=asset.remote_url or f"/api/v1/assets/{asset.id}/file",
         provider_asset_id=asset.provider_asset_id,
+        asset_id=asset.id,
         note=provider_upload_note,
     )
 

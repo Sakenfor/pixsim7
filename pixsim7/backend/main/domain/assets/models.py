@@ -11,7 +11,7 @@ from datetime import datetime
 from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import BigInteger, JSON
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from pgvector.sqlalchemy import Vector
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain
@@ -173,7 +173,12 @@ class Asset(SQLModel, table=True):
     upload_method: Optional[str] = Field(
         default=None,
         max_length=32,
-        description="How uploaded: 'extension', 'local_folders', 'api', 'generated', etc."
+        description="How uploaded: 'web', 'local', 'pixverse_sync', 'generated', 'video_capture'"
+    )
+    upload_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSONB),
+        description="Optional upload context for filtering and attribution"
     )
 
     # ===== GENERIC OVERFLOW METADATA =====

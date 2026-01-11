@@ -3,12 +3,10 @@ Asset filter registry for dynamic filter metadata.
 
 Provides a central place to define filters and option sources, so
 clients can render filters without hard-coded values.
-
-Also includes nested filter registry for upload-method-specific sub-filters.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
 from sqlalchemy import select, func, distinct
@@ -16,152 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.upload_attribution import UPLOAD_METHOD_LABELS
-
-
-# ===== NESTED FILTER SPECS (for upload-method-specific sub-filters) =====
-
-@dataclass(frozen=True)
-class NestedFilterSpec:
-    """Specification for a nested filter within an upload method."""
-    key: str  # e.g., "source_filename"
-    label: str  # e.g., "Source Video"
-    jsonb_path: tuple[str, ...]  # Path in upload_context, e.g., ("source_filename",)
-    description: Optional[str] = None
-
-
-class NestedFilterRegistry:
-    """Registry for upload-method-specific nested filters."""
-
-    def __init__(self) -> None:
-        self._specs: dict[str, list[NestedFilterSpec]] = {}
-
-    def register(self, upload_method: str, spec: NestedFilterSpec) -> None:
-        """Register a nested filter for an upload method."""
-        if upload_method not in self._specs:
-            self._specs[upload_method] = []
-        self._specs[upload_method].append(spec)
-
-    def get_specs(self, upload_method: str) -> list[NestedFilterSpec]:
-        """Get nested filter specs for an upload method."""
-        return self._specs.get(upload_method, [])
-
-    def has_nested_filters(self, upload_method: str) -> bool:
-        """Check if an upload method has nested filters."""
-        return upload_method in self._specs and len(self._specs[upload_method]) > 0
-
-    def list_upload_methods_with_nested(self) -> list[str]:
-        """List upload methods that have nested filters defined."""
-        return [k for k, v in self._specs.items() if v]
-
-    async def build_options(
-        self,
-        db: AsyncSession,
-        *,
-        user: Any,
-        upload_method: str,
-        include_counts: bool = False,
-    ) -> dict[str, list[tuple[str, Optional[str], Optional[int]]]]:
-        """
-        Build nested filter options for a specific upload method.
-
-        Returns dict of filter_key -> [(value, label, count), ...]
-        """
-        specs = self.get_specs(upload_method)
-        if not specs:
-            return {}
-
-        options: dict[str, list[tuple[str, Optional[str], Optional[int]]]] = {}
-
-        for spec in specs:
-            values = await _load_jsonb_distinct_options(
-                db,
-                user=user,
-                upload_method=upload_method,
-                jsonb_path=spec.jsonb_path,
-                include_counts=include_counts,
-            )
-            if values:
-                options[spec.key] = values
-
-        return options
-
-
-async def _load_jsonb_distinct_options(
-    db: AsyncSession,
-    *,
-    user: Any,
-    upload_method: str,
-    jsonb_path: tuple[str, ...],
-    include_counts: bool,
-) -> list[tuple[str, Optional[str], Optional[int]]]:
-    """Load distinct values from a JSONB path in upload_context."""
-    # Build the JSONB accessor for the path
-    jsonb_col = Asset.upload_context
-    for key in jsonb_path:
-        jsonb_col = jsonb_col[key]
-    jsonb_text = jsonb_col.astext
-
-    if include_counts:
-        stmt = (
-            select(jsonb_text.label("value"), func.count(Asset.id).label("count"))
-            .where(
-                Asset.user_id == user.id,
-                Asset.is_archived == False,
-                Asset.upload_method == upload_method,
-                jsonb_text.isnot(None),
-                jsonb_text != "",
-            )
-            .group_by(jsonb_text)
-            .order_by(func.count(Asset.id).desc())
-        )
-        result = await db.execute(stmt)
-        return [(row.value, row.value, row.count) for row in result.all() if row.value]
-    else:
-        stmt = (
-            select(distinct(jsonb_text).label("value"))
-            .where(
-                Asset.user_id == user.id,
-                Asset.is_archived == False,
-                Asset.upload_method == upload_method,
-                jsonb_text.isnot(None),
-                jsonb_text != "",
-            )
-            .order_by(jsonb_text)
-        )
-        result = await db.execute(stmt)
-        return [(row.value, row.value, None) for row in result.all() if row.value]
-
-
-nested_filter_registry = NestedFilterRegistry()
-
-
-def register_default_nested_filters() -> None:
-    """Register default nested filters for known upload methods."""
-    # Video capture: group by source filename
-    nested_filter_registry.register(
-        "video_capture",
-        NestedFilterSpec(
-            key="source_filename",
-            label="Source Video",
-            jsonb_path=("source_filename",),
-            description="Filter by the source video file name",
-        )
-    )
-
-    # Web uploads: group by source site (domain)
-    nested_filter_registry.register(
-        "web",
-        NestedFilterSpec(
-            key="source_site",
-            label="Domain",
-            jsonb_path=("source_site",),
-            description="Filter by the website domain",
-        )
-    )
-
-    # Pixverse sync: group by pixverse media type (i2i, t2v, etc.)
-    # This would require querying media_metadata instead of upload_context
-    # Could add later if needed
+from pixsim7.backend.main.shared.upload_context_schema import get_upload_context_filter_specs
 
 
 # ===== MAIN FILTER SPECS =====
@@ -171,11 +24,14 @@ class FilterSpec:
     key: str
     type: str
     label: Optional[str] = None
+    description: Optional[str] = None
     option_source: Optional[str] = None  # "distinct", "static", "custom"
     column: Any | None = None
+    jsonb_path: tuple[str, ...] | None = None
     label_map: dict[str, str] | None = None
+    depends_on: dict[str, set[str]] | None = None
     option_loader: Callable[
-        [AsyncSession, Any, bool],
+        [AsyncSession, Any, bool, dict[str, Any] | None],
         Awaitable[list[tuple[str, Optional[str], Optional[int]]]],
     ] | None = None
 
@@ -187,11 +43,23 @@ class AssetFilterRegistry:
     def register(self, spec: FilterSpec) -> None:
         self._filters[spec.key] = spec
 
-    def list_filters(self, include: Iterable[str] | None = None) -> list[FilterSpec]:
+    def list_filters(
+        self,
+        *,
+        include: Iterable[str] | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> list[FilterSpec]:
         if not include:
-            return list(self._filters.values())
-        include_set = {key for key in include if key}
-        return [spec for key, spec in self._filters.items() if key in include_set]
+            specs = list(self._filters.values())
+        else:
+            include_set = {key for key in include if key}
+            specs = [spec for key, spec in self._filters.items() if key in include_set]
+        if context is None:
+            return specs
+        return [spec for spec in specs if _matches_depends_on(spec, context)]
+
+    def get_spec(self, key: str) -> FilterSpec | None:
+        return self._filters.get(key)
 
     async def build_options(
         self,
@@ -200,9 +68,11 @@ class AssetFilterRegistry:
         user: Any,
         include_counts: bool,
         include: Iterable[str] | None = None,
+        context: dict[str, Any] | None = None,
+        limit: Optional[int] = None,
     ) -> dict[str, list[tuple[str, Optional[str], Optional[int]]]]:
         options: dict[str, list[tuple[str, Optional[str], Optional[int]]]] = {}
-        for spec in self.list_filters(include=include):
+        for spec in self.list_filters(include=include, context=context):
             if spec.option_source is None:
                 continue
             if spec.option_source == "static":
@@ -212,17 +82,75 @@ class AssetFilterRegistry:
                 ]
                 continue
             if spec.option_source == "custom" and spec.option_loader:
-                options[spec.key] = await spec.option_loader(db, user, include_counts)
+                options[spec.key] = await spec.option_loader(db, user, include_counts, context)
                 continue
-            if spec.option_source == "distinct" and spec.column is not None:
+            if spec.option_source == "distinct":
+                column = _resolve_filter_column(spec)
+                if column is None:
+                    continue
                 options[spec.key] = await _load_distinct_options(
                     db,
                     user=user,
-                    column=spec.column,
+                    column=column,
                     label_map=spec.label_map,
                     include_counts=include_counts,
+                    extra_filters=self.build_filter_conditions(context or {}, exclude_key=spec.key),
+                    exclude_empty=spec.jsonb_path is not None,
+                    limit=limit,
                 )
         return options
+
+    def build_filter_conditions(
+        self,
+        context: dict[str, Any],
+        *,
+        exclude_key: str | None = None,
+    ) -> list[Any]:
+        conditions: list[Any] = []
+        for key, value in context.items():
+            if exclude_key and key == exclude_key:
+                continue
+            spec = self.get_spec(key)
+            if not spec:
+                continue
+            if not _matches_depends_on(spec, context):
+                continue
+            column = _resolve_filter_column(spec)
+            if column is None:
+                continue
+            conditions.append(column == value)
+        return conditions
+
+
+def _build_jsonb_expr(root: Any, path: tuple[str, ...]) -> Any:
+    jsonb_col = root
+    for key in path:
+        jsonb_col = jsonb_col[key]
+    return jsonb_col.astext
+
+
+def _resolve_filter_column(spec: FilterSpec) -> Any | None:
+    if spec.column is not None:
+        return spec.column
+    if spec.jsonb_path:
+        return _build_jsonb_expr(Asset.upload_context, spec.jsonb_path)
+    return None
+
+
+def _matches_depends_on(spec: FilterSpec, context: dict[str, Any]) -> bool:
+    if not spec.depends_on:
+        return True
+    for key, allowed in spec.depends_on.items():
+        value = context.get(key)
+        if value is None:
+            return False
+        if isinstance(value, (list, tuple, set)):
+            if not any(str(entry) in allowed for entry in value):
+                return False
+            continue
+        if str(value) not in allowed:
+            return False
+    return True
 
 
 def _normalize_option_value(value: Any) -> Optional[str]:
@@ -242,17 +170,27 @@ async def _load_distinct_options(
     column: Any,
     label_map: dict[str, str] | None,
     include_counts: bool,
+    extra_filters: Iterable[Any] | None = None,
+    exclude_empty: bool = False,
+    limit: Optional[int] = None,
 ) -> list[tuple[str, Optional[str], Optional[int]]]:
+    filters = [
+        Asset.user_id == user.id,
+        Asset.is_archived == False,
+        column.isnot(None),
+    ]
+    if extra_filters:
+        filters.extend(extra_filters)
+    if exclude_empty:
+        filters.append(column != "")
     if include_counts:
         stmt = (
             select(column, func.count(Asset.id).label("count"))
-            .where(
-                Asset.user_id == user.id,
-                Asset.is_archived == False,
-                column.isnot(None),
-            )
+            .where(*filters)
             .group_by(column)
         )
+        if limit:
+            stmt = stmt.order_by(func.count(Asset.id).desc()).limit(limit)
         result = await db.execute(stmt)
         rows = result.all()
         out: list[tuple[str, Optional[str], Optional[int]]] = []
@@ -266,12 +204,10 @@ async def _load_distinct_options(
 
     stmt = (
         select(distinct(column))
-        .where(
-            Asset.user_id == user.id,
-            Asset.is_archived == False,
-            column.isnot(None),
-        )
+        .where(*filters)
     )
+    if limit:
+        stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     out: list[tuple[str, Optional[str], Optional[int]]] = []
     for value in result.scalars().all():
@@ -303,6 +239,18 @@ def register_default_asset_filters() -> None:
             label_map=UPLOAD_METHOD_LABELS,
         )
     )
+    for spec in get_upload_context_filter_specs():
+        asset_filter_registry.register(
+            FilterSpec(
+                key=spec["key"],
+                type="enum",
+                label=spec.get("label"),
+                description=spec.get("description"),
+                option_source="distinct",
+                jsonb_path=(spec["key"],),
+                depends_on={"upload_method": {spec["upload_method"]}},
+            )
+        )
     asset_filter_registry.register(
         FilterSpec(key="include_archived", type="boolean", label="Show Archived")
     )
@@ -315,4 +263,3 @@ def register_default_asset_filters() -> None:
 
 
 register_default_asset_filters()
-register_default_nested_filters()
