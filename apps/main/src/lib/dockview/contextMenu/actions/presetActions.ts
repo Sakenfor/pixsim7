@@ -9,10 +9,15 @@
  * Presets are scoped to specific dockviews.
  */
 
-import type { MenuAction, MenuActionContext } from '../types';
-import type { LayoutPreset } from '@features/workspace/stores/workspaceStore';
-import { resolvePresetScope, type PresetScope } from '../../dockZoneRegistry';
+import { registerActionsFromDefinitions } from '@lib/capabilities';
 
+import type { LayoutPreset } from '@features/workspace/stores/workspaceStore';
+
+import { resolvePresetScope, type PresetScope } from '../../dockZoneRegistry';
+import { menuActionsToCapabilityActions } from '../actionAdapters';
+import type { MenuAction, MenuActionContext } from '../types';
+
+import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 // Re-export types for convenience
 export type { LayoutPreset, PresetScope };
 
@@ -179,12 +184,37 @@ export const resetLayoutAction: MenuAction = {
   },
 };
 
+const presetActionDescriptions: Record<string, string> = {
+  [savePresetAction.id]: 'Save the current layout as a preset',
+  [resetLayoutAction.id]: 'Reset the current layout to the default preset',
+};
+
+const presetCapabilityActions: MenuAction[] = [
+  savePresetAction,
+  resetLayoutAction,
+];
+
+const presetCapabilityMapping = menuActionsToCapabilityActions(presetCapabilityActions, {
+  featureId: DOCKVIEW_ACTION_FEATURE_ID,
+  descriptions: presetActionDescriptions,
+});
+
+export const presetActionDefinitions = presetCapabilityMapping.actionDefinitions;
+
+let presetActionCapabilitiesRegistered = false;
+
+export function registerPresetActionCapabilities() {
+  if (presetActionCapabilitiesRegistered) return;
+  presetActionCapabilitiesRegistered = true;
+
+  ensureDockviewActionFeature();
+  registerActionsFromDefinitions(presetActionDefinitions);
+}
+
 /**
  * All preset actions
  */
 export const presetActions: MenuAction[] = [
-  savePresetAction,
   loadPresetAction,
   deletePresetAction,
-  resetLayoutAction,
 ];

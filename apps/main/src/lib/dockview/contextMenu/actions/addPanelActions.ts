@@ -6,9 +6,13 @@
  * - Only shows panels registered in panelRegistry
  */
 
-import type { MenuAction, MenuActionContext } from '../types';
-import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
+import { registerActionsFromDefinitions } from '@lib/capabilities';
 
+import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
+import { menuActionsToCapabilityActions } from '../actionAdapters';
+import type { MenuAction, MenuActionContext } from '../types';
+
+import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 /**
  * Get panels grouped by category from the panel registry
  */
@@ -171,10 +175,31 @@ export const quickAddActions: MenuAction[] = [
   },
 ];
 
+const quickAddDescriptions: Record<string, string> = {
+  'panel:quick-add:gallery': 'Add the Gallery panel to this dockview',
+  'panel:quick-add:inspector': 'Add the Inspector panel to this dockview',
+};
+
+const quickAddCapabilityMapping = menuActionsToCapabilityActions(quickAddActions, {
+  featureId: DOCKVIEW_ACTION_FEATURE_ID,
+  descriptions: quickAddDescriptions,
+});
+
+export const quickAddActionDefinitions = quickAddCapabilityMapping.actionDefinitions;
+
+let quickAddActionCapabilitiesRegistered = false;
+
+export function registerQuickAddActionCapabilities() {
+  if (quickAddActionCapabilitiesRegistered) return;
+  quickAddActionCapabilitiesRegistered = true;
+
+  ensureDockviewActionFeature();
+  registerActionsFromDefinitions(quickAddActionDefinitions);
+}
+
 /**
  * All add panel actions
  */
 export const addPanelActions: MenuAction[] = [
   addPanelAction,
-  ...quickAddActions,
 ];

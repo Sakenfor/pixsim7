@@ -6,12 +6,22 @@
  */
 
 import { contextMenuRegistry } from '../ContextMenuRegistry';
-import { panelActions } from './panelActions';
-import { layoutActions } from './layoutActions';
-import { presetActions } from './presetActions';
-import { addPanelActions } from './addPanelActions';
+
+import {
+  addPanelActions,
+  registerQuickAddActionCapabilities,
+} from './addPanelActions';
 import { assetActions } from './assetActions';
 import { contextHubActions } from './contextHubActions';
+import { layoutActions } from './layoutActions';
+import {
+  panelActions,
+  registerPanelActionCapabilities,
+} from './panelActions';
+import {
+  presetActions,
+  registerPresetActionCapabilities,
+} from './presetActions';
 
 // Export individual action modules
 export * from './panelActions';
@@ -43,5 +53,8 @@ let actionsRegistered = false;
 export function registerContextMenuActions() {
   if (actionsRegistered) return;
   actionsRegistered = true;
+  registerPanelActionCapabilities();
+  registerPresetActionCapabilities();
+  registerQuickAddActionCapabilities();
   contextMenuRegistry.registerAll(allActions);
 }

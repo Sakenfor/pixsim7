@@ -8,8 +8,13 @@
  * - Duplicate Panel
  */
 
-import type { MenuAction, MenuActionContext } from '../types';
+import { registerActionsFromDefinitions } from '@lib/capabilities';
+
+import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
+import type { MenuAction, MenuActionContext } from '../types';
+
+import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 
 /**
  * Close the current panel
@@ -290,16 +295,46 @@ export const closeAllInGroupAction: MenuAction = {
   },
 };
 
-/**
- * All panel actions
- */
-export const panelActions: MenuAction[] = [
+const panelActionDescriptions: Record<string, string> = {
+  [closePanelAction.id]: 'Close the current panel',
+  [closeOtherPanelsAction.id]: 'Close other tabs in the same group',
+  [closeAllInGroupAction.id]: 'Close all tabs in the current group',
+  [maximizePanelAction.id]: 'Maximize the current panel',
+  [restorePanelAction.id]: 'Restore the current panel',
+  [floatPanelAction.id]: 'Float the current panel',
+  [propertiesAction.id]: 'Show properties for the current context',
+};
+
+const panelCapabilityActions: MenuAction[] = [
   closePanelAction,
   closeOtherPanelsAction,
   closeAllInGroupAction,
   maximizePanelAction,
   restorePanelAction,
   floatPanelAction,
-  focusPanelAction,
   propertiesAction,
+];
+
+const panelCapabilityMapping = menuActionsToCapabilityActions(panelCapabilityActions, {
+  featureId: DOCKVIEW_ACTION_FEATURE_ID,
+  descriptions: panelActionDescriptions,
+});
+
+export const panelActionDefinitions = panelCapabilityMapping.actionDefinitions;
+
+let panelActionCapabilitiesRegistered = false;
+
+export function registerPanelActionCapabilities() {
+  if (panelActionCapabilitiesRegistered) return;
+  panelActionCapabilitiesRegistered = true;
+
+  ensureDockviewActionFeature();
+  registerActionsFromDefinitions(panelActionDefinitions);
+}
+
+/**
+ * All panel actions
+ */
+export const panelActions: MenuAction[] = [
+  focusPanelAction,
 ];

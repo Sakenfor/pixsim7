@@ -5,12 +5,12 @@
  * Extends BaseRegistry with context-aware filtering and MenuItem conversion.
  */
 
-import type { ActionDefinition } from '@shared/types';
+import type { ActionContext, ActionDefinition } from '@shared/types';
 
 import { capabilityRegistry, type ActionCapability } from '@lib/capabilities';
 import { BaseRegistry } from '@lib/core/BaseRegistry';
 
-import { toMenuAction, toMenuActions, type ToMenuActionOptions } from './actionAdapters';
+import { toMenuActions, type ToMenuActionOptions } from './actionAdapters';
 import type {
   MenuAction,
   MenuItem,
@@ -46,7 +46,8 @@ const CATEGORY_PRIORITY: Record<string, number> = {
 };
 
 function isContextMenuCapable(action: ActionCapability, forceInclude: boolean): boolean {
-  if (!forceInclude && (!action.contexts || action.contexts.length === 0)) {
+  const contexts = action.contextMenu?.availableIn ?? action.contexts;
+  if (!forceInclude && (!contexts || contexts.length === 0)) {
     return false;
   }
 
@@ -57,31 +58,55 @@ function isContextMenuCapable(action: ActionCapability, forceInclude: boolean): 
   return true;
 }
 
+function toActionContext(ctx: MenuActionContext) {
+  return {
+    source: 'contextMenu' as const,
+    event: undefined,
+    target: ctx,
+  };
+}
+
+function wrapVisible(
+  fn?: (ctx?: ActionContext) => boolean
+): ((ctx: MenuActionContext) => boolean) | undefined {
+  if (!fn) return undefined;
+  return (ctx) => !!fn(toActionContext(ctx));
+}
+
+function wrapDisabled(
+  fn?: (ctx?: ActionContext) => boolean | string
+): ((ctx: MenuActionContext) => boolean | string) | undefined {
+  if (!fn) return undefined;
+  return (ctx) => {
+    const result = fn(toActionContext(ctx));
+    return result ?? false;
+  };
+}
+
 function toMenuActionFromCapability(
   action: ActionCapability,
   options?: ToMenuActionOptions
 ): MenuAction {
-  const availableIn = action.contexts as ContextMenuContext[] | undefined;
+  const availableIn =
+    (action.contextMenu?.availableIn as ContextMenuContext[] | undefined) ??
+    (action.contexts as ContextMenuContext[] | undefined);
+  const visible = options?.visible ?? wrapVisible(action.contextMenu?.visible);
+  const disabled = options?.disabled ?? wrapDisabled(action.contextMenu?.disabled);
 
   return {
     id: action.id,
     label: action.name,
     icon: action.icon,
-    iconColor: options?.iconColor,
+    iconColor: options?.iconColor ?? action.contextMenu?.iconColor,
     shortcut: action.shortcut,
-    category: options?.category ?? action.category,
-    variant: options?.variant,
-    divider: options?.divider,
+    category: options?.category ?? action.contextMenu?.category ?? action.category,
+    variant: options?.variant ?? action.contextMenu?.variant,
+    divider: options?.divider ?? action.contextMenu?.divider,
     availableIn: options?.availableIn ?? availableIn ?? ['item'],
-    visible: options?.visible,
-    disabled: options?.disabled ?? (action.enabled ? () => !action.enabled!() : undefined),
+    visible,
+    disabled: disabled ?? (action.enabled ? () => !action.enabled!() : undefined),
     execute: (ctx) => {
-      const actionCtx = {
-        source: 'contextMenu' as const,
-        event: undefined,
-        target: ctx,
-      };
-      return action.execute(actionCtx);
+      return action.execute(toActionContext(ctx));
     },
   };
 }
