@@ -19,8 +19,8 @@ import { fileURLToPath } from 'url';
 import { sessionHelperRegistry } from '../packages/game-core/src/session/helperRegistry.js';
 import { registerBuiltinHelpers } from '../packages/game-core/src/session/builtinHelpers.js';
 import { generateHelperDocs } from '../packages/game-core/src/session/generateDocs.js';
-import { nodeTypeRegistry } from '../packages/types/src/nodeTypeRegistry.js';
-import { registerBuiltinNodeTypes } from '../packages/types/src/builtinNodeTypes.js';
+import { nodeTypeRegistry } from '../packages/shared/graph-core/src/nodeTypeRegistry.js';
+import { registerBuiltinNodeTypes } from '../packages/shared/graph-core/src/builtinNodeTypes.js';
 
 // For interactions, we'll need to handle the frontend registry carefully
 // Since it may have browser dependencies, we'll use a try-catch approach
