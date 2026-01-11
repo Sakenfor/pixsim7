@@ -8,10 +8,11 @@
 
 import { useMemo } from 'react';
 
+import { graphEditorSelectors } from '@lib/plugins/catalogSelectors';
+
 import { usePanelConfigStore } from '@features/panels';
 import { useWorkspacePresets, useWorkspaceStore } from '@features/workspace';
 
-import { graphEditorRegistry } from '../../lib/editor/editorRegistry';
 import type { GraphEditorId } from '../../lib/editor/types';
 
 export interface GraphEditorHostProps {
@@ -42,7 +43,7 @@ export function GraphEditorHost({ editorId }: GraphEditorHostProps) {
     'scene-graph-v2';
 
   const editorDef = useMemo(
-    () => graphEditorRegistry.get(effectiveEditorId),
+    () => graphEditorSelectors.get(effectiveEditorId),
     [effectiveEditorId]
   );
 
@@ -51,7 +52,7 @@ export function GraphEditorHost({ editorId }: GraphEditorHostProps) {
       <div className="p-4 text-sm text-red-500">
         Unknown graph editor: <code>{effectiveEditorId}</code>
         <div className="mt-2 text-xs text-neutral-500">
-          Available editors: {graphEditorRegistry.getAll().map(e => e.id).join(', ')}
+          Available editors: {graphEditorSelectors.getAll().map(e => e.id).join(', ')}
         </div>
       </div>
     );

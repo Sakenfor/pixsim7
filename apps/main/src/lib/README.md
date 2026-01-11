@@ -9,7 +9,7 @@ This section is specifically for **registries and plugin integration**.
 - Most UI systems expose a small, in-memory registry:
   - Panels: `apps/main/src/lib/plugins/catalogSelectors.ts` (panelSelectors)
   - Dev tools: `apps/main/src/lib/devtools/devToolRegistry.ts`
-  - Graph editors: `apps/main/src/lib/graph/editorRegistry.ts`
+  - Graph editors: `apps/main/src/lib/plugins/catalogSelectors.ts` (graphEditorSelectors)
   - Gizmo surfaces: `apps/main/src/lib/gizmos/surfaceRegistry.ts`
   - Widgets: `apps/main/src/lib/widgets/widgetRegistry.ts`
   - Control center modules: `apps/main/src/lib/control/controlCenterModuleRegistry.ts`
@@ -113,7 +113,7 @@ The following UI registries extend `BaseRegistry`:
 |----------|----------|---------|----------|
 | **PanelRegistry (legacy)** | `lib/panels/panelRegistry.ts` | Workspace panels | Legacy; catalog selectors are primary |
 | **DevToolRegistry** | `lib/devtools/devToolRegistry.ts` | Developer tools | Listeners, Search, Category filtering |
-| **GraphEditorRegistry** | `lib/graph/editorRegistry.ts` | Graph editor surfaces | Listeners, Search, Stats, Category filtering |
+| **GraphEditorSelectors** | `lib/plugins/catalogSelectors.ts` | Graph editor surfaces | Catalog-backed Search, Stats, Category filtering |
 | **GizmoSurfaceRegistry** | `lib/gizmos/surfaceRegistry.ts` | Gizmo UI surfaces | Listeners, Search, Context/tag filtering |
 | **WidgetRegistry** | `lib/widgets/widgetRegistry.ts` | Composable widgets | Listeners, Search, Stats, Type/category filtering |
 | **ControlCenterModuleRegistry** | `lib/control/controlCenterModuleRegistry.ts` | Control center modules | Listeners, Search, Sorted retrieval |

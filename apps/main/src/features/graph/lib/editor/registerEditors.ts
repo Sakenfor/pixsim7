@@ -14,12 +14,12 @@
 
 import { lazy } from 'react';
 
+import { graphEditorSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 import { ArcGraphPanel } from '@features/graph';
 
-import { graphEditorRegistry } from './editorRegistry';
 import type { GraphEditorComponent } from './types';
 
 // Use lazy import to break circular dependency
@@ -34,48 +34,52 @@ const GraphPanelWithProvider = lazy(() =>
 export async function registerGraphEditors(): Promise<void> {
   // Register Scene Graph Editor (Legacy/Core)
   // Core Flow View: The canonical logic/flow editor for designing scenes, nodes, choices, transitions
-  await registerPluginDefinition({
-    id: 'scene-graph-v2',
-    family: 'graph-editor',
-    origin: 'builtin',
-    source: 'source',
-    canDisable: false,
-    plugin: {
+  if (!graphEditorSelectors.has('scene-graph-v2')) {
+    await registerPluginDefinition({
       id: 'scene-graph-v2',
-      label: 'Scene Graph Editor',
-      description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
-      icon: 'dY"?',
-      category: 'core',
-      component: GraphPanelWithProvider as GraphEditorComponent,
-      storeId: 'scene-graph-v2',
-      supportsMultiScene: true,
-      supportsWorldContext: true,
-      supportsPlayback: true,
-      defaultPanelId: 'graph',
-    },
-  });
+      family: 'graph-editor',
+      origin: 'builtin',
+      source: 'source',
+      canDisable: false,
+      plugin: {
+        id: 'scene-graph-v2',
+        label: 'Scene Graph Editor',
+        description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
+        icon: 'dY"?',
+        category: 'core',
+        component: GraphPanelWithProvider as GraphEditorComponent,
+        storeId: 'scene-graph-v2',
+        supportsMultiScene: true,
+        supportsWorldContext: true,
+        supportsPlayback: true,
+        defaultPanelId: 'graph',
+      },
+    });
+  }
 
   // Register Arc Graph Editor (Modern)
-  await registerPluginDefinition({
-    id: 'arc-graph',
-    family: 'graph-editor',
-    origin: 'builtin',
-    source: 'source',
-    canDisable: false,
-    plugin: {
+  if (!graphEditorSelectors.has('arc-graph')) {
+    await registerPluginDefinition({
       id: 'arc-graph',
-      label: 'Arc Graph Editor',
-      description: 'Arc/quest progression editor',
-      icon: 'dY-??,?',
-      category: 'arc',
-      component: ArcGraphPanel,
-      storeId: 'arc-graph',
-      supportsMultiScene: true,
-      supportsWorldContext: true,
-      supportsPlayback: false,
-      defaultRoute: '/arc-graph',
-    },
-  });
+      family: 'graph-editor',
+      origin: 'builtin',
+      source: 'source',
+      canDisable: false,
+      plugin: {
+        id: 'arc-graph',
+        label: 'Arc Graph Editor',
+        description: 'Arc/quest progression editor',
+        icon: 'dY-??,?',
+        category: 'arc',
+        component: ArcGraphPanel,
+        storeId: 'arc-graph',
+        supportsMultiScene: true,
+        supportsWorldContext: true,
+        supportsPlayback: false,
+        defaultRoute: '/arc-graph',
+      },
+    });
+  }
 
-  debugFlags.log('registry', '[Graph Editor Registry] Registered graph editors:', graphEditorRegistry.getStats());
+  debugFlags.log('registry', '[Graph Editor Catalog] Registered graph editors:', graphEditorSelectors.getStats());
 }

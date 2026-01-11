@@ -19,6 +19,7 @@ import type {
   GizmoSurfaceContext,
   GizmoSurfaceId,
 } from '@features/gizmos/lib/core/surfaceRegistry';
+import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
 import type { PanelDefinition, WorkspaceContext } from '@features/panels/lib/panelRegistry';
 import type { PanelInstancePolicy } from '@features/panels/lib/panelTypes';
 import type { WorldToolPlugin, WorldToolContext, WorldToolCategory } from '@features/worldTools/lib/types';
@@ -368,6 +369,105 @@ export const devToolSelectors = {
       }
     });
     return Array.from(categories).sort();
+  },
+
+  /**
+   * Subscribe to catalog changes
+   */
+  subscribe(callback: () => void): () => void {
+    return pluginCatalog.subscribe(callback);
+  },
+};
+
+// ============================================================================
+// Graph Editor Selectors
+// ============================================================================
+
+/**
+ * Graph editor catalog selectors
+ *
+ * Provides the same API as GraphEditorRegistry but reads from the catalog.
+ */
+export const graphEditorSelectors = {
+  /**
+   * Get all graph editors
+   */
+  getAll(): GraphEditorDefinition[] {
+    return pluginCatalog.getPluginsByFamily<GraphEditorDefinition>('graph-editor');
+  },
+
+  /**
+   * Get a graph editor by ID
+   */
+  get(id: string): GraphEditorDefinition | undefined {
+    const meta = pluginCatalog.get(id);
+    if (!meta || meta.family !== 'graph-editor') return undefined;
+    return pluginCatalog.getPlugin<GraphEditorDefinition>(id);
+  },
+
+  /**
+   * Check if a graph editor exists
+   */
+  has(id: string): boolean {
+    const meta = pluginCatalog.get(id);
+    return meta?.family === 'graph-editor';
+  },
+
+  /**
+   * Get all graph editor IDs
+   */
+  getIds(): string[] {
+    return pluginCatalog.getByFamily('graph-editor').map((meta) => meta.id);
+  },
+
+  /**
+   * Get the number of registered graph editors
+   */
+  get size(): number {
+    return pluginCatalog.getByFamily('graph-editor').length;
+  },
+
+  /**
+   * Get graph editors by category
+   */
+  getByCategory(category: string): GraphEditorDefinition[] {
+    return this.getAll().filter((editor) => editor.category === category);
+  },
+
+  /**
+   * Search graph editors by query (searches id, label, description)
+   */
+  search(query: string): GraphEditorDefinition[] {
+    const lowerQuery = query.toLowerCase();
+    return this.getAll().filter((editor) => {
+      const matchesId = editor.id.toLowerCase().includes(lowerQuery);
+      const matchesLabel = editor.label.toLowerCase().includes(lowerQuery);
+      const matchesDescription = editor.description?.toLowerCase().includes(lowerQuery);
+
+      return matchesId || matchesLabel || matchesDescription;
+    });
+  },
+
+  /**
+   * Get registry statistics
+   */
+  getStats() {
+    const all = this.getAll();
+    return {
+      total: all.length,
+      byCategory: {
+        core: all.filter((e) => e.category === 'core').length,
+        world: all.filter((e) => e.category === 'world').length,
+        arc: all.filter((e) => e.category === 'arc').length,
+        debug: all.filter((e) => e.category === 'debug').length,
+        custom: all.filter((e) => e.category === 'custom').length,
+      },
+      capabilities: {
+        supportsMultiScene: all.filter((e) => e.supportsMultiScene).length,
+        supportsWorldContext: all.filter((e) => e.supportsWorldContext).length,
+        supportsPlayback: all.filter((e) => e.supportsPlayback).length,
+      },
+    };
   },
 
   /**

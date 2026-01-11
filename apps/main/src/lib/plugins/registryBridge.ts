@@ -24,8 +24,8 @@ import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
-import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
+import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
 import type { PanelDefinition, DockWidgetDefinition } from '@features/panels';
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 
@@ -582,15 +582,15 @@ export function registerGraphEditor(
   editor: GraphEditorDefinition,
   options: RegisterWithMetadataOptions = {}
 ): void {
-  registerWithCatalog(editor, graphEditorRegistry, buildGraphEditorMetadata, options);
+  const metadata = buildGraphEditorMetadata(editor, options);
+  pluginCatalog.registerWithPlugin(metadata, editor);
 }
 
 /**
  * Unregister a graph editor and remove its catalog entry
  */
 export function unregisterGraphEditor(id: string): boolean {
-  const existed = graphEditorRegistry.has(id as any);
-  graphEditorRegistry.unregister(id as any);
+  const existed = !!pluginCatalog.get(id);
   pluginCatalog.unregister(id);
   return existed;
 }
@@ -996,15 +996,6 @@ export function syncCatalogFromRegistries(): void {
     }
   }
 
-  // Sync graph editors
-  for (const editor of graphEditorRegistry.getAll()) {
-    if (!pluginCatalog.get(editor.id)) {
-      pluginCatalog.register(
-        buildGraphEditorMetadata(editor, { origin: 'builtin', canDisable: false })
-      );
-    }
-  }
-
   // Sync gizmo surfaces
   for (const surface of gizmoSurfaceRegistry.getAll()) {
     if (!pluginCatalog.get(surface.id)) {
@@ -1026,7 +1017,7 @@ export function printRegistryComparison(): void {
   console.log(`Renderers: ${nodeRendererRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('renderer').length} in catalog`);
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
   console.log(`Generation UI: ${generationUIPluginRegistry.getPluginIds().length} in registry, ${pluginCatalog.getByFamily('generation-ui').length} in catalog`);
-  console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
+  console.log(`Graph Editors: catalog-only (${pluginCatalog.getByFamily('graph-editor').length})`);
   console.log(`Workspace Panels: catalog-only (${pluginCatalog.getByFamily('workspace-panel').length})`);
   console.log(`Dock Widgets: catalog-only (${pluginCatalog.getByFamily('dock-widget').length})`);
   console.log(`Gizmo Surfaces: ${gizmoSurfaceRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('gizmo-surface').length} in catalog`);

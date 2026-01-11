@@ -10,8 +10,8 @@ import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
 import type { GallerySurfaceDefinition } from '@features/gallery';
 import type { GizmoSurfaceDefinition } from '@features/gizmos';
-import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
+import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
 import type { PanelDefinition } from '@features/panels';
 import type { WorldToolPlugin } from '@features/worldTools';
 
@@ -553,7 +553,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildGenerationUIMetadata,
   },
   'graph-editor': {
-    register: (editor: GraphEditorDefinition) => graphEditorRegistry.register(editor),
+    register: () => {},
     buildMetadata: buildGraphEditorMetadata,
   },
   'dev-tool': {

@@ -68,7 +68,8 @@ export type { ArcGraphState } from './stores/arcGraphStore';
 export { useLineageGraph } from './hooks/useLineageGraph';
 
 // Lib - Editor Core APIs (explicit - these are the main APIs)
-export { graphEditorRegistry, type GraphEditorDefinition } from './lib/editor/editorRegistry';
+export { graphEditorRegistry, graphEditorSelectors } from './lib/editor/registry';
+export type { GraphEditorDefinition } from './lib/editor/types';
 export {
   nodeRendererRegistry,
   sceneNodeRendererRegistry,
