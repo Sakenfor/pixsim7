@@ -193,7 +193,7 @@ LocationConceptRef = _make_concept_ref_type("location")
 # Intimacy level concepts (intimacy:none, intimacy:light_flirt, etc.)
 IntimacyLevelConceptRef = _make_concept_ref_type("intimacy")
 
-# Content rating concepts (rating:general, rating:suggestive, etc.)
+# Content rating concepts (rating:sfw, rating:romantic, etc.)
 ContentRatingConceptRef = _make_concept_ref_type("rating")
 
 # Branch intent concepts (branch:escalate, branch:cool_down, etc.)

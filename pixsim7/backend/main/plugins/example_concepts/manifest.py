@@ -207,7 +207,7 @@ async def get_demo_block() -> dict[str, Any]:
             "pose": "pose:standing_mysterious",
             "mood": "mood:mysterious",
             "intimacy_level": "intimacy:deep_flirt",
-            "content_rating": "suggestive",
+            "content_rating": "romantic",
             "intensity": 6,
             "custom": ["moonlit", "dramatic"],
             # Plugin extensions in tags

@@ -532,7 +532,7 @@ class GenerateActionBlockRequest(BaseModel):
     """Request for generating a new action block dynamically."""
     concept_type: str  # e.g., "creature_interaction", "position_maintenance"
     parameters: Dict[str, Any]
-    content_rating: Optional[str] = "general"
+    content_rating: Optional[str] = "sfw"
     duration: Optional[float] = 6.0
     camera_settings: Optional[Dict[str, Any]] = None
     consistency_settings: Optional[Dict[str, Any]] = None

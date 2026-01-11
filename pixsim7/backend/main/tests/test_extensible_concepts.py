@@ -203,10 +203,10 @@ class TestOntologyRegistry:
 
     def test_registry_rating_levels(self, registry):
         """Test content rating levels."""
-        assert registry.get_rating_level("rating:general") == 0
-        assert registry.get_rating_level("rating:explicit") == 3
-        assert registry.is_rating_allowed("rating:suggestive", "rating:intimate")
-        assert not registry.is_rating_allowed("rating:explicit", "rating:intimate")
+        assert registry.get_rating_level("rating:sfw") == 0
+        assert registry.get_rating_level("rating:restricted") == 3
+        assert registry.is_rating_allowed("rating:romantic", "rating:mature_implied")
+        assert not registry.is_rating_allowed("rating:restricted", "rating:mature_implied")
 
     def test_registry_strict_mode_validation(self):
         """Test strict mode concept validation."""

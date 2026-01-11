@@ -10,7 +10,7 @@ the need to manually update registry.py or __init__.py when adding new kinds.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Set, Type, TypeVar
 import yaml
 
 from pixsim7.backend.main.routes.concepts.schemas import ConceptResponse
@@ -98,6 +98,7 @@ _provider_registry: Dict[str, "ConceptProvider"] = {}
 
 # Track registered provider classes for re-initialization after reset
 _provider_classes: List[Type["ConceptProvider"]] = []
+_dynamic_provider_kinds: Set[str] = set()
 
 T = TypeVar("T", bound="ConceptProvider")
 
@@ -161,21 +162,25 @@ def get_registered_providers() -> Dict[str, "ConceptProvider"]:
 
     Returns a copy to prevent external mutation of the registry.
     """
+    _ensure_dynamic_vocab_providers()
     return dict(_provider_registry)
 
 
 def get_provider(kind: str) -> Optional["ConceptProvider"]:
     """Get a provider by kind."""
+    _ensure_dynamic_vocab_providers()
     return _provider_registry.get(kind)
 
 
 def get_all_kinds() -> List[str]:
     """Get all registered concept kinds."""
+    _ensure_dynamic_vocab_providers()
     return list(_provider_registry.keys())
 
 
 def get_label_kinds() -> List[str]:
     """Get concept kinds that should be included in label autocomplete."""
+    _ensure_dynamic_vocab_providers()
     return [
         kind
         for kind, provider in _provider_registry.items()
@@ -190,6 +195,7 @@ def reset_providers() -> None:
     Useful for testing.
     """
     _provider_registry.clear()
+    _dynamic_provider_kinds.clear()
     for cls in _provider_classes:
         instance = cls()
         _provider_registry[instance.kind] = instance
@@ -247,6 +253,92 @@ class ConceptProvider(ABC):
 # =============================================================================
 # Provider Implementations
 # =============================================================================
+
+
+def _ensure_dynamic_vocab_providers() -> None:
+    """Register providers for plugin-defined vocab types (if any)."""
+    from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+
+    registry = get_registry()
+    for vocab_type in registry.list_dynamic_types():
+        if vocab_type in _provider_registry:
+            continue
+
+        meta = registry.get_dynamic_type_meta(vocab_type) or {}
+        provider = DynamicVocabConceptProvider(vocab_type, meta)
+        _provider_registry[vocab_type] = provider
+        _dynamic_provider_kinds.add(vocab_type)
+
+
+class DynamicVocabConceptProvider(ConceptProvider):
+    """Provider for plugin-defined vocab types."""
+
+    def __init__(self, kind: str, meta: Dict[str, Any]) -> None:
+        self.kind = kind
+        self.group_name = meta.get("group_name") or kind.replace("_", " ").title()
+        self.supports_packages = False
+        self.include_in_labels = bool(meta.get("include_in_labels", True))
+        self._prefix = meta.get("prefix")
+        self._color = meta.get("color") or "gray"
+        self._label_attr = meta.get("label_attr") if "label_attr" in meta else "label"
+        self._description_attr = meta.get("description_attr")
+        self._tags_attr = meta.get("tags_attr")
+
+    def get_concepts(
+        self, package_ids: Optional[List[str]] = None
+    ) -> List[ConceptResponse]:
+        from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+
+        registry = get_registry()
+        items = registry.all_of(self.kind)
+        concepts: List[ConceptResponse] = []
+
+        for item in items:
+            short_id = item.id
+            if self._prefix and short_id.startswith(self._prefix):
+                short_id = short_id[len(self._prefix):]
+
+            label = ""
+            if self._label_attr:
+                label = getattr(item, self._label_attr, "") or ""
+            if not label:
+                label = short_id.replace("_", " ").title()
+
+            description = ""
+            if self._description_attr:
+                description = getattr(item, self._description_attr, "") or ""
+
+            tags: List[str] = []
+            if self._tags_attr:
+                raw_tags = getattr(item, self._tags_attr, []) or []
+                if isinstance(raw_tags, list):
+                    tags = [str(tag) for tag in raw_tags]
+
+            metadata: Dict[str, Any] = {}
+            data = getattr(item, "data", None)
+            if isinstance(data, dict):
+                metadata = dict(data)
+                if self._label_attr:
+                    metadata.pop(self._label_attr, None)
+                if self._description_attr:
+                    metadata.pop(self._description_attr, None)
+                if self._tags_attr:
+                    metadata.pop(self._tags_attr, None)
+
+            concepts.append(
+                ConceptResponse(
+                    kind=self.kind,
+                    id=short_id,
+                    label=label,
+                    description=description,
+                    color=self._color,
+                    group=self.group_name,
+                    tags=tags,
+                    metadata=metadata,
+                )
+            )
+
+        return concepts
 
 
 @concept_provider
