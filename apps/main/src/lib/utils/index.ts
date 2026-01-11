@@ -17,6 +17,9 @@ export { createBackendStorage } from './storage';
 // Hash utilities
 export { computeFileSha256 } from './hash';
 
+// Case conversion utilities
+export { toSnakeCaseDeep, toSnakeCaseKey, toSnakeCaseShallow } from './case';
+
 // Zustand persistence workaround
 export { manuallyRehydrateStore, exposeStoreForDebugging } from './zustandPersist';
 
