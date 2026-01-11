@@ -47,12 +47,19 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
       selectedAssets,
       filters: controller.filters,
       refresh: () => {
-        window.location.reload();
+        controller.reset();
       },
       updateFilters: controller.setFilters,
       isSelectionMode: controller.isSelectionMode,
     }),
-    [controller.assets, selectedAssets, controller.filters, controller.setFilters, controller.isSelectionMode]
+    [
+      controller.assets,
+      selectedAssets,
+      controller.filters,
+      controller.setFilters,
+      controller.isSelectionMode,
+      controller.reset,
+    ]
   );
 
   // Handle asset selection for gallery tools

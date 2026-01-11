@@ -12,6 +12,7 @@ export interface CuratorGalleryController {
   error: string | null;
   hasMore: boolean;
   loadMore: () => void;
+  refresh: () => void;
 
   filters: CuratorFilters;
   setFilters: (updater: (prev: CuratorFilters) => CuratorFilters) => void;
@@ -46,7 +47,7 @@ export function useCuratorGalleryController(): CuratorGalleryController {
     media_type: undefined,
   });
 
-  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
+  const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
 
   // Selection state
   const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, selectAll: selectAllBase } = useSelection();
@@ -61,6 +62,10 @@ export function useCuratorGalleryController(): CuratorGalleryController {
   const setFilters = useCallback((updater: (prev: CuratorFilters) => CuratorFilters) => {
     setFiltersState(prev => updater(prev));
   }, []);
+
+  const refresh = useCallback(() => {
+    reset();
+  }, [reset]);
 
   // Wrap selectAll to pass items
   const selectAll = useCallback(() => {
@@ -83,6 +88,7 @@ export function useCuratorGalleryController(): CuratorGalleryController {
     error,
     hasMore,
     loadMore,
+    refresh,
     filters,
     setFilters,
     viewMode,
@@ -96,4 +102,3 @@ export function useCuratorGalleryController(): CuratorGalleryController {
     addCollection,
   };
 }
-

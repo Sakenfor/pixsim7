@@ -7,8 +7,8 @@ This directory contains self-contained panel definitions that are automatically 
 To add a new panel:
 
 1. Create a folder: `domain/definitions/my-panel/`
-2. Add your component: `domain/definitions/my-panel/MyPanel.tsx`
-3. Add the definition: `domain/definitions/my-panel/index.ts`
+2. Add the definition: `domain/definitions/my-panel/index.ts` (or `index.tsx` if you want the component inline)
+3. Optional: add your component in a separate file (ex: `domain/definitions/my-panel/MyPanel.tsx`)
 
 ```typescript
 // domain/definitions/my-panel/index.ts
@@ -93,7 +93,8 @@ domain/definitions/
 ????????? README.md                          # This file
 ????????? interactive-surface/               # Example panel
 ???   ????????? index.ts                       # Panel definition (exports default)
-???   ????????? InteractiveSurfacePanel.tsx    # Panel component
+???   ????????? index.tsx                      # Alternative: definition + component inline (use one)
+???   ????????? InteractiveSurfacePanel.tsx    # Panel component (optional if using index.tsx)
 ????????? my-other-panel/
 ???   ????????? index.ts
 ???   ????????? MyOtherPanel.tsx
@@ -105,7 +106,7 @@ domain/definitions/
 
 At startup, `initializePanels()` calls `autoRegisterPanels()` which:
 
-1. Uses Vite's `import.meta.glob` to find all `domain/definitions/*/index.ts` files
+1. Uses Vite's `import.meta.glob` to find all `domain/definitions/*/index.ts` and `domain/definitions/*/index.tsx` files
 2. Imports each module's default export (the `PanelDefinition`)
 3. Registers each panel in the global `panelRegistry`
 4. Logs the discovery process for debugging

@@ -6,7 +6,7 @@
  *
  * Convention:
  * - Panels live in `src/features/panels/domain/definitions/`
- * - Each panel is a folder with an `index.ts` that exports a default PanelDefinition
+ * - Each panel is a folder with an `index.ts` or `index.tsx` that exports a default PanelDefinition
  * - Panel definitions are created using `definePanel()`
  *
  * Directory structure:
@@ -69,7 +69,7 @@ export interface DiscoveryResult {
  * This is evaluated at build time.
  */
 const panelModules = import.meta.glob<PanelModule>(
-  '../domain/definitions/*/index.ts',
+  ['../domain/definitions/*/index.ts', '../domain/definitions/*/index.tsx'],
   { eager: true }
 );
 

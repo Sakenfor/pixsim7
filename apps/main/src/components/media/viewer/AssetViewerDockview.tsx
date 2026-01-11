@@ -15,12 +15,13 @@
  * └──────────────┴──────────────┘
  */
 
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import type { DockviewApi } from 'dockview-core';
 import { SmartDockview } from '@lib/dockview';
 import type { ViewerSettings } from './types';
 import type { ViewerAsset } from '@features/assets';
 import type { PanelDefinition } from '@features/panels';
+import { getPanelIdsForScope, panelRegistry } from '@features/panels';
 
 export interface AssetViewerDockviewProps {
   /** Current asset being viewed */
@@ -49,8 +50,13 @@ export interface AssetViewerDockviewProps {
   panelManagerId?: string;
 }
 
-// Panels available in asset viewer (must have availableIn: ['asset-viewer'])
-const VIEWER_PANEL_IDS = ['media-preview', 'quickGenerate', 'info', 'interactive-surface'] as const;
+// Default panels for the viewer layout (additional panels are discovered via registry)
+const DEFAULT_VIEWER_PANEL_IDS = [
+  'media-preview',
+  'quickGenerate',
+  'info',
+  'interactive-surface',
+] as const;
 
 /**
  * Create the default panel layout for asset viewer.
@@ -112,6 +118,18 @@ export function AssetViewerDockview({
   className,
   panelManagerId,
 }: AssetViewerDockviewProps) {
+  const [viewerPanelIds, setViewerPanelIds] = useState<string[]>(() => {
+    const ids = getPanelIdsForScope('asset-viewer');
+    return ids.length > 0 ? ids : [...DEFAULT_VIEWER_PANEL_IDS];
+  });
+
+  useEffect(() => {
+    return panelRegistry.subscribe(() => {
+      const ids = getPanelIdsForScope('asset-viewer');
+      setViewerPanelIds(ids.length > 0 ? ids : [...DEFAULT_VIEWER_PANEL_IDS]);
+    });
+  }, []);
+
   // Use ref for dockviewApi to avoid context recreation when API is set
   // Components can access it via context.dockviewApiRef.current
   const dockviewApiRef = useRef<DockviewApi | undefined>(undefined);
@@ -162,7 +180,7 @@ export function AssetViewerDockview({
 
   return (
     <SmartDockview
-      panels={[...VIEWER_PANEL_IDS]}
+      panels={viewerPanelIds}
       storageKey="dockview:asset-viewer:v5"
       context={context}
       defaultPanelScopes={['generation']}

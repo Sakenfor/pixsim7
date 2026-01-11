@@ -9,9 +9,10 @@
  * - Advanced filtering
  */
 
+import { useMemo } from 'react';
 import { MediaCard } from '@/components/media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
-import { useCuratorGalleryController } from '@features/gallery';
+import { GalleryToolsPanel, useCuratorGalleryController } from '@features/gallery';
 import {
   GallerySurfaceShell,
   AssetGrid,
@@ -24,6 +25,25 @@ export function CuratorGallerySurface() {
   const controller = useCuratorGalleryController();
 
   const gridPreset = controller.viewMode === 'compact' ? 'compact' : 'default';
+
+  const galleryContext = useMemo(
+    () => ({
+      assets: controller.assets,
+      selectedAssets: controller.selectedAssets,
+      filters: controller.filters,
+      refresh: controller.refresh,
+      updateFilters: (updates: Partial<typeof controller.filters>) =>
+        controller.setFilters((prev) => ({ ...prev, ...updates })),
+      isSelectionMode: false,
+    }),
+    [
+      controller.assets,
+      controller.selectedAssets,
+      controller.filters,
+      controller.refresh,
+      controller.setFilters,
+    ]
+  );
 
   // View mode toggle buttons
   const headerActions = (
@@ -50,53 +70,57 @@ export function CuratorGallerySurface() {
   );
 
   // Selection tools panel
-  const selectionSummary = (
-    <>
-      {controller.selectedAssetIds.size > 0 && (
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-blue-900 dark:text-blue-100">
-                {controller.selectedAssetIds.size} asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} selected
-              </h3>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
-                Use bulk operations or create a collection
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                onClick={() => controller.addCollection(prompt('Collection name:') ?? null)}
-                className="text-xs"
-              >
-                Create Collection
-              </Button>
-              <Button variant="secondary" onClick={controller.clearSelection} className="text-xs">
-                Clear
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Collections */}
-      {controller.collections.size > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Collections</h3>
-          <div className="flex flex-wrap gap-2">
-            {Array.from(controller.collections.entries()).map(([name, assetIds]) => (
-              <div
-                key={name}
-                className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-700 text-xs"
-              >
-                {name} ({assetIds.size})
+  const selectionSummary =
+    controller.selectedAssetIds.size > 0 || controller.collections.size > 0 ? (
+      <div className="space-y-4">
+        {controller.selectedAssetIds.size > 0 && (
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                  {controller.selectedAssetIds.size} asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} selected
+                </h3>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Use bulk operations or create a collection
+                </p>
               </div>
-            ))}
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  onClick={() => controller.addCollection(prompt('Collection name:') ?? null)}
+                  className="text-xs"
+                >
+                  Create Collection
+                </Button>
+                <Button variant="secondary" onClick={controller.clearSelection} className="text-xs">
+                  Clear
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
-    </>
-  );
+        )}
+
+        {controller.selectedAssetIds.size > 0 && (
+          <GalleryToolsPanel context={galleryContext} surfaceId="assets-curator" />
+        )}
+
+        {controller.collections.size > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Collections</h3>
+            <div className="flex flex-wrap gap-2">
+              {Array.from(controller.collections.entries()).map(([name, assetIds]) => (
+                <div
+                  key={name}
+                  className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-700 text-xs"
+                >
+                  {name} ({assetIds.size})
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null;
 
   // Render list view
   const listView = (
