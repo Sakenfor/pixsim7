@@ -4,6 +4,8 @@
  * Phase 17.3+: Client-side API for listing and executing NPC interactions
  */
 
+import { IDs } from '@shared/types';
+
 import type {
   ListInteractionsRequest,
   ListInteractionsResponse,
@@ -11,8 +13,9 @@ import type {
   ExecuteInteractionResponse,
   NpcInteractionInstance,
 } from '@lib/registries';
+import { toSnakeCaseDeep } from '@lib/utils';
+
 import { apiClient } from './client';
-import { IDs } from '@shared/types';
 
 /**
  * List available interactions for an NPC
@@ -143,12 +146,13 @@ export async function executePendingDialogue(
   }
 
   // Call the dialogue generation endpoint directly
-  const response = await apiClient.post('/game/dialogue/next-line/execute', {
-    npc_id: request.npcId,
-    session_id: sessionId,
-    player_input: request.playerInput,
-    program_id: request.programId,
+  const payload = toSnakeCaseDeep({
+    npcId: request.npcId,
+    sessionId,
+    playerInput: request.playerInput,
+    programId: request.programId,
   });
+  const response = await apiClient.post('/game/dialogue/next-line/execute', payload);
 
   return {
     text: response.data.text,

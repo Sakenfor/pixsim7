@@ -1,7 +1,7 @@
 /**
  * Assets API Client
  *
- * Typed API client for /api/v1/assets endpoint.
+ * Typed API client for /api/v1/assets endpoints.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
 import { createAssetsApi } from '@pixsim7/api-client/domains';
@@ -20,7 +20,7 @@ export type {
   EnrichAssetResponse,
   ExtractFrameRequest,
   ReuploadAssetRequest,
-  ListAssetsQuery,
+  AssetSearchRequest,
   FilterDefinition,
   FilterOptionValue,
   FilterMetadataResponse,

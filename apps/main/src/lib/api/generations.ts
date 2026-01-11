@@ -4,8 +4,6 @@
  * Canonical API client for the unified /api/v1/generations endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { pixsimClient } from './client';
-import { usePromptSettingsStore } from '@features/prompts';
 import { createGenerationsApi } from '@pixsim7/api-client/domains';
 import type {
   CreateGenerationRequest,
@@ -14,6 +12,12 @@ import type {
   ListGenerationsQuery,
   GenerationSocialContext,
 } from '@pixsim7/api-client/domains';
+
+import { toSnakeCaseDeep } from '@lib/utils';
+
+import { usePromptSettingsStore } from '@features/prompts';
+
+import { pixsimClient } from './client';
 
 export type {
   GenerationResponse,
@@ -60,7 +64,7 @@ export async function createGeneration(
     enrichedRequest.analyzer_id = settings.defaultAnalyzer;
   }
 
-  return generationsApi.createGeneration(enrichedRequest);
+  return generationsApi.createGeneration(toSnakeCaseDeep(enrichedRequest));
 }
 
 /**
@@ -115,17 +119,35 @@ export async function validateGenerationConfig(
   warnings: string[];
   suggestions: string[];
 }> {
-  return generationsApi.validateGenerationConfig(request);
+  return generationsApi.validateGenerationConfig(toSnakeCaseDeep(request));
 }
 
 /**
  * Build social context from relationship state
  */
-export async function buildSocialContext(params: {
-  world_id: number;
-  session_id?: number;
-  npc_id?: string;
-  user_max_rating?: string;
-}): Promise<GenerationSocialContext> {
-  return generationsApi.buildSocialContext(params);
+type BuildSocialContextParams =
+  | {
+      world_id: number;
+      session_id?: number;
+      npc_id?: string;
+      user_max_rating?: string;
+    }
+  | {
+      worldId: number;
+      sessionId?: number;
+      npcId?: string;
+      userMaxRating?: string;
+    };
+
+export async function buildSocialContext(
+  params: BuildSocialContextParams
+): Promise<GenerationSocialContext> {
+  return generationsApi.buildSocialContext(
+    toSnakeCaseDeep(params) as {
+      world_id: number;
+      session_id?: number;
+      npc_id?: string;
+      user_max_rating?: string;
+    }
+  );
 }
