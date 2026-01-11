@@ -1,18 +1,20 @@
 // Auto-generated from composition-roles.yaml - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
 //
-// ⚠️  DEPRECATED: This file is deprecated for runtime use.
-// Frontend should use compositionPackageStore (apps/main/src/stores/compositionPackageStore.ts)
-// which fetches roles from /api/v1/concepts/roles at runtime, including plugin roles.
+// ========================================================================
+// NOTE: For dynamic/plugin-aware data, prefer the runtime API:
+//   - compositionPackageStore (apps/main/src/stores/compositionPackageStore.ts)
+//   - Fetches from /api/v1/concepts/roles at runtime, including plugin roles
 //
-// This file remains for:
-// - Backward compatibility with existing imports
-// - Type definitions (ImageCompositionRole, RoleId)
-// - Fallback when API is unavailable
+// This file provides:
+//   - Type definitions (ImageCompositionRole, RoleId) - always valid
+//   - Static fallback data when API unavailable
+//   - Core role constants for type-safe usage
+// ========================================================================
 
 /**
  * Canonical composition roles from core YAML.
- * @deprecated Use compositionPackageStore.roles from runtime API instead.
+ * @see compositionPackageStore.roles for runtime API with plugin roles
  */
 export const COMPOSITION_ROLES = ["main_character","companion","environment","prop","style_reference","effect"] as const;
 
@@ -30,7 +32,7 @@ export type RoleId = ImageCompositionRole | (string & {});
 
 /**
  * Role descriptions for UI display.
- * @deprecated Use compositionPackageStore.getRoleDescription() instead.
+ * @see compositionPackageStore.getRoleDescription() for runtime API
  */
 export const ROLE_DESCRIPTIONS = {
   "main_character": "Primary subject/character in the scene",
@@ -43,7 +45,7 @@ export const ROLE_DESCRIPTIONS = {
 
 /**
  * Role colors (tailwind color names) for badges/UI.
- * @deprecated Use compositionPackageStore.getRoleColor() instead.
+ * @see compositionPackageStore.getRoleColor() for runtime API
  */
 export const ROLE_COLORS = {
   "main_character": "blue",
@@ -56,7 +58,7 @@ export const ROLE_COLORS = {
 
 /**
  * Default layer order per role (0=background, higher=foreground).
- * @deprecated Use role.default_layer from compositionPackageStore.roles instead.
+ * @see compositionPackageStore.roles for runtime API
  */
 export const ROLE_DEFAULT_LAYERS = {
   "main_character": 1,
@@ -69,7 +71,7 @@ export const ROLE_DEFAULT_LAYERS = {
 
 /**
  * Role tags for filtering and asset matching.
- * @deprecated Use role.tags from compositionPackageStore.roles instead.
+ * @see compositionPackageStore.roles for runtime API
  */
 export const ROLE_TAGS = {
   "main_character": [
@@ -107,7 +109,7 @@ export const ROLE_TAGS = {
 /**
  * Tag slug -> composition role mapping.
  * Exact match lookup (e.g., "bg", "char:hero").
- * @deprecated Use compositionPackageStore.slugToRole instead.
+ * @see compositionPackageStore.slugToRole for runtime API
  */
 export const SLUG_TO_COMPOSITION_ROLE = {
   "bg": "environment",
@@ -126,7 +128,7 @@ export const SLUG_TO_COMPOSITION_ROLE = {
 /**
  * Tag namespace -> composition role mapping.
  * Used after extracting prefix before ":" (e.g., "npc:alex" -> "npc").
- * @deprecated Use compositionPackageStore.namespaceToRole instead.
+ * @see compositionPackageStore.namespaceToRole for runtime API
  */
 export const NAMESPACE_TO_COMPOSITION_ROLE = {
   "character": "main_character",
@@ -151,18 +153,18 @@ export const NAMESPACE_TO_COMPOSITION_ROLE = {
 /**
  * Priority order for role selection (highest first).
  * When multiple tags map to different roles, pick the highest priority.
- * @deprecated Use compositionPackageStore.priority instead.
+ * @see compositionPackageStore.priority for runtime API
  */
 export const COMPOSITION_ROLE_PRIORITY = ["main_character","companion","prop","style_reference","effect","environment"] as const satisfies readonly ImageCompositionRole[];
 
 /**
  * Infer composition role from a single tag string.
- * @deprecated Use compositionPackageStore.inferRoleFromTag() instead.
  *
  * Strategy:
  * 1. Check exact slug match (e.g., "bg", "char:hero")
  * 2. Extract namespace prefix (e.g., "npc:alex" -> "npc") and check namespace mapping
  *
+ * @see compositionPackageStore.inferRoleFromTag() for runtime API with plugin roles
  * @param tag - Tag string (e.g., "bg", "npc:alex", "loc:dungeon")
  * @returns Canonical composition role or undefined
  */
@@ -189,8 +191,8 @@ export function inferRoleFromTag(tag: string): ImageCompositionRole | undefined 
 /**
  * Infer composition role from multiple tags.
  * Returns highest-priority role found.
- * @deprecated Use compositionPackageStore.inferRoleFromTags() instead.
  *
+ * @see compositionPackageStore.inferRoleFromTags() for runtime API with plugin roles
  * @param tags - Array of tag strings
  * @returns Highest-priority canonical composition role found, or undefined
  */
