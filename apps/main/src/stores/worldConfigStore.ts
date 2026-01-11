@@ -14,16 +14,18 @@
  * @see packages/shared/types/src/worldConfig.ts - Canonical schemas & defaults
  */
 
-import { create } from 'zustand';
-import { subscribeWithSelector } from 'zustand/middleware';
-import type { GameWorldDetail } from '@pixsim7/shared.types';
+import {
+  getRelationshipTierOrder,
+  getIntimacyLevelOrder,
+} from '@pixsim7/shared.logic-core/stats';
 import {
   parseStatsConfig,
   parseManifest,
   parseIntimacyGating,
   getTurnDeltaFromPreset,
-  getRelationshipTierOrder,
-  getIntimacyLevelOrder,
+} from '@pixsim7/shared.logic-core/worldConfig';
+import type { GameWorldDetail } from '@pixsim7/shared.types';
+import {
   DEFAULT_WORLD_STATS_CONFIG,
   DEFAULT_WORLD_MANIFEST,
   DEFAULT_INTIMACY_GATING,
@@ -36,6 +38,8 @@ import {
   type StatTier,
   type StatLevel,
 } from '@pixsim7/shared.types';
+import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 
 // =============================================================================
 // Types

@@ -5,6 +5,13 @@
  * interactions using createGenericInteraction.
  */
 
+import type { PluginOrigin } from '@lib/plugins/pluginSystem';
+import {
+  registerInteraction,
+  ensureBackendPluginCatalogEntry,
+} from '@lib/plugins/registryBridge';
+import { toSnakeCaseDeep } from '@lib/utils';
+
 import type {
   InteractionPlugin,
   BaseInteractionConfig,
@@ -16,12 +23,6 @@ import type {
   InteractionCapabilities,
 } from './types';
 import { interactionRegistry } from './types';
-import {
-  registerInteraction,
-  ensureBackendPluginCatalogEntry,
-  type BackendPluginEntryLike,
-} from '@lib/plugins/registryBridge';
-import type { PluginOrigin } from '@lib/plugins/pluginSystem';
 
 // =============================================================================
 // Types (aligned with packages/plugins/stealth/shared/types.ts)
@@ -272,12 +273,10 @@ export function createGenericInteraction<TConfig extends BaseInteractionConfig =
           session_id: gameSession.id,
         };
 
-        // Map config fields to request payload (camelCase to snake_case)
-        for (const [key, value] of Object.entries(config)) {
-          if (key === 'enabled') continue; // Skip enabled flag
-          const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-          requestPayload[snakeKey] = value;
-        }
+        const configPayload = toSnakeCaseDeep(
+          Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'enabled'))
+        );
+        Object.assign(requestPayload, configPayload);
 
         // Call the API endpoint
         const response = await fetch(`/api/v1${manifest.apiEndpoint}`, {
