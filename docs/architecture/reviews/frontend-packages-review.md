@@ -27,11 +27,11 @@ The frontend is **well-structured** with good separation between framework-agnos
 | `@pixsim7/ref-core` | `packages/shared/ref-core/` | Entity references, builders, parsers | None (leaf) |
 | `@pixsim7/helpers-core` | `packages/shared/helpers-core/` | Small framework-agnostic helpers (e.g., shortcut parsing) | None (leaf) |
 | `@pixsim7/capabilities-core` | `packages/shared/capabilities-core/` | Capability system (provider/app) | `helpers-core`, `shared.types` |
-| `@pixsim7/stats-core` | `packages/shared/stats-core/` | Stats & metrics | `shared.types` |
+| `@pixsim7/shared.logic-core` | `packages/shared/logic-core/` | Shared runtime logic (stats, content ratings) | `shared.types` |
 | `@pixsim7/assets-core` | `packages/shared/assets-core/` | Asset card actions, media types | `shared.types` |
 | `@pixsim7/generation-core` | `packages/shared/generation-core/` | Generation logic, provider params | `shared.types` |
 | `@pixsim7/api-client` | `packages/shared/api-client/` | Environment-neutral API (browser/Node/Electron/Tauri) | `shared.types`, `axios` (peer) |
-| `@pixsim7/game.engine` | `packages/game/engine/` | Headless game logic | `helpers-core`, `ref-core`, `stats-core`, `shared.types` |
+| `@pixsim7/game.engine` | `packages/game/engine/` | Headless game logic | `helpers-core`, `ref-core`, `logic-core`, `shared.types` |
 | `@pixsim7/scene.shapes` | `packages/scene/shapes/` | 3D shape definitions | `game.engine`, `shared.types` |
 | `@pixsim7/scene.gizmos` | `packages/scene/gizmos/` | 3D gizmos/controls | `shared.types` |
 
@@ -52,7 +52,7 @@ packages/
 │   ├── helpers-core/
 │   ├── capabilities-core/
 │   ├── ref-core/
-│   ├── stats-core/
+│   ├── logic-core/
 │   ├── assets-core/
 │   ├── generation-core/
 │   ├── api-client/
@@ -202,7 +202,7 @@ packages/
 │
 ├── assets/                      # Asset domain packages
 │   ├── core/                    # @pixsim7/assets.core (was assets-core + provider)
-│   ├── stats/                   # @pixsim7/assets.stats (was stats-core)
+│   ├── stats/                   # @pixsim7/assets.stats (was logic-core)
 │   └── generation/              # @pixsim7/assets.generation (was generation-core)
 │
 ├── game/                        # Game domain packages
@@ -337,7 +337,7 @@ Given the architecture, **Tauri + React** maximizes reuse:
 8. Update `pnpm-workspace.yaml`
 
 ### Phase 2: Create `packages/assets/` domain (evaluate first)
-1. Move `shared/stats-core/` → `assets/stats/`
+1. Move `shared/logic-core/` → `assets/stats/`
 2. Move `shared/assets-core/` → `assets/core/`
 3. Move `shared/generation-core/` → `assets/generation/`
 4. Update all import paths

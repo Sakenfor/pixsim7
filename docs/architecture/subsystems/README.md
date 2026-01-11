@@ -56,7 +56,7 @@ This document maps how each subsystem handles:
 | Backend | `pixsim7/backend/main/domain/game/stats/package_registry.py` | Package discovery |
 | Backend | `pixsim7/backend/main/api/v1/stat_preview.py` | Preview endpoints |
 | Shared | `packages/shared/types/src/worldConfig.ts` | Canonical Zod schemas |
-| Shared | `packages/shared/stats-core/src/previewClient.ts` | API client |
+| Shared | `packages/shared/logic-core/src/stats/previewClient.ts` | API client |
 | Frontend | `packages/game/engine/src/core/PixSim7Core.ts` | Brain state + caching |
 | Frontend | `packages/game/engine/src/relationships/computation.ts` | State extraction |
 
@@ -307,7 +307,7 @@ PluginContext gates access based on declared permissions
 | **Data Flow** | `GET /game/worlds/{id}/config` → `worldConfigStore` (frozen) |
 | **Runtime Authority** | **Backend** computes `tier_order`, `level_order` |
 | **Extensibility** | Plugin configs via `plugin:*` keys in meta |
-| **Drift** | Frontend has `parseStatsConfig()` fallback—**intentional** safe degradation |
+| **Drift** | Frontend has `parseStatsConfig()` fallback via logic-core—**intentional** safe degradation |
 
 ### Key Files
 
@@ -431,10 +431,10 @@ Local interaction feedback system for tool-based gameplay (e.g., tickle, pleasur
 
 | Subsystem | Pattern | Reason |
 |-----------|---------|--------|
-| **Stats** | Frontend fallback computation | Graceful degradation if API unavailable |
+| **Stats** | Frontend fallback computation | Graceful degradation if API unavailable (helpers in `shared.logic-core`) |
 | **Game Engine** | Condition evaluator duplication | Backend: interaction gating. Frontend: narrative flow |
 | **Narrative** | ConditionExpression in both | Same logic, different execution contexts |
-| **World Config** | Zod parsing with defaults | Safe degradation; never crash on bad config |
+| **World Config** | Zod parsing with defaults | Safe degradation; never crash on bad config (parsers in `shared.logic-core`) |
 | **Assets** | None | Pure read pattern |
 | **Automation** | None | Pure UI pattern |
 | **Generation** | None | Event-driven pattern |
@@ -463,7 +463,7 @@ Local interaction feedback system for tool-based gameplay (e.g., tickle, pleasur
 
 **Current State:**
 - Backend computes in `package_registry.py:400-455`
-- Frontend has fallback in `worldConfig.ts:getRelationshipTierOrder()`
+- Frontend has fallback in `@pixsim7/shared.logic-core/stats:getRelationshipTierOrder()`
 
 **Opportunity:** Always require backend ordering; remove frontend fallback.
 
