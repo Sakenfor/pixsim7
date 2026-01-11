@@ -55,6 +55,11 @@
       "import": "./src/brain.ts",
       "require": "./src/brain.ts",
       "types": "./src/brain.ts"
+    },
+    "./links": {
+      "import": "./src/links.ts",
+      "require": "./src/links.ts",
+      "types": "./src/links.ts"
     }
   },
   "files": ["src", "dist"],

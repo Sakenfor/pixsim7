@@ -13,3 +13,4 @@ export * from './game';
 export * from './characterGraph';
 export * from './ids';
 export * from './brain';
+export * from './links';

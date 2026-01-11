@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.stats-core
+ * @pixsim7/shared.logic-core/stats
  *
  * Consolidated stat system utilities.
  * Backend preview API is the single source of truth for stat computations.
