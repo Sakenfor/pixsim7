@@ -6,10 +6,58 @@
  * Exposes: injectCookies, extractCookies, extractCookiesForUrl, importCookiesToBackend
  */
 
+// Debug flag for cookie operations (loaded from storage)
+let DEBUG_COOKIES = false;
+chrome.storage.local.get({ debugCookies: false, debugAll: false }, (result) => {
+  DEBUG_COOKIES = result.debugCookies || result.debugAll;
+});
+const debugLogCookies = (...args) => DEBUG_COOKIES && console.log('[Background Cookies]', ...args);
+
+/**
+ * Clear auth-related cookies for a domain before injecting new session
+ * This prevents old session cookies from interfering with new logins
+ */
+async function clearAuthCookies(domain) {
+  // Auth-related cookie names that should be cleared before switching accounts
+  const authCookieNames = [
+    '_ai_token',      // Pixverse JWT
+    'token',          // Generic auth token
+    'session',        // Session cookie
+    'sessionid',      // Session ID
+    'auth',           // Auth cookie
+    'user_id',        // User identifier
+    'userId',         // User identifier (camelCase)
+  ];
+
+  const cookieDomain = domain === 'pixverse.ai' ? '.pixverse.ai' : `.${domain}`;
+  const urlForClear = domain === 'pixverse.ai' ? 'https://app.pixverse.ai' : `https://${domain}`;
+
+  // Get all cookies for this domain
+  const existingCookies = await chrome.cookies.getAll({ domain: cookieDomain });
+
+  for (const cookie of existingCookies) {
+    // Clear if it's a known auth cookie OR if we're about to set a new value for it
+    if (authCookieNames.includes(cookie.name)) {
+      try {
+        await chrome.cookies.remove({
+          url: urlForClear,
+          name: cookie.name,
+        });
+        debugLogCookies(`Cleared auth cookie: ${cookie.name}`);
+      } catch (error) {
+        debugLogCookies(`Failed to clear cookie ${cookie.name}:`, error);
+      }
+    }
+  }
+}
+
 /**
  * Inject cookies into browser
  */
 async function injectCookies(cookies, domain) {
+  // IMPORTANT: Clear existing auth cookies first to prevent old sessions from interfering
+  await clearAuthCookies(domain);
+
   for (const [name, value] of Object.entries(cookies)) {
     try {
       // For Pixverse, set cookies against app.pixverse.ai so the host
@@ -29,18 +77,18 @@ async function injectCookies(cookies, domain) {
         sameSite: 'no_restriction',
       });
     } catch (error) {
-      console.warn(`[Background Cookies] Failed to set cookie ${name}:`, error);
+      debugLogCookies(`Failed to set cookie ${name}:`, error);
     }
   }
 
-  console.log('[Background Cookies] Cookies injected successfully');
+  debugLogCookies('Cookies injected successfully');
 }
 
 /**
  * Extract cookies from domain
  */
 async function extractCookies(domain) {
-  console.log(`[Background Cookies] Extracting cookies for ${domain}`);
+  debugLogCookies(`Extracting cookies for ${domain}`);
 
   const cookies = await chrome.cookies.getAll({ domain });
   const cookieMap = {};
@@ -49,7 +97,7 @@ async function extractCookies(domain) {
     cookieMap[cookie.name] = cookie.value;
   }
 
-  console.log(`[Background Cookies] Extracted ${Object.keys(cookieMap).length} cookies`);
+  debugLogCookies(`Extracted ${Object.keys(cookieMap).length} cookies`);
   return cookieMap;
 }
 
@@ -75,7 +123,7 @@ async function extractCookiesForUrl(url) {
  * Import cookies to backend
  */
 async function importCookiesToBackend(providerId, url, rawData) {
-  console.log(`[Background Cookies] Importing raw data for ${providerId} to backend...`);
+  debugLogCookies(`Importing raw data for ${providerId} to backend...`);
 
   try {
     const data = await backendRequest('/api/v1/accounts/import-cookies', {
@@ -87,10 +135,10 @@ async function importCookiesToBackend(providerId, url, rawData) {
       })
     });
 
-    console.log(`[Background Cookies] ✓ Data imported successfully:`, data);
+    debugLogCookies(`✓ Data imported successfully:`, data);
     return data;
   } catch (error) {
-    console.error(`[Background Cookies] Failed to import:`, error);
+    debugLogCookies(`Failed to import:`, error);
     throw error;
   }
 }

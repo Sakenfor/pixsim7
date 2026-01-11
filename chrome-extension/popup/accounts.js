@@ -6,6 +6,13 @@
 
 // Note: renderAdPill is loaded from shared/ad-pill-renderer.js via popup.html
 
+// Debug flag for auth operations (loaded from storage)
+let DEBUG_AUTH = false;
+chrome.storage.local.get({ debugAuth: false, debugAll: false }, (result) => {
+  DEBUG_AUTH = result.debugAuth || result.debugAll;
+});
+const debugLogAuth = (...args) => DEBUG_AUTH && console.log('[Popup Auth]', ...args);
+
 // ===== CUSTOM CONFIRM DIALOG =====
 
 /**
@@ -387,7 +394,8 @@ function formatRelativeTime(timestamp) {
 }
 
 async function handleAccountLogin(account, event) {
-  console.log('[Popup] Login with account:', account.email);
+  debugLogAuth('Login with account:', account.email, 'ID:', account.id, 'nickname:', account.nickname);
+  debugLogAuth('Full account object:', JSON.stringify({ id: account.id, email: account.email, nickname: account.nickname, provider_id: account.provider_id }));
   try {
     // Determine whether to reuse the current tab or open a new one.
     // Ctrl-click (or Cmd-click on macOS, or middle-click) should open

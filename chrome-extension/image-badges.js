@@ -232,6 +232,39 @@
     return url;
   }
 
+  /**
+   * Capture current frame from a video element as a data URL
+   * @param {HTMLVideoElement} video - The video element to capture from
+   * @returns {string|null} - Data URL of the captured frame, or null on error
+   */
+  function captureVideoFrame(video) {
+    try {
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+        console.warn('[pxs7] Cannot capture frame: video not ready');
+        return null;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Convert to PNG data URL (high quality)
+      const dataUrl = canvas.toDataURL('image/png');
+      console.log('[pxs7] Captured video frame:', canvas.width, 'x', canvas.height);
+      return dataUrl;
+    } catch (e) {
+      console.error('[pxs7] Failed to capture video frame:', e);
+      // This can fail due to CORS restrictions on cross-origin videos
+      if (e.name === 'SecurityError') {
+        showToast('Cannot capture frame: video is cross-origin protected', false);
+      }
+      return null;
+    }
+  }
+
   async function upload(mediaUrl, providerId, isVideo = false, options = {}) {
     try {
       const settings = await getSettings();
@@ -329,9 +362,27 @@
     badgeEl.style.display = 'none';
 
     // Click to upload or sync
+    // Shift+Click on video = capture current frame as image
+    // Ctrl/Cmd+Click = force create asset even if provider fails
     badgeEl.addEventListener('click', async (e) => {
       e.preventDefault(); e.stopPropagation();
-      const isVideo = currentVideo && currentVideo.src;
+      const hasVideo = !!(currentVideo && currentVideo.src);
+      const hasImage = !!(currentImg && currentImg.src);
+
+      // Shift+Click on video: capture frame as image
+      if (e.shiftKey && hasVideo && currentVideo) {
+        const frameDataUrl = captureVideoFrame(currentVideo);
+        if (frameDataUrl) {
+          showToast('Capturing frame...', true);
+          const forceAsset = !!(e.ctrlKey || e.metaKey);
+          await upload(frameDataUrl, defProvCache, false, { ensureAsset: forceAsset });
+        } else {
+          showToast('Failed to capture frame', false);
+        }
+        return;
+      }
+
+      const isVideo = hasVideo;
       const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
       if (!src) return;
 
@@ -353,7 +404,7 @@
     badgeEl.addEventListener('contextmenu', async (e) => {
       e.preventDefault(); e.stopPropagation();
       const prov = await pickProvider(e.clientX, e.clientY, defProvCache);
-      const isVideo = currentVideo && currentVideo.src;
+      const isVideo = !!(currentVideo && currentVideo.src);
       const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
       if (prov && src) await upload(src, prov, isVideo);
     });
@@ -496,7 +547,9 @@
       badgeEl.title = `Sync to PixSim7 (ID: ${assetInfo.uuid.slice(0, 8)}...)`;
     } else if (isVideo) {
       badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
-      badgeEl.title = isLocalUrl ? 'Save video to PixSim7 (local file)' : 'Save video to PixSim7';
+      badgeEl.title = isLocalUrl
+        ? 'Click: Save video | Shift+Click: Capture frame as image'
+        : 'Click: Save video | Shift+Click: Capture frame as image';
     } else if (isFileUrl) {
       badgeEl.innerHTML = '<span style="font-size:12px">📁</span><span>PixSim7</span>';
       badgeEl.title = 'Upload local image to PixSim7';

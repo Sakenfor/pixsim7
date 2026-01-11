@@ -259,6 +259,30 @@
       }
       .pxs7-restore-btn:hover { background: ${COLORS.accentHover || COLORS.accent}; transform: scale(1.08); }
       .pxs7-restore-btn:active { transform: scale(0.92); }
+
+      .pxs7-upload-badge {
+        position: absolute !important;
+        top: 4px !important;
+        left: 4px !important;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        border: 1px solid ${COLORS.warning || '#f59e0b'};
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        transition: all 0.15s ease;
+        z-index: 10;
+        opacity: 0.8;
+      }
+      .pxs7-upload-badge:hover { background: ${COLORS.warning || '#f59e0b'}; opacity: 1; transform: scale(1.1); }
+      .pxs7-upload-badge:active { transform: scale(0.9); }
+      .pxs7-upload-badge.uploading { animation: pxs7-pulse 1s infinite; pointer-events: none; }
+      @keyframes pxs7-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
     `;
     document.head.appendChild(style);
   }
@@ -314,6 +338,9 @@
 
         btnContainer.appendChild(restoreBtn);
         thumb.appendChild(btnContainer);
+
+        // TODO: Add upload badge for local-only assets once backend provides is_local_only flag
+        // For now, detection is unreliable client-side
       }
 
       itemDataMap.set(index, { thumbUrl, fullUrl, name, mediaType, element: thumb, item });
@@ -586,9 +613,58 @@
         return;
       }
 
+      // Handle upload badge clicks (upload local-only asset to Pixverse)
+      if (e.target.classList.contains('pxs7-upload-badge')) {
+        e.stopPropagation();
+        e.preventDefault();
+
+        const badge = e.target;
+        const assetId = badge.dataset.assetId;
+        const idx = parseInt(badge.dataset.idx, 10);
+        const data = itemDataMap.get(idx);
+
+        if (!assetId || !data) return;
+
+        // Show loading state
+        badge.classList.add('uploading');
+        badge.innerHTML = '⏳';
+
+        try {
+          debugLog('[Upload] Uploading local asset to Pixverse:', assetId);
+          if (showToast) showToast('Uploading to Pixverse...', true);
+
+          // Get the file URL to upload
+          const fileUrl = data.fullUrl || data.thumbUrl;
+
+          // Call backend to re-upload to provider
+          const response = await sendMessageWithTimeout({
+            action: 'uploadMediaFromUrl',
+            mediaUrl: fileUrl,
+            providerId: 'pixverse',
+            ensureAsset: false, // Only succeed if provider upload works
+          }, 30000);
+
+          if (response?.success && response?.providerSucceeded !== false) {
+            debugLog('[Upload] Provider upload succeeded');
+            if (showToast) showToast('Uploaded to Pixverse!', true);
+            // Remove badge on success
+            badge.remove();
+          } else {
+            throw new Error(response?.error || 'Provider upload failed');
+          }
+        } catch (err) {
+          console.error('[PixSim7] Failed to upload to provider:', err);
+          if (showToast) showToast('Upload failed: ' + err.message, false);
+          badge.classList.remove('uploading');
+          badge.innerHTML = '☁️';
+        }
+
+        return;
+      }
+
       // Handle left-click on thumbnail (not buttons) - inject to first empty slot
       const thumb = e.target.closest('.pxs7-thumb');
-      if (thumb && !e.target.closest('.pxs7-asset-btns')) {
+      if (thumb && !e.target.closest('.pxs7-asset-btns') && !e.target.closest('.pxs7-upload-badge')) {
         const idx = parseInt(thumb.dataset.idx, 10);
         const data = itemDataMap.get(idx);
         if (data && data.fullUrl) {
@@ -1063,12 +1139,13 @@
       for (let i = 0; i < slotCount; i++) {
         const slotInfo = slots[i];
         let slotName = `Slot ${i + 1}`;
-        const containerId = slotInfo?.containerId || '';
+        // Strip #N suffix from containerId for comparison
+        const containerId = (slotInfo?.containerId || '').replace(/#\d+$/, '');
         if (containerId.includes('image_text')) slotName = 'Image';
         else if (containerId.includes('create_image')) slotName = 'Image';
-        else if (containerId.startsWith('transition')) slotName = `Image ${i + 1}`;
-        else if (containerId.startsWith('fusion')) slotName = `Image ${i + 1}`;
-        else if (containerId.startsWith('extend')) slotName = 'Extend Image';
+        else if (containerId.startsWith('transition') || containerId.includes('transition')) slotName = `Image ${i + 1}`;
+        else if (containerId.startsWith('fusion') || containerId.includes('fusion')) slotName = `Image ${i + 1}`;
+        else if (containerId.startsWith('extend') || containerId.includes('extend')) slotName = 'Extend Image';
         else if (containerId.includes('edit')) slotName = 'Edit';
 
         const item = createMenuButton(slotName, i + 1, async () => {
@@ -1082,23 +1159,72 @@
 
     // Add new slot option
     menu.appendChild(createMenuButton('Add New Slot', '+', async () => {
-      // Find and click the "add image" button on the page
-      const addButtons = document.querySelectorAll('button, div[role="button"]');
+      // Find the "add slot" button using multiple approaches
       let addBtn = null;
-      for (const btn of addButtons) {
-        const text = btn.textContent?.toLowerCase() || '';
-        const hasPlus = btn.querySelector('svg path[d*="M12 4v16m8-8H4"]') || // Plus icon
-                        btn.innerHTML?.includes('+') ||
-                        text.includes('add') && text.includes('image');
-        if (hasPlus && btn.offsetParent !== null) {
-          addBtn = btn;
-          break;
+
+      // Approach 1: Try multiple known SVG path patterns for + icons (using partial match)
+      const plusPathPrefixes = [
+        'M8 2v6',      // Pixverse transition + button (starts with this)
+        'M12 4v16',    // Alternative + icon
+        'M12 5v14',    // Another + variant
+        'M6 12h12',    // Simple + path
+      ];
+      for (const prefix of plusPathPrefixes) {
+        // Use partial match with ^= (starts with) since exact match can fail with whitespace
+        const svg = document.querySelector(`svg path[d^="${prefix}"]`);
+        if (svg) {
+          // Find clickable parent - go up to the cursor-pointer div
+          addBtn = svg.closest('div.cursor-pointer') ||
+                   svg.closest('div[class*="cursor-pointer"]') ||
+                   svg.closest('button') ||
+                   svg.parentElement?.closest('div.cursor-pointer') ||
+                   svg.parentElement?.parentElement;
+          if (addBtn && addBtn.offsetParent !== null) {
+            debugLog('[AddSlot] Found + button via SVG path prefix:', prefix);
+            break;
+          }
         }
       }
-      // Also try finding by common Pixverse add button patterns
+
+      // Approach 2: Look for elements with + text content near upload areas
+      if (!addBtn) {
+        const uploadArea = document.querySelector('[class*="transition"], [class*="fusion"]')?.parentElement;
+        if (uploadArea) {
+          const candidates = uploadArea.querySelectorAll('div[class*="opacity"], div[class*="cursor-pointer"]');
+          for (const el of candidates) {
+            if (el.querySelector('svg') && el.offsetParent !== null) {
+              const rect = el.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && rect.width < 100) {
+                addBtn = el;
+                debugLog('[AddSlot] Found + button via upload area sibling');
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Approach 3: Generic button/div search
+      if (!addBtn) {
+        const addButtons = document.querySelectorAll('button, div[role="button"]');
+        for (const btn of addButtons) {
+          const text = btn.textContent?.toLowerCase() || '';
+          const hasPlus = btn.innerHTML?.includes('+') ||
+                          (text.includes('add') && text.includes('image'));
+          if (hasPlus && btn.offsetParent !== null) {
+            addBtn = btn;
+            debugLog('[AddSlot] Found + button via text content');
+            break;
+          }
+        }
+      }
+
+      // Approach 4: Class-based selectors
       if (!addBtn) {
         addBtn = document.querySelector('[class*="add-image"], [class*="addImage"], [data-testid*="add"]');
+        if (addBtn) debugLog('[AddSlot] Found + button via class selector');
       }
+
       if (addBtn) {
         addBtn.click();
         // Wait a moment then inject the image to the new slot
@@ -1106,6 +1232,7 @@
           await injectImageToUpload(imageUrl);
         }, 300);
       } else {
+        debugLog('[AddSlot] Could not find add slot button');
         if (showToast) showToast('Could not find add slot button', false);
       }
     }));

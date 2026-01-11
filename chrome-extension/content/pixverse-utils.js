@@ -327,26 +327,47 @@ window.PXS7 = window.PXS7 || {};
       console.log('[PixSim7] Captured slot count:', imageSlotCount);
     }
 
+    // Use shared capture utilities if available
+    const { captureModel, captureAspectRatio } = window.PXS7.restoreUtils || {};
+
     // Capture selected model
-    const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
-    if (modelImg) {
-      const modelContainer = modelImg.closest('div');
-      const modelNameSpan = modelContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
-      if (modelNameSpan?.textContent) {
-        pageState.selectedModel = modelNameSpan.textContent.trim();
-        console.log('[PixSim7] Captured model:', pageState.selectedModel);
+    if (captureModel) {
+      const model = captureModel();
+      if (model) {
+        pageState.selectedModel = model;
+        console.log('[PixSim7] Captured model:', model);
+      }
+    } else {
+      // Fallback if restore utils not loaded yet
+      const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
+      if (modelImg) {
+        const modelContainer = modelImg.closest('div');
+        const modelNameSpan = modelContainer?.querySelector('span.font-semibold, span[class*="font-semibold"]');
+        if (modelNameSpan?.textContent) {
+          pageState.selectedModel = modelNameSpan.textContent.trim();
+          console.log('[PixSim7] Captured model:', pageState.selectedModel);
+        }
       }
     }
 
     // Capture selected aspect ratio
-    const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
-    for (const btn of ratioButtons) {
-      if (btn.className.includes('bg-button-secondary-hover')) {
-        const ratioText = btn.textContent?.trim();
-        if (ratioText && ratioText.includes(':')) {
-          pageState.selectedAspectRatio = ratioText;
-          console.log('[PixSim7] Captured aspect ratio:', ratioText);
-          break;
+    if (captureAspectRatio) {
+      const ratio = captureAspectRatio();
+      if (ratio) {
+        pageState.selectedAspectRatio = ratio;
+        console.log('[PixSim7] Captured aspect ratio:', ratio);
+      }
+    } else {
+      // Fallback if restore utils not loaded yet
+      const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
+      for (const btn of ratioButtons) {
+        if (btn.className.includes('bg-button-secondary-hover')) {
+          const ratioText = btn.textContent?.trim();
+          if (ratioText && ratioText.includes(':')) {
+            pageState.selectedAspectRatio = ratioText;
+            console.log('[PixSim7] Captured aspect ratio:', ratioText);
+            break;
+          }
         }
       }
     }
@@ -370,6 +391,88 @@ window.PXS7 = window.PXS7 || {};
       });
       console.log('[PixSim7] Saved page state directly');
     }
+  }
+
+  // ===== Popup Blocker =====
+
+  const BLOCKED_POPUP_TEXTS = [
+    'Batch Generation and Off-Peak Mode',
+    'Subscribe Now',
+    'Unlock Batch',
+  ];
+
+  function isBlockedPopup(element) {
+    const text = element.textContent || '';
+    // Must contain the promo text
+    return text.includes('Batch Generation') && text.includes('Off-Peak') ||
+           text.includes('Unlock Batch') && text.includes('Off-Peak');
+  }
+
+  function hideBlockedPopup(element) {
+    // Find the popover container (usually has fixed/absolute positioning)
+    let container = element;
+    while (container && container !== document.body) {
+      const style = window.getComputedStyle(container);
+      // Look for popover-like containers
+      if ((style.position === 'fixed' || style.position === 'absolute') &&
+          container.className?.includes('w-[360px]')) {
+        container.style.display = 'none';
+        console.log('[PixSim7] Hid promo popup');
+        return true;
+      }
+      // Also check for ant-popover
+      if (container.classList?.contains('ant-popover')) {
+        container.style.display = 'none';
+        console.log('[PixSim7] Hid promo popover');
+        return true;
+      }
+      container = container.parentElement;
+    }
+    // Fallback: hide the element itself
+    element.style.display = 'none';
+    console.log('[PixSim7] Hid promo element');
+    return true;
+  }
+
+  function initPopupBlocker() {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== 1) continue;
+
+          // Check added node and its descendants
+          const checkElement = (el) => {
+            if (isBlockedPopup(el)) {
+              setTimeout(() => hideBlockedPopup(el), 10);
+              return true;
+            }
+            return false;
+          };
+
+          if (checkElement(node)) continue;
+
+          // Check if it contains the blocked content
+          if (node.querySelector) {
+            const promo = Array.from(node.querySelectorAll('div')).find(d =>
+              d.textContent?.includes('Batch Generation') && d.textContent?.includes('Off-Peak')
+            );
+            if (promo) {
+              setTimeout(() => hideBlockedPopup(promo), 10);
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    console.log('[PixSim7] Popup blocker initialized');
+  }
+
+  // Start popup blocker
+  if (document.body) {
+    initPopupBlocker();
+  } else {
+    document.addEventListener('DOMContentLoaded', initPopupBlocker);
   }
 
   // Export to global namespace

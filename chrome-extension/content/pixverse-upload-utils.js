@@ -94,10 +94,14 @@
       state.url = window.location.href;
       state.path = window.location.pathname;
 
-      const hasContent = Object.keys(state.inputs).length > 0 || state.images.length > 0;
+      const hasContent = Object.keys(state.inputs).length > 0 ||
+                         state.images.length > 0 ||
+                         state.selectedModel ||
+                         state.selectedAspectRatio;
       if (hasContent) {
         sessionStorage.setItem(SESSION_KEY_PRESERVED_INPUT, JSON.stringify(state));
-        debugLog('Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images');
+        debugLog('Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images,',
+                 'model:', state.selectedModel || 'none', 'ratio:', state.selectedAspectRatio || 'none');
       } else {
         // Clear stale state if nothing to save
         sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
@@ -164,6 +168,37 @@
         return { restored: false };
       }
 
+      // Check if current page matches the saved page path
+      const currentPath = window.location.pathname;
+      const savedPath = state.path || '';
+
+      debugLog('Restore check - currentPath:', currentPath, 'savedPath:', savedPath);
+
+      // Extract page type from paths (e.g., /create/image, /transition, /fusion)
+      const getPageType = (path) => {
+        if (path.includes('/transition')) return 'transition';
+        if (path.includes('/fusion')) return 'fusion';
+        if (path.includes('/extend')) return 'extend';
+        if (path.includes('/edit')) return 'edit';
+        if (path.includes('/create/image') || path.includes('/image-generation') || path.includes('/create-image')) return 'image';
+        if (path.includes('/image-text') || path.includes('/image_text')) return 'image-text';
+        if (path.includes('/video') || path.includes('/create')) return 'video'; // Video generation pages
+        return 'other';
+      };
+
+      const currentPageType = getPageType(currentPath);
+      const savedPageType = getPageType(savedPath);
+
+      debugLog('Page types - current:', currentPageType, 'saved:', savedPageType);
+
+      // Only skip restore if page types are clearly different (not 'other')
+      if (currentPageType !== savedPageType && currentPageType !== 'other' && savedPageType !== 'other') {
+        debugLog('Page type mismatch, not restoring. Current:', currentPageType, 'Saved:', savedPageType);
+        // Clear the saved state since it's for a different page type
+        sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+        return { restored: false };
+      }
+
       const inputs = state.inputs || state;
       const images = state.images || [];
       let textRestored = 0;
@@ -173,92 +208,41 @@
         inputs: Object.keys(inputs).length,
         images: images.length,
         model: state.selectedModel,
-        aspectRatio: state.selectedAspectRatio
+        aspectRatio: state.selectedAspectRatio,
+        pageType: currentPageType
       });
 
+      // Use shared restore utilities
+      const { restoreModel, restoreAspectRatio, restorePrompts, restoreContentEditables } = window.PXS7.restoreUtils || {};
+
       // === Restore model selection ===
-      if (state.selectedModel) {
-        const restoreModel = async (retries = 3) => {
-          const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
-          const modelContainer = modelImg?.closest('div.cursor-pointer');
-          if (!modelContainer) {
-            if (retries > 0) setTimeout(() => restoreModel(retries - 1), 500);
-            return;
-          }
-
-          const currentModelSpan = modelContainer.querySelector('span.font-semibold, span[class*="font-semibold"]');
-          if (currentModelSpan?.textContent?.trim() === state.selectedModel) {
-            debugLog('Model already correct:', state.selectedModel);
-            return;
-          }
-
-          debugLog('Opening model selector to restore:', state.selectedModel);
-          modelContainer.click();
-          await new Promise(r => setTimeout(r, 400));
-
-          const modelOptions = document.querySelectorAll('img[src*="asset/media/model/model-"]');
-          for (const optionImg of modelOptions) {
-            if (optionImg.className.includes('w-11')) continue;
-            let clickTarget = optionImg.parentElement;
-            while (clickTarget && !clickTarget.className?.includes('cursor-pointer')) {
-              clickTarget = clickTarget.parentElement;
-              if (clickTarget === document.body) { clickTarget = null; break; }
-            }
-            const optionName = clickTarget?.querySelector('span.font-semibold, span[class*="font-semibold"]');
-            if (optionName?.textContent?.trim() === state.selectedModel) {
-              debugLog('Found and clicking model:', state.selectedModel);
-              clickTarget.click();
-              return;
-            }
-          }
-          document.body.click(); // Close dropdown if not found
-        };
-        await restoreModel();
-        await new Promise(r => setTimeout(r, 300));
+      if (state.selectedModel && restoreModel) {
+        await restoreModel(state.selectedModel);
+        await new Promise(r => setTimeout(r, 400));
       }
 
       // === Restore aspect ratio ===
-      if (state.selectedAspectRatio) {
-        const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
-        for (const btn of ratioButtons) {
-          if (btn.textContent?.trim() === state.selectedAspectRatio) {
-            if (!btn.className.includes('bg-button-secondary-hover')) {
-              debugLog('Clicking aspect ratio:', state.selectedAspectRatio);
-              btn.click();
-            }
-            break;
-          }
-        }
+      if (state.selectedAspectRatio && restoreAspectRatio) {
+        await restoreAspectRatio(state.selectedAspectRatio);
         await new Promise(r => setTimeout(r, 200));
       }
 
       // === Restore textareas ===
-      document.querySelectorAll('textarea').forEach((el, i) => {
-        if (el.value && el.value.trim()) return; // Don't overwrite existing content
-        const key = el.id || el.name || el.placeholder || `textarea_${i}`;
-        if (inputs[key]) {
-          el.value = inputs[key];
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          textRestored++;
-        }
-      });
+      if (restorePrompts) {
+        textRestored += await restorePrompts(inputs);
+      }
 
       // === Restore contenteditable ===
-      document.querySelectorAll('[contenteditable="true"]').forEach((el, i) => {
-        if (el.textContent && el.textContent.trim()) return;
-        const key = el.id || el.dataset.placeholder || `editable_${i}`;
-        if (inputs[`ce_${key}`]) {
-          el.innerHTML = inputs[`ce_${key}`];
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          textRestored++;
-        }
-      });
+      if (restoreContentEditables) {
+        textRestored += restoreContentEditables(inputs);
+      }
 
       // === Restore images ===
+      // Pass all images to restoreAllImages - it handles slot detection and adding slots
       if (images.length > 0) {
         if (autoRestoreImages) {
-          // Auto-restore images using restoreAllImages
-          debugLog('Auto-restoring', images.length, 'images');
+          // Auto-restore images using restoreAllImages (same as account switch flow)
+          debugLog('Auto-restoring', images.length, 'images via restoreAllImages');
           const result = await restoreAllImages(images);
           imagesRestored = result.success;
 
@@ -322,6 +306,59 @@
                       input.closest('.ant-upload-btn') ||
                       input.closest('[class*="ant-upload"]') ||
                       input.closest('[class*="upload"]');
+
+      // Check if the slot is visible (not hidden)
+      const checkVisibility = (el) => {
+        if (!el) return false;
+        // Check if element is rendered (has layout)
+        if (el.offsetParent === null && el.style?.position !== 'fixed') {
+          // File inputs are often hidden but their container should be visible
+          const wrapper = el.closest('.ant-upload-wrapper') || el.closest('[class*="upload"]')?.parentElement;
+          if (wrapper && wrapper.offsetParent !== null) return true;
+          return false;
+        }
+        // Check computed style for display/visibility
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        // Check if element has non-zero dimensions
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return false;
+        return true;
+      };
+
+      // Skip hidden slots - check container visibility
+      const slotContainer = container?.closest('.ant-upload-wrapper') ||
+                           container?.parentElement?.parentElement ||
+                           container;
+      const isVisible = checkVisibility(slotContainer) || checkVisibility(container) || checkVisibility(input);
+
+      // For transition/fusion pages, also check if the slot wrapper is actually rendered
+      if (isTransitionPage || isFusionPage) {
+        const uploadWrapper = input.closest('[class*="ant-upload"]')?.parentElement;
+        if (uploadWrapper) {
+          const wrapperRect = uploadWrapper.getBoundingClientRect();
+          // If wrapper has zero dimensions, it's likely a hidden slot
+          if (wrapperRect.width === 0 || wrapperRect.height === 0) {
+            debugLog('[Slots] Skipping hidden transition/fusion slot');
+            return; // Skip this slot
+          }
+        }
+        // Also check the slot's direct parent container
+        const slotParent = input.closest('[class*="ant-upload"]');
+        if (slotParent) {
+          const parentRect = slotParent.getBoundingClientRect();
+          if (parentRect.width === 0 || parentRect.height === 0) {
+            debugLog('[Slots] Skipping hidden slot (parent has no dimensions)');
+            return;
+          }
+        }
+      }
+
+      // For any page, skip slots that are completely invisible
+      if (!isVisible) {
+        debugLog('[Slots] Skipping invisible slot');
+        return;
+      }
 
       const parentWithId = input.closest('[id]');
       const containerId = parentWithId?.id || '';
@@ -395,7 +432,23 @@
         }
       }
 
-      results.push({ input, container, hasImage, priority, containerId });
+      // For transition/fusion pages without specific containerId, create a descriptive one
+      let effectiveContainerId = containerId;
+      if (!containerId || containerId === '') {
+        if (isTransitionPage) {
+          effectiveContainerId = 'transition_slot';
+        } else if (isFusionPage) {
+          effectiveContainerId = 'fusion_slot';
+        } else if (isExtendPage) {
+          effectiveContainerId = 'extend_slot';
+        } else if (isImageGenPage) {
+          effectiveContainerId = 'create_image_slot';
+        } else if (isImageTextPage) {
+          effectiveContainerId = 'image_text_slot';
+        }
+      }
+
+      results.push({ input, container, hasImage, priority, containerId: effectiveContainerId });
     });
 
     results.sort((a, b) => {
@@ -850,10 +903,50 @@
     if (slotsNeeded > 0) {
       debugLog('[RestoreAll] Need to add', slotsNeeded, 'more slot(s)');
 
-      // Find the + button by its SVG path
-      const plusPath = "M8 2v6m0 0v6m0-6h6M8 8H2";
-      const plusSvg = document.querySelector(`svg path[d="${plusPath}"]`);
-      const plusBtn = plusSvg?.closest('div[class*="opacity"]') || plusSvg?.parentElement?.parentElement;
+      // Find the + button using multiple approaches
+      let plusBtn = null;
+
+      // Approach 1: Try multiple known SVG path patterns for + icons (using partial match)
+      const plusPathPrefixes = [
+        'M8 2v6',      // Pixverse transition + button (starts with this)
+        'M12 4v16',    // Alternative + icon
+        'M12 5v14',    // Another + variant
+        'M6 12h12',    // Simple + path
+      ];
+      for (const prefix of plusPathPrefixes) {
+        // Use partial match with ^= (starts with) since exact match can fail with whitespace
+        const svg = document.querySelector(`svg path[d^="${prefix}"]`);
+        if (svg) {
+          // Find clickable parent - go up to the cursor-pointer div
+          plusBtn = svg.closest('div.cursor-pointer') ||
+                    svg.closest('div[class*="cursor-pointer"]') ||
+                    svg.closest('button') ||
+                    svg.parentElement?.closest('div.cursor-pointer') ||
+                    svg.parentElement?.parentElement;
+          if (plusBtn && plusBtn.offsetParent !== null) {
+            debugLog('[RestoreAll] Found + button via SVG path prefix:', prefix);
+            break;
+          }
+        }
+      }
+
+      // Approach 2: Look for small clickable elements with SVG near upload areas
+      if (!plusBtn) {
+        const uploadArea = document.querySelector('[class*="transition"], [class*="fusion"]')?.parentElement;
+        if (uploadArea) {
+          const candidates = uploadArea.querySelectorAll('div[class*="opacity"], div[class*="cursor-pointer"]');
+          for (const el of candidates) {
+            if (el.querySelector('svg') && el.offsetParent !== null) {
+              const rect = el.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && rect.width < 100) {
+                plusBtn = el;
+                debugLog('[RestoreAll] Found + button via upload area sibling');
+                break;
+              }
+            }
+          }
+        }
+      }
 
       if (plusBtn) {
         for (let i = 0; i < slotsNeeded; i++) {

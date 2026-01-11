@@ -20,9 +20,91 @@ importScripts(
 
 console.log('[PixSim7 Extension] Background service worker loaded');
 
+// Debug flag for auth/login operations (loaded from storage)
+let DEBUG_AUTH = false;
+chrome.storage.local.get({ debugAuth: false, debugAll: false }, (result) => {
+  DEBUG_AUTH = result.debugAuth || result.debugAll;
+});
+const debugLogAuth = (...args) => DEBUG_AUTH && console.log('[Background Auth]', ...args);
+
 // Constants for provider session tracking (used by loginWithAccount)
 const PROVIDER_SESSION_STORAGE_KEY = 'pixsim7ProviderSessions';
 const CLIENT_ID_STORAGE_KEY = 'pixsim7ClientId';
+
+// Image proxy cache using Cache API (persists across service worker restarts)
+const IMAGE_PROXY_CACHE_NAME = 'pixsim7-image-proxy-v1';
+const IMAGE_PROXY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// Helper to get/set from Cache API
+async function getCachedImage(url) {
+  try {
+    const cache = await caches.open(IMAGE_PROXY_CACHE_NAME);
+    const response = await cache.match(url);
+    if (!response) return null;
+
+    // Check TTL from custom header
+    const cachedAt = response.headers.get('X-Cached-At');
+    if (cachedAt && (Date.now() - parseInt(cachedAt)) > IMAGE_PROXY_CACHE_TTL) {
+      await cache.delete(url);
+      return null;
+    }
+
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Failed to read cached blob'));
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn('[ImageCache] Cache read error:', e.message);
+    return null;
+  }
+}
+
+async function setCachedImage(url, blob) {
+  try {
+    const cache = await caches.open(IMAGE_PROXY_CACHE_NAME);
+    const response = new Response(blob, {
+      headers: {
+        'Content-Type': blob.type,
+        'X-Cached-At': Date.now().toString(),
+      }
+    });
+    await cache.put(url, response);
+  } catch (e) {
+    console.warn('[ImageCache] Cache write error:', e.message);
+  }
+}
+
+// Cleanup old cache entries on startup and periodically
+async function cleanupImageCache() {
+  try {
+    const cache = await caches.open(IMAGE_PROXY_CACHE_NAME);
+    const keys = await cache.keys();
+    const now = Date.now();
+    let deleted = 0;
+
+    for (const request of keys) {
+      const response = await cache.match(request);
+      const cachedAt = response?.headers.get('X-Cached-At');
+      if (cachedAt && (now - parseInt(cachedAt)) > IMAGE_PROXY_CACHE_TTL) {
+        await cache.delete(request);
+        deleted++;
+      }
+    }
+
+    if (deleted > 0) {
+      console.log(`[ImageCache] Cleaned up ${deleted} expired entries`);
+    }
+  } catch (e) {
+    console.warn('[ImageCache] Cleanup error:', e.message);
+  }
+}
+
+// Run cleanup on startup and every 10 minutes
+cleanupImageCache();
+setInterval(cleanupImageCache, 10 * 60 * 1000);
 
 // Initialize context menus and listeners
 initContextMenuListeners();
@@ -472,7 +554,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'uploadMediaFromUrl' || message.action === 'uploadImageFromUrl') {
       (async () => {
         try {
-          const { imageUrl, mediaUrl, providerId, ensureAsset } = message;
+          const { imageUrl, mediaUrl, providerId, ensureAsset, uploadMethod, uploadContext } = message;
           const url = mediaUrl || imageUrl; // Support both param names
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
@@ -494,9 +576,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // Default to true to preserve existing semantics for callers that
               // don't specify ensureAsset (local asset even if provider fails).
               ensure_asset: ensureAsset === false ? false : true,
-              upload_method: 'extension',
+              // Allow callers to specify upload method/context, default to 'web'
+              upload_method: uploadMethod || 'web',
               upload_context: {
                 client: 'chrome_extension',
+                ...(uploadContext || {}),
               },
               // Include source tracking for extension uploads
               source_url: sourceUrl,
@@ -543,7 +627,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             pixverse_asset_id: pixverseAssetId,
             media_url: mediaUrl,
             pixverse_media_type: pixverseMediaType,
-            is_video: isVideo || false,
+            is_video: !!isVideo,  // Ensure boolean
             source_url: sourceUrl,
             account_id: accountId || null,
           }),
@@ -580,7 +664,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           body: JSON.stringify({
             url: imageUrl,
             provider_id: providerId || settings.defaultUploadProvider || 'pixverse',
-            upload_method: 'extension',
+            upload_method: 'web',
             upload_context: {
               client: 'chrome_extension',
               feature: 'quick_generate',
@@ -627,6 +711,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const { accountId, tabId, accountEmail } = message;
+        debugLogAuth('loginWithAccount received - accountId:', accountId, 'type:', typeof accountId, 'accountEmail:', accountEmail);
         const settings = await getSettings();
         if (!settings.pixsim7Token) throw new Error('Not logged in');
 
@@ -635,7 +720,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // Fetch cookies for this account from backend and open a tab using
         // the stored session.
+        debugLogAuth('Fetching cookies for accountId:', accountId);
         const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
+        debugLogAuth('Backend returned cookies for email:', data.email, 'provider:', data.provider_id);
+        debugLogAuth('Cookie names returned:', Object.keys(data.cookies || {}));
+        // Log _ai_token payload if present (to see which user it belongs to)
+        if (data.cookies && data.cookies._ai_token) {
+          try {
+            const tokenParts = data.cookies._ai_token.split('.');
+            if (tokenParts.length >= 2) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              debugLogAuth('_ai_token belongs to user:', payload.email || payload.sub || payload.user_id || 'unknown');
+            }
+          } catch (e) {
+            debugLogAuth('Could not decode _ai_token');
+          }
+        }
         const providerId = data.provider_id;
         const cookies = data.cookies || {};
 
@@ -766,21 +866,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const { providerId, limit, offset, cursor, q, mediaType, uploadMethod } = message;
-        let endpoint = '/api/v1/assets?';
-        const params = [];
-        if (providerId) params.push(`provider_id=${encodeURIComponent(providerId)}`);
-        if (limit) params.push(`limit=${limit}`);
-        if (cursor) params.push(`cursor=${encodeURIComponent(cursor)}`);
-        else if (offset != null) params.push(`offset=${offset}`);
-        // Server-side search query
-        if (q && q.trim()) params.push(`q=${encodeURIComponent(q.trim())}`);
-        // Media type filter
-        if (mediaType) params.push(`media_type=${encodeURIComponent(mediaType)}`);
-        // Upload method filter (source)
-        if (uploadMethod) params.push(`upload_method=${encodeURIComponent(uploadMethod)}`);
-        endpoint += params.join('&');
+        const registryFilters = {};
+        if (providerId) registryFilters.provider_id = providerId;
+        if (mediaType) registryFilters.media_type = mediaType;
+        if (uploadMethod) registryFilters.upload_method = uploadMethod;
+        if (message.filters && typeof message.filters === 'object') {
+          Object.entries(message.filters).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              registryFilters[key] = value;
+            }
+          });
+        }
 
-        const data = await backendRequest(endpoint);
+        const payload = {
+          limit: limit || undefined,
+          cursor: cursor || undefined,
+          offset: cursor ? undefined : (offset != null ? offset : undefined),
+          q: q && q.trim() ? q.trim() : undefined,
+          filters: Object.keys(registryFilters).length > 0 ? registryFilters : undefined,
+        };
+
+        const data = await backendRequest('/api/v1/assets/search', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
 
         // Fix relative URLs by prepending backend URL
         const settings = await getSettings();
@@ -880,8 +989,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'proxyImage') {
     (async () => {
       try {
-        const { url } = message;
+        const { url, bypassCache } = message;
         if (!url) throw new Error('url is required');
+
+        // Check persistent cache first (unless bypass requested)
+        if (!bypassCache) {
+          const cachedDataUrl = await getCachedImage(url);
+          if (cachedDataUrl) {
+            sendResponse({ success: true, dataUrl: cachedDataUrl, cached: true });
+            return;
+          }
+        }
 
         // Include auth token for backend media endpoints
         const settings = await getSettings();
@@ -894,6 +1012,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const blob = await response.blob();
+
+        // Store in persistent cache
+        await setCachedImage(url, blob);
+
         const dataUrl = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result);

@@ -61,6 +61,9 @@ window.PXS7 = window.PXS7 || {};
     media_type: null,
     upload_method: null,
   };
+  let assetsFilterDefinitions = [];
+  let assetsFilterExtras = {};
+  let assetsFilterOptionsContextKey = '';
   let assetsFilterOptionsLoaded = false;
   let assetsFilterOptionsLoading = false;
 
@@ -76,6 +79,9 @@ window.PXS7 = window.PXS7 || {};
       if (saved.filterProvider) assetsFilterProvider = saved.filterProvider;
       if (saved.filterMediaType) assetsFilterMediaType = saved.filterMediaType;
       if (saved.filterUploadMethod) assetsFilterUploadMethod = saved.filterUploadMethod;
+      if (saved.extraFilters && typeof saved.extraFilters === 'object') {
+        assetsFilterExtras = saved.extraFilters;
+      }
       debugLog('Loaded assets state:', saved);
     } catch (e) {
       debugLog('Failed to load assets state:', e);
@@ -91,6 +97,7 @@ window.PXS7 = window.PXS7 || {};
         filterProvider: assetsFilterProvider,
         filterMediaType: assetsFilterMediaType,
         filterUploadMethod: assetsFilterUploadMethod,
+        extraFilters: assetsFilterExtras,
       };
       localStorage.setItem(ASSETS_STATE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -101,8 +108,12 @@ window.PXS7 = window.PXS7 || {};
   // Load state on module init
   loadAssetsState();
 
-  async function loadAssetFilterOptions() {
-    if (assetsFilterOptionsLoading || assetsFilterOptionsLoaded) {
+  async function loadAssetFilterOptions(context = {}) {
+    const contextKey = JSON.stringify(context || {});
+    if (assetsFilterOptionsLoading) {
+      return assetsFilterOptionsLoaded;
+    }
+    if (assetsFilterOptionsLoaded && assetsFilterOptionsContextKey === contextKey) {
       return assetsFilterOptionsLoaded;
     }
     if (!sendMessageWithTimeout) {
@@ -114,17 +125,23 @@ window.PXS7 = window.PXS7 || {};
       const res = await sendMessageWithTimeout(
         {
           action: 'apiRequest',
-          path: '/assets/filter-metadata?include=provider_id,media_type,upload_method',
+          path: '/assets/filter-options',
+          method: 'POST',
+          body: {
+            context,
+          },
         },
         5000
       );
 
       if (res?.success && res.data?.options) {
-        assetsFilterOptions = {
-          provider_id: res.data.options.provider_id || null,
-          media_type: res.data.options.media_type || null,
-          upload_method: res.data.options.upload_method || null,
-        };
+        assetsFilterOptions = { ...res.data.options };
+        assetsFilterDefinitions = Array.isArray(res.data.filters) ? res.data.filters : [];
+        assetsFilterOptionsContextKey = contextKey;
+        const validKeys = new Set(assetsFilterDefinitions.map((f) => f.key));
+        assetsFilterExtras = Object.fromEntries(
+          Object.entries(assetsFilterExtras).filter(([key]) => validKeys.has(key))
+        );
         assetsFilterOptionsLoaded = true;
       }
     } catch (e) {
@@ -133,6 +150,32 @@ window.PXS7 = window.PXS7 || {};
       assetsFilterOptionsLoading = false;
     }
     return assetsFilterOptionsLoaded;
+  }
+
+  function getFilterContext() {
+    if (assetsFilterUploadMethod && assetsFilterUploadMethod !== 'all') {
+      return { upload_method: assetsFilterUploadMethod };
+    }
+    return {};
+  }
+
+  function getActiveExtraFilters() {
+    const active = {};
+    Object.entries(assetsFilterExtras).forEach(([key, value]) => {
+      if (value && value !== 'all') {
+        active[key] = value;
+      }
+    });
+    return Object.keys(active).length > 0 ? active : undefined;
+  }
+
+  function getExtraFilterDefinitions() {
+    const baseKeys = new Set(['provider_id', 'media_type', 'upload_method', 'include_archived', 'tag', 'q']);
+    return (assetsFilterDefinitions || []).filter((def) => {
+      if (!def || def.type !== 'enum') return false;
+      if (baseKeys.has(def.key)) return false;
+      return true;
+    });
   }
 
   // Z-index constants for picker UI
@@ -345,7 +388,12 @@ window.PXS7 = window.PXS7 || {};
     actionsRow.appendChild(copyBtn);
     container.appendChild(actionsRow);
 
-    const { grid } = createImageGrid(recentSiteImages, (url) => url + '?x-oss-process=style/cover-webp-small');
+    // Only add x-oss-process to Pixverse CDN URLs
+    const getThumb = (url) => {
+      const isPixverseCdn = url && (url.includes('media.pixverse.ai') || url.includes('pixverse-fe-upload'));
+      return isPixverseCdn ? url + '?x-oss-process=style/cover-webp-small' : url;
+    };
+    const { grid } = createImageGrid(recentSiteImages, getThumb);
     container.appendChild(grid);
   }
 
@@ -379,11 +427,16 @@ window.PXS7 = window.PXS7 || {};
     });
     container.appendChild(clearBtn);
 
-    const urls = recentlyUsedAssets.map(a => ({
-      thumb: a.url + '?x-oss-process=style/cover-webp-small',
-      full: a.url,
-      name: a.name || ''
-    }));
+    const urls = recentlyUsedAssets.map(a => {
+      // Only add x-oss-process to Pixverse CDN URLs
+      const isPixverseCdn = a.url && (a.url.includes('media.pixverse.ai') || a.url.includes('pixverse-fe-upload'));
+      const thumb = isPixverseCdn ? a.url + '?x-oss-process=style/cover-webp-small' : a.url;
+      return {
+        thumb,
+        full: a.url,
+        name: a.name || ''
+      };
+    });
 
     const { grid } = createImageGrid(urls, (item) => item.thumb, (item) => item.full, (item) => item.name);
     container.appendChild(grid);
@@ -391,7 +444,7 @@ window.PXS7 = window.PXS7 || {};
 
   function renderAssetsTab(container, panel, loadAssets) {
     if (!assetsFilterOptionsLoaded && !assetsFilterOptionsLoading) {
-      loadAssetFilterOptions().then((loaded) => {
+      loadAssetFilterOptions(getFilterContext()).then((loaded) => {
         if (loaded) {
           renderTabContent('assets', container, panel, loadAssets);
         }
@@ -520,13 +573,15 @@ window.PXS7 = window.PXS7 || {};
 
       try {
         if (loadAssets) {
+          const extraFilters = getActiveExtraFilters();
           // Call loadAssets with search query - resets to page 1
           await loadAssets({
             page: 1,
             q: query,
             uploadMethod: assetsFilterUploadMethod,
             mediaType: assetsFilterMediaType,
-            providerId: assetsFilterProvider
+            providerId: assetsFilterProvider,
+            extraFilters
           });
         }
         // Re-render entire tab to update pagination
@@ -554,13 +609,15 @@ window.PXS7 = window.PXS7 || {};
 
       try {
         if (loadAssets) {
+          const extraFilters = getActiveExtraFilters();
           // Call loadAssets with filter parameters - resets to page 1
           await loadAssets({
             page: 1,
             q: assetsSearchQuery || undefined,
             uploadMethod: assetsFilterUploadMethod,
             mediaType: assetsFilterMediaType,
-            providerId: assetsFilterProvider
+            providerId: assetsFilterProvider,
+            extraFilters
           });
         }
         // Re-render entire tab to update with filtered results
@@ -633,7 +690,8 @@ window.PXS7 = window.PXS7 || {};
         page: assetsCurrentPage - 1,
         uploadMethod: assetsFilterUploadMethod,
         mediaType: assetsFilterMediaType,
-        providerId: assetsFilterProvider
+        providerId: assetsFilterProvider,
+        extraFilters: getActiveExtraFilters()
       });
       saveAssetsState();
       renderTabContent('assets', container, panel, loadAssets);
@@ -676,7 +734,8 @@ window.PXS7 = window.PXS7 || {};
           page,
           uploadMethod: assetsFilterUploadMethod,
           mediaType: assetsFilterMediaType,
-          providerId: assetsFilterProvider
+          providerId: assetsFilterProvider,
+          extraFilters: getActiveExtraFilters()
         }).then(() => {
           saveAssetsState();
           renderTabContent('assets', container, panel, loadAssets);
@@ -730,7 +789,8 @@ window.PXS7 = window.PXS7 || {};
         page: assetsCurrentPage + 1,
         uploadMethod: assetsFilterUploadMethod,
         mediaType: assetsFilterMediaType,
-        providerId: assetsFilterProvider
+        providerId: assetsFilterProvider,
+        extraFilters: getActiveExtraFilters()
       });
       saveAssetsState();
       renderTabContent('assets', container, panel, loadAssets);
@@ -751,7 +811,8 @@ window.PXS7 = window.PXS7 || {};
         forceRefresh: true,
         uploadMethod: assetsFilterUploadMethod,
         mediaType: assetsFilterMediaType,
-        providerId: assetsFilterProvider
+        providerId: assetsFilterProvider,
+        extraFilters: getActiveExtraFilters()
       });
       renderTabContent('assets', container, panel, loadAssets);
     });
@@ -842,26 +903,21 @@ window.PXS7 = window.PXS7 || {};
         .join('');
       uploadMethodSelect.innerHTML = `<option value="all">Source</option>${uploadOptions}`;
     } else {
-      // Fallback options (should load from API)
-      uploadMethodSelect.innerHTML = `
-        <option value="all">Source</option>
-        <option value="extension_pixverse">PV Badge</option>
-        <option value="extension_web">Web Badge</option>
-        <option value="local_folders">Local</option>
-        <option value="generated">Gen</option>
-        <option value="api">API</option>
-      `;
+      // No fallback - rely on backend for options
+      uploadMethodSelect.innerHTML = `<option value="all">Source</option>`;
     }
-    uploadMethodSelect.value = assetsFilterUploadMethod;
-    if (!uploadMethodSelect.querySelector(`option[value="${assetsFilterUploadMethod}"]`)) {
-      assetsFilterUploadMethod = 'all';
-      uploadMethodSelect.value = 'all';
-    }
-    uploadMethodSelect.addEventListener('change', () => {
-      assetsFilterUploadMethod = uploadMethodSelect.value;
-      saveAssetsState();
-      applyFilters();
-    });
+      uploadMethodSelect.value = assetsFilterUploadMethod;
+      if (!uploadMethodSelect.querySelector(`option[value="${assetsFilterUploadMethod}"]`)) {
+        assetsFilterUploadMethod = 'all';
+        uploadMethodSelect.value = 'all';
+      }
+      uploadMethodSelect.addEventListener('change', async () => {
+        assetsFilterUploadMethod = uploadMethodSelect.value;
+        saveAssetsState();
+        assetsFilterOptionsLoaded = false;
+        await loadAssetFilterOptions(getFilterContext());
+        applyFilters();
+      });
 
     // Sort buttons
     const sortGroup = document.createElement('div');
@@ -890,11 +946,63 @@ window.PXS7 = window.PXS7 || {};
       sortGroup.appendChild(btn);
     });
 
-    filterSortRow.appendChild(providerSelect);
-    filterSortRow.appendChild(mediaTypeSelect);
-    filterSortRow.appendChild(uploadMethodSelect);
-    filterSortRow.appendChild(sortGroup);
-    headerSection.appendChild(filterSortRow);
+      filterSortRow.appendChild(providerSelect);
+      filterSortRow.appendChild(mediaTypeSelect);
+      filterSortRow.appendChild(uploadMethodSelect);
+      filterSortRow.appendChild(sortGroup);
+      headerSection.appendChild(filterSortRow);
+
+      // Extra filters derived from upload_context schema
+      const extraDefs = getExtraFilterDefinitions();
+      if (extraDefs.length > 0) {
+        const extraRow = document.createElement('div');
+        extraRow.style.cssText = 'display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;';
+
+        extraDefs.forEach((def) => {
+          const rawOptions = assetsFilterOptions[def.key];
+          const options = Array.isArray(rawOptions) ? rawOptions : [];
+          const hasOptions = options.length > 0;
+
+          const select = document.createElement('select');
+          select.style.cssText = `
+            flex: 1; min-width: 90px; padding: 3px 4px; font-size: 9px;
+            background: ${COLORS.bgHover}; border: 1px solid ${COLORS.border};
+            border-radius: 3px; color: ${COLORS.text}; outline: none;
+          `;
+
+          const label = def.label || def.key.replace(/_/g, ' ');
+          const optsHtml = options
+            .map((opt) => `<option value="${opt.value}">${opt.label || opt.value}</option>`)
+            .join('');
+          const emptyHint = hasOptions ? '' : `<option value="" disabled>(no values)</option>`;
+          select.innerHTML = `<option value="all">${label}</option>${optsHtml}${emptyHint}`;
+          select.disabled = !hasOptions;
+
+          const currentValue = assetsFilterExtras[def.key] || 'all';
+          select.value = currentValue;
+          if (!select.querySelector(`option[value="${currentValue}"]`)) {
+            assetsFilterExtras[def.key] = 'all';
+            select.value = 'all';
+          }
+
+          select.addEventListener('change', () => {
+            const value = select.value;
+            if (value === 'all') {
+              delete assetsFilterExtras[def.key];
+            } else {
+              assetsFilterExtras[def.key] = value;
+            }
+            saveAssetsState();
+            applyFilters();
+          });
+
+          extraRow.appendChild(select);
+        });
+
+        if (extraRow.childElementCount > 0) {
+          headerSection.appendChild(extraRow);
+        }
+      }
 
     // Add header section to container (fixed, non-scrolling)
     container.appendChild(headerSection);
@@ -1331,6 +1439,7 @@ window.PXS7 = window.PXS7 || {};
       uploadMethod: assetsFilterUploadMethod !== 'all' ? assetsFilterUploadMethod : undefined,
       mediaType: assetsFilterMediaType !== 'all' ? assetsFilterMediaType : undefined,
       providerId: assetsFilterProvider !== 'all' ? assetsFilterProvider : undefined,
+      extraFilters: getActiveExtraFilters(),
     }),
     // Reset picker position (can call from console: PXS7.imagePicker.resetPosition())
     resetPosition: () => {
@@ -1360,6 +1469,12 @@ window.PXS7 = window.PXS7 || {};
       activePickerPanel.remove();
       activePickerPanel = null;
     }
+
+    // Clear any stale references that might prevent reopening
+    document.querySelectorAll('.pxs7-restore-panel, .pxs7-image-picker').forEach(p => {
+      debugLog('[Picker SPA] Removing stale picker element');
+      p.remove();
+    });
   }
 
   // Method 1: Watch for popstate (back/forward navigation)

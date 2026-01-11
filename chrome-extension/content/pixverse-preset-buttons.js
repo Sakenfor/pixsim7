@@ -216,7 +216,8 @@
   let assetsCurrentFilters = {
     uploadMethod: undefined,
     mediaType: undefined,
-    providerId: undefined
+    providerId: undefined,
+    extraFiltersKey: ''
   };
 
   /**
@@ -227,24 +228,29 @@
    * @param {string} options.uploadMethod - Upload method filter (e.g., 'local_folders', 'extension')
    * @param {string} options.mediaType - Media type filter (e.g., 'image', 'video')
    * @param {string} options.providerId - Provider ID filter (e.g., 'pixverse', 'runway')
+   * @param {Object} options.extraFilters - Additional registry filter values
    * @param {boolean} options.forceRefresh - Force reload even if cached
    */
   async function loadAssets(options = {}) {
-    const { page = 1, q, uploadMethod, mediaType, providerId, forceRefresh = false } = options;
+    const { page = 1, q, uploadMethod, mediaType, providerId, extraFilters, forceRefresh = false } = options;
+    const extraFiltersKey = extraFilters
+      ? JSON.stringify(Object.keys(extraFilters).sort().map((key) => [key, extraFilters[key]]))
+      : '';
 
     // Check if query or filters changed
     const queryChanged = q !== undefined && q !== assetsCurrentQuery;
     const filtersChanged =
       uploadMethod !== assetsCurrentFilters.uploadMethod ||
       mediaType !== assetsCurrentFilters.mediaType ||
-      providerId !== assetsCurrentFilters.providerId;
+      providerId !== assetsCurrentFilters.providerId ||
+      extraFiltersKey !== assetsCurrentFilters.extraFiltersKey;
 
     // Update tracked state
     if (queryChanged) {
       assetsCurrentQuery = q || '';
     }
     if (filtersChanged) {
-      assetsCurrentFilters = { uploadMethod, mediaType, providerId };
+      assetsCurrentFilters = { uploadMethod, mediaType, providerId, extraFiltersKey };
     }
 
     // Check cache - only use if same page, query, filters, and not forcing refresh
@@ -268,16 +274,19 @@
         params.q = assetsCurrentQuery;
       }
 
-      // Include server-side filter parameters
-      if (uploadMethod && uploadMethod !== 'all') {
-        params.uploadMethod = uploadMethod;
-      }
-      if (mediaType && mediaType !== 'all') {
-        params.mediaType = mediaType;
-      }
-      if (providerId && providerId !== 'all') {
-        params.providerId = providerId;
-      }
+    // Include server-side filter parameters
+    if (uploadMethod && uploadMethod !== 'all') {
+      params.uploadMethod = uploadMethod;
+    }
+    if (mediaType && mediaType !== 'all') {
+      params.mediaType = mediaType;
+    }
+    if (providerId && providerId !== 'all') {
+      params.providerId = providerId;
+    }
+    if (extraFilters && typeof extraFilters === 'object') {
+      params.filters = extraFilters;
+    }
 
       const res = await sendMessageWithTimeout(params);
 
@@ -395,6 +404,10 @@
 
   async function loginWithAccount() {
     const account = getCurrentAccount();
+    debugLog('loginWithAccount - getCurrentAccount returned:', account ? { id: account.id, email: account.email, nickname: account.nickname } : null);
+    debugLog('storage.state.selectedAccountId:', storage.state.selectedAccountId, 'type:', typeof storage.state.selectedAccountId);
+    debugLog('storage.state.currentSessionAccountId:', storage.state.currentSessionAccountId, 'type:', typeof storage.state.currentSessionAccountId);
+    debugLog('accountsCache IDs:', storage.state.accountsCache.map(a => ({ id: a.id, type: typeof a.id, email: a.email })));
     if (!account) {
       showToast('Select an account first', false);
       return false;
@@ -407,6 +420,7 @@
     saveInputState();
 
     try {
+      debugLog('Sending loginWithAccount with accountId:', account.id, 'accountEmail:', account.email);
       const res = await chrome.runtime.sendMessage({
         action: 'loginWithAccount',
         accountId: account.id,
@@ -1026,10 +1040,13 @@
 
   function processTaskElements() {
     const tasks = document.querySelectorAll(TASK_SELECTOR);
+    debugLog('[Buttons] processTaskElements called, found', tasks.length, 'task elements');
 
+    let newCount = 0;
     tasks.forEach(task => {
       if (task.hasAttribute(PROCESSED_ATTR)) return;
       task.setAttribute(PROCESSED_ATTR, 'true');
+      newCount++;
 
       const { group, accountBtn, runBtn } = createButtonGroup();
       accountBtnRefs.push(accountBtn);
@@ -1041,6 +1058,10 @@
         task.parentNode.appendChild(group);
       }
     });
+
+    if (newCount > 0) {
+      debugLog('[Buttons] Added buttons to', newCount, 'new task elements');
+    }
   }
 
   // Update all account buttons when session changes
@@ -1124,7 +1145,7 @@
       } catch (e) {
         console.warn('[PixSim7] restoreInputState error:', e);
       }
-    }, 1200); // Run before chrome.storage restore (1500ms)
+    }, 1800); // Wait longer for page to fully render
 
     // Also check for pending page state from account switch (chrome.storage)
     setTimeout(async () => {
@@ -1148,180 +1169,24 @@
         if (pendingState) {
           debugLog('Found pending page state to restore:', pendingState);
 
+          // Use shared restore utilities
+          const { restoreModel, restoreAspectRatio, restorePrompts } = window.PXS7.restoreUtils || {};
+
           // === STEP 1: Restore model first (may affect available options) ===
-          if (pendingState.selectedModel) {
-            const restoreModel = async (retries = 3) => {
-              const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
-              const modelContainer = modelImg?.closest('div.cursor-pointer');
-
-              if (!modelContainer) {
-                if (retries > 0) setTimeout(() => restoreModel(retries - 1), 500);
-                return;
-              }
-
-              const currentModelSpan = modelContainer.querySelector('span.font-semibold, span[class*="font-semibold"]');
-              if (currentModelSpan?.textContent?.trim() === pendingState.selectedModel) {
-                debugLog(' Model already correct:', pendingState.selectedModel);
-                return;
-              }
-
-              debugLog(' Opening model selector to restore:', pendingState.selectedModel);
-              modelContainer.click();
-              await new Promise(r => setTimeout(r, 400));
-
-              // Find model options in dropdown (larger images w-16 vs w-11 in selector)
-              const modelOptions = document.querySelectorAll('img[src*="asset/media/model/model-"]');
-              debugLog(' Found', modelOptions.length, 'model images in dropdown');
-
-              for (const optionImg of modelOptions) {
-                // Skip the small image in the selector itself (w-11)
-                if (optionImg.className.includes('w-11')) continue;
-
-                // Find the clickable parent - traverse up to find element with cursor-pointer
-                let clickTarget = optionImg.parentElement;
-                while (clickTarget && !clickTarget.className?.includes('cursor-pointer')) {
-                  clickTarget = clickTarget.parentElement;
-                  if (clickTarget === document.body) {
-                    clickTarget = null;
-                    break;
-                  }
-                }
-
-                // Find model name - could be sibling span or inside parent
-                const optionName = clickTarget?.querySelector('span.font-semibold, span[class*="font-semibold"]') ||
-                                   clickTarget?.querySelector('span');
-                const modelName = optionName?.textContent?.trim();
-
-                debugLog(' Checking model option:', modelName);
-
-                if (modelName === pendingState.selectedModel) {
-                  debugLog(' Found and clicking model:', modelName);
-                  clickTarget.click();
-                  return;
-                }
-              }
-              document.body.click(); // Close dropdown if not found
-              console.warn('[PixSim7] Could not find model option:', pendingState.selectedModel);
-            };
-            await restoreModel();
-            await new Promise(r => setTimeout(r, 300)); // Let model change settle
+          if (pendingState.selectedModel && restoreModel) {
+            await restoreModel(pendingState.selectedModel);
+            await new Promise(r => setTimeout(r, 300));
           }
 
           // === STEP 2: Restore aspect ratio ===
-          if (pendingState.selectedAspectRatio) {
-            const restoreAspectRatio = (retries = 3) => {
-              const ratioButtons = document.querySelectorAll('div[class*="aspect-"][class*="cursor-pointer"]');
-              for (const btn of ratioButtons) {
-                const ratioText = btn.textContent?.trim();
-                if (ratioText === pendingState.selectedAspectRatio) {
-                  // Check if already selected
-                  if (!btn.className.includes('bg-button-secondary-hover')) {
-                    debugLog(' Clicking aspect ratio:', ratioText);
-                    btn.click();
-                  } else {
-                    debugLog(' Aspect ratio already correct:', ratioText);
-                  }
-                  return true;
-                }
-              }
-              if (retries > 0) {
-                setTimeout(() => restoreAspectRatio(retries - 1), 500);
-              } else {
-                console.warn('[PixSim7] Could not find aspect ratio:', pendingState.selectedAspectRatio);
-              }
-              return false;
-            };
-            restoreAspectRatio();
+          if (pendingState.selectedAspectRatio && restoreAspectRatio) {
+            await restoreAspectRatio(pendingState.selectedAspectRatio);
             await new Promise(r => setTimeout(r, 200));
           }
 
-          // === STEP 3: Restore prompts to textareas (with retry for slow-loading pages) ===
-          if (pendingState.prompts && Object.keys(pendingState.prompts).length > 0) {
-            let promptsRestored = false;
-
-            const restorePrompts = () => {
-              if (promptsRestored) return true; // Already done
-
-              const textareas = document.querySelectorAll('textarea');
-              if (textareas.length === 0) return false;
-
-              let restored = 0;
-              const promptKeys = Object.keys(pendingState.prompts);
-
-              const usedKeys = new Set();
-
-              textareas.forEach((el, i) => {
-                // Skip if already has content (don't overwrite user input)
-                if (el.value && el.value.trim()) return;
-
-                const key = el.id || el.name || el.placeholder || `textarea_${i}`;
-
-                // Try exact key match first
-                if (pendingState.prompts[key] && !usedKeys.has(key)) {
-                  el.value = pendingState.prompts[key];
-                  el.dispatchEvent(new Event('input', { bubbles: true }));
-                  usedKeys.add(key);
-                  restored++;
-                  return;
-                }
-
-                // Try position-based fallback (textarea_N)
-                const posKey = `textarea_${i}`;
-                if (pendingState.prompts[posKey] && !usedKeys.has(posKey)) {
-                  el.value = pendingState.prompts[posKey];
-                  el.dispatchEvent(new Event('input', { bubbles: true }));
-                  usedKeys.add(posKey);
-                  restored++;
-                  return;
-                }
-
-                // Try partial placeholder match (first 30 chars)
-                const elPlaceholder = (el.placeholder || '').substring(0, 30).toLowerCase();
-                for (const savedKey of promptKeys) {
-                  if (usedKeys.has(savedKey)) continue;
-                  const savedKeyStart = savedKey.substring(0, 30).toLowerCase();
-                  if (elPlaceholder && savedKeyStart === elPlaceholder) {
-                    el.value = pendingState.prompts[savedKey];
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    usedKeys.add(savedKey);
-                    restored++;
-                    return;
-                  }
-                }
-
-                // Try finding any long saved prompt (likely the main prompt)
-                // if this textarea looks like a main prompt area (has placeholder with "describe")
-                const isMainPromptArea = (el.placeholder || '').toLowerCase().includes('describe');
-                if (isMainPromptArea) {
-                  for (const savedKey of promptKeys) {
-                    if (usedKeys.has(savedKey)) continue;
-                    // Skip position-based keys, look for placeholder-based keys with substantial content
-                    if (!savedKey.startsWith('textarea_') && pendingState.prompts[savedKey].length > 20) {
-                      el.value = pendingState.prompts[savedKey];
-                      el.dispatchEvent(new Event('input', { bubbles: true }));
-                      usedKeys.add(savedKey);
-                      restored++;
-                      return;
-                    }
-                  }
-                }
-              });
-
-              if (restored > 0) {
-                debugLog(' Restored', restored, 'prompt(s)');
-                promptsRestored = true;
-              }
-              return restored > 0;
-            };
-
-            // Try immediately, then retry after delays if needed
-            if (!restorePrompts()) {
-              setTimeout(() => {
-                if (!restorePrompts()) {
-                  setTimeout(restorePrompts, 1500);
-                }
-              }, 500);
-            }
+          // === STEP 3: Restore prompts to textareas ===
+          if (pendingState.prompts && Object.keys(pendingState.prompts).length > 0 && restorePrompts) {
+            await restorePrompts(pendingState.prompts);
           }
 
           // === STEP 4 & 5: Restore images using shared restoreAllImages ===
@@ -1350,7 +1215,7 @@
       } catch (e) {
         console.warn('[PixSim7] Failed to restore pending page state:', e);
       }
-    }, 1500);
+    }, 2100); // Run after sessionStorage restore (1800ms)
 
     // Watch for DOM changes
     const observer = new MutationObserver((mutations) => {
@@ -1363,6 +1228,19 @@
       }
     });
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // SPA navigation detection - force re-check for buttons after URL change
+    let lastButtonsUrl = window.location.href;
+    setInterval(() => {
+      if (window.location.href !== lastButtonsUrl) {
+        debugLog('[Buttons] SPA navigation detected:', window.location.pathname);
+        lastButtonsUrl = window.location.href;
+        // Wait for page content to load, then re-process
+        setTimeout(() => {
+          processTaskElements();
+        }, 500);
+      }
+    }, 300);
 
     // Listen for session changes
     chrome.storage?.onChanged?.addListener((changes, area) => {
@@ -1387,4 +1265,3 @@
   }
 
 })();
-

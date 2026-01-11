@@ -183,6 +183,21 @@ function setupEventListeners() {
   // Connection indicator click - retry connection
   document.getElementById('connectionIndicator').addEventListener('click', checkBackendConnection);
 
+  // Open video player button - opens as floating popup window
+  const openPlayerBtn = document.getElementById('openPlayerBtn');
+  if (openPlayerBtn) {
+    openPlayerBtn.addEventListener('click', () => {
+      chrome.windows.create({
+        url: chrome.runtime.getURL('player.html'),
+        type: 'popup',
+        width: 640,
+        height: 520,
+        top: 100,
+        left: Math.max(100, screen.width - 700),
+      });
+    });
+  }
+
   // Listen for updates from content/background to refresh accounts/credits
   chrome.runtime.onMessage.addListener((message) => {
     if (!message || !message.action) return;

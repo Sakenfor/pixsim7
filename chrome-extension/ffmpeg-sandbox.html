@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>FFmpeg Sandbox</title>
+</head>
+<body>
+  <script>
+    // Log for debugging
+    console.log('[FFmpeg Sandbox] Page loading...');
+  </script>
+  <script src="ffmpeg.js"
+          onerror="console.error('[FFmpeg Sandbox] Failed to load local FFmpeg script')"
+          onload="console.log('[FFmpeg Sandbox] FFmpeg script loaded, FFmpegWASM:', typeof FFmpegWASM)"></script>
+  <script src="ffmpeg-sandbox.js"></script>
+</body>
+</html>
