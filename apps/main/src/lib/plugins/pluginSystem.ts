@@ -490,8 +490,8 @@ export class PluginCatalog {
    * making the catalog the single source of truth for plugin data.
    */
   registerWithPlugin<T>(metadata: ExtendedPluginMetadata, plugin: T): void {
-    this.register(metadata);
     this.pluginObjects.set(metadata.id, plugin);
+    this.register(metadata);
   }
 
   /**

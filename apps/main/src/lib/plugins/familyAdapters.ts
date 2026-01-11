@@ -1,29 +1,29 @@
 
 import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/providers';
-
-import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
-import { panelRegistry, type PanelDefinition } from '@features/panels';
 import { dockZoneRegistry, type DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
+
+import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
+
 import { brainToolRegistry, type BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
 import type { GallerySurfaceDefinition } from '@features/gallery';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
+import { panelRegistry, type PanelDefinition } from '@features/panels';
 import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 
 import { controlCenterRegistry, type ControlCenterPlugin, type ControlCenterPluginManifest } from './controlCenterPlugin';
-import {
-  pluginCatalog,
-  type ActivationState,
-  type ExtendedPluginMetadata,
-  type PluginFamily,
-  type PluginMetadata,
-  type PluginOrigin,
+import type {
+  ActivationState,
+  ExtendedPluginMetadata,
+  PluginFamily,
+  PluginMetadata,
+  PluginOrigin,
 } from './pluginSystem';
 import type { PluginRegistrationSource } from './registration';
 import { sceneViewRegistry, type SceneViewPlugin, type SceneViewPluginManifest } from './sceneViewPlugin';
@@ -537,10 +537,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildWorldToolMetadata,
   },
   'gallery-tool': {
-    // Store in catalog only - catalog is the source of truth
-    register: (tool: GalleryToolPlugin) => {
-      pluginCatalog.setPlugin(tool.id, tool);
-    },
+    register: () => {},
     buildMetadata: buildGalleryToolMetadata,
   },
   'brain-tool': {
@@ -548,10 +545,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildBrainToolMetadata,
   },
   'gallery-surface': {
-    // Store in catalog only - catalog is the source of truth
-    register: (surface: GallerySurfaceDefinition) => {
-      pluginCatalog.setPlugin(surface.id, surface);
-    },
+    register: () => {},
     buildMetadata: buildGallerySurfaceMetadata,
   },
   'generation-ui': {

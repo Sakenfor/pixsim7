@@ -38,7 +38,7 @@ export async function registerPluginDefinition(definition: PluginDefinition): Pr
   };
 
   const metadata = adapter.buildMetadata(definition.plugin, context);
-  pluginCatalog.register(metadata);
+  pluginCatalog.registerWithPlugin(metadata, definition.plugin);
   const descriptor = fromPluginSystemMetadata(metadata);
   const validation = validateFamilyMetadata(descriptor);
   if (!validation.valid) {
