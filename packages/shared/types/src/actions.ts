@@ -84,6 +84,31 @@ export type ActionMenuContext =
   | 'list-item'
   | (string & {}); // Allow custom contexts from plugins
 
+/**
+ * Variant styles for UI actions (menus, buttons, etc.).
+ */
+export type ActionVariant = 'default' | 'danger' | 'success';
+
+/**
+ * Context menu-specific overrides for actions.
+ */
+export interface ActionContextMenu {
+  /** Override available contexts for the context menu */
+  availableIn?: ActionMenuContext[];
+  /** Override category specifically for context menus */
+  category?: string;
+  /** Styling variant for context menu items */
+  variant?: ActionVariant;
+  /** Show a divider after this item */
+  divider?: boolean;
+  /** Icon color class for context menus */
+  iconColor?: string;
+  /** Additional visibility condition (context menu only) */
+  visible?: (ctx?: ActionContext) => boolean;
+  /** Disabled condition with optional reason (context menu only) */
+  disabled?: (ctx?: ActionContext) => boolean | string;
+}
+
 // =============================================================================
 // Action Definition
 // =============================================================================
@@ -176,6 +201,11 @@ export interface ActionDefinition {
    */
   contexts?: ActionMenuContext[];
 
+  /**
+   * Context menu-specific overrides (visibility, disabled, category, etc.).
+   */
+  contextMenu?: ActionContextMenu;
+
   // === Navigation ===
 
   /**
@@ -233,6 +263,8 @@ export const ActionVisibilitySchema = z.enum([
   'hidden',
 ]);
 
+export const ActionVariantSchema = z.enum(['default', 'danger', 'success']);
+
 export const ActionDefinitionSchema = z.object({
   id: z
     .string()
@@ -247,6 +279,15 @@ export const ActionDefinitionSchema = z.object({
   enabled: functionSchema.optional(),
   visibility: ActionVisibilitySchema.optional(),
   contexts: z.array(z.string()).optional(),
+  contextMenu: z.object({
+    availableIn: z.array(z.string()).optional(),
+    category: z.string().optional(),
+    variant: ActionVariantSchema.optional(),
+    divider: z.boolean().optional(),
+    iconColor: z.string().optional(),
+    visible: functionSchema.optional(),
+    disabled: functionSchema.optional(),
+  }).optional(),
   route: z.string().optional(),
   validate: functionSchema.optional(),
   category: z.string().optional(),

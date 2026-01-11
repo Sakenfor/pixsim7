@@ -43,7 +43,7 @@ export type NarrativeProgramKind =
 /**
  * Content rating for the program
  */
-export type ContentRating = 'general' | 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
+export type ContentRating = 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
 
 // ============================================================================
 // Condition System
