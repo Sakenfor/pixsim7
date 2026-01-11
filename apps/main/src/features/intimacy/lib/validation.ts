@@ -7,6 +7,11 @@
  * @see docs/INTIMACY_AND_GENERATION.md
  */
 
+import {
+  CONTENT_RATING_ORDER,
+  getContentRatingIndex,
+} from '@pixsim7/shared.logic-core/contentRating';
+
 import type {
   IntimacySceneConfig,
   IntimacyContentValidation,
@@ -16,23 +21,6 @@ import type {
 } from '@lib/registries';
 
 /**
- * Content rating hierarchy (ordered from least to most permissive)
- */
-const CONTENT_RATING_HIERARCHY: Array<'sfw' | 'romantic' | 'mature_implied' | 'restricted'> = [
-  'sfw',
-  'romantic',
-  'mature_implied',
-  'restricted',
-];
-
-/**
- * Get numeric level for a content rating (for comparison)
- */
-function getRatingLevel(rating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'): number {
-  return CONTENT_RATING_HIERARCHY.indexOf(rating);
-}
-
-/**
  * Check if a content rating is allowed within constraints
  */
 export function checkContentRating(
@@ -40,9 +28,9 @@ export function checkContentRating(
   worldMax?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
   userMax?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
 ): ContentRatingCheck {
-  const requestedLevel = getRatingLevel(requested);
-  const worldMaxLevel = worldMax ? getRatingLevel(worldMax) : getRatingLevel('restricted');
-  const userMaxLevel = userMax ? getRatingLevel(userMax) : getRatingLevel('restricted');
+  const requestedLevel = getContentRatingIndex(requested);
+  const worldMaxLevel = worldMax ? getContentRatingIndex(worldMax) : getContentRatingIndex('restricted');
+  const userMaxLevel = userMax ? getContentRatingIndex(userMax) : getContentRatingIndex('restricted');
 
   // Find the most restrictive constraint
   const maxAllowedLevel = Math.min(worldMaxLevel, userMaxLevel);
@@ -63,7 +51,7 @@ export function checkContentRating(
     requested,
     worldMax,
     userMax,
-    allowed: CONTENT_RATING_HIERARCHY[maxAllowedLevel],
+    allowed: CONTENT_RATING_ORDER[maxAllowedLevel],
     isAllowed,
     reason,
   };
@@ -111,7 +99,6 @@ export function validateGate(gate: RelationshipGate): {
 
   // Check for conflicting flags
   if (gate.requiredFlags && gate.blockedFlags) {
-    const requiredSet = new Set(gate.requiredFlags);
     const blockedSet = new Set(gate.blockedFlags);
     const conflicts = gate.requiredFlags.filter((flag) => blockedSet.has(flag));
 
@@ -180,10 +167,10 @@ export function validateIntimacyScene(
     warnings,
     safety: {
       withinWorldLimits: worldMaxRating
-        ? getRatingLevel(scene.contentRating) <= getRatingLevel(worldMaxRating)
+        ? getContentRatingIndex(scene.contentRating) <= getContentRatingIndex(worldMaxRating)
         : true,
       withinUserPreferences: userMaxRating
-        ? getRatingLevel(scene.contentRating) <= getRatingLevel(userMaxRating)
+        ? getContentRatingIndex(scene.contentRating) <= getContentRatingIndex(userMaxRating)
         : true,
       consentConfigured,
       gatesValid: allGatesValid,
@@ -250,10 +237,10 @@ export function validateProgressionArc(
     warnings,
     safety: {
       withinWorldLimits: worldMaxRating
-        ? getRatingLevel(arc.maxContentRating) <= getRatingLevel(worldMaxRating)
+        ? getContentRatingIndex(arc.maxContentRating) <= getContentRatingIndex(worldMaxRating)
         : true,
       withinUserPreferences: userMaxRating
-        ? getRatingLevel(arc.maxContentRating) <= getRatingLevel(userMaxRating)
+        ? getContentRatingIndex(arc.maxContentRating) <= getContentRatingIndex(userMaxRating)
         : true,
       consentConfigured: true, // Arc-level consent handled per scene
       gatesValid: allGatesValid,

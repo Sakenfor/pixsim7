@@ -52,8 +52,8 @@ export {
 // Direct exports from shared types for callers that want the source
 export {
   DEFAULT_INTIMACY_GATING,
-  parseIntimacyGating,
 } from '@pixsim7/shared.types';
+export { parseIntimacyGating } from '@pixsim7/shared.logic-core/worldConfig';
 
 export {
   checkGate,

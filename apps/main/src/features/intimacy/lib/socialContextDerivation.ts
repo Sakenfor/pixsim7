@@ -9,14 +9,17 @@
  * @see docs/INTIMACY_SCENE_COMPOSER.md - Phase 3 documentation
  */
 
+import {
+  clampContentRating,
+  getContentRatingIndex,
+} from '@pixsim7/shared.logic-core/contentRating';
+
 import type { GenerationSocialContext, IntimacySceneConfig } from '@lib/registries';
+
 import type { SimulatedRelationshipState } from './gateChecking';
 import {
   deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,
   supportsContentRating as checkContentRatingWithHelper,
-  getContentRatingRequirements,
-  type IntimacyBand,
-  type ContentRating,
   type IntimacyGatingConfig,
 } from './intimacyGating';
 
@@ -43,57 +46,6 @@ const INTIMACY_BAND_MAP: Record<string, 'none' | 'light' | 'deep' | 'intense'> =
   'very_intimate': 'intense',
   'lover': 'intense',
 };
-
-/**
- * Intimacy level to content rating mapping
- * Base mapping before world/user constraints applied
- */
-const INTIMACY_RATING_MAP: Record<string, 'sfw' | 'romantic' | 'mature_implied' | 'restricted'> = {
-  // No intimacy = safe
-  '': 'sfw',
-  'null': 'sfw',
-  'stranger': 'sfw',
-
-  // Light flirting = romantic
-  'light_flirt': 'romantic',
-  'flirting': 'romantic',
-
-  // Deeper connection = romantic with implied maturity
-  'deep_flirt': 'romantic',
-  'intimate': 'mature_implied',
-  'romantic': 'mature_implied',
-
-  // Very intimate = restricted (requires explicit consent)
-  'very_intimate': 'mature_implied',
-  'lover': 'mature_implied',
-};
-
-/**
- * Content rating hierarchy for clamping
- */
-const RATING_HIERARCHY: Array<'sfw' | 'romantic' | 'mature_implied' | 'restricted'> = [
-  'sfw',
-  'romantic',
-  'mature_implied',
-  'restricted',
-];
-
-/**
- * Clamp content rating to maximum allowed
- */
-function clampContentRating(
-  rating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
-  maxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
-): 'sfw' | 'romantic' | 'mature_implied' | 'restricted' {
-  if (!maxRating) {
-    return rating;
-  }
-
-  const currentIndex = RATING_HIERARCHY.indexOf(rating);
-  const maxIndex = RATING_HIERARCHY.indexOf(maxRating);
-
-  return currentIndex > maxIndex ? maxRating : rating;
-}
 
 /**
  * Derive intimacy band from relationship metrics
@@ -231,11 +183,11 @@ export function getEffectiveContentRating(
   let wasClamped = false;
   let clampedBy: 'world' | 'user' | 'both' | undefined;
 
-  const requestedIndex = RATING_HIERARCHY.indexOf(requestedRating);
+  const requestedIndex = getContentRatingIndex(requestedRating);
 
   // Check world constraint
   if (worldMaxRating) {
-    const worldIndex = RATING_HIERARCHY.indexOf(worldMaxRating);
+    const worldIndex = getContentRatingIndex(worldMaxRating);
     if (requestedIndex > worldIndex) {
       effectiveRating = worldMaxRating;
       wasClamped = true;
@@ -245,8 +197,8 @@ export function getEffectiveContentRating(
 
   // Check user constraint (more restrictive)
   if (userMaxRating) {
-    const userIndex = RATING_HIERARCHY.indexOf(userMaxRating);
-    const currentIndex = RATING_HIERARCHY.indexOf(effectiveRating);
+    const userIndex = getContentRatingIndex(userMaxRating);
+    const currentIndex = getContentRatingIndex(effectiveRating);
     if (currentIndex > userIndex) {
       effectiveRating = userMaxRating;
       if (wasClamped && clampedBy === 'world') {
