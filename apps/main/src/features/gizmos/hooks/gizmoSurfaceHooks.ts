@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 
+import { gizmoSurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
 import { useGizmoSurfaceStore } from '@features/gizmos/stores/gizmoSurfaceStore';
 
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '../lib/core/surfaceRegistry';
+import type { GizmoSurfaceContext } from '../lib/core/surfaceRegistry';
 
 /**
  * Hook to get enabled surfaces for a context
@@ -14,7 +16,7 @@ export function useEnabledGizmoSurfaces(context: GizmoSurfaceContext) {
 
   return useMemo(() => {
     return enabledSurfaceIds
-      .map((id) => gizmoSurfaceRegistry.get(id))
+      .map((id) => gizmoSurfaceSelectors.get(id))
       .filter(Boolean);
   }, [enabledSurfaceIds]);
 }

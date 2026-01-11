@@ -10,7 +10,8 @@
  * import { builtInDevTools, sessionStateViewerTool } from '@features/devtools';
  *
  * // Import infrastructure from lib
- * import { devToolRegistry, DevToolProvider } from '@lib/dev/devtools';
+ * import { devToolSelectors } from '@lib/plugins/catalogSelectors';
+ * import { DevToolProvider } from '@lib/dev/devtools';
  * ```
  */
 

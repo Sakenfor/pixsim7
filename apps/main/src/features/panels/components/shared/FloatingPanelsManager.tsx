@@ -1,9 +1,13 @@
 import { Rnd } from "react-rnd";
-import { useWorkspaceStore, type PanelId } from "@features/workspace";
-import { panelRegistry } from "@features/panels";
+
+import { devToolSelectors } from "@lib/plugins/catalogSelectors";
+
 import { ContextHubHost } from "@features/contextHub";
+import { panelRegistry } from "@features/panels";
+import { useWorkspaceStore } from "@features/workspace";
+
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
-import { devToolRegistry } from "@lib/dev/devtools/devToolRegistry";
+
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
@@ -34,7 +38,7 @@ export function FloatingPanelsManager() {
         if (isDevToolPanel) {
           // Extract tool ID from panel ID
           const toolId = panel.id.slice("dev-tool:".length);
-          const devTool = devToolRegistry.get(toolId);
+          const devTool = devToolSelectors.get(toolId);
 
           Component = DevToolDynamicPanel;
           title = devTool?.label || toolId;

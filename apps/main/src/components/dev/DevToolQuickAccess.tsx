@@ -6,9 +6,11 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
-import type { DevToolDefinition } from '@lib/dev/devtools/types';
+
 import { useDevToolContext } from '@lib/dev/devtools/devToolContext';
+import type { DevToolDefinition } from '@lib/dev/devtools/types';
+import { devToolSelectors } from '@lib/plugins/catalogSelectors';
+
 import { useWorkspaceStore } from '@features/workspace';
 
 export function DevToolQuickAccess() {
@@ -19,14 +21,14 @@ export function DevToolQuickAccess() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Get all tools
-  const allTools = useMemo(() => devToolRegistry.getAll(), []);
+  const allTools = useMemo(() => devToolSelectors.getAll(), []);
 
   // Filter and sort tools
   const filteredTools = useMemo(() => {
     if (!searchQuery.trim()) {
       // Show recent tools first when no search query
       const recentToolDefs = recentTools
-        .map((id) => devToolRegistry.get(id))
+        .map((id) => devToolSelectors.get(id))
         .filter((tool): tool is DevToolDefinition => tool !== undefined);
 
       const otherTools = allTools.filter((tool) => !recentTools.includes(tool.id));
@@ -35,7 +37,7 @@ export function DevToolQuickAccess() {
     }
 
     // Search tools
-    return devToolRegistry.search(searchQuery);
+    return devToolSelectors.search(searchQuery);
   }, [allTools, searchQuery, recentTools]);
 
   // Reset selection when filtered tools change

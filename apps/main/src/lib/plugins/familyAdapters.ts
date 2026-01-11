@@ -3,13 +3,13 @@ import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/p
 import { dockZoneRegistry, type DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 
-import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
+import type { DevToolDefinition } from '@lib/dev/devtools';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 
 import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
 import type { GallerySurfaceDefinition } from '@features/gallery';
-import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
+import type { GizmoSurfaceDefinition } from '@features/gizmos';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
 import { panelRegistry, type PanelDefinition } from '@features/panels';
@@ -557,7 +557,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildGraphEditorMetadata,
   },
   'dev-tool': {
-    register: (tool: DevToolDefinition) => devToolRegistry.register(tool),
+    register: () => {},
     buildMetadata: buildDevToolMetadata,
   },
   'workspace-panel': {
@@ -569,7 +569,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildDockWidgetMetadata,
   },
   'gizmo-surface': {
-    register: (surface: GizmoSurfaceDefinition) => gizmoSurfaceRegistry.register(surface),
+    register: () => {},
     buildMetadata: buildGizmoSurfaceMetadata,
   },
   'scene-view': {

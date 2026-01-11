@@ -8,11 +8,12 @@
 import { Panel, Button, Badge } from "@pixsim7/shared.ui";
 import { useMemo, useState } from "react";
 
-import {
-  gizmoSurfaceRegistry,
-  type GizmoSurfaceDefinition,
-  type GizmoSurfaceCategory,
-  type GizmoSurfaceContext,
+import { gizmoSurfaceSelectors } from "@lib/plugins/catalogSelectors";
+
+import type {
+  GizmoSurfaceDefinition,
+  GizmoSurfaceCategory,
+  GizmoSurfaceContext,
 } from "@features/gizmos";
 import { useGizmoSurfaceStore } from "@features/gizmos/stores/gizmoSurfaceStore";
 
@@ -34,7 +35,7 @@ export function GizmoSurfacesPanel({ onClose }: GizmoSurfacesPanelProps) {
 
   // Get all surfaces
   const allSurfaces = useMemo(() => {
-    return gizmoSurfaceRegistry.getSortedByPriority();
+    return gizmoSurfaceSelectors.getSortedByPriority();
   }, []);
 
   // Filter surfaces based on selected category and context

@@ -6,8 +6,9 @@
  */
 
 import { useMemo } from 'react';
-import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
+
 import type { DevToolId } from '@lib/dev/devtools/types';
+import { devToolSelectors } from '@lib/plugins/catalogSelectors';
 
 export interface DevToolHostProps {
   /** ID of the dev tool to render */
@@ -24,7 +25,7 @@ export interface DevToolHostProps {
  * Host component that dynamically renders dev tools
  */
 export function DevToolHost({ toolId, context, className }: DevToolHostProps) {
-  const tool = useMemo(() => devToolRegistry.get(toolId), [toolId]);
+  const tool = useMemo(() => devToolSelectors.get(toolId), [toolId]);
 
   // Tool not found
   if (!tool) {
@@ -82,7 +83,7 @@ export interface DevToolFloatingPanelProps {
 }
 
 export function DevToolFloatingPanel({ toolId, context, onClose }: DevToolFloatingPanelProps) {
-  const tool = devToolRegistry.get(toolId);
+  const tool = devToolSelectors.get(toolId);
 
   return (
     <div className="flex flex-col h-full bg-gray-900 text-gray-100">

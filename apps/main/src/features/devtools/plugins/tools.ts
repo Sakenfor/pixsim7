@@ -4,7 +4,7 @@
  * Defines all built-in developer tools that can be displayed
  * in the Dev Tools surface.
  *
- * These tools are registered with devToolRegistry on app startup.
+ * These tools are registered with the plugin catalog on app startup.
  */
 
 import type { DevToolDefinition } from '@lib/dev/devtools/types';

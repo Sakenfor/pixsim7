@@ -7,21 +7,22 @@
 
 import { useState, useMemo, useSyncExternalStore } from 'react';
 
-// Catalog selectors (source of truth for gallery/world/brain families)
+// Catalog selectors (source of truth for gallery/world/brain/gizmo families)
 import type { Identifiable } from '@lib/core/BaseRegistry';
 import { interactionRegistry } from '@lib/game/interactions/types';
-
-// Surface registries
-
-// Interaction registry (dynamically loaded plugin interactions)
 import type { InteractionPlugin, BaseInteractionConfig } from '@lib/game/interactions/types';
-import { brainToolSelectors, galleryToolSelectors, gallerySurfaceSelectors, worldToolSelectors } from '@lib/plugins/catalogSelectors';
+import {
+  brainToolSelectors,
+  galleryToolSelectors,
+  gallerySurfaceSelectors,
+  gizmoSurfaceSelectors,
+  worldToolSelectors,
+} from '@lib/plugins/catalogSelectors';
 
 // Types
 import type { BrainToolPlugin } from '@features/brainTools/lib/types';
 import type { GallerySurfaceDefinition } from '@features/gallery/lib/core/surfaceRegistry';
 import type { GalleryToolPlugin } from '@features/gallery/lib/core/types';
-import { gizmoSurfaceRegistry } from '@features/gizmos/lib/core/surfaceRegistry';
 import type { GizmoSurfaceDefinition } from '@features/gizmos/lib/core/surfaceRegistry';
 import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 
@@ -102,8 +103,8 @@ const REGISTRIES: RegistryInfo[] = [
     description: 'UI surfaces for gizmos and debug dashboards',
     icon: '🔮',
     category: 'surfaces',
-    getItems: () => gizmoSurfaceRegistry.getAll(),
-    subscribe: (cb) => gizmoSurfaceRegistry.subscribe(cb),
+    getItems: () => gizmoSurfaceSelectors.getAll(),
+    subscribe: (cb) => gizmoSurfaceSelectors.subscribe(cb),
     renderItem: (item) => <GizmoSurfaceItem surface={item as GizmoSurfaceDefinition} />,
   },
   {

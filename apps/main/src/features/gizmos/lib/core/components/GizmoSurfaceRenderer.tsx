@@ -7,9 +7,11 @@
 
 import { useMemo, type ComponentType } from 'react';
 
+import { gizmoSurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
 import { useGizmoSurfaceStore } from '@features/gizmos/stores/gizmoSurfaceStore';
 
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '../surfaceRegistry';
+import type { GizmoSurfaceContext } from '../surfaceRegistry';
 
 interface GizmoSurfaceRendererProps {
   /** The context in which to render surfaces */
@@ -42,7 +44,7 @@ export function GizmoSurfaceRenderer({
   // Get the actual surface definitions
   const enabledSurfaces = useMemo(() => {
     return enabledSurfaceIds
-      .map((id) => gizmoSurfaceRegistry.get(id))
+      .map((id) => gizmoSurfaceSelectors.get(id))
       .filter((surface) => {
         if (!surface) return false;
 

@@ -5,12 +5,15 @@
  * Shows all registered dev tools grouped by category with search/filter.
  */
 
-import { useState, useMemo } from "react";
-import { devToolRegistry } from "@lib/dev/devtools/devToolRegistry";
-import type { DevToolDefinition, DevToolCategory } from "@lib/dev/devtools/types";
-import { useWorkspaceStore } from "@features/workspace";
-import { useDevToolContext } from "@lib/dev/devtools/devToolContext";
 import { Icon, IconBadge, type IconName } from "@lib/icons";
+import { useState, useMemo } from "react";
+
+import { useDevToolContext } from "@lib/dev/devtools/devToolContext";
+import type { DevToolDefinition, DevToolCategory } from "@lib/dev/devtools/types";
+import { devToolSelectors } from "@lib/plugins/catalogSelectors";
+
+import { useWorkspaceStore } from "@features/workspace";
+
 
 const CATEGORY_LABELS: Record<DevToolCategory, string> = {
   session: "Session & World",
@@ -38,14 +41,14 @@ export function DevToolsPanel() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const { addRecentTool, recentTools, clearRecentTools } = useDevToolContext();
 
-  const allTools = useMemo(() => devToolRegistry.getAll(), []);
+  const allTools = useMemo(() => devToolSelectors.getAll(), []);
 
   const filteredTools = useMemo(() => {
     let tools = allTools;
 
     // Filter by search query
     if (searchQuery.trim()) {
-      tools = devToolRegistry.search(searchQuery);
+      tools = devToolSelectors.search(searchQuery);
     }
 
     // Filter experimental tools unless showExperimental is enabled
@@ -142,7 +145,7 @@ export function DevToolsPanel() {
             </div>
             <div className="space-y-2">
               {recentTools.map((toolId) => {
-                const tool = devToolRegistry.get(toolId);
+                const tool = devToolSelectors.get(toolId);
                 if (!tool) return null;
                 return (
                   <DevToolCard

@@ -1,7 +1,7 @@
 /**
  * Register Dev Tools
  *
- * Central initialization for all built-in developer tools.
+ * Central initialization for all built-in developer tools (registers in the plugin catalog).
  * This should be called once at app startup.
  *
  * Dev tools can be registered in two ways:
@@ -11,13 +11,13 @@
  * See docs/PLUGIN_ARCHITECTURE.md for more details.
  */
 
+import { devToolSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import { builtInDevTools } from '@features/devtools';
 
 import { moduleRegistry } from '@app/modules';
 
-import { devToolRegistry } from './devToolRegistry';
 import type { DevToolDefinition } from './types';
 
 /**
@@ -26,7 +26,7 @@ import type { DevToolDefinition } from './types';
 export async function registerDevTools(): Promise<void> {
   // 1. Register explicit tool definitions from plugins folder
   for (const tool of builtInDevTools) {
-    if (!devToolRegistry.get(tool.id)) {
+    if (!devToolSelectors.get(tool.id)) {
       await registerPluginDefinition({
         id: tool.id,
         family: 'dev-tool',
@@ -66,7 +66,7 @@ export async function registerDevTools(): Promise<void> {
     const devToolId = page.featureId ?? module.id;
 
     // Skip if already registered (explicit definition takes precedence)
-    if (devToolRegistry.get(devToolId)) {
+    if (devToolSelectors.get(devToolId)) {
       continue;
     }
 
@@ -93,5 +93,5 @@ export async function registerDevTools(): Promise<void> {
     });
   }
 
-  console.log(`[DevToolRegistry] Registered ${devToolRegistry.getAll().length} dev tools`);
+  console.log(`[DevToolRegistry] Registered ${devToolSelectors.getAll().length} dev tools`);
 }

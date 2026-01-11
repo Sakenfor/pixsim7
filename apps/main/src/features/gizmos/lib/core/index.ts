@@ -11,6 +11,9 @@ export {
   gizmoSurfaceRegistry,
 } from './surfaceRegistry';
 
+// Catalog selectors (preferred)
+export { gizmoSurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
 export type {
   GizmoSurfaceId,
   GizmoSurfaceCategory,

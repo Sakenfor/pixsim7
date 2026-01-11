@@ -2,15 +2,15 @@ import clsx from "clsx";
 import { useMemo, useState } from "react";
 
 import { useEditorContext } from "@lib/context";
+import { gizmoSurfaceSelectors } from "@lib/plugins/catalogSelectors";
 
 import {
   SurfaceWorkbench,
   type SurfaceWorkbenchStatus,
 } from "@/components/surface-workbench";
-import {
-  gizmoSurfaceRegistry,
-  type GizmoSurfaceContext,
-  type GizmoSurfaceDefinition,
+import type {
+  GizmoSurfaceContext,
+  GizmoSurfaceDefinition,
 } from "@/gizmos/surfaceRegistry";
 
 type SurfaceModeFilter = "all" | "panel" | "overlay" | "hud";
@@ -117,7 +117,7 @@ export function SurfaceWorkbenchPanel() {
   const contextLabel = CONTEXT_LABELS[derivedContext] ?? "Workspace";
 
   const surfaces = useMemo(() => {
-    const all = gizmoSurfaceRegistry.getSortedByPriority();
+    const all = gizmoSurfaceSelectors.getSortedByPriority();
     if (showAllContexts) {
       return all;
     }

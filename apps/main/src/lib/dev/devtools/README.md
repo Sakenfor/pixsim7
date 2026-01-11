@@ -71,7 +71,7 @@ Call `registerMyDebugTool()` during app initialization (in `registerDevTools.ts`
 
 ### Key Components
 
-- **DevToolRegistry** (`devToolRegistry.ts`): Central registry with search/filter
+- **DevToolSelectors** (`@lib/plugins/catalogSelectors`): Catalog-backed selectors with search/filter
 - **DevToolHost** (`DevToolHost.tsx`): Dynamic component renderer
 - **DevToolsPanel** (`DevToolsPanel.tsx`): Main navigation panel
 - **DevToolQuickAccess** (`DevToolQuickAccess.tsx`): Quick access modal
@@ -142,7 +142,7 @@ const {
 ```
 lib/devtools/
 ├── types.ts                    # TypeScript types
-├── devToolRegistry.ts          # Registry implementation
+├── devToolRegistry.ts          # Legacy registry (catalog is source of truth)
 ├── registerDevTools.ts         # Built-in tool registration
 ├── devToolContext.tsx          # React context for dev tools
 ├── index.ts                    # Module exports

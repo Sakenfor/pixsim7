@@ -8,9 +8,11 @@
 import { Badge } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
+import { gizmoSurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
 import { useGizmoSurfaceStore } from '@features/gizmos/stores/gizmoSurfaceStore';
 
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '../surfaceRegistry';
+import type { GizmoSurfaceContext } from '../surfaceRegistry';
 
 interface ActiveGizmosIndicatorProps {
   /** The context to show active gizmos for */
@@ -44,7 +46,7 @@ export function ActiveGizmosIndicator({
 
   // Get surface definitions
   const enabledSurfaces = enabledSurfaceIds
-    .map((id) => gizmoSurfaceRegistry.get(id))
+    .map((id) => gizmoSurfaceSelectors.get(id))
     .filter(Boolean);
 
   // Position classes

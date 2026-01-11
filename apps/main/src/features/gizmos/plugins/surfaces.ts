@@ -4,20 +4,23 @@
  * Defines all gizmo surfaces (UI presentation plugins) that can be
  * displayed in different contexts (game view, workspace, etc.)
  *
- * These surfaces are registered with gizmoSurfaceRegistry on app startup.
+ * These surfaces are registered with the plugin catalog on app startup.
  */
 
+import { WorldToolsPanel } from '@features/worldTools';
+
+import { RelationshipDashboard } from '@/components/game/RelationshipDashboard';
+
+import { BodyMapGizmo } from '../lib/core/components/BodyMapGizmo';
+import { ConstellationGizmo } from '../lib/core/components/ConstellationGizmo';
+import { OrbGizmo } from '../lib/core/components/OrbGizmo';
+import { RingsGizmo } from '../lib/core/components/RingsGizmo';
 import type { GizmoSurfaceDefinition } from '../lib/core/surfaceRegistry';
 
 // Import gizmo components
-import { RingsGizmo } from '../lib/core/components/RingsGizmo';
-import { OrbGizmo } from '../lib/core/components/OrbGizmo';
-import { ConstellationGizmo } from '../lib/core/components/ConstellationGizmo';
-import { BodyMapGizmo } from '../lib/core/components/BodyMapGizmo';
 
 // Import debug/dashboard components
-import { RelationshipDashboard } from '@/components/game/RelationshipDashboard';
-import { WorldToolsPanel } from '@features/worldTools';
+
 
 // ============================================================================
 // Scene Gizmos (Visual Overlays)

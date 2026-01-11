@@ -3,23 +3,23 @@
  * Useful for debugging and testing
  */
 
-import { gizmoSurfaceRegistry } from './surfaceRegistry';
+import { gizmoSurfaceSelectors } from '@lib/plugins/catalogSelectors';
 
 /**
  * Print all registered gizmo surfaces to console
  */
 export function listGizmoSurfaces(): void {
-  const all = gizmoSurfaceRegistry.getAll();
+  const all = gizmoSurfaceSelectors.getAll();
 
   console.group('📋 Registered Gizmo Surfaces');
   console.log(`Total: ${all.length} surfaces\n`);
 
   const byCategory = {
-    scene: gizmoSurfaceRegistry.getByCategory('scene'),
-    world: gizmoSurfaceRegistry.getByCategory('world'),
-    npc: gizmoSurfaceRegistry.getByCategory('npc'),
-    debug: gizmoSurfaceRegistry.getByCategory('debug'),
-    custom: gizmoSurfaceRegistry.getByCategory('custom'),
+    scene: gizmoSurfaceSelectors.getByCategory('scene'),
+    world: gizmoSurfaceSelectors.getByCategory('world'),
+    npc: gizmoSurfaceSelectors.getByCategory('npc'),
+    debug: gizmoSurfaceSelectors.getByCategory('debug'),
+    custom: gizmoSurfaceSelectors.getByCategory('custom'),
   };
 
   Object.entries(byCategory).forEach(([category, surfaces]) => {
@@ -43,13 +43,13 @@ export function listGizmoSurfaces(): void {
  * Get summary of registered surfaces
  */
 export function getGizmoSurfacesSummary() {
-  const all = gizmoSurfaceRegistry.getAll();
+  const all = gizmoSurfaceSelectors.getAll();
   const byCategory = {
-    scene: gizmoSurfaceRegistry.getByCategory('scene').length,
-    world: gizmoSurfaceRegistry.getByCategory('world').length,
-    npc: gizmoSurfaceRegistry.getByCategory('npc').length,
-    debug: gizmoSurfaceRegistry.getByCategory('debug').length,
-    custom: gizmoSurfaceRegistry.getByCategory('custom').length,
+    scene: gizmoSurfaceSelectors.getByCategory('scene').length,
+    world: gizmoSurfaceSelectors.getByCategory('world').length,
+    npc: gizmoSurfaceSelectors.getByCategory('npc').length,
+    debug: gizmoSurfaceSelectors.getByCategory('debug').length,
+    custom: gizmoSurfaceSelectors.getByCategory('custom').length,
   };
 
   return {
@@ -68,5 +68,5 @@ export function getGizmoSurfacesSummary() {
 if (import.meta.env.DEV) {
   (window as any).listGizmoSurfaces = listGizmoSurfaces;
   (window as any).getGizmoSurfacesSummary = getGizmoSurfacesSummary;
-  (window as any).gizmoSurfaceRegistry = gizmoSurfaceRegistry;
+  (window as any).gizmoSurfaceSelectors = gizmoSurfaceSelectors;
 }
