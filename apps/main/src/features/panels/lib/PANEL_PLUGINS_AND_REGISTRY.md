@@ -27,10 +27,10 @@ Workspace panels in PixSim7 are now first-class plugins integrated with the unif
    - Tracks panel metadata (origin, activation state)
    - Consistent enable/disable semantics
 
-3. **Registry Bridge** (`registryBridge.ts`)
+3. **Plugin Runtime** (`pluginRuntime.ts` + `familyAdapters.ts`)
    - Connects `panelRegistry` with `pluginCatalog`
-   - Helper functions for dual registration
-   - Syncs panel state across systems
+   - Registers panel definitions through `registerPluginDefinition`
+   - Keeps registry state in sync with catalog metadata
 
 4. **Panel Definitions** (`domain/definitions/*/index.ts`)
    - Auto-discovered built-in workspace panels

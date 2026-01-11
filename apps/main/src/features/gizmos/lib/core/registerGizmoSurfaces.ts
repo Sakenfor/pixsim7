@@ -8,20 +8,30 @@
  * the standard plugin pattern. See docs/PLUGIN_ARCHITECTURE.md.
  */
 
-import { gizmoSurfaceRegistry } from './surfaceRegistry';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
 import { builtInGizmoSurfaces } from '../../plugins';
+
+import { gizmoSurfaceRegistry } from './surfaceRegistry';
 
 /**
  * Register all core gizmo surfaces
  * Called on app startup to populate the registry
  */
-export function registerGizmoSurfaces(): void {
+export async function registerGizmoSurfaces(): Promise<void> {
   // Register built-in surfaces from the plugins folder
-  builtInGizmoSurfaces.forEach(surface => {
+  for (const surface of builtInGizmoSurfaces) {
     if (!gizmoSurfaceRegistry.get(surface.id)) {
-      gizmoSurfaceRegistry.register(surface);
+      await registerPluginDefinition({
+        id: surface.id,
+        family: 'gizmo-surface',
+        origin: 'builtin',
+        source: 'source',
+        plugin: surface,
+        canDisable: false,
+      });
     }
-  });
+  }
 
   console.log(
     `[GizmoSurfaces] Registered ${builtInGizmoSurfaces.length} gizmo surfaces:`,

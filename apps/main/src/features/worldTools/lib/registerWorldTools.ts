@@ -8,22 +8,32 @@
  * which provides better control over initialization timing and testability.
  */
 
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { debugFlags } from '@lib/utils/debugFlags';
-import { worldToolRegistry } from './types';
+
 import { builtInWorldTools } from '../plugins';
+
+import { worldToolRegistry } from './types';
 
 /**
  * Register all world tools
  *
  * This should be called once during application initialization.
  */
-export function registerWorldTools(): void {
+export async function registerWorldTools(): Promise<void> {
   // Register built-in tools from the plugins folder
-  builtInWorldTools.forEach(tool => {
+  for (const tool of builtInWorldTools) {
     if (!worldToolRegistry.has(tool.id)) {
-      worldToolRegistry.register(tool);
+      await registerPluginDefinition({
+        id: tool.id,
+        family: 'world-tool',
+        origin: 'builtin',
+        source: 'source',
+        plugin: tool,
+        canDisable: false,
+      });
     }
-  });
+  }
 
-  debugFlags.log('registry', `✓ Registered ${worldToolRegistry.size} world tool(s)`);
+  debugFlags.log('registry', `[WorldTools] Registered ${worldToolRegistry.size} world tool(s)`);
 }

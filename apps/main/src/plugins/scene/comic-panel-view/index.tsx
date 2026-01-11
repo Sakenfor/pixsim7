@@ -23,6 +23,9 @@
  * ```
  */
 
+/* eslint-disable react-refresh/only-export-components */
+
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import type { SceneViewPlugin } from '@lib/plugins/sceneViewPlugin';
 
 import { manifest } from './manifest';
@@ -38,8 +41,14 @@ export const plugin: SceneViewPlugin = {
 };
 
 export async function registerComicPanelView(): Promise<void> {
-  const { sceneViewRegistry } = await import('@lib/plugins/sceneViewPlugin');
-  sceneViewRegistry.register(manifest, plugin);
+  await registerPluginDefinition({
+    id: manifest.id,
+    family: 'scene-view',
+    origin: 'builtin',
+    source: 'source',
+    plugin: { manifest, plugin },
+    canDisable: false,
+  });
 }
 
 // Re-export for manual usage

@@ -18,7 +18,7 @@
  * ```
  */
 
-import { nodeTypeRegistry } from '../registries';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 /**
  * Quest objective structure
@@ -73,18 +73,18 @@ export interface QuestTriggerNodeData {
  */
 let questTriggerNodeRegistered = false;
 
-export function registerQuestTriggerNode() {
+export async function registerQuestTriggerNode(): Promise<void> {
   if (questTriggerNodeRegistered) {
     return;
   }
   questTriggerNodeRegistered = true;
 
-  nodeTypeRegistry.register<QuestTriggerNodeData>({
+  const nodeDefinition = {
     // Identity
     id: 'quest-trigger',
     name: 'Quest Trigger',
     description: 'Start, complete, or update quest progress',
-    icon: '📜',
+    icon: 'quest',
 
     // Organization
     category: 'action',
@@ -155,7 +155,15 @@ export function registerQuestTriggerNode() {
     // Performance optimization: Lazy loading
     // Preload priority: Medium-high (quests are important)
     preloadPriority: 7,
+  };
+
+  await registerPluginDefinition({
+    id: nodeDefinition.id,
+    family: 'node-type',
+    origin: 'plugin-dir',
+    source: 'sandbox',
+    plugin: nodeDefinition,
   });
 
-  console.log('✓ Registered quest-trigger node type');
+  console.log('[NodeType] Registered quest-trigger node type');
 }

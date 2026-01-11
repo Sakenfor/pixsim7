@@ -9,6 +9,10 @@
  * 2. Continue using existing registries as-is
  * 3. Gradually migrate to metadata-driven patterns
  */
+/**
+ * @deprecated Replaced by pluginRuntime + familyAdapters + pluginKernel.
+ * This module is no longer used in runtime code and will be removed.
+ */
 
 
 // Import existing registries
@@ -22,11 +26,10 @@ import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
-import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
-import type { GalleryToolPlugin } from '../gallery/types';
-
 import { panelRegistry, dockWidgetRegistry, type PanelDefinition, type DockWidgetDefinition } from '@features/panels';
+import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
 
+import type { GalleryToolPlugin } from '../gallery/types';
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 
 import { pluginCatalog } from './pluginSystem';

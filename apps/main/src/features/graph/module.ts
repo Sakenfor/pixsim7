@@ -46,7 +46,7 @@ export const graphSystemModule: Module = {
     // Auto-register renderers from node types (after plugins are loaded)
     // This discovers renderer components and registers them based on the
     // rendererComponent field in NodeTypeDefinition
-    registerRenderersFromNodeTypes({
+    await registerRenderersFromNodeTypes({
       verbose: true,
       strict: false, // Don't fail if a renderer is missing
     });

@@ -5,22 +5,28 @@
  * Import this module early in your app to ensure plugins are available.
  */
 
-import { generationUIPluginRegistry } from '../core/generationPlugins';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
 import { pixversePlugin } from './PixversePlugin';
 import { soraPlugin } from './SoraPlugin';
 
 /**
  * Register all provider plugins
  */
-export function registerProviderPlugins() {
-  generationUIPluginRegistry.register(pixversePlugin);
-  generationUIPluginRegistry.register(soraPlugin);
-}
+export async function registerProviderPlugins(): Promise<void> {
+  const plugins = [pixversePlugin, soraPlugin];
 
-/**
- * Auto-register plugins on module load
- */
-registerProviderPlugins();
+  for (const plugin of plugins) {
+    await registerPluginDefinition({
+      id: plugin.id,
+      family: 'generation-ui',
+      origin: 'builtin',
+      source: 'source',
+      plugin,
+      canDisable: false,
+    });
+  }
+}
 
 /**
  * Export plugins for direct access if needed

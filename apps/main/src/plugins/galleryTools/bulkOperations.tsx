@@ -12,6 +12,7 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { toSnakeCaseDeep } from '@lib/utils';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
@@ -236,9 +237,7 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
 /**
  * Register the bulk operations tool
  */
-export async function registerBulkOperationsTool() {
-  const { galleryToolRegistry } = await import('../../lib/gallery/types');
-
+export async function registerBulkOperationsTool(): Promise<void> {
   const bulkOpsTool: GalleryToolPlugin = {
     id: 'bulk-operations',
     name: 'Bulk Operations',
@@ -252,5 +251,11 @@ export async function registerBulkOperationsTool() {
     render: (context) => <BulkOperationsTool context={context} />,
   };
 
-  galleryToolRegistry.register(bulkOpsTool);
+  await registerPluginDefinition({
+    id: bulkOpsTool.id,
+    family: 'gallery-tool',
+    origin: 'plugin-dir',
+    source: 'sandbox',
+    plugin: bulkOpsTool,
+  });
 }

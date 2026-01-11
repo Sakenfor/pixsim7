@@ -1,12 +1,4 @@
 import type { ControlCenterPlugin, ControlCenterPluginManifest } from './controlCenterPlugin';
-import type { SceneViewPlugin, SceneViewPluginManifest } from './sceneViewPlugin';
-import type {
-  ExtendedPluginMetadata,
-  PluginCapabilityHints,
-  PluginFamily,
-  PluginOrigin,
-} from './pluginSystem';
-import type { PluginRegistration } from './registration';
 import {
   DEFAULT_BUNDLE_DIR,
   PLUGIN_FAMILIES,
@@ -18,7 +10,15 @@ import {
   type DiscoveredBundle,
   type LoadPluginBundlesOptions,
 } from './manifestLoader';
-import { registerCatalogMetadata, unregisterCatalogMetadata } from './catalogRegistration';
+import { registerPluginDefinition } from './pluginRuntime';
+import type {
+  ExtendedPluginMetadata,
+  PluginCapabilityHints,
+  PluginOrigin,
+} from './pluginSystem';
+import { pluginCatalog } from './pluginSystem';
+import type { PluginRegistration } from './registration';
+import type { SceneViewPlugin, SceneViewPluginManifest } from './sceneViewPlugin';
 import { bundleFamilyToUnified } from './types';
 
 const sceneViewIdsByPluginId = new Map<string, string>();
@@ -71,16 +71,15 @@ function buildBundleDependencies(manifest: BundleManifest): {
   };
 }
 
-async function registerBundleMetadata(
+function buildUiBundleMetadata(
   manifest: BundleManifest,
-  family: PluginFamily,
   origin: PluginOrigin
-): Promise<void> {
+): ExtendedPluginMetadata<'ui-plugin'> {
   const dependencies = buildBundleDependencies(manifest);
-  const metadata = {
+  const metadata: ExtendedPluginMetadata<'ui-plugin'> = {
     id: manifest.id,
     name: manifest.name,
-    family,
+    family: 'ui-plugin',
     origin,
     activationState: 'active',
     canDisable: origin !== 'builtin',
@@ -88,54 +87,14 @@ async function registerBundleMetadata(
     description: manifest.description,
     author: manifest.author,
     tags: manifest.tags,
+    pluginType: manifest.type,
+    bundleFamily: manifest.family === 'tool' ? 'tool' : 'ui',
+    hasOverlays: manifest.permissions?.includes('ui:overlay'),
+    icon: manifest.icon,
     ...dependencies,
-  } as ExtendedPluginMetadata;
+  };
 
-  switch (family) {
-    case 'scene-view': {
-      const sceneView = manifest.sceneView;
-      if (!sceneView) {
-        console.warn(`[BundleRegistrar] Scene view metadata missing for ${manifest.id}`);
-        return;
-      }
-      const sceneMeta = metadata as ExtendedPluginMetadata<'scene-view'>;
-      sceneMeta.sceneViewId = sceneView.id;
-      sceneMeta.surfaces = sceneView.surfaces;
-      sceneMeta.default = sceneView.default;
-      sceneMeta.icon = manifest.icon;
-      sceneViewIdsByPluginId.set(manifest.id, sceneView.id);
-      break;
-    }
-    case 'control-center': {
-      const controlCenter = manifest.controlCenter;
-      if (!controlCenter) {
-        console.warn(`[BundleRegistrar] Control center metadata missing for ${manifest.id}`);
-        return;
-      }
-      const controlMeta = metadata as ExtendedPluginMetadata<'control-center'>;
-      controlMeta.controlCenterId = controlCenter.id;
-      controlMeta.displayName = controlCenter.displayName;
-      controlMeta.description = controlCenter.description ?? manifest.description;
-      controlMeta.default = controlCenter.default;
-      controlMeta.features = controlCenter.features;
-      controlMeta.preview = controlCenter.preview;
-      controlMeta.icon = manifest.icon;
-      controlCenterIdsByPluginId.set(manifest.id, controlCenter.id);
-      break;
-    }
-    case 'ui-plugin': {
-      const uiMeta = metadata as ExtendedPluginMetadata<'ui-plugin'>;
-      uiMeta.pluginType = manifest.type;
-      uiMeta.bundleFamily = manifest.family === 'tool' ? 'tool' : 'ui';
-      uiMeta.hasOverlays = manifest.permissions?.includes('ui:overlay');
-      uiMeta.icon = manifest.icon;
-      break;
-    }
-    default:
-      break;
-  }
-
-  await registerCatalogMetadata(metadata, 'BundleRegistrar');
+  return metadata;
 }
 
 async function loadSceneViewBundle(bundle: DiscoveredBundle): Promise<void> {
@@ -159,8 +118,17 @@ async function loadSceneViewBundle(bundle: DiscoveredBundle): Promise<void> {
     sceneView: manifest.sceneView,
   };
 
-  const { sceneViewRegistry } = await import('./sceneViewPlugin');
-  sceneViewRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
+  const metadata = buildBundleDependencies(manifest);
+  sceneViewIdsByPluginId.set(manifest.id, manifest.sceneView.id);
+
+  await registerPluginDefinition({
+    id: manifest.id,
+    family: 'scene-view',
+    origin: 'ui-bundle',
+    source: 'bundle',
+    plugin: { manifest: fullManifest, plugin },
+    metadata,
+  });
 }
 
 async function loadControlCenterBundle(bundle: DiscoveredBundle): Promise<void> {
@@ -184,8 +152,17 @@ async function loadControlCenterBundle(bundle: DiscoveredBundle): Promise<void> 
     controlCenter: manifest.controlCenter,
   };
 
-  const { controlCenterRegistry } = await import('./controlCenterPlugin');
-  controlCenterRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
+  const metadata = buildBundleDependencies(manifest);
+  controlCenterIdsByPluginId.set(manifest.id, manifest.controlCenter.id);
+
+  await registerPluginDefinition({
+    id: manifest.id,
+    family: 'control-center',
+    origin: 'ui-bundle',
+    source: 'bundle',
+    plugin: { manifest: fullManifest, plugin },
+    metadata,
+  });
 }
 
 async function loadUIBundle(bundle: DiscoveredBundle): Promise<void> {
@@ -198,11 +175,20 @@ async function loadUIBundle(bundle: DiscoveredBundle): Promise<void> {
     throw new Error('Plugin bundle does not export a valid plugin');
   }
 
-  if (typeof pluginModule.register === 'function') {
-    pluginModule.register();
-  }
+  const metadata = buildUiBundleMetadata(manifest, 'ui-bundle');
 
-  await registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
+  await registerPluginDefinition({
+    id: manifest.id,
+    family: 'ui-plugin',
+    origin: 'ui-bundle',
+    source: 'bundle',
+    plugin: {
+      metadata,
+      register: pluginModule.register,
+    },
+    activationState: metadata.activationState,
+    canDisable: metadata.canDisable,
+  });
 }
 
 async function loadToolBundle(bundle: DiscoveredBundle): Promise<void> {
@@ -210,13 +196,20 @@ async function loadToolBundle(bundle: DiscoveredBundle): Promise<void> {
   const bundlePath = `${bundleDir}/${manifest.main}`;
   const pluginModule = await import(/* @vite-ignore */ bundlePath);
 
-  if (typeof pluginModule.register === 'function') {
-    pluginModule.register();
-  } else {
-    console.warn(`[BundleRegistrar] Tool plugin ${manifest.id} has no register function`);
-  }
+  const metadata = buildUiBundleMetadata(manifest, 'ui-bundle');
 
-  await registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
+  await registerPluginDefinition({
+    id: manifest.id,
+    family: 'ui-plugin',
+    origin: 'ui-bundle',
+    source: 'bundle',
+    plugin: {
+      metadata,
+      register: pluginModule.register,
+    },
+    activationState: metadata.activationState,
+    canDisable: metadata.canDisable,
+  });
 }
 
 async function loadBundle(bundle: DiscoveredBundle): Promise<BundleLoadResult> {
@@ -434,8 +427,16 @@ export async function loadRemotePluginBundle(
             type: 'ui-overlay',
             sceneView: manifest.sceneView,
           };
-          const { sceneViewRegistry } = await import('./sceneViewPlugin');
-          sceneViewRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
+          const metadata = buildBundleDependencies(manifest);
+          sceneViewIdsByPluginId.set(manifest.id, manifest.sceneView.id);
+          await registerPluginDefinition({
+            id: manifest.id,
+            family: 'scene-view',
+            origin: 'ui-bundle',
+            source: 'bundle',
+            plugin: { manifest: fullManifest, plugin },
+            metadata,
+          });
         } else {
           throw new Error('Scene plugin missing sceneView descriptor or render function');
         }
@@ -448,26 +449,38 @@ export async function loadRemotePluginBundle(
             type: 'ui-overlay',
             controlCenter: manifest.controlCenter,
           };
-          const { controlCenterRegistry } = await import('./controlCenterPlugin');
-          controlCenterRegistry.register(fullManifest, plugin, { origin: 'ui-bundle' });
+          const metadata = buildBundleDependencies(manifest);
+          controlCenterIdsByPluginId.set(manifest.id, manifest.controlCenter.id);
+          await registerPluginDefinition({
+            id: manifest.id,
+            family: 'control-center',
+            origin: 'ui-bundle',
+            source: 'bundle',
+            plugin: { manifest: fullManifest, plugin },
+            metadata,
+          });
         } else {
           throw new Error('Control center plugin missing controlCenter descriptor or render function');
         }
         break;
 
       case 'ui':
-        if (typeof pluginModule.register === 'function') {
-          pluginModule.register();
-        }
-        await registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
+      case 'tool': {
+        const metadata = buildUiBundleMetadata(manifest, 'ui-bundle');
+        await registerPluginDefinition({
+          id: manifest.id,
+          family: 'ui-plugin',
+          origin: 'ui-bundle',
+          source: 'bundle',
+          plugin: {
+            metadata,
+            register: pluginModule.register,
+          },
+          activationState: metadata.activationState,
+          canDisable: metadata.canDisable,
+        });
         break;
-
-      case 'tool':
-        if (typeof pluginModule.register === 'function') {
-          pluginModule.register();
-        }
-        await registerBundleMetadata(manifest, 'ui-plugin', 'ui-bundle');
-        break;
+      }
 
       default:
         throw new Error(`Unknown plugin family: ${resolvedFamily}`);
@@ -537,7 +550,6 @@ async function isPluginRegistered(
     case 'control-center':
     case 'ui':
     case 'tool': {
-      const { pluginCatalog } = await import('./pluginSystem');
       return pluginCatalog.get(pluginId) !== undefined;
     }
     default:
@@ -574,19 +586,19 @@ export async function unregisterPlugin(
       const { sceneViewRegistry } = await import('./sceneViewPlugin');
       sceneViewRegistry.unregister(sceneViewIdsByPluginId.get(pluginId) ?? pluginId);
       sceneViewIdsByPluginId.delete(pluginId);
-      await unregisterCatalogMetadata(pluginId);
+      pluginCatalog.unregister(pluginId);
       return true;
     }
     case 'control-center': {
       const { controlCenterRegistry } = await import('./controlCenterPlugin');
       controlCenterRegistry.unregister(controlCenterIdsByPluginId.get(pluginId) ?? pluginId);
       controlCenterIdsByPluginId.delete(pluginId);
-      await unregisterCatalogMetadata(pluginId);
+      pluginCatalog.unregister(pluginId);
       return true;
     }
     case 'ui':
     case 'tool':
-      await unregisterCatalogMetadata(pluginId);
+      pluginCatalog.unregister(pluginId);
       return true;
     default:
       console.warn(`[BundleRegistrar] Cannot unregister plugin family: ${family}`);

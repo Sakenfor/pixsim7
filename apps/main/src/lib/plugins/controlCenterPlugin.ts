@@ -5,13 +5,8 @@
  * Each control center plugin provides the same functionality through different UIs.
  */
 
-import type {
-  ExtendedPluginMetadata,
-  PluginCapabilityHints,
-} from './pluginSystem';
 import type { PluginManifest } from './types';
 import { type UnifiedPluginOrigin } from './types';
-import { registerCatalogMetadata, unregisterCatalogMetadata } from './catalogRegistration';
 
 /**
  * Extended manifest for control center plugins
@@ -106,43 +101,7 @@ class ControlCenterRegistry {
       this.defaultId = manifest.controlCenter.id;
     }
 
-    // Resolve origin and compute canDisable
-    const origin = options.origin ?? 'builtin';
-    const canDisable = origin !== 'builtin';
-
-    // Build dependency hints for control centers
-    const capabilities: PluginCapabilityHints = { addsUIOverlay: true };
-    const providesFeatures = ['ui-overlay', 'control-center'];
-    const consumesFeatures = ['assets', 'workspace', 'generation'];
-    const consumesActions = ['workspace.open-panel', 'generation.quick-generate'];
-    const consumesState = ['workspace.panels'];
-
-    // Register in unified plugin catalog
-    const metadata: ExtendedPluginMetadata<'control-center'> = {
-      id: manifest.id,
-      name: manifest.name,
-      family: 'control-center',
-      origin,
-      activationState: 'active',
-      canDisable,
-      version: manifest.version,
-      description: manifest.description,
-      author: manifest.author,
-      tags: manifest.tags,
-      controlCenterId: manifest.controlCenter.id,
-      displayName: manifest.controlCenter.displayName,
-      features: manifest.controlCenter.features,
-      preview: manifest.controlCenter.preview,
-      default: manifest.controlCenter.default,
-      icon: manifest.icon,
-      capabilities,
-      providesFeatures,
-      consumesFeatures,
-      consumesActions,
-      consumesState,
-    };
-    void registerCatalogMetadata(metadata, 'ControlCenter');
-
+    void options;
     console.log(`[ControlCenter] Registered: ${manifest.controlCenter.displayName}`);
     this.notify();
   }
@@ -155,9 +114,6 @@ class ControlCenterRegistry {
     if (entry) {
       entry.plugin.cleanup?.();
       this.controlCenters.delete(id);
-
-      // Also unregister from unified catalog
-      void unregisterCatalogMetadata(entry.manifest.id);
 
       if (this.activeId === id) {
         this.activeId = this.defaultId;

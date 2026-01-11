@@ -5,11 +5,9 @@
  * interactions using createGenericInteraction.
  */
 
+import { ensureBackendPluginCatalogEntry } from '@lib/plugins/backendCatalog';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import type { PluginOrigin } from '@lib/plugins/pluginSystem';
-import {
-  registerInteraction,
-  ensureBackendPluginCatalogEntry,
-} from '@lib/plugins/registryBridge';
 import { toSnakeCaseDeep } from '@lib/utils';
 
 import type {
@@ -383,7 +381,7 @@ export async function loadPluginInteractions(): Promise<number> {
         continue;
       }
 
-      ensureBackendPluginCatalogEntry(entry);
+      await ensureBackendPluginCatalogEntry(entry);
 
       const interactions = manifest.interactions ?? [];
 
@@ -399,7 +397,13 @@ export async function loadPluginInteractions(): Promise<number> {
 
         // Create and register the interaction
         const plugin = createGenericInteraction(interactionManifest);
-        registerInteraction(plugin, { origin: 'plugin-dir' });
+        await registerPluginDefinition({
+          id: plugin.id,
+          family: 'interaction',
+          origin: 'plugin-dir',
+          source: 'bundle',
+          plugin,
+        });
         loadedCount++;
 
         console.info(
@@ -417,8 +421,6 @@ export async function loadPluginInteractions(): Promise<number> {
     return 0;
   }
 }
-
-// ensureBackendPluginCatalogEntry and resolvePluginOrigin are now in registryBridge.ts
 
 /**
  * Check if dynamic loading is supported

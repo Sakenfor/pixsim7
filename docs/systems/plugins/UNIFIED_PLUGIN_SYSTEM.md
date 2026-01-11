@@ -24,6 +24,8 @@ The unified plugin system addresses several issues with the previous approach:
 4. **Metadata-driven** - Registration derived from metadata, no duplication
 5. **Generic discovery** - Shared discovery utilities, no repeated code
 
+> Note: `registryBridge.ts` has been replaced by `pluginRuntime.ts` + `familyAdapters.ts`. Use `registerPluginDefinition(...)` for new registrations.
+
 ## Key Improvements
 
 ### Before

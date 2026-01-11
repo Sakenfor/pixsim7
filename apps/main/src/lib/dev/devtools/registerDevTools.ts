@@ -11,6 +11,8 @@
  * See docs/PLUGIN_ARCHITECTURE.md for more details.
  */
 
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
 import { builtInDevTools } from '@features/devtools';
 
 import { moduleRegistry } from '@app/modules';
@@ -21,13 +23,20 @@ import type { DevToolDefinition } from './types';
 /**
  * Register all built-in dev tools
  */
-export function registerDevTools(): void {
+export async function registerDevTools(): Promise<void> {
   // 1. Register explicit tool definitions from plugins folder
-  builtInDevTools.forEach((tool) => {
+  for (const tool of builtInDevTools) {
     if (!devToolRegistry.get(tool.id)) {
-      devToolRegistry.register(tool);
+      await registerPluginDefinition({
+        id: tool.id,
+        family: 'dev-tool',
+        origin: 'builtin',
+        source: 'source',
+        plugin: tool,
+        canDisable: false,
+      });
     }
-  });
+  }
 
   // 2. Auto-register dev tools from modules with page.devTool config
   const modulesWithDevTools = moduleRegistry.getModulesWithDevTools();
@@ -74,7 +83,14 @@ export function registerDevTools(): void {
       safeForNonDev: devToolConfig.safeForNonDev,
     };
 
-    devToolRegistry.register(devTool);
+    await registerPluginDefinition({
+      id: devTool.id,
+      family: 'dev-tool',
+      origin: 'builtin',
+      source: 'source',
+      plugin: devTool,
+      canDisable: false,
+    });
   }
 
   console.log(`[DevToolRegistry] Registered ${devToolRegistry.getAll().length} dev tools`);

@@ -19,7 +19,8 @@ import {
   type ReactionType,
   type TrailEffect,
 } from '@pixsim7/scene.gizmos';
-import { ensureBackendPluginCatalogEntry } from '@lib/plugins/registryBridge';
+
+import { ensureBackendPluginCatalogEntry } from '@lib/plugins/backendCatalog';
 import type { PluginOrigin } from '@lib/plugins/pluginSystem';
 
 // =============================================================================
@@ -341,7 +342,7 @@ export async function loadPluginTools(): Promise<number> {
         continue;
       }
 
-      ensureBackendPluginCatalogEntry(entry);
+      await ensureBackendPluginCatalogEntry(entry);
 
       // Skip if already loaded
       if (loadedToolPlugins.has(pluginId)) {
@@ -403,8 +404,6 @@ export async function loadPluginTools(): Promise<number> {
     return 0;
   }
 }
-
-// ensureBackendPluginCatalogEntry and resolvePluginOrigin are now in registryBridge.ts
 
 /**
  * Get tool metadata (name, description, unlock level)

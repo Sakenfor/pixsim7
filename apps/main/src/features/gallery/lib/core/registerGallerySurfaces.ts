@@ -5,7 +5,8 @@
  * Called once at application startup.
  */
 
-import { gallerySurfaceRegistry } from './surfaceRegistry';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
 import {
   DefaultGallerySurface,
   ReviewGallerySurface,
@@ -13,14 +14,10 @@ import {
   DebugGallerySurface,
 } from '@features/assets';
 
-/**
- * Register all gallery surfaces
- *
- * This should be called once during application initialization.
- */
-export function registerGallerySurfaces(): void {
-  // Register the default assets surface
-  gallerySurfaceRegistry.register({
+import { gallerySurfaceRegistry } from './surfaceRegistry';
+
+const builtInGallerySurfaces = [
+  {
     id: 'assets-default',
     label: 'Assets – Default',
     description: 'Standard asset gallery with filters and tools',
@@ -30,10 +27,8 @@ export function registerGallerySurfaces(): void {
     supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
     supportsSelection: true,
     routePath: '/assets',
-  });
-
-  // Register the review surface
-  gallerySurfaceRegistry.register({
+  },
+  {
     id: 'assets-review',
     label: 'Assets – Review',
     description: 'Simplified view for reviewing and curating assets',
@@ -44,15 +39,13 @@ export function registerGallerySurfaces(): void {
     supportsSelection: false,
     routePath: '/assets/review',
     onEnter: () => {
-      console.log('👁️ Review mode activated - Use A/R/S keys for quick review');
+      console.log('[GallerySurfaces] Review mode activated - Use A/R/S keys for quick review');
     },
     onExit: () => {
-      console.log('👋 Exiting review mode');
+      console.log('[GallerySurfaces] Exiting review mode');
     },
-  });
-
-  // Register the curator surface
-  gallerySurfaceRegistry.register({
+  },
+  {
     id: 'assets-curator',
     label: 'Assets – Curator',
     description: 'Advanced curation tools for power users',
@@ -64,12 +57,10 @@ export function registerGallerySurfaces(): void {
     routePath: '/assets/curator',
     defaultTools: ['bulk-tag'],
     onEnter: () => {
-      console.log('⭐ Curator mode - Advanced tools enabled');
+      console.log('[GallerySurfaces] Curator mode - Advanced tools enabled');
     },
-  });
-
-  // Register the debug surface
-  gallerySurfaceRegistry.register({
+  },
+  {
     id: 'assets-debug',
     label: 'Assets – Debug',
     description: 'Developer tools and diagnostics',
@@ -80,17 +71,37 @@ export function registerGallerySurfaces(): void {
     supportsSelection: false,
     routePath: '/assets/debug',
     onEnter: () => {
-      console.log('🐛 Debug mode - System diagnostics enabled');
+      console.log('[GallerySurfaces] Debug mode - System diagnostics enabled');
     },
-  });
+  },
+];
 
-  console.log(`✓ Registered ${gallerySurfaceRegistry.count} gallery surface(s)`);
+/**
+ * Register all gallery surfaces
+ *
+ * This should be called once during application initialization.
+ */
+export async function registerGallerySurfaces(): Promise<void> {
+  for (const surface of builtInGallerySurfaces) {
+    if (!gallerySurfaceRegistry.get(surface.id)) {
+      await registerPluginDefinition({
+        id: surface.id,
+        family: 'gallery-surface',
+        origin: 'builtin',
+        source: 'source',
+        plugin: surface,
+        canDisable: false,
+      });
+    }
+  }
+
+  console.log(`[GallerySurfaces] Registered ${gallerySurfaceRegistry.count} gallery surface(s)`);
 
   // Verification: Check that the default surface was registered correctly
   const defaultSurface = gallerySurfaceRegistry.get('assets-default');
   if (defaultSurface) {
-    console.log(`  ✓ Default surface verified: ${defaultSurface.label} (${defaultSurface.routePath})`);
+    console.log(`[GallerySurfaces] Default surface verified: ${defaultSurface.label} (${defaultSurface.routePath})`);
   } else {
-    console.error('  ✗ Failed to register default surface');
+    console.error('[GallerySurfaces] Failed to register default surface');
   }
 }

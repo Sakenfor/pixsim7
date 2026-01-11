@@ -1,6 +1,3 @@
-import { pluginManager } from '@lib/plugins';
-import { syncCatalogFromRegistries } from '@lib/plugins/registryBridge';
-
 import { PluginsModule as PluginsModuleComponent } from '@features/controlCenter/components/modules/PluginsModule';
 
 import type { Module } from '@app/modules/types';
@@ -17,10 +14,7 @@ export const pluginsModule: Module = {
   name: 'Plugins Module',
 
   async initialize() {
-    // Plugin manager is already initialized in App.tsx;
-    // here we simply ensure the capability is registered.
-    void pluginManager; // keep import used
-    syncCatalogFromRegistries();
+    // Plugin system is initialized by pluginBootstrapModule.
   },
 
   // Auto-register Control Center panel

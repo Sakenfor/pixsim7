@@ -5,9 +5,14 @@
  * Shows how assets are related (e.g., original -> edited versions, source -> derivatives)
  */
 
-import { useState } from 'react';
-import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
+/* eslint-disable react-refresh/only-export-components */
+
 import { Button } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
+import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
 
 /**
  * Lineage visualization tool component
@@ -90,9 +95,7 @@ function LineageVisualizationTool({ context }: { context: GalleryToolContext }) 
 /**
  * Register the lineage visualization tool
  */
-export function registerLineageVisualizationTool() {
-  const { galleryToolRegistry } = require('../../lib/gallery/types');
-
+export async function registerLineageVisualizationTool(): Promise<void> {
   const lineageTool: GalleryToolPlugin = {
     id: 'lineage-visualization',
     name: 'Lineage Visualization',
@@ -106,5 +109,11 @@ export function registerLineageVisualizationTool() {
     render: (context) => <LineageVisualizationTool context={context} />,
   };
 
-  galleryToolRegistry.register(lineageTool);
+  await registerPluginDefinition({
+    id: lineageTool.id,
+    family: 'gallery-tool',
+    origin: 'plugin-dir',
+    source: 'sandbox',
+    plugin: lineageTool,
+  });
 }

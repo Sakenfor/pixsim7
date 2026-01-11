@@ -21,41 +21,28 @@
  * Directory structure:
  * ```
  * frontend/src/lib/plugins/
- * ├── seductionNode.ts (exports registerSeductionNode)
- * ├── questTriggerNode.ts (exports registerQuestTriggerNode)
- * └── ... (other *Node.ts files with register*Node exports)
+ * - seductionNode.ts (exports registerSeductionNode)
+ * - questTriggerNode.ts (exports registerQuestTriggerNode)
+ * - ... (other *Node.ts files with register*Node exports)
  *
  * frontend/src/plugins/
- * ├── helpers/
- * │   ├── reputation/
- * │   │   └── reputation.ts (exports registerReputationHelper)
- * │   └── skills/
- * │       └── skills.ts (exports registerSkillsHelper)
- * ├── interactions/
- * │   ├── trade/
- * │   │   └── trade.ts (exports tradePlugin)
- * │   └── romance/
- * │       └── romance.ts (exports romancePlugin)
- * ├── galleryTools/
- * │   └── ...
- * └── worldTools/
- *     └── ...
+ * - helpers/
+ *   - reputation/
+ *     - reputation.ts (exports registerReputationHelper)
+ *   - skills/
+ *     - skills.ts (exports registerSkillsHelper)
+ * - interactions/
+ *   - trade/
+ *     - trade.ts (exports tradePlugin)
+ *   - romance/
+ *     - romance.ts (exports romancePlugin)
+ * - galleryTools/
+ *   - ...
+ * - worldTools/
+ *   - ...
  * ```
- */
+*/
 
-import { sessionHelperRegistry, interactionRegistry } from '../registries';
-import {
-  PluginDiscovery,
-  pluginCatalog,
-  type DiscoveredPlugin,
-} from './pluginSystem';
-import {
-  registerHelper,
-  registerInteraction,
-  registerNodeType,
-  registerGalleryTool,
-  registerWorldTool,
-} from './registryBridge';
 import {
   helperDiscoveryConfig,
   interactionDiscoveryConfig,
@@ -63,6 +50,13 @@ import {
   nodeTypeDiscoveryConfig,
   worldToolDiscoveryConfig,
 } from './discoveryConfigs';
+import { registerPluginDefinition } from './pluginRuntime';
+import {
+  PluginDiscovery,
+  pluginCatalog,
+  type DiscoveredPlugin,
+} from './pluginSystem';
+import type { PluginRegistrationSource } from './registration';
 
 /**
  * Plugin loader configuration
@@ -101,7 +95,7 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   };
 
   if (verbose) {
-    console.log('🔌 Loading plugins with unified discovery system...');
+    console.log('[PluginLoader] Loading plugins with unified discovery system...');
   }
 
   // Load node type plugins first (so they're available when scenes load)
@@ -154,21 +148,21 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
 
   // Summary
   if (verbose) {
-    console.log(`✅ Plugins loaded:`);
+    console.log('[PluginLoader] Plugins loaded:');
     console.log(`   Node Types: ${result.nodes.loaded} loaded, ${result.nodes.failed} failed`);
     console.log(`   Helpers: ${result.helpers.loaded} loaded, ${result.helpers.failed} failed`);
     console.log(`   Interactions: ${result.interactions.loaded} loaded, ${result.interactions.failed} failed`);
     console.log(`   Gallery Tools: ${result.galleryTools.loaded} loaded, ${result.galleryTools.failed} failed`);
 
     if (result.errors.length > 0) {
-      console.warn(`⚠️  ${result.errors.length} plugin(s) failed to load:`);
+      console.warn(`[PluginLoader] ${result.errors.length} plugin(s) failed to load:`);
       result.errors.forEach(({ plugin, error }) => {
         console.warn(`   - ${plugin}: ${error}`);
       });
     }
 
     // Print catalog summary
-    console.log('\n📊 Plugin Catalog Summary:');
+    console.log('\n[PluginLoader] Plugin Catalog Summary:');
     pluginCatalog.printSummary();
   }
 
@@ -197,7 +191,7 @@ async function loadPluginFamily(
 
   if (discovered.length === 0) {
     if (verbose) {
-      console.log(`   ℹ️  No ${discoveryConfig.family} plugins found`);
+      console.log(`   No ${discoveryConfig.family} plugins found`);
     }
     return { loaded, failed };
   }
@@ -212,7 +206,7 @@ async function loadPluginFamily(
       await registerDiscoveredPlugin(item, verbose);
       loaded++;
     } catch (error: any) {
-      console.error(`   ✗ ${item.path}: ${error.message}`);
+      console.error(`   Failed ${item.path}: ${error.message}`);
       failed++;
     }
   }
@@ -221,18 +215,19 @@ async function loadPluginFamily(
 }
 
 /**
- * Register a discovered plugin using the appropriate bridge function
+ * Register a discovered plugin using the plugin runtime
  */
 async function registerDiscoveredPlugin(item: DiscoveredPlugin, verbose: boolean): Promise<void> {
   const { plugin, family, origin, path } = item;
+  const source: PluginRegistrationSource = 'sandbox';
+  const metadata = item.metadata;
 
   // Handle registration functions (for helpers, nodes, gallery tools)
   if (typeof plugin === 'function') {
-    // Call the registration function
-    plugin();
+    await plugin();
     if (verbose) {
       const shortPath = path.replace('/src/', '').replace(/\.(ts|tsx|js|jsx)$/, '');
-      console.log(`   ✓ ${shortPath}`);
+      console.log(`   ?o" ${shortPath}`);
     }
     return;
   }
@@ -241,36 +236,64 @@ async function registerDiscoveredPlugin(item: DiscoveredPlugin, verbose: boolean
   switch (family) {
     case 'helper':
       if ('name' in plugin && 'fn' in plugin) {
-        registerHelper(plugin, { origin });
+        await registerPluginDefinition({
+          id: plugin.id ?? plugin.name,
+          family: 'helper',
+          origin,
+          source,
+          plugin,
+          metadata,
+        });
         if (verbose) {
-          console.log(`   ✓ ${plugin.name || plugin.id} (helper)`);
+          console.log(`   ?o" ${plugin.name || plugin.id} (helper)`);
         }
       }
       break;
 
     case 'interaction':
       if ('id' in plugin && 'execute' in plugin) {
-        registerInteraction(plugin, { origin });
+        await registerPluginDefinition({
+          id: plugin.id,
+          family: 'interaction',
+          origin,
+          source,
+          plugin,
+          metadata,
+        });
         if (verbose) {
-          console.log(`   ✓ ${plugin.id} (interaction)`);
+          console.log(`   ?o" ${plugin.id} (interaction)`);
         }
       }
       break;
 
     case 'world-tool':
       if ('id' in plugin && 'render' in plugin) {
-        registerWorldTool(plugin, { origin });
+        await registerPluginDefinition({
+          id: plugin.id,
+          family: 'world-tool',
+          origin,
+          source,
+          plugin,
+          metadata,
+        });
         if (verbose) {
-          console.log(`   ✓ ${plugin.id} (world tool)`);
+          console.log(`   ?o" ${plugin.id} (world tool)`);
         }
       }
       break;
 
     case 'gallery-tool':
       if ('id' in plugin) {
-        registerGalleryTool(plugin, { origin });
+        await registerPluginDefinition({
+          id: plugin.id,
+          family: 'gallery-tool',
+          origin,
+          source,
+          plugin,
+          metadata,
+        });
         if (verbose) {
-          console.log(`   ✓ ${plugin.id} (gallery tool)`);
+          console.log(`   ?o" ${plugin.id} (gallery tool)`);
         }
       }
       break;
@@ -279,88 +302,22 @@ async function registerDiscoveredPlugin(item: DiscoveredPlugin, verbose: boolean
       // Node types are typically registered via registerXxxNode functions
       // This case handles direct objects if needed
       if ('id' in plugin) {
-        registerNodeType(plugin, { origin });
+        await registerPluginDefinition({
+          id: plugin.id,
+          family: 'node-type',
+          origin,
+          source,
+          plugin,
+          metadata,
+        });
         if (verbose) {
-          console.log(`   ✓ ${plugin.id} (node type)`);
+          console.log(`   ?o" ${plugin.id} (node type)`);
         }
       }
       break;
 
     default:
-      console.warn(`   ⚠️  Unknown plugin family: ${family}`);
-  }
-}
-
-/**
- * Load helper plugins synchronously (for backwards compatibility)
- * Note: This is not recommended as it blocks the main thread
- */
-export function loadAllPluginsSync(config: PluginLoaderConfig = {}): void {
-  const { verbose = true } = config;
-
-  if (verbose) {
-    console.log('🔌 Loading plugins (sync mode)...');
-  }
-
-  // Use eager loading for synchronous mode
-  const helperModules = import.meta.glob<any>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', {
-    eager: true, // Load immediately
-  });
-
-  const interactionModules = import.meta.glob<any>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', {
-    eager: true,
-  });
-
-  let helpersLoaded = 0;
-  let interactionsLoaded = 0;
-
-  // Load helpers
-  for (const [path, module] of Object.entries(helperModules)) {
-    try {
-      const registrationFn = Object.values(module).find(
-        (exp) => typeof exp === 'function' && exp.name?.startsWith('register')
-      );
-
-      if (registrationFn && typeof registrationFn === 'function') {
-        registrationFn();
-        helpersLoaded++;
-      } else {
-        const definitions = Object.values(module).filter(
-          (exp) => exp && typeof exp === 'object' && 'name' in exp && 'fn' in exp
-        );
-
-        if (definitions.length > 0) {
-          definitions.forEach((def: any) => {
-            sessionHelperRegistry.register(def);
-          });
-          helpersLoaded++;
-        }
-      }
-    } catch (error: any) {
-      console.error(`Failed to load helper plugin ${path}:`, error);
-    }
-  }
-
-  // Load interactions
-  for (const [path, module] of Object.entries(interactionModules)) {
-    try {
-      const plugins = Object.values(module).filter(
-        (exp) => exp && typeof exp === 'object' && 'id' in exp && 'execute' in exp
-      );
-
-      if (plugins.length > 0) {
-        plugins.forEach((plugin: any) => {
-          interactionRegistry.register(plugin);
-        });
-        interactionsLoaded++;
-      }
-    } catch (error: any) {
-      console.error(`Failed to load interaction plugin ${path}:`, error);
-    }
-  }
-
-  if (verbose) {
-    console.log(`✅ Loaded ${helpersLoaded} helper plugin(s) and ${interactionsLoaded} interaction plugin(s)`);
+      console.warn(`   ?s??,?  Unknown plugin family: ${family}`);
   }
 }
 
@@ -371,7 +328,7 @@ export async function reloadAllPlugins(config: PluginLoaderConfig = {}): Promise
   const { verbose = true } = config;
 
   if (verbose) {
-    console.log('🔄 Reloading plugins...');
+    console.log('[PluginLoader] Reloading plugins...');
   }
 
   // Note: This doesn't clear existing registrations, only adds new ones

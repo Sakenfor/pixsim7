@@ -5,11 +5,12 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
-import { registerBuiltinDockWidget } from "@lib/plugins/registryBridge";
+import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";
+
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
-import { dockWidgetRegistry } from "./dockWidgetRegistry";
-import { panelRegistry } from "./panelRegistry";
+
 import { autoRegisterPanels } from "./autoDiscovery";
+import { dockWidgetRegistry } from "./dockWidgetRegistry";
 
 /** Track initialization state */
 let initialized = false;
@@ -32,16 +33,23 @@ async function doInitializePanels(): Promise<void> {
 
   try {
     // Register graph editor surfaces
-    registerGraphEditors();
+    await registerGraphEditors();
 
     // Register dock widgets with the unified plugin catalog
     for (const widget of dockWidgetRegistry.getAll()) {
-      registerBuiltinDockWidget(widget);
+      await registerPluginDefinition({
+        id: widget.id,
+        family: 'dock-widget',
+        origin: 'builtin',
+        source: 'source',
+        plugin: widget,
+        canDisable: false,
+      });
     }
 
     // Auto-discover and register panels from definitions directory
     // These are self-contained panels that use definePanel()
-    const result = autoRegisterPanels({ verbose: true });
+    const result = await autoRegisterPanels({ verbose: true });
     if (result.failed.length > 0) {
       console.warn(
         `[initializePanels] ${result.failed.length} panels failed to auto-register`

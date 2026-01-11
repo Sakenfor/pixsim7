@@ -29,34 +29,25 @@ If you add a new registry:
 - Put it under the closest feature directory (e.g. `lib/hud`, `lib/game`, `lib/gallery`).
 - Use the same pattern: `class XxxRegistry extends BaseRegistry<Definition> { … }` + `export const xxxRegistry = new XxxRegistry();`.
 
-## Plugin Catalog Bridge
+## Plugin Kernel & Runtime
 
-The unified plugin catalog lives in:
+The canonical plugin pipeline is now:
 
-- `apps/main/src/lib/plugins/pluginSystem.ts`
-- `apps/main/src/lib/plugins/registryBridge.ts`
+- `apps/main/src/lib/plugins/pluginKernel.ts` for startup orchestration
+- `apps/main/src/lib/plugins/pluginRuntime.ts` + `apps/main/src/lib/plugins/familyAdapters.ts` for registration
+- `apps/main/src/lib/plugins/pluginSystem.ts` for the catalog + discovery types
 
 Patterns:
 
-- “Legacy” registries (helpers, interactions, node types, panels, dev tools, graph editors, gizmo surfaces, world tools) are kept as the source of truth.
-- `registryBridge.ts` provides helpers like:
-  - `registerPanelWithPlugin(panel, options?)`
-  - `registerBuiltinPanel(panel)`
-  - `registerWorldTool(tool, options?)`
-  - `registerBuiltinWorldTool(tool)`
-  - …and similar for other families.
-- These helpers:
-  1. Register your item in the appropriate registry.
-  2. Register metadata in the plugin catalog (family, origin, activation state, tags).
+- Feature code calls `registerPluginDefinition(...)` (from pluginRuntime) instead of touching the catalog directly.
+- familyAdapters handle registry writes so registries stay runtime sources, but metadata is canonical.
+- pluginKernel is the single startup entry point for built-ins, bundles, and plugin-dir discovery.
 
-When adding new plugin‑style extensions:
+When adding new plugin-style extensions:
 
-- **Do not** call `pluginCatalog.register` directly from feature code.
-- **Do** add a small helper in `registryBridge.ts` that:
-  - Registers in the registry (`xxxRegistry.register(...)`).
-  - Builds `ExtendedPluginMetadata<'your-family'>` and calls `pluginCatalog.register(...)`.
-
-See `claude-tasks/92-registry-bridge-simplification.md` for the planned shared helper pattern and catalog family inventory.
+- Extend `PluginFamily` + metadata in `pluginSystem.ts`.
+- Add an adapter in `familyAdapters.ts`.
+- Register via `registerPluginDefinition`, not via direct catalog calls.
 
 ## Quick Pointers
 

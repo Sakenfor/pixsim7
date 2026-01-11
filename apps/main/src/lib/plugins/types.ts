@@ -6,6 +6,7 @@
  */
 
 import type { GameSessionDTO, GameLocationDetail, NpcPresenceDTO, GameWorldDetail } from '../api/game';
+
 import type { ExtendedPluginMetadata } from './pluginSystem';
 
 /**
@@ -207,6 +208,8 @@ export type UnifiedPluginFamily =
   | 'helper'
   | 'interaction'
   | 'gallery-tool'
+  | 'brain-tool'
+  | 'gallery-surface'
   | 'node-type'
   | 'renderer'
   | 'ui-plugin'

@@ -18,8 +18,10 @@ This document describes the standardized plugin architecture for PixSim7, coveri
 
 PixSim7 uses a plugin architecture to extend functionality in a modular, maintainable way. The system follows two key principles:
 
-1. **Global infrastructure lives in `@lib/plugins`** - Core types, catalog, activation management, and registry bridge
+1. **Global infrastructure lives in `@lib/plugins`** - Core types, catalog, activation management, and runtime adapters
 2. **Plugin implementations live close to their features** - `features/*/plugins/` directories
+
+> Note: `registryBridge.ts` has been replaced by `pluginRuntime.ts` + `familyAdapters.ts`, and startup now runs through `pluginKernel.ts`.
 
 ### Source Layout vs Runtime Layout
 
@@ -50,14 +52,16 @@ This lets us keep **feature-first ownership in the codebase**, while still havin
 
 ```
 apps/main/src/lib/plugins/
-├── types.ts              # Legacy UI plugin types (PluginManifest, PluginAPI)
-├── pluginSystem.ts       # Unified catalog: PluginMetadata, PluginCatalog
-├── registryBridge.ts     # Bridges feature registries → global catalog
-├── catalog.ts            # Legacy catalog abstraction (deprecated)
-├── PluginManager.ts      # UI plugin installation/management
-├── PluginHost.tsx        # Generic plugin host UI component
-├── loader.ts             # Plugin loading utilities
-└── sandbox.ts            # Plugin sandboxing for user code
+- types.ts              # Legacy UI plugin types (PluginManifest, PluginAPI)
+- pluginSystem.ts       # Unified catalog: PluginMetadata, PluginCatalog
+- pluginRuntime.ts      # Catalog-first registration entry point
+- familyAdapters.ts     # Registry adapters per plugin family
+- pluginKernel.ts       # Startup orchestration
+- catalog.ts            # Legacy catalog abstraction (deprecated)
+- PluginManager.ts      # UI plugin installation/management
+- PluginHost.tsx        # Generic plugin host UI component
+- loader.ts             # Plugin loading utilities
+- sandbox.ts            # Plugin sandboxing for user code
 ```
 
 ---

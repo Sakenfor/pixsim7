@@ -33,6 +33,8 @@ export type PluginFamily =
   | 'helper'
   | 'interaction'
   | 'gallery-tool'
+  | 'brain-tool'
+  | 'gallery-surface'
   | 'node-type'
   | 'renderer'
   | 'ui-plugin'
@@ -151,6 +153,14 @@ export interface PluginMetadataExtensions {
   };
   'gallery-tool': {
     category?: string;
+  };
+  'brain-tool': {
+    category?: string;
+    icon?: string;
+  };
+  'gallery-surface': {
+    category?: string;
+    icon?: string;
   };
   'node-type': {
     category?: string;
@@ -295,6 +305,22 @@ export interface DiscoveredPlugin {
   metadata?: Partial<PluginMetadata>;
 }
 
+const EAGER_GLOB_MAP: Record<string, Record<string, any>> = {
+  '/src/plugins/helpers/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/plugins/interactions/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: true }),
+};
+
+const LAZY_GLOB_MAP: Record<string, Record<string, any>> = {
+  '/src/plugins/helpers/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/plugins/interactions/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: false }),
+};
+
 /**
  * Generic plugin discovery utility
  *
@@ -322,7 +348,7 @@ export class PluginDiscovery {
             family: config.family,
             origin: config.origin,
             plugin,
-            metadata: this.extractMetadata(plugin, config),
+            metadata: this.extractMetadata(plugin),
           });
         }
       } catch (error) {
@@ -338,40 +364,19 @@ export class PluginDiscovery {
    * Vite requires these to be compile-time constants (no variables allowed)
    */
   private static getGlobModules(config: PluginDiscoveryConfig): Record<string, any> {
-    // We need separate eager and non-eager branches because Vite requires completely static glob calls
-    if (config.eager) {
-      switch (config.family) {
-        case 'helper':
-          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: true });
-        case 'interaction':
-          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: true });
-        case 'node-type':
-          return import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: true });
-        case 'gallery-tool':
-          return import.meta.glob<any>('/src/lib/galleryTools/*.{ts,tsx,js,jsx}', { eager: true });
-        case 'world-tool':
-          return import.meta.glob<any>('/src/lib/worldTools/*.{ts,tsx,js,jsx}', { eager: true });
-        default:
-          console.warn(`Unknown plugin family: ${config.family}`);
-          return {};
+    const globMap = config.eager ? EAGER_GLOB_MAP : LAZY_GLOB_MAP;
+    const modules: Record<string, any> = {};
+
+    for (const pattern of config.patterns) {
+      const glob = globMap[pattern];
+      if (!glob) {
+        console.warn(`[PluginDiscovery] Unsupported glob pattern: ${pattern}`);
+        continue;
       }
-    } else {
-      switch (config.family) {
-        case 'helper':
-          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: false });
-        case 'interaction':
-          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: false });
-        case 'node-type':
-          return import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: false });
-        case 'gallery-tool':
-          return import.meta.glob<any>('/src/lib/galleryTools/*.{ts,tsx,js,jsx}', { eager: false });
-        case 'world-tool':
-          return import.meta.glob<any>('/src/lib/worldTools/*.{ts,tsx,js,jsx}', { eager: false });
-        default:
-          console.warn(`Unknown plugin family: ${config.family}`);
-          return {};
-      }
+      Object.assign(modules, glob);
     }
+
+    return modules;
   }
 
   /**
@@ -399,8 +404,8 @@ export class PluginDiscovery {
   private static extractByNamedExport(module: any, pattern: string): any[] {
     const regex = this.patternToRegex(pattern);
     return Object.entries(module)
-      .filter(([name, value]) => regex.test(name))
-      .map(([_, value]) => value);
+      .filter(([name]) => regex.test(name))
+      .map(([, exportValue]) => exportValue);
   }
 
   /**
@@ -428,7 +433,7 @@ export class PluginDiscovery {
   /**
    * Extract metadata from plugin object
    */
-  private static extractMetadata(plugin: any, config: PluginDiscoveryConfig): Partial<PluginMetadata> | undefined {
+  private static extractMetadata(plugin: any): Partial<PluginMetadata> | undefined {
     if (!plugin || typeof plugin !== 'object') {
       return undefined;
     }

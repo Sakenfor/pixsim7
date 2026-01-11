@@ -14,6 +14,7 @@
 
 import { lazy } from 'react';
 
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 import { ArcGraphPanel } from '@features/graph';
@@ -30,36 +31,50 @@ const GraphPanelWithProvider = lazy(() =>
  * Register all built-in graph editors
  * Should be called during app initialization
  */
-export function registerGraphEditors(): void {
+export async function registerGraphEditors(): Promise<void> {
   // Register Scene Graph Editor (Legacy/Core)
   // Core Flow View: The canonical logic/flow editor for designing scenes, nodes, choices, transitions
-  graphEditorRegistry.register({
+  await registerPluginDefinition({
     id: 'scene-graph-v2',
-    label: 'Scene Graph Editor',
-    description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
-    icon: '🔀',
-    category: 'core',
-    component: GraphPanelWithProvider as GraphEditorComponent,
-    storeId: 'scene-graph-v2',
-    supportsMultiScene: true,
-    supportsWorldContext: true,
-    supportsPlayback: true,
-    defaultPanelId: 'graph',
+    family: 'graph-editor',
+    origin: 'builtin',
+    source: 'source',
+    canDisable: false,
+    plugin: {
+      id: 'scene-graph-v2',
+      label: 'Scene Graph Editor',
+      description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
+      icon: 'dY"?',
+      category: 'core',
+      component: GraphPanelWithProvider as GraphEditorComponent,
+      storeId: 'scene-graph-v2',
+      supportsMultiScene: true,
+      supportsWorldContext: true,
+      supportsPlayback: true,
+      defaultPanelId: 'graph',
+    },
   });
 
   // Register Arc Graph Editor (Modern)
-  graphEditorRegistry.register({
+  await registerPluginDefinition({
     id: 'arc-graph',
-    label: 'Arc Graph Editor',
-    description: 'Arc/quest progression editor',
-    icon: '🗺️',
-    category: 'arc',
-    component: ArcGraphPanel,
-    storeId: 'arc-graph',
-    supportsMultiScene: true,
-    supportsWorldContext: true,
-    supportsPlayback: false,
-    defaultRoute: '/arc-graph',
+    family: 'graph-editor',
+    origin: 'builtin',
+    source: 'source',
+    canDisable: false,
+    plugin: {
+      id: 'arc-graph',
+      label: 'Arc Graph Editor',
+      description: 'Arc/quest progression editor',
+      icon: 'dY-??,?',
+      category: 'arc',
+      component: ArcGraphPanel,
+      storeId: 'arc-graph',
+      supportsMultiScene: true,
+      supportsWorldContext: true,
+      supportsPlayback: false,
+      defaultRoute: '/arc-graph',
+    },
   });
 
   debugFlags.log('registry', '[Graph Editor Registry] Registered graph editors:', graphEditorRegistry.getStats());

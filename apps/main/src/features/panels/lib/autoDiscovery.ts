@@ -22,11 +22,13 @@
  * ```
  */
 
-import type { PanelDefinition } from './panelRegistry';
-import { panelRegistry } from './panelRegistry';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
 import type { PanelModule } from './definePanel';
 import { getPanelContexts } from './definePanel';
-import { registerBuiltinPanel } from '../../../lib/plugins/registryBridge';
+import type { PanelDefinition } from './panelRegistry';
+import { panelRegistry } from './panelRegistry';
+
 
 /**
  * Discovered panel with metadata.
@@ -96,9 +98,9 @@ export function discoverPanels(): DiscoveredPanel[] {
  * Auto-discover and register all panels.
  * Call this during app initialization.
  */
-export function autoRegisterPanels(
+export async function autoRegisterPanels(
   options: AutoDiscoveryOptions = {}
-): DiscoveryResult {
+): Promise<DiscoveryResult> {
   const { filterContexts, verbose = false } = options;
   const startTime = performance.now();
 
@@ -140,8 +142,15 @@ export function autoRegisterPanels(
         continue;
       }
 
-      // Register the panel via catalog-aware bridge
-      registerBuiltinPanel(panel.definition);
+      // Register the panel via the plugin runtime
+      await registerPluginDefinition({
+        id: panel.definition.id,
+        family: 'workspace-panel',
+        origin: 'builtin',
+        source: 'source',
+        plugin: panel.definition,
+        canDisable: false,
+      });
       registered.push(panel);
 
       if (verbose) {

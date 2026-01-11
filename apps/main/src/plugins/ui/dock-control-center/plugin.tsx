@@ -6,6 +6,7 @@
  */
 
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@lib/plugins/controlCenterPlugin';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import { ControlCenterDock } from '@features/controlCenter/components/ControlCenterDock';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
@@ -70,6 +71,12 @@ export const plugin: ControlCenterPlugin = {
 };
 
 export async function registerDockControlCenter(): Promise<void> {
-  const { controlCenterRegistry } = await import('@lib/plugins/controlCenterPlugin');
-  controlCenterRegistry.register(manifest, plugin);
+  await registerPluginDefinition({
+    id: manifest.id,
+    family: 'control-center',
+    origin: 'builtin',
+    source: 'source',
+    plugin: { manifest, plugin },
+    canDisable: false,
+  });
 }

@@ -8,13 +8,8 @@ import type {
   ComicPanelLayout,
 } from '@features/scene';
 
-import type {
-  ExtendedPluginMetadata,
-  PluginCapabilityHints,
-} from './pluginSystem';
 import type { PluginManifest } from './types';
 import { type UnifiedPluginOrigin } from './types';
-import { registerCatalogMetadata, unregisterCatalogMetadata } from './catalogRegistration';
 
 /**
  * Additional metadata describing a scene view plugin.
@@ -71,54 +66,14 @@ class SceneViewRegistry {
     if (manifest.sceneView.default) {
       this.defaultId = viewId;
     }
-
-    // Resolve origin and compute canDisable
-    const origin = options.origin ?? 'builtin';
-    const canDisable = origin !== 'builtin';
-
-    // Build dependency hints based on permissions
-    const capabilities: PluginCapabilityHints = { addsUIOverlay: true };
-    const providesFeatures = ['ui-overlay', 'scene-view'];
-    const consumesFeatures = ['workspace'];
-
-    if (manifest.permissions?.includes('read:session')) {
-      consumesFeatures.push('game');
-    }
-
-    // Register in unified plugin catalog
-    const metadata: ExtendedPluginMetadata<'scene-view'> = {
-      id: manifest.id,
-      name: manifest.name,
-      family: 'scene-view',
-      origin,
-      activationState: 'active',
-      canDisable,
-      version: manifest.version,
-      description: manifest.description,
-      author: manifest.author,
-      tags: manifest.tags,
-      sceneViewId: manifest.sceneView.id,
-      surfaces: manifest.sceneView.surfaces,
-      default: manifest.sceneView.default,
-      icon: manifest.icon,
-      capabilities,
-      providesFeatures,
-      consumesFeatures,
-    };
-    void registerCatalogMetadata(metadata, 'SceneViewRegistry');
-
+    void options;
     console.info(`[SceneViewRegistry] Registered scene view "${viewId}"`);
   }
 
   unregister(id: string) {
-    const entry = this.registry.get(id);
     if (this.registry.delete(id)) {
       if (this.defaultId === id) {
         this.defaultId = null;
-      }
-      // Also unregister from unified catalog
-      if (entry) {
-        void unregisterCatalogMetadata(entry.manifest.id);
       }
       console.info(`[SceneViewRegistry] Unregistered scene view "${id}"`);
     }

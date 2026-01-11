@@ -8,21 +8,31 @@
  * which provides better control over initialization timing and testability.
  */
 
-import { brainToolRegistry } from './types';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
 import { builtInBrainTools } from '../plugins';
+
+import { brainToolRegistry } from './types';
 
 /**
  * Register all brain tools
  *
  * This should be called once during application initialization.
  */
-export function registerBrainTools(): void {
+export async function registerBrainTools(): Promise<void> {
   // Register built-in tools from the plugins folder
-  builtInBrainTools.forEach(tool => {
+  for (const tool of builtInBrainTools) {
     if (!brainToolRegistry.has(tool.id)) {
-      brainToolRegistry.register(tool);
+      await registerPluginDefinition({
+        id: tool.id,
+        family: 'brain-tool',
+        origin: 'builtin',
+        source: 'source',
+        plugin: tool,
+        canDisable: false,
+      });
     }
-  });
+  }
 
-  console.log(`✓ Registered ${brainToolRegistry.size} brain tool(s)`);
+  console.log(`[BrainTools] Registered ${brainToolRegistry.size} brain tool(s)`);
 }

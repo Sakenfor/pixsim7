@@ -5,9 +5,14 @@
  * Can analyze images/videos and suggest relevant tags.
  */
 
-import { useState } from 'react';
-import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
+/* eslint-disable react-refresh/only-export-components */
+
 import { Button } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+
+import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
 
 /**
  * AI tagging assistant component
@@ -162,9 +167,7 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
 /**
  * Register the AI tagging tool
  */
-export function registerAITaggingTool() {
-  const { galleryToolRegistry } = require('../../lib/gallery/types');
-
+export async function registerAITaggingTool(): Promise<void> {
   const aiTaggingTool: GalleryToolPlugin = {
     id: 'ai-tagging',
     name: 'AI Tagging Assistant',
@@ -178,5 +181,11 @@ export function registerAITaggingTool() {
     render: (context) => <AITaggingTool context={context} />,
   };
 
-  galleryToolRegistry.register(aiTaggingTool);
+  await registerPluginDefinition({
+    id: aiTaggingTool.id,
+    family: 'gallery-tool',
+    origin: 'plugin-dir',
+    source: 'sandbox',
+    plugin: aiTaggingTool,
+  });
 }

@@ -1,5 +1,13 @@
 import type { ComponentType } from 'react';
 
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
+import { debugFlags } from '@lib/utils/debugFlags';
+
+import { arcNodeTypeRegistry } from '../nodeTypes/arcRegistry';
+import type { NodeTypeDefinition, NodeTypeRegistry } from '../nodeTypes/registry';
+import { sceneNodeTypeRegistry } from '../nodeTypes/sceneRegistry';
+
 import {
   arcNodeRendererRegistry,
   sceneNodeRendererRegistry,
@@ -7,12 +15,6 @@ import {
   type NodeRendererRegistry,
   type NodeRendererProps,
 } from './nodeRendererRegistry';
-import { arcNodeTypeRegistry } from '../nodeTypes/arcRegistry';
-import { sceneNodeTypeRegistry } from '../nodeTypes/sceneRegistry';
-import type { NodeTypeDefinition, NodeTypeRegistry } from '../nodeTypes/registry';
-import { registerRenderer } from '@lib/plugins/registryBridge';
-import { pluginCatalog } from '@lib/plugins/pluginSystem';
-import { debugFlags } from '@lib/utils/debugFlags';
 
 const placeholderRenderer: ComponentType<NodeRendererProps<unknown>> = () => null;
 
@@ -69,7 +71,7 @@ function buildRendererMap(): Map<string, () => Promise<ComponentType<NodeRendere
   return rendererMap;
 }
 
-function registerRenderersFromRegistry(
+async function registerRenderersFromRegistry(
   registry: NodeTypeRegistry<NodeTypeDefinition>,
   rendererRegistry: NodeRendererRegistry<unknown>,
   options: {
@@ -83,7 +85,7 @@ function registerRenderersFromRegistry(
   const rendererMap = buildRendererMap();
 
   if (verbose) {
-    console.log(`dY"▌ Discovered ${rendererMap.size} renderer components`);
+    console.log(`[RendererAutoRegister] Discovered ${rendererMap.size} renderer components`);
   }
 
   const nodeTypes = registry.getAll();
@@ -102,7 +104,7 @@ function registerRenderersFromRegistry(
     if (rendererRegistry.has(nodeType.id)) {
       skippedCount++;
       if (verbose) {
-        debugFlags.log('registry', `  Г?-Л,?  Skipped ${nodeType.id} (renderer already registered)`);
+        debugFlags.log('registry', `  Skipped ${nodeType.id} (renderer already registered)`);
       }
       continue;
     }
@@ -110,7 +112,7 @@ function registerRenderersFromRegistry(
     const rendererLoader = rendererMap.get(rendererName);
 
     if (!rendererLoader) {
-      missingRenderers.push(`${nodeType.id} Г+' ${rendererName}`);
+      missingRenderers.push(`${nodeType.id} -> ${rendererName}`);
 
       if (strict) {
         throw new Error(
@@ -120,10 +122,7 @@ function registerRenderersFromRegistry(
       }
 
       if (verbose) {
-        console.warn(
-          `  Гs Л,?  Missing renderer: ${nodeType.id} expects "${rendererName}" ` +
-          `(file not found in /src/components/graph/)`
-        );
+        console.warn(`  Missing renderer: ${nodeType.id} expects "${rendererName}" (file not found in /src/components/graph/)`);
       }
       continue;
     }
@@ -132,16 +131,19 @@ function registerRenderersFromRegistry(
       const nodeTypeMetadata = pluginCatalog.get(nodeType.id);
       const origin = nodeTypeMetadata?.origin || 'builtin';
 
-      registerRenderer(
-        {
+      await registerPluginDefinition({
+        id: `renderer:${nodeType.id}`,
+        family: 'renderer',
+        origin,
+        source: 'source',
+        plugin: {
           nodeType: nodeType.id,
           component: placeholderRenderer,
           loader: rendererLoader as NodeRenderer['loader'],
           defaultSize: { width: 220, height: 200 },
           preloadPriority: nodeType.preloadPriority,
         },
-        { origin }
-      );
+      });
     } else {
       const renderer: NodeRenderer<unknown> = {
         nodeType: nodeType.id,
@@ -156,21 +158,15 @@ function registerRenderersFromRegistry(
     registeredCount++;
 
     if (verbose) {
-      debugFlags.log('registry', `  Гo" Auto-registered renderer for "${nodeType.id}" Г+' ${rendererName}`);
+      debugFlags.log('registry', `  Auto-registered renderer for "${nodeType.id}" -> ${rendererName}`);
     }
   }
 
   if (verbose) {
-    console.log(
-      `Гo" Auto-registered ${registeredCount} renderer(s) from node types ` +
-      `(skipped ${skippedCount} already registered)`
-    );
+    console.log(`[RendererAutoRegister] Auto-registered ${registeredCount} renderer(s) from node types (skipped ${skippedCount} already registered)`);
 
     if (missingRenderers.length > 0) {
-      console.warn(
-        `Гs Л,?  Warning: ${missingRenderers.length} node type(s) specify rendererComponent but ` +
-        `the renderer file was not found:\n  ${missingRenderers.join('\n  ')}`
-      );
+      console.warn(`[RendererAutoRegister] Warning: ${missingRenderers.length} node type(s) specify rendererComponent but the renderer file was not found:\n  ${missingRenderers.join('\n  ')}`);
     }
   }
 
@@ -181,18 +177,18 @@ function registerRenderersFromRegistry(
   };
 }
 
-export function registerRenderersFromNodeTypes(options: {
+export async function registerRenderersFromNodeTypes(options: {
   verbose?: boolean;
   strict?: boolean;
 } = {}) {
-  return registerRenderersFromRegistry(sceneNodeTypeRegistry, sceneNodeRendererRegistry, options);
+  return await registerRenderersFromRegistry(sceneNodeTypeRegistry, sceneNodeRendererRegistry, options);
 }
 
-export function registerArcRenderersFromNodeTypes(options: {
+export async function registerArcRenderersFromNodeTypes(options: {
   verbose?: boolean;
   strict?: boolean;
 } = {}) {
-  return registerRenderersFromRegistry(arcNodeTypeRegistry, arcNodeRendererRegistry, {
+  return await registerRenderersFromRegistry(arcNodeTypeRegistry, arcNodeRendererRegistry, {
     ...options,
     trackInCatalog: false,
   });

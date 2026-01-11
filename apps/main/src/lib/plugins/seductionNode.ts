@@ -18,7 +18,7 @@
  * ```
  */
 
-import { nodeTypeRegistry } from '@lib/registries';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 /**
  * Seduction stage definition
@@ -105,18 +105,18 @@ export const DEFAULT_SEDUCTION_STAGES: SeductionStage[] = [
  */
 let seductionNodeRegistered = false;
 
-export function registerSeductionNode() {
+export async function registerSeductionNode(): Promise<void> {
   if (seductionNodeRegistered) {
     return;
   }
   seductionNodeRegistered = true;
 
-  nodeTypeRegistry.register<SeductionNodeData>({
+  const nodeDefinition = {
     // Identity
     id: 'seduction',
     name: 'Seduction',
     description: 'Multi-stage NPC seduction with affinity checks',
-    icon: '💕',
+    icon: 'heart',
     category: 'custom',
     scope: 'scene', // Scene-level interaction node
 
@@ -162,9 +162,17 @@ export function registerSeductionNode() {
 
       return null; // Valid
     },
+  };
+
+  await registerPluginDefinition({
+    id: nodeDefinition.id,
+    family: 'node-type',
+    origin: 'plugin-dir',
+    source: 'sandbox',
+    plugin: nodeDefinition,
   });
 
-  console.log('✓ Registered seduction node type');
+  console.log('[NodeType] Registered seduction node type');
 }
 
 /**
@@ -256,7 +264,7 @@ export function registerSeductionNode() {
  *
  * The pattern is the same:
  * 1. Define your data structure
- * 2. Register with nodeTypeRegistry
+ * 2. Register with registerPluginDefinition
  * 3. Create an editor component
  * 4. Implement runtime logic in your game engine
  */

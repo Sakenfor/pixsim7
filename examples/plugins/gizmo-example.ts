@@ -11,7 +11,7 @@
  * 4. Call registerGizmoSurface() from your plugin initialization
  */
 
-import { registerGizmoSurface } from '../plugins/registryBridge';
+import { registerPluginDefinition } from '../../apps/main/src/lib/plugins/pluginRuntime';
 import type { GizmoSurfaceDefinition } from './surfaceRegistry';
 
 // Import your custom gizmo component
@@ -48,10 +48,13 @@ const exampleGizmoSurface: GizmoSurfaceDefinition = {
  *
  * This should be called from your plugin initialization function.
  */
-export function registerMyCustomGizmoSurface(): void {
-  // Register with plugin metadata
-  registerGizmoSurface(exampleGizmoSurface, {
+export async function registerMyCustomGizmoSurface(): Promise<void> {
+  await registerPluginDefinition({
+    id: exampleGizmoSurface.id,
+    family: 'gizmo-surface',
     origin: 'plugin-dir', // or 'ui-bundle' for dynamically loaded plugins
+    source: 'sandbox',
+    plugin: exampleGizmoSurface,
     activationState: 'active',
     canDisable: true,
     metadata: {
@@ -65,11 +68,7 @@ export function registerMyCustomGizmoSurface(): void {
 
 /**
  * Alternatively, for built-in gizmo surfaces that ship with the app,
- * you can use registerBuiltinGizmoSurface:
- *
- * import { registerBuiltinGizmoSurface } from '../plugins/registryBridge';
- *
- * registerBuiltinGizmoSurface(exampleGizmoSurface);
+ * call registerPluginDefinition with origin: 'builtin'.
  */
 
 // ============================================================================

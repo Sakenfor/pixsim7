@@ -12,6 +12,9 @@ export { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 // Plugin loader
 export * from './loader';
 
+// Plugin kernel
+export { initializePluginKernel } from './pluginKernel';
+
 // Manifest discovery + bundle registration
 export * from './manifestLoader';
 export * from './bundleRegistrar';
