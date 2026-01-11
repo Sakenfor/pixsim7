@@ -7,15 +7,17 @@
  * @module graph/refs/objectLinks
  */
 
-/* eslint-disable import/no-unresolved -- @shared/types is a Vite alias not in tsconfig paths */
+ 
 
 import {
-  type TemplateRef,
-  type TemplateKind,
-  type RuntimeKind,
-  type SyncDirection,
   createMappingId,
   createTemplateRefKey,
+} from '@pixsim7/shared.logic-core/links';
+import type {
+  TemplateRef,
+  TemplateKind,
+  RuntimeKind,
+  SyncDirection,
 } from '@shared/types';
 
 import { isUUID } from './graphRefs';
@@ -255,15 +257,12 @@ export function buildRuntimeLinkMap(
 }
 
 // ============================================================================
-// Re-exports from @shared/types
+// Re-exports from @shared/types and @pixsim7/shared.logic-core/links
 // ============================================================================
 
+export type { TemplateRef, TemplateKind, RuntimeKind, SyncDirection } from '@shared/types';
 export {
-  type TemplateRef,
-  type TemplateKind,
-  type RuntimeKind,
-  type SyncDirection,
   createMappingId,
   createTemplateRefKey,
   parseTemplateRefKey,
-} from '@shared/types';
+} from '@pixsim7/shared.logic-core/links';

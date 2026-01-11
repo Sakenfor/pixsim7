@@ -138,7 +138,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     asset: response.asset
       ? { id: response.asset.id, type: response.asset.type, meta: response.asset.meta }
       : null,
-    assetId: response.asset?.id ?? (response as { asset_id?: number | null }).asset_id ?? null,
+    assetId: response.asset?.id ?? null,
     user: response.user
       ? { id: response.user.id, type: response.user.type, meta: response.user.meta }
       : null,
