@@ -13,7 +13,7 @@ from typing import List, Optional
 
 import pixsim_logging
 
-from .types_unified import ActionBlock, ActionSelectionContext, ContentRating
+from .types_unified import ActionBlock, ActionSelectionContext, BranchIntent, ContentRating
 from .ontology import OntologyService, get_ontology
 
 logger = pixsim_logging.get_logger()
@@ -146,7 +146,7 @@ class BranchIntentFilter(BlockFilter):
             ctx_intent = ctx_intent.value
 
         # MAINTAIN intent can use any block except specific escalate/cool_down
-        if ctx_intent == "maintain":
+        if ctx_intent == BranchIntent.MAINTAIN.value:
             return True
 
         block_intent = block.tags.branch_type

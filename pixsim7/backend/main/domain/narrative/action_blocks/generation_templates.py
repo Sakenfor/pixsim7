@@ -43,7 +43,7 @@ class GenerationTemplate:
     template_prompt: str
     required_params: List[str]
     optional_params: List[str]
-    content_rating_max: str = "intimate"
+    content_rating_max: str = "mature_implied"
 
     def fill(self, **kwargs) -> str:
         """Fill template with provided parameters."""
@@ -282,7 +282,7 @@ class TemplateGenerator:
                 "pose": "standing_provocative",
                 "intimacy_level": "very_intimate",
                 "mood": "intense",
-                "content_rating": "intimate",
+                "content_rating": "mature_implied",
                 "requires_age_verification": False,
                 "intensity": 9,
                 "branch_type": "maintain",

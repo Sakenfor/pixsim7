@@ -33,7 +33,7 @@ NarrativeProgramKind = Literal[
     "mini_game"
 ]
 
-ContentRating = Literal["general", "sfw", "romantic", "mature_implied", "restricted"]
+ContentRating = Literal["sfw", "romantic", "mature_implied", "restricted"]
 
 
 # ============================================================================

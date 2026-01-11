@@ -114,7 +114,7 @@ def generate_snake_variation():
             "pose": "standing_wrapped",
             "intimacy_level": "intimate",
             "mood": "tension",
-            "content_rating": "suggestive",
+            "content_rating": "romantic",
             "intensity": 7,
             "custom": ["creature", "snake", "coiling"]
         },

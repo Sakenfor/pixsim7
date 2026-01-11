@@ -108,7 +108,7 @@ class PackageLoader:
             version=package_data['package_info'].get('version', '1.0.0'),
             author=package_data['package_info'].get('author', 'unknown'),
             description=package_data['package_info'].get('description', ''),
-            content_rating_max=package_data['package_info'].get('content_rating_max', 'general'),
+            content_rating_max=package_data['package_info'].get('content_rating_max', 'sfw'),
             loaded_at=datetime.now(),
             file_path=str(package_path)
         )
@@ -176,7 +176,7 @@ class PackageLoader:
                 camera_template=template_data.get('camera_template'),
                 consistency_defaults=template_data.get('consistency_defaults'),
                 supports_creatures=template_data.get('supports_creatures'),
-                content_rating_range=template_data.get('content_rating_range', ('general', 'explicit'))
+                content_rating_range=template_data.get('content_rating_range', ('sfw', 'restricted'))
             )
 
             # Store in custom templates
@@ -319,7 +319,7 @@ class PackageLoader:
                 "version": metadata.get('version', '1.0.0') if metadata else '1.0.0',
                 "author": metadata.get('author', 'Generated') if metadata else 'Generated',
                 "description": metadata.get('description', '') if metadata else '',
-                "content_rating_max": metadata.get('content_rating_max', 'general') if metadata else 'general',
+                "content_rating_max": metadata.get('content_rating_max', 'sfw') if metadata else 'sfw',
                 "created_date": datetime.now().isoformat()
             },
             "creatures": creatures or {},
@@ -346,7 +346,7 @@ def create_example_package():
             "version": "1.0.0",
             "author": "System",
             "description": "Example creature interactions",
-            "content_rating_max": "suggestive"
+            "content_rating_max": "romantic"
         },
         "creatures": {
             "shadow_beast": {
@@ -373,7 +373,7 @@ def create_example_package():
                     "creature": "shadow_beast",
                     "mood": "mysterious",
                     "intensity": 5,
-                    "content_rating": "suggestive"
+                    "content_rating": "romantic"
                 },
                 "cameraMovement": {
                     "type": "rotation",

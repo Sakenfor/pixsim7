@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "author": "Claude Sonnet + User Example",
     "description": "Vampire seduction and hypnotic interaction blocks",
-    "content_rating_max": "intimate",
+    "content_rating_max": "mature_implied",
     "created_date": "2024-01-15"
   },
   "creatures": {
@@ -69,7 +69,7 @@
         "pose": "standing_mesmerized",
         "mood": "hypnotic",
         "intimacy_level": "intimate",
-        "content_rating": "intimate",
+        "content_rating": "mature_implied",
         "intensity": 7,
         "custom": ["mirror_scene", "mental_influence", "no_reflection"]
       },
@@ -111,7 +111,7 @@
         "pose": "standing_entranced",
         "mood": "intense",
         "intimacy_level": "very_intimate",
-        "content_rating": "intimate",
+        "content_rating": "mature_implied",
         "intensity": 9,
         "custom": ["hypnotic_control", "blood_focus", "trance_state"]
       },

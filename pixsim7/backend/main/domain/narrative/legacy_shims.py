@@ -141,7 +141,7 @@ async def execute_legacy_action_blocks_as_program(
         edges=[],
         entry_node_id="action_blocks",
         metadata={
-            "contentRating": "general",
+            "contentRating": "sfw",
             "npcIds": [npc_id],
             "createdAt": datetime.utcnow().isoformat(),
             "source": "legacy_wrapper"

@@ -322,7 +322,7 @@ def create_simple_dialogue_program(
         edges=edges,
         entry_node_id=nodes[0].id if nodes else "start",
         metadata={
-            "contentRating": "general",
+            "contentRating": "sfw",
             "npcIds": [npc_id],
             "createdAt": datetime.utcnow().isoformat(),
             "source": "helper_function"
@@ -396,7 +396,7 @@ def create_simple_choice_program(
         edges=edges,
         entry_node_id="choice",
         metadata={
-            "contentRating": "general",
+            "contentRating": "sfw",
             "createdAt": datetime.utcnow().isoformat(),
             "source": "helper_function"
         }
@@ -449,7 +449,7 @@ def create_behavior_dialogue_program(
         edges=[],
         entry_node_id="dialogue",
         metadata={
-            "contentRating": "general",
+            "contentRating": "sfw",
             "npcIds": [npc_id],
             "behaviorId": behavior_id,
             "mood": mood,
@@ -506,7 +506,7 @@ def wrap_legacy_dialogue_request_as_program(
         edges=[],
         entry_node_id="dialogue",
         metadata={
-            "contentRating": "general",
+            "contentRating": "sfw",
             "npcIds": [npc_id],
             "createdAt": datetime.utcnow().isoformat(),
             "source": "legacy_wrapper"
