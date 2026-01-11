@@ -14,10 +14,40 @@ export interface ReuploadAssetRequest {
 export type ListAssetsQuery =
   ApiOperations['list_assets_api_v1_assets_get']['parameters']['query'];
 
+export interface AssetSearchRequest {
+  filters?: Record<string, unknown>;
+  tag?: string;
+  q?: string;
+  include_archived?: boolean;
+  searchable?: boolean | null;
+  created_from?: string | null;
+  created_to?: string | null;
+  min_width?: number | null;
+  max_width?: number | null;
+  min_height?: number | null;
+  max_height?: number | null;
+  content_domain?: string | null;
+  content_category?: string | null;
+  content_rating?: string | null;
+  provider_status?: string | null;
+  sync_status?: string | null;
+  source_generation_id?: number | null;
+  operation_type?: string | null;
+  has_parent?: boolean | null;
+  has_children?: boolean | null;
+  sort_by?: 'created_at' | 'file_size_bytes' | null;
+  sort_dir?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+  cursor?: string | null;
+}
+
 export interface FilterDefinition {
   key: string;
   type: 'enum' | 'boolean' | 'search' | 'autocomplete';
   label?: string;
+  description?: string;
+  depends_on?: Record<string, string[]>;
 }
 
 export interface FilterOptionValue {
@@ -31,10 +61,14 @@ export interface FilterMetadataResponse {
   options: Record<string, FilterOptionValue[]>;
 }
 
-export interface FilterMetadataQueryOptions {
+export interface FilterOptionsRequest {
+  context?: Record<string, unknown>;
   includeCounts?: boolean;
   include?: string[];
+  limit?: number;
 }
+
+export type FilterMetadataQueryOptions = FilterOptionsRequest;
 
 export function getAssetDownloadUrl(asset: AssetResponse): string {
   return asset.remote_url || asset.file_url || `/assets/${asset.id}/file`;
@@ -42,8 +76,12 @@ export function getAssetDownloadUrl(asset: AssetResponse): string {
 
 export function createAssetsApi(client: PixSimApiClient) {
   return {
-    async listAssets(query?: ListAssetsQuery): Promise<AssetListResponse> {
-      return client.get<AssetListResponse>('/assets', { params: query as any });
+    async searchAssets(request?: AssetSearchRequest): Promise<AssetListResponse> {
+      return client.post<AssetListResponse>('/assets/search', request || {});
+    },
+
+    async listAssets(query?: AssetSearchRequest): Promise<AssetListResponse> {
+      return client.post<AssetListResponse>('/assets/search', query || {});
     },
 
     async getAsset(assetId: number): Promise<AssetResponse> {
@@ -79,16 +117,20 @@ export function createAssetsApi(client: PixSimApiClient) {
     },
 
     async getFilterMetadata(options?: FilterMetadataQueryOptions): Promise<FilterMetadataResponse> {
-      const params: Record<string, unknown> = {};
+      const payload: Record<string, unknown> = {};
       if (options?.includeCounts) {
-        params.include_counts = true;
+        payload.include_counts = true;
       }
       if (options?.include && options.include.length > 0) {
-        params.include = options.include;
+        payload.include = options.include;
       }
-      return client.get<FilterMetadataResponse>('/assets/filter-metadata', {
-        params: Object.keys(params).length ? params : undefined,
-      });
+      if (options?.context && Object.keys(options.context).length > 0) {
+        payload.context = options.context;
+      }
+      if (options?.limit) {
+        payload.limit = options.limit;
+      }
+      return client.post<FilterMetadataResponse>('/assets/filter-options', payload);
     },
 
     /**

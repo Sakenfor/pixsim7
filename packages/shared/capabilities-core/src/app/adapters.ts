@@ -39,6 +39,7 @@ export function toAppActionCapability(action: ActionDefinition): AppActionCapabi
     enabled: action.enabled,
     visibility: action.visibility,
     contexts: action.contexts,
+    contextMenu: action.contextMenu,
     execute: action.execute,
   };
 }

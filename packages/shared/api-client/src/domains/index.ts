@@ -42,6 +42,7 @@ export type {
   ExtractFrameRequest,
   ReuploadAssetRequest,
   ListAssetsQuery,
+  AssetSearchRequest,
   FilterDefinition,
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
