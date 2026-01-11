@@ -68,12 +68,16 @@ export * from './generation'
 // ===================
 // Node Type Registry
 // ===================
+// NOTE: Node type registry and registrars moved to @pixsim7/shared.graph-core
+// Import from there for NodeTypeRegistry, registerBuiltinNodeTypes, etc.
+export type {
+  NodeTypeDefinition,
+  NodeTypeRegistryOptions,
+  PortDefinition,
+  PortConfig,
+} from './nodeTypeRegistry';
 
-export * from './nodeTypeRegistry'
-export * from './builtinNodeTypes'
-export * from './arcNodeTypes'
-export * from './npcResponseNode'
-export * from './intimacyNodeTypes'
+// NPC Zones (types only)
 export * from './npcZones'
 export * from './npcZoneTracking'
 
@@ -106,6 +110,11 @@ export * from './intimacy'
 // ===================
 
 export * from './narrative'
+
+// ===================
+// Content Rating Utilities
+// ===================
+
 
 // ===================
 // Prompt Types
@@ -172,6 +181,12 @@ export * from './worldConfig'
 
 // Namespace export for organized access
 export * as WorldConfig from './worldConfig'
+
+// ===================
+// Upload Context Schema (Generated)
+// ===================
+
+export * from './upload-context.generated'
 
 // ===================
 // Backend OpenAPI Contract (Generated)

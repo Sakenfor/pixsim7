@@ -5,7 +5,7 @@
  */
 
 import { nodeTypeRegistry, type NodeTypeDefinition } from './nodeTypeRegistry';
-import type { NpcZoneConfiguration } from './npcZones';
+import type { NpcZoneConfiguration } from '@pixsim7/shared.types';
 
 // ============================================================================
 // NPC Response Data Structure
@@ -131,7 +131,7 @@ export interface NpcResponseMetadata {
       predictive: boolean;
       /** Cache size */
       cacheSize: number;
-      /** Progressive loading (low → high quality) */
+      /** Progressive loading (low -> high quality) */
       progressive: boolean;
       /** Pre-generate common states on scene load */
       preGenerate: boolean;
