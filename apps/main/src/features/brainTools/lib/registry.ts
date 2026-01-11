@@ -1,10 +1,10 @@
 /**
  * Brain Tool Registry
  *
- * Central registry for brain tools used in NpcBrainLab.
+ * @deprecated Use `brainToolSelectors` from '@lib/plugins/catalogSelectors' instead.
+ * The PluginCatalog is now the source of truth for brain tools.
  *
- * NOTE: This module no longer auto-registers tools on import.
- * Call registerBrainTools() explicitly during app initialization.
+ * Registration is now done via `registerBrainTools()` using pluginRuntime.
  *
  * @example
  * // In main.tsx or app initialization:
@@ -12,7 +12,10 @@
  * registerBrainTools();
  */
 
-// Re-export registry and types
+// Re-export catalog selectors as the new API
+export { brainToolSelectors } from '@lib/plugins/catalogSelectors';
+
+// Legacy re-export for backwards compatibility (deprecated)
 export { brainToolRegistry } from './types';
 export type { BrainToolPlugin, BrainToolContext, BrainToolCategory } from './types';
 

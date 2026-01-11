@@ -1,10 +1,10 @@
 /**
  * World Tool Plugin Registry
  *
- * Central registry for world tools used in Game2D.
+ * @deprecated Use `worldToolSelectors` from '@lib/plugins/catalogSelectors' instead.
+ * The PluginCatalog is now the source of truth for world tools.
  *
- * NOTE: This module no longer auto-registers tools on import.
- * Call registerWorldTools() explicitly during app initialization.
+ * Registration is now done via `registerWorldTools()` using pluginRuntime.
  *
  * @example
  * // In main.tsx or app initialization:
@@ -12,7 +12,10 @@
  * registerWorldTools();
  */
 
-// Export the singleton registry
+// Re-export catalog selectors as the new API
+export { worldToolSelectors } from '@lib/plugins/catalogSelectors';
+
+// Legacy re-export for backwards compatibility (deprecated)
 export { worldToolRegistry } from './types';
 export type { WorldToolPlugin, WorldToolContext, WorldToolCategory } from './types';
 

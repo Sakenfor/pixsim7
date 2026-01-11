@@ -3,7 +3,7 @@ import { lazy } from 'react';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
-import { worldToolRegistry } from '@features/worldTools';
+import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools';
 
 import type { Module } from '@app/modules/types';
 
@@ -48,9 +48,7 @@ export const gameModule: Module = {
   name: 'Game World',
 
   async initialize() {
-    // Importing worldToolRegistry ensures built-in world tools are registered.
-    // The registry auto-registers built-in tools on import.
-    void worldToolRegistry; // keep import used
+    await registerWorldTools();
   },
 
   page: {

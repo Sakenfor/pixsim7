@@ -7,7 +7,8 @@
  * @example
  * ```typescript
  * // Import from barrel
- * import { WorldToolsPanel, WorldVisualRolesPanel, worldToolRegistry } from '@features/worldTools';
+ * import { WorldToolsPanel, WorldVisualRolesPanel } from '@features/worldTools';
+ * import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
  *
  * // Or import specific modules
  * import { WorldToolContext, WorldToolPlugin } from '@features/worldTools/lib/types';

@@ -20,12 +20,42 @@
  * @see EditorContext.editor.primaryView for how this integrates with the editor context
  */
 
+import { ScenePlayer } from '@pixsim7/game.components';
+import {
+  assignNpcsToSlots,
+  parseHotspotAction,
+  deriveScenePlaybackPhase,
+  getTurnDeltaLabel,
+  type NpcSlotAssignment,
+  type HotspotAction,
+  type ScenePlaybackPhase,
+} from '@pixsim7/game.engine';
+import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+
+import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
-import { ScenePlayer } from '@pixsim7/game.components';
-import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
+
+import { getAsset, fromAssetResponse, type AssetModel } from '@features/assets';
+import {
+  RegionalHudLayout,
+  HudLayoutEditor,
+  HudCustomizationButton,
+  HudProfileSwitcherButton,
+  HudRenderer,
+  HudRendererToggle,
+  HudLayoutSwitcher,
+} from '@features/hud';
 import { useWorkspaceStore } from '@features/workspace';
+import type { WorldToolContext } from '@features/worldTools';
+import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferences';
+
+import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
+
+import { SimpleDialogue } from '../components/game/DialogueUI';
+import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
+import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import {
   listGameLocations,
   getGameLocation,
@@ -43,55 +73,27 @@ import {
   type GameLocationDetail,
   type GameHotspotDTO,
   type NpcExpressionDTO,
-  type NpcPresenceDTO,
   type GameWorldSummary,
-  type NpcSlot2d,
 } from '../lib/api/game';
-import { getAsset, fromAssetResponse, type AssetModel } from '@features/assets';
-import {
-  assignNpcsToSlots,
-  parseHotspotAction,
-  deriveScenePlaybackPhase,
-  getNpcRelationshipState,
-  getTurnDeltaLabel,
-  type NpcSlotAssignment,
-  type HotspotAction,
-  type ScenePlaybackPhase,
-} from '@pixsim7/game.engine';
-import { saveWorldSession } from '../lib/game/session';
+
+import { hasEnabledInteractions } from '../lib/game/interactions/utils';
 import {
   useGameRuntime,
   useActorPresence,
   isTurnBasedMode,
   getTurnDelta,
   worldTimeToSeconds,
-  gameHooksRegistry,
   registerBuiltinGamePlugins,
   unregisterBuiltinGamePlugins,
 } from '../lib/game/runtime';
-import { hasEnabledInteractions } from '../lib/game/interactions/utils';
+import { saveWorldSession } from '../lib/game/session';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
-import { SimpleDialogue } from '../components/game/DialogueUI';
-import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
-import { WorldToolsPanel } from '@features/worldTools';
-import {
-  RegionalHudLayout,
-  HudLayoutEditor,
-  HudCustomizationButton,
-  HudProfileSwitcherButton,
-  HudRenderer,
-  HudRendererToggle,
-  HudLayoutSwitcher,
-} from '@features/hud';
-import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
-import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
-import { worldToolRegistry, type WorldToolContext } from '@features/worldTools';
 import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
-import { applyPlayerPreferences, getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferences';
+
 
 // WorldTime type for display (kept for backward compatibility with UI components)
 interface WorldTime {
@@ -116,8 +118,6 @@ export function Game2D() {
     enterRoom: runtimeEnterRoom,
     enterScene: runtimeEnterScene,
     enterConversation: runtimeEnterConversation,
-    exitToRoom,
-    error: runtimeError,
   } = runtime;
 
   // Derive worldTime in old format for backward compatibility
@@ -178,11 +178,7 @@ export function Game2D() {
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
 
   // Actor presence via unified hook (NPCs, players, agents at location)
-  const {
-    npcs: locationActors,
-    npcPresenceDTOs: locationNpcs,  // Legacy format for assignNpcsToSlots etc.
-    players: locationPlayers,
-  } = useActorPresence({
+  const { npcPresenceDTOs: locationNpcs } = useActorPresence({
     worldId: selectedWorldId,
     locationId: selectedLocationId,
     worldTimeSeconds: runtimeState.worldTimeSeconds,
@@ -201,9 +197,6 @@ export function Game2D() {
   const [hudLayoutOverride, setHudLayoutOverride] = useState<string | null>(null); // Task 58.4: Temporary HUD override
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
-
-  // Combine runtime error with local error
-  const displayError = error || runtimeError;
 
   // Apply per-world theme when world changes
   useWorldTheme(worldDetail);
@@ -526,7 +519,7 @@ export function Game2D() {
 
   // Get visible world tools based on current context and view mode
   const visibleWorldTools = useMemo(() => {
-    const contextFilteredTools = worldToolRegistry.getVisible(worldToolContext);
+    const contextFilteredTools = worldToolSelectors.getVisible(worldToolContext);
 
     // Apply player view mode override if exists
     const effectiveViewMode = selectedWorldId

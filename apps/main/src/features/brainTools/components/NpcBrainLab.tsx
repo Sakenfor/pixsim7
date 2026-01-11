@@ -1,15 +1,17 @@
+import { parseNpcKey } from '@pixsim7/game.engine';
+import type { BrainFace } from '@pixsim7/scene.shapes';
+import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Panel, Button, Select } from '@pixsim7/shared.ui';
-import { parseNpcKey } from '@pixsim7/game.engine';
+
+import { listGameSessions, type GameSessionSummary } from '@lib/api/game';
 import type { BrainState } from '@lib/core/types';
-import type { BrainFace } from '@pixsim7/scene.shapes';
 import { usePixSim7Core } from '@lib/game/usePixSim7Core';
-import { getGameSession, listGameSessions, type GameSessionSummary } from '@lib/api/game';
-import { BrainShape } from '@/components/shapes/BrainShape';
+import { brainToolSelectors } from '@lib/plugins/catalogSelectors';
+
 import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
-import { brainToolRegistry } from '../lib/registry';
-import type { BrainToolContext } from '../lib/types';
+import { BrainShape } from '@/components/shapes/BrainShape';
+
 
 export interface NpcBrainLabProps {
   npcId?: number;
@@ -320,7 +322,7 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
                 session: session,
                 brainState: brainState,
               }}
-              tools={brainToolRegistry.getVisible({
+              tools={brainToolSelectors.getVisible({
                 npcId: selectedNpcId,
                 session: session,
                 brainState: brainState,

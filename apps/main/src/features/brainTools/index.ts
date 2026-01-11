@@ -6,7 +6,8 @@
  * @example
  * ```typescript
  * // Import from barrel
- * import { NpcBrainLab, brainToolRegistry } from '@features/brainTools';
+ * import { NpcBrainLab } from '@features/brainTools';
+ * import { brainToolSelectors } from '@lib/plugins/catalogSelectors';
  *
  * // Or import specific modules
  * import { traitsTool } from '@features/brainTools/plugins/traits';

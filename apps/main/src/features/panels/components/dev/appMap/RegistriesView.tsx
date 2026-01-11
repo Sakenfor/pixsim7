@@ -7,28 +7,26 @@
 
 import { useState, useMemo, useSyncExternalStore } from 'react';
 
-// Catalog selectors (source of truth for gallery families)
-import { galleryToolSelectors, gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
-
-// Tool registries (legacy - still used for non-gallery families)
-import { brainToolRegistry } from '@features/brainTools/lib/types';
-import { worldToolRegistry } from '@features/worldTools/lib/types';
+// Catalog selectors (source of truth for gallery/world/brain families)
+import type { Identifiable } from '@lib/core/BaseRegistry';
+import { interactionRegistry } from '@lib/game/interactions/types';
 
 // Surface registries
-import { gizmoSurfaceRegistry } from '@features/gizmos/lib/core/surfaceRegistry';
-import { mediaOverlayRegistry, type MediaOverlayTool } from '@/components/media/viewer/overlays';
 
 // Interaction registry (dynamically loaded plugin interactions)
-import { interactionRegistry } from '@lib/game/interactions/types';
 import type { InteractionPlugin, BaseInteractionConfig } from '@lib/game/interactions/types';
+import { brainToolSelectors, galleryToolSelectors, gallerySurfaceSelectors, worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 // Types
-import type { GalleryToolPlugin } from '@features/gallery/lib/core/types';
 import type { BrainToolPlugin } from '@features/brainTools/lib/types';
-import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 import type { GallerySurfaceDefinition } from '@features/gallery/lib/core/surfaceRegistry';
+import type { GalleryToolPlugin } from '@features/gallery/lib/core/types';
+import { gizmoSurfaceRegistry } from '@features/gizmos/lib/core/surfaceRegistry';
 import type { GizmoSurfaceDefinition } from '@features/gizmos/lib/core/surfaceRegistry';
-import type { Identifiable } from '@lib/core/BaseRegistry';
+import type { WorldToolPlugin } from '@features/worldTools/lib/types';
+
+import { mediaOverlayRegistry, type MediaOverlayTool } from '@/components/media/viewer/overlays';
+
 
 /**
  * Registry metadata for display
@@ -64,8 +62,8 @@ const REGISTRIES: RegistryInfo[] = [
     description: 'NPC brain analysis and debugging tools',
     icon: '🧠',
     category: 'tools',
-    getItems: () => brainToolRegistry.getAll(),
-    subscribe: (cb) => brainToolRegistry.subscribe(cb),
+    getItems: () => brainToolSelectors.getAll(),
+    subscribe: (cb) => brainToolSelectors.subscribe(cb),
     renderItem: (item) => <BrainToolItem tool={item as BrainToolPlugin} />,
   },
   {
@@ -74,8 +72,8 @@ const REGISTRIES: RegistryInfo[] = [
     description: 'Game world interaction and management tools',
     icon: '🌍',
     category: 'tools',
-    getItems: () => worldToolRegistry.getAll(),
-    subscribe: (cb) => worldToolRegistry.subscribe(cb),
+    getItems: () => worldToolSelectors.getAll(),
+    subscribe: (cb) => worldToolSelectors.subscribe(cb),
     renderItem: (item) => <WorldToolItem tool={item as WorldToolPlugin} />,
   },
   {
@@ -315,11 +313,20 @@ function RegistryItemList({
  * Summary of all registries
  */
 function RegistrySummary({ registries }: { registries: RegistryInfo[] }) {
-  // Get live counts for all registries
-  const counts = registries.map((r) => ({
-    id: r.id,
-    count: useSyncExternalStore(r.subscribe, () => r.getItems().length),
-  }));
+  // Get live counts for all registries with a single subscription
+  const counts = useSyncExternalStore(
+    (callback) => {
+      const unsubscribers = registries.map((r) => r.subscribe(callback));
+      return () => {
+        unsubscribers.forEach((unsubscribe) => unsubscribe());
+      };
+    },
+    () =>
+      registries.map((r) => ({
+        id: r.id,
+        count: r.getItems().length,
+      }))
+  );
 
   const total = counts.reduce((sum, c) => sum + c.count, 0);
 

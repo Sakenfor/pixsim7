@@ -1,19 +1,18 @@
 /**
  * World Tools Registration
  *
- * Registers all available world tools with the registry.
+ * Registers all available world tools with the plugin catalog.
  * Called once at application startup.
  *
  * This follows the same explicit registration pattern as Gallery tools,
  * which provides better control over initialization timing and testability.
  */
 
+import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 import { builtInWorldTools } from '../plugins';
-
-import { worldToolRegistry } from './types';
 
 /**
  * Register all world tools
@@ -23,7 +22,7 @@ import { worldToolRegistry } from './types';
 export async function registerWorldTools(): Promise<void> {
   // Register built-in tools from the plugins folder
   for (const tool of builtInWorldTools) {
-    if (!worldToolRegistry.has(tool.id)) {
+    if (!worldToolSelectors.has(tool.id)) {
       await registerPluginDefinition({
         id: tool.id,
         family: 'world-tool',
@@ -35,5 +34,5 @@ export async function registerWorldTools(): Promise<void> {
     }
   }
 
-  debugFlags.log('registry', `[WorldTools] Registered ${worldToolRegistry.size} world tool(s)`);
+  debugFlags.log('registry', `[WorldTools] Registered ${worldToolSelectors.getAll().length} world tool(s)`);
 }

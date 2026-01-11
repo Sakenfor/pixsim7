@@ -11,11 +11,21 @@
  * - This allows HUD to interoperate with the unified editing-core layer
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import {
+  type HudSurfaceConfig,
+  fromHudToolPlacements,
+  toHudToolPlacements,
+} from '@lib/gameplay-ui-core';
 import { Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
+import { useState, useEffect, useMemo } from 'react';
+
 import type { GameWorldDetail } from '@lib/api/game';
 import { updateGameWorldMeta } from '@lib/api/game';
-import { worldToolRegistry, type HudToolPlacement, type HudRegion, type WorldUiConfig, getHudConfig } from '@features/worldTools';
+import { useUndoRedo } from '@lib/editing-core';
+import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
+
+import type { HudToolPlacement, HudRegion, WorldUiConfig } from '@features/worldTools';
+import { getHudConfig } from '@features/worldTools';
 import {
   createPreset,
   deletePreset,
@@ -34,15 +44,11 @@ import {
   getProfileLayout,
   type HudProfile,
 } from '@features/worldTools/lib/hudProfiles';
+
 // Editing Core - Shared undo/redo hook
-import { useUndoRedo } from '@lib/editing-core';
+
 // Gameplay UI Core - HUD-specific config layer
-import {
-  type HudSurfaceConfig,
-  type HudWidgetConfig,
-  fromHudToolPlacements,
-  toHudToolPlacements,
-} from '@lib/gameplay-ui-core';
+
 import { SurfaceWorkbench, type SurfaceWorkbenchStatus } from '@/components/surface-workbench';
 
 export interface HudLayoutEditorProps {
@@ -150,7 +156,7 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
   }, [error, successMessage, warnings]);
 
   // Get all available tools
-  const availableTools = useMemo(() => worldToolRegistry.getAll(), []);
+  const availableTools = useMemo(() => worldToolSelectors.getAll(), []);
 
   // Load presets and profiles on mount
   useEffect(() => {
@@ -293,7 +299,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
         if (p.toolId !== toolId) return p;
         if (!kind) {
           // Remove condition
-          const { visibleWhen, ...rest } = p;
+          const rest = { ...p };
+          delete rest.visibleWhen;
           return rest as ToolPlacementRow;
         }
         // Add or update condition
@@ -713,7 +720,10 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
       // Convert current placements to HudSurfaceConfig
       const surfaceConfig = fromHudToolPlacements(
         placements.map(p => {
-          const { name, description, icon, ...placement } = p;
+          const placement = { ...p };
+          delete placement.name;
+          delete placement.description;
+          delete placement.icon;
           return placement;
         }),
         {

@@ -45,6 +45,14 @@
  * ```
  */
 
+import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/providers';
+
+import { galleryToolSelectors, worldToolSelectors } from '@lib/plugins/catalogSelectors';
+
+import type { GalleryToolPlugin } from '@features/gallery';
+import type { WorldToolPlugin } from '@features/worldTools';
+
+import { isPluginEnabled } from '../../stores/pluginConfigStore';
 import {
   sessionHelperRegistry,
   interactionRegistry,
@@ -54,19 +62,9 @@ import {
   type BaseInteractionConfig,
   type NodeTypeDefinition,
 } from '../registries';
-import { galleryToolRegistry, type GalleryToolPlugin } from '@features/gallery';
-import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
+
+
 import { pluginManager } from './PluginManager';
-import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/providers';
-import { isPluginEnabled } from '../../stores/pluginConfigStore';
-import type { PluginEntry } from './types';
-import {
-  normalizeOrigin,
-  toLegacyOrigin,
-  fromLegacyPluginMeta,
-  type UnifiedPluginOrigin,
-  type UnifiedPluginDescriptor,
-} from './types';
 import {
   isValidHelperDefinition,
   isValidInteractionPlugin,
@@ -76,6 +74,14 @@ import {
   isValidGenerationUIPlugin,
   isValidPluginEntry,
 } from './typeGuards';
+import type { PluginEntry } from './types';
+import {
+  normalizeOrigin,
+  toLegacyOrigin,
+  fromLegacyPluginMeta,
+  type UnifiedPluginOrigin,
+  type UnifiedPluginDescriptor,
+} from './types';
 
 /**
  * Plugin kind discriminator
@@ -660,7 +666,7 @@ export function listNodeTypePlugins(): PluginMeta[] {
  * List all gallery tool plugins
  */
 export function listGalleryToolPlugins(): PluginMeta[] {
-  const tools = galleryToolRegistry.getAll();
+  const tools = galleryToolSelectors.getAll();
   return tools.map(mapGalleryToolToMeta);
 }
 
@@ -687,7 +693,7 @@ export function listGenerationUIPlugins(): PluginMeta[] {
  * List all world tool plugins
  */
 export function listWorldToolPlugins(): PluginMeta[] {
-  const tools = worldToolRegistry.getAll();
+  const tools = worldToolSelectors.getAll();
   return tools.map(mapWorldToolToMeta);
 }
 

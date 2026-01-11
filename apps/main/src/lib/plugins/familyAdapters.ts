@@ -6,14 +6,14 @@ import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engi
 import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 
-import { brainToolRegistry, type BrainToolPlugin } from '@features/brainTools/lib/registry';
+import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
 import type { GallerySurfaceDefinition } from '@features/gallery';
 import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '@features/gizmos';
 import { graphEditorRegistry, type GraphEditorDefinition } from '@features/graph/lib/editor/editorRegistry';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
 import { panelRegistry, type PanelDefinition } from '@features/panels';
-import { worldToolRegistry, type WorldToolPlugin } from '@features/worldTools';
+import type { WorldToolPlugin } from '@features/worldTools';
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 
@@ -533,7 +533,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildRendererMetadata,
   },
   'world-tool': {
-    register: (tool: WorldToolPlugin) => worldToolRegistry.register(tool),
+    register: () => {},
     buildMetadata: buildWorldToolMetadata,
   },
   'gallery-tool': {
@@ -541,7 +541,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildGalleryToolMetadata,
   },
   'brain-tool': {
-    register: (tool: BrainToolPlugin) => brainToolRegistry.register(tool),
+    register: () => {},
     buildMetadata: buildBrainToolMetadata,
   },
   'gallery-surface': {

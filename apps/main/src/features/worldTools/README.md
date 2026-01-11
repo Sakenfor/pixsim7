@@ -50,11 +50,8 @@ features/worldTools/
 
 ```typescript
 // Import from feature barrel
-import {
-  WorldToolsPanel,
-  WorldVisualRolesPanel,
-  worldToolRegistry
-} from '@features/worldTools';
+import { WorldToolsPanel, WorldVisualRolesPanel } from '@features/worldTools';
+import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 // Import specific lib modules
 import type { WorldToolPlugin, WorldToolContext } from '@features/worldTools/lib/types';
@@ -68,7 +65,7 @@ import { inventoryTool } from '@features/worldTools/plugins/inventory';
 
 ```typescript
 import { WorldToolsPanel } from '@features/worldTools';
-import { worldToolRegistry } from '@features/worldTools/lib/registry';
+import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 function MyGameView() {
   const context: WorldToolContext = {
@@ -81,7 +78,7 @@ function MyGameView() {
     time: { day: 1, hour: 12 }
   };
 
-  const tools = worldToolRegistry.getVisible(context);
+  const tools = worldToolSelectors.getVisible(context);
 
   return <WorldToolsPanel context={context} tools={tools} />;
 }
@@ -121,11 +118,17 @@ export const myCustomTool: WorldToolPlugin = {
 ### Registering a Custom Tool
 
 ```typescript
-import { worldToolRegistry } from '@features/worldTools/lib/registry';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { myCustomTool } from './my-custom-tool';
 
 // Register the tool
-worldToolRegistry.register(myCustomTool);
+await registerPluginDefinition({
+  id: myCustomTool.id,
+  family: 'world-tool',
+  origin: 'dev-project',
+  source: 'source',
+  plugin: myCustomTool,
+});
 
 // The tool will now appear in WorldToolsPanel when its visibility condition is met
 ```
@@ -138,10 +141,10 @@ The World Tools feature includes comprehensive HUD layout management:
 
 ```typescript
 import { resolveHudLayout } from '@features/worldTools/lib/hudLayout';
-import { worldToolRegistry } from '@features/worldTools/lib/registry';
+import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 const context: WorldToolContext = /* ... */;
-const tools = worldToolRegistry.getAll();
+const tools = worldToolSelectors.getAll();
 
 const layout = resolveHudLayout({
   worldDetail,

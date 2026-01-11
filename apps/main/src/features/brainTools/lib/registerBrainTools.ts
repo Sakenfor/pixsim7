@@ -1,18 +1,17 @@
 /**
  * Brain Tools Registration
  *
- * Registers all available brain tools with the registry.
+ * Registers all available brain tools with the plugin catalog.
  * Called once at application startup.
  *
  * This follows the same explicit registration pattern as Gallery tools,
  * which provides better control over initialization timing and testability.
  */
 
+import { brainToolSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import { builtInBrainTools } from '../plugins';
-
-import { brainToolRegistry } from './types';
 
 /**
  * Register all brain tools
@@ -22,7 +21,7 @@ import { brainToolRegistry } from './types';
 export async function registerBrainTools(): Promise<void> {
   // Register built-in tools from the plugins folder
   for (const tool of builtInBrainTools) {
-    if (!brainToolRegistry.has(tool.id)) {
+    if (!brainToolSelectors.has(tool.id)) {
       await registerPluginDefinition({
         id: tool.id,
         family: 'brain-tool',
@@ -34,5 +33,5 @@ export async function registerBrainTools(): Promise<void> {
     }
   }
 
-  console.log(`[BrainTools] Registered ${brainToolRegistry.size} brain tool(s)`);
+  console.log(`[BrainTools] Registered ${brainToolSelectors.getAll().length} brain tool(s)`);
 }

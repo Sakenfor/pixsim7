@@ -34,8 +34,8 @@ import {
   type GamePlugin,
 } from '@lib/game/runtime';
 import { usePixSim7Core } from '@lib/game/usePixSim7Core';
+import { brainToolSelectors, worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
-import { brainToolRegistry } from '@features/brainTools/lib/registry';
 import type { BrainToolContext } from '@features/brainTools/lib/types';
 import { ExportImportPanel } from '@features/panels/components/tools/ExportImportPanel';
 import type { ConstraintEvaluationContext } from '@features/simulation';
@@ -70,7 +70,7 @@ import {
   loadScenarios,
   type SimulationScenario,
 } from '@features/simulation/lib/core/scenarios';
-import { WorldToolsPanel, worldToolRegistry, type WorldToolContext } from '@features/worldTools';
+import { WorldToolsPanel, type WorldToolContext } from '@features/worldTools';
 
 import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
 
@@ -555,12 +555,12 @@ export function SimulationPlayground() {
   }, [activeNpcId, coreSession, core]);
 
   const visibleWorldTools = useMemo(
-    () => worldToolRegistry.getVisible(worldToolContext),
+    () => worldToolSelectors.getVisible(worldToolContext),
     [worldToolContext]
   );
 
   const visibleBrainTools = useMemo(
-    () => (brainToolContext ? brainToolRegistry.getVisible(brainToolContext) : []),
+    () => (brainToolContext ? brainToolSelectors.getVisible(brainToolContext) : []),
     [brainToolContext]
   );
 
