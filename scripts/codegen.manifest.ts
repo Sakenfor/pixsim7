@@ -36,4 +36,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     supportsCheck: true,
     groups: ['types'],
   },
+  {
+    id: 'upload-context',
+    description: 'Generate upload context schema/types from YAML',
+    script: 'scripts/generate-upload-context.ts',
+    supportsCheck: true,
+    groups: ['types'],
+  },
 ];

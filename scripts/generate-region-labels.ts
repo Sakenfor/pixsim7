@@ -176,19 +176,18 @@ const output = `// Auto-generated from composition-roles.yaml + ontology.yaml - 
 // Re-run: pnpm region-labels:gen
 //
 // ========================================================================
-// DEPRECATED: This file is deprecated for runtime use.
-// Frontend should use useConceptStore from apps/main/src/stores/conceptStore.ts
-// which fetches concepts from /api/v1/concepts/{kind} at runtime.
+// NOTE: For dynamic/plugin-aware data, prefer the runtime API:
+//   - useConceptStore (apps/main/src/stores/conceptStore.ts)
+//   - Fetches from /api/v1/concepts/{kind} at runtime
 //
-// This file remains for:
-// - Backward compatibility with existing imports
-// - LabelSuggestion interface (which is now also exported from conceptStore)
-// - Fallback when API is unavailable
+// This file provides:
+//   - Type definitions (LabelSuggestion) - always valid
+//   - Static fallback data when API unavailable
+//   - Pure utility functions (labelToInfluenceRegion)
 // ========================================================================
 
 /**
  * Label suggestion for region annotation autocomplete.
- * @deprecated Import from '@/stores/conceptStore' instead.
  */
 export interface LabelSuggestion {
   /** Label ID (used as region label value) */
@@ -201,43 +200,43 @@ export interface LabelSuggestion {
 
 /**
  * Built-in influence_region values (no mask: prefix needed).
- * @deprecated Use useConceptStore.getByKind('influence_region') instead.
+ * @see useConceptStore.getByKind('influence_region') for runtime API
  */
 export const BUILTIN_REGION_LABELS: LabelSuggestion[] = ${JSON.stringify(builtinLabels, null, 2)};
 
 /**
  * Composition role labels (from composition-roles.yaml).
- * @deprecated Use useConceptStore.getByKind('role') instead.
+ * @see useConceptStore.getByKind('role') for runtime API
  */
 export const COMPOSITION_ROLE_LABELS: LabelSuggestion[] = ${JSON.stringify(compositionRoleLabels, null, 2)};
 
 /**
  * Anatomy part labels (from ontology.yaml).
- * @deprecated Use useConceptStore.getByKind('part') instead.
+ * @see useConceptStore.getByKind('part') for runtime API
  */
 export const ANATOMY_PART_LABELS: LabelSuggestion[] = ${JSON.stringify(anatomyPartLabels, null, 2)};
 
 /**
  * Anatomy region labels (from ontology.yaml).
- * @deprecated Use useConceptStore.getByKind('body_region') instead.
+ * @see useConceptStore.getByKind('body_region') for runtime API
  */
 export const ANATOMY_REGION_LABELS: LabelSuggestion[] = ${JSON.stringify(anatomyRegionLabels, null, 2)};
 
 /**
  * Pose labels (from ontology.yaml action_blocks).
- * @deprecated Use useConceptStore.getByKind('pose') instead.
+ * @see useConceptStore.getByKind('pose') for runtime API
  */
 export const POSE_LABELS: LabelSuggestion[] = ${JSON.stringify(poseLabels, null, 2)};
 
 /**
  * All region label suggestions combined and deduplicated.
- * @deprecated Use useLabelsForAutocomplete() hook instead.
+ * @see useLabelsForAutocomplete() hook for runtime API
  */
 export const ALL_REGION_LABELS: LabelSuggestion[] = ${JSON.stringify(allLabels, null, 2)};
 
 /**
  * Group display names for UI.
- * @deprecated Group names are now included in ConceptResponse.group from the API.
+ * Note: Group names are also included in ConceptResponse.group from the API.
  */
 export const LABEL_GROUP_NAMES: Record<LabelSuggestion['group'], string> = {
   builtin: 'Built-in Regions',
@@ -249,7 +248,7 @@ export const LABEL_GROUP_NAMES: Record<LabelSuggestion['group'], string> = {
 
 /**
  * Get labels by group.
- * @deprecated Use useConceptStore.getByKind(kind) instead.
+ * @see useConceptStore.getByKind(kind) for runtime API
  */
 export function getLabelsByGroup(group: LabelSuggestion['group']): LabelSuggestion[] {
   return ALL_REGION_LABELS.filter((l) => l.group === group);
@@ -257,7 +256,7 @@ export function getLabelsByGroup(group: LabelSuggestion['group']): LabelSuggesti
 
 /**
  * Check if a label is a built-in region (doesn't need mask: prefix).
- * @deprecated Check against useConceptStore.getByKind('influence_region') instead.
+ * @see useConceptStore.getByKind('influence_region') for runtime API
  */
 export function isBuiltinRegion(label: string): boolean {
   const normalized = label.toLowerCase().trim();
@@ -270,8 +269,6 @@ export function isBuiltinRegion(label: string): boolean {
  * - Built-in labels (foreground, background, full, subject) -> used as-is
  * - Subject with number (subject_1, subject:1) -> "subject:N"
  * - Everything else -> "mask:<label>"
- *
- * Note: This function is still used for converting labels to API format.
  */
 export function labelToInfluenceRegion(label: string): string {
   const normalized = label.toLowerCase().trim();
