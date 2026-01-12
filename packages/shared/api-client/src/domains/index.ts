@@ -101,6 +101,8 @@ export type {
 
 export type {
   DebugPreferences,
+  DevToolsPreferences,
+  DevToolSettingValue,
   UserPreferences,
   UserPreferencesResponse,
 } from './userPreferences';

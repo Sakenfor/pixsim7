@@ -12,12 +12,29 @@ export interface DebugPreferences {
   websocket?: boolean;
 }
 
+/**
+ * Value type for dev tool settings.
+ */
+export type DevToolSettingValue = boolean | string | number;
+
+/**
+ * Settings for individual dev tools.
+ * Structure: { [toolId]: { [settingKey]: boolean | string | number } }
+ */
+export interface DevToolsPreferences {
+  [toolId: string]: {
+    [settingKey: string]: DevToolSettingValue;
+  };
+}
+
 export interface UserPreferences {
   cubes?: any;
   workspace?: any;
   theme?: string;
   notifications?: any;
   debug?: DebugPreferences;
+  /** Per-tool settings from DevTools registry */
+  devtools?: DevToolsPreferences;
   [key: string]: any;
 }
 

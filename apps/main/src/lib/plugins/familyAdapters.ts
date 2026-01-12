@@ -4,6 +4,7 @@ import type { DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 
 import type { DevToolDefinition } from '@lib/dev/devtools';
+import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
 
 import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
@@ -557,7 +558,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildGraphEditorMetadata,
   },
   'dev-tool': {
-    register: () => {},
+    register: (tool: DevToolDefinition) => devToolRegistry.register(tool),
     buildMetadata: buildDevToolMetadata,
   },
   'workspace-panel': {

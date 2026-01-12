@@ -6,8 +6,9 @@
  * place to discover and access dev-focused tools.
  */
 
-import type { DevToolDefinition, DevToolId } from './types';
 import { BaseRegistry } from '@lib/core/BaseRegistry';
+
+import type { DevToolDefinition } from './types';
 
 export class DevToolRegistry extends BaseRegistry<DevToolDefinition> {
 
@@ -45,6 +46,13 @@ export class DevToolRegistry extends BaseRegistry<DevToolDefinition> {
       }
     });
     return Array.from(categories).sort();
+  }
+
+  /**
+   * Get all dev tools that expose settings
+   */
+  getToolsWithSettings(): DevToolDefinition[] {
+    return this.getAll().filter((tool) => tool.settings && tool.settings.length > 0);
   }
 }
 

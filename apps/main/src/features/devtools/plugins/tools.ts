@@ -187,3 +187,25 @@ export const sqlQueryExplorerTool: DevToolDefinition = {
   tags: ['sql', 'database', 'diagnostics', 'query', 'admin'],
   safeForNonDev: false, // Admin only
 };
+
+// ============================================================================
+// Codegen Tools
+// ============================================================================
+
+export const codegenTool: DevToolDefinition = {
+  id: 'codegen',
+  label: 'Code Generation',
+  description: 'Settings for TypeScript/schema code generation scripts',
+  icon: 'code',
+  category: 'debug',
+  tags: ['codegen', 'types', 'schema', 'generation', 'typescript'],
+  settings: [
+    {
+      type: 'boolean',
+      key: 'includeAllPlugins',
+      label: 'Include All Plugins',
+      description: 'Include all plugin vocabularies in generated types (default: only marked plugins)',
+      defaultValue: false,
+    },
+  ],
+};

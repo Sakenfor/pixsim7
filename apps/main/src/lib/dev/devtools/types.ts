@@ -23,6 +23,63 @@ export type DevToolCategory =
   | 'prompts'
   | 'misc';
 
+/**
+ * Option for select-type settings.
+ */
+export interface DevToolSettingOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Base fields shared by all setting types.
+ */
+interface DevToolSettingBase {
+  /** Setting key (used for storage, e.g., 'includeAllPlugins') */
+  key: string;
+  /** Display label for the setting */
+  label: string;
+  /** Optional description shown below the label */
+  description?: string;
+}
+
+/**
+ * Boolean toggle setting.
+ */
+export interface DevToolSettingBoolean extends DevToolSettingBase {
+  type: 'boolean';
+  defaultValue: boolean;
+}
+
+/**
+ * Select dropdown setting.
+ */
+export interface DevToolSettingSelect extends DevToolSettingBase {
+  type: 'select';
+  defaultValue: string;
+  options: DevToolSettingOption[];
+}
+
+/**
+ * Numeric input setting.
+ */
+export interface DevToolSettingNumber extends DevToolSettingBase {
+  type: 'number';
+  defaultValue: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+/**
+ * A single setting exposed by a dev tool.
+ * Supports boolean toggles, select dropdowns, and numeric inputs.
+ */
+export type DevToolSetting =
+  | DevToolSettingBoolean
+  | DevToolSettingSelect
+  | DevToolSettingNumber;
+
 export interface DevToolDefinition {
   /** Unique identifier for this dev tool */
   id: DevToolId;
@@ -50,4 +107,11 @@ export interface DevToolDefinition {
 
   /** Whether this tool is safe for non-dev users (defaults to false) */
   safeForNonDev?: boolean;
+
+  /**
+   * Optional settings exposed by this tool.
+   * These will be rendered in DebugSettings automatically.
+   * Stored in user preferences under `devtools.{toolId}.{settingKey}`.
+   */
+  settings?: DevToolSetting[];
 }

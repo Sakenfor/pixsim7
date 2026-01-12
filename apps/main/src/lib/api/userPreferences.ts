@@ -3,11 +3,14 @@
  *
  * Delegates to environment-neutral domain client in @pixsim7/api-client.
  */
-import { pixsimClient } from './client';
 import { createUserPreferencesApi } from '@pixsim7/api-client/domains';
+
+import { pixsimClient } from './client';
 
 export type {
   DebugPreferences,
+  DevToolsPreferences,
+  DevToolSettingValue,
   UserPreferences,
   UserPreferencesResponse,
 } from '@pixsim7/api-client/domains';

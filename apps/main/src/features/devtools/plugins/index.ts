@@ -22,6 +22,7 @@ import {
   blockFitTool,
   typesExplorerTool,
   sqlQueryExplorerTool,
+  codegenTool,
 } from './tools';
 
 // Export all plugins individually
@@ -39,6 +40,7 @@ export {
   blockFitTool,
   typesExplorerTool,
   sqlQueryExplorerTool,
+  codegenTool,
 };
 
 // Export array of built-in dev tools for bulk registration
@@ -72,4 +74,7 @@ export const builtInDevTools = [
 
   // Database & Diagnostics
   sqlQueryExplorerTool,
+
+  // Codegen
+  codegenTool,
 ];
