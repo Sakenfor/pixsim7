@@ -5,7 +5,7 @@ uses string IDs for ontology-backed vocabulary (poses, moods, locations, etc.).
 
 Usage in DTOs:
     from pydantic import BaseModel
-    from pixsim7.backend.main.shared.schemas.concept_ref import PoseConceptRef, MoodConceptRef
+    from pixsim7.backend.main.domain.ontology import PoseConceptRef, MoodConceptRef
 
     class ActionBlockTags(BaseModel):
         pose: Optional[PoseConceptRef] = None
@@ -21,7 +21,7 @@ Accepts (via BeforeValidator):
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Union, Annotated
+from typing import Any, Dict, Optional, Union, Annotated, Iterable, List
 
 from pydantic import BaseModel, Field, BeforeValidator, WithJsonSchema
 
@@ -304,6 +304,36 @@ def strip_concept_prefix(canonical_id: str, expected_kind: Optional[str] = None)
     return id_part
 
 
+def normalize_concept_refs(
+    values: Optional[Iterable[Union[Dict[str, Any], str, "ConceptRef"]]],
+    *,
+    validate: bool = True,
+) -> List[str]:
+    """Normalize a list of concept refs to canonical strings.
+
+    Accepts ConceptRef instances, dicts, or strings and returns a list of
+    canonical "kind:id" strings. Optionally validates against the registry.
+    """
+    if not values:
+        return []
+
+    registry = None
+    if validate:
+        from pixsim7.backend.main.domain.ontology.registry import get_ontology_registry
+        registry = get_ontology_registry()
+
+    normalized: List[str] = []
+    for value in values:
+        ref = ConceptRef.parse_flexible(value)
+        if ref is None:
+            continue
+        if registry is not None:
+            registry.validate_concept(ref.kind, ref.id)
+        normalized.append(ref.to_canonical())
+
+    return normalized
+
+
 __all__ = [
     "ConceptRef",
     # Type aliases
@@ -323,4 +353,5 @@ __all__ = [
     "canonicalize_concept_id",
     "parse_concept_id",
     "strip_concept_prefix",
+    "normalize_concept_refs",
 ]

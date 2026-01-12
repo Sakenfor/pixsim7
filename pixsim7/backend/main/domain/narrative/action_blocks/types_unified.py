@@ -34,7 +34,7 @@ from pixsim7.backend.main.shared.schemas.entity_ref import (
     AssetRef,
     NpcRef,
 )
-from pixsim7.backend.main.shared.schemas.concept_ref import (
+from pixsim7.backend.main.domain.ontology import (
     ConceptRef,
     PoseConceptRef,
     MoodConceptRef,

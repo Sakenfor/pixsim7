@@ -62,6 +62,7 @@ from pixsim7.backend.main.domain.ontology.concept_ref import (
     canonicalize_concept_id,
     parse_concept_id,
     strip_concept_prefix,
+    normalize_concept_refs,
 )
 
 # Utilities
@@ -103,6 +104,7 @@ __all__ = [
     "canonicalize_concept_id",
     "parse_concept_id",
     "strip_concept_prefix",
+    "normalize_concept_refs",
     # Utilities
     "match_keywords_in_domain",
     "match_keywords",
