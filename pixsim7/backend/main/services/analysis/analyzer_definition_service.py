@@ -6,12 +6,12 @@ syncs them with the in-memory analyzer registry.
 """
 from __future__ import annotations
 
-import logging
 from typing import Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain.analyzer_definition import AnalyzerDefinition
 from pixsim7.backend.main.services.prompt.parser import (
     analyzer_registry,
@@ -21,7 +21,7 @@ from pixsim7.backend.main.services.prompt.parser import (
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-logger = logging.getLogger(__name__)
+logger = configure_logging(__name__)
 
 
 class AnalyzerDefinitionError(Exception):

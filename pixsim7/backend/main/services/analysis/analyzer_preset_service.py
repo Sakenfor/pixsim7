@@ -6,12 +6,12 @@ Approved presets are merged into analyzer registry configuration.
 """
 from __future__ import annotations
 
-import logging
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain.analyzer_preset import AnalyzerPreset
 from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.shared.presets.review import (
@@ -21,7 +21,7 @@ from pixsim7.backend.main.shared.presets.review import (
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-logger = logging.getLogger(__name__)
+logger = configure_logging(__name__)
 
 
 class AnalyzerPresetError(PresetReviewError):
