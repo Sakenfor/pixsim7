@@ -39,13 +39,34 @@ class VocabularyRegistry:
     Supports plugin discovery for extensibility.
     """
 
-    def __init__(self, vocab_dir: Optional[Path] = None, plugins_dir: Optional[Path] = None):
+    # Mapping from ConceptRef kinds to vocab types
+    _KIND_TO_VOCAB_TYPE = {
+        "pose": "poses",
+        "mood": "moods",
+        "location": "locations",
+        "rating": "ratings",
+        "role": "roles",
+        "part": "parts",
+        "influence_region": "influence_regions",
+        "spatial": "spatial",
+        # These are stored in "progression" with kind filter
+        "intimacy": "progression",
+        "branch": "progression",
+    }
+
+    def __init__(
+        self,
+        vocab_dir: Optional[Path] = None,
+        plugins_dir: Optional[Path] = None,
+        strict_mode: bool = True,
+    ):
         """
         Initialize the vocabulary registry.
 
         Args:
             vocab_dir: Path to core vocabulary YAML files. Defaults to this package's directory.
             plugins_dir: Path to plugins directory. Defaults to backend/main/plugins.
+            strict_mode: If True, validate_concept() raises on unknown concepts.
         """
         if vocab_dir is None:
             vocab_dir = Path(__file__).parent
@@ -54,6 +75,7 @@ class VocabularyRegistry:
 
         self._vocab_dir = vocab_dir
         self._plugins_dir = plugins_dir
+        self._strict_mode = strict_mode
 
         from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
 
@@ -101,6 +123,16 @@ class VocabularyRegistry:
         # Plugin tracking
         self._packs: List[VocabPackInfo] = []
         self._loaded = False
+
+    @property
+    def strict_mode(self) -> bool:
+        """Get strict mode setting."""
+        return self._strict_mode
+
+    @strict_mode.setter
+    def strict_mode(self, value: bool) -> None:
+        """Set strict mode setting."""
+        self._strict_mode = value
 
     # =========================================================================
     # Loading
@@ -789,6 +821,97 @@ class VocabularyRegistry:
         return None
 
     # =========================================================================
+    # Concept Validation (for ConceptRef)
+    # =========================================================================
+
+    def _canonicalize_id(self, concept_id: str, kind: str) -> str:
+        """Ensure concept ID has proper prefix."""
+        prefix = f"{kind}:"
+        if concept_id.startswith(prefix):
+            return concept_id
+        return f"{prefix}{concept_id}"
+
+    def is_known_concept(self, kind: str, concept_id: str) -> bool:
+        """
+        Check if a concept ID is known for the given kind.
+
+        Args:
+            kind: Concept kind ('pose', 'mood', 'location', 'intimacy', 'rating',
+                  'branch', 'role', 'part', 'influence_region', 'spatial')
+            concept_id: The ID to check (with or without kind prefix)
+
+        Returns:
+            True if the concept exists in the registry
+        """
+        self._ensure_loaded()
+
+        vocab_type = self._KIND_TO_VOCAB_TYPE.get(kind)
+        if vocab_type is None:
+            # Unknown kind - check if it's a dynamic type
+            if kind in self._vocabs.namespaces():
+                vocab_type = kind
+            else:
+                return False
+
+        canonical = self._canonicalize_id(concept_id, kind)
+
+        # Special handling for progression-based kinds (intimacy, branch)
+        if vocab_type == "progression":
+            item = self.get_progression(canonical)
+            if item is None:
+                return False
+            # Check the progression kind matches
+            expected_prog_kind = "intimacy_level" if kind == "intimacy" else "branch_intent"
+            return item.kind == expected_prog_kind
+
+        # Standard vocab lookup
+        item = self.get(vocab_type, canonical)
+        return item is not None
+
+    def validate_concept(self, kind: str, concept_id: str) -> None:
+        """
+        Validate that a concept ID exists.
+
+        Args:
+            kind: Concept kind
+            concept_id: The ID to validate
+
+        Raises:
+            ValueError: If strict_mode is True and concept is unknown
+        """
+        if not self._strict_mode:
+            return
+
+        if not self.is_known_concept(kind, concept_id):
+            raise ValueError(
+                f"Unknown {kind} concept: '{concept_id}'. "
+                f"Set strict_mode=False to allow unknown concepts."
+            )
+
+    def validate_concept_ref(self, kind: str, value: Any) -> None:
+        """
+        Validate a ConceptRef or canonical string.
+
+        Args:
+            kind: Expected concept kind
+            value: ConceptRef, canonical string, or None
+
+        Raises:
+            ValueError: If strict_mode and concept is unknown
+        """
+        if value is None:
+            return
+
+        # Handle ConceptRef objects
+        if hasattr(value, "id"):
+            self.validate_concept(kind, value.id)
+            return
+
+        # Handle strings
+        if isinstance(value, str):
+            self.validate_concept(kind, value)
+
+    # =========================================================================
     # Keyword Matching (dynamic, config-driven)
     # =========================================================================
 
@@ -835,11 +958,28 @@ class VocabularyRegistry:
 _registry: Optional[VocabularyRegistry] = None
 
 
-def get_registry() -> VocabularyRegistry:
-    """Get the singleton vocabulary registry."""
+def get_registry(
+    reload: bool = False,
+    strict_mode: Optional[bool] = None,
+) -> VocabularyRegistry:
+    """Get the singleton vocabulary registry.
+
+    Args:
+        reload: Force reload from YAML files (resets the singleton)
+        strict_mode: Override strict mode setting for validation
+
+    Returns:
+        Shared VocabularyRegistry instance
+    """
     global _registry
-    if _registry is None:
-        _registry = VocabularyRegistry()
+
+    if _registry is None or reload:
+        _registry = VocabularyRegistry(
+            strict_mode=strict_mode if strict_mode is not None else True,
+        )
+    elif strict_mode is not None:
+        _registry.strict_mode = strict_mode
+
     return _registry
 
 

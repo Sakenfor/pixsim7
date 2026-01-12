@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Union, Annotated, Iterable, List
 
-from pydantic import BaseModel, Field, BeforeValidator, WithJsonSchema
+from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, WithJsonSchema
 
 
 class ConceptRef(BaseModel):
@@ -168,11 +168,19 @@ def _make_concept_ref_schema(concept_kind: str) -> WithJsonSchema:
     )
 
 
+def _concept_ref_serializer(value: Optional[ConceptRef]) -> Optional[str]:
+    """Serialize ConceptRef to canonical string format."""
+    if value is None:
+        return None
+    return value.to_canonical()
+
+
 def _make_concept_ref_type(concept_kind: str):
-    """Create a ConceptRef type alias with validation and schema extension."""
+    """Create a ConceptRef type alias with validation, serialization, and schema extension."""
     return Annotated[
         Optional[ConceptRef],
         BeforeValidator(_make_concept_ref_validator(concept_kind)),
+        PlainSerializer(_concept_ref_serializer, return_type=Optional[str]),
         _make_concept_ref_schema(concept_kind),
     ]
 
@@ -319,8 +327,8 @@ def normalize_concept_refs(
 
     registry = None
     if validate:
-        from pixsim7.backend.main.domain.ontology.registry import get_ontology_registry
-        registry = get_ontology_registry()
+        from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+        registry = get_registry()
 
     normalized: List[str] = []
     for value in values:

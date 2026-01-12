@@ -182,8 +182,8 @@ class ReferenceImage(BaseModel):
 
     # Ontology-aligned hints
     character_id: Optional[str] = None
-    location_id: Optional[str] = None
-    pose_id: Optional[str] = None
+    location_id: LocationConceptRef = None
+    pose_id: PoseConceptRef = None
     expression_id: Optional[str] = None
     camera_view_id: Optional[str] = None
     camera_framing_id: Optional[str] = None

@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field, AliasChoices, ConfigDict, computed_field,
 
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
 from pixsim7.backend.main.shared.composition import normalize_composition_role
-from pixsim7.backend.main.domain.ontology.concept_ref import ConceptRef
+from pixsim7.backend.main.domain.ontology import (
+    ConceptRef,
+    LocationConceptRef,
+    PoseConceptRef,
+)
 
 
 class CompositionAsset(BaseModel):
@@ -58,8 +62,8 @@ class CompositionAsset(BaseModel):
 
     # Ontology-aligned hints
     character_id: Optional[str] = None
-    location_id: Optional[str] = None
-    pose_id: Optional[str] = None
+    location_id: LocationConceptRef = None
+    pose_id: PoseConceptRef = None
     expression_id: Optional[str] = None
     camera_view_id: Optional[str] = None
     camera_framing_id: Optional[str] = None

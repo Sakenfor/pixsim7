@@ -1,54 +1,32 @@
 """
-Ontology domain package - Single source of truth for ontology concepts.
+Ontology domain package - ConceptRef types and backward compatibility shim.
+
+MIGRATION NOTE:
+The canonical source of truth for vocabularies is now:
+    pixsim7.backend.main.shared.ontology.vocabularies
 
 This package provides:
-- Ontology registry with plugin pack support
-- ConceptRef type for type-safe concept references
-- Data classes for all concept types (Pose, Mood, Location, etc.)
-- Utility functions for keyword matching and lookups
+- ConceptRef type for type-safe concept references (canonical location)
+- Backward compatibility re-exports from VocabularyRegistry
 
-Usage:
+For new code, prefer importing directly from vocabularies:
+    from pixsim7.backend.main.shared.ontology.vocabularies import (
+        get_registry,
+        VocabularyRegistry,
+        PoseDef,
+        MoodDef,
+        ...
+    )
+
+Usage (still supported):
     from pixsim7.backend.main.domain.ontology import (
-        get_ontology_registry,
         ConceptRef,
         PoseConceptRef,
         MoodConceptRef,
-        PoseDefinition,
-        MoodDefinition,
     )
-
-    # Get the registry
-    registry = get_ontology_registry()
-
-    # Check if a concept exists
-    if registry.is_known_concept("pose", "standing_neutral"):
-        pose = registry.get_pose("standing_neutral")
-
-    # Use ConceptRef in data models
-    concept = ConceptRef(kind="pose", id="standing_neutral")
 """
 
-# Registry and singleton
-from pixsim7.backend.main.domain.ontology.registry import (
-    OntologyRegistry,
-    get_ontology_registry,
-    reset_ontology_registry,
-    # Data classes
-    PoseDefinition,
-    IntimacyLevel,
-    ContentRatingDef,
-    MoodDefinition,
-    BranchIntentDef,
-    LocationDefinition,
-    ScoringConfig,
-    ScoringWeights,
-    PartialCredit,
-    ChainConstraints,
-    DurationConstraints,
-    OntologyPackInfo,
-)
-
-# ConceptRef types
+# ConceptRef types - canonical location
 from pixsim7.backend.main.domain.ontology.concept_ref import (
     ConceptRef,
     PoseConceptRef,
@@ -65,19 +43,50 @@ from pixsim7.backend.main.domain.ontology.concept_ref import (
     normalize_concept_refs,
 )
 
-# Utilities
-from pixsim7.backend.main.domain.ontology.utils import (
-    match_keywords_in_domain,
+# Re-export from VocabularyRegistry with backward-compatible aliases
+from pixsim7.backend.main.shared.ontology.vocabularies import (
+    # Registry (aliased for backward compatibility)
+    VocabularyRegistry as OntologyRegistry,
+    get_registry as get_ontology_registry,
+    reset_registry as reset_ontology_registry,
+    # Data classes (aliased for backward compatibility)
+    PoseDef as PoseDefinition,
+    MoodDef as MoodDefinition,
+    RatingDef as ContentRatingDef,
+    LocationDef as LocationDefinition,
+    ProgressionDef as IntimacyLevel,
+    ProgressionDef as BranchIntentDef,
+    # Scoring config
+    ScoringConfig,
+    ScoringWeights,
+    PartialCredit,
+    ChainConstraints,
+    DurationConstraints,
+    VocabPackInfo as OntologyPackInfo,
+)
+
+# Utilities - re-export from vocabularies
+from pixsim7.backend.main.shared.ontology.vocabularies import (
     match_keywords,
 )
 
+# Legacy utility - kept for backward compatibility
+def match_keywords_in_domain(text: str, domain: str = "default"):
+    """
+    DEPRECATED: Use match_keywords() from vocabularies instead.
+
+    Match keywords in text to vocabulary IDs.
+    The domain parameter is ignored (vocabularies don't use domains).
+    """
+    return match_keywords(text)
+
 
 __all__ = [
-    # Registry
+    # Registry (backward compatibility)
     "OntologyRegistry",
     "get_ontology_registry",
     "reset_ontology_registry",
-    # Data classes
+    # Data classes (backward compatibility)
     "PoseDefinition",
     "IntimacyLevel",
     "ContentRatingDef",
@@ -90,7 +99,7 @@ __all__ = [
     "ChainConstraints",
     "DurationConstraints",
     "OntologyPackInfo",
-    # ConceptRef
+    # ConceptRef (canonical)
     "ConceptRef",
     "PoseConceptRef",
     "MoodConceptRef",

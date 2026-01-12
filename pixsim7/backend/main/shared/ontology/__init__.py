@@ -1,17 +1,20 @@
 """
-DEPRECATED: Legacy ontology shim - Re-exports from domain.ontology.
+DEPRECATED: Legacy ontology shim.
 
-This module provides backward compatibility for code that imports from shared.ontology.
-All functionality has moved to pixsim7.backend.main.domain.ontology.
+The canonical source of truth for vocabularies is now:
+    pixsim7.backend.main.shared.ontology.vocabularies
+
+For ConceptRef types, use:
+    pixsim7.backend.main.domain.ontology
 
 Migration guide:
     # Old (deprecated):
     from pixsim7.backend.main.shared.ontology import load_ontology, Ontology
 
     # New (preferred):
-    from pixsim7.backend.main.domain.ontology import (
-        get_ontology_registry,  # Instead of load_ontology()
-        match_keywords,         # Instead of ontology.match_keywords()
+    from pixsim7.backend.main.shared.ontology.vocabularies import (
+        get_registry,        # Instead of load_ontology()
+        match_keywords,      # Instead of ontology.match_keywords()
     )
 
 This shim will be removed in a future version.
@@ -22,20 +25,33 @@ import warnings
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-# Re-export from the canonical location
-from pixsim7.backend.main.domain.ontology import (
-    get_ontology_registry,
+# Re-export from vocabularies (canonical source)
+from pixsim7.backend.main.shared.ontology.vocabularies import (
+    get_registry,
     match_keywords,
-    match_keywords_in_domain,
 )
+
+# Backward compatibility alias
+get_ontology_registry = get_registry
+
+
+def match_keywords_in_domain(domain_data: Any, text: str) -> List[str]:
+    """
+    DEPRECATED: Use match_keywords() from vocabularies instead.
+
+    Match keywords in text. The domain_data parameter is ignored.
+    """
+    return match_keywords(text)
+
 
 __all__ = [
     "Ontology",
     "OntologyEntityKind",
     "OntologyRelationship",
     "load_ontology",
-    # Re-exports from domain.ontology
+    # Re-exports
     "get_ontology_registry",
+    "get_registry",
     "match_keywords",
     "match_keywords_in_domain",
 ]
@@ -63,7 +79,7 @@ class Ontology:
     """
     DEPRECATED: Legacy in-memory representation of ontology.yaml.
 
-    Use get_ontology_registry() from domain.ontology instead.
+    Use get_registry() from vocabularies instead.
 
     This class is kept for backward compatibility with existing code.
     """
@@ -144,11 +160,11 @@ class Ontology:
 
     def match_keywords(self, text: str) -> List[str]:
         """
-        Match keywords in text to ontology IDs from the domain section.
+        Match keywords in text to vocabulary IDs.
 
-        DEPRECATED: Use match_keywords() from domain.ontology instead.
+        DEPRECATED: Use match_keywords() from vocabularies instead.
         """
-        return match_keywords_in_domain(self.domain, text)
+        return match_keywords(text)
 
 
 _ONTOLOGY_CACHE: Optional[Ontology] = None
@@ -156,20 +172,23 @@ _ONTOLOGY_CACHE: Optional[Ontology] = None
 
 def load_ontology(force_reload: bool = False) -> Ontology:
     """
-    DEPRECATED: Load ontology.yaml into an Ontology instance.
+    DEPRECATED: Load ontology data into an Ontology instance.
 
-    Use get_ontology_registry() from domain.ontology instead.
+    Use get_registry() from vocabularies instead.
 
     This function is kept for backward compatibility.
+    Note: Returns an empty Ontology since the raw YAML data is no longer
+    the primary source. Use vocabularies for actual concept lookups.
     """
     global _ONTOLOGY_CACHE
 
     if _ONTOLOGY_CACHE is not None and not force_reload:
         return _ONTOLOGY_CACHE
 
-    # Use the registry to get the raw data
-    registry = get_ontology_registry(reload=force_reload)
-    raw = registry._raw_core
-
-    _ONTOLOGY_CACHE = Ontology(raw)
+    # Return empty ontology - vocabularies is now the source of truth
+    _ONTOLOGY_CACHE = Ontology({
+        "version": "2.0.0",
+        "label": "Deprecated - Use VocabularyRegistry",
+        "description": "This is a stub. Use shared.ontology.vocabularies for actual data.",
+    })
     return _ONTOLOGY_CACHE

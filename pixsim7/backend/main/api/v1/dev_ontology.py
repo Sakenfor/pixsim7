@@ -18,7 +18,10 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.domain.ontology import get_ontology_registry
+# NOTE: This endpoint uses the legacy OntologyRegistry which loads ontology.yaml.
+# The canonical source is now VocabularyRegistry in shared.ontology.vocabularies.
+# This endpoint may need updating to use vocabularies instead.
+from pixsim7.backend.main.domain.ontology.registry import get_ontology_registry
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.prompt.block.tagging import extract_ontology_ids_from_tags
 from sqlalchemy import select
