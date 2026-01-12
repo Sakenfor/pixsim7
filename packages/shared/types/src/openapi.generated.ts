@@ -1773,6 +1773,118 @@ export interface paths {
         readonly patch: operations["update_analyzer_instance_api_v1_analyzer_instances__instance_id__patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/analyzer-presets": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Analyzer Presets
+         * @description List analyzer presets.
+         *
+         *     - Default: list own presets
+         *     - include_public: include approved presets
+         *     - include_all (admin only): list all presets
+         */
+        readonly get: operations["list_analyzer_presets_api_v1_analyzer_presets_get"];
+        readonly put?: never;
+        /**
+         * Create Analyzer Preset
+         * @description Create a personal analyzer preset.
+         */
+        readonly post: operations["create_analyzer_preset_api_v1_analyzer_presets_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/analyzer-presets/{preset_entry_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete Analyzer Preset
+         * @description Delete a personal analyzer preset.
+         */
+        readonly delete: operations["delete_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Analyzer Preset
+         * @description Update a personal analyzer preset (draft/rejected only).
+         */
+        readonly patch: operations["update_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/analyzer-presets/{preset_entry_id}/approve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Approve Analyzer Preset
+         * @description Approve a preset (admin only).
+         */
+        readonly post: operations["approve_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__approve_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/analyzer-presets/{preset_entry_id}/reject": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Reject Analyzer Preset
+         * @description Reject a preset (admin only).
+         */
+        readonly post: operations["reject_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__reject_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/analyzer-presets/{preset_entry_id}/submit": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Submit Analyzer Preset
+         * @description Submit a preset for admin approval.
+         */
+        readonly post: operations["submit_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__submit_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/analyzers": {
         readonly parameters: {
             readonly query?: never;
@@ -1793,7 +1905,11 @@ export interface paths {
          */
         readonly get: operations["list_analyzers_api_v1_analyzers_get"];
         readonly put?: never;
-        readonly post?: never;
+        /**
+         * Create Analyzer
+         * @description Create a new analyzer definition (admin only).
+         */
+        readonly post: operations["create_analyzer_api_v1_analyzers_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1814,10 +1930,18 @@ export interface paths {
         readonly get: operations["get_analyzer_api_v1_analyzers__analyzer_id__get"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /**
+         * Delete Analyzer
+         * @description Delete an analyzer definition (admin only).
+         */
+        readonly delete: operations["delete_analyzer_api_v1_analyzers__analyzer_id__delete"];
         readonly options?: never;
         readonly head?: never;
-        readonly patch?: never;
+        /**
+         * Update Analyzer
+         * @description Update an analyzer definition (admin only).
+         */
+        readonly patch: operations["update_analyzer_api_v1_analyzers__analyzer_id__patch"];
         readonly trace?: never;
     };
     readonly "/api/v1/assets/{asset_id}": {
@@ -10853,6 +10977,81 @@ export interface components {
             readonly analyzer_id: string;
         };
         /**
+         * AnalyzerDefinitionCreate
+         * @description Create a new analyzer definition.
+         */
+        readonly AnalyzerDefinitionCreate: {
+            /**
+             * Analyzer Id
+             * @description Analyzer ID (e.g., 'prompt:custom-llm')
+             */
+            readonly analyzer_id: string;
+            /**
+             * Base Analyzer Id
+             * @description Optional base analyzer ID to inherit presets/config
+             */
+            readonly base_analyzer_id?: string | null;
+            /** Config */
+            readonly config?: Record<string, unknown> | null;
+            /**
+             * Description
+             * @description Analyzer description
+             */
+            readonly description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            readonly enabled: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            readonly is_default: boolean;
+            readonly kind: components["schemas"]["AnalyzerKind"];
+            /** Model Id */
+            readonly model_id?: string | null;
+            /**
+             * Name
+             * @description Display name
+             */
+            readonly name: string;
+            /**
+             * Preset Id
+             * @description Optional preset ID to select from the base definition
+             */
+            readonly preset_id?: string | null;
+            /** Provider Id */
+            readonly provider_id?: string | null;
+            readonly target: components["schemas"]["AnalyzerTarget"];
+        };
+        /**
+         * AnalyzerDefinitionUpdate
+         * @description Update an analyzer definition.
+         */
+        readonly AnalyzerDefinitionUpdate: {
+            /** Base Analyzer Id */
+            readonly base_analyzer_id?: string | null;
+            /** Config */
+            readonly config?: Record<string, unknown> | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Enabled */
+            readonly enabled?: boolean | null;
+            /** Is Default */
+            readonly is_default?: boolean | null;
+            readonly kind?: components["schemas"]["AnalyzerKind"] | null;
+            /** Model Id */
+            readonly model_id?: string | null;
+            /** Name */
+            readonly name?: string | null;
+            /** Preset Id */
+            readonly preset_id?: string | null;
+            /** Provider Id */
+            readonly provider_id?: string | null;
+            readonly target?: components["schemas"]["AnalyzerTarget"] | null;
+        };
+        /**
          * AnalyzerInstanceCreate
          * @description Create a new analyzer instance.
          */
@@ -10942,6 +11141,71 @@ export interface components {
          * @enum {string}
          */
         readonly AnalyzerKind: "parser" | "llm" | "vision";
+        /** AnalyzerPresetCreate */
+        readonly AnalyzerPresetCreate: {
+            /** Analyzer Id */
+            readonly analyzer_id: string;
+            /** Config */
+            readonly config?: Record<string, unknown>;
+            /** Description */
+            readonly description?: string | null;
+            /** Name */
+            readonly name: string;
+            /** Preset Id */
+            readonly preset_id: string;
+        };
+        /** AnalyzerPresetListResponse */
+        readonly AnalyzerPresetListResponse: {
+            /** Presets */
+            readonly presets: readonly components["schemas"]["AnalyzerPresetResponse"][];
+        };
+        /** AnalyzerPresetReject */
+        readonly AnalyzerPresetReject: {
+            /** Reason */
+            readonly reason?: string | null;
+        };
+        /** AnalyzerPresetResponse */
+        readonly AnalyzerPresetResponse: {
+            /** Analyzer Id */
+            readonly analyzer_id: string;
+            /** Approved At */
+            readonly approved_at: string | null;
+            /** Approved By User Id */
+            readonly approved_by_user_id: number | null;
+            /** Config */
+            readonly config: Record<string, unknown>;
+            /** Created At */
+            readonly created_at: string;
+            /** Description */
+            readonly description: string | null;
+            /** Id */
+            readonly id: number;
+            /** Name */
+            readonly name: string;
+            /** Owner User Id */
+            readonly owner_user_id: number;
+            /** Preset Id */
+            readonly preset_id: string;
+            /** Rejected At */
+            readonly rejected_at: string | null;
+            /** Rejection Reason */
+            readonly rejection_reason: string | null;
+            /** Status */
+            readonly status: string;
+            /** Updated At */
+            readonly updated_at: string;
+        };
+        /** AnalyzerPresetUpdate */
+        readonly AnalyzerPresetUpdate: {
+            /** Config */
+            readonly config?: Record<string, unknown> | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Name */
+            readonly name?: string | null;
+            /** Preset Id */
+            readonly preset_id?: string | null;
+        };
         /**
          * AnalyzerResponse
          * @description Response schema for analyzer info.
@@ -15428,6 +15692,11 @@ export interface components {
              */
             readonly pack_ids?: readonly string[] | null;
             /**
+             * Preset Id
+             * @description Optional analyzer preset ID (tags_only, blocks_tags, etc.)
+             */
+            readonly preset_id?: string | null;
+            /**
              * Text
              * @description Prompt text to analyze
              */
@@ -18358,6 +18627,8 @@ export interface components {
         };
         /** UploadAssetResponse */
         readonly UploadAssetResponse: {
+            /** Asset Id */
+            readonly asset_id?: number | null;
             /** External Url */
             readonly external_url?: string | null;
             readonly media_type: components["schemas"]["MediaType"];
@@ -21380,9 +21651,254 @@ export interface operations {
             };
         };
     };
+    readonly list_analyzer_presets_api_v1_analyzer_presets_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly analyzer_id?: string | null;
+                readonly include_all?: boolean;
+                readonly include_public?: boolean;
+                readonly owner_user_id?: number | null;
+                readonly status?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerPresetListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_analyzer_preset_api_v1_analyzer_presets_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerPresetCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly preset_entry_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly preset_entry_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerPresetUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly approve_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__approve_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly preset_entry_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly reject_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__reject_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly preset_entry_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerPresetReject"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly submit_analyzer_preset_api_v1_analyzer_presets__preset_entry_id__submit_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly preset_entry_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerPresetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_analyzers_api_v1_analyzers_get: {
         readonly parameters: {
             readonly query?: {
+                /** @description Include disabled analyzers (admin/debug use) */
+                readonly include_disabled?: boolean;
                 /** @description Include legacy analyzer IDs (parser:*, llm:*) */
                 readonly include_legacy?: boolean;
                 /** @description Filter by target: 'prompt' or 'asset'. If not specified, returns all. */
@@ -21414,6 +21930,41 @@ export interface operations {
             };
         };
     };
+    readonly create_analyzer_api_v1_analyzers_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerDefinitionCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_analyzer_api_v1_analyzers__analyzer_id__get: {
         readonly parameters: {
             readonly query?: never;
@@ -21424,6 +21975,74 @@ export interface operations {
             readonly cookie?: never;
         };
         readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AnalyzerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_analyzer_api_v1_analyzers__analyzer_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly analyzer_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_analyzer_api_v1_analyzers__analyzer_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly analyzer_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnalyzerDefinitionUpdate"];
+            };
+        };
         readonly responses: {
             /** @description Successful Response */
             readonly 200: {
