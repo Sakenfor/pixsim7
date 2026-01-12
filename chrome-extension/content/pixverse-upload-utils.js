@@ -11,6 +11,7 @@
   const storage = window.PXS7.storage || {};
   const { sendMessageWithTimeout, normalizeUrl, extractImageUrl } = window.PXS7.utils || {};
   const showToast = window.PXS7.showToast;
+  // Note: addToRecentlyUsed is loaded later, access via window.PXS7.recentlyUsed
 
   const SESSION_KEY_PRESERVED_INPUT = 'pxs7_preserved_input';
   const DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
@@ -870,6 +871,14 @@
       setPendingImageUrl(imageUrl);
       input.files = dataTransfer.files;
       input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Track in recently used for easy re-injection
+      const addToRecentlyUsed = window.PXS7.recentlyUsed?.addToRecentlyUsed;
+      if (addToRecentlyUsed) {
+        const urlName = imageUrl.split('/').pop()?.split('?')[0] || 'Image';
+        addToRecentlyUsed(imageUrl, urlName);
+        debugLog('[Inject] Added to recently used:', urlName);
+      }
 
       setTimeout(() => { if (showToast) showToast('Upload triggered!', true); }, 500);
       return true;

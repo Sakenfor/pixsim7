@@ -783,7 +783,15 @@
 
   <input type="file" id="fileInput" accept="video/*,.avi,.mkv,.wmv,.flv,.mpeg,.mpg,.m4v,.3gp,.ts,.mts,.m2ts" style="display: none;">
 
-  <!-- FFmpeg.wasm loaded dynamically in player.js to handle CSP -->
-  <script src="player.js"></script>
+  <!-- Modular player scripts - loaded in dependency order -->
+  <script src="player/player-state.js"></script>
+  <script src="player/player-history.js"></script>
+  <script src="player/player-ffmpeg.js"></script>
+  <script src="player/player-region.js"></script>
+  <script src="player/player-controls.js"></script>
+  <script src="player/player-capture.js"></script>
+  <script src="player/player-image.js"></script>
+  <script src="player/player-file.js"></script>
+  <script src="player/player-init.js"></script>
 </body>
 </html>

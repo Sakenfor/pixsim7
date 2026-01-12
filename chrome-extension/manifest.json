@@ -71,7 +71,12 @@
         "content/pixverse-upload-utils.js",
         "content/pixverse-image-grid.js",
         "content/pixverse-recently-used.js",
-        "content/pixverse-image-picker.js",
+        "content/picker/picker-state.js",
+        "content/picker/picker-scan.js",
+        "content/picker/picker-tabs.js",
+        "content/picker/picker-panel.js",
+        "content/picker/picker-spa.js",
+        "content/picker/picker-init.js",
         "content/pixverse-preset-buttons.js"
       ],
       "run_at": "document_idle"

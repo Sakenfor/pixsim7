@@ -46,6 +46,11 @@ async function setupContextMenus() {
       providers.forEach(p => {
         chrome.contextMenus.create({ id: `pixsim7-video-prov-${p.provider_id}`, parentId: 'pixsim7-upload-video-provider', title: p.name || p.provider_id, contexts: ['video'] });
       });
+
+      // Open in video player (for videos and images)
+      chrome.contextMenus.create({ id: 'pixsim7-separator-2', type: 'separator', contexts: ['video', 'image'] });
+      chrome.contextMenus.create({ id: 'pixsim7-open-player', title: '🎬 Open in Video Player', contexts: ['video'] });
+      chrome.contextMenus.create({ id: 'pixsim7-open-player-image', title: '🖼️ Open in Video Player', contexts: ['image'] });
     });
   } catch (e) {
     console.warn('Context menu setup failed:', e);
@@ -72,6 +77,20 @@ function initContextMenuListeners() {
       if (!info || !info.srcUrl) return;
       const settings = await getSettings();
       let providerId = settings.defaultUploadProvider || 'pixverse';
+
+      // Handle open in video player
+      if (info.menuItemId === 'pixsim7-open-player' || info.menuItemId === 'pixsim7-open-player-image') {
+        const playerUrl = chrome.runtime.getURL('player.html') + '?url=' + encodeURIComponent(info.srcUrl);
+        chrome.windows.create({
+          url: playerUrl,
+          type: 'popup',
+          width: 900,
+          height: 650,
+          top: 100,
+          left: Math.max(100, screen.width - 950),
+        });
+        return;
+      }
 
       // Handle quick generate
       if (info.menuItemId === 'pixsim7-quick-generate') {
