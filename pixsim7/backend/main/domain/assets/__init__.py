@@ -20,6 +20,7 @@ from .content import ContentBlob
 from .analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
 from .lineage import AssetLineage
 from .branching import AssetBranch, AssetBranchVariant, AssetClip
+from .sequence import ClipSequence, ClipSequenceEntry
 from .metadata import (
     Asset3DMetadata,
     AssetAudioMetadata,
@@ -50,6 +51,8 @@ __all__ = [
     "AssetBranch",
     "AssetBranchVariant",
     "AssetClip",
+    "ClipSequence",
+    "ClipSequenceEntry",
     # Metadata
     "Asset3DMetadata",
     "AssetAudioMetadata",
