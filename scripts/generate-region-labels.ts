@@ -4,7 +4,11 @@
  *
  * Sources:
  *   - pixsim7/backend/main/shared/composition-roles.yaml (composition roles)
- *   - pixsim7/backend/main/domain/ontology/data/ontology.yaml (anatomy parts, regions, poses)
+ *   - pixsim7/backend/main/plugins/starter_pack/vocabularies/anatomy.yaml (anatomy parts/regions)
+ *   - pixsim7/backend/main/plugins/starter_pack/vocabularies/poses.yaml (poses)
+ *
+ * Note: Uses starter_pack vocab YAMLs directly (YAML-driven, no Python registry).
+ * The deprecated ontology.yaml is no longer read.
  *
  * Output:  packages/shared/types/src/region-labels.generated.ts
  *
@@ -29,7 +33,9 @@ const normalizedDir = process.platform === 'win32' && SCRIPT_DIR.startsWith('/')
   : SCRIPT_DIR;
 
 const COMPOSITION_ROLES_PATH = path.resolve(normalizedDir, '../pixsim7/backend/main/shared/composition-roles.yaml');
-const ONTOLOGY_PATH = path.resolve(normalizedDir, '../pixsim7/backend/main/domain/ontology/data/ontology.yaml');
+// Vocabulary YAMLs (starter_pack provides the actual content)
+const ANATOMY_VOCAB_PATH = path.resolve(normalizedDir, '../pixsim7/backend/main/plugins/starter_pack/vocabularies/anatomy.yaml');
+const POSES_VOCAB_PATH = path.resolve(normalizedDir, '../pixsim7/backend/main/plugins/starter_pack/vocabularies/poses.yaml');
 const OUT_PATH = path.resolve(normalizedDir, '../packages/shared/types/src/region-labels.generated.ts');
 
 // ============================================================================
@@ -51,7 +57,8 @@ function loadYaml(filePath: string, name: string): Record<string, unknown> {
 }
 
 const compositionData = loadYaml(COMPOSITION_ROLES_PATH, 'composition-roles.yaml');
-const ontologyData = loadYaml(ONTOLOGY_PATH, 'ontology.yaml');
+const anatomyData = loadYaml(ANATOMY_VOCAB_PATH, 'anatomy.yaml (starter_pack)');
+const posesData = loadYaml(POSES_VOCAB_PATH, 'poses.yaml (starter_pack)');
 
 // ============================================================================
 // Extract Labels
@@ -94,47 +101,78 @@ for (const item of compositionRoleLabels) {
   }
 }
 
-// Extract from ontology - domain packs
-const domainPacks = (ontologyData.domain as { packs?: Record<string, unknown> })?.packs ?? {};
+// ============================================================================
+// Extract from Vocabulary YAMLs
+// ============================================================================
 
-function extractOntologyItems(
-  pack: Record<string, unknown>,
-  key: string,
-  group: LabelSuggestion['group']
-): LabelSuggestion[] {
-  const items = pack[key] as Array<{ id: string; label: string }> | undefined;
-  if (!items) return [];
-  return items.map((item) => {
-    // Strip prefix like "part:", "region:" from id for cleaner labels
-    const cleanId = item.id.includes(':') ? item.id.split(':')[1] : item.id;
+// IDs that should be classified as "region" (body zones) rather than "part"
+// This preserves backward compatibility with the old ontology.yaml split
+const REGION_IDS = new Set([
+  'groin',
+  'chest',
+  'back',
+  'between_legs',
+  'upper_body',
+  'lower_body',
+]);
+
+/**
+ * Extract parts/regions from anatomy vocab YAML.
+ * New format: { parts: { "part:face": { label: "Face", ... }, ... } }
+ */
+function extractAnatomyItems(
+  data: Record<string, unknown>
+): { parts: LabelSuggestion[]; regions: LabelSuggestion[] } {
+  const partsDict = data.parts as Record<string, { label: string; category?: string }> | undefined;
+  if (!partsDict) return { parts: [], regions: [] };
+
+  const parts: LabelSuggestion[] = [];
+  const regions: LabelSuggestion[] = [];
+
+  for (const [fullId, meta] of Object.entries(partsDict)) {
+    // Strip "part:" prefix for cleaner ID
+    const cleanId = fullId.includes(':') ? fullId.split(':')[1] : fullId;
+
+    const item: LabelSuggestion = {
+      id: cleanId,
+      label: meta.label,
+      group: REGION_IDS.has(cleanId) ? 'region' : 'part',
+    };
+
+    if (REGION_IDS.has(cleanId)) {
+      regions.push(item);
+    } else {
+      parts.push(item);
+    }
+  }
+
+  return { parts, regions };
+}
+
+/**
+ * Extract poses from poses vocab YAML.
+ * New format: { poses: { "pose:standing_neutral": { label: "Standing Neutral", ... }, ... } }
+ */
+function extractPoses(data: Record<string, unknown>): LabelSuggestion[] {
+  const posesDict = data.poses as Record<string, { label: string }> | undefined;
+  if (!posesDict) return [];
+
+  return Object.entries(posesDict).map(([fullId, meta]) => {
+    // Strip "pose:" prefix for cleaner ID
+    const cleanId = fullId.includes(':') ? fullId.split(':')[1] : fullId;
     return {
       id: cleanId,
-      label: item.label,
-      group,
+      label: meta.label,
+      group: 'pose' as const,
     };
   });
 }
 
-// Collect anatomy parts and regions from all packs
-const anatomyPartLabels: LabelSuggestion[] = [];
-const anatomyRegionLabels: LabelSuggestion[] = [];
+// Extract anatomy parts and regions from vocab
+const { parts: anatomyPartLabels, regions: anatomyRegionLabels } = extractAnatomyItems(anatomyData);
 
-for (const pack of Object.values(domainPacks) as Record<string, unknown>[]) {
-  anatomyPartLabels.push(...extractOntologyItems(pack, 'anatomy_parts', 'part'));
-  anatomyRegionLabels.push(...extractOntologyItems(pack, 'anatomy_regions', 'region'));
-}
-
-// Extract poses from action_blocks section
-const actionBlocks = ontologyData.action_blocks as { poses?: { definitions?: Array<{ id: string; label: string }> } } | undefined;
-const poseDefinitions = actionBlocks?.poses?.definitions ?? [];
-const poseLabels: LabelSuggestion[] = poseDefinitions.map((pose) => {
-  const cleanId = pose.id.includes(':') ? pose.id.split(':')[1] : pose.id;
-  return {
-    id: cleanId,
-    label: pose.label,
-    group: 'pose' as const,
-  };
-});
+// Extract poses from vocab
+const poseLabels: LabelSuggestion[] = extractPoses(posesData);
 
 // Add common labels that might not be in ontology but are useful for composition
 const commonExtraLabels: LabelSuggestion[] = [
@@ -172,7 +210,7 @@ dedupeAndCollect(commonExtraLabels, allLabels);
 // Generate Output
 // ============================================================================
 
-const output = `// Auto-generated from composition-roles.yaml + ontology.yaml - DO NOT EDIT
+const output = `// Auto-generated from composition-roles.yaml + vocabularies/*.yaml - DO NOT EDIT
 // Re-run: pnpm region-labels:gen
 //
 // ========================================================================
@@ -211,19 +249,19 @@ export const BUILTIN_REGION_LABELS: LabelSuggestion[] = ${JSON.stringify(builtin
 export const COMPOSITION_ROLE_LABELS: LabelSuggestion[] = ${JSON.stringify(compositionRoleLabels, null, 2)};
 
 /**
- * Anatomy part labels (from ontology.yaml).
+ * Anatomy part labels (from starter_pack/vocabularies/anatomy.yaml).
  * @see useConceptStore.getByKind('part') for runtime API
  */
 export const ANATOMY_PART_LABELS: LabelSuggestion[] = ${JSON.stringify(anatomyPartLabels, null, 2)};
 
 /**
- * Anatomy region labels (from ontology.yaml).
+ * Anatomy region labels (from starter_pack/vocabularies/anatomy.yaml).
  * @see useConceptStore.getByKind('body_region') for runtime API
  */
 export const ANATOMY_REGION_LABELS: LabelSuggestion[] = ${JSON.stringify(anatomyRegionLabels, null, 2)};
 
 /**
- * Pose labels (from ontology.yaml action_blocks).
+ * Pose labels (from starter_pack/vocabularies/poses.yaml).
  * @see useConceptStore.getByKind('pose') for runtime API
  */
 export const POSE_LABELS: LabelSuggestion[] = ${JSON.stringify(poseLabels, null, 2)};

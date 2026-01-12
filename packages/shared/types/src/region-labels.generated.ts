@@ -1,4 +1,4 @@
-// Auto-generated from composition-roles.yaml + ontology.yaml - DO NOT EDIT
+// Auto-generated from composition-roles.yaml + vocabularies/*.yaml - DO NOT EDIT
 // Re-run: pnpm region-labels:gen
 //
 // ========================================================================
@@ -89,18 +89,28 @@ export const COMPOSITION_ROLE_LABELS: LabelSuggestion[] = [
 ];
 
 /**
- * Anatomy part labels (from ontology.yaml).
+ * Anatomy part labels (from starter_pack/vocabularies/anatomy.yaml).
  * @see useConceptStore.getByKind('part') for runtime API
  */
 export const ANATOMY_PART_LABELS: LabelSuggestion[] = [
   {
-    "id": "shaft",
-    "label": "Shaft",
+    "id": "face",
+    "label": "Face",
     "group": "part"
   },
   {
-    "id": "head",
-    "label": "Head",
+    "id": "hair",
+    "label": "Hair",
+    "group": "part"
+  },
+  {
+    "id": "expression",
+    "label": "Expression",
+    "group": "part"
+  },
+  {
+    "id": "body",
+    "label": "Body",
     "group": "part"
   },
   {
@@ -114,20 +124,45 @@ export const ANATOMY_PART_LABELS: LabelSuggestion[] = [
     "group": "part"
   },
   {
+    "id": "outfit",
+    "label": "Outfit",
+    "group": "part"
+  },
+  {
+    "id": "clothes",
+    "label": "Clothes",
+    "group": "part"
+  },
+  {
     "id": "buttocks",
     "label": "Buttocks",
+    "group": "part"
+  },
+  {
+    "id": "shaft",
+    "label": "Shaft",
+    "group": "part"
+  },
+  {
+    "id": "head_tip",
+    "label": "Head/Tip",
     "group": "part"
   }
 ];
 
 /**
- * Anatomy region labels (from ontology.yaml).
+ * Anatomy region labels (from starter_pack/vocabularies/anatomy.yaml).
  * @see useConceptStore.getByKind('body_region') for runtime API
  */
 export const ANATOMY_REGION_LABELS: LabelSuggestion[] = [
   {
-    "id": "groin",
-    "label": "Groin / crotch",
+    "id": "upper_body",
+    "label": "Upper Body",
+    "group": "region"
+  },
+  {
+    "id": "lower_body",
+    "label": "Lower Body",
     "group": "region"
   },
   {
@@ -141,17 +176,27 @@ export const ANATOMY_REGION_LABELS: LabelSuggestion[] = [
     "group": "region"
   },
   {
+    "id": "groin",
+    "label": "Groin",
+    "group": "region"
+  },
+  {
     "id": "between_legs",
-    "label": "Between legs",
+    "label": "Between Legs",
     "group": "region"
   }
 ];
 
 /**
- * Pose labels (from ontology.yaml action_blocks).
+ * Pose labels (from starter_pack/vocabularies/poses.yaml).
  * @see useConceptStore.getByKind('pose') for runtime API
  */
 export const POSE_LABELS: LabelSuggestion[] = [
+  {
+    "id": "t_pose",
+    "label": "T-Pose (Flexible)",
+    "group": "pose"
+  },
   {
     "id": "standing_neutral",
     "label": "Standing Neutral",
@@ -213,18 +258,43 @@ export const POSE_LABELS: LabelSuggestion[] = [
     "group": "pose"
   },
   {
-    "id": "leaning_wall",
-    "label": "Leaning Against Wall",
+    "id": "almost_kiss",
+    "label": "Almost Kissing",
     "group": "pose"
   },
   {
-    "id": "leaning_rail",
-    "label": "Leaning on Railing/Bar",
+    "id": "kissing",
+    "label": "Kissing",
     "group": "pose"
   },
   {
-    "id": "leaning_forward",
-    "label": "Leaning Forward",
+    "id": "forehead_touch",
+    "label": "Forehead Touch",
+    "group": "pose"
+  },
+  {
+    "id": "hand_holding",
+    "label": "Holding Hands",
+    "group": "pose"
+  },
+  {
+    "id": "jumping_attack",
+    "label": "Jumping Attack",
+    "group": "pose"
+  },
+  {
+    "id": "scared_defensive",
+    "label": "Scared/Defensive",
+    "group": "pose"
+  },
+  {
+    "id": "lunging",
+    "label": "Lunging",
+    "group": "pose"
+  },
+  {
+    "id": "dodging",
+    "label": "Dodging",
     "group": "pose"
   },
   {
@@ -243,6 +313,21 @@ export const POSE_LABELS: LabelSuggestion[] = [
     "group": "pose"
   },
   {
+    "id": "leaning_wall",
+    "label": "Leaning Against Wall",
+    "group": "pose"
+  },
+  {
+    "id": "leaning_rail",
+    "label": "Leaning on Railing/Bar",
+    "group": "pose"
+  },
+  {
+    "id": "leaning_forward",
+    "label": "Leaning Forward",
+    "group": "pose"
+  },
+  {
     "id": "rising",
     "label": "Rising/Getting Up",
     "group": "pose"
@@ -255,26 +340,6 @@ export const POSE_LABELS: LabelSuggestion[] = [
   {
     "id": "turning",
     "label": "Turning",
-    "group": "pose"
-  },
-  {
-    "id": "kissing",
-    "label": "Kissing",
-    "group": "pose"
-  },
-  {
-    "id": "almost_kiss",
-    "label": "Almost Kissing",
-    "group": "pose"
-  },
-  {
-    "id": "forehead_touch",
-    "label": "Forehead Touch",
-    "group": "pose"
-  },
-  {
-    "id": "hand_holding",
-    "label": "Holding Hands",
     "group": "pose"
   }
 ];
@@ -335,13 +400,23 @@ export const ALL_REGION_LABELS: LabelSuggestion[] = [
     "group": "role"
   },
   {
-    "id": "shaft",
-    "label": "Shaft",
+    "id": "face",
+    "label": "Face",
     "group": "part"
   },
   {
-    "id": "head",
-    "label": "Head",
+    "id": "hair",
+    "label": "Hair",
+    "group": "part"
+  },
+  {
+    "id": "expression",
+    "label": "Expression",
+    "group": "part"
+  },
+  {
+    "id": "body",
+    "label": "Body",
     "group": "part"
   },
   {
@@ -355,13 +430,38 @@ export const ALL_REGION_LABELS: LabelSuggestion[] = [
     "group": "part"
   },
   {
+    "id": "outfit",
+    "label": "Outfit",
+    "group": "part"
+  },
+  {
+    "id": "clothes",
+    "label": "Clothes",
+    "group": "part"
+  },
+  {
     "id": "buttocks",
     "label": "Buttocks",
     "group": "part"
   },
   {
-    "id": "groin",
-    "label": "Groin / crotch",
+    "id": "shaft",
+    "label": "Shaft",
+    "group": "part"
+  },
+  {
+    "id": "head_tip",
+    "label": "Head/Tip",
+    "group": "part"
+  },
+  {
+    "id": "upper_body",
+    "label": "Upper Body",
+    "group": "region"
+  },
+  {
+    "id": "lower_body",
+    "label": "Lower Body",
     "group": "region"
   },
   {
@@ -375,9 +475,19 @@ export const ALL_REGION_LABELS: LabelSuggestion[] = [
     "group": "region"
   },
   {
-    "id": "between_legs",
-    "label": "Between legs",
+    "id": "groin",
+    "label": "Groin",
     "group": "region"
+  },
+  {
+    "id": "between_legs",
+    "label": "Between Legs",
+    "group": "region"
+  },
+  {
+    "id": "t_pose",
+    "label": "T-Pose (Flexible)",
+    "group": "pose"
   },
   {
     "id": "standing_neutral",
@@ -440,18 +550,43 @@ export const ALL_REGION_LABELS: LabelSuggestion[] = [
     "group": "pose"
   },
   {
-    "id": "leaning_wall",
-    "label": "Leaning Against Wall",
+    "id": "almost_kiss",
+    "label": "Almost Kissing",
     "group": "pose"
   },
   {
-    "id": "leaning_rail",
-    "label": "Leaning on Railing/Bar",
+    "id": "kissing",
+    "label": "Kissing",
     "group": "pose"
   },
   {
-    "id": "leaning_forward",
-    "label": "Leaning Forward",
+    "id": "forehead_touch",
+    "label": "Forehead Touch",
+    "group": "pose"
+  },
+  {
+    "id": "hand_holding",
+    "label": "Holding Hands",
+    "group": "pose"
+  },
+  {
+    "id": "jumping_attack",
+    "label": "Jumping Attack",
+    "group": "pose"
+  },
+  {
+    "id": "scared_defensive",
+    "label": "Scared/Defensive",
+    "group": "pose"
+  },
+  {
+    "id": "lunging",
+    "label": "Lunging",
+    "group": "pose"
+  },
+  {
+    "id": "dodging",
+    "label": "Dodging",
     "group": "pose"
   },
   {
@@ -470,6 +605,21 @@ export const ALL_REGION_LABELS: LabelSuggestion[] = [
     "group": "pose"
   },
   {
+    "id": "leaning_wall",
+    "label": "Leaning Against Wall",
+    "group": "pose"
+  },
+  {
+    "id": "leaning_rail",
+    "label": "Leaning on Railing/Bar",
+    "group": "pose"
+  },
+  {
+    "id": "leaning_forward",
+    "label": "Leaning Forward",
+    "group": "pose"
+  },
+  {
     "id": "rising",
     "label": "Rising/Getting Up",
     "group": "pose"
@@ -485,69 +635,9 @@ export const ALL_REGION_LABELS: LabelSuggestion[] = [
     "group": "pose"
   },
   {
-    "id": "kissing",
-    "label": "Kissing",
-    "group": "pose"
-  },
-  {
-    "id": "almost_kiss",
-    "label": "Almost Kissing",
-    "group": "pose"
-  },
-  {
-    "id": "forehead_touch",
-    "label": "Forehead Touch",
-    "group": "pose"
-  },
-  {
-    "id": "hand_holding",
-    "label": "Holding Hands",
-    "group": "pose"
-  },
-  {
-    "id": "face",
-    "label": "Face",
-    "group": "part"
-  },
-  {
     "id": "pose",
     "label": "Pose",
     "group": "pose"
-  },
-  {
-    "id": "outfit",
-    "label": "Outfit",
-    "group": "part"
-  },
-  {
-    "id": "clothes",
-    "label": "Clothes",
-    "group": "part"
-  },
-  {
-    "id": "hair",
-    "label": "Hair",
-    "group": "part"
-  },
-  {
-    "id": "expression",
-    "label": "Expression",
-    "group": "part"
-  },
-  {
-    "id": "body",
-    "label": "Body",
-    "group": "part"
-  },
-  {
-    "id": "upper_body",
-    "label": "Upper Body",
-    "group": "region"
-  },
-  {
-    "id": "lower_body",
-    "label": "Lower Body",
-    "group": "region"
   }
 ];
 
