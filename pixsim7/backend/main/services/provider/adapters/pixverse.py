@@ -193,23 +193,36 @@ class PixverseProvider(
             OperationType.FUSION,
         ]
 
-    async def fetch_image_metadata(
+    async def _fetch_asset_metadata(
         self,
         account: ProviderAccount,
         provider_asset_id: str,
+        media_type: str,  # "image" or "video"
         *,
         asset_id: Optional[int] = None,
         remote_url: Optional[str] = None,
         media_metadata: Optional[Dict[str, Any]] = None,
         max_pages: int = 20,
         limit: int = 100,
-        log_prefix: str = "pixverse_image",
+        log_prefix: str = "pixverse",
     ) -> Optional[Dict[str, Any]]:
-        """Resolve Pixverse image metadata using ID lookup with list fallback."""
+        """
+        Generic asset metadata fetcher for both images and videos.
+
+        Uses direct ID lookup when numeric, falls back to paginated list search
+        with multiple match modes (id, url, uuid_in_url).
+        """
+        # Configuration based on media type
+        is_video = media_type == "video"
+        id_fields = ("video_id", "VideoId", "id") if is_video else ("image_id",)
+        url_fields = ("video_url", "media_url", "url") if is_video else ("image_url", "media_url", "customer_img_url")
+        type_label = "video" if is_video else "image"
+
         context: Dict[str, Any] = {
             "provider_asset_id": provider_asset_id,
             "account_id": account.id,
             "account_email": account.email,
+            "media_type": media_type,
         }
         if asset_id is not None:
             context["asset_id"] = asset_id
@@ -223,36 +236,49 @@ class PixverseProvider(
         async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
             client = self._create_client_from_session(session, account)
             provider_asset_id_str = str(provider_asset_id or "")
-            lookup_image_id = provider_asset_id_str if provider_asset_id_str.isdigit() else None
+            lookup_id = provider_asset_id_str if provider_asset_id_str.isdigit() else None
 
-            if not lookup_image_id and media_metadata:
-                metadata_image_id = media_metadata.get("image_id")
-                if metadata_image_id is not None and str(metadata_image_id).isdigit():
-                    lookup_image_id = str(metadata_image_id)
-                    log_info(
-                        "using_metadata_image_id",
-                        image_id=lookup_image_id,
-                    )
+            # Try to extract numeric ID from metadata if not already numeric
+            if not lookup_id and media_metadata:
+                for key in id_fields:
+                    metadata_id = media_metadata.get(key)
+                    if metadata_id is not None and str(metadata_id).isdigit():
+                        lookup_id = str(metadata_id)
+                        log_info(f"using_metadata_{type_label}_id", **{f"{type_label}_id": lookup_id, "source_key": key})
+                        break
 
-            if not lookup_image_id:
+            if not lookup_id:
                 log_info("non_numeric_provider_id")
 
+            # Direct lookup by numeric ID
             provider_metadata = None
-            if lookup_image_id:
-                provider_metadata = await client.get_image(lookup_image_id)
+            if lookup_id:
+                if is_video:
+                    result = await client.get_video(lookup_id)
+                    # Convert Pydantic model to dict if needed
+                    if result is not None:
+                        if hasattr(result, 'model_dump'):
+                            provider_metadata = result.model_dump()
+                        elif hasattr(result, 'dict'):
+                            provider_metadata = result.dict()
+                        else:
+                            provider_metadata = result
+                else:
+                    provider_metadata = await client.get_image(lookup_id)
 
+            # Return early if we got complete metadata
             if provider_metadata and provider_metadata.get("prompt"):
                 return provider_metadata
 
+            # Prepare for list search fallback
             search_reason = "no_metadata" if not provider_metadata else "missing_prompt"
             candidate_urls: list[str] = []
-            url_sources = [
-                remote_url,
-                (media_metadata or {}).get("image_url"),
-                (media_metadata or {}).get("media_url"),
-                (media_metadata or {}).get("customer_img_url"),
-                (provider_metadata or {}).get("image_url") if provider_metadata else None,
-            ]
+            url_sources = [remote_url]
+            for field in url_fields:
+                url_sources.append((media_metadata or {}).get(field))
+            if provider_metadata:
+                url_sources.append(provider_metadata.get(f"{type_label}_url"))
+
             for url in url_sources:
                 normalized = _normalize_pixverse_media_url(url)
                 if normalized and normalized not in candidate_urls:
@@ -260,71 +286,76 @@ class PixverseProvider(
 
             target_uuid = provider_asset_id_str if looks_like_pixverse_uuid(provider_asset_id_str) else None
             log_info(
-                "image_minimal_data",
-                searching_image_list=True,
+                f"{type_label}_minimal_data",
+                **{f"searching_{type_label}_list": True},
                 search_reason=search_reason,
                 candidate_urls=len(candidate_urls),
                 uuid_match=bool(target_uuid),
-                lookup_image_id=lookup_image_id,
+                **{f"lookup_{type_label}_id": lookup_id},
             )
 
-            if not lookup_image_id and not candidate_urls and not target_uuid:
+            if not lookup_id and not candidate_urls and not target_uuid:
                 return provider_metadata
 
+            # Paginated list search
             found = False
             scanned = 0
             offset = 0
             match_mode = None
-            matched_image_id = None
+            matched_id = None
 
             for page in range(max_pages):
-                images = await client.list_images(limit=limit, offset=offset)
+                items = await (client.list_videos(limit=limit, offset=offset) if is_video
+                              else client.list_images(limit=limit, offset=offset))
                 if page == 0:
-                    log_info(
-                        "image_list_page",
-                        page=page,
-                        offset=offset,
-                        returned=len(images),
-                    )
-                if not images:
+                    log_info(f"{type_label}_list_page", page=page, offset=offset, returned=len(items))
+                if not items:
                     break
 
-                scanned += len(images)
-                for img in images:
-                    img_id = img.get("image_id")
-                    if lookup_image_id and str(img_id) == str(lookup_image_id):
-                        provider_metadata = img
+                scanned += len(items)
+                for item in items:
+                    # Extract item ID (try multiple field names for videos)
+                    if is_video:
+                        item_id = item.get("video_id") or item.get("VideoId") or item.get("id")
+                    else:
+                        item_id = item.get("image_id")
+
+                    # Match by ID
+                    if lookup_id and str(item_id) == str(lookup_id):
+                        provider_metadata = item
                         found = True
-                        match_mode = "image_id"
-                        matched_image_id = img_id
+                        match_mode = f"{type_label}_id"
+                        matched_id = item_id
                         break
 
-                    img_url = img.get("image_url") or img.get("url")
-                    normalized_url = _normalize_pixverse_media_url(img_url)
+                    # Match by URL
+                    item_url = item.get(f"{type_label}_url") or item.get("url")
+                    normalized_url = _normalize_pixverse_media_url(item_url)
                     if normalized_url and normalized_url in candidate_urls:
-                        provider_metadata = img
+                        provider_metadata = item
                         found = True
-                        match_mode = "image_url"
-                        matched_image_id = img_id
+                        match_mode = f"{type_label}_url"
+                        matched_id = item_id
                         break
 
-                    if target_uuid and uuid_in_url(target_uuid, img_url):
-                        provider_metadata = img
+                    # Match by UUID in URL
+                    if target_uuid and uuid_in_url(target_uuid, item_url):
+                        provider_metadata = item
                         found = True
                         match_mode = "uuid_in_url"
-                        matched_image_id = img_id
+                        matched_id = item_id
                         break
 
                 if found:
-                    if target_uuid and match_mode in {"image_url", "uuid_in_url"}:
+                    if target_uuid and match_mode in {f"{type_label}_url", "uuid_in_url"}:
                         provider_metadata = dict(provider_metadata or {})
                         provider_metadata.setdefault("pixverse_asset_uuid", target_uuid)
                     log_info(
-                        "found_in_image_list",
+                        f"found_in_{type_label}_list",
                         page=page,
                         offset=offset,
                         match_mode=match_mode,
-                        matched_image_id=matched_image_id,
+                        **{f"matched_{type_label}_id": matched_id},
                     )
                     break
 
@@ -332,12 +363,12 @@ class PixverseProvider(
 
             if not found:
                 log_warning(
-                    "not_in_image_list",
+                    f"not_in_{type_label}_list",
                     pages_searched=page + 1,
                     scanned=scanned,
                     limit=limit,
                     max_pages=max_pages,
-                    lookup_image_id=lookup_image_id,
+                    **{f"lookup_{type_label}_id": lookup_id},
                     candidate_urls=len(candidate_urls),
                     uuid_match=bool(target_uuid),
                 )
@@ -346,9 +377,59 @@ class PixverseProvider(
 
         return await self.session_manager.run_with_session(
             account=account,
-            op_name="fetch_image_metadata",
+            op_name=f"fetch_{media_type}_metadata",
             operation=_operation,
             retry_on_session_error=True,
+        )
+
+    async def fetch_image_metadata(
+        self,
+        account: ProviderAccount,
+        provider_asset_id: str,
+        *,
+        asset_id: Optional[int] = None,
+        remote_url: Optional[str] = None,
+        media_metadata: Optional[Dict[str, Any]] = None,
+        max_pages: int = 20,
+        limit: int = 100,
+        log_prefix: str = "pixverse_image",
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve Pixverse image metadata using ID lookup with list fallback."""
+        return await self._fetch_asset_metadata(
+            account=account,
+            provider_asset_id=provider_asset_id,
+            media_type="image",
+            asset_id=asset_id,
+            remote_url=remote_url,
+            media_metadata=media_metadata,
+            max_pages=max_pages,
+            limit=limit,
+            log_prefix=log_prefix,
+        )
+
+    async def fetch_video_metadata(
+        self,
+        account: ProviderAccount,
+        provider_asset_id: str,
+        *,
+        asset_id: Optional[int] = None,
+        remote_url: Optional[str] = None,
+        media_metadata: Optional[Dict[str, Any]] = None,
+        max_pages: int = 20,
+        limit: int = 100,
+        log_prefix: str = "pixverse_video",
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve Pixverse video metadata using ID lookup with list fallback."""
+        return await self._fetch_asset_metadata(
+            account=account,
+            provider_asset_id=provider_asset_id,
+            media_type="video",
+            asset_id=asset_id,
+            remote_url=remote_url,
+            media_metadata=media_metadata,
+            max_pages=max_pages,
+            limit=limit,
+            log_prefix=log_prefix,
         )
 
     # ===== PROVIDER METADATA =====

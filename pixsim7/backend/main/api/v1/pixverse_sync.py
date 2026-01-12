@@ -423,7 +423,11 @@ async def sync_pixverse_assets(
 
 class SyncSingleAssetRequest(BaseModel):
     """Request to sync a single PixVerse asset by its known ID."""
-    pixverse_asset_id: str = Field(description="The PixVerse UUID from the media URL")
+    pixverse_asset_id: str = Field(description="The PixVerse ID (numeric preferred, UUID fallback)")
+    pixverse_asset_uuid: Optional[str] = Field(
+        None,
+        description="The UUID from media URL (for dedup when numeric ID is primary)"
+    )
     media_url: str = Field(description="The full media.pixverse.ai URL")
     pixverse_media_type: Optional[str] = Field(
         None,
@@ -489,10 +493,14 @@ async def sync_single_pixverse_asset(
             if account:
                 provider = PixverseProvider()
 
-                # Fetch asset details from PixVerse
+                # Fetch asset details from PixVerse using centralized methods
                 if media_type == MediaType.VIDEO:
-                    client = provider._create_client(account)
-                    pixverse_metadata = await client.get_video(asset_id)
+                    pixverse_metadata = await provider.fetch_video_metadata(
+                        account=account,
+                        provider_asset_id=asset_id,
+                        remote_url=clean_url,
+                        log_prefix="pixverse_single_sync",
+                    )
                 else:
                     pixverse_metadata = await provider.fetch_image_metadata(
                         account=account,
@@ -515,6 +523,10 @@ async def sync_single_pixverse_asset(
 
     # Build candidate IDs for dedup - always include the provided asset_id
     candidate_ids = [asset_id]
+
+    # Also include the UUID from request if different from asset_id (for dedup)
+    if body.pixverse_asset_uuid and body.pixverse_asset_uuid != asset_id:
+        candidate_ids.append(body.pixverse_asset_uuid)
 
     # Resolve best provider_asset_id (prefer integer ID from metadata)
     from pixsim7.backend.main.services.provider.adapters.pixverse_ids import get_preferred_provider_asset_id

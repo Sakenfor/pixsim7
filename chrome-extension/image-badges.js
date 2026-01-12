@@ -12,9 +12,9 @@
   /**
    * Extract PixVerse asset UUID from media.pixverse.ai URLs
    * Example: https://media.pixverse.ai/pixverse%2Fi2i%2Fori%2Fb9c8fa2a-ff80-4fd6-a233-beae0b167b93.jpg
-   * Returns: { uuid: 'b9c8fa2a-ff80-4fd6-a233-beae0b167b93', mediaType: 'i2i', variant: 'ori' } or null
+   * Returns: { uuid: 'b9c8fa2a-ff80-4fd6-a233-beae0b167b93', mediaType: 'i2i', variant: 'ori', numericId: null } or null
    */
-  function extractPixverseAssetInfo(url) {
+  function extractPixverseAssetInfo(url, mediaElement = null) {
     if (!url) return null;
     try {
       const parsed = new URL(url);
@@ -23,25 +23,98 @@
       // Decode URL-encoded path: pixverse%2Fi2i%2Fori%2Fuuid.ext -> pixverse/i2i/ori/uuid.ext
       const decodedPath = decodeURIComponent(parsed.pathname);
 
+      let result = null;
+
       // Match pattern: /pixverse/<type>/<variant>/<uuid>.<ext>
       // Types seen: i2i (image-to-image), t2v (text-to-video), etc.
       const match = decodedPath.match(/\/pixverse\/([^\/]+)\/([^\/]+)\/([a-f0-9-]{36})\.[a-z]+$/i);
       if (match) {
-        return {
+        result = {
           uuid: match[3],
           mediaType: match[1], // e.g., 'i2i', 't2v'
           variant: match[2],   // e.g., 'ori', 'thumb'
+          numericId: null,
         };
       }
 
       // Fallback: just find any UUID in the path
-      const uuidMatch = decodedPath.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
-      if (uuidMatch) {
-        return { uuid: uuidMatch[1], mediaType: null, variant: null };
+      if (!result) {
+        const uuidMatch = decodedPath.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+        if (uuidMatch) {
+          result = { uuid: uuidMatch[1], mediaType: null, variant: null, numericId: null };
+        }
       }
+
+      // Try to extract numeric ID from parent <a> href (e.g., ?id=380571015745668)
+      if (result && mediaElement) {
+        const numericId = extractNumericIdFromElement(mediaElement);
+        if (numericId) {
+          result.numericId = numericId;
+        }
+      }
+
+      return result;
     } catch (e) {
       // Invalid URL
     }
+    return null;
+  }
+
+  /**
+   * Extract numeric Pixverse ID from element's parent anchor or data attributes
+   * Looks for patterns like ?id=380571015745668 in href or data-id attributes
+   */
+  function extractNumericIdFromElement(element) {
+    if (!element) return null;
+
+    // Helper to extract ID from an anchor element
+    function getIdFromAnchor(anchor) {
+      if (!anchor || anchor.tagName !== 'A' || !anchor.href) return null;
+      try {
+        const linkUrl = new URL(anchor.href);
+        const idParam = linkUrl.searchParams.get('id');
+        if (idParam && /^\d+$/.test(idParam)) {
+          return idParam;
+        }
+      } catch {}
+      return null;
+    }
+
+    // Walk up the DOM looking for an anchor with ?id= parameter (up to 20 levels)
+    let el = element;
+    for (let i = 0; i < 20 && el; i++) {
+      // Check for data-id attributes (various naming conventions)
+      const dataId = el.getAttribute?.('data-id')
+        || el.getAttribute?.('data-video-id')
+        || el.getAttribute?.('data-image-id')
+        || el.getAttribute?.('data-asset-id');
+      if (dataId && /^\d+$/.test(dataId)) {
+        return dataId;
+      }
+
+      // Check if this element is an anchor with ?id=
+      const idFromThis = getIdFromAnchor(el);
+      if (idFromThis) return idFromThis;
+
+      // Check sibling anchors (for cases where img and link are siblings)
+      if (el.parentElement) {
+        const siblingAnchors = el.parentElement.querySelectorAll(':scope > a[href*="id="]');
+        for (const anchor of siblingAnchors) {
+          const idFromSibling = getIdFromAnchor(anchor);
+          if (idFromSibling) return idFromSibling;
+        }
+      }
+
+      // Check for anchor descendants (for cases where the wrapper contains the link)
+      const descendantAnchor = el.querySelector?.('a[href*="id="]');
+      if (descendantAnchor) {
+        const idFromDescendant = getIdFromAnchor(descendantAnchor);
+        if (idFromDescendant) return idFromDescendant;
+      }
+
+      el = el.parentElement;
+    }
+
     return null;
   }
 
@@ -326,10 +399,14 @@
       // Get current PixVerse session account if available
       const accountId = await getPixverseSessionAccountId();
 
+      // Prefer numeric ID over UUID (Pixverse API works better with numeric IDs)
+      const assetId = assetInfo.numericId || assetInfo.uuid;
+
       const res = await chrome.runtime.sendMessage({
         action: 'syncPixverseAsset',
         mediaUrl,
-        pixverseAssetId: assetInfo.uuid,
+        pixverseAssetId: assetId,
+        pixverseAssetUuid: assetInfo.uuid, // Always pass UUID for reference
         pixverseMediaType: assetInfo.mediaType,
         isVideo,
         accountId,
@@ -388,7 +465,8 @@
 
       // On PixVerse site with identifiable PixVerse media: sync instead of upload
       const onPixverse = isPixverseSite();
-      const assetInfo = isPixverseMediaUrl(src) ? extractPixverseAssetInfo(src) : null;
+      const mediaElement = isVideo ? currentVideo : currentImg;
+      const assetInfo = isPixverseMediaUrl(src) ? extractPixverseAssetInfo(src, mediaElement) : null;
 
       if (onPixverse && assetInfo) {
         await syncPixverseAsset(src, assetInfo, isVideo);
@@ -505,7 +583,7 @@
     currentImg = img;
     currentVideo = null;
     positionBadgeFor(img);
-    updateBadgeLabel(false, img.src);
+    updateBadgeLabel(false, img.src, img);
   }
 
   function onVideoEnter(e) {
@@ -523,7 +601,7 @@
     currentVideo = video;
     currentImg = null;
     positionBadgeFor(video);
-    updateBadgeLabel(true, video.src);
+    updateBadgeLabel(true, video.src, video);
   }
 
   function onImgLeave(e) {
@@ -531,20 +609,22 @@
     scheduleHide();
   }
 
-  function updateBadgeLabel(isVideo, mediaSrc = null) {
+  function updateBadgeLabel(isVideo, mediaSrc = null, mediaElement = null) {
     if (!badgeEl) return;
     // On PixVerse site with PixVerse media URL: show sync badge
     const onPixverse = isPixverseSite();
     const isPixverseMedia = mediaSrc && isPixverseMediaUrl(mediaSrc);
-    const assetInfo = isPixverseMedia ? extractPixverseAssetInfo(mediaSrc) : null;
+    const assetInfo = isPixverseMedia ? extractPixverseAssetInfo(mediaSrc, mediaElement) : null;
     const isBlobUrl = mediaSrc && mediaSrc.startsWith('blob:');
     const isFileUrl = mediaSrc && mediaSrc.startsWith('file://');
     const isLocalUrl = isBlobUrl || isFileUrl;
 
     if (onPixverse && assetInfo) {
       // Show sync icon for PixVerse images we can identify
+      const idDisplay = assetInfo.numericId || assetInfo.uuid.slice(0, 8) + '...';
+      const idType = assetInfo.numericId ? 'ID' : 'UUID';
       badgeEl.innerHTML = '<span style="font-size:12px">🔗</span><span>Sync</span>';
-      badgeEl.title = `Sync to PixSim7 (ID: ${assetInfo.uuid.slice(0, 8)}...)`;
+      badgeEl.title = `Sync to PixSim7 (${idType}: ${idDisplay})`;
     } else if (isVideo) {
       badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
       badgeEl.title = isLocalUrl
