@@ -29,6 +29,9 @@ export type {
   PluginCapabilityHints,
 } from './pluginSystem';
 
+// Catalog selectors (catalog-only families)
+export { generationUiSelectors } from './catalogSelectors';
+
 // Types and mapping helpers
 export type * from './types';
 export {

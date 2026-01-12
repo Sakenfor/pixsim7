@@ -45,9 +45,9 @@
  * ```
  */
 
-import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/providers';
+import type { GenerationUIPlugin } from '@features/providers';
 
-import { galleryToolSelectors, worldToolSelectors } from '@lib/plugins/catalogSelectors';
+import { galleryToolSelectors, generationUiSelectors, worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { GalleryToolPlugin } from '@features/gallery';
 import type { WorldToolPlugin } from '@features/worldTools';
@@ -682,11 +682,8 @@ export function listUIPlugins(): PluginMeta[] {
  * List all generation UI plugins
  */
 export function listGenerationUIPlugins(): PluginMeta[] {
-  const pluginIds = generationUIPluginRegistry.getPluginIds();
-  return pluginIds
-    .map((id) => generationUIPluginRegistry.getPlugin(id))
-    .filter((plugin): plugin is any => plugin !== null)
-    .map(mapGenerationUIToMeta);
+  const plugins = generationUiSelectors.getAll();
+  return plugins.map(mapGenerationUIToMeta);
 }
 
 /**

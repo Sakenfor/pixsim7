@@ -1,5 +1,5 @@
 
-import { generationUIPluginRegistry, type GenerationUIPlugin } from '@features/providers';
+import type { GenerationUIPlugin } from '@features/providers';
 import type { DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 
@@ -549,7 +549,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildGallerySurfaceMetadata,
   },
   'generation-ui': {
-    register: (plugin: GenerationUIPlugin) => generationUIPluginRegistry.register(plugin),
+    register: () => {},
     buildMetadata: buildGenerationUIMetadata,
   },
   'graph-editor': {

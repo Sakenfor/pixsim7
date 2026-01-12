@@ -61,10 +61,11 @@ The catalog is a **read-only metadata layer**. These systems continue to work as
    - Config: `PluginEntry.state` (enabled/disabled/error)
    - UI: `PluginManager` component
 
-6. **Generation UI**
-   - Registry: `generationUIPluginRegistry` (frontend/src/lib/providers/generationPlugins)
+6. **Generation UI** (catalog-only)
+   - Selectors: `generationUiSelectors` (frontend/src/lib/plugins/catalogSelectors)
    - Config: N/A (always enabled)
    - UI: `QuickGenerateModule`
+   - Note: The legacy `generationUIPluginRegistry` is deprecated; use selectors instead.
 
 ### New Capabilities
 

@@ -75,7 +75,22 @@ export * from './lib/core';
 
 // Re-export key singletons for convenience
 export { providerCapabilityRegistry } from './lib/core/capabilityRegistry';
+
+/**
+ * @deprecated Use `generationUiSelectors` from `@lib/plugins/catalogSelectors` instead.
+ * The generation UI plugin system is now catalog-only and this registry is no longer
+ * the source of truth. Import the selectors for read access:
+ *
+ * ```typescript
+ * import { generationUiSelectors } from '@lib/plugins/catalogSelectors';
+ * const plugins = generationUiSelectors.getAll();
+ * const forProvider = generationUiSelectors.getPlugins({ providerId: 'pixverse' });
+ * ```
+ */
 export { generationUIPluginRegistry } from './lib/core/generationPlugins';
+
+// Re-export catalog selectors as the preferred API
+export { generationUiSelectors } from '@lib/plugins/catalogSelectors';
 
 // ============================================================================
 // Lib - API Clients

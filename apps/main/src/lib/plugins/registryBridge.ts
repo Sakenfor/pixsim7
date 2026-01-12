@@ -16,8 +16,6 @@
 
 
 // Import existing registries
-import { generationUIPluginRegistry } from '@features/providers';
-import type { GenerationUIPlugin } from '@features/providers/lib/core/generationPlugins';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 
 import { devToolRegistry, type DevToolDefinition } from '@lib/dev/devtools';
@@ -510,46 +508,6 @@ export function registerBuiltinGalleryTool(tool: GalleryToolPlugin): void {
 }
 
 // ============================================================================
-// Generation UI Registry Bridge
-// ============================================================================
-
-/**
- * Build catalog metadata for a generation UI plugin
- */
-const buildGenerationUIMetadata: MetadataBuilder<GenerationUIPlugin, 'generation-ui'> = (plugin, options) => {
-  const metadata = extractCommonMetadata({
-    id: plugin.id,
-    name: plugin.metadata?.name ?? plugin.id,
-    description: plugin.metadata?.description,
-    version: plugin.metadata?.version,
-    tags: plugin.operations,
-  });
-
-  const providesFeatures = ['generation-ui'];
-  if (plugin.providerId) {
-    providesFeatures.push(`generation-ui-${plugin.providerId}`);
-  }
-
-  return {
-    ...metadata,
-    id: plugin.id,
-    name: plugin.metadata?.name ?? plugin.id,
-    family: 'generation-ui',
-    origin: options.origin ?? 'builtin',
-    activationState: options.activationState ?? 'active',
-    canDisable: options.canDisable ?? false,
-    providerId: plugin.providerId,
-    operations: plugin.operations,
-    priority: plugin.priority,
-    category: 'generation',
-    capabilities: plugin.providerId ? { providerId: plugin.providerId } : undefined,
-    providesFeatures,
-    consumesFeatures: ['generation'],
-    ...options.metadata,
-  } as ExtendedPluginMetadata<'generation-ui'>;
-};
-
-// ============================================================================
 // Graph Editor Registry Bridge
 // ============================================================================
 
@@ -985,16 +943,7 @@ export function syncCatalogFromRegistries(): void {
     }
   }
 
-  // Sync generation UI plugins
-  for (const pluginId of generationUIPluginRegistry.getPluginIds()) {
-    const plugin = generationUIPluginRegistry.getPlugin(pluginId);
-    if (!plugin) continue;
-    if (!pluginCatalog.get(plugin.id)) {
-      pluginCatalog.register(
-        buildGenerationUIMetadata(plugin, { origin: 'builtin', canDisable: false })
-      );
-    }
-  }
+  // Generation UI: catalog-only (no legacy registry sync needed)
 
   // Sync gizmo surfaces
   for (const surface of gizmoSurfaceRegistry.getAll()) {
@@ -1016,7 +965,7 @@ export function printRegistryComparison(): void {
   console.log(`Node Types: ${nodeTypeRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('node-type').length} in catalog`);
   console.log(`Renderers: ${nodeRendererRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('renderer').length} in catalog`);
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
-  console.log(`Generation UI: ${generationUIPluginRegistry.getPluginIds().length} in registry, ${pluginCatalog.getByFamily('generation-ui').length} in catalog`);
+  console.log(`Generation UI: catalog-only (${pluginCatalog.getByFamily('generation-ui').length})`);
   console.log(`Graph Editors: catalog-only (${pluginCatalog.getByFamily('graph-editor').length})`);
   console.log(`Workspace Panels: catalog-only (${pluginCatalog.getByFamily('workspace-panel').length})`);
   console.log(`Dock Widgets: catalog-only (${pluginCatalog.getByFamily('dock-widget').length})`);

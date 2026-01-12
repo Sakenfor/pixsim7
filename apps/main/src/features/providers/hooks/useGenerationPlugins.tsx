@@ -1,9 +1,12 @@
 /**
  * React hooks for generation UI plugin system
  */
+/* eslint-disable react-refresh/only-export-components */
 
 import { useMemo } from 'react';
-import { generationUIPluginRegistry } from '../lib/core/generationPlugins';
+
+import { generationUiSelectors } from '@lib/plugins/catalogSelectors';
+
 import type { GenerationUIPlugin, GenerationUIPluginProps, ValidationResult } from '../lib/core/generationPlugins';
 
 /**
@@ -30,7 +33,7 @@ import type { GenerationUIPlugin, GenerationUIPluginProps, ValidationResult } fr
  */
 export function useGenerationPlugins(providerId: string, operation?: string): GenerationUIPlugin[] {
   return useMemo(() => {
-    return generationUIPluginRegistry.getPlugins({ providerId, operation });
+    return generationUiSelectors.getPlugins({ providerId, operation });
   }, [providerId, operation]);
 }
 
@@ -98,7 +101,7 @@ export function usePluginValidation(
   context?: Record<string, any>
 ): ValidationResult {
   return useMemo(() => {
-    return generationUIPluginRegistry.validate(
+    return generationUiSelectors.validate(
       { providerId, operation },
       values,
       context

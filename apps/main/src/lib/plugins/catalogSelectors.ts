@@ -6,6 +6,10 @@
  * while the catalog becomes the single source of truth.
  */
 
+import type {
+  GenerationUIPlugin,
+  ValidationResult,
+} from '@features/providers/lib/core/generationPlugins';
 import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
 
 import type { DevToolDefinition, DevToolCategory } from '@lib/dev/devtools/types';
@@ -929,6 +933,163 @@ export const dockWidgetSelectors = {
     }
 
     return fallback ?? defaultPresetScope;
+  },
+
+  /**
+   * Subscribe to catalog changes
+   */
+  subscribe(callback: () => void): () => void {
+    return pluginCatalog.subscribe(callback);
+  },
+};
+
+// ============================================================================
+// Generation UI Selectors
+// ============================================================================
+
+/**
+ * Plugin match criteria for generation UI
+ */
+interface GenerationUIMatcher {
+  providerId: string;
+  operation?: string;
+}
+
+/**
+ * Generation UI catalog selectors
+ *
+ * Provides the same API as GenerationUIPluginRegistry but reads from the catalog.
+ */
+export const generationUiSelectors = {
+  /**
+   * Get all generation UI plugins
+   */
+  getAll(): GenerationUIPlugin[] {
+    return pluginCatalog.getPluginsByFamily<GenerationUIPlugin>('generation-ui');
+  },
+
+  /**
+   * Get a generation UI plugin by ID
+   */
+  get(id: string): GenerationUIPlugin | undefined {
+    const meta = pluginCatalog.get(id);
+    if (!meta || meta.family !== 'generation-ui') return undefined;
+    return pluginCatalog.getPlugin<GenerationUIPlugin>(id);
+  },
+
+  /**
+   * Check if a generation UI plugin exists
+   */
+  has(id: string): boolean {
+    const meta = pluginCatalog.get(id);
+    return meta?.family === 'generation-ui';
+  },
+
+  /**
+   * Get all generation UI plugin IDs
+   */
+  getPluginIds(): string[] {
+    return pluginCatalog.getByFamily('generation-ui').map((meta) => meta.id);
+  },
+
+  /**
+   * Get a specific plugin by ID (alias for get, returns null instead of undefined)
+   */
+  getPlugin(pluginId: string): GenerationUIPlugin | null {
+    return this.get(pluginId) ?? null;
+  },
+
+  /**
+   * Get all plugins for a provider and optional operation
+   * Matches the registry's getPlugins API
+   */
+  getPlugins(matcher: GenerationUIMatcher): GenerationUIPlugin[] {
+    const all = this.getAll();
+    const matches: GenerationUIPlugin[] = [];
+
+    for (const plugin of all) {
+      // Check provider match
+      if (plugin.providerId !== matcher.providerId) {
+        continue;
+      }
+
+      // Check operation match (if plugin specifies operations)
+      if (plugin.operations && plugin.operations.length > 0) {
+        if (!matcher.operation || !plugin.operations.includes(matcher.operation)) {
+          continue;
+        }
+      }
+
+      matches.push(plugin);
+    }
+
+    // Sort by priority (higher first)
+    matches.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+    return matches;
+  },
+
+  /**
+   * Get plugins by provider ID
+   */
+  getByProvider(providerId: string): GenerationUIPlugin[] {
+    return this.getAll().filter((plugin) => plugin.providerId === providerId);
+  },
+
+  /**
+   * Get plugins by operation
+   */
+  getByOperation(operation: string): GenerationUIPlugin[] {
+    return this.getAll().filter((plugin) => {
+      if (!plugin.operations || plugin.operations.length === 0) {
+        return true; // Plugins without operations match all
+      }
+      return plugin.operations.includes(operation);
+    });
+  },
+
+  /**
+   * Validate values using all matching plugins
+   */
+  validate(
+    matcher: GenerationUIMatcher,
+    values: Record<string, unknown>,
+    context?: Record<string, unknown>
+  ): ValidationResult {
+    const plugins = this.getPlugins(matcher);
+    const errors: Record<string, string> = {};
+    const warnings: Record<string, string> = {};
+    let valid = true;
+
+    for (const plugin of plugins) {
+      if (!plugin.validate) continue;
+
+      const result = plugin.validate(values, context);
+      if (!result.valid) {
+        valid = false;
+      }
+
+      if (result.errors) {
+        Object.assign(errors, result.errors);
+      }
+
+      if (result.warnings) {
+        Object.assign(warnings, result.warnings);
+      }
+    }
+
+    return {
+      valid,
+      errors: Object.keys(errors).length > 0 ? errors : undefined,
+      warnings: Object.keys(warnings).length > 0 ? warnings : undefined,
+    };
+  },
+
+  /**
+   * Get the number of registered plugins
+   */
+  get size(): number {
+    return pluginCatalog.getByFamily('generation-ui').length;
   },
 
   /**
