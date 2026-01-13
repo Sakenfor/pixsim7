@@ -1,5 +1,5 @@
 /**
- * @pixsim7/helpers-core
+ * @pixsim7/shared.helpers-core
  *
  * Core helper registry pattern - pure TypeScript, no React/DOM dependencies.
  *
@@ -9,7 +9,7 @@
  *
  * @example
  * ```ts
- * import { createHelperRegistry, type HelperAdapter } from '@pixsim7/helpers-core';
+ * import { createHelperRegistry, type HelperAdapter } from '@pixsim7/shared.helpers-core';
  *
  * // Define your adapter interface
  * interface MyAdapter extends HelperAdapter<MyData> {

@@ -1,15 +1,15 @@
 /**
- * API Client - Browser-specific wrapper for @pixsim7/api-client
+ * API Client - Browser-specific wrapper for @pixsim7/shared.api-client
  *
  * This module provides a pre-configured API client instance for the web app.
- * It uses the environment-neutral @pixsim7/api-client package with browser-specific
+ * It uses the environment-neutral @pixsim7/shared.api-client package with browser-specific
  * token storage and redirect handling.
  */
-import { createApiClient, type PixSimApiClient } from '@pixsim7/api-client';
+import { createApiClient, type PixSimApiClient } from '@pixsim7/shared.api-client';
 import {
   createBrowserTokenProvider,
   computeBackendUrl,
-} from '@pixsim7/api-client/browser';
+} from '@pixsim7/shared.api-client/browser';
 
 /**
  * Backend base URL (without /api/v1 suffix).
@@ -67,7 +67,7 @@ const client = createApiClient({
  * Legacy API client wrapper for backward compatibility.
  *
  * Provides the same interface as the old ApiClient class.
- * New code should import from @pixsim7/api-client directly.
+ * New code should import from @pixsim7/shared.api-client directly.
  *
  * @deprecated Prefer `pixsimClient` (returns data directly) or `pixsimClient.getRawClient()` if you need AxiosResponse.
  */
@@ -115,7 +115,7 @@ class ApiClientWrapper {
  * const assets = response.data;
  * ```
  *
- * @deprecated Prefer `pixsimClient` (data-returning) or domain helpers in `@pixsim7/api-client/domains`.
+ * @deprecated Prefer `pixsimClient` (data-returning) or domain helpers in `@pixsim7/shared.api-client/domains`.
  */
 export const apiClient = new ApiClientWrapper(client);
 

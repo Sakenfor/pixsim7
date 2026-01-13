@@ -9,12 +9,12 @@
  * import { interactionRegistry } from '@lib/registries';
  */
 
-import { interactionRegistry } from './types';
-import { talkPlugin } from './talk';
+import { loadPluginInteractions } from './dynamicLoader';
 import { giveItemInteraction } from './giveItem';
 import { persuadePlugin } from './persuade';
 import { sensualizePlugin } from './sensualize';
-import { loadPluginInteractions } from './dynamicLoader';
+import { talkPlugin } from './talk';
+import { interactionRegistry } from './types';
 
 // Register bundled interactions (always available)
 interactionRegistry.register(talkPlugin);
@@ -56,7 +56,7 @@ export type {
 } from './types';
 
 // Export specific configs for type safety
-// Note: PickpocketConfig is in @pixsim7/plugin-stealth/types
+// Note: PickpocketConfig is in @pixsim7/plugins.stealth/types
 export type { TalkConfig } from './talk';
 export type { GiveItemConfig } from './giveItem';
 export type { PersuadeConfig } from './persuade';

@@ -212,7 +212,7 @@ import type { SceneNode } from '@shared/types';
 ```typescript
 // âœ… RECOMMENDED - Clean namespace imports
 import { IDs } from '@shared/types';
-import { Ref } from '@pixsim7/ref-core';
+import { Ref } from '@pixsim7/shared.ref-core';
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
   // ...
@@ -297,7 +297,7 @@ export async function updateLocation(locationId: LocationId) {
 ```typescript
 // Using namespace for multiple ID types
 import { IDs } from '@shared/types';
-import { Ref, isNpcRef } from '@pixsim7/ref-core';
+import { Ref, isNpcRef } from '@pixsim7/shared.ref-core';
 import { parseRef } from '@pixsim7/shared.logic-core/ids';
 
 function processInteraction(

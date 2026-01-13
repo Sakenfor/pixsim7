@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/plugin-stealth",
+  "name": "@pixsim7/plugins.stealth",
   "version": "1.0.0",
   "description": "Stealth plugin for PixSim7 - provides pickpocket and stealth mechanics",
   "private": true,

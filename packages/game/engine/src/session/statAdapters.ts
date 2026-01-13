@@ -13,7 +13,7 @@
  * @see StatDefinition.source in worldConfig.ts for source types
  */
 
-import { createHelperRegistry, type HelperAdapter } from '@pixsim7/helpers-core';
+import { createHelperRegistry, type HelperAdapter } from '@pixsim7/shared.helpers-core';
 import type { GameSessionDTO, StatDefinition } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
 import { getNpcRelationshipState, setNpcRelationshipState } from './state';

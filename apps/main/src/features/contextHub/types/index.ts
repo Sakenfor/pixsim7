@@ -2,7 +2,7 @@
  * UI-specific capability types for contextHub.
  *
  * Core types (CapabilityKey, CapabilityProvider, etc.) should be imported
- * directly from @pixsim7/capabilities-core.
+ * directly from @pixsim7/shared.capabilities-core.
  *
  * This module contains only UI-specific extensions and the UI registry interface.
  */
@@ -10,7 +10,7 @@ import type {
   CapabilityRegistry as CoreCapabilityRegistry,
   CapabilityConsumption as CoreCapabilityConsumption,
   CapabilityProvider,
-} from "@pixsim7/capabilities-core";
+} from "@pixsim7/shared.capabilities-core";
 import type { EntityRef } from "@pixsim7/shared.types";
 
 /**
@@ -40,7 +40,7 @@ export interface CapabilityConsumption extends Omit<CoreCapabilityConsumption, "
  * This extends the core registry with UI-specific naming ("host" instead of "scope").
  * Use createCapabilityRegistry() from ../domain/registry.ts to create instances.
  *
- * For non-UI code, import directly from @pixsim7/capabilities-core instead.
+ * For non-UI code, import directly from @pixsim7/shared.capabilities-core instead.
  */
 export interface CapabilityRegistry extends Omit<
   CoreCapabilityRegistry,

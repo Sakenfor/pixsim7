@@ -1,7 +1,7 @@
 /**
  * ID parsing helpers (branded).
  *
- * Runtime helpers that wrap @pixsim7/ref-core and return branded IDs.
+ * Runtime helpers that wrap @pixsim7/shared.ref-core and return branded IDs.
  */
 
 import type { ParsedRef, SceneType } from '@pixsim7/shared.types';
@@ -33,7 +33,7 @@ import {
   extractSessionId as extractSessionIdCore,
   extractWorldId as extractWorldIdCore,
   parseRef as parseRefCore,
-} from '@pixsim7/ref-core';
+} from '@pixsim7/shared.ref-core';
 
 /**
  * Parse an entity reference string into a typed structure with branded IDs.

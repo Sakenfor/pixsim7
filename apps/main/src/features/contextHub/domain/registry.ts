@@ -1,7 +1,7 @@
 /**
  * UI capability registry adapter.
  *
- * This module wraps the core capability registry from @pixsim7/capabilities-core
+ * This module wraps the core capability registry from @pixsim7/shared.capabilities-core
  * with UI-specific naming conventions for backwards compatibility.
  *
  * The core registry uses "scope" terminology while the UI uses "host" terminology.
@@ -12,7 +12,7 @@ import {
   createCapabilityRegistry as createCoreRegistry,
   type CapabilityRegistry as CoreCapabilityRegistry,
   type CapabilityConsumption as CoreCapabilityConsumption,
-} from "@pixsim7/capabilities-core";
+} from "@pixsim7/shared.capabilities-core";
 
 import type {
   CapabilityRegistry,

@@ -1,17 +1,18 @@
 /**
  * Plugin Catalog API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
  */
+import { createPluginsApi } from '@pixsim7/shared.api-client/domains';
+
 import { pixsimClient } from './client';
-import { createPluginsApi } from '@pixsim7/api-client/domains';
 
 export type {
   PluginMetadata,
   PluginInfo,
   PluginListResponse,
   PluginStateResponse,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 const pluginsApi = createPluginsApi(pixsimClient);
 

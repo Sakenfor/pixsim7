@@ -1,5 +1,5 @@
 /**
- * @pixsim7/plugin-stealth - Shared Types
+ * @pixsim7/plugins.stealth - Shared Types
  *
  * Canonical type definitions for the stealth plugin.
  * Single source of truth for both frontend and backend.

@@ -1,5 +1,5 @@
 /**
- * @pixsim7/plugin-stealth - Frontend Plugin Example
+ * @pixsim7/plugins.stealth - Frontend Plugin Example
  *
  * This file demonstrates how the pickpocket interaction would be built
  * from the manifest. In practice, interactions are loaded dynamically
@@ -17,7 +17,7 @@
  *
  * @example Direct use of types:
  * ```ts
- * import type { PickpocketConfig, PickpocketRequest } from '@pixsim7/plugin-stealth/types';
+ * import type { PickpocketConfig, PickpocketRequest } from '@pixsim7/plugins.stealth/types';
  * ```
  */
 

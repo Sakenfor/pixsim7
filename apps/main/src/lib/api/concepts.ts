@@ -1,14 +1,15 @@
 /**
  * Concepts API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
  * Provides runtime access to ontology concepts.
  *
  * Concept kinds are dynamically discovered from the API.
  * Use getConceptKinds() to list available kinds instead of hardcoding.
  */
+import { createConceptsApi } from '@pixsim7/shared.api-client/domains';
+
 import { pixsimClient } from './client';
-import { createConceptsApi } from '@pixsim7/api-client/domains';
 
 // Re-export types
 export type {
@@ -23,10 +24,10 @@ export type {
   // Backward-compat role types
   RoleConceptResponse,
   RolesListResponse,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 // Re-export utilities
-export { KNOWN_KINDS, isKnownConceptKind } from '@pixsim7/api-client/domains';
+export { KNOWN_KINDS, isKnownConceptKind } from '@pixsim7/shared.api-client/domains';
 
 const conceptsApi = createConceptsApi(pixsimClient);
 

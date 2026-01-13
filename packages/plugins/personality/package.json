@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/plugin-personality",
+  "name": "@pixsim7/plugins.personality",
   "version": "1.0.0",
   "description": "Personality-driven NPC behavior with Big Five traits, tag effects, and behavior profiles",
   "private": true,

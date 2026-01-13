@@ -7,7 +7,7 @@
  * @module graph/refs
  */
 
-/* eslint-disable import/no-unresolved -- @shared/types is a Vite alias not in tsconfig paths */
+ 
 
 // Ref logic from ref-core (pure TS, no DOM)
 import {
@@ -28,7 +28,7 @@ import {
   isSceneIdRef,
   isLocationRef,
   isAssetRef,
-} from '@pixsim7/ref-core';
+} from '@pixsim7/shared.ref-core';
 
 // ID branding from shared/types
 import {
@@ -464,7 +464,7 @@ export {
   type SceneId,
   type LocationId,
   type AssetId,
-  // Ref types from @pixsim7/ref-core
+  // Ref types from @pixsim7/shared.ref-core
   type NpcRef,
   type CharacterRef,
   type InstanceRef,

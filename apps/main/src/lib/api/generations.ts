@@ -4,14 +4,14 @@
  * Canonical API client for the unified /api/v1/generations endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { createGenerationsApi } from '@pixsim7/api-client/domains';
+import { createGenerationsApi } from '@pixsim7/shared.api-client/domains';
 import type {
   CreateGenerationRequest,
   GenerationListResponse,
   GenerationResponse,
   ListGenerationsQuery,
   GenerationSocialContext,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 import { toSnakeCaseDeep } from '@lib/utils';
 
@@ -30,7 +30,7 @@ export type {
   SceneRef,
   PlayerContextSnapshot,
   ListGenerationsQuery,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 // ============================================================================
 // Legacy Type Re-exports (for backward compatibility)

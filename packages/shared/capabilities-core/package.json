@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/capabilities-core",
+  "name": "@pixsim7/shared.capabilities-core",
   "version": "0.0.1",
   "private": true,
   "description": "Core capability registry - pure TypeScript, no React/DOM dependencies",
@@ -28,7 +28,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@pixsim7/helpers-core": "workspace:*",
+    "@pixsim7/shared.helpers-core": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "peerDependencies": {},

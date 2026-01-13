@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/composer-core",
+  "name": "@pixsim7/core.composer",
   "version": "0.0.1",
   "private": true,
   "description": "Core panel composition model and serialization (framework-agnostic)",

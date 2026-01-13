@@ -128,7 +128,7 @@ export default defineConfig([
             {
               group: ['@features/contextHub/types'],
               importNames: ['CapabilityKey', 'CapabilityProvider', 'CapabilitySnapshot', 'CapabilityScope'],
-              message: 'Import core capability types from @pixsim7/capabilities-core instead of @features/contextHub.',
+              message: 'Import core capability types from @pixsim7/shared.capabilities-core instead of @features/contextHub.',
             },
           ],
         },

@@ -511,7 +511,7 @@ export interface NpcTalkConfig {
  * Each value is the plugin's config with an 'enabled' flag
  *
  * Note: Plugin-specific types (like PickpocketConfig) are defined in their
- * respective plugin packages (e.g., @pixsim7/plugin-stealth/types).
+ * respective plugin packages (e.g., @pixsim7/plugins.stealth/types).
  */
 export interface NpcSlotInteractions {
   talk?: { enabled: boolean; preferredSceneId?: number | null } & Partial<NpcTalkConfig>;
@@ -1917,7 +1917,7 @@ export interface RomanceComponent {
  * Component key: "stealth"
  *
  * Note: For the pickpocket-specific implementation, see
- * @pixsim7/plugin-stealth/types which defines a more detailed
+ * @pixsim7/plugins.stealth/types which defines a more detailed
  * StealthComponent with pickpocket attempt history.
  *
  * Source: Typically owned by plugin:game-stealth

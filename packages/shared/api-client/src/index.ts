@@ -1,12 +1,12 @@
 /**
- * @pixsim7/api-client
+ * @pixsim7/shared.api-client
  *
  * Environment-neutral API client for PixSim7.
  * Works in browser, Node.js, Electron, and Tauri.
  *
  * @example Basic usage
  * ```ts
- * import { createApiClient, type TokenProvider } from '@pixsim7/api-client';
+ * import { createApiClient, type TokenProvider } from '@pixsim7/shared.api-client';
  *
  * // Create a token provider for your environment
  * const tokenProvider: TokenProvider = {
@@ -26,8 +26,8 @@
  *
  * @example Browser usage
  * ```ts
- * import { createApiClient } from '@pixsim7/api-client';
- * import { createBrowserTokenProvider } from '@pixsim7/api-client/browser';
+ * import { createApiClient } from '@pixsim7/shared.api-client';
+ * import { createBrowserTokenProvider } from '@pixsim7/shared.api-client/browser';
  *
  * const client = createApiClient({
  *   baseUrl: 'http://localhost:8001',

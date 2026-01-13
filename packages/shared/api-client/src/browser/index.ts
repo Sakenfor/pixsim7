@@ -1,16 +1,16 @@
 /**
- * @pixsim7/api-client/browser
+ * @pixsim7/shared.api-client/browser
  *
  * Browser-specific utilities for the API client.
  * Only import this in browser environments.
  *
  * @example
  * ```ts
- * import { createApiClient } from '@pixsim7/api-client';
+ * import { createApiClient } from '@pixsim7/shared.api-client';
  * import {
  *   createBrowserTokenProvider,
  *   computeBackendUrl,
- * } from '@pixsim7/api-client/browser';
+ * } from '@pixsim7/shared.api-client/browser';
  *
  * const client = createApiClient({
  *   baseUrl: computeBackendUrl({

@@ -1,5 +1,5 @@
 /**
- * @pixsim7/capabilities-core
+ * @pixsim7/shared.capabilities-core
  *
  * Core capability registries - pure TypeScript, no React/DOM dependencies.
  *

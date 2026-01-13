@@ -3,7 +3,7 @@ import type {
   CapabilityProvider,
   CapabilitySnapshot,
   CapabilityScope,
-} from "@pixsim7/capabilities-core";
+} from "@pixsim7/shared.capabilities-core";
 import type { DependencyList } from "react";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 

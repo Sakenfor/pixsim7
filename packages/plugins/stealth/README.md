@@ -1,4 +1,4 @@
-# @pixsim7/plugin-stealth
+# @pixsim7/plugins.stealth
 
 Self-contained stealth plugin for PixSim7. Provides pickpocket and stealth mechanics.
 
@@ -51,7 +51,7 @@ import type {
   PickpocketConfig,
   PickpocketRequest,
   PickpocketResponse,
-} from '@pixsim7/plugin-stealth/types';
+} from '@pixsim7/plugins.stealth/types';
 ```
 
 ### Dynamic Loading (Automatic)

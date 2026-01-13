@@ -412,7 +412,7 @@ Local interaction feedback system for tool-based gameplay (e.g., tickle, pleasur
 
 | Aspect | Details |
 |--------|---------|
-| **Source of Truth** | Shared package (`@pixsim7/ref-core`) |
+| **Source of Truth** | Shared package (`@pixsim7/shared.ref-core`) |
 | **Validation** | Zod schemas + type guards |
 | **Data Flow** | Both backend and frontend import from shared package |
 | **Runtime Authority** | **Shared** - pure parsing/building utilities |

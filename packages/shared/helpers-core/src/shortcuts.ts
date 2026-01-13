@@ -4,7 +4,7 @@
  * Pure TypeScript utilities for parsing keyboard shortcut strings
  * into structured shortcut definitions.
  *
- * @module @pixsim7/helpers-core/shortcuts
+ * @module @pixsim7/shared.helpers-core/shortcuts
  */
 
 export type ParsedShortcut = {

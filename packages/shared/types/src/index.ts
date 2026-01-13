@@ -11,7 +11,7 @@ export * from './ids';
 export * as IDs from './ids';
 
 // Runtime ref builders (Ref.*)
-export { Ref } from '@pixsim7/ref-core';
+export { Ref } from '@pixsim7/shared.ref-core';
 
 // ===================
 // Scene Graph Types

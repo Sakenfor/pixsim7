@@ -6,22 +6,26 @@
  * Fullscreen mode uses a fixed overlay layout.
  */
 
+import { Icon } from '@lib/icons';
+import { Ref } from '@pixsim7/shared.ref-core';
+import type { AssetRef } from '@pixsim7/shared.types';
 import { useEffect, useMemo, useRef } from 'react';
+
 import {
   useAssetViewerStore,
   selectCanNavigatePrev,
   selectCanNavigateNext,
 } from '@features/assets';
-import { Icon } from '@lib/icons';
-import { AssetViewerDockview } from './viewer';
-import { usePanel } from '@features/panels';
 import {
   CAP_ASSET_SELECTION,
   useProvideCapability,
   type AssetSelection,
 } from '@features/contextHub';
-import { Ref } from '@pixsim7/ref-core';
-import type { AssetRef } from '@pixsim7/shared.types';
+import { usePanel } from '@features/panels';
+
+import { AssetViewerDockview } from './viewer';
+
+
 
 export function AssetViewerPanel() {
   // Panel orchestration hook

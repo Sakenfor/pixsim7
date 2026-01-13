@@ -27,7 +27,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@pixsim7/ref-core": "workspace:*",
+    "@pixsim7/shared.ref-core": "workspace:*",
     "zod": "^3.23.8"
   },
   "peerDependencies": {},

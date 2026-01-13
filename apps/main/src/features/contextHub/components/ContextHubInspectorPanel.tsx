@@ -1,4 +1,4 @@
-import type { CapabilityKey, CapabilityProvider } from "@pixsim7/capabilities-core";
+import type { CapabilityKey, CapabilityProvider } from "@pixsim7/shared.capabilities-core";
 import { Panel } from "@pixsim7/shared.ui";
 import { useMemo } from "react";
 

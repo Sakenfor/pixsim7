@@ -84,13 +84,7 @@ importers:
 
   apps/main:
     dependencies:
-      '@pixsim7/api-client':
-        specifier: workspace:*
-        version: link:../../packages/shared/api-client
-      '@pixsim7/capabilities-core':
-        specifier: workspace:*
-        version: link:../../packages/shared/capabilities-core
-      '@pixsim7/composer-core':
+      '@pixsim7/core.composer':
         specifier: workspace:*
         version: link:../../packages/core/composer
       '@pixsim7/game.components':
@@ -105,30 +99,36 @@ importers:
       '@pixsim7/graphics.geometry':
         specifier: workspace:*
         version: link:../../packages/graphics/geometry
-      '@pixsim7/helpers-core':
-        specifier: workspace:*
-        version: link:../../packages/shared/helpers-core
       '@pixsim7/pixcubes':
         specifier: workspace:*
         version: link:../../packages/pixcubes
-      '@pixsim7/ref-core':
-        specifier: workspace:*
-        version: link:../../packages/shared/ref-core
       '@pixsim7/scene.gizmos':
         specifier: workspace:*
         version: link:../../packages/scene/gizmos
       '@pixsim7/scene.shapes':
         specifier: workspace:*
         version: link:../../packages/scene/shapes
+      '@pixsim7/shared.api-client':
+        specifier: workspace:*
+        version: link:../../packages/shared/api-client
       '@pixsim7/shared.assets-core':
         specifier: workspace:*
         version: link:../../packages/shared/assets-core
+      '@pixsim7/shared.capabilities-core':
+        specifier: workspace:*
+        version: link:../../packages/shared/capabilities-core
       '@pixsim7/shared.generation-core':
         specifier: workspace:*
         version: link:../../packages/shared/generation-core
+      '@pixsim7/shared.helpers-core':
+        specifier: workspace:*
+        version: link:../../packages/shared/helpers-core
       '@pixsim7/shared.logic-core':
         specifier: workspace:*
         version: link:../../packages/shared/logic-core
+      '@pixsim7/shared.ref-core':
+        specifier: workspace:*
+        version: link:../../packages/shared/ref-core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../packages/shared/types
@@ -306,15 +306,15 @@ importers:
 
   packages/game/engine:
     dependencies:
-      '@pixsim7/helpers-core':
+      '@pixsim7/shared.helpers-core':
         specifier: workspace:*
         version: link:../../shared/helpers-core
-      '@pixsim7/ref-core':
-        specifier: workspace:*
-        version: link:../../shared/ref-core
       '@pixsim7/shared.logic-core':
         specifier: workspace:*
         version: link:../../shared/logic-core
+      '@pixsim7/shared.ref-core':
+        specifier: workspace:*
+        version: link:../../shared/ref-core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -472,7 +472,7 @@ importers:
 
   packages/shared/capabilities-core:
     dependencies:
-      '@pixsim7/helpers-core':
+      '@pixsim7/shared.helpers-core':
         specifier: workspace:*
         version: link:../helpers-core
       '@pixsim7/shared.types':
@@ -513,7 +513,7 @@ importers:
 
   packages/shared/logic-core:
     dependencies:
-      '@pixsim7/ref-core':
+      '@pixsim7/shared.ref-core':
         specifier: workspace:*
         version: link:../ref-core
       '@pixsim7/shared.types':
@@ -535,7 +535,7 @@ importers:
 
   packages/shared/types:
     dependencies:
-      '@pixsim7/ref-core':
+      '@pixsim7/shared.ref-core':
         specifier: workspace:*
         version: link:../ref-core
       zod:

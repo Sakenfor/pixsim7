@@ -1,4 +1,4 @@
-# @pixsim7/api-client
+# @pixsim7/shared.api-client
 
 Environment-neutral API client for PixSim7. Works in browser, Node.js, Electron, and Tauri.
 
@@ -12,7 +12,7 @@ Environment-neutral API client for PixSim7. Works in browser, Node.js, Electron,
 ## Installation
 
 ```bash
-pnpm add @pixsim7/api-client
+pnpm add @pixsim7/shared.api-client
 ```
 
 ## Usage
@@ -20,11 +20,11 @@ pnpm add @pixsim7/api-client
 ### Browser (React/Vue/Svelte)
 
 ```typescript
-import { createApiClient } from '@pixsim7/api-client';
+import { createApiClient } from '@pixsim7/shared.api-client';
 import {
   createBrowserTokenProvider,
   computeBackendUrl,
-} from '@pixsim7/api-client/browser';
+} from '@pixsim7/shared.api-client/browser';
 
 // Create the client
 const client = createApiClient({
@@ -49,7 +49,7 @@ await client.post('/assets', { name: 'New Asset' });
 ### Node.js / Electron / Tauri
 
 ```typescript
-import { createApiClient, type TokenProvider } from '@pixsim7/api-client';
+import { createApiClient, type TokenProvider } from '@pixsim7/shared.api-client';
 
 // Implement your own token provider
 const tokenProvider: TokenProvider = {
@@ -82,11 +82,11 @@ console.log(`API version: ${version.api_version}`);
 
 ### Domain clients
 
-Reusable domain helpers live under `@pixsim7/api-client/domains` and accept a `PixSimApiClient`:
+Reusable domain helpers live under `@pixsim7/shared.api-client/domains` and accept a `PixSimApiClient`:
 
 ```ts
-import { createApiClient } from '@pixsim7/api-client';
-import { createAssetsApi } from '@pixsim7/api-client/domains';
+import { createApiClient } from '@pixsim7/shared.api-client';
+import { createAssetsApi } from '@pixsim7/shared.api-client/domains';
 
 const client = createApiClient({ baseUrl: 'http://localhost:8000' });
 const assets = createAssetsApi(client);
@@ -103,7 +103,7 @@ import {
   getFieldError,
   isNotFoundError,
   ErrorCodes,
-} from '@pixsim7/api-client';
+} from '@pixsim7/shared.api-client';
 
 try {
   await client.post('/assets', data);

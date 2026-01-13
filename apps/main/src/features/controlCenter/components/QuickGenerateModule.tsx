@@ -1,4 +1,4 @@
-import { Ref } from '@pixsim7/ref-core';
+import { Ref } from '@pixsim7/shared.ref-core';
 import { PromptInput } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';

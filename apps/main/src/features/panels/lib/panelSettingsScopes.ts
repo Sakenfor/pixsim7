@@ -1,4 +1,4 @@
-import type { CapabilityScope } from "@pixsim7/capabilities-core";
+import type { CapabilityScope } from "@pixsim7/shared.capabilities-core";
 import type { ReactNode } from "react";
 
 import { BaseRegistry } from "@lib/core/BaseRegistry";

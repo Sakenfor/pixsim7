@@ -5,7 +5,8 @@
  * components that use the capability registry.
  */
 
-import { createAppCapabilityRegistry, type AppCapabilityRegistry } from '@pixsim7/capabilities-core/app';
+import { createAppCapabilityRegistry, type AppCapabilityRegistry } from '@pixsim7/shared.capabilities-core/app';
+
 import type {
   FeatureCapability,
   RouteCapability,
@@ -82,7 +83,7 @@ export function createMockAction(overrides?: Partial<ActionCapability>): ActionC
  * Mock state fixture
  */
 export function createMockState(overrides?: Partial<StateCapability>): StateCapability {
-  let value: any = null;
+  const value: any = null;
   const listeners = new Set<(value: any) => void>();
 
   return {

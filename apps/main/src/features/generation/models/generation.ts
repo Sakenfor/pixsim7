@@ -13,7 +13,7 @@ import type {
   GenerationResponse,
   GenerationStatus as ApiGenerationStatus,
   OperationType,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 // Re-export types that don't need mapping (enums, etc.)
 export type { OperationType };

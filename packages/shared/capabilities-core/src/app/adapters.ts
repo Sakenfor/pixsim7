@@ -19,7 +19,7 @@ import type { AppActionCapability } from './types';
  *
  * @example
  * ```typescript
- * import { toAppActionCapability } from '@pixsim7/capabilities-core/app';
+ * import { toAppActionCapability } from '@pixsim7/shared.capabilities-core/app';
  *
  * const capability = toAppActionCapability(openGalleryAction);
  * registerAction(capability);

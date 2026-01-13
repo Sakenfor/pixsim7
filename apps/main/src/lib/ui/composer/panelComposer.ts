@@ -20,4 +20,4 @@ export {
   removeWidget,
   updateWidget,
   type WidgetInstance,
-} from "@pixsim7/composer-core";
+} from "@pixsim7/core.composer";

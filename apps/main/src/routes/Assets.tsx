@@ -1,12 +1,19 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAssetsController, useAssetViewer, AssetDetailModal } from '@features/assets';
-import { useGenerationWebSocket } from '@features/generation';
-import { useControlCenterLayout } from '@features/controlCenter';
+import { Ref } from '@pixsim7/shared.ref-core';
+import type { AssetRef } from '@pixsim7/shared.types';
 import { Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
-import { useWorkspaceStore } from '@features/workspace';
-import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+import { mediaCardPresets } from '@lib/ui/overlay';
+
+import { useAssetsController, useAssetViewer, AssetDetailModal } from '@features/assets';
+import {
+  CAP_ASSET_SELECTION,
+  useProvideCapability,
+  type AssetSelection,
+} from '@features/contextHub';
+import { useControlCenterLayout } from '@features/controlCenter';
 import {
   GallerySurfaceSwitcher,
   GalleryLayoutControls,
@@ -17,16 +24,15 @@ import {
   registerAssetSources,
   type AssetSourceId,
 } from '@features/gallery';
-import { mediaCardPresets } from '@lib/ui/overlay';
-import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
+import { useGenerationWebSocket } from '@features/generation';
+import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels';
+import { useWorkspaceStore } from '@features/workspace';
+
+
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
-import {
-  CAP_ASSET_SELECTION,
-  useProvideCapability,
-  type AssetSelection,
-} from '@features/contextHub';
-import { Ref } from '@pixsim7/ref-core';
-import type { AssetRef } from '@pixsim7/shared.types';
+import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
+
+
 
 export function AssetsRoute() {
   const navigate = useNavigate();

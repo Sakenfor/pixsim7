@@ -8,7 +8,7 @@
  */
 
 import { resolveMediaType } from '@pixsim7/shared.assets-core';
-import { Ref } from '@pixsim7/ref-core';
+import { Ref } from '@pixsim7/shared.ref-core';
 import type { AssetRef } from '@pixsim7/shared.types';
 
 import type { ViewerAsset } from '@features/assets';

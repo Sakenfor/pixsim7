@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/ref-core",
+  "name": "@pixsim7/shared.ref-core",
   "version": "0.0.1",
   "private": true,
   "description": "Core entity reference types, builders, parsers, and guards - pure TypeScript",

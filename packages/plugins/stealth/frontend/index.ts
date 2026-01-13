@@ -1,5 +1,5 @@
 /**
- * @pixsim7/plugin-stealth - Frontend Entry
+ * @pixsim7/plugins.stealth - Frontend Entry
  *
  * Re-exports all shared types for use in the frontend.
  * The pickpocket interaction is loaded dynamically via the backend's

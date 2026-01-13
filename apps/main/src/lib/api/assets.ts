@@ -4,13 +4,13 @@
  * Typed API client for /api/v1/assets endpoints.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { createAssetsApi } from '@pixsim7/api-client/domains';
+import { createAssetsApi } from '@pixsim7/shared.api-client/domains';
 // Only import types used in this file; others are re-exported below
 import type {
   AssetResponse,
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 import { pixsimClient } from './client';
 
@@ -25,7 +25,7 @@ export type {
   FilterOptionValue,
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 const assetsApi = createAssetsApi(pixsimClient);
 

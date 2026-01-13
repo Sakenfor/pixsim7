@@ -23,14 +23,14 @@ The frontend is **well-structured** with good separation between framework-agnos
 
 | Package | Location | Purpose | Dependencies |
 |---------|----------|---------|--------------|
-| `@pixsim7/shared.types` | `packages/shared/types/` | Core type definitions | `@pixsim7/ref-core`, `zod` |
-| `@pixsim7/ref-core` | `packages/shared/ref-core/` | Entity references, builders, parsers | None (leaf) |
-| `@pixsim7/helpers-core` | `packages/shared/helpers-core/` | Small framework-agnostic helpers (e.g., shortcut parsing) | None (leaf) |
-| `@pixsim7/capabilities-core` | `packages/shared/capabilities-core/` | Capability system (provider/app) | `helpers-core`, `shared.types` |
+| `@pixsim7/shared.types` | `packages/shared/types/` | Core type definitions | `@pixsim7/shared.ref-core`, `zod` |
+| `@pixsim7/shared.ref-core` | `packages/shared/ref-core/` | Entity references, builders, parsers | None (leaf) |
+| `@pixsim7/shared.helpers-core` | `packages/shared/helpers-core/` | Small framework-agnostic helpers (e.g., shortcut parsing) | None (leaf) |
+| `@pixsim7/shared.capabilities-core` | `packages/shared/capabilities-core/` | Capability system (provider/app) | `helpers-core`, `shared.types` |
 | `@pixsim7/shared.logic-core` | `packages/shared/logic-core/` | Shared runtime logic (stats, content ratings) | `shared.types` |
 | `@pixsim7/assets-core` | `packages/shared/assets-core/` | Asset card actions, media types | `shared.types` |
 | `@pixsim7/generation-core` | `packages/shared/generation-core/` | Generation logic, provider params | `shared.types` |
-| `@pixsim7/api-client` | `packages/shared/api-client/` | Environment-neutral API (browser/Node/Electron/Tauri) | `shared.types`, `axios` (peer) |
+| `@pixsim7/shared.api-client` | `packages/shared/api-client/` | Environment-neutral API (browser/Node/Electron/Tauri) | `shared.types`, `axios` (peer) |
 | `@pixsim7/game.engine` | `packages/game/engine/` | Headless game logic | `helpers-core`, `ref-core`, `logic-core`, `shared.types` |
 | `@pixsim7/scene.shapes` | `packages/scene/shapes/` | 3D shape definitions | `game.engine`, `shared.types` |
 | `@pixsim7/scene.gizmos` | `packages/scene/gizmos/` | 3D gizmos/controls | `shared.types` |

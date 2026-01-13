@@ -1,10 +1,11 @@
 /**
  * Analyzers API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
  */
+import { createAnalyzersApi } from '@pixsim7/shared.api-client/domains';
+
 import { pixsimClient } from './client';
-import { createAnalyzersApi } from '@pixsim7/api-client/domains';
 
 export type {
   AnalyzerInfo,
@@ -16,7 +17,7 @@ export type {
   AnalyzerTarget,
   AnalyzersListResponse,
   ListAnalyzersOptions,
-} from '@pixsim7/api-client/domains';
+} from '@pixsim7/shared.api-client/domains';
 
 const analyzersApi = createAnalyzersApi(pixsimClient);
 
