@@ -4,6 +4,10 @@
 (function() {
   'use strict';
 
+  // Prevent browser from navigating when dropping files/URLs anywhere on the page
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => e.preventDefault());
+
   const { elements, state, utils } = window.PXS7Player;
   const { showToast, getExtension, getVideoNameFromUrl, setLocalVideoContext, setRemoteVideoContext, getLocalSourceFolder } = utils;
   const { NATIVE_FORMATS, TRY_DIRECT_FORMATS, CONVERTIBLE_FORMATS, convertToMp4, hideConvertUI } = window.PXS7Player.ffmpeg;
@@ -204,23 +208,36 @@
     });
   });
 
-  elements.dropZone.addEventListener('drop', (e) => {
+  // Handle drop - check for files first, then URLs
+  function handleDrop(e) {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    const ext = getExtension(file?.name || '');
-    if (file && (file.type.startsWith('video/') || CONVERTIBLE_FORMATS.includes(ext) || NATIVE_FORMATS.includes(ext) || TRY_DIRECT_FORMATS.includes(ext))) {
-      handleVideoFile(file);
-    }
-  });
+    e.stopPropagation();
 
-  elements.videoContainer.addEventListener('drop', (e) => {
-    e.preventDefault();
+    // Check for file drop
     const file = e.dataTransfer.files[0];
-    const ext = getExtension(file?.name || '');
-    if (file && (file.type.startsWith('video/') || CONVERTIBLE_FORMATS.includes(ext) || NATIVE_FORMATS.includes(ext) || TRY_DIRECT_FORMATS.includes(ext))) {
-      handleVideoFile(file);
+    if (file) {
+      const ext = getExtension(file.name || '');
+      if (file.type.startsWith('video/') || CONVERTIBLE_FORMATS.includes(ext) || NATIVE_FORMATS.includes(ext) || TRY_DIRECT_FORMATS.includes(ext)) {
+        handleVideoFile(file);
+        return;
+      }
     }
-  });
+
+    // Check for URL drop
+    const url = e.dataTransfer.getData('text/uri-list') ||
+                e.dataTransfer.getData('text/plain') ||
+                e.dataTransfer.getData('URL');
+    if (url && url.trim()) {
+      const trimmedUrl = url.trim().split('\n')[0]; // Take first URL if multiple
+      if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
+        elements.urlInput.value = trimmedUrl;
+        loadFromUrl();
+      }
+    }
+  }
+
+  elements.dropZone.addEventListener('drop', handleDrop);
+  elements.videoContainer.addEventListener('drop', handleDrop);
 
   elements.loadUrlBtn.addEventListener('click', loadFromUrl);
   elements.urlInput.addEventListener('keydown', (e) => {

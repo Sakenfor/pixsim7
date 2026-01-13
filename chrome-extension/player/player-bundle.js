@@ -5,26 +5,9 @@
  * Built by esbuild into dist/player.bundle.js
  */
 
-// Import geometry functions from shared package
-import {
-  pointInPolygon,
-  getBoundingBox,
-  getPathRect,
-  distance,
-  simplifyPath,
-} from '@pixsim7/graphics.geometry';
-
-// Export geometry for use by player modules
-export const geometry = {
-  pointInPolygon,
-  getBoundingBox,
-  getPathRect,
-  distance,
-  simplifyPath,
-};
-
-// Make geometry available globally for player modules
-window.PXS7Geometry = geometry;
+// IMPORTANT: Import geometry-init first - it sets window.PXS7Geometry
+// This must be before any player modules that depend on it
+import './geometry-init.js';
 
 // Import player modules in dependency order
 import './player-state.js';
