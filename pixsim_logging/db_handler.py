@@ -85,7 +85,7 @@ class DBLogHandler:
             Column("id", Integer, primary_key=True),
             Column("timestamp", DateTime, nullable=False),
             Column("level", String(20), nullable=False),
-            Column("service", String(50), nullable=False),
+            Column("service", String(150), nullable=False),
             Column("env", String(20)),
             Column("msg", Text),
             Column("request_id", String(100)),

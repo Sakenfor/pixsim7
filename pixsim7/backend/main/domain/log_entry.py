@@ -24,7 +24,7 @@ class LogEntry(SQLModel, table=True):
     # Core fields (always present)
     timestamp: datetime = Field(index=True, description="UTC timestamp of log event")
     level: str = Field(index=True, max_length=20, description="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
-    service: str = Field(index=True, max_length=50, description="Service name (api, worker, frontend, etc.)")
+    service: str = Field(index=True, max_length=150, description="Service name (api, worker, frontend, etc.)")
     env: str = Field(default="dev", max_length=20, description="Environment (dev, staging, prod)")
     msg: Optional[str] = Field(default=None, sa_column=Column(Text), description="Human-readable message")
 
