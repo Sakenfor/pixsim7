@@ -4,6 +4,11 @@
  * Built-in drawer for creating rectangular regions.
  */
 
+import { rectFromPoints } from '@pixsim7/graphics.geometry';
+
+import type { NormalizedPoint, NormalizedRect } from '@/components/interactive-surface';
+
+import { regionDrawerRegistry } from '../registry';
 import type {
   RegionDrawer,
   RectElementData,
@@ -12,8 +17,7 @@ import type {
   RenderOptions,
   BaseAnnotationElement,
 } from '../types';
-import type { NormalizedPoint, NormalizedRect } from '@/components/interactive-surface';
-import { regionDrawerRegistry } from '../registry';
+
 
 // ============================================================================
 // Drawer Implementation
@@ -155,6 +159,7 @@ export const rectDrawer: RegionDrawer<RectElementData> = {
   hitTest(
     element: BaseAnnotationElement,
     point: NormalizedPoint,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _tolerance: number
   ): boolean {
     const data = element.data as RectElementData;
@@ -205,27 +210,15 @@ export const rectDrawer: RegionDrawer<RectElementData> = {
 // Helpers
 // ============================================================================
 
+/**
+ * Calculate bounds from two points, using @pixsim7/graphics.geometry
+ */
 function calculateBounds(
   start: NormalizedPoint,
   end: NormalizedPoint,
   constrainSquare: boolean
 ): NormalizedRect {
-  let width = end.x - start.x;
-  let height = end.y - start.y;
-
-  // Shift = constrain to square
-  if (constrainSquare) {
-    const size = Math.max(Math.abs(width), Math.abs(height));
-    width = Math.sign(width) * size;
-    height = Math.sign(height) * size;
-  }
-
-  return {
-    x: width >= 0 ? start.x : start.x + width,
-    y: height >= 0 ? start.y : start.y + height,
-    width: Math.abs(width),
-    height: Math.abs(height),
-  };
+  return rectFromPoints(start, end, constrainSquare);
 }
 
 // ============================================================================

@@ -5,6 +5,15 @@
  * Click to add points, drag to adjust curve handles.
  */
 
+import {
+  pointToSegmentDistance as pointToSegmentDistancePure,
+  getPathRect,
+  catmullRomToBezier,
+} from '@pixsim7/graphics.geometry';
+
+import type { NormalizedPoint, NormalizedRect } from '@/components/interactive-surface';
+
+import { regionDrawerRegistry } from '../registry';
 import type {
   RegionDrawer,
   PathElementData,
@@ -13,8 +22,7 @@ import type {
   RenderOptions,
   BaseAnnotationElement,
 } from '../types';
-import type { NormalizedPoint, NormalizedRect } from '@/components/interactive-surface';
-import { regionDrawerRegistry } from '../registry';
+
 
 // ============================================================================
 // Drawer Implementation
@@ -66,6 +74,7 @@ export const pathDrawer: RegionDrawer<PathElementData> = {
     };
   },
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onDrawEnd(_ctx: DrawingContext): DrawingResult {
     // Don't complete on single click - wait for double-click
     return { complete: false };
@@ -245,24 +254,7 @@ export const pathDrawer: RegionDrawer<PathElementData> = {
       return { x: 0, y: 0, width: 0, height: 0 };
     }
 
-    let minX = points[0].x;
-    let minY = points[0].y;
-    let maxX = points[0].x;
-    let maxY = points[0].y;
-
-    for (const p of points) {
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
-    }
-
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-    };
+    return getPathRect(points);
   },
 
   transform(element: BaseAnnotationElement, transform): Record<string, unknown> {
@@ -295,6 +287,7 @@ export const pathDrawer: RegionDrawer<PathElementData> = {
 
 /**
  * Draw a smooth curve through points using Catmull-Rom spline
+ * Uses catmullRomToBezier from @pixsim7/graphics.geometry
  */
 function drawSmoothCurve(
   ctx: CanvasRenderingContext2D,
@@ -309,43 +302,21 @@ function drawSmoothCurve(
     : [points[0], ...points, points[points.length - 1]];
 
   for (let i = 1; i < pts.length - 2; i++) {
-    const p0 = pts[i - 1];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2];
-
-    const cp1x = p1.x + ((p2.x - p0.x) / 6) * tension;
-    const cp1y = p1.y + ((p2.y - p0.y) / 6) * tension;
-    const cp2x = p2.x - ((p3.x - p1.x) / 6) * tension;
-    const cp2y = p2.y - ((p3.y - p1.y) / 6) * tension;
-
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    const { cp1, cp2 } = catmullRomToBezier(pts[i - 1], pts[i], pts[i + 1], pts[i + 2], tension);
+    ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, pts[i + 1].x, pts[i + 1].y);
   }
 }
 
 /**
  * Calculate distance from point to line segment
+ * Delegates to @pixsim7/graphics.geometry
  */
 function pointToSegmentDistance(
   point: NormalizedPoint,
   segStart: NormalizedPoint,
   segEnd: NormalizedPoint
 ): number {
-  const dx = segEnd.x - segStart.x;
-  const dy = segEnd.y - segStart.y;
-  const lenSq = dx * dx + dy * dy;
-
-  if (lenSq === 0) {
-    return Math.hypot(point.x - segStart.x, point.y - segStart.y);
-  }
-
-  let t = ((point.x - segStart.x) * dx + (point.y - segStart.y) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-
-  const projX = segStart.x + t * dx;
-  const projY = segStart.y + t * dy;
-
-  return Math.hypot(point.x - projX, point.y - projY);
+  return pointToSegmentDistancePure(point, segStart, segEnd);
 }
 
 // ============================================================================

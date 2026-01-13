@@ -21,6 +21,7 @@
   "dependencies": {
     "@pixsim7/api-client": "workspace:*",
     "@pixsim7/capabilities-core": "workspace:*",
+    "@pixsim7/graphics.geometry": "workspace:*",
     "@pixsim7/ref-core": "workspace:*",
     "@pixsim7/game.components": "workspace:*",
     "@pixsim7/game.engine": "workspace:*",
