@@ -12640,10 +12640,10 @@ export interface components {
              * @description Composition layer (0=background, higher=foreground)
              */
             readonly layer?: number | null;
-            /** Location Id */
-            readonly location_id?: string | null;
-            /** Pose Id */
-            readonly pose_id?: string | null;
+            /** @description Reference to a location concept from ontology. Accepts 'location:id' string or ConceptRef object. */
+            readonly location_id?: components["schemas"]["ConceptRef"] | string | null;
+            /** @description Reference to a pose concept from ontology. Accepts 'pose:id' string or ConceptRef object. */
+            readonly pose_id?: components["schemas"]["ConceptRef"] | string | null;
             /**
              * Priority
              * @description Priority for conflict resolution (higher wins)
@@ -12804,6 +12804,43 @@ export interface components {
              * @description Available concept kinds
              */
             readonly kinds: readonly components["schemas"]["ConceptKindInfo"][];
+        };
+        /**
+         * ConceptRef
+         * @description Reference to an ontology concept.
+         *
+         *     Attributes:
+         *         kind: Concept kind (e.g., 'pose', 'mood', 'location', 'intimacy', 'rating', 'branch')
+         *         id: Concept ID (string identifier from ontology)
+         *         meta: Optional metadata for context-specific information
+         * @example {
+         *       "id": "standing_neutral",
+         *       "kind": "pose"
+         *     }
+         * @example {
+         *       "id": "playful",
+         *       "kind": "mood",
+         *       "meta": {
+         *         "intensity": 5
+         *       }
+         *     }
+         */
+        readonly ConceptRef: {
+            /**
+             * Id
+             * @description Concept ID from ontology
+             */
+            readonly id: string;
+            /**
+             * Kind
+             * @description Concept kind (e.g., 'pose', 'mood', 'location')
+             */
+            readonly kind: string;
+            /**
+             * Meta
+             * @description Optional metadata
+             */
+            readonly meta?: Record<string, unknown> | null;
         };
         /**
          * ConceptResponse
@@ -18137,9 +18174,14 @@ export interface components {
             readonly media_url: string;
             /**
              * Pixverse Asset Id
-             * @description The PixVerse UUID from the media URL
+             * @description The PixVerse ID (numeric preferred, UUID fallback)
              */
             readonly pixverse_asset_id: string;
+            /**
+             * Pixverse Asset Uuid
+             * @description The UUID from media URL (for dedup when numeric ID is primary)
+             */
+            readonly pixverse_asset_uuid?: string | null;
             /**
              * Pixverse Media Type
              * @description Type from URL path (e.g., 'i2i', 't2v')
