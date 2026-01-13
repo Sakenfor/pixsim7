@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
+    "build:ext": "pnpm --filter @pixsim7/chrome-extension build",
+    "dev:ext": "pnpm --filter @pixsim7/chrome-extension dev",
     "build:deps": "pnpm --filter @pixsim7/types build && pnpm --filter @pixsim7/ui build && pnpm --filter @pixsim7/game-core build && pnpm --filter @pixsim7/game-ui build && pnpm --filter @pixsim7/semantic-shapes build && pnpm --filter @pixsim7/scene-gizmos build",
     "build:plugin": "tsx scripts/build-plugin.ts",
     "build:plugins": "tsx scripts/build-plugin.ts --all",

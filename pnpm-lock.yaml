@@ -102,6 +102,9 @@ importers:
       '@pixsim7/game.react':
         specifier: workspace:*
         version: link:../../packages/game/react
+      '@pixsim7/graphics.geometry':
+        specifier: workspace:*
+        version: link:../../packages/graphics/geometry
       '@pixsim7/helpers-core':
         specifier: workspace:*
         version: link:../../packages/shared/helpers-core
@@ -251,6 +254,16 @@ importers:
         specifier: ^5.0.1
         version: 5.1.4(typescript@5.9.3)(vite@7.2.4(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)(yaml@2.8.2))
 
+  chrome-extension:
+    dependencies:
+      '@pixsim7/graphics.geometry':
+        specifier: workspace:*
+        version: link:../packages/graphics/geometry
+    devDependencies:
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
+
   packages/core/composer:
     devDependencies:
       typescript:
@@ -357,6 +370,12 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/graphics/geometry:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/pixcubes:
     dependencies:
       clsx:
@@ -417,6 +436,9 @@ importers:
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../game/engine
+      '@pixsim7/shared.logic-core':
+        specifier: workspace:*
+        version: link:../../shared/logic-core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types

@@ -9,59 +9,79 @@
 
   function isLikelyImageUrl(url) {
     if (!url) return false;
-    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
-    const lowerUrl = url.toLowerCase().split('?')[0];
-    return imageExts.some(ext => lowerUrl.endsWith(ext));
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif', '.ico', '.tiff', '.tif'];
+    const lowerUrl = url.toLowerCase().split('?')[0].split('#')[0];
+    // Check extension
+    if (imageExts.some(ext => lowerUrl.endsWith(ext))) return true;
+    // Check common image URL patterns
+    if (lowerUrl.includes('/image/') || lowerUrl.includes('/img/') || lowerUrl.includes('/photo/')) return true;
+    // Check for image CDN patterns
+    if (/\/(i|images|photos|media|static)\//i.test(url)) return true;
+    return false;
+  }
+
+  // Try to load URL as image - returns promise that resolves if it's a valid image
+  function tryLoadAsImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Not an image'));
+      img.src = url;
+    });
   }
 
   function loadImage(src, name = 'Image') {
     showToast('Loading image...', true);
 
+    // Reset image mode state
+    state.isImageMode = false;
+    state.loadedImage = null;
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      // Store the image for capture/region
+      state.loadedImage = img;
+      state.isImageMode = true;
 
-      try {
-        const stream = canvas.captureStream(0);
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-        const chunks = [];
+      // Hide video, show image display
+      elements.video.style.display = 'none';
 
-        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(chunks, { type: 'video/webm' });
-          const videoUrl = URL.createObjectURL(blob);
-
-          elements.video.src = videoUrl;
-          elements.video.load();
-          setRemoteVideoContext(src, name);
-
-          elements.video.onloadedmetadata = () => {
-            state.videoLoaded = true;
-            elements.dropZone.classList.add('hidden');
-            elements.captureBtn.disabled = false;
-            elements.saveAssetBtn.disabled = false;
-            elements.regionBtn.disabled = false;
-            elements.videoInfo.innerHTML = `<strong>${name}</strong> | ${img.width}×${img.height} | Image`;
-            window.PXS7Player.region?.clearRegion();
-            window.PXS7Player.history?.addToVideoHistory(name, src, false);
-            state.currentFps = 1;
-            elements.fpsInput.value = 1;
-            showToast('Image loaded - use Capture to upload', true);
-          };
-        };
-
-        mediaRecorder.start();
-        setTimeout(() => mediaRecorder.stop(), 100);
-      } catch (e) {
-        console.warn('MediaRecorder not available, using fallback:', e);
-        loadImageFallback(img, src, name);
+      let imgDisplay = document.getElementById('imageDisplay');
+      if (!imgDisplay) {
+        imgDisplay = document.createElement('img');
+        imgDisplay.id = 'imageDisplay';
+        imgDisplay.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
+        elements.videoContainer.insertBefore(imgDisplay, elements.video);
       }
+      imgDisplay.src = src;
+      imgDisplay.style.display = 'block';
+
+      // Set context
+      setRemoteVideoContext(src, name);
+
+      // Update UI state
+      state.videoLoaded = true;
+      elements.dropZone.classList.add('hidden');
+      elements.captureBtn.disabled = false;
+      elements.saveAssetBtn.disabled = false;
+      elements.regionBtn.disabled = false;
+      document.getElementById('polygonBtn').disabled = false;
+      elements.videoInfo.innerHTML = `<strong>${name}</strong> | ${img.width}×${img.height} | Image`;
+
+      // Clear any existing region
+      window.PXS7Player.region?.clearRegion();
+
+      // Add to history
+      window.PXS7Player.history?.addToVideoHistory(name, src, false);
+
+      // Set FPS to 1 for images (not really applicable)
+      state.currentFps = 1;
+      elements.fpsInput.value = 1;
+
+      showToast('Image loaded - use Capture to upload', true);
     };
 
     img.onerror = () => {
@@ -71,34 +91,16 @@
     img.src = src;
   }
 
-  function loadImageFallback(img, src, name) {
-    elements.video.style.display = 'none';
-
-    let imgDisplay = document.getElementById('imageDisplay');
-    if (!imgDisplay) {
-      imgDisplay = document.createElement('img');
-      imgDisplay.id = 'imageDisplay';
-      imgDisplay.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
-      elements.videoContainer.insertBefore(imgDisplay, elements.video);
-    }
-    imgDisplay.src = src;
-    imgDisplay.style.display = 'block';
-
-    window._loadedImage = img;
-
-    state.videoLoaded = true;
-    elements.dropZone.classList.add('hidden');
-    elements.captureBtn.disabled = false;
-    elements.saveAssetBtn.disabled = false;
-    elements.regionBtn.disabled = false;
-    elements.videoInfo.innerHTML = `<strong>${name}</strong> | ${img.width}×${img.height} | Image`;
-    window.PXS7Player.region?.clearRegion();
-    showToast('Image loaded - use Capture to upload', true);
+  // Helper to get the image display element for positioning calculations
+  function getImageDisplayElement() {
+    return document.getElementById('imageDisplay');
   }
 
   // Export
   window.PXS7Player.image = {
     isLikelyImageUrl,
     loadImage,
+    tryLoadAsImage,
+    getImageDisplayElement,
   };
 })();

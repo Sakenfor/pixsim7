@@ -670,7 +670,8 @@
         <div class="history-dropdown hidden" id="historyDropdown"></div>
       </div>
       <button class="btn btn-secondary" id="openFileBtn" title="Open file">📁</button>
-      <button class="btn btn-secondary" id="regionBtn" disabled title="Select region (R)">⬚</button>
+      <button class="btn btn-secondary" id="regionBtn" disabled title="Select rectangle region (R)">⬚</button>
+      <button class="btn btn-secondary" id="polygonBtn" disabled title="Draw polygon region (P)">⬡</button>
       <button class="btn btn-secondary" id="saveAssetBtn" disabled title="Save to assets only (S)">💾</button>
       <button class="btn btn-primary" id="captureBtn" disabled title="Upload to Pixverse (C)">📸</button>
     </div>
@@ -783,15 +784,7 @@
 
   <input type="file" id="fileInput" accept="video/*,.avi,.mkv,.wmv,.flv,.mpeg,.mpg,.m4v,.3gp,.ts,.mts,.m2ts" style="display: none;">
 
-  <!-- Modular player scripts - loaded in dependency order -->
-  <script src="player/player-state.js"></script>
-  <script src="player/player-history.js"></script>
-  <script src="player/player-ffmpeg.js"></script>
-  <script src="player/player-region.js"></script>
-  <script src="player/player-controls.js"></script>
-  <script src="player/player-capture.js"></script>
-  <script src="player/player-image.js"></script>
-  <script src="player/player-file.js"></script>
-  <script src="player/player-init.js"></script>
+  <!-- Bundled player scripts (built by: pnpm --filter @pixsim7/chrome-extension build) -->
+  <script src="dist/player.bundle.js"></script>
 </body>
 </html>

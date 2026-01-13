@@ -10,6 +10,13 @@
 
   // ===== Load video =====
   function loadVideo(src, name = 'Video') {
+    // Reset image mode
+    state.isImageMode = false;
+    state.loadedImage = null;
+    elements.video.style.display = '';
+    const imgDisplay = document.getElementById('imageDisplay');
+    if (imgDisplay) imgDisplay.style.display = 'none';
+
     elements.video.src = src;
     elements.video.load();
     const isBlob = src && src.startsWith('blob:');
@@ -27,6 +34,7 @@
       elements.captureBtn.disabled = false;
       elements.saveAssetBtn.disabled = false;
       elements.regionBtn.disabled = false;
+      document.getElementById('polygonBtn').disabled = false;
       window.PXS7Player.controls?.updateTimeDisplay();
       window.PXS7Player.controls?.updateVideoInfo(name);
       window.PXS7Player.region?.clearRegion();
@@ -37,8 +45,22 @@
       elements.fpsInput.value = state.currentFps;
     };
 
-    elements.video.onerror = (e) => {
+    elements.video.onerror = async (e) => {
       console.error('Video load error:', e);
+
+      // Try loading as image if video fails (might be an image URL without extension)
+      if (window.PXS7Player.image?.tryLoadAsImage) {
+        try {
+          console.log('[Player] Video failed, trying as image...');
+          await window.PXS7Player.image.tryLoadAsImage(src);
+          // It loaded as image, so load it properly
+          window.PXS7Player.image.loadImage(src, name);
+          return;
+        } catch {
+          // Not an image either, show video error
+        }
+      }
+
       let errorMsg = 'Failed to load video';
       if (elements.video.error) {
         switch (elements.video.error.code) {
@@ -53,6 +75,13 @@
   }
 
   function loadVideoWithFallback(src, name, originalFile = null) {
+    // Reset image mode
+    state.isImageMode = false;
+    state.loadedImage = null;
+    elements.video.style.display = '';
+    const imgDisplay = document.getElementById('imageDisplay');
+    if (imgDisplay) imgDisplay.style.display = 'none';
+
     const sourceFolder = getLocalSourceFolder(originalFile?.webkitRelativePath || null);
     setLocalVideoContext(name, sourceFolder);
 
@@ -98,6 +127,7 @@
       elements.captureBtn.disabled = false;
       elements.saveAssetBtn.disabled = false;
       elements.regionBtn.disabled = false;
+      document.getElementById('polygonBtn').disabled = false;
       window.PXS7Player.controls?.updateTimeDisplay();
       window.PXS7Player.controls?.updateVideoInfo(name);
       window.PXS7Player.region?.clearRegion();

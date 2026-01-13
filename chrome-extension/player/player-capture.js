@@ -1,25 +1,76 @@
 /**
  * Player Capture - Frame capture and upload
+ * Supports rectangle and polygon regions
  */
 (function() {
   'use strict';
 
   const { elements, state, utils } = window.PXS7Player;
-  const { showToast, resetInteractionState } = utils;
+  const { showToast, resetInteractionState, getMediaSource, getMediaDimensions } = utils;
+
+  // Check if we have a polygon region
+  function hasPolygonRegion() {
+    return state.polygonPoints && state.polygonPoints.length >= 3;
+  }
+
+  // Draw polygon-clipped region to canvas
+  function drawPolygonRegion(ctx, mediaSource, polygonPoints, bounds) {
+    ctx.save();
+
+    // Create clipping path from polygon (translated to canvas coordinates)
+    ctx.beginPath();
+    const first = polygonPoints[0];
+    ctx.moveTo(first.x - bounds.x, first.y - bounds.y);
+    for (let i = 1; i < polygonPoints.length; i++) {
+      ctx.lineTo(polygonPoints[i].x - bounds.x, polygonPoints[i].y - bounds.y);
+    }
+    ctx.closePath();
+    ctx.clip();
+
+    // Apply blur if needed
+    if (state.blurAmount > 0) {
+      ctx.filter = `blur(${state.blurAmount}px)`;
+    }
+
+    // Draw the media source cropped to the bounding box
+    ctx.drawImage(
+      mediaSource,
+      bounds.x, bounds.y, bounds.width, bounds.height,
+      0, 0, bounds.width, bounds.height
+    );
+
+    ctx.restore();
+  }
 
   async function captureAndUpload() {
-    if (!state.videoLoaded || elements.video.videoWidth === 0) {
-      showToast('No video loaded', false);
+    const dims = getMediaDimensions();
+    if (!state.videoLoaded || dims.width === 0) {
+      showToast('No media loaded', false);
       return;
     }
 
     try {
-      elements.video.pause();
+      // Pause video if not in image mode
+      if (!state.isImageMode) {
+        elements.video.pause();
+      }
 
+      const mediaSource = getMediaSource();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
-      if (state.selectedRegion && state.selectedRegion.width > 0 && state.selectedRegion.height > 0) {
+      // Check for polygon region first
+      if (hasPolygonRegion()) {
+        const bounds = state.selectedRegion; // Already calculated from polygon
+        canvas.width = Math.round(bounds.width);
+        canvas.height = Math.round(bounds.height);
+
+        drawPolygonRegion(ctx, mediaSource, state.polygonPoints, bounds);
+
+        const blurNote = state.blurAmount > 0 ? ` (blur: ${state.blurAmount}px)` : '';
+        showToast(`Uploading polygon ${canvas.width}×${canvas.height}${blurNote}...`, true);
+      } else if (state.selectedRegion && state.selectedRegion.width > 0 && state.selectedRegion.height > 0) {
+        // Rectangle region
         canvas.width = Math.round(state.selectedRegion.width);
         canvas.height = Math.round(state.selectedRegion.height);
 
@@ -28,7 +79,7 @@
         }
 
         ctx.drawImage(
-          elements.video,
+          mediaSource,
           state.selectedRegion.x, state.selectedRegion.y, state.selectedRegion.width, state.selectedRegion.height,
           0, 0, canvas.width, canvas.height
         );
@@ -37,10 +88,11 @@
         const blurNote = state.blurAmount > 0 ? ` (blur: ${state.blurAmount}px)` : '';
         showToast(`Uploading region ${canvas.width}×${canvas.height}${blurNote}...`, true);
       } else {
-        canvas.width = elements.video.videoWidth;
-        canvas.height = elements.video.videoHeight;
-        ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
-        showToast('Uploading frame...', true);
+        // Full frame
+        canvas.width = dims.width;
+        canvas.height = dims.height;
+        ctx.drawImage(mediaSource, 0, 0, canvas.width, canvas.height);
+        showToast(state.isImageMode ? 'Uploading image...' : 'Uploading frame...', true);
       }
 
       const useJpeg = canvas.width * canvas.height > 500 * 500;
@@ -67,6 +119,7 @@
         source: 'video_player',
         frame_time: elements.video.currentTime,
         has_region: !!(state.selectedRegion && state.selectedRegion.width > 0),
+        is_polygon: hasPolygonRegion(),
       };
       if (state.currentVideoName && state.currentVideoName !== 'Video' &&
           state.currentVideoName !== 'Source Video' && state.currentVideoName !== 'Source') {
@@ -113,18 +166,30 @@
   }
 
   async function saveToAssetsOnly() {
-    if (!state.videoLoaded || elements.video.videoWidth === 0) {
-      showToast('No video loaded', false);
+    const dims = getMediaDimensions();
+    if (!state.videoLoaded || dims.width === 0) {
+      showToast('No media loaded', false);
       return;
     }
 
     try {
-      elements.video.pause();
+      // Pause video if not in image mode
+      if (!state.isImageMode) {
+        elements.video.pause();
+      }
 
+      const mediaSource = getMediaSource();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
-      if (state.selectedRegion && state.selectedRegion.width > 0 && state.selectedRegion.height > 0) {
+      // Check for polygon region first
+      if (hasPolygonRegion()) {
+        const bounds = state.selectedRegion;
+        canvas.width = Math.round(bounds.width);
+        canvas.height = Math.round(bounds.height);
+        drawPolygonRegion(ctx, mediaSource, state.polygonPoints, bounds);
+      } else if (state.selectedRegion && state.selectedRegion.width > 0 && state.selectedRegion.height > 0) {
+        // Rectangle region
         canvas.width = Math.round(state.selectedRegion.width);
         canvas.height = Math.round(state.selectedRegion.height);
 
@@ -133,15 +198,16 @@
         }
 
         ctx.drawImage(
-          elements.video,
+          mediaSource,
           state.selectedRegion.x, state.selectedRegion.y, state.selectedRegion.width, state.selectedRegion.height,
           0, 0, canvas.width, canvas.height
         );
         ctx.filter = 'none';
       } else {
-        canvas.width = elements.video.videoWidth;
-        canvas.height = elements.video.videoHeight;
-        ctx.drawImage(elements.video, 0, 0, canvas.width, canvas.height);
+        // Full frame
+        canvas.width = dims.width;
+        canvas.height = dims.height;
+        ctx.drawImage(mediaSource, 0, 0, canvas.width, canvas.height);
       }
 
       const useJpeg = canvas.width * canvas.height > 500 * 500;
