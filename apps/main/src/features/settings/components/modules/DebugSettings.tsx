@@ -59,18 +59,30 @@ function useDebugState() {
   }, []);
 
   const handleToggle = async (categoryId: keyof DebugPreferences) => {
-    const newValue = !debugStates[categoryId];
-    const newStates = { ...debugStates, [categoryId]: newValue };
+    let previousStates: DebugPreferences | null = null;
+    let nextStates: DebugPreferences | null = null;
 
-    setDebugStates(newStates);
-    debugFlags.updateFromPreferences(newStates);
+    setDebugStates(prev => {
+      previousStates = prev;
+      const newValue = !prev[categoryId];
+      nextStates = { ...prev, [categoryId]: newValue };
+      return nextStates;
+    });
+
+    if (nextStates) {
+      debugFlags.updateFromPreferences(nextStates);
+    }
 
     try {
-      await updatePreferenceKey('debug', newStates);
+      if (nextStates) {
+        await updatePreferenceKey('debug', nextStates);
+      }
     } catch (err) {
       console.error('Failed to save debug preference:', err);
-      setDebugStates(debugStates);
-      debugFlags.updateFromPreferences(debugStates);
+      if (previousStates) {
+        setDebugStates(previousStates);
+        debugFlags.updateFromPreferences(previousStates);
+      }
     }
   };
 
@@ -104,19 +116,28 @@ function useDevToolsSettings() {
   };
 
   const updateSetting = async (toolId: string, settingKey: string, newValue: DevToolSettingValue) => {
-    const newToolSettings = {
-      ...(devtoolsStates[toolId] || {}),
-      [settingKey]: newValue,
-    };
-    const newStates = { ...devtoolsStates, [toolId]: newToolSettings };
+    let previousStates: DevToolsPreferences | null = null;
+    let nextStates: DevToolsPreferences | null = null;
 
-    setDevtoolsStates(newStates);
+    setDevtoolsStates(prev => {
+      previousStates = prev;
+      const newToolSettings = {
+        ...(prev[toolId] || {}),
+        [settingKey]: newValue,
+      };
+      nextStates = { ...prev, [toolId]: newToolSettings };
+      return nextStates;
+    });
 
     try {
-      await updatePreferenceKey('devtools', newStates);
+      if (nextStates) {
+        await updatePreferenceKey('devtools', nextStates);
+      }
     } catch (err) {
       console.error('Failed to save devtools preference:', err);
-      setDevtoolsStates(devtoolsStates);
+      if (previousStates) {
+        setDevtoolsStates(previousStates);
+      }
     }
   };
 
@@ -278,7 +299,13 @@ function NumberSettingControl({
     <input
       type="number"
       value={value}
-      onChange={(e) => onUpdate(parseFloat(e.target.value) || 0)}
+      onChange={(e) => {
+        const parsed = parseFloat(e.target.value);
+        if (Number.isNaN(parsed)) {
+          return;
+        }
+        onUpdate(parsed);
+      }}
       min={setting.min}
       max={setting.max}
       step={setting.step}
