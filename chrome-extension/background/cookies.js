@@ -29,23 +29,47 @@ async function clearAuthCookies(domain) {
     'userId',         // User identifier (camelCase)
   ];
 
-  const cookieDomain = domain === 'pixverse.ai' ? '.pixverse.ai' : `.${domain}`;
-  const urlForClear = domain === 'pixverse.ai' ? 'https://app.pixverse.ai' : `https://${domain}`;
+  // Build URLs to check - for Pixverse we need to check both app subdomain and main domain
+  // Using URL-based lookup catches ALL cookies that would be sent to these URLs,
+  // including both host-only cookies (app.pixverse.ai) and domain cookies (.pixverse.ai)
+  const urlsToCheck = domain === 'pixverse.ai'
+    ? ['https://app.pixverse.ai', 'https://pixverse.ai']
+    : ['https://' + domain, 'https://app.' + domain];
 
-  // Get all cookies for this domain
-  const existingCookies = await chrome.cookies.getAll({ domain: cookieDomain });
+  // Collect all unique cookies across all URLs
+  const allCookies = new Map();
+  for (const url of urlsToCheck) {
+    try {
+      const cookies = await chrome.cookies.getAll({ url });
+      for (const cookie of cookies) {
+        // Use name+domain as key to deduplicate
+        const key = cookie.name + '|' + cookie.domain;
+        if (!allCookies.has(key)) {
+          allCookies.set(key, cookie);
+        }
+      }
+    } catch (e) {
+      debugLogCookies('Failed to get cookies for ' + url + ':', e);
+    }
+  }
 
-  for (const cookie of existingCookies) {
-    // Clear if it's a known auth cookie OR if we're about to set a new value for it
+  debugLogCookies('Found ' + allCookies.size + ' unique cookies across ' + urlsToCheck.join(', '));
+
+  for (const [key, cookie] of allCookies) {
+    // Clear if it's a known auth cookie
     if (authCookieNames.includes(cookie.name)) {
       try {
+        // Build the correct URL for removal based on the cookie's actual domain
+        const cookieDomain = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
+        const removeUrl = 'https://' + cookieDomain + cookie.path;
+
         await chrome.cookies.remove({
-          url: urlForClear,
+          url: removeUrl,
           name: cookie.name,
         });
-        debugLogCookies(`Cleared auth cookie: ${cookie.name}`);
+        debugLogCookies('Cleared auth cookie: ' + cookie.name + ' (domain: ' + cookie.domain + ')');
       } catch (error) {
-        debugLogCookies(`Failed to clear cookie ${cookie.name}:`, error);
+        debugLogCookies('Failed to clear cookie ' + cookie.name + ':', error);
       }
     }
   }
@@ -65,19 +89,19 @@ async function injectCookies(cookies, domain) {
       const urlForSet =
         domain === 'pixverse.ai'
           ? 'https://app.pixverse.ai'
-          : `https://${domain}`;
+          : 'https://' + domain;
 
       await chrome.cookies.set({
         url: urlForSet,
         name: name,
         value: value,
-        domain: domain === 'pixverse.ai' ? '.pixverse.ai' : `.${domain}`,
+        domain: domain === 'pixverse.ai' ? '.pixverse.ai' : '.' + domain,
         path: '/',
         secure: true,
         sameSite: 'no_restriction',
       });
     } catch (error) {
-      debugLogCookies(`Failed to set cookie ${name}:`, error);
+      debugLogCookies('Failed to set cookie ' + name + ':', error);
     }
   }
 
@@ -88,7 +112,7 @@ async function injectCookies(cookies, domain) {
  * Extract cookies from domain
  */
 async function extractCookies(domain) {
-  debugLogCookies(`Extracting cookies for ${domain}`);
+  debugLogCookies('Extracting cookies for ' + domain);
 
   const cookies = await chrome.cookies.getAll({ domain });
   const cookieMap = {};
@@ -97,7 +121,7 @@ async function extractCookies(domain) {
     cookieMap[cookie.name] = cookie.value;
   }
 
-  debugLogCookies(`Extracted ${Object.keys(cookieMap).length} cookies`);
+  debugLogCookies('Extracted ' + Object.keys(cookieMap).length + ' cookies');
   return cookieMap;
 }
 
@@ -123,7 +147,7 @@ async function extractCookiesForUrl(url) {
  * Import cookies to backend
  */
 async function importCookiesToBackend(providerId, url, rawData) {
-  debugLogCookies(`Importing raw data for ${providerId} to backend...`);
+  debugLogCookies('Importing raw data for ' + providerId + ' to backend...');
 
   try {
     const data = await backendRequest('/api/v1/accounts/import-cookies', {
@@ -135,10 +159,10 @@ async function importCookiesToBackend(providerId, url, rawData) {
       })
     });
 
-    debugLogCookies(`✓ Data imported successfully:`, data);
+    debugLogCookies('Data imported successfully:', data);
     return data;
   } catch (error) {
-    debugLogCookies(`Failed to import:`, error);
+    debugLogCookies('Failed to import:', error);
     throw error;
   }
 }
