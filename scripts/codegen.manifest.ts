@@ -16,13 +16,6 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     groups: ['types'],
   },
   {
-    id: 'region-labels',
-    description: 'Generate region label types from YAML',
-    script: 'scripts/generate-region-labels.ts',
-    supportsCheck: true,
-    groups: ['types'],
-  },
-  {
     id: 'openapi',
     description: 'Generate OpenAPI types from running backend',
     script: 'scripts/generate-openapi-types.ts',

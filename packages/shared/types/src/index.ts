@@ -168,10 +168,10 @@ export * from './composition-roles.generated'
 export * from './compositionPackages'
 
 // ===================
-// Region Labels (Generated)
+// Region Label Utilities
 // ===================
 
-export * from './region-labels.generated'
+export * from './region-utils'
 
 // ===================
 // World Configuration Schemas

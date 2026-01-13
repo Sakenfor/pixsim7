@@ -1,27 +1,17 @@
 /**
  * Types Explorer Panel
  *
- * Browse generated types from the shared types package:
+ * Browse generated types and runtime data:
  * - Composition Roles (runtime API)
- * - Region Labels (runtime values)
+ * - Region Labels (concepts API)
  * - OpenAPI info (type-only, metadata display)
  */
 
-import { useState, useMemo } from 'react';
 import { Icon } from '@lib/icons';
-import { useCompositionPackages } from '@/stores/compositionPackageStore';
+import { useState, useMemo } from 'react';
 
-// Region labels still from generated types (separate concern)
-import {
-  ALL_REGION_LABELS,
-  LABEL_GROUP_NAMES,
-  BUILTIN_REGION_LABELS,
-  COMPOSITION_ROLE_LABELS,
-  ANATOMY_PART_LABELS,
-  ANATOMY_REGION_LABELS,
-  POSE_LABELS,
-  type LabelSuggestion,
-} from '@shared/types/region-labels.generated';
+import { useCompositionPackages } from '@/stores/compositionPackageStore';
+import { useLabelsForAutocomplete, type LabelSuggestion } from '@/stores/conceptStore';
 
 // =============================================================================
 // Types
@@ -260,54 +250,85 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
 // Region Labels Tab
 // =============================================================================
 
-function RegionLabelsView({ searchQuery }: { searchQuery: string }) {
-  const [selectedGroup, setSelectedGroup] = useState<
-    LabelSuggestion['group'] | 'all'
-  >('all');
+const GROUP_COLOR_CLASSES = [
+  'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  'bg-lime-500/20 text-lime-400 border-lime-500/30',
+];
 
-  const groups: Array<LabelSuggestion['group']> = [
-    'builtin',
-    'role',
-    'part',
-    'region',
-    'pose',
-  ];
+function RegionLabelsView({
+  searchQuery,
+  labels,
+  isLoading,
+  error,
+}: {
+  searchQuery: string;
+  labels: LabelSuggestion[];
+  isLoading: boolean;
+  error: string | null;
+}) {
+  const [selectedGroup, setSelectedGroup] = useState<string | 'all'>('all');
 
-  const labelsByGroup = useMemo(() => {
-    const map: Record<string, LabelSuggestion[]> = {
-      builtin: BUILTIN_REGION_LABELS,
-      role: COMPOSITION_ROLE_LABELS,
-      part: ANATOMY_PART_LABELS,
-      region: ANATOMY_REGION_LABELS,
-      pose: POSE_LABELS,
-    };
-    return map;
-  }, []);
+  const groups = useMemo(() => {
+    const unique = new Set<string>();
+    for (const label of labels) {
+      unique.add(label.group);
+    }
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [labels]);
+
+  const labelCountByGroup = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const label of labels) {
+      counts[label.group] = (counts[label.group] || 0) + 1;
+    }
+    return counts;
+  }, [labels]);
 
   const filteredLabels = useMemo(() => {
-    let labels =
+    let results =
       selectedGroup === 'all'
-        ? ALL_REGION_LABELS
-        : labelsByGroup[selectedGroup] || [];
+        ? labels
+        : labels.filter((label) => label.group === selectedGroup);
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      labels = labels.filter(
-        (l) =>
-          l.id.toLowerCase().includes(q) || l.label.toLowerCase().includes(q)
+      results = results.filter(
+        (label) =>
+          label.id.toLowerCase().includes(q) ||
+          label.label.toLowerCase().includes(q)
       );
     }
 
-    return labels;
-  }, [selectedGroup, searchQuery, labelsByGroup]);
+    return results;
+  }, [selectedGroup, searchQuery, labels]);
 
-  const groupColors: Record<string, string> = {
-    builtin: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    role: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    part: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-    region: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-    pose: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  };
+  const groupColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    groups.forEach((group, index) => {
+      map[group] = GROUP_COLOR_CLASSES[index % GROUP_COLOR_CLASSES.length];
+    });
+    return map;
+  }, [groups]);
+
+  if (isLoading) {
+    return (
+      <div className="p-4 text-neutral-400">Loading region labels...</div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 text-neutral-400">
+        Failed to load region labels: {error}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -321,7 +342,7 @@ function RegionLabelsView({ searchQuery }: { searchQuery: string }) {
               : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
           }`}
         >
-          All ({ALL_REGION_LABELS.length})
+          All ({labels.length})
         </button>
         {groups.map((group) => (
           <button
@@ -333,7 +354,7 @@ function RegionLabelsView({ searchQuery }: { searchQuery: string }) {
                 : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
             }`}
           >
-            {LABEL_GROUP_NAMES[group]} ({labelsByGroup[group]?.length || 0})
+            {group} ({labelCountByGroup[group] || 0})
           </button>
         ))}
       </div>
@@ -367,7 +388,7 @@ function RegionLabelsView({ searchQuery }: { searchQuery: string }) {
 
         {filteredLabels.length === 0 && (
           <div className="text-center py-8 text-neutral-500">
-            No labels match your search
+            {labels.length === 0 ? 'No labels available' : 'No labels match your search'}
           </div>
         )}
       </div>
@@ -377,12 +398,11 @@ function RegionLabelsView({ searchQuery }: { searchQuery: string }) {
         <p>
           Source:{' '}
           <code className="text-neutral-400">
-            packages/shared/types/src/region-labels.generated.ts
+            /api/v1/concepts/{'{kind}'}
           </code>
         </p>
         <p className="mt-1">
-          Regenerate:{' '}
-          <code className="text-neutral-400">pnpm region-labels:gen</code>
+          Fetched at runtime (kinds with include_in_labels enabled).
         </p>
       </div>
     </div>
@@ -406,7 +426,7 @@ function OpenAPIView() {
             <p className="text-xs text-amber-200/70 mt-1">
               OpenAPI types are TypeScript-only and don't have runtime values.
               They can't be introspected at runtime like composition roles and
-              region labels.
+              concept labels.
             </p>
           </div>
         </div>
@@ -511,10 +531,11 @@ export function TypesExplorerPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('roles');
   const { roles } = useCompositionPackages();
+  const { labels, isLoading: labelsLoading, error: labelsError } = useLabelsForAutocomplete();
 
   const tabs: TabConfig[] = [
     { id: 'roles', label: 'Composition Roles', count: roles.length },
-    { id: 'labels', label: 'Region Labels', count: ALL_REGION_LABELS.length },
+    { id: 'labels', label: 'Region Labels', count: labels.length },
     { id: 'openapi', label: 'OpenAPI' },
   ];
 
@@ -572,7 +593,12 @@ export function TypesExplorerPanel() {
           <CompositionRolesView searchQuery={searchQuery} />
         )}
         {activeTab === 'labels' && (
-          <RegionLabelsView searchQuery={searchQuery} />
+          <RegionLabelsView
+            searchQuery={searchQuery}
+            labels={labels}
+            isLoading={labelsLoading}
+            error={labelsError}
+          />
         )}
         {activeTab === 'openapi' && <OpenAPIView />}
       </div>

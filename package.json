@@ -23,8 +23,6 @@
     "branded:check": "tsx scripts/generate-branded-types.ts --check",
     "composition-roles:gen": "tsx scripts/generate-composition-roles.ts",
     "composition-roles:check": "tsx scripts/generate-composition-roles.ts --check",
-    "region-labels:gen": "tsx scripts/generate-region-labels.ts",
-    "region-labels:check": "tsx scripts/generate-region-labels.ts --check",
     "upload-context:gen": "tsx scripts/generate-upload-context.ts",
     "upload-context:check": "tsx scripts/generate-upload-context.ts --check",
     "types:gen": "pnpm codegen -- --group types",
