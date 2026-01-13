@@ -356,7 +356,10 @@ class DynamicBlockGenerator:
             branch_value = request.parameters.get("branch_type") or previous.branch_intent
             if branch_value:
                 try:
-                    tags.branch_type = BranchIntent(branch_value)
+                    normalized = branch_value.value if isinstance(branch_value, BranchIntent) else str(branch_value)
+                    if not normalized.startswith("branch:"):
+                        normalized = f"branch:{normalized}"
+                    tags.branch_type = BranchIntent(normalized)
                 except ValueError:
                     tags.branch_type = None
 

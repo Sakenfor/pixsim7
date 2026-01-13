@@ -139,6 +139,15 @@ def _canonicalize_mood(value: Optional[str]) -> Optional[str]:
     return _canonicalize_id(value, "mood")
 
 
+def _canonicalize_branch(value: Optional[Union[str, "BranchIntent"]]) -> Optional[str]:
+    """Canonicalize branch intent ID."""
+    if value is None:
+        return None
+    if isinstance(value, BranchIntent):
+        return value.value
+    return _canonicalize_id(str(value), "branch")
+
+
 # ============================================================================
 # COMPONENT SCHEMAS
 # ============================================================================
@@ -358,6 +367,11 @@ class ActionBlockTags(BaseModel):
     @classmethod
     def canonicalize_mood(cls, v: Optional[str]) -> Optional[str]:
         return _canonicalize_mood(v)
+
+    @field_validator("branch_type", mode="before")
+    @classmethod
+    def canonicalize_branch_type(cls, v: Optional[Union[str, BranchIntent]]) -> Optional[str]:
+        return _canonicalize_branch(v)
 
     @field_validator("extensions", mode="after")
     @classmethod
@@ -635,6 +649,11 @@ class ActionSelectionContext(BaseModel):
     @classmethod
     def canonicalize_mood(cls, v: Optional[str]) -> Optional[str]:
         return _canonicalize_mood(v)
+
+    @field_validator("branchIntent", mode="before")
+    @classmethod
+    def canonicalize_branch_intent(cls, v: Optional[Union[str, BranchIntent]]) -> Optional[str]:
+        return _canonicalize_branch(v)
 
     # Legacy accessors
     @property
