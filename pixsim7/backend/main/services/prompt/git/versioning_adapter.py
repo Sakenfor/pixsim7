@@ -31,6 +31,7 @@ from pixsim7.backend.main.services.versioning import (
     VersioningServiceBase,
     TimelineEntry,
 )
+from pixsim7.backend.main.services.prompt.utils.diff import generate_inline_diff
 
 
 class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]):
@@ -173,7 +174,9 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
             PromptVersion.family_id == family_id
         )
 
-        if branch_name and branch_name != "main":
+        if branch_name is None:
+            pass
+        elif branch_name != "main":
             query = query.where(PromptVersion.branch_name == branch_name)
         else:
             query = query.where(
@@ -184,6 +187,10 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
         query = query.order_by(PromptVersion.version_number.desc()).limit(1)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
+
+    async def get_version(self, version_id: UUID) -> Optional[PromptVersion]:
+        """Compatibility wrapper for git services (delegates to get_entity)."""
+        return await self.get_entity(version_id)
 
     async def create_version(
         self,
@@ -201,10 +208,16 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
         Create a new version in a family.
 
         This is a convenience wrapper - for full version creation with
-        all options, use PromptVersionService.create_version() directly.
+        all options, use PromptFamilyService.create_version() directly.
         """
         # Get next version number with locking
         next_version = await self.get_next_version_number(family_id, lock=True)
+
+        diff_from_parent = None
+        if parent_version_id:
+            parent = await self.get_entity(parent_version_id)
+            if parent:
+                diff_from_parent = generate_inline_diff(parent.prompt_text, prompt_text)
 
         version = PromptVersion(
             family_id=family_id,
@@ -217,7 +230,9 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
             variables=variables or {},
             provider_hints=provider_hints or {},
             tags=tags or [],
+            diff_from_parent=diff_from_parent,
         )
         self.db.add(version)
-        await self.db.flush()
+        await self.db.commit()
+        await self.db.refresh(version)
         return version

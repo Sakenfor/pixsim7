@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
-from pixsim7.backend.main.services.prompt.version import PromptVersionService
+from pixsim7.backend.main.services.prompt.git.versioning_adapter import PromptVersioningService
 from pixsim7.backend.main.services.prompt.utils.diff import generate_unified_diff
 from pixsim7.backend.main.services.llm import LLMService, LLMRequest
 
@@ -24,7 +24,7 @@ class GitMergeService:
 
     def __init__(self, db: AsyncSession, llm_service: Optional[LLMService] = None):
         self.db = db
-        self.version_service = PromptVersionService(db)
+        self.version_service = PromptVersioningService(db)
         self.llm_service = llm_service
         self.ai_available = llm_service is not None
 
@@ -402,7 +402,7 @@ Please create an intelligent merge that combines the best of both versions."""
     ) -> Optional[PromptVersion]:
         """Find common ancestor of two versions"""
         # Get ancestors of version1
-        ancestors1 = await self._get_ancestor_chain(version1_id)
+        ancestors1 = set(await self.version_service.get_ancestor_ids(version1_id))
 
         # Walk version2's ancestors and find first common one
         current_id = version2_id
@@ -424,30 +424,6 @@ Please create an intelligent merge that combines the best of both versions."""
 
         return None
 
-    async def _get_ancestor_chain(
-        self,
-        version_id: UUID,
-        limit: int = 100
-    ) -> set[UUID]:
-        """Get set of all ancestor version IDs"""
-        ancestors = set()
-        current_id = version_id
-
-        for _ in range(limit):
-            query = select(PromptVersion.parent_version_id).where(
-                PromptVersion.id == current_id
-            )
-            result = await self.db.execute(query)
-            parent_id = result.scalar_one_or_none()
-
-            if not parent_id:
-                break
-
-            ancestors.add(parent_id)
-            current_id = parent_id
-
-        return ancestors
-
     async def _can_fast_forward(
         self,
         source: PromptVersion,
@@ -455,8 +431,8 @@ Please create an intelligent merge that combines the best of both versions."""
     ) -> bool:
         """Check if fast-forward merge is possible (target is descendant of source)"""
         # Check if source is an ancestor of target
-        ancestors = await self._get_ancestor_chain(target.id)
-        return source.id in ancestors
+        ancestors = await self.version_service.get_ancestor_ids(target.id)
+        return source.id in set(ancestors)
 
     async def _determine_merge_strategy(
         self,

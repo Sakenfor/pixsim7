@@ -381,6 +381,33 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
 
         return ancestors
 
+    async def get_ancestor_ids(
+        self,
+        entity_id: Any,
+        max_depth: int = 50
+    ) -> List[Any]:
+        """
+        Get ancestor IDs of an entity (parent, grandparent, etc.).
+
+        Returns IDs ordered from closest parent to oldest ancestor.
+        """
+        ancestor_ids: List[Any] = []
+        current_id = entity_id
+
+        for _ in range(max_depth):
+            entity = await self.get_entity(current_id)
+            if not entity:
+                break
+
+            parent_id = self.get_parent_id(entity)
+            if not parent_id:
+                break
+
+            ancestor_ids.append(parent_id)
+            current_id = parent_id
+
+        return ancestor_ids
+
     async def get_descendants(self, entity_id: Any) -> List[TEntity]:
         """Get all direct descendants (children) of an entity."""
         EntityModel = self.get_entity_model()

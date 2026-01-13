@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
-from pixsim7.backend.main.services.prompt.version import PromptVersionService
+from pixsim7.backend.main.services.prompt.git.versioning_adapter import PromptVersioningService
 
 
 class GitBranchService:
@@ -21,7 +21,7 @@ class GitBranchService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.version_service = PromptVersionService(db)
+        self.version_service = PromptVersioningService(db)
 
     async def create_branch(
         self,
@@ -419,8 +419,8 @@ class GitBranchService:
             raise ValueError(f"Branch '{branch2}' not found")
 
         # Find common ancestor
-        ancestors1 = await self._get_ancestors(head1.id)
-        ancestors2 = await self._get_ancestors(head2.id)
+        ancestors1 = await self.version_service.get_ancestor_ids(head1.id)
+        ancestors2 = await self.version_service.get_ancestor_ids(head2.id)
 
         common_ancestor = None
         for ancestor_id in ancestors1:
@@ -440,30 +440,6 @@ class GitBranchService:
             "commits_behind": commits_behind,
             "diverged": common_ancestor is not None and commits_ahead > 0 and commits_behind > 0
         }
-
-    async def _get_ancestors(
-        self,
-        version_id: UUID,
-        limit: int = 100
-    ) -> List[UUID]:
-        """Get all ancestor version IDs"""
-        ancestors = []
-        current_id = version_id
-
-        for _ in range(limit):
-            query = select(PromptVersion.parent_version_id).where(
-                PromptVersion.id == current_id
-            )
-            result = await self.db.execute(query)
-            parent_id = result.scalar_one_or_none()
-
-            if not parent_id:
-                break
-
-            ancestors.append(parent_id)
-            current_id = parent_id
-
-        return ancestors
 
     async def _count_commits_between(
         self,
