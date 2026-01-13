@@ -132,6 +132,7 @@ def make_part(id: str, data: Dict[str, Any], source: str) -> PartDef:
         id=id,
         label=data.get("label", ""),
         category=data.get("category", ""),
+        scope=data.get("scope", ""),
         keywords=data.get("keywords", []),
         source=source,
     )

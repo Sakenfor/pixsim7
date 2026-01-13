@@ -112,6 +112,7 @@ class PartDef:
     id: str
     label: str
     category: str = ""
+    scope: str = ""
     keywords: List[str] = field(default_factory=list)
     source: str = "core"
 

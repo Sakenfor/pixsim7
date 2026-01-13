@@ -33,11 +33,13 @@ parts:
   part:upper_body:
     label: "Upper Body"
     category: general
+    scope: region
     keywords: [upper body, torso, chest area]
 
   part:lower_body:
     label: "Lower Body"
     category: general
+    scope: region
     keywords: [lower body, legs, hips]
 
   part:hands:
@@ -65,21 +67,25 @@ parts:
   part:chest:
     label: "Chest"
     category: general
+    scope: region
     keywords: [chest, breast, torso]
 
   part:back:
     label: "Back"
     category: general
+    scope: region
     keywords: [back, spine]
 
   part:groin:
     label: "Groin"
     category: specific
+    scope: region
     keywords: [groin, crotch, pelvis]
 
   part:between_legs:
     label: "Between Legs"
     category: specific
+    scope: region
     keywords: [between legs, thighs]
 
   part:buttocks:
