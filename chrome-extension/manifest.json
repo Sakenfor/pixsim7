@@ -69,6 +69,7 @@
         "content/pixverse-storage.js",
         "content/pixverse-restore-utils.js",
         "content/pixverse-upload-utils.js",
+        "content/pixverse-grid-metadata.js",
         "content/pixverse-image-grid.js",
         "content/pixverse-recently-used.js",
         "content/picker/picker-state.js",

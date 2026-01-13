@@ -1,6 +1,8 @@
 /**
  * Pixverse Image Grid UI
  * Handles grid rendering, hover previews, and slot selection menus
+ *
+ * Uses: pixverse-grid-metadata.js for metadata popup
  */
 
 (function() {
@@ -11,6 +13,9 @@
   const { injectImageToUpload, findUploadInputs } = window.PXS7.uploadUtils || {};
   const { COLORS } = window.PXS7.styles || {};
   const { showDeleteAssetDialog } = window.PXS7.dialogs || {};
+
+  // Access metadata module dynamically (loaded before this file)
+  const getMetadataModule = () => window.PXS7.gridMetadata || {};
 
   // Debug mode - controlled by extension settings
   let DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
@@ -482,59 +487,63 @@
           debugLog('[Restore] Generation inputs:', generation.inputs);
           debugLog('[Restore] Generation final_prompt:', generation.final_prompt);
 
-          // Extract source images from generation inputs
+          // Extract source images from generation inputs with slot indices
           const sourceImages = [];
           if (generation.inputs && Array.isArray(generation.inputs)) {
             debugLog('[Restore] Processing', generation.inputs.length, 'inputs');
-            for (const input of generation.inputs) {
-              debugLog('[Restore] Processing input:', input);
+            for (let slotIndex = 0; slotIndex < generation.inputs.length; slotIndex++) {
+              const input = generation.inputs[slotIndex];
+              debugLog('[Restore] Processing input at slot', slotIndex, ':', input);
+
+              let url = null;
 
               // Check for direct URL first
               if (input.url) {
                 debugLog('[Restore] Found direct URL:', input.url);
-                sourceImages.push(input.url);
-                continue;
-              }
-
-              // Parse asset reference - can be "asset:123" string or asset_id number
-              let assetId = null;
-              if (input.asset && typeof input.asset === 'string' && input.asset.startsWith('asset:')) {
-                assetId = input.asset.replace('asset:', '');
-                debugLog('[Restore] Parsed asset reference:', input.asset, '->', assetId);
-              } else if (input.asset_id) {
-                assetId = input.asset_id;
-              }
-
-              if (assetId) {
-                debugLog('[Restore] Fetching source asset:', assetId);
-                // Fetch the source asset to get its URL
-                const sourceAssetRes = await sendMessageWithTimeout({
-                  action: 'getAsset',
-                  assetId: assetId
-                }, 5000);
-                debugLog('[Restore] Source asset response:', sourceAssetRes);
-                if (sourceAssetRes?.success && sourceAssetRes.data) {
-                  // Use HTTPS-aware URL selection to avoid mixed content errors
-                  const a = sourceAssetRes.data;
-                  const isHttpsPage = window.location.protocol === 'https:';
-
-                  let url;
-                  if (isHttpsPage) {
-                    // On HTTPS pages: prefer HTTPS URLs to avoid mixed content
-                    url = (a.remote_url?.startsWith('https://') ? a.remote_url :
-                           a.external_url?.startsWith('https://') ? a.external_url :
-                           a.file_url?.startsWith('https://') ? a.file_url :
-                           a.url?.startsWith('https://') ? a.url :
-                           // Fallback to any URL (will be proxied if HTTP)
-                           a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url);
-                  } else {
-                    // On HTTP pages: prefer backend URLs for better control
-                    url = a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
-                  }
-
-                  debugLog('[Restore] Extracted URL from source asset:', url);
-                  if (url) sourceImages.push(url);
+                url = input.url;
+              } else {
+                // Parse asset reference - can be "asset:123" string or asset_id number
+                let assetId = null;
+                if (input.asset && typeof input.asset === 'string' && input.asset.startsWith('asset:')) {
+                  assetId = input.asset.replace('asset:', '');
+                  debugLog('[Restore] Parsed asset reference:', input.asset, '->', assetId);
+                } else if (input.asset_id) {
+                  assetId = input.asset_id;
                 }
+
+                if (assetId) {
+                  debugLog('[Restore] Fetching source asset:', assetId);
+                  // Fetch the source asset to get its URL
+                  const sourceAssetRes = await sendMessageWithTimeout({
+                    action: 'getAsset',
+                    assetId: assetId
+                  }, 5000);
+                  debugLog('[Restore] Source asset response:', sourceAssetRes);
+                  if (sourceAssetRes?.success && sourceAssetRes.data) {
+                    // Use HTTPS-aware URL selection to avoid mixed content errors
+                    const a = sourceAssetRes.data;
+                    const isHttpsPage = window.location.protocol === 'https:';
+
+                    if (isHttpsPage) {
+                      // On HTTPS pages: prefer HTTPS URLs to avoid mixed content
+                      url = (a.remote_url?.startsWith('https://') ? a.remote_url :
+                             a.external_url?.startsWith('https://') ? a.external_url :
+                             a.file_url?.startsWith('https://') ? a.file_url :
+                             a.url?.startsWith('https://') ? a.url :
+                             // Fallback to any URL (will be proxied if HTTP)
+                             a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url);
+                    } else {
+                      // On HTTP pages: prefer backend URLs for better control
+                      url = a.file_url || a.url || a.src || a.thumbnail_url || a.remote_url || a.external_url;
+                    }
+                    debugLog('[Restore] Extracted URL from source asset:', url);
+                  }
+                }
+              }
+
+              if (url) {
+                // Include slot index for position-aware restoration
+                sourceImages.push({ url, slot: slotIndex });
               }
             }
           } else {
@@ -771,306 +780,19 @@
   }
 
   // ===== Metadata Popup =====
-
-  // Helper to create an image row with proper HTTP proxying
-  function createImageRow(url, label, onClick = null) {
-    const imgRow = document.createElement('div');
-    imgRow.style.cssText = `
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px;
-      margin-bottom: 4px;
-      background: ${COLORS.bgAlt};
-      border-radius: 4px;
-      cursor: pointer;
-    `;
-
-    const img = document.createElement('img');
-    img.style.cssText = 'width: 32px; height: 32px; object-fit: cover; border-radius: 3px;';
-    loadImageSrc(img, url);  // Handles HTTP proxying
-
-    const span = document.createElement('span');
-    span.style.cssText = `font-size: 10px; color: ${COLORS.textMuted}; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`;
-    span.textContent = label;
-
-    imgRow.appendChild(img);
-    imgRow.appendChild(span);
-
-    if (onClick) {
-      imgRow.title = 'Click to copy URL';
-      imgRow.onclick = onClick;
-    }
-
-    return imgRow;
-  }
-
+  // Delegated to pixverse-grid-metadata.js module
   function showMetadataPopup(assetData, x, y) {
-    // Remove any existing popup
-    document.querySelectorAll('.pxs7-metadata-popup').forEach(p => p.remove());
-
-    debugLog('Metadata popup data:', assetData);
-
-    const popup = document.createElement('div');
-    popup.className = 'pxs7-metadata-popup';
-    popup.style.cssText = `
-      position: fixed;
-      left: ${x}px;
-      top: ${y}px;
-      z-index: ${Z_INDEX_PREVIEW + 1};
-      background: ${COLORS.bg};
-      border: 1px solid ${COLORS.border};
-      border-radius: 8px;
-      padding: 12px;
-      min-width: 280px;
-      max-width: 400px;
-      max-height: 500px;
-      overflow-y: auto;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 11px;
-      color: ${COLORS.text};
-    `;
-
-    // Header with close button
-    const header = document.createElement('div');
-    header.style.cssText = `
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid ${COLORS.border};
-    `;
-    header.innerHTML = `
-      <span style="font-weight: 600; font-size: 12px;">Asset Details</span>
-      <button style="background: none; border: none; color: ${COLORS.textMuted}; cursor: pointer; font-size: 16px; padding: 0 4px;">×</button>
-    `;
-    header.querySelector('button').onclick = () => popup.remove();
-    popup.appendChild(header);
-
-    // Content container for loading/replacing
-    const content = document.createElement('div');
-    popup.appendChild(content);
-
-    // Helper to add a field
-    const addField = (container, label, value, copyable = false) => {
-      if (!value) return;
-      const row = document.createElement('div');
-      row.style.cssText = `margin-bottom: 8px;`;
-
-      const labelEl = document.createElement('div');
-      labelEl.style.cssText = `font-size: 10px; color: ${COLORS.textMuted}; margin-bottom: 2px;`;
-      labelEl.textContent = label;
-      row.appendChild(labelEl);
-
-      const valueEl = document.createElement('div');
-      valueEl.style.cssText = `
-        word-break: break-word;
-        ${copyable ? 'cursor: pointer;' : ''}
-        ${typeof value === 'string' && value.length > 100 ? 'max-height: 80px; overflow-y: auto; padding-right: 4px;' : ''}
-      `;
-      valueEl.textContent = typeof value === 'object' ? JSON.stringify(value, null, 2) : value;
-
-      if (copyable) {
-        valueEl.title = 'Click to copy';
-        valueEl.addEventListener('click', async () => {
-          await navigator.clipboard.writeText(String(value));
-          if (showToast) showToast('Copied!', true);
-        });
-        valueEl.addEventListener('mouseenter', () => { valueEl.style.background = COLORS.hover; });
-        valueEl.addEventListener('mouseleave', () => { valueEl.style.background = 'transparent'; });
-      }
-      row.appendChild(valueEl);
-      container.appendChild(row);
-    };
-
-    // Render metadata from data object
-    const renderMetadata = (container, data, generation = null) => {
-      container.innerHTML = '';
-
-      const prompt = generation?.final_prompt
-                  || data.generation?.final_prompt
-                  || data.media_metadata?.prompt
-                  || data.media_metadata?.customer_paths?.prompt;
-      const model = generation?.canonical_params?.model
-                 || data.generation?.canonical_params?.model
-                 || data.media_metadata?.model;
-      const aspectRatio = generation?.canonical_params?.aspect_ratio
-                       || data.generation?.canonical_params?.aspect_ratio
-                       || data.media_metadata?.aspect_ratio;
-      const createdAt = data.created_at || data.createdAt;
-      const assetId = data.assetId || data.asset_id || data.id;
-      const providerAssetId = data.provider_asset_id || data.pixverse_id;
-      const sourceGenId = data.source_generation_id || generation?.id;
-
-      addField(container, 'Prompt', prompt, true);
-      addField(container, 'Model', model);
-      addField(container, 'Aspect Ratio', aspectRatio);
-      addField(container, 'Created', createdAt ? new Date(createdAt).toLocaleString() : null);
-      addField(container, 'Asset ID', assetId, true);
-      addField(container, 'Provider Asset ID', providerAssetId, true);
-      addField(container, 'Generation ID', sourceGenId, true);
-
-      // Source images if available
-      const inputs = generation?.inputs || data.generation?.inputs;
-      if (inputs && inputs.length > 0) {
-        const inputsLabel = document.createElement('div');
-        inputsLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted}; margin: 10px 0 4px;`;
-        inputsLabel.textContent = `Source Images (${inputs.length})`;
-        container.appendChild(inputsLabel);
-
-        inputs.forEach((input, i) => {
-          // Parse asset reference to get ID for fetching
-          let assetRef = null;
-          if (input.asset && typeof input.asset === 'string' && input.asset.startsWith('asset:')) {
-            assetRef = input.asset.replace('asset:', '');
-          }
-
-          const url = input.url || input.thumbnail_url;
-          const label = input.role || `Input ${i + 1}`;
-
-          if (url) {
-            // Use helper to create image row with HTTP proxying
-            const imgRow = createImageRow(url, label, async () => {
-              await navigator.clipboard.writeText(url);
-              if (showToast) showToast('URL copied', true);
-            });
-            container.appendChild(imgRow);
-          } else if (assetRef) {
-            // Show loading placeholder while fetching
-            const imgRow = document.createElement('div');
-            imgRow.style.cssText = `
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              padding: 4px;
-              margin-bottom: 4px;
-              background: ${COLORS.bgAlt};
-              border-radius: 4px;
-              cursor: pointer;
-            `;
-            imgRow.innerHTML = `
-              <div style="width: 32px; height: 32px; background: ${COLORS.hover}; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px;">⏳</div>
-              <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1;">${input.role || `Input ${i + 1}`} (asset:${assetRef})</span>
-            `;
-            // Fetch asset to get URL
-            (async () => {
-              try {
-                const assetRes = await sendMessageWithTimeout({ action: 'getAsset', assetId: assetRef }, 5000);
-                if (assetRes?.success && assetRes.data) {
-                  // Prioritize backend URLs over provider URLs
-                  const fetchedUrl = assetRes.data.file_url || assetRes.data.preview_url || assetRes.data.remote_url;
-                  if (fetchedUrl) {
-                    // Replace loading placeholder with actual image using helper
-                    const newImgRow = createImageRow(fetchedUrl, label, async () => {
-                      await navigator.clipboard.writeText(fetchedUrl);
-                      if (showToast) showToast('URL copied', true);
-                    });
-                    imgRow.replaceWith(newImgRow);
-                  }
-                }
-              } catch (e) {
-                debugLog('Failed to fetch source asset:', e);
-              }
-            })();
-            container.appendChild(imgRow);
-          } else {
-            // No URL and no asset ref - show empty placeholder
-            const imgRow = document.createElement('div');
-            imgRow.style.cssText = `
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              padding: 4px;
-              margin-bottom: 4px;
-              background: ${COLORS.bgAlt};
-              border-radius: 4px;
-            `;
-            imgRow.innerHTML = `
-              <div style="width: 32px; height: 32px; background: ${COLORS.hover}; border-radius: 3px;"></div>
-              <span style="font-size: 10px; color: ${COLORS.textMuted}; flex: 1;">${label}</span>
-            `;
-            container.appendChild(imgRow);
-          }
-        });
-      }
-
-      // If no meaningful data, show notice
-      if (!prompt && !model && !inputs?.length) {
-        const notice = document.createElement('div');
-        notice.style.cssText = `padding: 10px; text-align: center; color: ${COLORS.textMuted}; font-style: italic;`;
-        notice.textContent = generation === null ? 'Loading details...' : 'No generation data available. Try re-syncing the asset.';
-        container.appendChild(notice);
-      }
-    };
-
-    // Initial render with cached data
-    renderMetadata(content, assetData);
-
-    document.body.appendChild(popup);
-
-    // Position adjustment
-    const adjustPosition = () => {
-      const rect = popup.getBoundingClientRect();
-      if (rect.right > window.innerWidth - 10) {
-        popup.style.left = Math.max(10, window.innerWidth - rect.width - 10) + 'px';
-      }
-      if (rect.bottom > window.innerHeight - 10) {
-        popup.style.top = Math.max(10, window.innerHeight - rect.height - 10) + 'px';
-      }
-    };
-    setTimeout(adjustPosition, 0);
-
-    // Fetch full details from backend
-    const assetId = assetData.assetId || assetData.asset_id || assetData.id;
-    if (assetId && sendMessageWithTimeout) {
-      (async () => {
-        try {
-          // Fetch asset with full details
-          const assetRes = await sendMessageWithTimeout({
-            action: 'getAsset',
-            assetId: assetId
-          }, 5000);
-
-          debugLog('[Metadata] Full asset response:', assetRes);
-
-          if (assetRes?.success && assetRes.data) {
-            const fullAsset = assetRes.data;
-            let generation = null;
-
-            // If asset has generation, fetch it
-            if (fullAsset.source_generation_id) {
-              const genRes = await sendMessageWithTimeout({
-                action: 'getGeneration',
-                generationId: fullAsset.source_generation_id
-              }, 5000);
-
-              debugLog('[Metadata] Generation response:', genRes);
-
-              if (genRes?.success && genRes.data) {
-                generation = genRes.data;
-              }
-            }
-
-            // Re-render with full data
-            renderMetadata(content, fullAsset, generation);
-            setTimeout(adjustPosition, 0);
-          }
-        } catch (err) {
-          console.warn('[PixSim7] Failed to fetch full asset details:', err);
-        }
-      })();
+    const metadataModule = getMetadataModule();
+    // Wire up the loadImageSrc dependency
+    if (metadataModule.setLoadImageSrc) {
+      metadataModule.setLoadImageSrc(loadImageSrc);
     }
-
-    // Close on outside click
-    const closeHandler = (e) => {
-      if (!popup.contains(e.target)) {
-        popup.remove();
-        document.removeEventListener('mousedown', closeHandler);
-      }
-    };
-    setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
+    // Call the module
+    if (metadataModule.showMetadataPopup) {
+      metadataModule.showMetadataPopup(assetData, x, y);
+    } else {
+      console.warn('[PixSim7] Metadata module not loaded');
+    }
   }
 
   // ===== Upload Slot Menu =====

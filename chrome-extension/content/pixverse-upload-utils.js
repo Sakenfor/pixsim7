@@ -13,9 +13,30 @@
   const showToast = window.PXS7.showToast;
   // Note: addToRecentlyUsed is loaded later, access via window.PXS7.recentlyUsed
 
-  const SESSION_KEY_PRESERVED_INPUT = 'pxs7_preserved_input';
+  // Use page-type-specific storage keys to avoid cross-page overwrites
+  const SESSION_KEY_PREFIX = 'pxs7_preserved_';
+  const getSessionKey = (pageType) => `${SESSION_KEY_PREFIX}${pageType}`;
   const DEBUG_IMAGE_PICKER = localStorage.getItem('pxs7_debug') === 'true';
   const debugLog = (...args) => DEBUG_IMAGE_PICKER && console.log('[PixSim7]', ...args);
+
+  // Page type detection - centralized for consistency
+  // Actual URLs:
+  //   video: /create/image-text (image+text to video)
+  //   image: /create/create-image (image generation)
+  //   transition: /create/transition
+  //   extend: /create/extend
+  function getPageType(path) {
+    if (path.includes('/transition')) return 'transition';
+    if (path.includes('/fusion')) return 'fusion';
+    if (path.includes('/extend')) return 'extend';
+    if (path.includes('/edit') && !path.includes('/extend')) return 'edit';
+    // Image generation page
+    if (path.includes('/create-image') || path.includes('/create/create-image')) return 'image';
+    // Video generation page (image-text means image+text to video)
+    if (path.includes('/image-text') || path.includes('/image_text')) return 'video';
+    // Don't classify unknown pages
+    return 'other';
+  }
 
   // Track if we've setup beforeunload handler
   let beforeUnloadSetup = false;
@@ -26,9 +47,13 @@
 
   // ===== Input Preservation =====
 
-  function saveInputState() {
+  function saveInputState(options = {}) {
+    const { forcePageType, silent } = options;
+    const detectedPageType = getPageType(window.location.pathname);
+    const effectivePageType = forcePageType || detectedPageType;
+
     try {
-      const state = { inputs: {}, images: [], savedAt: Date.now() };
+      const state = { inputs: {}, images: [], slotCount: 0, savedAt: Date.now() };
 
       // Save all textareas with content
       document.querySelectorAll('textarea').forEach((el, i) => {
@@ -46,36 +71,48 @@
         }
       });
 
-      // Save uploaded image URLs from Ant Design upload containers
-      document.querySelectorAll('.ant-upload-drag-container img').forEach(img => {
-        const src = img.src;
-        if (src && src.includes('media.pixverse.ai')) {
-          const cleanUrl = normalizeUrl(src);
-          if (!state.images.includes(cleanUrl)) {
-            state.images.push(cleanUrl);
+      // Get current slots to save images WITH their positions
+      // Pass forcePageType to ensure we find slots for the correct page type
+      const uploads = findUploadInputs({ forcePageType });
+      const relevantSlots = uploads.filter(u => u.priority >= 10);
+      state.slotCount = relevantSlots.length;
+
+      // Save images with their slot positions
+      relevantSlots.forEach((slot, index) => {
+        if (slot.hasImage) {
+          // Find the image URL in this slot
+          const container = slot.container;
+          const parentArea = container?.closest('.ant-upload-wrapper') || container?.parentElement?.parentElement;
+          let imageUrl = null;
+
+          if (parentArea) {
+            // Try various ways to find the image URL
+            const img = parentArea.querySelector('img[src]:not([src=""]):not([src="#"])');
+            if (img) {
+              const src = img.src;
+              if (src.includes('media.pixverse') || src.includes('aliyun') || src.includes('blob:') || src.length > 100) {
+                imageUrl = normalizeUrl(src);
+              }
+            }
+
+            if (!imageUrl) {
+              const bgEl = parentArea.querySelector('[style*="background-image"]');
+              if (bgEl) {
+                const url = extractImageUrl(bgEl.getAttribute('style'));
+                if (url) imageUrl = url;
+              }
+            }
+          }
+
+          if (imageUrl) {
+            state.images.push({ url: imageUrl, slot: slot.slotPosition });
           }
         }
       });
 
-      // Also check for background images in upload previews
-      document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
-        const url = extractImageUrl(el.getAttribute('style'));
-        if (url && !state.images.includes(url)) {
-          state.images.push(url);
-        }
-      });
-
-      // Check upload containers with preview images (various Pixverse CDN patterns)
-      const cdnPatterns = ['pixverse-fe-upload', 'aliyuncs.com'];
-      document.querySelectorAll('.ant-upload-wrapper img, [class*="upload"] img').forEach(img => {
-        const src = img.src;
-        if (src && cdnPatterns.some(p => src.includes(p))) {
-          const cleanUrl = normalizeUrl(src);
-          if (!state.images.includes(cleanUrl)) {
-            state.images.push(cleanUrl);
-          }
-        }
-      });
+      // Note: We only save images found in relevantSlots above (which are filtered by page type)
+      // Previously there was fallback code that searched ALL images in DOM, but that caused
+      // cross-page pollution in SPAs where multiple pages' elements exist simultaneously
 
       // Save model selection if present
       const modelImg = document.querySelector('img[src*="asset/media/model/model-"]');
@@ -91,21 +128,23 @@
         state.selectedAspectRatio = selectedRatio.textContent.trim();
       }
 
-      // Save current URL path for context
+      // Save current URL path and page type for context
       state.url = window.location.href;
       state.path = window.location.pathname;
+      state.pageType = effectivePageType;
 
       const hasContent = Object.keys(state.inputs).length > 0 ||
                          state.images.length > 0 ||
                          state.selectedModel ||
                          state.selectedAspectRatio;
       if (hasContent) {
-        sessionStorage.setItem(SESSION_KEY_PRESERVED_INPUT, JSON.stringify(state));
-        debugLog('Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images,',
-                 'model:', state.selectedModel || 'none', 'ratio:', state.selectedAspectRatio || 'none');
+        const sessionKey = getSessionKey(effectivePageType);
+        sessionStorage.setItem(sessionKey, JSON.stringify(state));
+        debugLog('Saved state for', state.pageType, ':', state.images.length, 'images,', Object.keys(state.inputs).length, 'inputs');
       } else {
-        // Clear stale state if nothing to save
-        sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+        // Clear state for this page type if nothing to save
+        const sessionKey = getSessionKey(effectivePageType);
+        sessionStorage.removeItem(sessionKey);
       }
 
       return hasContent;
@@ -140,11 +179,22 @@
       }
     }, true);
 
-    debugLog('Auto-save enabled');
+    // Periodic auto-save every 5 seconds to catch state changes
+    // This is important for SPAs where beforeunload doesn't fire on navigation
+    setInterval(() => {
+      const pageType = getPageType(window.location.pathname);
+      if (pageType !== 'other') {
+        saveInputState({ silent: true }); // Don't log periodic saves
+      }
+    }, 5000);
+
+    debugLog('Auto-save enabled (including periodic save)');
   }
 
   /**
    * Restore saved input state from sessionStorage.
+   * Only restores if current page type matches saved page type.
+   * Keeps state in "standby" if types don't match (for later restore when visiting correct page).
    * @param {Object} options - Options for restore behavior
    * @param {Function} options.showImageRestorePanel - Callback to show image restore UI (fallback)
    * @param {boolean} options.autoRestoreImages - If true, auto-restore images without panel (default: true)
@@ -156,47 +206,30 @@
     }
     const { showImageRestorePanel, autoRestoreImages = true } = options;
 
+    // Determine current page type
+    const currentPath = window.location.pathname;
+    const currentPageType = getPageType(currentPath);
+    const sessionKey = getSessionKey(currentPageType);
+
     try {
-      const saved = sessionStorage.getItem(SESSION_KEY_PRESERVED_INPUT);
-      if (!saved) return { restored: false };
+      // Don't restore on unknown/other page types
+      if (currentPageType === 'other') {
+        debugLog('Restore skipped - unknown page type');
+        return { restored: false, reason: 'unknown_page' };
+      }
 
-      const state = JSON.parse(saved);
-
-      // Check if state is stale (older than 5 minutes)
-      if (state.savedAt && Date.now() - state.savedAt > 5 * 60 * 1000) {
-        debugLog('Saved state is stale, ignoring');
-        sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+      const saved = sessionStorage.getItem(sessionKey);
+      if (!saved) {
+        debugLog('No saved state for', currentPageType);
         return { restored: false };
       }
 
-      // Check if current page matches the saved page path
-      const currentPath = window.location.pathname;
-      const savedPath = state.path || '';
+      const state = JSON.parse(saved);
 
-      debugLog('Restore check - currentPath:', currentPath, 'savedPath:', savedPath);
-
-      // Extract page type from paths (e.g., /create/image, /transition, /fusion)
-      const getPageType = (path) => {
-        if (path.includes('/transition')) return 'transition';
-        if (path.includes('/fusion')) return 'fusion';
-        if (path.includes('/extend')) return 'extend';
-        if (path.includes('/edit')) return 'edit';
-        if (path.includes('/create/image') || path.includes('/image-generation') || path.includes('/create-image')) return 'image';
-        if (path.includes('/image-text') || path.includes('/image_text')) return 'image-text';
-        if (path.includes('/video') || path.includes('/create')) return 'video'; // Video generation pages
-        return 'other';
-      };
-
-      const currentPageType = getPageType(currentPath);
-      const savedPageType = getPageType(savedPath);
-
-      debugLog('Page types - current:', currentPageType, 'saved:', savedPageType);
-
-      // Only skip restore if page types are clearly different (not 'other')
-      if (currentPageType !== savedPageType && currentPageType !== 'other' && savedPageType !== 'other') {
-        debugLog('Page type mismatch, not restoring. Current:', currentPageType, 'Saved:', savedPageType);
-        // Clear the saved state since it's for a different page type
-        sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+      // Check if state is stale (older than 10 minutes)
+      if (state.savedAt && Date.now() - state.savedAt > 10 * 60 * 1000) {
+        debugLog('Saved state is stale, clearing');
+        sessionStorage.removeItem(sessionKey);
         return { restored: false };
       }
 
@@ -205,13 +238,7 @@
       let textRestored = 0;
       let imagesRestored = 0;
 
-      debugLog('Restoring state:', {
-        inputs: Object.keys(inputs).length,
-        images: images.length,
-        model: state.selectedModel,
-        aspectRatio: state.selectedAspectRatio,
-        pageType: currentPageType
-      });
+      debugLog('Restoring for', currentPageType, ':', images.length, 'images,', Object.keys(inputs).length, 'inputs');
 
       // Use shared restore utilities
       const { restoreModel, restoreAspectRatio, restorePrompts, restoreContentEditables } = window.PXS7.restoreUtils || {};
@@ -238,21 +265,18 @@
         textRestored += restoreContentEditables(inputs);
       }
 
-      // === Restore images ===
-      // Pass all images to restoreAllImages - it handles slot detection and adding slots
-      if (images.length > 0) {
+      // === Restore slots and images ===
+      const savedSlotCount = state.slotCount || 0;
+
+      if (savedSlotCount > 0 || images.length > 0) {
         if (autoRestoreImages) {
-          // Auto-restore images using restoreAllImages (same as account switch flow)
-          debugLog('Auto-restoring', images.length, 'images via restoreAllImages');
-          const result = await restoreAllImages(images);
+          const result = await restoreAllImages(images, { slotCount: savedSlotCount });
           imagesRestored = result.success;
 
-          // Show panel for failed images only
           if (result.failed.length > 0 && showImageRestorePanel) {
             showImageRestorePanel(result.failed);
           }
         } else if (showImageRestorePanel) {
-          // Show panel for all images (legacy behavior)
           showImageRestorePanel(images);
         }
       }
@@ -266,8 +290,15 @@
         if (showToast) showToast(`Restored ${parts.join(' and ')}`, true);
       }
 
-      sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
-      return { restored: textRestored > 0 || imagesRestored > 0, textRestored, imagesRestored };
+      // Clear state after successful restore
+      sessionStorage.removeItem(sessionKey);
+
+      // Mark this page type as restored so SPA handler doesn't try again
+      if (window.PXS7.markPageTypeRestored) {
+        window.PXS7.markPageTypeRestored(currentPageType);
+      }
+
+      return { restored: textRestored > 0 || imagesRestored > 0, textRestored, imagesRestored, pageType: currentPageType };
     } catch (e) {
       console.warn('[PixSim7] Failed to restore input state:', e);
       return { restored: false, error: e.message };
@@ -276,16 +307,18 @@
 
   // ===== Upload Input Detection =====
 
-  function findUploadInputs() {
+  function findUploadInputs(options = {}) {
+    const { forcePageType } = options;
     const results = [];
     const seenInputs = new Set();
     const url = window.location.pathname;
-    const isImageTextPage = url.includes('image-text') || url.includes('image_text');
-    const isImageGenPage = url.includes('create-image') || url.includes('image-generation') || url.includes('/create/image');
-    const isTransitionPage = url.includes('/transition');
-    const isFusionPage = url.includes('/fusion');
-    const isExtendPage = url.includes('/extend');
-    const isImageEditPage = url.includes('/edit') && !isExtendPage;
+    const pageType = forcePageType || getPageType(url);
+    const isVideoPage = pageType === 'video'; // /create/image-text
+    const isImageGenPage = pageType === 'image'; // /create/create-image
+    const isTransitionPage = pageType === 'transition';
+    const isFusionPage = pageType === 'fusion';
+    const isExtendPage = pageType === 'extend';
+    const isImageEditPage = pageType === 'edit';
 
     const allFileInputs = document.querySelectorAll('input[type="file"]');
     const inputs = Array.from(allFileInputs).filter(input => {
@@ -365,7 +398,7 @@
       const containerId = parentWithId?.id || '';
 
       let priority = 0;
-      if (isImageTextPage && containerId.includes('image_text')) {
+      if (isVideoPage && containerId.includes('image_text')) {
         priority = 10;
       } else if (isImageGenPage && containerId.includes('create_image')) {
         priority = 10;
@@ -444,14 +477,25 @@
           effectiveContainerId = 'extend_slot';
         } else if (isImageGenPage) {
           effectiveContainerId = 'create_image_slot';
-        } else if (isImageTextPage) {
+        } else if (isVideoPage) {
           effectiveContainerId = 'image_text_slot';
         }
       }
 
-      results.push({ input, container, hasImage, priority, containerId: effectiveContainerId });
+      results.push({ input, container, hasImage, priority, containerId: effectiveContainerId, domIndex: results.length });
     });
 
+    // Assign slot position among relevant slots (priority >= 10) in DOM order BEFORE sorting
+    let relevantSlotPosition = 0;
+    results.forEach(r => {
+      if (r.priority >= 10) {
+        r.slotPosition = relevantSlotPosition++;
+      } else {
+        r.slotPosition = -1; // Not a relevant slot
+      }
+    });
+
+    // Sort by priority for general use, but slotPosition preserves DOM order among relevant slots
     results.sort((a, b) => {
       if (b.priority !== a.priority) return b.priority - a.priority;
       return (a.containerId || '').localeCompare(b.containerId || '');
@@ -881,6 +925,11 @@
       }
 
       setTimeout(() => { if (showToast) showToast('Upload triggered!', true); }, 500);
+
+      // Auto-save state after image upload to capture the change
+      setTimeout(() => saveInputState(), 1000);
+      setTimeout(() => saveInputState(), 3000);
+
       return true;
     } catch (e) {
       console.error('[PixSim7] Failed to inject image:', e);
@@ -896,7 +945,7 @@
    * @returns {Object} - { success: number, failed: string[] }
    */
   async function restoreAllImages(images, options = {}) {
-    const { onProgress, timeout = 5000 } = options;
+    const { onProgress, timeout = 5000, slotCount = 0 } = options;
     let success = 0;
     const failed = [];
 
@@ -904,13 +953,23 @@
     let uploads = findUploadInputs();
     let relevantSlots = uploads.filter(u => u.priority >= 10);
 
-    debugLog('[RestoreAll] Starting restore of', images.length, 'images');
-    debugLog('[RestoreAll] Available slots:', relevantSlots.length);
+    debugLog('RestoreAll: Starting restore of', images.length, 'images, slotCount:', slotCount, 'available:', relevantSlots.length);
 
-    // Add slots if we need more total slots (we restore from index 0, so need images.length slots total)
-    const slotsNeeded = images.length - relevantSlots.length;
-    if (slotsNeeded > 0) {
-      debugLog('[RestoreAll] Need to add', slotsNeeded, 'more slot(s)');
+    // Calculate max slot position needed
+    // Use saved slotCount if provided, otherwise calculate from images
+    let maxSlotNeeded = slotCount > 0 ? slotCount - 1 : images.length - 1;
+    for (const img of images) {
+      if (typeof img === 'object' && img.slot !== null && img.slot !== undefined) {
+        maxSlotNeeded = Math.max(maxSlotNeeded, img.slot);
+      }
+    }
+
+    // Add slots if we need more to reach the max position
+    const totalSlotsNeeded = maxSlotNeeded + 1;
+    const slotsToAdd = totalSlotsNeeded - relevantSlots.length;
+
+    if (slotsToAdd > 0) {
+      debugLog('RestoreAll: Need to add', slotsToAdd, 'slot(s)');
 
       // Find the + button using multiple approaches
       let plusBtn = null;
@@ -958,55 +1017,78 @@
       }
 
       if (plusBtn) {
-        for (let i = 0; i < slotsNeeded; i++) {
+        debugLog('RestoreAll: Found + button, adding', slotsToAdd, 'slot(s)');
+        for (let i = 0; i < slotsToAdd; i++) {
           plusBtn.click();
           await new Promise(r => setTimeout(r, 150));
         }
-        debugLog('[RestoreAll] Added', slotsNeeded, 'slot(s)');
         // Wait for DOM to update
         await new Promise(r => setTimeout(r, 400));
 
         // Refresh slot list
         uploads = findUploadInputs();
         relevantSlots = uploads.filter(u => u.priority >= 10);
-        debugLog('[RestoreAll] After adding, available slots:', relevantSlots.length);
+        debugLog('RestoreAll: After adding slots, available:', relevantSlots.length);
       } else {
-        debugLog('[RestoreAll] Could not find + button to add slots');
+        debugLog('RestoreAll: Could not find + button to add slots');
       }
     }
+
+    // Track which slots we've used during this restore
+    const usedSlotIds = new Set();
 
     for (let i = 0; i < images.length; i++) {
       // Normalize to {url, slot, containerId} format
       const imgData = typeof images[i] === 'string'
-        ? { url: images[i], slot: i, containerId: null }
+        ? { url: images[i], slot: null, containerId: null }
         : images[i];
 
       const { url, slot, containerId } = imgData;
-      debugLog('[RestoreAll] Restoring image', i + 1, 'of', images.length, ':', url);
+      const requestedSlot = (slot !== undefined && slot !== null && slot >= 0) ? slot : null;
 
-      // Find target slot - use slot index starting from 0, clear existing if needed
-      // Priority: explicit slot > sequential index (starting from 0)
+      debugLog('[RestoreAll] Restoring image', i + 1, 'of', images.length,
+               requestedSlot !== null ? `to slot ${requestedSlot}` : '(no slot specified)', ':', url);
+
+      // Find target slot - position-aware restoration
       let targetSlot = null;
-      const targetIndex = (slot !== undefined && slot !== null && slot >= 0) ? slot : i;
 
       if (containerId) {
-        // Try to find by containerId first (may have existing image that we'll clear)
-        targetSlot = relevantSlots.find(s => s.containerId === containerId);
+        // Try to find by containerId first, but only if empty
+        targetSlot = relevantSlots.find(s => s.containerId === containerId && !s.hasImage && !usedSlotIds.has(s.containerId));
       }
-      if (!targetSlot && targetIndex < relevantSlots.length) {
-        // Use the target index directly - start from slot 0, not first empty
-        targetSlot = relevantSlots[targetIndex];
-      }
-      if (!targetSlot) {
-        // Fallback to first available slot
-        targetSlot = relevantSlots[i] || relevantSlots.find(s => !s.hasImage);
+
+      if (!targetSlot && requestedSlot !== null) {
+        // Try to use the slot at the requested position (matches DOM order among relevant slots)
+        const slotAtPosition = relevantSlots.find(s => s.slotPosition === requestedSlot);
+        if (slotAtPosition) {
+          if (!slotAtPosition.hasImage && !usedSlotIds.has(slotAtPosition.containerId)) {
+            targetSlot = slotAtPosition;
+          } else {
+            // Requested slot is occupied - skip this image (preserve existing content)
+            debugLog('RestoreAll: Slot', requestedSlot, 'occupied, skipping');
+            failed.push(url);
+            continue;
+          }
+        }
       }
 
       if (!targetSlot) {
-        debugLog('[RestoreAll] No slot found for image', i + 1);
+        // No specific slot requested or slot doesn't exist - find next empty slot
+        targetSlot = relevantSlots.find(s => !s.hasImage && !usedSlotIds.has(s.containerId));
+      }
+
+      if (!targetSlot) {
+        debugLog('[RestoreAll] No empty slot found for image', i + 1);
         failed.push(url);
         continue;
       }
+
+      // Mark this slot as used for this batch (so we don't reuse it)
+      if (targetSlot.containerId) {
+        usedSlotIds.add(targetSlot.containerId);
+      }
+
+      debugLog('[RestoreAll] Using slot', relevantSlots.indexOf(targetSlot), 'for image', i + 1);
 
       // Create promise that resolves when upload completes or times out
       const uploadComplete = new Promise((resolve) => {
@@ -1058,6 +1140,7 @@
 
   // Export to global scope
   window.PXS7.uploadUtils = {
+    getPageType,
     saveInputState,
     restoreInputState,
     setupAutoSave,
@@ -1073,19 +1156,50 @@
   // Auto-setup on load
   setupAutoSave();
 
+  const initialPageType = getPageType(window.location.pathname);
+  debugLog('Loaded on page type:', initialPageType);
+
   // ===== SPA NAVIGATION DETECTION =====
   // Pixverse is an SPA - detect URL changes and re-scan for upload inputs
   let lastUrl = window.location.href;
   let lastPath = window.location.pathname;
 
-  function onPageChange() {
-    debugLog('[SPA] Page changed to:', window.location.pathname);
+  // Track which page types we've already attempted restore for this session (in-memory, not storage)
+  // This prevents double-restore when navigating back to a page
+  const restoredPageTypes = new Set();
+
+  // Export a function to mark a page type as restored (called by external code after successful restore)
+  window.PXS7.markPageTypeRestored = (pageType) => {
+    restoredPageTypes.add(pageType);
+    debugLog('Marked page type as restored:', pageType);
+  };
+
+  // Track previous page for saving state on SPA navigation
+  let previousPageType = initialPageType;
+
+  async function onPageChange(newPath) {
+    const newPageType = getPageType(newPath);
+    debugLog('SPA navigation to', newPageType);
+
+    // Note: We no longer try to save previous page state here because by the time
+    // onPageChange fires, the DOM has already changed and we can't find the old page's slots.
+    // Instead, we rely on periodic auto-save (every 5 seconds) to capture state while on each page.
+    previousPageType = newPageType;
 
     // Re-scan upload inputs after DOM settles
-    setTimeout(() => {
-      const uploads = findUploadInputs();
-      debugLog('[SPA] Re-scanned inputs, found:', uploads.length);
-    }, 500);
+    setTimeout(async () => {
+      findUploadInputs(); // Re-scan for new page
+
+      // Try restore for the new page type if we haven't already
+      if (!restoredPageTypes.has(newPageType) && newPageType !== 'other') {
+        const sessionKey = getSessionKey(newPageType);
+        const saved = sessionStorage.getItem(sessionKey);
+        if (saved) {
+          debugLog('SPA: Found saved state for', newPageType, '- restoring');
+          await restoreInputState();
+        }
+      }
+    }, 800); // Wait for DOM to settle
   }
 
   // Method 1: Watch for popstate (back/forward navigation)
@@ -1093,7 +1207,7 @@
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
       lastPath = window.location.pathname;
-      onPageChange();
+      onPageChange(lastPath);
     }
   });
 
@@ -1104,8 +1218,9 @@
 
     if (currentPath !== lastPath) {
       lastUrl = currentUrl;
+      const oldPath = lastPath;
       lastPath = currentPath;
-      onPageChange();
+      onPageChange(currentPath);
     }
   }, 500); // Check every 500ms
 
