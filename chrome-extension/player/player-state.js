@@ -64,6 +64,8 @@
   const state = {
     currentFps: 30,
     videoLoaded: false,
+    isImageMode: false,
+    loadedImage: null,
     currentVideoName: 'Video',
     currentVideoUrl: null,
     currentVideoSourceSite: null,
@@ -168,6 +170,28 @@
     state.regionStart = null;
   }
 
+  // Get the current media source (video or image) for drawing
+  function getMediaSource() {
+    if (state.isImageMode && state.loadedImage) {
+      return state.loadedImage;
+    }
+    return elements.video;
+  }
+
+  // Get media dimensions (works for both video and image)
+  function getMediaDimensions() {
+    if (state.isImageMode && state.loadedImage) {
+      return {
+        width: state.loadedImage.width,
+        height: state.loadedImage.height,
+      };
+    }
+    return {
+      width: elements.video.videoWidth,
+      height: elements.video.videoHeight,
+    };
+  }
+
   // Export
   window.PXS7Player.elements = elements;
   window.PXS7Player.state = state;
@@ -181,5 +205,7 @@
     setLocalVideoContext,
     setRemoteVideoContext,
     resetInteractionState,
+    getMediaSource,
+    getMediaDimensions,
   };
 })();

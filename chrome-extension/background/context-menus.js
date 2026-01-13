@@ -86,8 +86,6 @@ function initContextMenuListeners() {
           type: 'popup',
           width: 900,
           height: 650,
-          top: 100,
-          left: Math.max(100, screen.width - 950),
         });
         return;
       }
