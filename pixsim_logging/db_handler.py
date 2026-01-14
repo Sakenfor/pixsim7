@@ -18,7 +18,7 @@ from typing import Any
 from queue import Queue
 from threading import Thread, Event
 
-from sqlalchemy import create_engine, Table, Column, MetaData
+from sqlalchemy import create_engine, Table, Column, MetaData, text
 from sqlalchemy import Integer, String, DateTime, JSON, Text
 
 from .schema import LOG_ENTRY_COLUMNS
@@ -105,6 +105,7 @@ class DBLogHandler:
             Column("created_at", DateTime),
             extend_existing=True,
         )
+        self._column_limits = self._load_column_limits(table_name)
 
         # Auto-create table if missing can be convenient for standalone scripts,
         # but in managed deployments we usually want migrations to control the
@@ -123,6 +124,60 @@ class DBLogHandler:
         self.shutdown_event = Event()
         self.worker_thread = Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
+
+    def _load_column_limits(self, table_name: str) -> dict[str, int]:
+        """Best-effort lookup of string column limits for truncation safety."""
+        defaults = {
+            "level": 20,
+            "service": 150,
+            "env": 20,
+            "request_id": 100,
+            "provider_job_id": 255,
+            "provider_id": 50,
+            "operation_type": 50,
+            "stage": 50,
+            "error_type": 100,
+        }
+
+        try:
+            if self.engine.dialect.name != "postgresql":
+                return defaults
+
+            with self.engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        """
+                        SELECT column_name, character_maximum_length
+                        FROM information_schema.columns
+                        WHERE table_schema = current_schema()
+                          AND table_name = :table
+                          AND character_maximum_length IS NOT NULL
+                        """
+                    ),
+                    {"table": table_name},
+                ).fetchall()
+
+            for column_name, limit in rows:
+                if isinstance(limit, int) and limit > 0:
+                    defaults[column_name] = limit
+        except Exception:
+            # If introspection fails, fall back to safe defaults.
+            return defaults
+
+        return defaults
+
+    def _truncate_fields(self, row: dict[str, Any]) -> None:
+        """Clamp string fields to the DB column limits to avoid insert failures."""
+        for key, limit in self._column_limits.items():
+            value = row.get(key)
+            if not isinstance(value, str):
+                continue
+            if len(value) <= limit:
+                continue
+            if key == "service":
+                row[key] = value[-limit:]
+            else:
+                row[key] = value[:limit]
 
     def __call__(self, logger, method_name: str, event_dict: dict[str, Any]):
         # Enqueue a copy to avoid mutating caller dict
@@ -244,6 +299,7 @@ class DBLogHandler:
         if not row.get("timestamp"):
             row["timestamp"] = datetime.utcnow()
         row.setdefault("created_at", row["timestamp"])
+        self._truncate_fields(row)
         return row
 
     def shutdown(self):
