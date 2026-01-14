@@ -21,11 +21,12 @@ from PySide6.QtWidgets import (
 try:
     from .. import theme
     from ..config import ROOT
-    from ..dialogs.migrations_dialog import show_migrations_dialog
     from ..dialogs.simple_git_dialog import show_simple_git_dialog
     from ..dialogs.git_tools_dialog import show_git_tools_dialog
     from ..dialogs.log_management_dialog import show_log_management_dialog
     from ..dialogs.codegen_dialog import CodegenToolsWidget
+    from ..widgets.database_browser_widget import DatabaseBrowserWidget
+    from ..widgets.migrations_widget import MigrationsWidget
     from ..widgets.settings_panel import SettingsPanel
     from ..widgets.tab_builder import (
         TabBuilder, create_page, create_styled_frame, create_section_label
@@ -33,11 +34,12 @@ try:
 except ImportError:
     import theme
     from config import ROOT
-    from dialogs.migrations_dialog import show_migrations_dialog
     from dialogs.simple_git_dialog import show_simple_git_dialog
     from dialogs.git_tools_dialog import show_git_tools_dialog
     from dialogs.log_management_dialog import show_log_management_dialog
     from dialogs.codegen_dialog import CodegenToolsWidget
+    from widgets.database_browser_widget import DatabaseBrowserWidget
+    from widgets.migrations_widget import MigrationsWidget
     from widgets.settings_panel import SettingsPanel
     from widgets.tab_builder import (
         TabBuilder, create_page, create_styled_frame, create_section_label
@@ -90,16 +92,8 @@ class ToolsTab:
             "Database Migrations",
             "Review migration status and apply schema updates.",
         )
-        frame, frame_layout = create_styled_frame()
-
-        btn = QPushButton("Open Migrations Manager")
-        btn.setToolTip("Open the full migration manager dialog")
-        btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        btn.clicked.connect(lambda: show_migrations_dialog(launcher))
-        launcher.register_widget("btn_migrations", btn)
-        frame_layout.addWidget(btn)
-
-        layout.addWidget(frame)
+        widget = MigrationsWidget(parent=page, notify_target=launcher)
+        layout.addWidget(widget)
         layout.addStretch()
         return page
 
@@ -109,16 +103,8 @@ class ToolsTab:
             "Database Browser",
             "Browse accounts, copy passwords, and export to CSV.",
         )
-        frame, frame_layout = create_styled_frame()
-
-        btn = QPushButton("Open Database Browser")
-        btn.setToolTip("Launch the database browser window")
-        btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        btn.clicked.connect(launcher._open_db_browser)
-        launcher.register_widget("btn_db_browser", btn)
-        frame_layout.addWidget(btn)
-
-        layout.addWidget(frame)
+        widget = DatabaseBrowserWidget(parent=page)
+        layout.addWidget(widget)
         layout.addStretch()
         return page
 

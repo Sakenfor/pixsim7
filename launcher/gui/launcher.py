@@ -1660,15 +1660,21 @@ class LauncherWindow(QWidget):
     def _open_db_browser(self):
         """Open database browser window"""
         try:
-            import subprocess
-            import sys
-            script_path = os.path.join(ROOT, "data", "launcher", "db_browser_widget.py")
-            if os.path.exists(script_path):
-                subprocess.Popen([sys.executable, script_path])
-            else:
-                QMessageBox.warning(self, "Not Found", f"Database browser not found at:\n{script_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to open database browser:\n{e}")
+            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            try:
+                from .widgets.database_browser_widget import DatabaseBrowserWidget
+            except Exception:
+                from widgets.database_browser_widget import DatabaseBrowserWidget
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Database Browser")
+            dlg.setMinimumWidth(900)
+            dlg.setMinimumHeight(600)
+            layout = QVBoxLayout(dlg)
+            layout.addWidget(DatabaseBrowserWidget(parent=dlg))
+            dlg.exec()
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Failed to open database browser:\n{exc}")
 
     def _open_import_accounts_dialog(self):
         """Open import accounts dialog"""
