@@ -9,29 +9,8 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-
-class CreatureType(str, Enum):
-    """Types of creatures/entities that can interact."""
-    WEREWOLF = "werewolf"
-    VAMPIRE = "vampire"
-    DEMON = "demon"
-    SNAKE = "snake"
-    TENTACLES = "tentacles"
-    VINES = "vines"
-    SHADOW = "shadow_entity"
-    HUMAN = "human"
-
-
-class InteractionPattern(str, Enum):
-    """Patterns of physical interaction."""
-    GRIPPING = "gripping"
-    CARESSING = "caressing"
-    COILING = "coiling"
-    PRESSING = "pressing"
-    EXPLORING = "exploring"
-    RESTRAINING = "restraining"
-    SUPPORTING = "supporting"
-    ENVELOPING = "enveloping"
+# Import CreatureType from concepts.py (single source of truth)
+from .concepts import CreatureType
 
 
 @dataclass

@@ -9,10 +9,9 @@ from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
-from .types_v2 import (
-    EnhancedSingleStateBlock,
-    EnhancedTransitionBlock,
-    EnhancedActionBlockTags,
+from .types_unified import (
+    ActionBlock,
+    ActionBlockTags,
     CameraMovement,
     CameraMovementType,
     CameraSpeed,
@@ -20,9 +19,9 @@ from .types_v2 import (
     ConsistencyFlags,
     IntensityProgression,
     IntensityPattern,
-    ContentRating
+    ContentRating,
+    BranchIntent,
 )
-from .types import BranchIntent
 from .concepts import (
     CreatureType,
     MovementType,
@@ -340,7 +339,7 @@ class DynamicBlockGenerator:
         previous = request.previous_segment
 
         # Build tags
-        tags = EnhancedActionBlockTags(
+        tags = ActionBlockTags(
             content_rating=request.content_rating,
             intensity=request.parameters.get("intensity") or (previous.intensity if previous and previous.intensity else 5),
             custom=["generated", f"template:{template_id}"]
@@ -411,8 +410,9 @@ class DynamicBlockGenerator:
         end_pose = request.parameters.get("end_pose") or start_pose
 
         # Create the block
-        block = EnhancedSingleStateBlock(
+        block = ActionBlock(
             id=block_id,
+            kind="single_state",
             tags=tags,
             referenceImage=reference_image,
             startPose=start_pose,
@@ -425,7 +425,7 @@ class DynamicBlockGenerator:
         )
 
         # Convert to dict and clean up
-        block_dict = block.dict(exclude_none=True, by_alias=True)
+        block_dict = block.model_dump(exclude_none=True, by_alias=True)
         return block_dict
 
     def _validate_block(self, block: Dict[str, Any]) -> List[str]:

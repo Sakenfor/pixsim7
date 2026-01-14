@@ -10,12 +10,12 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
 
-from .types_v2 import (
-    EnhancedSingleStateBlock,
-    EnhancedActionBlockTags,
+from .types_unified import (
+    ActionBlock,
+    ActionBlockTags,
     CameraMovement,
     ConsistencyFlags,
-    ContentRating
+    ContentRating,
 )
 from .concepts import CreatureType, CreatureProperties, MovementType, InteractionType
 from .generation_templates import GenerationTemplate, TemplateType
